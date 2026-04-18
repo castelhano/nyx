@@ -41,6 +41,7 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        ctx['base_template'] = 'layout/fragment.html' if self.request.htmx else 'layout/base.html'
         schema = getattr(self, "ui_schema", None)
         if schema:
             ctx["ui"] = {

@@ -90,6 +90,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'nyx.framework.context_processors.nyx_nav',
             ],
             'builtins': [
                 # Carrega nyx_ui automaticamente em todos os templates

@@ -5,52 +5,50 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="author" content="castelhano.rafael@gmail.com">
-    <link rel="shortcut icon" href="{% static 'img/favicon_n.ico'%}">
+    <link rel="shortcut icon" href="{% static 'img/favicon_n.ico' %}">
     <title>{% block title %}Nyx{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/nyx.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+
     {% include "layout/sidebar.html" %}
+
     <div class="layout-main">
         {% include "layout/topbar.html" %}
         <main id="main-content">
-            {% if breadcrumbs %}
-            {% include "layout/breadcrumb.html" %}
-            {% endif %}
-            <div class="page-header">
-                <div class="page-header__title">
-                    {% block page_title %}{% endblock %}
-                </div>
-                <div class="page-header__actions" id="topbar-actions">
-                    {% block page_actions %}{% endblock %}
-                </div>
-            </div>
-            {% block content %}{% endblock %}
+            {% block main %}{% endblock %}
         </main>
     </div>
-    
-    <!-- Toasts das mensagens Django -->
+
+    {# Toasts das mensagens Django #}
     {% if messages %}
-    {% for message in messages %}
-    <c-toast type="{{ message.tags }}">{{ message }}</c-toast>
-    {% endfor %}
+        {% for message in messages %}
+            <c-toast type="{{ message.tags }}">{{ message }}</c-toast>
+        {% endfor %}
     {% endif %}
-    
-    <!-- 1. Libs sem dependencias -->
+
+    {# HTMX: envia CSRF em todas as requisições #}
+    <script>
+        document.body.addEventListener("htmx:configRequest", (evt) => {
+            evt.detail.headers["X-CSRFToken"] = "{{ csrf_token }}";
+        });
+    </script>
+
+    {# 1. Libs externas #}
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
     <script src="{% static 'js/libs/keywatch.js' %}"></script>
-    
-    <!-- 2. Core utilitarios — carregamento na ordem -->
+
+    {# 2. Core utilitários #}
     <script src="{% static 'js/core/utils.js' %}"></script>
     <script src="{% static 'js/core/dom.js' %}"></script>
-    <script src="{% static 'js/core/toast.js' %}"></script>
-    <script src="{% static 'js/core/http.js' %}"></script>
-    
-    <!-- 3. Modulos de pagina — registram em NyxModules, nao executam nada ainda -->
-    <script src="{% static 'js/modules/viagem-form.js' %}"></script>
-    
-    <!-- 4. Orquestrador — sempre por ultimo, consome tudo acima -->
+
+    {# 3. Módulos de página — registram em NyxModules, não executam nada ainda #}
+    {# <script src="{% static 'js/modules/viagem-form.js' %}"></script> #}
+
+    {# 4. Orquestrador — sempre por último #}
     <script src="{% static 'js/app.js' %}"></script>
     {% block extra_js %}{% endblock %}
+
 </body>
 </html>

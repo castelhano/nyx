@@ -1,1 +1,17 @@
-<div>topbar</div>
+<header class="topbar">
+
+    <div class="topbar__start">
+        {# espaço para título da seção ou ações globais futuras #}
+    </div>
+
+    <div class="topbar__end">
+        <span class="topbar__user">
+            {{ request.user.get_full_name|default:request.user.username }}
+        </span>
+        <form method="post" action="{% url 'logout' %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-ghost">Sair</button>
+        </form>
+    </div>
+
+</header>

@@ -1,67 +1,74 @@
-{% extends "layout/base.html" %}
-{% load nyx_ui %}
+{% extends base_template %}
 
-{% comment %}
-list.html — Template genérico de listagem, consumido por BaseListView.
-   Espera no contexto:
-       ui.title, ui.columns, ui.toolbar, ui.row_actions
-       object_list, page_obj (paginação Django padrão)
-{% endcomment %}
+{% block main %}
+<div data-page-module="{{ ui.title|slugify }}-list">
 
-{% block title %}{{ ui.title }}{% endblock %}
+    {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
-{% block content %}
-<div data-keybind-group="{{ ui.title|slugify }}-list">
-
-    {# Toolbar #}
-    <div class="nyx-toolbar">
-        <h1>{{ ui.title }}</h1>
-        {% for action in ui.toolbar %}
-            {% action_button action %}
-        {% endfor %}
+    <div class="page-header">
+        <h1 class="page-header__title">{{ ui.title }}</h1>
+        <div class="page-header__actions">
+            {% for action in ui.toolbar %}
+                {% action_button action %}
+            {% endfor %}
+        </div>
     </div>
 
-    {# Tabela #}
-    <table>
-        <thead>
-            <tr>
-                {% for col in ui.columns %}
-                    <th>{{ col.label }}</th>
-                {% endfor %}
-                {% if ui.row_actions %}<th></th>{% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for obj in object_list %}
+    <div class="table-wrapper">
+        <table class="table table-hover table-sm">
+            <thead>
                 <tr>
                     {% for col in ui.columns %}
-                        <td>{% get_field obj col.field %}</td>
+                        <th>{{ col.label }}</th>
                     {% endfor %}
-                    {% if ui.row_actions %}
-                        <td>
-                            {% for action in ui.row_actions %}
-                                {% action_button action obj %}
-                            {% endfor %}
-                        </td>
-                    {% endif %}
+                    {% if ui.row_actions %}<th class="col-actions"></th>{% endif %}
                 </tr>
-            {% empty %}
-                <tr><td colspan="{{ ui.columns|length|add:1 }}">Nenhum registro encontrado.</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                {% for obj in object_list %}
+                    <tr>
+                        {% for col in ui.columns %}
+                            <td>{% get_field obj col.field %}</td>
+                        {% endfor %}
+                        {% if ui.row_actions %}
+                            <td class="col-actions">
+                                {% for action in ui.row_actions %}
+                                    {% action_button action obj %}
+                                {% endfor %}
+                            </td>
+                        {% endif %}
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="{{ ui.columns|length|add:1 }}" class="text-center text-muted p-3">
+                            Nenhum registro encontrado.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
-    {# Paginação #}
     {% if is_paginated %}
-        <nav>
-            {% if page_obj.has_previous %}
-                <a href="?page={{ page_obj.previous_page_number }}">Anterior</a>
-            {% endif %}
-            <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
-            {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}">Próxima</a>
-            {% endif %}
-        </nav>
+    <nav class="pagination" aria-label="paginação">
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}"
+               class="btn btn-sm btn-ghost"
+               hx-get="?page={{ page_obj.previous_page_number }}"
+               hx-target="#main-content"
+               hx-push-url="true">Anterior</a>
+        {% endif %}
+        <span class="text-sm text-muted">
+            {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+        </span>
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}"
+               class="btn btn-sm btn-ghost"
+               hx-get="?page={{ page_obj.next_page_number }}"
+               hx-target="#main-content"
+               hx-push-url="true">Próxima</a>
+        {% endif %}
+    </nav>
     {% endif %}
 
 </div>
