@@ -1,0 +1,14 @@
+{# confirm_delete.html — Confirmação de exclusão. #}
+{% extends "layout/base.html" %}
+
+{% block title %}Excluir {{ object }}{% endblock %}
+
+{% block content %}
+<h1>Confirmar exclusão</h1>
+<p>Deseja excluir <strong>{{ object }}</strong>? Esta ação não pode ser desfeita.</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit">Confirmar exclusão</button>
+    <a href="javascript:history.back()">Cancelar</a>
+</form>
+{% endblock %}

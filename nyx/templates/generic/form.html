@@ -1,0 +1,28 @@
+{# form.html — Template genérico de criação/edição, consumido por BaseCreateView e BaseUpdateView. #}
+{% extends "layout/base.html" %}
+{% load nyx_ui %}
+
+{% block title %}{{ ui.title }}{% endblock %}
+
+{% block content %}
+<div data-keybind-group="{{ ui.title|slugify }}-form">
+
+    <h1>{{ ui.title }}</h1>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit"
+                data-keybind="ctrl+s"
+                data-keybind-desc="Salvar">
+            Salvar
+        </button>
+        <a href="javascript:history.back()"
+           data-keybind="esc"
+           data-keybind-desc="Cancelar">
+            Cancelar
+        </a>
+    </form>
+
+</div>
+{% endblock %}

@@ -1,0 +1,4 @@
+-r base.txt
+# ── Dev ───────────────────────────────────────────────────────────────────────
+django-debug-toolbar
+django-extensions

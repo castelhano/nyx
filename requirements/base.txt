@@ -1,0 +1,11 @@
+# ── Core ──────────────────────────────────────────────────────────────────────
+Django>=6.0,<7.0         # core base do Django
+python-decouple          # leitura do .env
+dj-database-url          # converte DATABASE_URL para o formato do Django
+psycopg[binary]          # PostgreSQL (remova se usar SQLite em producao)
+Pillow                   # suporte a ImageField
+auditlog                 # geracao automatica de logs
+
+# ── Frontend helpers ──────────────────────────────────────────────────────────
+django-htmx              # middleware + template tag para HTMX
+django-cotton            # componentes UI (templates/cotton/)

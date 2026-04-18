@@ -1,0 +1,9 @@
+{# _action_button.html — Renderizado pela template tag action_button. #}
+{% if visible %}
+<a href="{{ url }}"
+   class="nyx-action nyx-action--{{ action.style }}"
+   {% if action.icon %}title="{{ action.label }}"{% endif %}>
+    {% if action.icon %}<span>{{ action.icon }}</span>{% endif %}
+    {{ action.label }}
+</a>
+{% endif %}

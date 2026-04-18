@@ -1,0 +1,914 @@
+/* ============================================================
+   NYX DESIGN SYSTEM — app.css
+   Estrutura:
+     1. Reset
+     2. Variáveis (tokens)
+     3. Base (body, headings, links)
+     4. Utilitários — Background
+     5. Utilitários — Tipografia
+     6. Utilitários — Borda
+     7. Utilitários — Espaçamento
+     8. Layout — Display / Flex / Grid
+     9. Layout — Dimensões
+    10. Componentes — Forms
+    11. Componentes — Tabela
+    12. Componentes — Badge / Pill
+    13. Componentes — Botões
+   ============================================================ */
+
+/* ——— 0. EXTERNAL ———————————————————————————————————————————— */
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap');
+
+/* ——— 1. RESET ——————————————————————————————————————————————— */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-family: var(--nyx-typeface-base);
+  background-color: var(--nyx-bg-body);
+  color: var(--nyx-text-primary);
+}
+img, picture, video, canvas, svg { display: block; max-width: 100%; }
+ul, ol { list-style: none; }
+input, button, textarea, select { font: inherit; }
+p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
+a { text-decoration: none; color: inherit; }
+
+
+/* ——— 2. VARIÁVEIS ————————————————————————————————————————— */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark;  }
+:root {
+  color-scheme: light dark;
+
+  /* — Background (camadas de densidade) — */
+  --nyx-bg-body:        light-dark(#ffffff,  #1a1c1e);
+  --nyx-bg-secondary:   light-dark(#f5f5f5,  #212327);
+  --nyx-bg-tertiary:    light-dark(#ebebeb,  #2a2d31);
+  --nyx-bg-alt:         light-dark(#ffffff,  #0F1117);
+  --nyx-bg-alt-secondary:       light-dark(#ffffff,  #161922);
+
+  /* — Background (estados semânticos) — */
+  --nyx-bg-brand:       light-dark(#eff2f4,  #28333d);
+  --nyx-bg-info:        light-dark(#ebf5f7,  #27393d);
+  --nyx-bg-warning:     light-dark(#fff8e6,  #423f24);
+  --nyx-bg-danger:      light-dark(#fcebed,  #3b282b);
+  --nyx-bg-success:     light-dark(#e9f5ef,  #22322f);
+  --nyx-bg-attention:   light-dark(#ffefef,  #3b3127);
+  --nyx-bg-promoted:    light-dark(#fbeaf2,  #362936);
+  --nyx-bg-discovery:   light-dark(#f1ecf9,  #2b263e);
+
+  /* — Tipografia (fonte) — */
+  --nyx-typeface-base:  system-ui, sans-serif;
+  --nyx-typeface-mono:  "Roboto Mono", monospace;
+  
+  /* — Tipografia (cor) — */
+  --nyx-text-primary:   light-dark(#373b3e,  #c9d1d9);
+  --nyx-text-secondary: light-dark(#5f6368,  #8b949e);
+  --nyx-text-tertiary:  light-dark(#80868b,  #596169);
+  --nyx-text-emp:       light-dark(#1a1a1b,  #f0f0f0);
+
+  /* — Tipografia (estados semânticos) — */
+  --nyx-text-brand:     light-dark(#5a7d9a,  #8eb3d3);
+  --nyx-text-info:      light-dark(#2c8191,  #6edff6);
+  --nyx-text-warning:   light-dark(#7a5c10,  #ffda6a);
+  --nyx-text-danger:    light-dark(#c0392b,  #ff8585);
+  --nyx-text-success:   light-dark(#1a7a4a,  #75f0a3);
+  --nyx-text-discovery: light-dark(#6f42c1,  #a370f7);
+  --nyx-text-attention: light-dark(#d45f00,  #feb272);
+  --nyx-text-promoted:  light-dark(#c02070,  #e685b5);
+
+  /* — Tipografia (escala) — */
+  --nyx-font-xs:   0.75rem;     /* 12px */
+  --nyx-font-sm:   0.875rem;    /* 14px */
+  --nyx-font-base: 1rem;        /* 16px */
+  --nyx-font-lg:   1.125rem;    /* 18px */
+  --nyx-font-xl:   1.25rem;     /* 20px */
+  --nyx-font-2xl:  1.5rem;      /* 24px */
+  --nyx-font-3xl:  1.875rem;    /* 30px */
+  --nyx-font-4xl:  2.25rem;     /* 36px */
+
+  /* — Line-height — */
+  --nyx-lh-tight:  1.25;
+  --nyx-lh-normal: 1.5;
+  --nyx-lh-loose:  1.75;
+
+  /* — Bordas (cor) — */
+  --nyx-border-primary:   light-dark(#dee2e6, #2d2f31);
+  --nyx-border-secondary: light-dark(#ced4da, #3e4246);
+  --nyx-border-brand:     light-dark(#5a7d9a, #42566a);
+  --nyx-border-info:      light-dark(#2c8191, #395055);
+  --nyx-border-warning:   light-dark(#7a5c10, #5a5436);
+  --nyx-border-danger:    light-dark(#c0392b, #5c3b3e);
+  --nyx-border-success:   light-dark(#1a7a4a, #344a41);
+  --nyx-border-attention: light-dark(#d45f00, #5c4333);
+  --nyx-border-promoted:  light-dark(#c02070, #573b4b);
+  --nyx-border-discovery: light-dark(#6f42c1, #453b5e);
+
+  /* — Bordas (largura & raio) — */
+  --nyx-border-width-1: 1px;
+  --nyx-border-width-2: 2px;
+  --nyx-border-width-3: 4px;
+  --nyx-border-width-4: 6px;
+  --nyx-radius-xs:      2px;
+  --nyx-radius-sm:      4px;
+  --nyx-radius-md:      8px;
+  --nyx-radius-lg:      12px;
+  --nyx-radius-pill:    50rem;
+
+  /* — Espaçamento — */
+  --nyx-spacer-1: 0.25rem;   /* 4px  */
+  --nyx-spacer-2: 0.5rem;    /* 8px  */
+  --nyx-spacer-3: 1rem;      /* 16px */
+  --nyx-spacer-4: 1.5rem;    /* 24px */
+  --nyx-spacer-5: 3rem;      /* 48px */
+
+  /* — Sombras — */
+  --nyx-shadow-sm: light-dark(0 1px 3px rgba(0,0,0,.08),  0 1px 3px rgba(0,0,0,.4));
+  --nyx-shadow-md: light-dark(0 4px 12px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.5));
+  --nyx-shadow-lg: light-dark(0 8px 24px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.6));
+
+  /* — Transições — */
+  --nyx-transition-fast:   all 0.15s ease;
+  --nyx-transition-normal: all 0.2s ease;
+
+  /* — Focus Ring — */
+  --nyx-focus-ring: 0 0 0 3px var(--nyx-bg-info);
+
+  /* — Form (tokens internos) — */
+  --nyx-input-padding-y:    0.6rem;
+  --nyx-input-padding-x:    0.75rem;
+  --nyx-input-padding-y-sm: 0.35rem;
+  --nyx-input-padding-x-sm: 0.6rem;
+  --nyx-input-icon-size:    1rem;
+  /* — Z-index — */
+  --nyx-z-dropdown: 1000;
+  --nyx-z-sticky:   1020;
+  --nyx-z-fixed:    1030;
+  --nyx-z-modal:    1040;
+  --nyx-z-popover:  1050;
+  --nyx-z-tooltip:  1060;
+}
+
+
+/* ——— 3. BASE ——————————————————————————————————————————————— */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--nyx-text-emp);
+  line-height: var(--nyx-lh-tight);
+  font-weight: 600;
+}
+h1 { font-size: var(--nyx-font-4xl); }
+h2 { font-size: var(--nyx-font-3xl); }
+h3 { font-size: var(--nyx-font-2xl); }
+h4 { font-size: var(--nyx-font-xl); }
+h5 { font-size: var(--nyx-font-lg); }
+h6 { font-size: var(--nyx-font-base); }
+
+p  { color: var(--nyx-text-primary); }
+
+a:hover { color: var(--nyx-text-brand); }
+
+
+/* ——— 4. UTILITÁRIOS — BACKGROUND —————————————————————————— */
+.bg-body      { background-color: var(--nyx-bg-body)      !important;}
+.bg-secondary { background-color: var(--nyx-bg-secondary) !important;}
+.bg-tertiary  { background-color: var(--nyx-bg-tertiary)  !important;}
+.bg-alt       { background-color: var(--nyx-bg-alt)       !important;}
+.bg-alt-secondary { background-color: var(--nyx-bg-alt-secondary)       !important;}
+.bg-brand     { background-color: var(--nyx-bg-brand)     !important;}
+.bg-info      { background-color: var(--nyx-bg-info)      !important;}
+.bg-warning   { background-color: var(--nyx-bg-warning)   !important;}
+.bg-danger    { background-color: var(--nyx-bg-danger)    !important;}
+.bg-success   { background-color: var(--nyx-bg-success)   !important;}
+.bg-discovery { background-color: var(--nyx-bg-discovery) !important;}
+.bg-promoted  { background-color: var(--nyx-bg-promoted)  !important;}
+.bg-attention { background-color: var(--nyx-bg-attention) !important;}
+
+
+/* ——— 5. UTILITÁRIOS — TIPOGRAFIA ——————————————————————————— */
+
+/* Family */
+.font-base      { font-family: var(--nyx-typeface-base);}
+.font-mono      { font-family: var(--nyx-typeface-mono);}
+
+/* Cores */
+.text-primary   { color: var(--nyx-text-primary)   !important; }
+.text-secondary,
+.text-muted     { color: var(--nyx-text-secondary) !important; }
+.text-tertiary  { color: var(--nyx-text-tertiary)  !important; }
+.text-emp       { color: var(--nyx-text-emp)       !important; }
+.text-brand     { color: var(--nyx-text-brand)     !important; }
+.text-info      { color: var(--nyx-text-info)      !important; }
+.text-warning   { color: var(--nyx-text-warning)   !important; }
+.text-danger    { color: var(--nyx-text-danger)    !important; }
+.text-success   { color: var(--nyx-text-success)   !important; }
+.text-discovery { color: var(--nyx-text-discovery) !important; }
+.text-promoted  { color: var(--nyx-text-promoted)  !important; }
+.text-attention { color: var(--nyx-text-attention) !important; }
+
+/* Texto + Fundo combinados */
+.text-bg-brand     { background-color: var(--nyx-bg-brand)     !important; color: var(--nyx-text-brand)     !important; }
+.text-bg-info      { background-color: var(--nyx-bg-info)      !important; color: var(--nyx-text-info)      !important; }
+.text-bg-warning   { background-color: var(--nyx-bg-warning)   !important; color: var(--nyx-text-warning)   !important; }
+.text-bg-danger    { background-color: var(--nyx-bg-danger)    !important; color: var(--nyx-text-danger)    !important; }
+.text-bg-success   { background-color: var(--nyx-bg-success)   !important; color: var(--nyx-text-success)   !important; }
+.text-bg-discovery { background-color: var(--nyx-bg-discovery) !important; color: var(--nyx-text-discovery) !important; }
+.text-bg-attention { background-color: var(--nyx-bg-attention) !important; color: var(--nyx-text-attention) !important; }
+.text-bg-promoted  { background-color: var(--nyx-bg-promoted)  !important; color: var(--nyx-text-promoted)  !important; }
+
+/* Tamanho */
+.text-xs   { font-size: var(--nyx-font-xs)   !important; }
+.text-sm   { font-size: var(--nyx-font-sm)   !important; }
+.text-base { font-size: var(--nyx-font-base) !important; }
+.text-lg   { font-size: var(--nyx-font-lg)   !important; }
+.text-xl   { font-size: var(--nyx-font-xl)   !important; }
+.text-2xl  { font-size: var(--nyx-font-2xl)  !important; line-height: var(--nyx-lh-tight) !important; }
+.text-3xl  { font-size: var(--nyx-font-3xl)  !important; line-height: var(--nyx-lh-tight) !important; }
+.text-4xl  { font-size: var(--nyx-font-4xl)  !important; line-height: var(--nyx-lh-tight) !important; }
+
+/* Peso */
+.font-normal   { font-weight: 400 !important; }
+.font-medium   { font-weight: 500 !important; }
+.font-semibold { font-weight: 600 !important; }
+.font-bold     { font-weight: 700 !important; }
+
+/* Alinhamento */
+.text-left   { text-align: left   !important; }
+.text-center { text-align: center !important; }
+.text-right  { text-align: right  !important; }
+
+/* Utilitarios */
+.text-italic      { font-style: italic;         }
+.text-italic      { font-style: italic;         }
+.text-uppercase   { text-transform: uppercase;  }
+.text-lowercase   { text-transform: lowercase;  }
+.text-capitalize  { text-transform: capitalize; }
+.text-truncate    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Line-height */
+.lh-tight  { line-height: var(--nyx-lh-tight);  }
+.lh-normal { line-height: var(--nyx-lh-normal); }
+.lh-loose  { line-height: var(--nyx-lh-loose);  }
+
+
+/* ——— 6. UTILITÁRIOS — BORDA ————————————————————————————————— */
+
+/* Atalho padrão: .border = 1px solid border-primary */
+.border,
+.border-1 { border: var(--nyx-border-width-1) solid var(--nyx-border-primary); }
+.border-2 { border: var(--nyx-border-width-2) solid var(--nyx-border-primary); }
+.border-3 { border: var(--nyx-border-width-3) solid var(--nyx-border-primary); }
+.border-4 { border: var(--nyx-border-width-4) solid var(--nyx-border-primary); }
+.border-0 { border: 0 !important; }
+
+.border-t { border-top:    var(--nyx-border-width-1) solid var(--nyx-border-primary) }
+.border-b { border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary) }
+.border-s { border-left:   var(--nyx-border-width-1) solid var(--nyx-border-primary) }
+.border-e { border-right:  var(--nyx-border-width-1) solid var(--nyx-border-primary) }
+
+/* Cores de borda */
+.border-brand     { border-color: var(--nyx-border-brand)     !important; }
+.border-info      { border-color: var(--nyx-border-info)      !important; }
+.border-warning   { border-color: var(--nyx-border-warning)   !important; }
+.border-danger    { border-color: var(--nyx-border-danger)    !important; }
+.border-success   { border-color: var(--nyx-border-success)   !important; }
+.border-attention { border-color: var(--nyx-border-attention) !important; }
+.border-promoted  { border-color: var(--nyx-border-promoted)  !important; }
+.border-discovery { border-color: var(--nyx-border-discovery) !important; }
+
+/* Raio */
+.rounded, 
+.rounded-md   { border-radius: var(--nyx-radius-md)   !important; }
+.rounded-sm   { border-radius: var(--nyx-radius-sm)   !important; }
+.rounded-lg   { border-radius: var(--nyx-radius-lg)   !important; }
+.rounded-pill { border-radius: var(--nyx-radius-pill) !important; }
+.rounded-0    { border-radius: 0 !important; }
+
+/* Raio direcional (--nyx-radius-md) */
+.rounded-t { border-top-left-radius:    var(--nyx-radius-md) !important; border-top-right-radius: var(--nyx-radius-md)    !important; }
+.rounded-b { border-bottom-left-radius: var(--nyx-radius-md) !important; border-bottom-right-radius: var(--nyx-radius-md) !important; }
+.rounded-s { border-top-left-radius:    var(--nyx-radius-md) !important; border-bottom-left-radius: var(--nyx-radius-md)  !important; }
+.rounded-e { border-top-right-radius:   var(--nyx-radius-md) !important; border-bottom-right-radius: var(--nyx-radius-md) !important; }
+
+/* Sombras */
+.shadow-sm { box-shadow: var(--nyx-shadow-sm) !important; }
+.shadow-md { box-shadow: var(--nyx-shadow-md) !important; }
+.shadow-lg { box-shadow: var(--nyx-shadow-lg) !important; }
+.shadow-0  { box-shadow: none !important; }
+
+
+/* ——— 7. UTILITÁRIOS — ESPAÇAMENTO —————————————————————————— */
+/* Margin */
+.m-0 { margin: 0 !important; }
+.m-1 { margin: var(--nyx-spacer-1) !important; }
+.m-2 { margin: var(--nyx-spacer-2) !important; }
+.m-3 { margin: var(--nyx-spacer-3) !important; }
+.m-4 { margin: var(--nyx-spacer-4) !important; }
+.m-5 { margin: var(--nyx-spacer-5) !important; }
+
+.mt-1 { margin-top: var(--nyx-spacer-1) !important; }
+.mt-2 { margin-top: var(--nyx-spacer-2) !important; }
+.mt-3 { margin-top: var(--nyx-spacer-3) !important; }
+.mt-4 { margin-top: var(--nyx-spacer-4) !important; }
+.mt-5 { margin-top: var(--nyx-spacer-5) !important; }
+
+.mb-1 { margin-bottom: var(--nyx-spacer-1) !important; }
+.mb-2 { margin-bottom: var(--nyx-spacer-2) !important; }
+.mb-3 { margin-bottom: var(--nyx-spacer-3) !important; }
+.mb-4 { margin-bottom: var(--nyx-spacer-4) !important; }
+.mb-5 { margin-bottom: var(--nyx-spacer-5) !important; }
+
+.ms-1 { margin-left: var(--nyx-spacer-1) !important; }
+.ms-2 { margin-left: var(--nyx-spacer-2) !important; }
+.ms-3 { margin-left: var(--nyx-spacer-3) !important; }
+.ms-4 { margin-left: var(--nyx-spacer-4) !important; }
+.ms-5 { margin-left: var(--nyx-spacer-5) !important; }
+
+.me-1 { margin-right: var(--nyx-spacer-1) !important; }
+.me-2 { margin-right: var(--nyx-spacer-2) !important; }
+.me-3 { margin-right: var(--nyx-spacer-3) !important; }
+.me-4 { margin-right: var(--nyx-spacer-4) !important; }
+.me-5 { margin-right: var(--nyx-spacer-5) !important; }
+
+.mx-auto { margin-left: auto !important; margin-right: auto !important; }
+.mx-1 { margin-left: var(--nyx-spacer-1) !important; margin-right: var(--nyx-spacer-1) !important; }
+.mx-2 { margin-left: var(--nyx-spacer-2) !important; margin-right: var(--nyx-spacer-2) !important; }
+.mx-3 { margin-left: var(--nyx-spacer-3) !important; margin-right: var(--nyx-spacer-3) !important; }
+.mx-4 { margin-left: var(--nyx-spacer-4) !important; margin-right: var(--nyx-spacer-4) !important; }
+
+.my-1 { margin-top: var(--nyx-spacer-1) !important; margin-bottom: var(--nyx-spacer-1) !important; }
+.my-2 { margin-top: var(--nyx-spacer-2) !important; margin-bottom: var(--nyx-spacer-2) !important; }
+.my-3 { margin-top: var(--nyx-spacer-3) !important; margin-bottom: var(--nyx-spacer-3) !important; }
+.my-4 { margin-top: var(--nyx-spacer-4) !important; margin-bottom: var(--nyx-spacer-4) !important; }
+.my-5 { margin-top: var(--nyx-spacer-5) !important; margin-bottom: var(--nyx-spacer-5) !important; }
+
+/* Padding */
+.p-0 { padding: 0 !important; }
+.p-1 { padding: var(--nyx-spacer-1) !important; }
+.p-2 { padding: var(--nyx-spacer-2) !important; }
+.p-3 { padding: var(--nyx-spacer-3) !important; }
+.p-4 { padding: var(--nyx-spacer-4) !important; }
+.p-5 { padding: var(--nyx-spacer-5) !important; }
+
+.pt-1 { padding-top: var(--nyx-spacer-1) !important; }
+.pt-2 { padding-top: var(--nyx-spacer-2) !important; }
+.pt-3 { padding-top: var(--nyx-spacer-3) !important; }
+.pt-4 { padding-top: var(--nyx-spacer-4) !important; }
+.pt-5 { padding-top: var(--nyx-spacer-5) !important; }
+
+.pb-1 { padding-bottom: var(--nyx-spacer-1) !important; }
+.pb-2 { padding-bottom: var(--nyx-spacer-2) !important; }
+.pb-3 { padding-bottom: var(--nyx-spacer-3) !important; }
+.pb-4 { padding-bottom: var(--nyx-spacer-4) !important; }
+.pb-5 { padding-bottom: var(--nyx-spacer-5) !important; }
+
+.ps-1 { padding-left: var(--nyx-spacer-1) !important; }
+.ps-2 { padding-left: var(--nyx-spacer-2) !important; }
+.ps-3 { padding-left: var(--nyx-spacer-3) !important; }
+.ps-4 { padding-left: var(--nyx-spacer-4) !important; }
+.ps-5 { padding-left: var(--nyx-spacer-5) !important; }
+
+.pe-1 { padding-right: var(--nyx-spacer-1) !important; }
+.pe-2 { padding-right: var(--nyx-spacer-2) !important; }
+.pe-3 { padding-right: var(--nyx-spacer-3) !important; }
+.pe-4 { padding-right: var(--nyx-spacer-4) !important; }
+.pe-5 { padding-right: var(--nyx-spacer-5) !important; }
+
+.px-1 { padding-left: var(--nyx-spacer-1) !important; padding-right: var(--nyx-spacer-1) !important; }
+.px-2 { padding-left: var(--nyx-spacer-2) !important; padding-right: var(--nyx-spacer-2) !important; }
+.px-3 { padding-left: var(--nyx-spacer-3) !important; padding-right: var(--nyx-spacer-3) !important; }
+.px-4 { padding-left: var(--nyx-spacer-4) !important; padding-right: var(--nyx-spacer-4) !important; }
+
+.py-1 { padding-top: var(--nyx-spacer-1) !important; padding-bottom: var(--nyx-spacer-1) !important; }
+.py-2 { padding-top: var(--nyx-spacer-2) !important; padding-bottom: var(--nyx-spacer-2) !important; }
+.py-3 { padding-top: var(--nyx-spacer-3) !important; padding-bottom: var(--nyx-spacer-3) !important; }
+.py-4 { padding-top: var(--nyx-spacer-4) !important; padding-bottom: var(--nyx-spacer-4) !important; }
+.py-5 { padding-top: var(--nyx-spacer-5) !important; padding-bottom: var(--nyx-spacer-5) !important; }
+
+
+/* ——— 8. LAYOUT ————————————————————————————————————————————— */
+
+/* Display */
+.d-block        { display: block        !important; }
+.d-flex         { display: flex         !important; }
+.d-grid         { display: grid         !important; }
+.d-inline       { display: inline       !important; }
+.d-inline-block { display: inline-block !important; }
+.d-inline-flex  { display: inline-flex  !important; }
+.d-none         { display: none         !important; }
+.v-hidden       { visibility: hidden    !important; }
+
+/* Overflow */
+.overflow-hidden { overflow: hidden     !important; } /* Corta o conteúdo que sair do limite */
+.overflow-auto   { overflow: auto       !important; } /* Adiciona scroll apenas se necessário */
+.overflow-scroll { overflow: scroll     !important; } /* Sempre exibe as barras de scroll */
+
+/* Position */
+.position-relative { position: relative !important; } /* Posicionamento relativo ao seu lugar original */
+.position-absolute { position: absolute !important; } /* Posicionamento relativo ao pai "relative" */
+.position-fixed    { position: fixed    !important; } /* Posicionamento fixo na tela (viewport) */
+.position-sticky   { position: sticky   !important; } /* Gruda o elemento ao rolar a página */
+
+/* Flexbox — container */
+.flex-row     { flex-direction: row     !important; } /* Itens em linha (padrão) */
+.flex-column  { flex-direction: column  !important; } /* Itens em coluna */
+.flex-wrap    { flex-wrap: wrap         !important; } /* Permite quebra de linha dos itens */
+.flex-nowrap  { flex-wrap: nowrap       !important; } /* Força todos os itens na mesma linha */
+
+/* Flexbox/Grid — Alinhamento Vertical (Container) */
+.align-start   { align-items: start     !important; } /* Alinha itens ao topo */
+.align-center  { align-items: center    !important; } /* Alinha itens ao centro vertical */
+.align-end     { align-items: end       !important; } /* Alinha itens à base */
+.align-stretch { align-items: stretch   !important; } /* Itens esticam para ocupar toda a altura */
+
+/* Flexbox/Grid — Alinhamento Horizontal (Container) */
+.justify-start   { justify-content: start         !important; } /* Alinha itens à esquerda/início */
+.justify-center  { justify-content: center        !important; } /* Alinha itens ao centro horizontal */
+.justify-end     { justify-content: end           !important; } /* Alinha itens à direita/fim */
+.justify-between { justify-content: space-between !important; } /* Distribui itens com espaço máximo entre eles */
+.justify-around  { justify-content: space-around  !important; } /* Distribui itens com espaço igual ao redor */
+.justify-evenly  { justify-content: space-evenly  !important; } /* Espaço idêntico entre todos os itens e bordas */
+
+
+/* Flexbox — Comportamento dos Itens (Filhos) */
+.flex-1       { flex: 1 1 0%            !important; } /* Item cresce e ocupa espaço disponível igualmente */
+.flex-auto    { flex: 1 1 auto          !important; } /* Item cresce baseado no seu tamanho natural */
+.flex-none    { flex: 0 0 auto          !important; } /* Item não cresce nem encolhe */
+.flex-grow-0  { flex-grow: 0            !important; } /* Impede o item de crescer */
+.flex-grow-1  { flex-grow: 1            !important; } /* Força o item a crescer */
+.flex-shrink-0{ flex-shrink: 0          !important; } /* Impede o item de encolher */
+.flex-shrink-1{ flex-shrink: 1          !important; } /* Permite o item encolher */
+
+/* Alinhamento Individual (Filhos Flex ou Grid) */
+.align-self-start    { align-self: start  !important;   } /* Alinha este item ao topo individualmente */
+.align-self-center   { align-self: center !important;   } /* Alinha este item ao centro individualmente */
+.align-self-end      { align-self: end    !important;   } /* Alinha este item à base individualmente */
+.justify-self-center { justify-self: center !important; } /* Alinha horizontalmente no centro (apenas Grid) */
+
+/* ——— 8.1. UTILITÁRIOS RESPONSIVOS —————————————————————————— */
+
+/* Breakpoints:
+   md: 768px  (Tablets)
+   lg: 1024px (Laptops)
+   xl: 1280px (Desktops)
+*/
+
+@media (min-width: 768px) {
+  .flex-md-row { flex-direction: row !important; } .flex-md-column { flex-direction: column !important; }
+  .d-md-none { display: none !important; } .d-md-block { display: block !important; } .d-md-flex { display: flex !important; } .d-md-grid { display: grid !important; } .d-md-inline-block { display: inline-block !important; }
+  .text-md-left { text-align: left !important; } .text-md-center { text-align: center !important; } .text-md-right { text-align: right !important; }
+  .justify-md-start { justify-content: start !important; } .justify-md-center { justify-content: center !important; } .justify-md-end { justify-content: end !important; } .justify-md-between { justify-content: space-between !important; }
+  .align-md-start { align-items: start !important; } .align-md-center { align-items: center !important; } .align-md-end { align-items: end !important; }
+}
+
+@media (min-width: 1024px) {
+  .flex-lg-row { flex-direction: row !important; } .flex-lg-column { flex-direction: column !important; }
+  .d-lg-none { display: none !important; } .d-lg-block { display: block !important; } .d-lg-flex { display: flex !important; } .d-lg-grid { display: grid !important; }
+  .text-lg-left { text-align: left !important; } .text-lg-center { text-align: center !important; } .text-lg-right { text-align: right !important; }
+  .justify-lg-start { justify-content: start !important; } .justify-lg-center { justify-content: center !important; } .justify-lg-end { justify-content: end !important; } .justify-lg-between { justify-content: space-between !important; }
+  .align-lg-start { align-items: start !important; } .align-lg-center { align-items: center !important; } .align-lg-end { align-items: end !important; }
+}
+
+@media (min-width: 1280px) {
+  .flex-xl-row { flex-direction: row !important; } .flex-xl-column { flex-direction: column !important; }
+  .d-xl-none { display: none !important; } .d-xl-block { display: block !important; } .d-xl-flex { display: flex !important; } .d-xl-grid { display: grid !important; } .d-xl-inline-block { display: inline-block !important; }
+  .text-xl-left { text-align: left !important; } .text-xl-center { text-align: center !important; } .text-xl-right { text-align: right !important; }
+  .justify-xl-start { justify-content: start !important; } .justify-xl-center { justify-content: center !important; } .justify-xl-end { justify-content: end !important; } .justify-xl-between { justify-content: space-between !important; }
+  .align-xl-start { align-items: start !important; } .align-xl-center { align-items: center !important; } .align-xl-end { align-items: end !important; }
+}
+
+
+/* Grid System — Layout Automático */
+.grid-auto {
+  gap: var(--grid-gap, 1rem);
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, var(--grid-min, 250px)), 1fr)
+  );
+}
+.grid-xs { --grid-min: 150px; } /* Define largura mínima da coluna para 150px */
+.grid-sm { --grid-min: 200px; } /* Define largura mínima da coluna para 200px */
+.grid-md { --grid-min: 300px; } /* Define largura mínima da coluna para 300px */
+.grid-lg { --grid-min: 400px; } /* Define largura mínima da coluna para 400px */
+.grid-xl { --grid-min: 500px; } /* Define largura mínima da coluna para 500px */
+
+/* Grid System — Colunas Fixas */
+.grid-cols-1   { grid-template-columns: repeat(1, 1fr) !important; } /* Força 1 coluna */
+.grid-cols-2   { grid-template-columns: repeat(2, 1fr) !important; } /* Força 2 colunas */
+.grid-cols-3   { grid-template-columns: repeat(3, 1fr) !important; } /* Força 3 colunas */
+.grid-cols-4   { grid-template-columns: repeat(4, 1fr) !important; } /* Força 4 colunas */
+
+/* Grid System — Altura Mínima das Linhas */
+.grid-min-h-xs { grid-auto-rows: minmax(40px, auto)  !important;   } /* Linhas com no mínimo 40px */
+.grid-min-h-sm { grid-auto-rows: minmax(70px, auto)  !important;   } /* Linhas com no mínimo 70px */
+.grid-min-h-md { grid-auto-rows: minmax(100px, auto) !important;   } /* Linhas com no mínimo 100px */
+.grid-min-h-lg { grid-auto-rows: minmax(150px, auto) !important;   } /* Linhas com no mínimo 150px */
+.grid-min-h-xl { grid-auto-rows: minmax(250px, auto) !important;   } /* Linhas com no mínimo 250px */
+
+/* Grid System — Ocupação de Espaço (Spanning) */
+.span-2        { grid-column: span 2;             } /* Ocupa 2 colunas */
+.span-3        { grid-column: span 3;             } /* Ocupa 3 colunas */
+.span-full     { grid-column: 1 / -1 !important;  } /* Ocupa a largura total da linha */
+.row-span-2    { grid-row: span 2    !important;  } /* Ocupa 2 linhas (altura) */
+.row-span-3    { grid-row: span 3    !important;  } /* Ocupa 3 linhas (altura) */
+.row-span-full { grid-row: 1 / -1    !important;  } /* Ocupa a altura total do container */
+
+/* Grid System — Comportamento e Fluxo */
+.grid-dense   { grid-auto-flow: dense  !important; }  /* Tenta preencher espaços vazios automaticamente */
+.grid-flow-col{ grid-auto-flow: column !important; }  /* Organiza novos itens em colunas, não linhas */
+
+/* Responsividade Básica (Breakpoints) */
+@media (max-width: 600px) {
+  .grid-cols-2, .grid-cols-3, .grid-cols-4 { grid-template-columns: repeat(1, 1fr) !important; } /* Empilha colunas fixas no mobile */
+  .span-2, .span-3 { grid-column: 1 / -1 !important; }                                           /* Força largura total para itens "span" no mobile */
+}
+
+/* Gap */
+.gap-0 { gap: 0                   !important; }
+.gap-1 { gap: var(--nyx-spacer-1) !important; }
+.gap-2 { gap: var(--nyx-spacer-2) !important; }
+.gap-3 { gap: var(--nyx-spacer-3) !important; }
+.gap-4 { gap: var(--nyx-spacer-4) !important; }
+.gap-5 { gap: var(--nyx-spacer-5) !important; }
+
+.col-gap-1 { column-gap: var(--nyx-spacer-1) !important; }
+.col-gap-2 { column-gap: var(--nyx-spacer-2) !important; }
+.col-gap-3 { column-gap: var(--nyx-spacer-3) !important; }
+.col-gap-4 { column-gap: var(--nyx-spacer-4) !important; }
+
+.row-gap-1 { row-gap: var(--nyx-spacer-1) !important;    }
+.row-gap-2 { row-gap: var(--nyx-spacer-2) !important;    }
+.row-gap-3 { row-gap: var(--nyx-spacer-3) !important;    }
+.row-gap-4 { row-gap: var(--nyx-spacer-4) !important;    }
+
+/* Alinhamento - Grid (Container) */
+.place-center        { place-items: center !important;  } /* Centraliza o conteúdo em ambos os eixos (horizontal e vertical) */
+.place-start         { place-items: start !important;   } /* Alinha o conteúdo ao início (topo/esquerda) em ambos os eixos   */
+.place-end           { place-items: end !important;     } /* Alinha o conteúdo ao final (base/direita) em ambos os eixos     */
+
+/* Alinhamento - Filho (Individual) */
+.align-self-center   { align-self: center !important;   } /* Alinha este item individualmente ao centro no eixo vertical     */
+.justify-self-center { justify-self: center !important; } /* Alinha este item individualmente ao centro no eixo horizontal   */
+
+/* ——— 9. LAYOUT — DIMENSÕES ————————————————————————————————— */
+.w-full  { width: 100% !important; flex: 1 1 100% !important; }
+.w-half  { width: 50%  !important; flex: 1 1 calc(50% - 1rem) !important; }
+.w-auto  { width: auto !important; }
+
+/* Larguras fixas */
+.w-xs  { width: 80px  !important; flex: 0 0 80px  !important; }
+.w-sm  { width: 150px !important; flex: 0 0 150px !important; }
+.w-md  { width: 250px !important; flex: 0 0 250px !important; }
+.w-lg  { width: 400px !important; flex: 0 0 400px !important; }
+.w-xl  { width: 600px !important; flex: 0 0 600px !important; }
+
+.h-auto { height: auto   !important; }
+.h-full { height: 100%   !important; }
+
+/* Max width útil para containers */
+.max-w-sm  { max-width: 480px  !important; }
+.max-w-md  { max-width: 768px  !important; }
+.max-w-lg  { max-width: 1024px !important; }
+.max-w-xl  { max-width: 1280px !important; }
+.max-w-full{ max-width: 100%   !important; }
+
+
+/* ——— 10. COMPONENTES — FORMS ——————————————————————————————— */
+
+/* Container de formulário (flex-wrap) */
+.form {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 1.25rem 1rem;
+  align-items: flex-start;
+}
+.form > * { flex: 1 1 250px; min-width: 0; }
+
+/* Grupo de campo */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-label {
+  font-size: var(--nyx-font-sm);
+  font-weight: 500;
+  color: var(--nyx-text-secondary);
+}
+
+/* Controle base */
+.form-control {
+  width: 100%;
+  padding: var(--nyx-input-padding-y) var(--nyx-input-padding-x);
+  background-color: var(--nyx-bg-secondary);
+  border: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+  border-radius: var(--nyx-radius-sm);
+  color: var(--nyx-text-primary);
+  outline: none;
+  transition: var(--nyx-transition-normal);
+}
+
+.form-control::placeholder { color: var(--nyx-text-tertiary); }
+
+.form-control:focus {
+  border-color: var(--nyx-border-brand);
+  background-color: var(--nyx-bg-body);
+  box-shadow: var(--nyx-focus-ring);
+}
+
+.form-control:disabled,
+.form-control[readonly] {
+  background-color: var(--nyx-bg-tertiary);
+  color: var(--nyx-text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Variante pequena */
+.form-control-sm {
+  padding: var(--nyx-input-padding-y-sm) var(--nyx-input-padding-x-sm);
+  font-size: var(--nyx-font-sm);
+  border-radius: var(--nyx-radius-sm);
+}
+
+/* Estados de validação */
+.form-control.is-valid {
+  border-color: var(--nyx-border-success);
+}
+.form-control.is-valid:focus {
+  box-shadow: 0 0 0 3px var(--nyx-bg-success);
+}
+
+.form-control.is-invalid {
+  border-color: var(--nyx-border-danger);
+}
+.form-control.is-invalid:focus {
+  box-shadow: 0 0 0 3px var(--nyx-bg-danger);
+}
+
+.form-feedback {
+  font-size: var(--nyx-font-xs);
+  margin-top: 0.2rem;
+}
+.form-feedback.valid   { color: var(--nyx-text-success); }
+.form-feedback.invalid { color: var(--nyx-text-danger);  }
+
+/* Hint abaixo do campo */
+.form-hint {
+  font-size: var(--nyx-font-xs);
+  color: var(--nyx-text-tertiary);
+}
+
+/* ——— Input com ícone ——————————————————————————————————————
+   Estrutura:
+   <div class="input-icon-wrap">
+     <span class="input-icon input-icon-start">
+       <i class="bi bi-search"></i>
+     </span>
+     <input class="form-control has-icon-start" ...>
+   </div>
+
+   Ou no fim:
+   <div class="input-icon-wrap">
+     <input class="form-control has-icon-end" ...>
+     <span class="input-icon input-icon-end">
+       <i class="bi bi-eye"></i>
+     </span>
+   </div>
+   ——————————————————————————————————————————————————————— */
+.input-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;           /* zona de toque mínima */
+  color: var(--nyx-text-tertiary);
+  pointer-events: none;
+  font-size: var(--nyx-input-icon-size);
+  transition: var(--nyx-transition-fast);
+}
+
+.input-icon-start { left: 0; }
+.input-icon-end   { right: 0; }
+
+/* Ícone clicável (ex: olhinho de senha) */
+.input-icon.clickable {
+  pointer-events: all;
+  cursor: pointer;
+}
+.input-icon.clickable:hover { color: var(--nyx-text-brand); }
+
+/* Deslocamento do padding do input quando há ícone */
+.form-control.has-icon-start { padding-left: 2.25rem;  }
+.form-control.has-icon-end   { padding-right: 2.25rem; }
+
+/* Versão sm com ícone */
+.form-control-sm.has-icon-start { padding-left: 2rem;  }
+.form-control-sm.has-icon-end   { padding-right: 2rem; }
+.input-icon-wrap .form-control-sm ~ .input-icon,
+.input-icon-wrap .input-icon:has(+ .form-control-sm) {
+  font-size: 0.8rem;
+  width: 2rem;
+}
+
+/* Foco realça o ícone */
+.input-icon-wrap:has(.form-control:focus) .input-icon {
+  color: var(--nyx-text-brand);
+}
+
+
+/* ——— 11. COMPONENTES — TABELA —————————————————————————————— */
+
+/*
+  Estrutura recomendada:
+  <div class="table-wrapper">
+    <table class="table table-striped table-hover table-sm">
+      <thead>...</thead>
+      <tbody>...</tbody>
+    </table>
+  </div>
+*/
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--nyx-radius-md);
+  border: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--nyx-font-sm);
+  color: var(--nyx-text-primary);
+}
+
+/* Cabeçalho */
+.table thead th {
+  padding: 0.65rem 0.9rem;
+  background-color: var(--nyx-bg-tertiary);
+  color: var(--nyx-text-secondary);
+  font-weight: 600;
+  font-size: var(--nyx-font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: var(--nyx-border-width-2) solid var(--nyx-border-secondary);
+  white-space: nowrap;
+  user-select: none;
+  text-align: left;
+}
+
+/* Células */
+.table tbody td {
+  padding: 0.65rem 0.9rem;
+  border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td { border-bottom: 0; }
+
+/* Variantes */
+.table-sm thead th,
+.table-sm tbody td {
+  padding: 0.4rem 0.75rem;
+}
+
+.table-striped tbody tr:nth-child(even) {
+  background-color: var(--nyx-bg-secondary);
+}
+
+.table-hover tbody tr:hover {
+  background-color: var(--nyx-bg-tertiary);
+  transition: background-color 0.1s ease;
+}
+
+/* Borda em todas as células */
+.table-bordered td,
+.table-bordered th {
+  border: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+}
+
+/* Sem bordas internas */
+.table-borderless td,
+.table-borderless th {
+  border: 0 !important;
+}
+
+/* Alinhamento de coluna */
+.table .col-center { text-align: center; }
+.table .col-right  { text-align: right;  }
+.table .col-nowrap { white-space: nowrap; }
+
+/* Linhas com estado semântico */
+.table tbody tr.row-success   { background-color: var(--nyx-bg-success)   !important; }
+.table tbody tr.row-warning   { background-color: var(--nyx-bg-warning)   !important; }
+.table tbody tr.row-danger    { background-color: var(--nyx-bg-danger)    !important; }
+.table tbody tr.row-info      { background-color: var(--nyx-bg-info)      !important; }
+.table tbody tr.row-discovery { background-color: var(--nyx-bg-discovery) !important; }
+
+/* Célula de ações (alinhar botões/ícones à direita) */
+.table .col-actions {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;              /* "shrink" a coluna ao mínimo */
+}
+
+/* Célula com badge inline */
+.table td .badge { vertical-align: middle; }
+
+/* Rodapé da tabela */
+.table tfoot td {
+  padding: 0.5rem 0.9rem;
+  font-size: var(--nyx-font-xs);
+  color: var(--nyx-text-tertiary);
+  border-top: var(--nyx-border-width-2) solid var(--nyx-border-secondary);
+  background-color: var(--nyx-bg-tertiary);
+}
+
+
+/* ——— 12. COMPONENTES — BADGE ———————————————————————————————— */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.25em 0.65em;
+  font-size: var(--nyx-font-xs);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--nyx-radius-pill);
+}
+
+/* Tamanho md para badges um pouco maiores */
+.badge-md {
+  padding: 0.35em 0.8em;
+  font-size: var(--nyx-font-sm);
+}
+
+/* Dot indicator */
+.badge-dot::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.8;
+}
+
+
+/* ——— 13. COMPONENTES — BOTÕES ———————————————————————————————
+   Mantidos mínimos — expanda conforme necessitar.
+   ——————————————————————————————————————————————————————————— */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.5rem 1rem;
+  font-size: var(--nyx-font-sm);
+  line-height: 1.5;
+  border-radius: var(--nyx-radius-xs);
+  border: var(--nyx-border-width-1) solid transparent;
+  cursor: pointer;
+  transition: var(--nyx-transition-fast);
+  white-space: nowrap;
+  user-select: none;
+  text-decoration: none;
+}
+.btn:focus-visible { outline: none; box-shadow: var(--nyx-focus-ring); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+
+/* Tamanhos */
+.btn-sm { padding: 0.3rem 0.7rem; font-size: var(--nyx-font-xs);  }
+.btn-lg { padding: 0.65rem 1.4rem; font-size: var(--nyx-font-base); }
+
+/* Variantes */
+.btn-primary { background-color: var(--nyx-bg-brand); color: var(--nyx-text-brand); border-color: var(--nyx-border-brand); }
+.btn-primary:hover { filter: brightness(0.92); }
+
+.btn-ghost { background-color: transparent; color: var(--nyx-text-secondary); border-color: var(--nyx-border-primary); }
+.btn-ghost:hover { background-color: var(--nyx-bg-secondary); color: var(--nyx-text-emp); }
+
+.btn-danger { background-color: var(--nyx-bg-danger); color: var(--nyx-text-danger); border-color: var(--nyx-border-danger); }
+.btn-danger:hover { filter: brightness(0.92); }
+
+.btn-success { background-color: var(--nyx-bg-success); color: var(--nyx-text-success); border-color: var(--nyx-border-success); }
+.btn-success:hover { filter: brightness(0.92); }
+
+/* Ícone puro (quadrado) */
+.btn-icon {
+  padding: 0.5rem;
+  aspect-ratio: 1;
+  justify-content: center;
+}
+.btn-icon.btn-sm { padding: 0.3rem; }

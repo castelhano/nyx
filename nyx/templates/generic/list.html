@@ -1,0 +1,68 @@
+{% extends "layout/base.html" %}
+{% load nyx_ui %}
+
+{% comment %}
+list.html — Template genérico de listagem, consumido por BaseListView.
+   Espera no contexto:
+       ui.title, ui.columns, ui.toolbar, ui.row_actions
+       object_list, page_obj (paginação Django padrão)
+{% endcomment %}
+
+{% block title %}{{ ui.title }}{% endblock %}
+
+{% block content %}
+<div data-keybind-group="{{ ui.title|slugify }}-list">
+
+    {# Toolbar #}
+    <div class="nyx-toolbar">
+        <h1>{{ ui.title }}</h1>
+        {% for action in ui.toolbar %}
+            {% action_button action %}
+        {% endfor %}
+    </div>
+
+    {# Tabela #}
+    <table>
+        <thead>
+            <tr>
+                {% for col in ui.columns %}
+                    <th>{{ col.label }}</th>
+                {% endfor %}
+                {% if ui.row_actions %}<th></th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for obj in object_list %}
+                <tr>
+                    {% for col in ui.columns %}
+                        <td>{% get_field obj col.field %}</td>
+                    {% endfor %}
+                    {% if ui.row_actions %}
+                        <td>
+                            {% for action in ui.row_actions %}
+                                {% action_button action obj %}
+                            {% endfor %}
+                        </td>
+                    {% endif %}
+                </tr>
+            {% empty %}
+                <tr><td colspan="{{ ui.columns|length|add:1 }}">Nenhum registro encontrado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {# Paginação #}
+    {% if is_paginated %}
+        <nav>
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}">Anterior</a>
+            {% endif %}
+            <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}">Próxima</a>
+            {% endif %}
+        </nav>
+    {% endif %}
+
+</div>
+{% endblock %}

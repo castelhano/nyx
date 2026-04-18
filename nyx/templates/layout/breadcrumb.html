@@ -1,0 +1,29 @@
+<nav class="breadcrumb" aria-label="navegacao">
+    {% for item in breadcrumbs %}
+
+        {% if item.actions %}
+            <div class="breadcrumb__dropdown-wrap">
+                {% if item.url %}
+                    <a href="{% url item.url %}" class="breadcrumb__link">{{ item.label }}</a>
+                {% else %}
+                    <span class="breadcrumb__current">{{ item.label }}</span>
+                {% endif %}
+                <button class="breadcrumb__dropdown-toggle">›</button>
+                <div class="breadcrumb__dropdown">
+                    {% for action in item.actions %}
+                        <a href="{% url action.url_name %}">{{ action.label }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+        {% elif item.url %}
+            <a href="{% url item.url %}" class="breadcrumb__link">{{ item.label }}</a>
+        {% else %}
+            <span class="breadcrumb__current">{{ item.label }}</span>
+        {% endif %}
+
+        {% if not forloop.last %}
+            <span class="breadcrumb__sep" aria-hidden="true">›</span>
+        {% endif %}
+
+    {% endfor %}
+</nav>
