@@ -1,38 +1,56 @@
-<aside class="sidebar">
+<aside class="sidebar" data-component="sidebar">
 
     <div class="sidebar__header">
         <span class="sidebar__logo">Nyx <sup class="text-discovery"><i class="bi bi-braces-asterisk"></i></sup></span>
+        <button class="btn btn-sm btn-ghost sidebar__toggle" data-sidebar-toggle title="Recolher menu">
+            <i class="bi bi-layout-sidebar"></i>
+        </button>
     </div>
 
     <nav class="sidebar__nav" aria-label="navegação principal">
-        
-        <search class="px-2">
+
+        <search class="sidebar__search px-2">
             <div class="input-icon-wrap">
-                <input 
-                    type="search" 
-                    id="sidebar_search_input" 
-                    class="form-control form-control-sm has-icon-end" 
+                <input
+                    type="search"
+                    id="sidebar_search_input"
+                    class="form-control form-control-sm has-icon-end"
                     placeholder="Pesquisa"
                     data-keybind="f3"
-                    data-keybind-icon="bi bi-person"
-                    data-keybind-desc="Foo">
+                    data-keybind-desc="Pesquisar menu"
+                    data-sidebar-search>
                 <span class="input-icon input-icon-end">F3</span>
             </div>
         </search>
+
         {% for group_label, items in nav_groups.items %}
-        <div class="sidebar__group">
-            <span class="sidebar__group-label">{{ group_label }}</span>
-            {% for item in items %}
-            <a href="{% url item.entry.list_url %}"
-               class="d-flex btn btn-sm btn-ghost mx-2{% if item.active %} active{% endif %}"
-               hx-get="{% url item.entry.list_url %}"
-               hx-target="#main-content"
-               hx-push-url="true">
-                {{ item.label }}
-            </a>
-            {% endfor %}
+        <div class="sidebar__group open" data-sidebar-group>
+            <button class="sidebar__group-toggle" data-sidebar-group-toggle type="button">
+                <span class="sidebar__group-label">{{ group_label }}</span>
+                <i class="bi bi-chevron-down sidebar__group-chevron"></i>
+            </button>
+            <div class="sidebar__group-content">
+                {% for item in items %}
+                <a href="{% url item.entry.list_url %}"
+                   class="sidebar__link btn btn-sm btn-ghost mx-2{% if item.active %} active{% endif %}"
+                   data-sidebar-link
+                   hx-get="{% url item.entry.list_url %}"
+                   hx-target="#main-content"
+                   hx-push-url="true">
+                    <span class="sidebar__link-icon">
+                        {% if item.icon_is_char %}
+                            <span class="sidebar__icon-char">{{ item.icon }}</span>
+                        {% else %}
+                            <i class="{{ item.icon }}"></i>
+                        {% endif %}
+                    </span>
+                    <span class="sidebar__link-label">{{ item.label }}</span>
+                </a>
+                {% endfor %}
+            </div>
         </div>
         {% endfor %}
+
     </nav>
 
 </aside>

@@ -2,7 +2,7 @@ from nyx.framework.ui import Action, Column, Field, Keybind, Section
 
 
 class EmpresaUI:
-    icon = 'bi-building'
+    icon = 'bi bi-building'
     title = 'Fooo'
 
     # ── List ─────────────────────────────────────────────────────────
