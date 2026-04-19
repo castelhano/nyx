@@ -2,6 +2,9 @@
 {% if visible %}
 <a href="{{ url }}"
    class="nyx-action nyx-action--{{ action.style }}"
+   hx-get="{{ url }}"
+   hx-target="#main-content"
+   hx-push-url="true"
    {% if action.icon %}title="{{ action.label }}"{% endif %}>
     {% if action.icon %}<i class="{{ action.icon }}"></i>{% endif %}
     {{ action.label }}

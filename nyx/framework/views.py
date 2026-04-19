@@ -164,7 +164,13 @@ class BaseCreateView(NyxBaseMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['cancel_url'] = ctx.get('back_url') or self.get_success_url()
+        back = ctx.get('back_url')
+        if back:
+            try:
+                back = reverse(back)
+            except Exception:
+                back = None
+        ctx['cancel_url'] = back or self.get_success_url()
         return ctx
 
     def form_valid(self, form):
@@ -197,7 +203,13 @@ class BaseUpdateView(NyxBaseMixin, UpdateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['cancel_url'] = ctx.get('back_url') or self.get_success_url()
+        back = ctx.get('back_url')
+        if back:
+            try:
+                back = reverse(back)
+            except Exception:
+                back = None
+        ctx['cancel_url'] = back or self.get_success_url()
         return ctx
 
     def form_valid(self, form):

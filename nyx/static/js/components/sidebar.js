@@ -6,19 +6,24 @@ NyxDom.register('sidebar', el => {
         const path = window.location.pathname;
         el.querySelectorAll('[data-sidebar-link]').forEach(link => {
             const href = link.getAttribute('href');
-            const active = !!href && href !== '/' && path.startsWith(href);
+            // Strip last segment to get base: '/core/empresa/list/' → '/core/empresa/'
+            const base = href ? href.replace(/[^/]+\/$/, '') : '';
+            const active = !!base && base !== '/' && path.startsWith(base);
             link.classList.toggle('active', active);
         });
-        // Auto-open group that contains the active link
         el.querySelectorAll('[data-sidebar-group]').forEach(group => {
-            if (group.querySelector('[data-sidebar-link].active')) {
-                group.classList.add('open');
-            }
+            const hasActive = !!group.querySelector('[data-sidebar-link].active');
+            const toggle = group.querySelector('[data-sidebar-group-toggle]');
+            if (toggle) toggle.classList.toggle('sidebar__group--current', hasActive);
+            if (hasActive) group.classList.add('open');
         });
     };
 
     // ── Collapsible groups (accordion) ───────────────────────────
     const onGroupToggle = e => {
+        if (el.classList.contains('sidebar--collapsed')) {
+            el.classList.remove('sidebar--collapsed');
+        }
         const group = e.currentTarget.closest('[data-sidebar-group]');
         if (!group) return;
         const opening = !group.classList.contains('open');
@@ -56,20 +61,26 @@ NyxDom.register('sidebar', el => {
         });
     };
 
+    const expandAndFocusSearch = () => {
+        el.classList.remove('sidebar--collapsed');
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+        }
+    };
+
     if (searchInput) {
         searchInput.addEventListener('input', onSearch);
-        // f3 focuses search (keywatch picks this up, but also handle expand-then-focus)
         document.addEventListener('keydown', e => {
             if (e.key === 'F3') {
                 e.preventDefault();
-                if (el.classList.contains('sidebar--collapsed')) {
-                    el.classList.remove('sidebar--collapsed');
-                }
-                searchInput.focus();
-                searchInput.select();
+                expandAndFocusSearch();
             }
         });
     }
+
+    const searchBtn = el.querySelector('[data-sidebar-search-btn]');
+    if (searchBtn) searchBtn.addEventListener('click', expandAndFocusSearch);
 
     // ── Active update on HTMX navigation ─────────────────────────
     const onAfterSwap = () => updateActive();
@@ -82,6 +93,7 @@ NyxDom.register('sidebar', el => {
         toggleBtns.forEach(btn => btn.removeEventListener('click', toggleCollapsed));
         window.removeEventListener('resize', onResize);
         if (searchInput) searchInput.removeEventListener('input', onSearch);
+        if (searchBtn) searchBtn.removeEventListener('click', expandAndFocusSearch);
         document.removeEventListener('htmx:afterSwap', onAfterSwap);
     };
 });

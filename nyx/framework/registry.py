@@ -100,6 +100,9 @@ class NavEntry:
 # Registro final: { ModelClass: NavEntry }
 _registry: dict = {}
 
+# Registro de AppUI: { app_label_short: AppUI class }
+_app_ui_registry: dict = {}
+
 # Fila de intencoes vindas do generate_urls antes do ready()
 # Cada item: (model_name, app_name, extra_meta)
 # ex: ('Funcionario', 'nyx.pessoal', {'parent': 'Empresa', 'lookup': 'int:pk'})
@@ -133,6 +136,14 @@ def get_all() -> dict:
         _flush()
         _flushed = True
     return _registry
+
+def get_app_ui(app_label: str):
+    """Retorna a classe AppUI do app, ou None se não configurada."""
+    global _flushed
+    if not _flushed:
+        _flush()
+        _flushed = True
+    return _app_ui_registry.get(app_label)
 
 
 # =============================================================================
@@ -231,6 +242,9 @@ def _flush():
                          if k not in ('parent', '_app_name')},
             ui        = _discover_ui(app_name_full, model_class.__name__),
         )
+
+        if app_label_short not in _app_ui_registry:
+            _app_ui_registry[app_label_short] = _discover_app_ui(app_name_full, app_label_short)
 
     _pending.clear()
 
@@ -336,6 +350,26 @@ def _discover_ui(app_name: str, model_name: str):
     except Exception:
         logging.getLogger('nyx').debug(
             f'Erro ao descobrir UI para {module_path}', exc_info=True
+        )
+        return None
+
+
+def _discover_app_ui(app_name: str, app_label_short: str):
+    """
+    Tenta importar {app}.ui.app e retorna a classe AppUI.
+    Convenção: nyx.core.ui.app → AppUI
+    Retorna None silenciosamente se o arquivo não existir.
+    """
+    import logging
+    module_path = f"{app_name}.ui.app"
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, 'AppUI', None)
+    except ImportError:
+        return None
+    except Exception:
+        logging.getLogger('nyx').debug(
+            f'Erro ao descobrir AppUI para {module_path}', exc_info=True
         )
         return None
 
