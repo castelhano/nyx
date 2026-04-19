@@ -1,5 +1,168 @@
 
 
+/* ——— 3. DROPDOWN ——————————————————————————————————————————————
+
+  Estrutura recomendada:
+
+  <div class="dropdown">
+    <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>
+      Opções
+    </button>
+    <ul class="dropdown-menu" data-dropdown-menu data-role="menu">
+      <li class="dropdown-item">Editar</li>
+      <li class="dropdown-item">Duplicar</li>
+      <li class="dropdown-divider"></li>
+      <li class="dropdown-item dropdown-item--danger">Excluir</li>
+    </ul>
+  </div>
+
+  Alinhamento do menu (padrão: esquerda):
+    .dropdown-menu--end      → alinha à direita do trigger
+    .dropdown-menu--top      → abre para cima
+
+  Variantes de menu (extensíveis):
+    .dropdown-menu--brand    → superfície brand
+
+  Variantes de item (extensíveis):
+    .dropdown-item--danger
+    .dropdown-item--success
+    .dropdown-item--muted
+
+  Item com ícone BS:
+    <li class="dropdown-item">
+      <i class="bi bi-pencil"></i> Editar
+    </li>
+
+  Item desabilitado:
+    <li class="dropdown-item" aria-disabled="true">Indisponível</li>
+  ——————————————————————————————————————————————————————————— */
+
+/* ── Wrapper ────────────────────────────────────────────── */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+/* ── Menu ───────────────────────────────────────────────── */
+.dropdown-menu {
+  /* posicionamento */
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: var(--nyx-z-dropdown);
+  min-width: max(12rem, 100%);
+
+  /* tokens internos — sobrescrevidos pelas variantes */
+  --_dm-bg:            var(--nyx-bg-body);
+  --_dm-border:        var(--nyx-border-primary);
+  --_dm-item-hover-bg: var(--nyx-bg-secondary);
+  --_dm-item-color:    var(--nyx-text-primary);
+
+  background-color: var(--_dm-bg);
+  border: var(--nyx-border-width-1) solid var(--_dm-border);
+  border-radius: var(--nyx-radius-md);
+  box-shadow: var(--nyx-shadow-md);
+  padding: 0.3rem;
+  list-style: none;
+
+  /* estado inicial — invisível e levemente deslocado */
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  pointer-events: none;
+  transition:
+    opacity   0.15s ease,
+    transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Aberto — classe adicionada pelo JS */
+.dropdown-menu.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* ── Alinhamento ────────────────────────────────────────── */
+.dropdown-menu--end {
+  left: auto;
+  right: 0;
+}
+
+.dropdown-menu--top {
+  top: auto;
+  bottom: calc(100% + 0.375rem);
+  transform: translateY(6px) scale(0.98);
+}
+.dropdown-menu--top.open {
+  transform: translateY(0) scale(1);
+}
+
+/* ── Variante brand (extensível) ────────────────────────── */
+.dropdown-menu--brand {
+  --_dm-bg:            var(--nyx-bg-brand);
+  --_dm-border:        var(--nyx-border-brand);
+  --_dm-item-hover-bg: var(--nyx-bg-secondary);
+  --_dm-item-color:    var(--nyx-text-brand);
+}
+
+/* ── Item base ──────────────────────────────────────────── */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  font-size: var(--nyx-font-sm);
+  color: var(--_dm-item-color);
+  border-radius: var(--nyx-radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background-color: var(--_dm-item-hover-bg);
+}
+
+/* ── Variantes de item ──────────────────────────────────── */
+.dropdown-item--danger {
+  color: var(--nyx-text-danger);
+}
+.dropdown-item--danger:hover {
+  background-color: var(--nyx-bg-danger);
+}
+
+.dropdown-item--success {
+  color: var(--nyx-text-success);
+}
+.dropdown-item--success:hover {
+  background-color: var(--nyx-bg-success);
+}
+
+.dropdown-item--muted {
+  color: var(--nyx-text-tertiary);
+}
+.dropdown-item--muted:hover {
+  background-color: var(--nyx-bg-secondary);
+  color: var(--nyx-text-secondary);
+}
+
+/* ── Item desabilitado ──────────────────────────────────── */
+.dropdown-item[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Divisor ────────────────────────────────────────────── */
+.dropdown-divider {
+  height: var(--nyx-border-width-1);
+  background-color: var(--nyx-border-primary);
+  margin: 0.3rem 0;
+  pointer-events: none;
+}
+
+
 /* ——— 17. COMPONENTES — BREADCRUMB ———————————————————————————— */
 
 .breadcrumb {
@@ -85,7 +248,7 @@
 
 /* ——— 18. LAYOUT — PAGE HEADER ———————————————————————————————— */
 
-.page-header {
+/* .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -105,7 +268,7 @@
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
-}
+} */
 
 /* ——— 19. COMPONENTES — PAGINAÇÃO ————————————————————————————— */
 

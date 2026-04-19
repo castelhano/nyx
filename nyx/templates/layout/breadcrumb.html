@@ -1,4 +1,4 @@
-<nav class="breadcrumb" aria-label="navegacao">
+<nav class="breadcrumb" aria-label="navegacao"{% if back_url %} data-breadcrumb-back="{{ back_url }}"{% endif %}>
     {% for item in breadcrumbs %}
 
         {% if item.actions %}

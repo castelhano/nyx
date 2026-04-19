@@ -27,7 +27,6 @@
         </main>
     </div>
 
-    {# Toasts das mensagens Django #}
     {% if messages %}
         {% for message in messages %}
             <c-toast type="{{ message.tags }}">{{ message }}</c-toast>
@@ -48,11 +47,14 @@
     {# 2. Core utilitários #}
     <script src="{% static 'js/core/utils.js' %}"></script>
     <script src="{% static 'js/core/dom.js' %}"></script>
+    
+    {# 3. Componentes #}
+    <script src="{% static 'js/components/dropdown.js' %}"></script>
 
-    {# 3. Módulos de página — registram em NyxModules, não executam nada ainda #}
+    {# 4. Módulos de página — registram em NyxModules, não executam nada ainda #}
     {# <script src="{% static 'js/modules/viagem-form.js' %}"></script> #}
 
-    {# 4. Orquestrador — sempre por último #}
+    {# 5. Orquestrador — sempre por último #}
     <script src="{% static 'js/app.js' %}"></script>
     {% block extra_js %}{% endblock %}
 

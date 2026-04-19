@@ -4,12 +4,17 @@
 
 {% block title %}{{ ui.title }}{% endblock %}
 
-{% block content %}
-<div data-keybind-group="{{ ui.title|slugify }}-form">
+{% block main %}
+<div class="{{ui.layout.container_class}}" data-keybind-group="{{ ui.title|slugify }}-form">
+    {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
     <h1>{{ ui.title }}</h1>
 
-    <form method="post" novalidate>
+    <form method="post"
+          hx-post="{{ request.path }}"
+          hx-target="#main-content"
+          hx-swap="innerHTML"
+          novalidate>
         {% csrf_token %}
         {{ form.as_p }}
         <button type="submit"
@@ -17,7 +22,10 @@
                 data-keybind-desc="Salvar">
             Salvar
         </button>
-        <a href="javascript:history.back()"
+        <a hx-get="{{ cancel_url }}"
+           hx-target="#main-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
            data-keybind="esc"
            data-keybind-desc="Cancelar">
             Cancelar

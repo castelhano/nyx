@@ -612,12 +612,17 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
   outline: none;
   transition: var(--nyx-transition-normal);
 }
-select.form-control{
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+select.form-control {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2380868b' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-size: 1.2rem;
-  background-position: right 0.75rem center;
-  padding-right: 2.5rem;
+  background-size: 1rem;
+  background-position: right 0.625rem center;
+  padding-right: 2.25rem;
+}
+select.form-control-sm {
+  background-size: 0.85rem;
+  background-position: right 0.575rem center;
+  padding-right: 2rem;
 }
 
 .form-control::placeholder { color: var(--nyx-text-tertiary); }
@@ -648,24 +653,40 @@ select.form-control{
   border-color: var(--nyx-border-success);
   outline: 2px solid var(--nyx-border-success);
   outline-offset: -1px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%231a7a4a' viewBox='0 0 16 16'%3E%3Cpath d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z'/%3E%3C/svg%3E");
+}
+.form-control.is-valid:not(select):not([class*="has-icon-"]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%231a7a4a' viewBox='0 0 16 16'%3E%3Cpath d='M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 1.2rem;
+  background-position: right 0.625rem center;
+  background-size: 1rem;
   padding-right: 2.25rem;
 }
-
-.form-control.is-valid.has-icon-end {
-  padding-right: 3.5rem;
-  background-position: right 2.1rem center;
+.form-control-sm.is-valid:not(select):not([class*="has-icon-"]) {
+  background-position: right 0.575rem center;
+  background-size: 0.85rem;
+  padding-right: 2rem;
 }
 
 .form-control.is-valid:focus {
   box-shadow: 0 0 0 3px var(--nyx-bg-success);
 }
 
-.form-control.is-invalid {
+.form-control.is-invalid:not(select) {
   border-color: var(--nyx-border-danger);
+  outline: 2px solid var(--nyx-border-danger);
+  outline-offset: -1px;
+}
+.form-control.is-invalid:not(select):not([class*="has-icon-"]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23c0392b' viewBox='0 0 16 16'%3E%3Cpath d='M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  background-size: 1rem;
+  padding-right: 2.25rem;
+}
+.form-control-sm.is-invalid:not([class*="has-icon-"]) {
+  background-position: right 0.575rem center;
+  background-size: 0.85rem;
+  padding-right: 2rem;
 }
 .form-control.is-invalid:focus {
   box-shadow: 0 0 0 3px var(--nyx-bg-danger);
@@ -682,6 +703,7 @@ select.form-control{
 .form-hint {
   font-size: var(--nyx-font-xs);
   color: var(--nyx-text-tertiary);
+  margin-top: 0.2rem;
 }
 
 /* ——— Input com ícone ——————————————————————————————————————
@@ -947,3 +969,348 @@ select.form-control{
   justify-content: center;
 }
 .btn-icon.btn-sm { padding: 0.3rem; }
+
+/* Chevron injetado via ::after, herda currentColor via mask */
+.btn-dropdown { padding-right: 0.5rem; }
+.btn-dropdown::after {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E");
+          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E");
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+          mask-size: contain;
+  -webkit-mask-position: center;
+          mask-position: center;
+}
+
+/* ============================================================
+   NYX DESIGN SYSTEM — components.css
+   Depende de: nyx.css (tokens e variáveis)
+   Estrutura:
+     1. Checkbox & Radio
+     2. Switch
+   ============================================================ */
+
+
+/* ——— 1. CHECKBOX & RADIO ——————————————————————————————————————
+
+  Estrutura recomendada:
+
+  O <label class="form-check"> é o único wrapper necessário.
+  O texto pode ficar direto no label ou em qualquer elemento filho —
+  a classe .form-check-label é opcional (apenas adiciona cor/tamanho).
+
+  <label class="form-check">
+    <input type="checkbox" class="form-check-input">
+    Lembrar acesso
+  </label>
+
+  <label class="form-check">
+    <input type="checkbox" class="form-check-input">
+    <span class="form-check-label">Lembrar acesso</span>
+  </label>
+
+  <label class="form-check">
+    <input type="radio" class="form-check-input">
+    Opção A
+  </label>
+
+  Variações de cor no input:
+    .form-check-input--brand    (padrão visual, mesmo sem a classe)
+    .form-check-input--success
+
+  Variação de tamanho no wrapper:
+    .form-check-sm
+
+  Desabilitado:
+    <input ... disabled>   →  opacidade automática no label
+  ——————————————————————————————————————————————————————————— */
+
+/* Wrapper */
+.form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.4;
+}
+
+.form-check-sm { gap: 0.375rem; }
+
+/* Input customizado */
+.form-check-input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  /* dimensões explícitas impedem o flex de redimensionar */
+  width: 1.125rem;
+  height: 1.125rem;
+  min-width: 1.125rem;
+  margin: 0;
+  /* vertical-align garante alinhamento mesmo fora de contexto flex */
+  vertical-align: middle;
+  cursor: pointer;
+  background-color: var(--nyx-bg-body);
+  border: var(--nyx-border-width-2) solid var(--nyx-border-secondary);
+  transition: var(--nyx-transition-fast);
+  position: relative;
+  /* ::before/::after de inputs não funcionam em todos os browsers —
+     usamos outline + background-image para o ícone de marcação */
+}
+
+/* Checkbox: cantos arredondados */
+input[type="checkbox"].form-check-input {
+  border-radius: var(--nyx-radius-xs);
+}
+
+/* Radio: círculo perfeito */
+input[type="radio"].form-check-input {
+  border-radius: 50%;
+}
+
+/* Tamanho sm */
+.form-check-sm .form-check-input {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* ── Checked ─────────────────────────────────────────────── */
+
+/* Cor padrão (brand) */
+.form-check-input:checked {
+  background-color: var(--nyx-bg-brand);
+  border-color: var(--nyx-bg-brand);
+}
+
+/* Variante brand explícita */
+.form-check-input--brand:checked {
+  background-color: var(--nyx-bg-brand);
+  border-color: var(--nyx-bg-brand);
+}
+
+/* Variante success */
+.form-check-input--success:checked {
+  background-color: var(--nyx-bg-success);
+  border-color: var(--nyx-border-success);
+}
+
+/* ── Ícone de marcação via background-image (compatível com todos os browsers)
+   BS icon: check2 (bi-check2) — fill branco embutido no SVG            */
+input[type="checkbox"].form-check-input:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ffffff' d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 80%;
+}
+
+/* Estado indeterminate — BS icon: dash (bi-dash) */
+input[type="checkbox"].form-check-input:indeterminate {
+  background-color: var(--nyx-bg-brand);
+  border-color: var(--nyx-bg-brand);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ffffff' d='M4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 80%;
+}
+
+/* ── Radio: ponto interno via background-image ──────────── */
+input[type="radio"].form-check-input:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle fill='%23ffffff' cx='8' cy='8' r='3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100%;
+}
+
+/* ── Hover nos unchecked ───────────────────────────────── */
+.form-check-input:not(:checked):not(:disabled):hover {
+  border-color: var(--nyx-border-brand);
+  background-color: var(--nyx-bg-brand);
+}
+
+/* ── Focus ─────────────────────────────────────────────── */
+.form-check-input:focus-visible {
+  outline: none;
+  box-shadow: var(--nyx-focus-ring);
+}
+
+/* ── Disabled ──────────────────────────────────────────── */
+.form-check-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.form-check:has(.form-check-input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── Label ─────────────────────────────────────────────── */
+.form-check-label {
+  font-size: var(--nyx-font-sm);
+  color: var(--nyx-text-primary);
+  line-height: 1.4;
+}
+.form-check-sm .form-check-label {
+  font-size: var(--nyx-font-xs);
+}
+
+
+/* ——— 2. SWITCH ————————————————————————————————————————————————
+
+  Estrutura recomendada:
+
+  <label class="form-switch">
+    <input type="checkbox" class="form-switch-input">
+    <span class="form-switch-label">Receber notificações</span>
+  </label>
+
+  Variações de cor:
+    .form-switch-input--brand    (padrão visual)
+    .form-switch-input--success
+
+  Variação de tamanho:
+    .form-switch-sm
+
+  Desabilitado:
+    <input ... disabled>
+  ——————————————————————————————————————————————————————————— */
+
+/* ── Tokens locais do switch ────────────────────────────── */
+:root {
+  --_sw-width:      2.5rem;
+  --_sw-height:     1.375rem;
+  --_sw-thumb:      1rem;
+  --_sw-gap:        0.1875rem;   /* (height - thumb) / 2 */
+  --_sw-travel:     calc(var(--_sw-width) - var(--_sw-thumb) - var(--_sw-gap) * 2);
+
+  --_sw-width-sm:   2rem;
+  --_sw-height-sm:  1.125rem;
+  --_sw-thumb-sm:   0.8125rem;
+  --_sw-gap-sm:     0.15625rem;
+  --_sw-travel-sm:  calc(var(--_sw-width-sm) - var(--_sw-thumb-sm) - var(--_sw-gap-sm) * 2);
+
+  /* Cores de estado OFF */
+  --_sw-bg-off:     var(--nyx-border-secondary);
+
+  /* Cores de estado ON por variante */
+  --_sw-bg-brand:   var(--nyx-bg-brand);
+  --_sw-bg-success: var(--nyx-bg-success);
+}
+
+/* Wrapper — alinhamento idêntico ao .form-check */
+.form-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1;
+}
+
+.form-switch-sm { gap: 0.5rem; }
+
+/* Input: renderiza como a trilha do switch */
+.form-switch-input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  position: relative;
+  width: var(--_sw-width);
+  height: var(--_sw-height);
+  border-radius: var(--nyx-radius-pill);
+  background-color: var(--_sw-bg-off);
+  cursor: pointer;
+  margin: 0;
+  transition: background-color 0.2s ease, box-shadow 0.15s ease;
+}
+
+/* Thumb (bolinha) via ::before */
+.form-switch-input::before {
+  content: '';
+  position: absolute;
+  top: var(--_sw-gap);
+  left: var(--_sw-gap);
+  width: var(--_sw-thumb);
+  height: var(--_sw-thumb);
+  border-radius: 50%;
+  background-color: #fff;
+  box-shadow: var(--nyx-shadow-sm);
+  transition: transform 0.2s cubic-bezier(0.34, 1.2, 0.64, 1),
+              width 0.1s ease;
+}
+
+/* Tamanho sm */
+.form-switch-sm .form-switch-input {
+  width: var(--_sw-width-sm);
+  height: var(--_sw-height-sm);
+}
+.form-switch-sm .form-switch-input::before {
+  top: var(--_sw-gap-sm);
+  left: var(--_sw-gap-sm);
+  width: var(--_sw-thumb-sm);
+  height: var(--_sw-thumb-sm);
+}
+
+/* ── Checked: move o thumb + troca cor ─────────────────── */
+.form-switch-input:checked::before {
+  transform: translateX(var(--_sw-travel));
+}
+.form-switch-sm .form-switch-input:checked::before {
+  transform: translateX(var(--_sw-travel-sm));
+}
+
+/* Variante brand (padrão) */
+.form-switch-input:checked,
+.form-switch-input--brand:checked {
+  background-color: var(--_sw-bg-brand);
+}
+
+/* Variante success */
+.form-switch-input--success:checked {
+  background-color: var(--_sw-bg-success);
+}
+
+/* ── Efeito de "esticada" ao arrastar (micro-interação) ─── */
+.form-switch-input:active::before {
+  width: calc(var(--_sw-thumb) + 0.2rem);
+}
+.form-switch-sm .form-switch-input:active::before {
+  width: calc(var(--_sw-thumb-sm) + 0.15rem);
+}
+
+/* ── Hover ─────────────────────────────────────────────── */
+.form-switch-input:not(:checked):not(:disabled):hover {
+  background-color: var(--nyx-border-primary);
+}
+
+/* ── Focus ─────────────────────────────────────────────── */
+.form-switch-input:focus-visible {
+  outline: none;
+  box-shadow: var(--nyx-focus-ring);
+}
+
+/* ── Disabled ──────────────────────────────────────────── */
+.form-switch-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.form-switch:has(.form-switch-input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── Label ─────────────────────────────────────────────── */
+.form-switch-label {
+  font-size: var(--nyx-font-sm);
+  color: var(--nyx-text-primary);
+  line-height: 1.4;
+}
+.form-switch-sm .form-switch-label {
+  font-size: var(--nyx-font-xs);
+}

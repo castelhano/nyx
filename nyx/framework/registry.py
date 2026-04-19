@@ -41,6 +41,7 @@ USO:
     nav.app_label  # verbose_name do app (ex: 'Pessoal')
 """
 
+import importlib
 from dataclasses import dataclass, field
 from django.apps import apps as django_apps
 
@@ -89,6 +90,7 @@ class NavEntry:
     parent:    object    = None
     actions:   list      = field(default_factory=list)
     meta:      dict      = field(default_factory=dict)
+    ui:        object    = None   # classe UI descoberta de app/ui/modelo.py
 
 
 # =============================================================================
@@ -227,6 +229,7 @@ def _flush():
             actions   = actions,
             meta      = {k: v for k, v in meta.items()
                          if k not in ('parent', '_app_name')},
+            ui        = _discover_ui(app_name_full, model_class.__name__),
         )
 
     _pending.clear()
@@ -315,6 +318,19 @@ def _infer_actions(model_class, resolved: dict, app_label_short: str) -> list:
         ))
 
     return actions
+
+
+def _discover_ui(app_name: str, model_name: str):
+    """
+    Tenta importar {app}.ui.{model_snake} e retorna a classe {ModelName}UI.
+    Retorna None silenciosamente se o arquivo não existir.
+    """
+    module_path = f"{app_name}.ui.{model_name.lower()}"
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, f"{model_name}UI", None)
+    except ImportError:
+        return None
 
 
 def _resolve_model_by_name(name: str, resolved: dict):

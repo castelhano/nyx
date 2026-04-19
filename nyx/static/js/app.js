@@ -59,11 +59,22 @@ const NyxApp = (() => {
     }
 
     // Monta ao carregar a página inteira
-    document.addEventListener("DOMContentLoaded", () => mountPage());
+    document.addEventListener("DOMContentLoaded", () => {
+        NyxDom.init();
+        mountPage();
+    });
+
+    // Destrói componentes antes do swap (remove listeners de document, etc.)
+    document.addEventListener("htmx:beforeSwap", e => {
+        if (e.detail?.target) NyxDom.destroy(e.detail.target);
+    });
 
     // Remonta após cada swap do HTMX
     document.addEventListener("htmx:afterSwap", (e) => {
-        if (e.detail?.target) mountPage(e.detail.target);
+        if (e.detail?.target) {
+            NyxDom.init(e.detail.target);
+            mountPage(e.detail.target);
+        }
     });
 
     return { mountPage };

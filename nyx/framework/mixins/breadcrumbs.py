@@ -137,7 +137,12 @@ class BreadcrumbMixin:
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['breadcrumbs'] = self.get_breadcrumbs()
+        breadcrumbs = self.get_breadcrumbs()
+        ctx['breadcrumbs'] = breadcrumbs
+        ctx['back_url'] = next(
+            (item.url for item in reversed(breadcrumbs) if item.url),
+            None
+        )
         return ctx
 
     # -------------------------------------------------------------------------
