@@ -24,12 +24,13 @@ class FrameworkConfig(AppConfig):
         antes do _flush(). Sem isso o _pending estaria vazio no momento
         do flush, pois os urls.py so seriam importados na primeira requisicao.
         """
-        for app_config in apps.get_app_configs():
-            if app_config.name.startswith('nyx.'):
-                try:
-                    import importlib
-                    importlib.import_module(f'{app_config.name}.urls')
-                except ImportError:
-                    pass
+        # for app_config in apps.get_app_configs():
+        #     if app_config.name.startswith('nyx.'):
+        #         try:
+        #             import importlib
+        #             importlib.import_module(f'{app_config.name}.urls')
+        #         except ImportError:
+        #             pass
 
-        registry._flush()
+        # registry._flush()
+        pass

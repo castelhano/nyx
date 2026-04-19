@@ -1,17 +1,31 @@
 <aside class="sidebar">
 
-    <span id="HORA_FOO"></span>
     <div class="sidebar__header">
-        <span class="sidebar__logo">Nyx</span>
+        <span class="sidebar__logo">Nyx <sup class="text-discovery"><i class="bi bi-braces-asterisk"></i></sup></span>
     </div>
 
     <nav class="sidebar__nav" aria-label="navegação principal">
+        
+        <search class="px-2">
+            <div class="input-icon-wrap">
+                <input 
+                    type="search" 
+                    id="sidebar_search_input" 
+                    class="form-control form-control-sm has-icon-end" 
+                    placeholder="Pesquisa"
+                    data-keybind="f3"
+                    data-keybind-icon="bi bi-person"
+                    data-keybind-desc="Foo">
+                <!-- <i class="input-icon input-icon-end bi bi-search"></i> -->
+                <span class="input-icon input-icon-end">F3</span>
+            </div>
+        </search>
         {% for group_label, items in nav_groups.items %}
         <div class="sidebar__group">
             <span class="sidebar__group-label">{{ group_label }}</span>
             {% for item in items %}
             <a href="{% url item.entry.list_url %}"
-               class="sidebar__link{% if item.active %} active{% endif %}"
+               class="d-flex btn btn-sm btn-ghost mx-2{% if item.active %} active{% endif %}"
                hx-get="{% url item.entry.list_url %}"
                hx-target="#main-content"
                hx-push-url="true">
@@ -21,16 +35,5 @@
         </div>
         {% endfor %}
     </nav>
-
-    <script>
-        window.onload = function() {
-    const agora = new Date();
-    // Formata para o padrão brasileiro (DD/MM/AAAA HH:MM:SS)
-    const dataFormatada = agora.toLocaleString('pt-BR');
-    
-    document.getElementById('HORA_FOO').innerText = dataFormatada;
-};
-
-    </script>
 
 </aside>

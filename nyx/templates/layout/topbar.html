@@ -12,6 +12,10 @@
             {% csrf_token %}
             <button type="submit" class="btn btn-sm btn-ghost">Sair</button>
         </form>
+        <button class="btn btn-outline btn-sm" onclick="NyxUtils.toggleTheme()" title="Alternar tema">
+            <i class="bi bi-circle-half" id="theme-icon"></i>
+            <span id="theme-label">Light</span>
+        </button>
     </div>
 
 </header>

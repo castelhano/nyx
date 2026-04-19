@@ -1,0 +1,171 @@
+
+
+/* ——— 17. COMPONENTES — BREADCRUMB ———————————————————————————— */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-bottom: 1.25rem;
+  font-size: var(--nyx-font-sm);
+}
+
+.breadcrumb__link {
+  color: var(--nyx-text-brand);
+  transition: var(--nyx-transition-fast);
+}
+
+.breadcrumb__link:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb__current {
+  color: var(--nyx-text-secondary);
+}
+
+.breadcrumb__sep {
+  color: var(--nyx-text-tertiary);
+  font-size: var(--nyx-font-xs);
+  user-select: none;
+}
+
+.breadcrumb__dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.breadcrumb__dropdown-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  color: var(--nyx-text-tertiary);
+  font-size: var(--nyx-font-sm);
+  line-height: 1;
+  transition: var(--nyx-transition-fast);
+}
+
+.breadcrumb__dropdown-toggle:hover { color: var(--nyx-text-brand); }
+
+.breadcrumb__dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--nyx-z-dropdown);
+  min-width: 160px;
+  padding: 0.3rem 0;
+  background-color: var(--nyx-bg-body);
+  border: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+  border-radius: var(--nyx-radius-sm);
+  box-shadow: var(--nyx-shadow-md);
+}
+
+.breadcrumb__dropdown-wrap:hover .breadcrumb__dropdown,
+.breadcrumb__dropdown-wrap:focus-within .breadcrumb__dropdown {
+  display: block;
+}
+
+.breadcrumb__dropdown a {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  font-size: var(--nyx-font-sm);
+  color: var(--nyx-text-secondary);
+  white-space: nowrap;
+  transition: var(--nyx-transition-fast);
+}
+
+.breadcrumb__dropdown a:hover {
+  background-color: var(--nyx-bg-secondary);
+  color: var(--nyx-text-emp);
+}
+
+/* ——— 18. LAYOUT — PAGE HEADER ———————————————————————————————— */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.page-header__title {
+  font-size: var(--nyx-font-xl);
+  font-weight: 600;
+  color: var(--nyx-text-emp);
+  line-height: var(--nyx-lh-tight);
+}
+
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ——— 19. COMPONENTES — PAGINAÇÃO ————————————————————————————— */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* ——— 20. COMPONENTES — TOAST ————————————————————————————————— */
+
+#toast_container {
+  position: fixed;
+  top: 60px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: var(--nyx-z-toast);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 260px;
+  max-width: 420px;
+  padding: 0.8rem 1rem;
+  border-radius: var(--nyx-radius-md);
+  border: var(--nyx-border-width-1) solid transparent;
+  box-shadow: var(--nyx-shadow-md);
+  font-size: var(--nyx-font-sm);
+  z-index: var(--nyx-z-modal);
+  animation: toast-in 0.2s ease;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.toast__body  { flex: 1; }
+.toast__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.6;
+  flex-shrink: 0;
+  padding: 0.3rem;
+  margin: -0.5rem -0.5rem -0.5rem 0;
+}
+.toast__close:hover { opacity: 1; }
+
+.toast--success { background-color: var(--nyx-bg-success);   color: var(--nyx-text-success);   border-color: var(--nyx-border-success); }
+.toast--error,
+.toast--danger  { background-color: var(--nyx-bg-danger);    color: var(--nyx-text-danger);    border-color: var(--nyx-border-danger); }
+.toast--warning { background-color: var(--nyx-bg-warning);   color: var(--nyx-text-warning);   border-color: var(--nyx-border-warning); }
+.toast--info    { background-color: var(--nyx-bg-info);      color: var(--nyx-text-info);      border-color: var(--nyx-border-info); }

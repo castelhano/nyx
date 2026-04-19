@@ -126,7 +126,6 @@ def _process_cruds(models_list: list, app_name: str, default_path: str,
         lookup   = cfg.get('lookup', 'int:pk')
         singular = name.lower()
         prefix   = f'<{lookup}>/' if is_related else ''
-        print(f"_queue chamado: {name}, {app_name}")  # <--
 
         # Enfileira no registry — resolvido depois pelo flush()
         registry._queue(name, app_name, {

@@ -33,6 +33,7 @@ const keys = new Keywatch({
     shortcutMaplist:     "alt+k",
     shortcutMaplistDesc: "Exibir atalhos disponíveis",
 });
+keys.scanBindings(document); // realiza primeiro scan na pagina
 
 // ── Integração HTMX ───────────────────────────────────────────────────────────
 keys.watchHtmx();

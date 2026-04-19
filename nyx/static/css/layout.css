@@ -1,0 +1,130 @@
+/* ——— 14. LAYOUT — SHELL ————————————————————————————————————————
+   body
+   ├── aside.sidebar
+   └── .layout-main
+       ├── header.topbar
+       └── main#main-content
+   ——————————————————————————————————————————————————————————————— */
+
+:root {
+  --nyx-sidebar-width: 230px;
+  --nyx-topbar-height: 52px;
+}
+
+body {
+  display: flex;
+  overflow: hidden;
+}
+
+/* ——— Sidebar ——— */
+.sidebar {
+  width: var(--nyx-sidebar-width);
+  flex-shrink: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--nyx-bg-secondary);
+  border-right: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+}
+
+.sidebar__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+  height: var(--nyx-topbar-height);
+  border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+  background-image: linear-gradient(
+  to bottom, 
+  rgba(255, 255, 255, 0.05), 
+  transparent
+  );
+  background-color: var(--nyx-bg-secondary); 
+}
+
+.sidebar__logo {
+  font-size: var(--nyx-font-base);
+  font-weight: 700;
+  color: var(--nyx-text-emp);
+  letter-spacing: 0.03em;
+}
+
+.sidebar__nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0 1rem;
+}
+
+.sidebar__group {
+  padding-top: 0.25rem;
+}
+
+.sidebar__group + .sidebar__group {
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+}
+
+.sidebar__group-label {
+  display: block;
+  padding: 0.5rem 1rem 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--nyx-text-tertiary);
+  user-select: none;
+}
+
+/* ——— Layout principal ——— */
+.layout-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ——— 15. LAYOUT — TOPBAR ————————————————————————————————————— */
+
+.topbar {
+  flex-shrink: 0;
+  height: var(--nyx-topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+  background-color: var(--nyx-bg-body);
+  border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary);
+  background-image: linear-gradient(
+    to bottom, 
+    rgba(255, 255, 255, 0.05), 
+    transparent
+  );
+
+  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  z-index: 10; */
+}
+
+.topbar__start,
+.topbar__end {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topbar__user {
+  font-size: var(--nyx-font-sm);
+  color: var(--nyx-text-secondary);
+}
+
+/* ——— 16. LAYOUT — CONTEÚDO PRINCIPAL ————————————————————————— */
+
+#main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}

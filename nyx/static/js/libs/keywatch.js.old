@@ -24,7 +24,7 @@
  *   data-keybind="alt+s"              OBRIGATÓRIO — define o atalho
  *   data-keybind-context="modal"      contexto (default: 'default')
  *   data-keybind-desc="Salvar"        descrição para o modal de atalhos
- *   data-keybind-icon="bi bi-save"    classes do ícone para o modal de atalhos
+ *   data-keybind-icon="💾"            ícone para o modal de atalhos
  *   data-keybind-group="form-viagem"  grupo para controle de ciclo de vida
  *   data-keybind-keyup="true"         dispara no keyup (default: false)
  *   data-keybind-keydown="false"      desativa keydown (default: true)
@@ -134,7 +134,7 @@ class Keywatch {
             // Atalho para abrir o modal de mapa de atalhos (null = desabilita)
             shortcutMaplist:     'alt+k',
             shortcutMaplistDesc: 'Exibir atalhos disponíveis',
-            shortcutMaplistIcon: 'bi bi-keyboard',
+            shortcutMaplistIcon: '⌨',
             shortcutMaplistOnlyContextActive: true,
             // CSS interno — substitua por classes externas se preferir Bootstrap/Tailwind
             // Passe { useExternalStyles: true } para desativar todo CSS injetado
@@ -188,31 +188,23 @@ class Keywatch {
         style.textContent = `
             /* ── Keywatch Modal ── */
             #keywatch-modal {
-                /*
-                 * Tokens mapeados para o design system Nyx.
-                 * Cada --kw-* faz fallback para valor hardcoded caso
-                 * as variaveis Nyx nao estejam disponiveis.
-                 */
-                --kw-bg:           var(--nyx-bg-body,           #ffffff);
-                --kw-bg-row-alt:   var(--nyx-bg-secondary,      #f5f5f5);
-                --kw-surface:      var(--nyx-bg-tertiary,        #ebebeb);
-                --kw-border:       var(--nyx-border-primary,     #dee2e6);
-                --kw-accent:       var(--nyx-text-brand,         #5a7d9a);
-                --kw-accent-soft:  var(--nyx-bg-brand,           #eff2f4);
-                --kw-text:         var(--nyx-text-primary,       #373b3e);
-                --kw-text-dim:     var(--nyx-text-tertiary,      #80868b);
-                --kw-text-header:  var(--nyx-text-secondary,     #5f6368);
-                --kw-badge-bg:     var(--nyx-bg-tertiary,        #ebebeb);
-                --kw-badge-border: var(--nyx-border-secondary,   #ced4da);
-                --kw-input-bg:     var(--nyx-bg-secondary,       #f5f5f5);
-                --kw-shadow:       var(--nyx-shadow-lg,  0 8px 24px rgba(0,0,0,.12));
-                --kw-radius:       var(--nyx-radius-lg,  12px);
-                --kw-radius-sm:    var(--nyx-radius-sm,   4px);
-                --kw-font:         var(--nyx-typeface-base, system-ui, sans-serif);
-                --kw-font-mono:    var(--nyx-typeface-mono, monospace);
-                /* painel de rastreio (linha expandida) */
-                --kw-meta-bg:      var(--nyx-bg-secondary,   #f9f9f9);
-                --kw-meta-text:    var(--nyx-text-secondary,      #5f6368);
+                --kw-bg:           #1a1b26;
+                --kw-bg-row-alt:   #1f2133;
+                --kw-surface:      #24253a;
+                --kw-border:       #2e3050;
+                --kw-accent:       #7c6af7;
+                --kw-accent-soft:  rgba(124,106,247,.15);
+                --kw-text:         #c8cde8;
+                --kw-text-dim:     #6b7094;
+                --kw-text-header:  #a0a8cc;
+                --kw-badge-bg:     #2e3050;
+                --kw-badge-border: #4a4f7a;
+                --kw-input-bg:     #13141f;
+                --kw-shadow:       0 24px 64px rgba(0,0,0,.6);
+                --kw-radius:       12px;
+                --kw-radius-sm:    6px;
+                --kw-font:         'Segoe UI', system-ui, -apple-system, sans-serif;
+                --kw-font-mono:    'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 
                 display:    none;
                 position:   fixed;
@@ -287,14 +279,13 @@ class Keywatch {
             }
             #keywatch-context-badge {
                 font-family:   var(--kw-font-mono);
-                font-size:     10px;
+                font-size:     11px;
                 color:         var(--kw-accent);
                 background:    var(--kw-accent-soft);
                 border:        1px solid var(--kw-accent);
-                border-radius: 6px;
-                text-transform: uppercase;
+                border-radius: 20px;
                 padding:       2px 10px;
-                opacity:       .5;
+                opacity:       .9;
             }
             #keywatch-close-btn {
                 background:    none;
@@ -322,8 +313,8 @@ class Keywatch {
                 border-radius: var(--kw-radius-sm);
                 color:         var(--kw-text);
                 font-family:   var(--kw-font);
-                padding: var(--nyx-input-padding-y-sm) var(--nyx-input-padding-x-sm);
-                font-size: var(--nyx-font-sm);
+                font-size:     13px;
+                padding:       8px 14px;
                 outline:       none;
                 transition:    border-color .15s;
             }
@@ -356,7 +347,6 @@ class Keywatch {
                 text-transform: uppercase;
                 letter-spacing: .06em;
                 padding:     8px 12px;
-                text-align: left;
                 border-bottom: 1px solid var(--kw-border);
             }
             #keywatch-table tbody tr {
@@ -401,49 +391,6 @@ class Keywatch {
                 padding:    32px 0 !important;
                 font-style: italic;
             }
-
-            /* Linha de rastreio (expandida ao clicar no botao de detalhes) */
-            .kw-meta-row { display: none; }
-            .kw-meta-row.kw-meta-open { display: table-row; }
-            .kw-meta-row td {
-                padding:    5px !important;
-                background: var(--kw-meta-bg) !important;
-            }
-            .kw-meta-inner {
-                display:       flex;
-                flex-wrap:     wrap;
-                gap:           6px 16px;
-                font-family:   var(--kw-font-mono);
-                font-size:     10px;
-                color:         var(--kw-meta-text);
-                padding:       8px 10px;
-                border-radius: var(--kw-radius-sm);
-                border:        1px solid var(--kw-border);
-                background:    var(--kw-bg);
-                text-transform: uppercase;
-            }
-            .kw-meta-item { display: flex; gap: 4px; align-items: center; }
-            .kw-meta-label {
-                color:       var(--kw-text-dim);
-                font-weight: 600;
-                letter-spacing: .04em;
-            }
-            .kw-meta-value { color: var(--kw-text-secondary); }
-
-            /* Botao toggle de rastreio */
-            .kw-detail-btn {
-                background:    none;
-                border:        none;
-                cursor:        pointer;
-                color:         var(--kw-text-dim);
-                font-size:     14px;
-                padding:       2px 6px;
-                border-radius: var(--kw-radius-sm);
-                transition:    color .15s, background .15s;
-                line-height:   1;
-            }
-            .kw-detail-btn:hover    { color: var(--kw-text); background: var(--kw-surface); }
-            .kw-detail-btn.kw-open  { color: var(--kw-accent); }
         `;
         document.head.appendChild(style);
     }
@@ -468,7 +415,7 @@ class Keywatch {
         const header = document.createElement('div');
         header.id = 'keywatch-modal-header';
         header.innerHTML = `
-            <span class="kw-icon"><i class="${this.shortcutMaplistIcon}"></i></span>
+            <span class="kw-icon">${this.shortcutMaplistIcon || '⌨'}</span>
             <span class="kw-title">Atalhos de teclado</span>
             <span id="keywatch-context-badge">${this.context}</span>
             <button id="keywatch-close-btn" title="Fechar (Esc)">✕</button>
@@ -497,7 +444,7 @@ class Keywatch {
                 <tr>
                     <th>Atalho</th>
                     <th>Descrição</th>
-                    <th style="width:32px"></th>
+                    <th>Contexto</th>
                 </tr>
             </thead>
         `;
@@ -556,57 +503,13 @@ class Keywatch {
                 for (const scope in this.handlers[type][ctx]) {
                     for (const handler of this.handlers[type][ctx][scope]) {
                         if (!handler.display) continue;
-
-                        // ── Linha principal ──────────────────────────────────
                         const tr = document.createElement('tr');
-                        const uid = `kw-meta-${count}`;
-
-                        const desc = `${handler.icon ? `<i class="${handler.icon}" style="margin-right:6px"></i>` : ''}${handler.desc || '<span style="opacity:.4">—</span>'}`;
-
                         tr.innerHTML = `
                             <td>${this._humanize(handler.schema)}</td>
-                            <td>${desc}</td>
-                            <td style="text-align:center;padding:0 8px">
-                                <button class="kw-detail-btn" data-target="${uid}" title="Detalhes de rastreio">›</button>
-                            </td>
+                            <td>${handler.icon ? `<span style="margin-right:6px">${handler.icon}</span>` : ''}${handler.desc || '<span style="opacity:.4">—</span>'}</td>
+                            <td><span class="kw-key" style="font-size:10px">${handler.context}</span></td>
                         `;
-
-                        // Toggle da linha de rastreio
-                        tr.querySelector('.kw-detail-btn').addEventListener('click', (e) => {
-                            const btn     = e.currentTarget;
-                            const metaRow = document.getElementById(btn.dataset.target);
-                            const open    = metaRow.classList.toggle('kw-meta-open');
-                            btn.classList.toggle('kw-open', open);
-                            btn.textContent = open ? '⌄' : '›';
-                        });
-
-                        // ── Linha de rastreio (oculta por padrao) ────────────
-                        const metaRow = document.createElement('tr');
-                        metaRow.id        = uid;
-                        metaRow.className = 'kw-meta-row';
-
-                        // Monta os itens de rastreio — so exibe os relevantes
-                        const metaItems = [
-                            { label: 'context', value: handler.context },
-                            { label: 'event',   value: [handler.keydown && 'keydown', handler.keyup && 'keyup'].filter(Boolean).join(' + ') },
-                            handler.origin  ? { label: 'origin',  value: handler.origin }  : null,
-                            handler.group   ? { label: 'group',   value: handler.group }   : null,
-                            { label: 'capture',  value: handler.useCapture  ? 'sim' : 'nao' },
-                            { label: 'composed', value: handler.composed    ? 'sim' : 'nao' },
-                            { label: 'prevent',  value: handler.preventDefault ? 'sim' : 'nao' },
-                        ].filter(Boolean);
-
-                        const itemsHtml = metaItems.map(i =>
-                            `<span class="kw-meta-item">
-                                <span class="kw-meta-label">${i.label}</span>
-                                <span class="kw-meta-value">${i.value}</span>
-                            </span>`
-                        ).join('');
-
-                        metaRow.innerHTML = `<td colspan="3"><div class="kw-meta-inner">${itemsHtml}</div></td>`;
-
                         fragment.appendChild(tr);
-                        fragment.appendChild(metaRow);
                         count++;
                     }
                 }
@@ -627,22 +530,13 @@ class Keywatch {
         requestAnimationFrame(() => {
             const term = this._searchInput.value.toLowerCase().replace(/\s+/g, '');
             let visible = 0;
-
-            // Percorre apenas as linhas principais (nao as de rastreio)
-            this._tbody.querySelectorAll('tr:not(.kw-meta-row):not(.kw-empty)').forEach(tr => {
+            this._tbody.querySelectorAll('tr:not(.kw-empty)').forEach(tr => {
                 const text = tr.textContent.toLowerCase().replace(/\s+/g, '');
                 const show = text.includes(term);
                 tr.style.display = show ? '' : 'none';
-
-                // Esconde tambem a linha de rastreio correspondente
-                const btn     = tr.querySelector('.kw-detail-btn');
-                const metaRow = btn ? document.getElementById(btn.dataset.target) : null;
-                if (metaRow) metaRow.style.display = show ? '' : 'none';
-
                 if (show) visible++;
             });
-
-            // Mensagem de lista vazia
+            // Mostra/esconde mensagem de vazio
             const empty = this._tbody.querySelector('.kw-empty');
             if (empty) empty.style.display = visible === 0 ? '' : 'none';
         });
@@ -656,7 +550,6 @@ class Keywatch {
      * Varre o container em busca de elementos com data-keybind e registra os atalhos.
      * Se o container (ou um filho direto) tiver data-keybind-group, faz unbindGroup
      * desse group antes de registrar — evita duplicatas em re-renders do HTMX.
-     * Se não informado desc define display: false por padrão
      *
      * @param {HTMLElement} [root=document] - Onde buscar. Omita para varrer o document inteiro.
      *
@@ -665,6 +558,7 @@ class Keywatch {
      *   keys.scanBindings(document.querySelector('#modal')); // varre só o modal
      */
     scanBindings(root = document) {
+        console.log("Keywatch: scanBinding on: ", root);
         // Lê o group do container (se root for o container com data-keybind-group)
         const containerGroup = root instanceof HTMLElement
             ? (root.dataset.keybindGroup || root.querySelector('[data-keybind-group]')?.dataset.keybindGroup)
@@ -694,7 +588,7 @@ class Keywatch {
                 keyup:          el.dataset.keybindKeyup          === 'true',
                 preventDefault: el.dataset.keybindPrevent        !== 'false',
                 useCapture:     el.dataset.keybindCapture        === 'true',
-                display:        el.dataset.keybindDisplay === 'true' || !!(el.dataset.keybindDesc || el.title),
+                display:        el.dataset.keybindDisplay        !== 'false',
                 element:        document,
             };
 

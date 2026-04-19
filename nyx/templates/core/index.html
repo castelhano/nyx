@@ -2,5 +2,43 @@
 
 {% block title %}Início{% endblock %}
 
-{% block content %}
+{% block main %}
+<div>
+    <button class="btn btn-brand">btn btn-brand</button>
+    <button class="btn btn-brand btn-outline">btn btn-brand btn-outline</button>
+    <button class="btn btn-ghost-brand">btn btn-ghost-brand</button>
+    <button class="btn btn-outline-brand">btn btn-outline-brand</button>
+    <button class="btn btn-success">btn btn-success</button>
+    <button class="btn btn-danger">btn btn-danger</button>
+    <button class="btn btn-ghost" onclick="alert('Fui clicado')" data-keybind="alt+1">btn btn-ghost</button>
+</div>
+<div class="d-grid grid-cols-4 mt-5">
+    <div class="">
+        <label for="id_nome" class="form-label">Nome</label>
+        <input type="text" id="id_nome" class="form-control form-control-sm" placeholder="Nome" />
+        <input type="text" id="id_nome" class="my-2 form-control form-control-sm is-valid" placeholder="Nome" />
+        <div class="input-icon-wrap">
+            <input type="text" id="id_nome" class="my-2 form-control form-control-sm has-icon-end is-valid" placeholder="Nome" />
+            <span class="input-icon input-icon-end"><i class="bi bi-search"></i></span>
+        </div>
+        <div class="input-icon-wrap">
+            <input type="text" id="id_nome" class="my-2 form-control has-icon-end is-valid" placeholder="Nome" />
+            <span class="input-icon input-icon-end"><i class="bi bi-bell-slash-fill"></i></span>
+        </div>
+        <select name="" id="" class="form-control">
+            <option value="">Foo</option>
+            <option value="1">Bar</option>
+        </select><br>
+        <select name="" id="" class="form-control form-control-sm is-valid">
+            <option value="">Um texto bem longo para ver como se comporta, ainda tem que ser maior ainda</option>
+            <option value="1">Bar</option>
+        </select>
+    </div>
+</div>
+{% endblock %}
+
+{% block toasts %}
+<c-toast type="success">
+    Foo
+</c-toast>
 {% endblock %}
