@@ -1,14 +1,21 @@
+/* ============================================================
+   NYX DESIGN SYSTEM — components.css
+   Depende de: nyx.css (tokens e variáveis)
+   Estrutura:
+     1.  Dropdown
+     2.  Tabs
+     3.  Breadcrumb
+     4.  Pagination
+     5.  Toast
+     6.  Page Header
+   ============================================================ */
 
 
-/* ——— 3. DROPDOWN ——————————————————————————————————————————————
+/* ——— 1. DROPDOWN ——————————————————————————————————————————————
 
-  Estrutura recomendada:
-
-  <div class="dropdown">
-    <button class="btn btn-outline btn-dropdown">
-      Opções
-    </button>
-    <ul class="dropdown-menu" data-dropdown-menu data-role="menu">
+  <div class="dropdown" data-component="dropdown">
+    <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>Opções</button>
+    <ul class="dropdown-menu" data-dropdown-menu>
       <li class="dropdown-item">Editar</li>
       <li class="dropdown-item">Duplicar</li>
       <li class="dropdown-divider"></li>
@@ -17,42 +24,28 @@
   </div>
 
   Alinhamento do menu (padrão: esquerda):
-    .dropdown-menu--end      → alinha à direita do trigger
-    .dropdown-menu--top      → abre para cima
+    .dropdown-menu--end   → alinha à direita do trigger
+    .dropdown-menu--top   → abre para cima
 
-  Variantes de menu (extensíveis):
-    .dropdown-menu--brand    → superfície brand
+  Variantes de menu (extensíveis via tokens --_dm-*):
+    .dropdown-menu--brand
 
-  Variantes de item (extensíveis):
-    .dropdown-item--danger
-    .dropdown-item--success
-    .dropdown-item--muted
-
-  Item com ícone BS:
-    <li class="dropdown-item">
-      <i class="bi bi-pencil"></i> Editar
-    </li>
+  Variantes de item:
+    .dropdown-item--danger | --success | --muted
 
   Item desabilitado:
     <li class="dropdown-item" aria-disabled="true">Indisponível</li>
   ——————————————————————————————————————————————————————————— */
 
-/* ── Wrapper ────────────────────────────────────────────── */
-.dropdown {
-  position: relative;
-  display: inline-block;
-}
+.dropdown { position: relative; display: inline-block; }
 
-/* ── Menu ───────────────────────────────────────────────── */
 .dropdown-menu {
-  /* posicionamento */
   position: absolute;
   top: calc(100% + 0.375rem);
   left: 0;
   z-index: var(--nyx-z-dropdown);
   min-width: max(12rem, 100%);
 
-  /* tokens internos — sobrescrevidos pelas variantes */
   --_dm-bg:            var(--nyx-bg-body);
   --_dm-border:        var(--nyx-border-primary);
   --_dm-item-hover-bg: var(--nyx-bg-secondary);
@@ -65,46 +58,18 @@
   padding: 0.3rem;
   list-style: none;
 
-  /* estado inicial — invisível e levemente deslocado */
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
   pointer-events: none;
-  transition:
-    opacity   0.15s ease,
-    transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Aberto — classe adicionada pelo JS */
-.dropdown-menu.open {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
+.dropdown-menu.open              { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.dropdown-menu--end              { left: auto; right: 0; }
+.dropdown-menu--top              { top: auto; bottom: calc(100% + 0.375rem); transform: translateY(6px) scale(0.98); }
+.dropdown-menu--top.open         { transform: translateY(0) scale(1); }
+.dropdown-menu--brand            { --_dm-bg: var(--nyx-bg-brand); --_dm-border: var(--nyx-border-brand); --_dm-item-color: var(--nyx-text-brand); }
 
-/* ── Alinhamento ────────────────────────────────────────── */
-.dropdown-menu--end {
-  left: auto;
-  right: 0;
-}
-
-.dropdown-menu--top {
-  top: auto;
-  bottom: calc(100% + 0.375rem);
-  transform: translateY(6px) scale(0.98);
-}
-.dropdown-menu--top.open {
-  transform: translateY(0) scale(1);
-}
-
-/* ── Variante brand (extensível) ────────────────────────── */
-.dropdown-menu--brand {
-  --_dm-bg:            var(--nyx-bg-brand);
-  --_dm-border:        var(--nyx-border-brand);
-  --_dm-item-hover-bg: var(--nyx-bg-secondary);
-  --_dm-item-color:    var(--nyx-text-brand);
-}
-
-/* ── Item base ──────────────────────────────────────────── */
 .dropdown-item {
   display: flex;
   align-items: center;
@@ -116,54 +81,128 @@
   border-radius: var(--nyx-radius-sm);
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.1s ease, color 0.1s ease;
   white-space: nowrap;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-.dropdown-item:hover {
-  background-color: var(--_dm-item-hover-bg);
+.dropdown-item:hover                 { background-color: var(--_dm-item-hover-bg); }
+.dropdown-item--danger               { color: var(--nyx-text-danger); }
+.dropdown-item--danger:hover         { background-color: var(--nyx-bg-danger); }
+.dropdown-item--success              { color: var(--nyx-text-success); }
+.dropdown-item--success:hover        { background-color: var(--nyx-bg-success); }
+.dropdown-item--muted                { color: var(--nyx-text-tertiary); }
+.dropdown-item--muted:hover          { background-color: var(--nyx-bg-secondary); color: var(--nyx-text-secondary); }
+.dropdown-item[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+.dropdown-divider { height: var(--nyx-border-width-1); background-color: var(--nyx-border-primary); margin: 0.3rem 0; pointer-events: none; }
+
+
+/* ——— 2. TABS —————————————————————————————————————————————————
+
+  <div class="tabs" data-component="tabs">
+    <div class="tabs__list" role="tablist">
+      <button class="tabs__tab active" data-tab="perfil" role="tab">Perfil</button>
+      <button class="tabs__tab"        data-tab="config" role="tab">Configurações</button>
+      <button class="tabs__tab"        data-tab="api"    role="tab">API</button>
+    </div>
+    <div class="tabs__panels">
+      <div class="tabs__panel active" data-panel="perfil">…</div>
+      <div class="tabs__panel"        data-panel="config">…</div>
+      <div class="tabs__panel"        data-panel="api">…</div>
+    </div>
+  </div>
+
+  Modificadores da lista:
+    .tabs__list--fitted  → tabs em largura igual (fill)
+    .tabs__list--sm      → tabs menores
+
+  Variantes visuais:
+    .tabs--pills         → fundo arredondado, sem linha base
+
+  Badge/contador dentro da tab:
+    <button class="tabs__tab active" data-tab="inbox">
+      Inbox <span class="tabs__badge">4</span>
+    </button>
+  ——————————————————————————————————————————————————————————— */
+
+.tabs { display: flex; flex-direction: column; }
+
+.tabs__list {
+  display: flex;
+  align-items: flex-end;
+  border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary);
 }
 
-/* ── Variantes de item ──────────────────────────────────── */
-.dropdown-item--danger {
-  color: var(--nyx-text-danger);
-}
-.dropdown-item--danger:hover {
-  background-color: var(--nyx-bg-danger);
-}
+.tabs__list--fitted .tabs__tab { flex: 1; justify-content: center; }
+.tabs__list--sm     .tabs__tab { padding: 0.4rem 0.75rem; font-size: var(--nyx-font-xs); }
 
-.dropdown-item--success {
-  color: var(--nyx-text-success);
-}
-.dropdown-item--success:hover {
-  background-color: var(--nyx-bg-success);
-}
-
-.dropdown-item--muted {
-  color: var(--nyx-text-tertiary);
-}
-.dropdown-item--muted:hover {
-  background-color: var(--nyx-bg-secondary);
+.tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.6rem 1rem;
+  font-size: var(--nyx-font-sm);
+  font-weight: 500;
   color: var(--nyx-text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-/* ── Item desabilitado ──────────────────────────────────── */
-.dropdown-item[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
-  pointer-events: none;
+.tabs__tab:hover:not(.active)  { color: var(--nyx-text-primary); }
+.tabs__tab.active              { color: var(--nyx-text-brand); border-bottom-color: var(--nyx-text-brand); }
+.tabs__tab:focus-visible       { outline: none; box-shadow: var(--nyx-focus-ring); border-radius: var(--nyx-radius-sm) var(--nyx-radius-sm) 0 0; }
+.tabs__tab:disabled            { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+.tabs__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25em;
+  padding: 0 0.35em;
+  height: 1.25em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: var(--nyx-radius-pill);
+  background-color: var(--nyx-bg-tertiary);
+  color: var(--nyx-text-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.tabs__tab.active .tabs__badge { background-color: var(--nyx-bg-brand); color: var(--nyx-text-brand); }
+
+.tabs__panels { padding-top: 1.25rem; }
+
+.tabs__panel { display: none; animation: tab-fade-in 0.18s ease; }
+.tabs__panel.active { display: block; }
+
+@keyframes tab-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Divisor ────────────────────────────────────────────── */
-.dropdown-divider {
-  height: var(--nyx-border-width-1);
-  background-color: var(--nyx-border-primary);
-  margin: 0.3rem 0;
-  pointer-events: none;
-}
+/* Variante pills */
+.tabs--pills .tabs__list              { border-bottom: none; gap: 0.25rem; padding: 0.25rem; background-color: var(--nyx-bg-secondary); border-radius: var(--nyx-radius-md); align-items: center; }
+.tabs--pills .tabs__tab               { border-bottom: none; margin-bottom: 0; border-radius: var(--nyx-radius-sm); padding: 0.4rem 0.9rem; color: var(--nyx-text-secondary); }
+.tabs--pills .tabs__tab:hover:not(.active) { background-color: var(--nyx-bg-tertiary); }
+.tabs--pills .tabs__tab.active        { background-color: var(--nyx-bg-body); color: var(--nyx-text-emp); box-shadow: var(--nyx-shadow-sm); }
 
 
-/* ——— 17. COMPONENTES — BREADCRUMB ———————————————————————————— */
+/* ——— 3. BREADCRUMB ———————————————————————————————————————————
+
+  <nav class="breadcrumb">
+    <a class="breadcrumb__link" href="#">Home</a>
+    <span class="breadcrumb__sep">›</span>
+    <a class="breadcrumb__link" href="#">Produtos</a>
+    <span class="breadcrumb__sep">›</span>
+    <span class="breadcrumb__current">Detalhe</span>
+  </nav>
+  ——————————————————————————————————————————————————————————— */
 
 .breadcrumb {
   display: flex;
@@ -174,24 +213,10 @@
   font-size: var(--nyx-font-sm);
 }
 
-.breadcrumb__link {
-  color: var(--nyx-text-brand);
-  transition: var(--nyx-transition-fast);
-}
-
-.breadcrumb__link:hover {
-  text-decoration: underline;
-}
-
-.breadcrumb__current {
-  color: var(--nyx-text-secondary);
-}
-
-.breadcrumb__sep {
-  color: var(--nyx-text-tertiary);
-  font-size: var(--nyx-font-xs);
-  user-select: none;
-}
+.breadcrumb__link              { color: var(--nyx-text-brand); transition: var(--nyx-transition-fast); }
+.breadcrumb__link:hover        { text-decoration: underline; }
+.breadcrumb__current           { color: var(--nyx-text-secondary); }
+.breadcrumb__sep               { color: var(--nyx-text-tertiary); font-size: var(--nyx-font-xs); user-select: none; }
 
 .breadcrumb__dropdown-wrap {
   position: relative;
@@ -228,9 +253,7 @@
 }
 
 .breadcrumb__dropdown-wrap:hover .breadcrumb__dropdown,
-.breadcrumb__dropdown-wrap:focus-within .breadcrumb__dropdown {
-  display: block;
-}
+.breadcrumb__dropdown-wrap:focus-within .breadcrumb__dropdown { display: block; }
 
 .breadcrumb__dropdown a {
   display: block;
@@ -241,46 +264,24 @@
   transition: var(--nyx-transition-fast);
 }
 
-.breadcrumb__dropdown a:hover {
-  background-color: var(--nyx-bg-secondary);
-  color: var(--nyx-text-emp);
-}
+.breadcrumb__dropdown a:hover  { background-color: var(--nyx-bg-secondary); color: var(--nyx-text-emp); }
 
-/* ——— 18. LAYOUT — PAGE HEADER ———————————————————————————————— */
 
-/* .page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
+/* ——— 4. PAGINATION ———————————————————————————————————————————  */
 
-.page-header__title {
-  font-size: var(--nyx-font-xl);
-  font-weight: 600;
-  color: var(--nyx-text-emp);
-  line-height: var(--nyx-lh-tight);
-}
+.pagination { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
 
-.page-header__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-} */
 
-/* ——— 19. COMPONENTES — PAGINAÇÃO ————————————————————————————— */
+/* ——— 5. TOAST ————————————————————————————————————————————————
 
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
+  <div id="toast_container"></div>
 
-/* ——— 20. COMPONENTES — TOAST ————————————————————————————————— */
+  JS injeta:
+  <div class="toast toast--success">
+    <div class="toast__body">Salvo com sucesso.</div>
+    <button class="toast__close">×</button>
+  </div>
+  ——————————————————————————————————————————————————————————— */
 
 #toast_container {
   position: fixed;
@@ -303,7 +304,6 @@
   border: var(--nyx-border-width-1) solid transparent;
   box-shadow: var(--nyx-shadow-md);
   font-size: var(--nyx-font-sm);
-  z-index: var(--nyx-z-modal);
   animation: toast-in 0.2s ease;
 }
 
@@ -313,6 +313,7 @@
 }
 
 .toast__body  { flex: 1; }
+
 .toast__close {
   background: none;
   border: none;
@@ -325,10 +326,26 @@
   padding: 0.3rem;
   margin: -0.5rem -0.5rem -0.5rem 0;
 }
-.toast__close:hover { opacity: 1; }
 
-.toast--success { background-color: var(--nyx-bg-success);   color: var(--nyx-text-success);   border-color: var(--nyx-border-success); }
+.toast__close:hover  { opacity: 1; }
+.toast--success      { background-color: var(--nyx-bg-success);  color: var(--nyx-text-success);  border-color: var(--nyx-border-success); }
 .toast--error,
-.toast--danger  { background-color: var(--nyx-bg-danger);    color: var(--nyx-text-danger);    border-color: var(--nyx-border-danger); }
-.toast--warning { background-color: var(--nyx-bg-warning);   color: var(--nyx-text-warning);   border-color: var(--nyx-border-warning); }
-.toast--info    { background-color: var(--nyx-bg-info);      color: var(--nyx-text-info);      border-color: var(--nyx-border-info); }
+.toast--danger       { background-color: var(--nyx-bg-danger);   color: var(--nyx-text-danger);   border-color: var(--nyx-border-danger); }
+.toast--warning      { background-color: var(--nyx-bg-warning);  color: var(--nyx-text-warning);  border-color: var(--nyx-border-warning); }
+.toast--info         { background-color: var(--nyx-bg-info);     color: var(--nyx-text-info);     border-color: var(--nyx-border-info); }
+
+
+/* ——— 6. PAGE HEADER (comentado) —————————————————————————————
+
+  <div class="page-header">
+    <h4 class="page-header__title">Título</h4>
+    <div class="page-header__actions">
+      <button class="btn btn-outline">Exportar</button>
+      <button class="btn btn-brand">Novo</button>
+    </div>
+  </div>
+  ——————————————————————————————————————————————————————————— */
+
+/* .page-header          { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+.page-header__title   { font-size: var(--nyx-font-xl); font-weight: 600; color: var(--nyx-text-emp); line-height: var(--nyx-lh-tight); }
+.page-header__actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; } */

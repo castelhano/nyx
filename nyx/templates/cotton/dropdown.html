@@ -1,0 +1,8 @@
+<div class="dropdown {{ attrs.class }}" data-component="dropdown">
+    <button class="btn btn-dropdown {{ trigger_class|default:'btn-outline' }}" data-dropdown-toggle>
+        {{ label }}
+    </button>
+    <ul class="dropdown-menu {{ menu_class }}" data-dropdown-menu>
+        {{ slot }}
+    </ul>
+</div>
