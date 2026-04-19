@@ -2,12 +2,59 @@
    NYX DESIGN SYSTEM — components.css
    Depende de: nyx.css (tokens e variáveis)
    Estrutura:
-     1.  Dropdown
-     2.  Tabs
-     3.  Breadcrumb
-     4.  Pagination
-     5.  Toast
-     6.  Page Header
+    01.  Dropdown
+    02.  Tabs
+         TODO: variação Step, mostrando em stagios, pode desabilitar action pelo tab e exigir
+         controle por botao de avançar e retornar estagio (ou isso seria outro componente?)
+    03.  Breadcrumb
+         TODO: ajuste visual e de comportamento dropdown!!
+    04.  Pagination
+    05.  Toast & Alert
+         TODO: suporte a autodismiss (delay), stackable, 
+    06.  Listbox (opera sobre um select)
+         TODO: visual inspirado no Chakra UI, simples ou multiple, indicador de selecionados,
+         icons, groups, divider, scroll, select all, filter, responsivo, responde a atalhos
+         (up, down, shift, space), selecionar varios ao arrastar com mouse (desejavel), desc,
+         variação exibido como button + popover, suporte a action por item
+    06.  Tags input
+         TODO: pode sincronizar com dom el (input text | select), suporte a cores variantes, lista
+         (fixa ou livre), fixa+adição?, controle de remoção via botao ou backspace, limite, required,
+         validacao para inclusao formato (regex), disabled, readonly, deve integrar com is-valid
+         is-invalid (nyx.css), hint,
+    07.  Autocomplete (subistitui texto do controle)
+         TODO: lista de valores, limita ou nao a lista, pode definir prefix ou posfix, valida entrada
+         criada (regex), 
+    08.  Suggestor (similar ao autocomplete, porém sugere palavras ao digitar)
+         TODO: lista de variaveis, caracteres minimos para sugestão
+    09.  Dialog
+         TODO: integra com keywatch para context e atalhos, sizes (sm | md | lg | cover | full), podendo
+         alterar o size pelo BK point, position (top | center)
+    10.  Hover Card
+         TODO: visual inspirado no Chakra UI, responde ao click ou hover, fecha no (lost focus on delay | 
+         manual) pode responder a mais de um estado destes, responsivo, placement (top | bottom | 
+         start | end | auto), estado disabled
+    xx.  Progress
+         TODO: size (sm | md* | lg), label com position (start | end | ts | tc | te | bs | bs | be | follow),
+         animado, collors, estado indeterminate, stripes (animado e ou estatico)
+    xx.  Clipboard (copia conteudo para area de transf)
+    xx.  Accordion
+    xx.  Color Picker & Swatch
+    xx.  Action Bar
+         TODO: visual inspirado no Chakra UI, responde a evento, close btn, position
+         (ts | tc | te | bs | bs | be | follow_t | follow_b), pode receber margem superior no position,
+    xx.  Carousel
+    xx.  Drawer (exibe painel com opções, configs, etc)
+    xx.  Rating
+    xx.  Slider
+         TODO: (sm | md | lg) suporte a range, tratamento de colisao, 
+         icone personalizado nos controles, inclusao de legenda posicionada 
+         (end | start | bs | bc | be | ts | tc | te | follow), marks na barra com ou sem legenda, 
+         icones podendo respondender ao valor, variante vertical
+    xx.  Pin input
+    xx.  Data picker
+    xx.  Editor
+    xx.  QR Code
+    xx.  Tree view
    ============================================================ */
 
 
@@ -129,6 +176,7 @@
 
 .tabs__list {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary);
 }
@@ -333,19 +381,3 @@
 .toast--danger       { background-color: var(--nyx-bg-danger);   color: var(--nyx-text-danger);   border-color: var(--nyx-border-danger); }
 .toast--warning      { background-color: var(--nyx-bg-warning);  color: var(--nyx-text-warning);  border-color: var(--nyx-border-warning); }
 .toast--info         { background-color: var(--nyx-bg-info);     color: var(--nyx-text-info);     border-color: var(--nyx-border-info); }
-
-
-/* ——— 6. PAGE HEADER (comentado) —————————————————————————————
-
-  <div class="page-header">
-    <h4 class="page-header__title">Título</h4>
-    <div class="page-header__actions">
-      <button class="btn btn-outline">Exportar</button>
-      <button class="btn btn-brand">Novo</button>
-    </div>
-  </div>
-  ——————————————————————————————————————————————————————————— */
-
-/* .page-header          { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
-.page-header__title   { font-size: var(--nyx-font-xl); font-weight: 600; color: var(--nyx-text-emp); line-height: var(--nyx-lh-tight); }
-.page-header__actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; } */
