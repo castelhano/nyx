@@ -89,7 +89,15 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
         if getattr(self, 'success_url', None):
             return str(self.success_url)
         model = self.model
-        return reverse(f'{model._meta.app_label}:{model._meta.model_name}_list')
+        url_name = f'{model._meta.app_label}:{model._meta.model_name}_list'
+        try:
+            return reverse(url_name)
+        except Exception:
+            from django.core.exceptions import ImproperlyConfigured
+            raise ImproperlyConfigured(
+                f"{self.__class__.__name__} não encontrou a URL '{url_name}'. "
+                "Declare success_url na view ou registre a rota de listagem via generate_urls."
+            )
 
     def _get_schema(self):
         """Personalização > Convenção: view explícita > auto-descoberta via registry."""
@@ -185,8 +193,7 @@ class BaseUpdateView(NyxBaseMixin, UpdateView):
     template_name      = "generic/form.html"
 
     def get_breadcrumb_extra(self):
-        obj = self.get_object()
-        return [BreadcrumbItem(label=str(obj))]
+        return [BreadcrumbItem(label=str(self.object))]
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)

@@ -5,7 +5,7 @@
   Estrutura recomendada:
 
   <div class="dropdown">
-    <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>
+    <button class="btn btn-outline btn-dropdown">
       Opções
     </button>
     <ul class="dropdown-menu" data-dropdown-menu data-role="menu">
