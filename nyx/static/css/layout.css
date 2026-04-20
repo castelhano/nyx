@@ -109,7 +109,8 @@ body {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 150ms ease;
-  overflow: clip;
+  overflow: hidden;
+  transform: translateZ(0);
 }
 
 .sidebar__group-content > div {
@@ -193,7 +194,7 @@ body {
 }
 
 .sidebar--collapsed .sidebar__group-toggle {
-  width: calc(100% - 0.5rem);
+  display: flex;
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
