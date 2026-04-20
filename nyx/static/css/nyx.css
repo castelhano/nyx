@@ -432,9 +432,11 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .v-hidden       { visibility: hidden    !important; }
 
 /* Overflow */
-.overflow-hidden { overflow: hidden     !important; } /* Corta o conteúdo que sair do limite */
-.overflow-auto   { overflow: auto       !important; } /* Adiciona scroll apenas se necessário */
-.overflow-scroll { overflow: scroll     !important; } /* Sempre exibe as barras de scroll */
+.overflow-hidden { overflow:   hidden     !important; } /* Corta o conteúdo que sair do limite  */
+.overflow-auto   { overflow:   auto       !important; } /* Adiciona scroll apenas se necessário */
+.overflow-x      { overflow-x: auto;                  } /* Adiciona scroll eixo x se necessário */
+.overflow-y      { overflow-y: auto;                  } /* Adiciona scroll eixo y se necessário */
+.overflow-scroll { overflow:   scroll     !important; } /* Sempre exibe as barras de scroll     */
 
 /* Position */
 .position-relative { position: relative !important; } /* Posicionamento relativo ao seu lugar original */
@@ -598,12 +600,26 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .h-auto { height: auto   !important; }
 .h-full { height: 100%   !important; }
 
-/* Max width útil para containers */
-.max-w-sm  { max-width: 480px  !important; }
-.max-w-md  { max-width: 768px  !important; }
-.max-w-lg  { max-width: 1024px !important; }
-.max-w-xl  { max-width: 1280px !important; }
-.max-w-full{ max-width: 100%   !important; }
+/* Max width / height controlados  */
+.mw-2xs  { max-width: 160px  !important; width: 100%;       }
+.mw-xs   { max-width: 320px  !important; width: 100%;       }
+.mw-sm   { max-width: 480px  !important; width: 100%;       }
+.mw-md   { max-width: 640px  !important; width: 100%;       }
+.mw-lg   { max-width: 800px  !important; width: 100%;       }
+.mw-xl   { max-width: 1024px !important; width: 100%;       }
+.mw-2xl  { max-width: 1280px !important; width: 100%;       }
+.mw-3xl  { max-width: 1536px !important; width: 100%;       }
+.mw-full { max-width: 100%   !important; width: 100%;       }
+
+.mh-2xs  { max-height: 100px  !important; overflow-y: auto; }
+.mh-xs   { max-height: 200px  !important; overflow-y: auto; }
+.mh-sm   { max-height: 300px  !important; overflow-y: auto; }
+.mh-md   { max-height: 450px  !important; overflow-y: auto; }
+.mh-lg   { max-height: 600px  !important; overflow-y: auto; }
+.mh-xl   { max-height: 750px  !important; overflow-y: auto; }
+.mh-2xl  { max-height: 900px  !important; overflow-y: auto; }
+.mh-3xl  { max-height: 1100px !important; overflow-y: auto; }
+.mh-full { max-height: 100%  !important;                    }
 
 
 /* ——— 10. COMPONENTES — FORMS ——————————————————————————————— */
