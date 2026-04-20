@@ -23,7 +23,7 @@
             <div class="bg-attention">attention</div>
             <div class="bg-promoted">promoted</div>
         </div>
-        <ul>
+        <ul class="my-3">
             <li class="text-brand">brand</li>
             <li class="text-info">info</li>
             <li class="text-success">success</li>
@@ -34,7 +34,7 @@
             <li class="text-promoted">promoted</li>
         </ul>
     </section>
-    <section class="">
+    <section class="my-3">
         <div class="grid">
             <c-tabs variant="tabs--pills tabs--vertical">
                 <c-slot name="tabs">
@@ -48,16 +48,51 @@
                     <p>Conteúdo da aba Configurações</p>
                 </div>
             </c-tabs>
-            <c-dropdown label="Opções" trigger_class="btn-outline btn-sm">
-                <li class="dropdown-item">Editar</li>
-                <li class="dropdown-item dropdown-item--danger">Excluir</li>
-            </c-dropdown>
-            <c-dropdown label="Menu" menu_class="dropdown-menu--end">
-                <li class="dropdown-item">Editar</li>
-                <li class="dropdown-divider"></li>
-                <li class="dropdown-item dropdown-item--danger">Excluir</li>
-            </c-dropdown>
+            <div>
+                <c-dropdown label="Opções" trigger_class="btn-outline btn-sm my-2">
+                    <li class="dropdown-item">Editar</li>
+                    <li class="dropdown-item dropdown-item--danger">Excluir</li>
+                </c-dropdown>
+            </div>
+            <div>
+
+                <c-dropdown label="Menu" menu_class="dropdown-menu--end my-2">
+                    <li class="dropdown-item">Editar</li>
+                    <li class="dropdown-divider"></li>
+                    <li class="dropdown-item dropdown-item--danger">Excluir</li>
+                </c-dropdown>
+            </div>
         </div>
+    </section>
+    <section class="my-3">
+        <form action="">
+            <label for="" class="form-label">Nome</label>
+            <input type="text" class="form-control" placeholder="Nome completo">
+
+            <label class="form-check mt-2" for="foo">
+                <input type="checkbox" class="form-check-input" id="foo">
+                Fei
+            </label>
+            <label class="form-check mt-2" for="fon">
+                <input type="checkbox" class="form-check-input" id="fon">
+                Outro check
+            </label>
+            <label class="form-check mt-2" for="uii">
+                <input type="checkbox" class="form-check-input" id="uii">
+                Mais um
+            </label>
+            <div class="d-grid gap-2">                
+                <label class="form-switch mt-3">
+                    <input type="checkbox" class="form-switch-input">
+                    <span class="form-switch-label">Receber notificações</span>
+                </label>
+                <label class="form-switch">
+                    <input type="checkbox" class="form-switch-input">
+                    <span class="form-switch-label">Ou nao</span>
+                </label>
+            </div>
+
+        </form>
     </section>
 </main>
 {% endblock %}
