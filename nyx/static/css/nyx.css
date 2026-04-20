@@ -1,28 +1,28 @@
 /* ============================================================
-   NYX DESIGN SYSTEM — app.css
-   Estrutura:
-     1. Reset
-     2. Variáveis (tokens)
-     3. Base (body, headings, links)
-     4. Utilitários — Background
-     5. Utilitários — Tipografia
-     6. Utilitários — Borda
-     7. Utilitários — Espaçamento
-     8. Layout — Display / Flex / Grid
-     9. Layout — Dimensões
-    10. Componentes — Forms
-    11. Componentes — Tabela
-    12. Componentes — Badge / Pill
-    13. Componentes — Botões
-    14. Componentes — Collapse
-    15. Componentes — Spinner
-    xx. Componentes — Timeline
-    xx. Componentes — Data list
+NYX DESIGN SYSTEM — app.css
+Estrutura:
+1. Reset
+2. Variáveis (tokens)
+3. Base (body, headings, links)
+4. Utilitários — Background
+5. Utilitários — Tipografia
+6. Utilitários — Borda
+7. Utilitários — Espaçamento
+8. Layout — Display / Flex / Grid
+9. Layout — Dimensões
+10. Componentes — Forms
+11. Componentes — Tabela
+12. Componentes — Badge / Pill
+13. Componentes — Botões
+14. Componentes — Collapse
+15. Componentes — Spinner
+xx. Componentes — Timeline
+xx. Componentes — Data list
 
-    TODO: 
-    13. Add group-control similar (aparencia) ao usado no chakra-ui (segmented controls)
-    13. Add .radio-card (sm | md | lg) md=default, similar (aparencia) ao usado no chakra-ui
-   ============================================================ */
+TODO: 
+13. Add group-control similar (aparencia) ao usado no chakra-ui (segmented controls)
+13. Add .radio-card (sm | md | lg) md=default, similar (aparencia) ao usado no chakra-ui
+============================================================ */
 
 /* ——— 0. EXTERNAL ———————————————————————————————————————————— */
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap');
@@ -51,44 +51,44 @@ select {appearance: none;}
 :root[data-theme="dark"]  { color-scheme: dark;  }
 :root {
   color-scheme: light dark;
-
+  
   /* — Background (camadas de densidade) — */
-  --nyx-bg-body:        light-dark(#ffffff,  #1a1c1e);
-  --nyx-bg-secondary:   light-dark(#f5f5f5,  #212327);
-  --nyx-bg-tertiary:    light-dark(#ebebeb,  #2a2d31);
-  --nyx-bg-alt:         light-dark(#ffffff,  #0F1117);
-  --nyx-bg-alt-secondary:       light-dark(#ffffff,  #161922);
-
+  --nyx-bg-body:          light-dark(#c8c9cf,  #1a1c1e);
+  --nyx-bg-secondary:     light-dark(#babcc3,  #212327);
+  --nyx-bg-tertiary:      light-dark(#acaeb6,  #2a2d31);
+  --nyx-bg-alt:           light-dark(#9aa4b0,  #0F1117);
+  --nyx-bg-alt-secondary: light-dark(#a6b0bc,  #161922);
+  
   /* — Background (estados semânticos) — */
-  --nyx-bg-brand:       light-dark(#eff2f4,  #28333d);
-  --nyx-bg-info:        light-dark(#ebf5f7,  #27393d);
-  --nyx-bg-warning:     light-dark(#fff8e6,  #423f24);
-  --nyx-bg-danger:      light-dark(#fcebed,  #3b282b);
-  --nyx-bg-success:     light-dark(#e9f5ef,  #22322f);
-  --nyx-bg-attention:   light-dark(#ffefef,  #3b3127);
-  --nyx-bg-promoted:    light-dark(#fbeaf2,  #362936);
-  --nyx-bg-discovery:   light-dark(#f1ecf9,  #2b263e);
-
+  --nyx-bg-brand:       light-dark(#dde5ec,  #28333d);
+  --nyx-bg-info:        light-dark(#d6ebef,  #27393d);
+  --nyx-bg-warning:     light-dark(#f0e6c8,  #423f24);
+  --nyx-bg-danger:      light-dark(#f0d8da,  #3b282b);
+  --nyx-bg-success:     light-dark(#cfe8db,  #22322f);
+  --nyx-bg-attention:   light-dark(#f0ddd0,  #3b3127);
+  --nyx-bg-promoted:    light-dark(#ead5e4,  #362936);
+  --nyx-bg-discovery:   light-dark(#ddd5ef,  #2b263e);
+  
   /* — Tipografia (fonte) — */
   --nyx-typeface-base:  system-ui, sans-serif;
   --nyx-typeface-mono:  "Roboto Mono", monospace;
   
   /* — Tipografia (cor) — */
-  --nyx-text-primary:   light-dark(#373b3e,  #c9d1d9);
-  --nyx-text-secondary: light-dark(#5f6368,  #8b949e);
-  --nyx-text-tertiary:  light-dark(#80868b,  #596169);
-  --nyx-text-emp:       light-dark(#1a1a1b,  #f0f0f0);
-
+  --nyx-text-primary:   light-dark(#2e3235,  #c9d1d9);
+  --nyx-text-secondary: light-dark(#52585e,  #8b949e);
+  --nyx-text-tertiary:  light-dark(#757c83,  #596169);
+  --nyx-text-emp:       light-dark(#111315,  #f0f0f0);
+  
   /* — Tipografia (estados semânticos) — */
-  --nyx-text-brand:     light-dark(#5a7d9a,  #8eb3d3);
-  --nyx-text-info:      light-dark(#2c8191,  #6edff6);
-  --nyx-text-warning:   light-dark(#7a5c10,  #ffda6a);
-  --nyx-text-danger:    light-dark(#c0392b,  #ff8585);
-  --nyx-text-success:   light-dark(#1a7a4a,  #75f0a3);
-  --nyx-text-discovery: light-dark(#6f42c1,  #a370f7);
-  --nyx-text-attention: light-dark(#d45f00,  #feb272);
-  --nyx-text-promoted:  light-dark(#c02070,  #e685b5);
-
+  --nyx-text-brand:     light-dark(#3d6584,  #8eb3d3);
+  --nyx-text-info:      light-dark(#1f6b7a,  #6edff6);
+  --nyx-text-warning:   light-dark(#6b4f0d,  #ffda6a);
+  --nyx-text-danger:    light-dark(#a8302a,  #ff8585);
+  --nyx-text-success:   light-dark(#1a6840,  #75f0a3);
+  --nyx-text-discovery: light-dark(#5c35a8,  #a370f7);
+  --nyx-text-attention: light-dark(#b85200,  #feb272);
+  --nyx-text-promoted:  light-dark(#a01a60,  #e685b5);
+  
   /* — Tipografia (escala) — */
   --nyx-font-xs:   0.75rem;     /* 12px */
   --nyx-font-sm:   0.875rem;    /* 14px */
@@ -98,24 +98,24 @@ select {appearance: none;}
   --nyx-font-2xl:  1.5rem;      /* 24px */
   --nyx-font-3xl:  1.875rem;    /* 30px */
   --nyx-font-4xl:  2.25rem;     /* 36px */
-
+  
   /* — Line-height — */
   --nyx-lh-tight:  1.25;
   --nyx-lh-normal: 1.5;
   --nyx-lh-loose:  1.75;
-
+  
   /* — Bordas (cor) — */
-  --nyx-border-primary:   light-dark(#dee2e6, #2d2f31);
-  --nyx-border-secondary: light-dark(#ced4da, #3e4246);
-  --nyx-border-brand:     light-dark(#5a7d9a, #42566a);
-  --nyx-border-info:      light-dark(#2c8191, #395055);
-  --nyx-border-warning:   light-dark(#7a5c10, #5a5436);
-  --nyx-border-danger:    light-dark(#c0392b, #5c3b3e);
-  --nyx-border-success:   light-dark(#1a7a4a, #344a41);
-  --nyx-border-attention: light-dark(#d45f00, #5c4333);
-  --nyx-border-promoted:  light-dark(#c02070, #573b4b);
-  --nyx-border-discovery: light-dark(#6f42c1, #453b5e);
-
+  --nyx-border-primary:   light-dark(#c8ccd1, #2d2f31);
+  --nyx-border-secondary: light-dark(#b4b9bf, #3e4246);
+  --nyx-border-brand:     light-dark(#3d6584, #42566a);
+  --nyx-border-info:      light-dark(#1f6b7a, #395055);
+  --nyx-border-warning:   light-dark(#6b4f0d, #5a5436);
+  --nyx-border-danger:    light-dark(#a8302a, #5c3b3e);
+  --nyx-border-success:   light-dark(#1a6840, #344a41);
+  --nyx-border-attention: light-dark(#b85200, #5c4333);
+  --nyx-border-promoted:  light-dark(#a01a60, #573b4b);
+  --nyx-border-discovery: light-dark(#5c35a8, #453b5e);
+  
   /* — Bordas (largura & raio) — */
   --nyx-border-width-1: 1px;
   --nyx-border-width-2: 2px;
@@ -126,26 +126,26 @@ select {appearance: none;}
   --nyx-radius-md:      8px;
   --nyx-radius-lg:      12px;
   --nyx-radius-pill:    50rem;
-
+  
   /* — Espaçamento — */
   --nyx-spacer-1: 0.25rem;   /* 4px  */
   --nyx-spacer-2: 0.5rem;    /* 8px  */
   --nyx-spacer-3: 1rem;      /* 16px */
   --nyx-spacer-4: 1.5rem;    /* 24px */
   --nyx-spacer-5: 3rem;      /* 48px */
-
+  
   /* — Sombras — */
-  --nyx-shadow-sm: light-dark(0 1px 3px rgba(0,0,0,.08),  0 1px 3px rgba(0,0,0,.4));
-  --nyx-shadow-md: light-dark(0 4px 12px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.5));
-  --nyx-shadow-lg: light-dark(0 8px 24px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.6));
-
+  --nyx-shadow-sm: light-dark(0 1px 3px rgba(0,0,0,.12),  0 1px 3px rgba(0,0,0,.4));
+  --nyx-shadow-md: light-dark(0 4px 12px rgba(0,0,0,.14), 0 4px 12px rgba(0,0,0,.5));
+  --nyx-shadow-lg: light-dark(0 8px 24px rgba(0,0,0,.16), 0 8px 24px rgba(0,0,0,.6));
+  
   /* — Transições — */
   --nyx-transition-fast:   all 0.15s ease;
   --nyx-transition-normal: all 0.2s ease;
-
+  
   /* — Focus Ring — */
   --nyx-focus-ring: 0 0 0 3px var(--nyx-bg-info);
-
+  
   /* — Form (tokens internos) — */
   --nyx-input-padding-y:    0.6rem;
   --nyx-input-padding-x:    0.75rem;
@@ -460,9 +460,9 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 /* ——— 8.1. UTILITÁRIOS RESPONSIVOS —————————————————————————— */
 
 /* Breakpoints:
-   md: 768px  (Tablets)
-   lg: 1024px (Laptops)
-   xl: 1280px (Desktops)
+md: 768px  (Tablets)
+lg: 1024px (Laptops)
+xl: 1280px (Desktops)
 */
 
 @media (min-width: 768px) {
@@ -494,8 +494,8 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .grid-auto {
   gap: var(--grid-gap, 1rem);
   grid-template-columns: repeat(
-    auto-fit,
-    minmax(min(100%, var(--grid-min, 250px)), 1fr)
+  auto-fit,
+  minmax(min(100%, var(--grid-min, 250px)), 1fr)
   );
 }
 .grid-xs { --grid-min: 150px; } /* Define largura mínima da coluna para 150px */
@@ -715,22 +715,22 @@ select.form-control-sm {
 }
 
 /* ——— Input com ícone ——————————————————————————————————————
-   Estrutura:
-   <div class="input-icon-wrap">
-     <span class="input-icon input-icon-start">
-       <i class="bi bi-search"></i>
-     </span>
-     <input class="form-control has-icon-start" ...>
-   </div>
+Estrutura:
+<div class="input-icon-wrap">
+<span class="input-icon input-icon-start">
+<i class="bi bi-search"></i>
+</span>
+<input class="form-control has-icon-start" ...>
+</div>
 
-   Ou no fim:
-   <div class="input-icon-wrap">
-     <input class="form-control has-icon-end" ...>
-     <span class="input-icon input-icon-end">
-       <i class="bi bi-eye"></i>
-     </span>
-   </div>
-   ——————————————————————————————————————————————————————— */
+Ou no fim:
+<div class="input-icon-wrap">
+<input class="form-control has-icon-end" ...>
+<span class="input-icon input-icon-end">
+<i class="bi bi-eye"></i>
+</span>
+</div>
+——————————————————————————————————————————————————————— */
 .input-icon-wrap {
   position: relative;
   display: flex;
@@ -783,13 +783,13 @@ select.form-control-sm {
 /* ——— 11. COMPONENTES — TABELA —————————————————————————————— */
 
 /*
-  Estrutura recomendada:
-  <div class="table-wrapper">
-    <table class="table table-striped table-hover table-sm">
-      <thead>...</thead>
-      <tbody>...</tbody>
-    </table>
-  </div>
+Estrutura recomendada:
+<div class="table-wrapper">
+<table class="table table-striped table-hover table-sm">
+<thead>...</thead>
+<tbody>...</tbody>
+</table>
+</div>
 */
 
 .table-wrapper {
@@ -919,8 +919,8 @@ select.form-control-sm {
 
 
 /* ——— 13. COMPONENTES — BOTÕES ———————————————————————————————
-   Mantidos mínimos — expanda conforme necessitar.
-   ——————————————————————————————————————————————————————————— */
+Mantidos mínimos — expanda conforme necessitar.
+——————————————————————————————————————————————————————————— */
 
 .btn {
   display: inline-flex;
@@ -949,7 +949,7 @@ select.form-control-sm {
 
 /* Variantes */
 .btn-brand,
-.btn-ghost-brand:hover, 
+.btn-ghost-brand:hover,
 .btn-outline-brand:hover { background-color: var(--nyx-bg-brand); }
 
 .btn-brand {color: var(--nyx-text-brand);}
@@ -961,9 +961,25 @@ select.form-control-sm {
 .btn-outline { color: var(--nyx-text-secondary); }
 
 .btn-ghost { background-color: transparent; color: var(--nyx-text-secondary); }
-.btn-ghost-brand { background-color: transparent; color: var(--nyx-text-brand); }
-.btn-ghost:not(.active):hover, 
-.btn-outline:not(.active):hover { background-color: var(--nyx-bg-secondary); color: var(--nyx-text-emp);}
+.btn-ghost-brand     { background-color: transparent; color: var(--nyx-text-brand);     }
+.btn-ghost-info      { background-color: transparent; color: var(--nyx-text-info);      }
+.btn-ghost-danger    { background-color: transparent; color: var(--nyx-text-danger);    }
+.btn-ghost-success   { background-color: transparent; color: var(--nyx-text-success);   }
+.btn-ghost-warning   { background-color: transparent; color: var(--nyx-text-warning);   }
+.btn-ghost-attention { background-color: transparent; color: var(--nyx-text-attention); }
+.btn-ghost-promoted  { background-color: transparent; color: var(--nyx-text-promoted);  }
+.btn-ghost-discovery { background-color: transparent; color: var(--nyx-text-discovery); }
+
+.btn-ghost:not(.active):hover,
+.btn-outline:not(.active):hover      { background-color: var(--nyx-bg-secondary);   color: var(--nyx-text-emp); }
+.btn-ghost-brand:not(.active):hover  { background-color: var(--nyx-bg-brand);       color: var(--nyx-text-brand); }
+.btn-ghost-info:not(.active):hover   { background-color: var(--nyx-bg-info);        color: var(--nyx-text-info); }
+.btn-ghost-danger:not(.active):hover { background-color: var(--nyx-bg-danger);      color: var(--nyx-text-danger); }
+.btn-ghost-success:not(.active):hover   { background-color: var(--nyx-bg-success);   color: var(--nyx-text-success); }
+.btn-ghost-warning:not(.active):hover   { background-color: var(--nyx-bg-warning);   color: var(--nyx-text-warning); }
+.btn-ghost-attention:not(.active):hover { background-color: var(--nyx-bg-attention); color: var(--nyx-text-attention); }
+.btn-ghost-promoted:not(.active):hover  { background-color: var(--nyx-bg-promoted);  color: var(--nyx-text-promoted); }
+.btn-ghost-discovery:not(.active):hover { background-color: var(--nyx-bg-discovery); color: var(--nyx-text-discovery); }
 
 .btn-ghost.active { background-color: var(--nyx-bg-alt-secondary); opacity: 1; }
 
@@ -988,57 +1004,57 @@ select.form-control-sm {
   flex-shrink: 0;
   background-color: currentColor;
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E");
-          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708'/%3E%3C/svg%3E");
   -webkit-mask-repeat: no-repeat;
-          mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
   -webkit-mask-size: contain;
-          mask-size: contain;
+  mask-size: contain;
   -webkit-mask-position: center;
-          mask-position: center;
+  mask-position: center;
 }
 
 /* ============================================================
-   NYX DESIGN SYSTEM — components.css
-   Depende de: nyx.css (tokens e variáveis)
-   Estrutura:
-     1. Checkbox & Radio
-     2. Switch
-   ============================================================ */
+NYX DESIGN SYSTEM — components.css
+Depende de: nyx.css (tokens e variáveis)
+Estrutura:
+1. Checkbox & Radio
+2. Switch
+============================================================ */
 
 
 /* ——— 1. CHECKBOX & RADIO ——————————————————————————————————————
 
-  Estrutura recomendada:
+Estrutura recomendada:
 
-  O <label class="form-check"> é o único wrapper necessário.
-  O texto pode ficar direto no label ou em qualquer elemento filho —
-  a classe .form-check-label é opcional (apenas adiciona cor/tamanho).
+O <label class="form-check"> é o único wrapper necessário.
+O texto pode ficar direto no label ou em qualquer elemento filho —
+a classe .form-check-label é opcional (apenas adiciona cor/tamanho).
 
-  <label class="form-check">
-    <input type="checkbox" class="form-check-input">
-    Lembrar acesso
-  </label>
+<label class="form-check">
+<input type="checkbox" class="form-check-input">
+Lembrar acesso
+</label>
 
-  <label class="form-check">
-    <input type="checkbox" class="form-check-input">
-    <span class="form-check-label">Lembrar acesso</span>
-  </label>
+<label class="form-check">
+<input type="checkbox" class="form-check-input">
+<span class="form-check-label">Lembrar acesso</span>
+</label>
 
-  <label class="form-check">
-    <input type="radio" class="form-check-input">
-    Opção A
-  </label>
+<label class="form-check">
+<input type="radio" class="form-check-input">
+Opção A
+</label>
 
-  Variações de cor no input:
-    .form-check-input--brand    (padrão visual, mesmo sem a classe)
-    .form-check-input--success
+Variações de cor no input:
+.form-check-input--brand    (padrão visual, mesmo sem a classe)
+.form-check-input--success
 
-  Variação de tamanho no wrapper:
-    .form-check-sm
+Variação de tamanho no wrapper:
+.form-check-sm
 
-  Desabilitado:
-    <input ... disabled>   →  opacidade automática no label
-  ——————————————————————————————————————————————————————————— */
+Desabilitado:
+<input ... disabled>   →  opacidade automática no label
+——————————————————————————————————————————————————————————— */
 
 /* Wrapper */
 .form-check {
@@ -1070,7 +1086,7 @@ select.form-control-sm {
   transition: var(--nyx-transition-fast);
   position: relative;
   /* ::before/::after de inputs não funcionam em todos os browsers —
-     usamos outline + background-image para o ícone de marcação */
+  usamos outline + background-image para o ícone de marcação */
 }
 
 /* Checkbox: cantos arredondados */
@@ -1110,7 +1126,7 @@ input[type="radio"].form-check-input {
 }
 
 /* ── Ícone de marcação via background-image (compatível com todos os browsers)
-   BS icon: check2 (bi-check2) — fill branco embutido no SVG            */
+BS icon: check2 (bi-check2) — fill branco embutido no SVG            */
 input[type="checkbox"].form-check-input:checked {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23ffffff' d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -1171,23 +1187,23 @@ input[type="radio"].form-check-input:checked {
 
 /* ——— 2. SWITCH ————————————————————————————————————————————————
 
-  Estrutura recomendada:
+Estrutura recomendada:
 
-  <label class="form-switch">
-    <input type="checkbox" class="form-switch-input">
-    <span class="form-switch-label">Receber notificações</span>
-  </label>
+<label class="form-switch">
+<input type="checkbox" class="form-switch-input">
+<span class="form-switch-label">Receber notificações</span>
+</label>
 
-  Variações de cor:
-    .form-switch-input--brand    (padrão visual)
-    .form-switch-input--success
+Variações de cor:
+.form-switch-input--brand    (padrão visual)
+.form-switch-input--success
 
-  Variação de tamanho:
-    .form-switch-sm
+Variação de tamanho:
+.form-switch-sm
 
-  Desabilitado:
-    <input ... disabled>
-  ——————————————————————————————————————————————————————————— */
+Desabilitado:
+<input ... disabled>
+——————————————————————————————————————————————————————————— */
 
 /* ── Tokens locais do switch ────────────────────────────── */
 :root {
@@ -1196,16 +1212,16 @@ input[type="radio"].form-check-input:checked {
   --_sw-thumb:      1rem;
   --_sw-gap:        0.1875rem;   /* (height - thumb) / 2 */
   --_sw-travel:     calc(var(--_sw-width) - var(--_sw-thumb) - var(--_sw-gap) * 2);
-
+  
   --_sw-width-sm:   2rem;
   --_sw-height-sm:  1.125rem;
   --_sw-thumb-sm:   0.8125rem;
   --_sw-gap-sm:     0.15625rem;
   --_sw-travel-sm:  calc(var(--_sw-width-sm) - var(--_sw-thumb-sm) - var(--_sw-gap-sm) * 2);
-
+  
   /* Cores de estado OFF */
   --_sw-bg-off:     var(--nyx-border-secondary);
-
+  
   /* Cores de estado ON por variante */
   --_sw-bg-brand:   var(--nyx-bg-brand);
   --_sw-bg-success: var(--nyx-bg-success);
@@ -1250,7 +1266,7 @@ input[type="radio"].form-check-input:checked {
   background-color: #fff;
   box-shadow: var(--nyx-shadow-sm);
   transition: transform 0.2s cubic-bezier(0.34, 1.2, 0.64, 1),
-              width 0.1s ease;
+  width 0.1s ease;
 }
 
 /* Tamanho sm */
