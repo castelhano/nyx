@@ -37,7 +37,12 @@ NyxDom.register('sidebar', el => {
     groupToggles.forEach(btn => btn.addEventListener('click', onGroupToggle));
 
     // ── Sidebar collapse toggle ───────────────────────────────────
-    const toggleCollapsed = () => el.classList.toggle('sidebar--collapsed');
+    const STORAGE_KEY = 'nyx:sidebar:collapsed';
+
+    const toggleCollapsed = () => {
+        const collapsed = el.classList.toggle('sidebar--collapsed');
+        localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+    };
 
     const toggleBtns = document.querySelectorAll('[data-sidebar-toggle]');
     toggleBtns.forEach(btn => btn.addEventListener('click', toggleCollapsed));
@@ -48,7 +53,17 @@ NyxDom.register('sidebar', el => {
         }
     };
 
-    if (window.innerWidth <= BREAKPOINT) el.classList.add('sidebar--collapsed');
+    if (window.NyxPreload?.sidebar.collapsed) {
+        el.classList.add('sidebar--collapsed');
+    } else if (window.innerWidth <= BREAKPOINT) {
+        el.classList.add('sidebar--collapsed');
+    }
+
+    requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+            document.documentElement.removeAttribute('data-sidebar-init')
+        )
+    );
     window.addEventListener('resize', onResize);
 
     // ── Search ───────────────────────────────────────────────────

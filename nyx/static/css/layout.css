@@ -17,6 +17,12 @@ body {
   overflow: hidden;
 }
 
+/* ——— Sidebar: estado inicial via preload (sem transição) ——— */
+html[data-sidebar-init="collapsed"] .sidebar {
+  width: var(--nyx-sidebar-collapsed-width);
+  transition: none;
+}
+
 /* ——— Sidebar ——— */
 .sidebar {
   width: var(--nyx-sidebar-width);
