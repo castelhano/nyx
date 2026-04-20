@@ -816,7 +816,7 @@ select.form-control-sm {
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
-  border-radius: var(--nyx-radius-md);
+  border-radius: var(--nyx-radius-sm);
   border: var(--nyx-border-width-1) solid var(--nyx-border-primary);
 }
 

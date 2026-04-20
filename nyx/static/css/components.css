@@ -271,9 +271,6 @@
   font-size: var(--nyx-font-sm);
 }
 
-.breadcrumb__link              { color: var(--nyx-text-brand); transition: var(--nyx-transition-fast); }
-.breadcrumb__link:hover        { text-decoration: underline; }
-.breadcrumb__current           { color: var(--nyx-text-secondary); }
 .breadcrumb__sep               { color: var(--nyx-text-tertiary); font-size: var(--nyx-font-xs); user-select: none; }
 
 .breadcrumb__dropdown-wrap {
