@@ -1,7 +1,7 @@
 {% extends base_template %}
 
 {% block main %}
-<div class="{{ui.layout.container_class}}" data-page-module="{{ ui.title|slugify }}-list">
+<div class="{{ui.layout.container_class}}" data-page-module="{{ ui.title|slugify }}-list" data-keybind-group="{{ ui.title|slugify }}-list">
 
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 

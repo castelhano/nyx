@@ -388,3 +388,220 @@
 .toast--danger       { background-color: var(--nyx-bg-danger);   color: var(--nyx-text-danger);   border-color: var(--nyx-border-danger); }
 .toast--warning      { background-color: var(--nyx-bg-warning);  color: var(--nyx-text-warning);  border-color: var(--nyx-border-warning); }
 .toast--info         { background-color: var(--nyx-bg-info);     color: var(--nyx-text-info);     border-color: var(--nyx-border-info); }
+
+
+/* ——— 10. HOVER CARD ——————————————————————————————————————————
+
+  Estrutura:
+  <div class="hcard" data-component="hover-card" data-trigger="hover">
+    <div class="hcard__trigger" data-hcard-trigger>
+      <!-- qualquer conteúdo: texto, avatar, botão... -->
+      <span>João Silva</span>
+    </div>
+    <div class="hcard__panel" data-hcard-panel>
+      <div class="hcard__header">
+        <img class="hcard__avatar" src="..." alt="">
+        <div>
+          <p class="hcard__name">João Silva</p>
+          <p class="hcard__sub">@joaosilva</p>
+        </div>
+      </div>
+      <p class="hcard__body">Desenvolvedor full-stack apaixonado por design systems.</p>
+      <div class="hcard__footer">
+        <span><strong>128</strong> seguindo</span>
+        <span><strong>4.2k</strong> seguidores</span>
+      </div>
+    </div>
+  </div>
+
+  Trigger:
+    data-trigger="hover"   → abre no hover (padrão)
+    data-trigger="click"   → abre no click
+    data-trigger="both"    → hover e click
+
+  Placement (padrão: bottom):
+    data-placement="top | bottom | start | end"
+
+  Disabled:
+    data-disabled="true"
+
+  Alinhamento do painel (padrão: start):
+    .hcard__panel--end     → alinha à direita do trigger
+  ——————————————————————————————————————————————————————————— */
+
+.hcard {
+  position: relative;
+  display: inline-block;
+}
+
+.hcard__panel {
+  position: absolute;
+  z-index: var(--nyx-z-popover);
+  width: 17rem;
+  background-color: var(--nyx-surface-bg);
+  border: var(--nyx-border-width-1) solid var(--nyx-surface-border);
+  border-radius: var(--nyx-radius-sm);
+  box-shadow: var(--nyx-shadow-lg);
+  padding: var(--nyx-spacer-3);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px) scale(0.97);
+  transition: opacity 0.15s ease,
+              transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Placement: bottom (padrão) */
+.hcard__panel {
+  top: calc(100% + 0.5rem);
+  left: 0;
+}
+
+/* Placement: top */
+.hcard[data-placement="top"] .hcard__panel {
+  top: auto;
+  bottom: calc(100% + 0.5rem);
+  transform: translateY(6px) scale(0.97);
+}
+
+/* Placement: start (esquerda) */
+.hcard[data-placement="start"] .hcard__panel {
+  top: 0;
+  left: auto;
+  right: calc(100% + 0.5rem);
+  transform: translateX(6px) scale(0.97);
+}
+
+/* Placement: end (direita) */
+.hcard[data-placement="end"] .hcard__panel {
+  top: 0;
+  left: calc(100% + 0.5rem);
+  transform: translateX(-6px) scale(0.97);
+}
+
+/* Alinhamento --end: painel alinha à direita do trigger */
+.hcard__panel--end { left: auto; right: 0; }
+
+/* Estado aberto */
+.hcard__panel.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+.hcard[data-placement="start"] .hcard__panel.open,
+.hcard[data-placement="end"]   .hcard__panel.open {
+  transform: translateX(0) scale(1);
+}
+
+/* ── Anatomia interna ─────────────────────────────────────── */
+
+.hcard__header {
+  display: flex;
+  align-items: center;
+  gap: var(--nyx-spacer-2);
+  margin-bottom: var(--nyx-spacer-2);
+}
+
+.hcard__avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--nyx-radius-pill);
+  object-fit: cover;
+  flex-shrink: 0;
+  border: var(--nyx-border-width-1) solid var(--nyx-surface-border);
+}
+
+.hcard__name {
+  font-size: var(--nyx-font-sm);
+  font-weight: 600;
+  color: var(--nyx-text-emp);
+  line-height: var(--nyx-lh-tight);
+}
+
+.hcard__sub {
+  font-size: var(--nyx-font-xs);
+  color: var(--nyx-text-tertiary);
+}
+
+.hcard__body {
+  font-size: var(--nyx-font-sm);
+  color: var(--nyx-text-secondary);
+  line-height: var(--nyx-lh-normal);
+}
+
+.hcard__footer {
+  display: flex;
+  gap: var(--nyx-spacer-3);
+  font-size: var(--nyx-font-xs);
+  color: var(--nyx-text-tertiary);
+  border-top: var(--nyx-border-width-1) solid var(--nyx-surface-border);
+  padding-top: var(--nyx-spacer-2);
+  margin-top: var(--nyx-spacer-2);
+}
+
+.hcard__footer strong {
+  color: var(--nyx-text-emp);
+  font-weight: 600;
+}
+
+.hcard__close {
+  position: absolute;
+  top: var(--nyx-spacer-2);
+  right: var(--nyx-spacer-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--nyx-text-tertiary);
+  line-height: 1;
+  padding: 0.2rem;
+  border-radius: var(--nyx-radius-sm);
+  transition: var(--nyx-transition-fast);
+}
+.hcard__close:hover { color: var(--nyx-text-emp); background-color: var(--nyx-bg-tertiary); }
+
+/* ── Chevron (balão) ──────────────────────────────────────── */
+
+.hcard--balloon .hcard__panel { overflow: visible; }
+
+/* bottom (padrão) — seta aponta para cima */
+.hcard--balloon .hcard__panel::before,
+.hcard--balloon .hcard__panel::after {
+  content: '';
+  position: absolute;
+  left: 1.25rem;
+  border: 9px solid transparent;
+}
+.hcard--balloon .hcard__panel::before { bottom: 100%; border-bottom-color: var(--nyx-surface-border); }
+.hcard--balloon .hcard__panel::after  { bottom: calc(100% - 1.5px); border-bottom-color: var(--nyx-surface-bg); }
+
+/* top — seta aponta para baixo */
+.hcard--balloon.hcard[data-placement="top"] .hcard__panel::before,
+.hcard--balloon.hcard[data-placement="top"] .hcard__panel::after {
+  bottom: auto;
+  top: 100%;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+.hcard--balloon.hcard[data-placement="top"] .hcard__panel::before { border-top-color: var(--nyx-surface-border); }
+.hcard--balloon.hcard[data-placement="top"] .hcard__panel::after  { top: calc(100% - 1.5px); border-top-color: var(--nyx-surface-bg); }
+
+/* start — seta aponta para a direita */
+.hcard--balloon.hcard[data-placement="start"] .hcard__panel::before,
+.hcard--balloon.hcard[data-placement="start"] .hcard__panel::after {
+  left: auto;
+  top: 1.25rem;
+  bottom: auto;
+  border-bottom-color: transparent;
+}
+.hcard--balloon.hcard[data-placement="start"] .hcard__panel::before { left: 100%; border-left-color: var(--nyx-surface-border); }
+.hcard--balloon.hcard[data-placement="start"] .hcard__panel::after  { left: calc(100% - 1.5px); border-left-color: var(--nyx-surface-bg); }
+
+/* end — seta aponta para a esquerda */
+.hcard--balloon.hcard[data-placement="end"] .hcard__panel::before,
+.hcard--balloon.hcard[data-placement="end"] .hcard__panel::after {
+  top: 1.25rem;
+  bottom: auto;
+  left: auto;
+  border-bottom-color: transparent;
+}
+.hcard--balloon.hcard[data-placement="end"] .hcard__panel::before { right: 100%; border-right-color: var(--nyx-surface-border); }
+.hcard--balloon.hcard[data-placement="end"] .hcard__panel::after  { right: calc(100% - 1.5px); border-right-color: var(--nyx-surface-bg); }

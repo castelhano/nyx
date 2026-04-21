@@ -1,22 +1,64 @@
-<nav class="breadcrumb" aria-label="navegacao"{% if back_url %} data-breadcrumb-back="{{ back_url }}"{% endif %}>
+<nav class="breadcrumb" aria-label="navegacao">
     {% for item in breadcrumbs %}
 
         {% if item.actions %}
             <div class="breadcrumb__dropdown-wrap">
                 {% if item.url %}
-                    <a href="{% url item.url %}" class="btn btn-sm btn-ghost">{{ item.label }}</a>
+                    {% if forloop.first %}
+                        <a href="{% url item.url %}"
+                           class="btn btn-sm btn-ghost"
+                           {% if item.url == back_url %}
+                           data-keybind="alt+v"
+                           title="Voltar para {{ item.label }}"
+                           data-keybind-icon="bi bi-arrow-counterclockwise"
+                           data-keybind-origin="nyx.breadcrumbs"
+                           {% endif %}>{{ item.label }}</a>
+                    {% else %}
+                        <a hx-get="{% url item.url %}"
+                           hx-target="#main-content"
+                           hx-push-url="true"
+                           class="btn btn-sm btn-ghost"
+                           {% if item.url == back_url %}
+                           data-keybind="alt+v"
+                           title="Voltar para {{ item.label }}"
+                           data-keybind-icon="bi bi-arrow-counterclockwise"
+                           data-keybind-origin="nyx.breadcrumbs"
+                           {% endif %}>{{ item.label }}</a>
+                    {% endif %}
                 {% else %}
                     <span class="text-brand">{{ item.label }}</span>
                 {% endif %}
                 <i class="bi bi-arrow-right text-muted"></i>
                 <div class="breadcrumb__dropdown">
                     {% for action in item.actions %}
-                        <a href="{% url action.url_name %}">{{ action.label }}</a>
+                        <a hx-get="{% url action.url_name %}"
+                           hx-target="#main-content"
+                           hx-push-url="true">{{ action.label }}</a>
                     {% endfor %}
                 </div>
             </div>
         {% elif item.url %}
-            <a href="{% url item.url %}" class="btn btn-sm btn-ghost">{{ item.label }}</a>
+            {% if forloop.first %}
+                <a href="{% url item.url %}"
+                   class="btn btn-sm btn-ghost"
+                   {% if item.url == back_url %}
+                   data-keybind="alt+v"
+                   title="Voltar para {{ item.label }}"
+                   data-keybind-icon="bi bi-arrow-counterclockwise"
+                   data-keybind-origin="nyx.breadcrumbs"
+                   {% endif %}>{{ item.label }}</a>
+            {% else %}
+                <a hx-get="{% url item.url %}"
+                   hx-target="#main-content"
+                   hx-push-url="true"
+                   class="btn btn-sm btn-ghost"
+                   {% if item.url == back_url %}
+                   data-keybind="alt+v"
+                   title="Voltar para {{ item.label }}"
+                   data-keybind-icon="bi bi-arrow-counterclockwise"
+                   data-keybind-origin="nyx.breadcrumbs"
+                   {% endif %}>{{ item.label }}</a>
+            {% endif %}
         {% else %}
             <span class="btn btn-sm text-brand">{{ item.label }}</span>
         {% endif %}

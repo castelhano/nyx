@@ -25,6 +25,7 @@
  *   data-keybind-context="modal"      contexto (default: 'default')
  *   data-keybind-desc="Salvar"        descrição para o modal de atalhos
  *   data-keybind-icon="bi bi-save"    classes do ícone para o modal de atalhos
+ *   data-keybind-origin="nyx.foo"    módulo/origem que registrou o atalho (informativo)
  *   data-keybind-group="form-viagem"  grupo para controle de ciclo de vida
  *   data-keybind-keyup="true"         dispara no keyup (default: false)
  *   data-keybind-keydown="false"      desativa keydown (default: true)

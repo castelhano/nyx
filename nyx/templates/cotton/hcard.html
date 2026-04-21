@@ -1,0 +1,38 @@
+<c-vars mode="hover" placement="bottom" dismiss="auto" delay="0" balloon="false" disabled="false" panel_end="false" name="" sub="" avatar="" />
+
+<div class="hcard {% if balloon == 'true' %}hcard--balloon{% endif %} {{ attrs.class }}"
+     data-component="hover-card"
+     data-trigger="{{ mode }}"
+     data-dismiss="{{ dismiss }}"
+     {% if delay != "0" %}data-delay="{{ delay }}"{% endif %}
+     {% if placement != "bottom" %}data-placement="{{ placement }}"{% endif %}
+     {% if disabled == "true" %}data-disabled="true"{% endif %}>
+
+    <div class="hcard__trigger" data-hcard-trigger>
+        {{ trigger }}
+    </div>
+
+    <div class="hcard__panel {% if panel_end == 'true' %}hcard__panel--end{% endif %}" data-hcard-panel>
+
+        {% if dismiss == "manual" %}
+        <button class="hcard__close" data-hcard-close aria-label="Fechar">
+            <i class="bi bi-x"></i>
+        </button>
+        {% endif %}
+
+        {% if name or avatar %}
+        <div class="hcard__header">
+            {% if avatar %}<img class="hcard__avatar" src="{{ avatar }}" alt="{{ name }}">{% endif %}
+            <div>
+                {% if name %}<p class="hcard__name">{{ name }}</p>{% endif %}
+                {% if sub %}<p class="hcard__sub">{{ sub }}</p>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if slot %}<div class="hcard__body">{{ slot }}</div>{% endif %}
+
+        {% if footer %}<div class="hcard__footer">{{ footer }}</div>{% endif %}
+
+    </div>
+</div>

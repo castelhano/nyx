@@ -11,9 +11,9 @@
                 <button class="tabs__tab active" data-tab="dados"   role="tab">Dados</button>
                 <button class="tabs__tab"        data-tab="config"  role="tab">Configurações</button>
             </c-slot>
-            <div class="tabs__panel active px-1" data-panel="dados">
+            <div class="tabs__panel active" data-panel="dados">
                 
-                <form autocomplete="off" class="d-grid grid-cols-2 gap-2">
+                <form autocomplete="off" class="d-grid grid-fit-rest align-center gap-2">
                     <label for="nome" class="form-label">Nome</label>
                     <input type="text" name="nome" id="nome" class="form-control form-control-sm mt-1" placeholder="Nome completo">
                     <label for="cpf" class="form-label">CPF</label>
@@ -26,6 +26,18 @@
             </div>
         </c-tabs>
         
+        <c-hcard name="João Silva" sub="@joao" dismiss="manual" mode="click" placement="top" balloon="true">
+            <c-slot name="trigger">
+                <span>Foo</span>
+            </c-slot>
+            Desenvolvedor full-stack.
+            <c-slot name="footer">
+                <span><strong>128</strong> seguindo</span>
+            </c-slot>
+        </c-hcard>
+
+
+
     </section>
 </main>
 {% endblock %}
