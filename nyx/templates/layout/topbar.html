@@ -1,11 +1,5 @@
 <header class="topbar">
 
-    <div class="topbar__start">
-        <button class="btn btn-sm btn-ghost-discovery" data-keybind="ctrl+'" data-sidebar-toggle title="Alternar menu">
-            <i class="bi-layout-sidebar-inset"></i>
-        </button>
-    </div>
-
     <div class="topbar__end">
         <span class="topbar__user">
             {{ request.user.get_full_name|default:request.user.username }}

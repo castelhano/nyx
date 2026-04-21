@@ -86,14 +86,14 @@ select { appearance: none; }
   --nyx-bg-alt-tertiary:  light-dark(#E9E4E9, #495E6E); */
 
   /* — Background (estados semânticos) — */
-  --nyx-bg-brand:     light-dark(#9BA9B8, #2D3945);
-  --nyx-bg-info:      light-dark(#A1B5BD, #2B3D42);
-  --nyx-bg-warning:   light-dark(#BCB08D, #454026);
-  --nyx-bg-danger:    light-dark(#BD9EA1, #452F32);
-  --nyx-bg-success:   light-dark(#98AF9F, #2A3B35);
-  --nyx-bg-promoted:  light-dark(#A999A9, #3D2D3D);
-  --nyx-bg-attention:   light-dark(#B8896B, #583F30);
-  --nyx-bg-discovery: light-dark(#9D96B8, #342D4D);
+  --nyx-bg-brand:             light-dark(#9BA9B8, #2D3945);
+  --nyx-bg-info:              light-dark(#A1B5BD, #2B3D42);
+  --nyx-bg-warning:           light-dark(#BCB08D, #454026);
+  --nyx-bg-danger:            light-dark(#BD9EA1, #452F32);
+  --nyx-bg-success:           light-dark(#98AF9F, #2A3B35);
+  --nyx-bg-promoted:          light-dark(#A999A9, #3D2D3D);
+  --nyx-bg-attention:         light-dark(#B8896B, #583F30);
+  --nyx-bg-discovery:         light-dark(#9D96B8, #342D4D);
   
   
 /* — Tipografia (fonte) — */
@@ -202,6 +202,8 @@ select { appearance: none; }
 
   /* — Superfícies (cards, modais, dropdowns, tooltips) — */
   --nyx-surface-bg:           light-dark(#d2d3d8,  var(--nyx-bg-secondary));
+  --nyx-surface-bg-raized:    light-dark(#2a2d31, #2d3135);
+  --nyx-surface-text-raized:  light-dark(#f0f0f0, #ffffff);
   --nyx-surface-border:       light-dark(#9ea2aa,  var(--nyx-border-primary));
 
   /* — Inputs / formulários — */
@@ -949,6 +951,10 @@ select.form-control-sm {
 .table .col-end     { text-align: right;    }
 .table .col-actions { text-align: right; white-space: nowrap; width: 1%; }
 
+.table.actions-end th:last-child,
+.table.actions-end td:last-child { text-align: right; }
+
+
 /* Linhas com estado semântico */
 .table tbody tr.row-success   { background-color: var(--nyx-bg-success)   !important; }
 .table tbody tr.row-warning   { background-color: var(--nyx-bg-warning)   !important; }
@@ -1015,7 +1021,7 @@ select.form-control-sm {
 .btn:hover:not(.active) { color: inherit; filter: brightness(0.92);                 }
 
 /* Tamanhos */
-.btn-xs { padding: 0.3rem 0.7rem;  font-size: var(--nyx-font-xs);   }
+.btn-xs { padding: 0.25rem 0.5rem;  font-size: var(--nyx-font-xs);  }
 .btn-sm { padding: 0.3rem 0.7rem;  font-size: var(--nyx-font-sm);   }
 .btn-lg { padding: 0.65rem 1.4rem; font-size: var(--nyx-font-base); }
 
@@ -1025,17 +1031,21 @@ select.form-control-sm {
 .btn-tertiary      { background-color: var(--nyx-bg-tertiary);      }
 .btn-alt           { background-color: var(--nyx-bg-alt);           }
 .btn-alt-secondary { background-color: var(--nyx-bg-alt-secondary); }
+.btn-surface       { 
+  background-color: var(--nyx-surface-bg-raized);
+  color:            var(--nyx-surface-text-raized);
+}
 
 .btn-brand,
-.btn-outline-brand:hover { background-color: var(--nyx-bg-brand); }
-.btn-brand   { color: var(--nyx-text-brand);                      }
-.btn-info  { background-color: var(--nyx-bg-info);            }
-.btn-warning  { background-color: var(--nyx-bg-warning);            }
-.btn-danger  { background-color: var(--nyx-bg-danger);            }
-.btn-success  { background-color: var(--nyx-bg-success);            }
-.btn-attention  { background-color: var(--nyx-bg-attention);            }
-.btn-promoted  { background-color: var(--nyx-bg-promoted);            }
-.btn-discovery  { background-color: var(--nyx-bg-discovery);            }
+.btn-outline-brand:hover { background-color: var(--nyx-bg-brand);     }
+.btn-brand               { color: var(--nyx-text-brand);              }
+.btn-info                { background-color: var(--nyx-bg-info);      }
+.btn-warning             { background-color: var(--nyx-bg-warning);   }
+.btn-danger              { background-color: var(--nyx-bg-danger);    }
+.btn-success             { background-color: var(--nyx-bg-success);   }
+.btn-attention           { background-color: var(--nyx-bg-attention); }
+.btn-promoted            { background-color: var(--nyx-bg-promoted);  }
+.btn-discovery           { background-color: var(--nyx-bg-discovery); }
 
 /* Outline */
 [class*="btn-outline"] { background-color: transparent; border-color: var(--nyx-border-primary); }

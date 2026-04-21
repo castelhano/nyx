@@ -167,8 +167,42 @@ html[data-sidebar-init="collapsed"] .sidebar {
 }
 
 .sidebar__toggle {
-  display: none;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--nyx-radius-md);
+  background: transparent;
+  color: var(--nyx-text-tertiary);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
 }
+
+.sidebar__toggle:hover {
+  background-color: var(--nyx-bg-alt);
+  color: var(--nyx-text-primary);
+}
+
+.sidebar__toggle i {
+  font-size: 1rem;
+  transition: transform 200ms ease, opacity 150ms ease;
+}
+
+/* Ícone direcional: nudge sutil na direção da ação */
+.sidebar__toggle:hover .sidebar__toggle-icon--collapse { transform: translateX(-3px); }
+.sidebar__toggle:hover .sidebar__toggle-icon--expand   { transform: translateX(3px); }
+
+/* Estado padrão (expandido): mostra colapsar, oculta expandir */
+.sidebar__toggle-icon--collapse { display: inline-flex; }
+.sidebar__toggle-icon--expand   { display: none; }
+
+/* Estado colapsado: inverte */
+.sidebar--collapsed .sidebar__toggle-icon--collapse { display: none; }
+.sidebar--collapsed .sidebar__toggle-icon--expand   { display: inline-flex; }
 
 /* ——— Sidebar: collapsed (icon-only) ——— */
 .sidebar--collapsed {
@@ -184,11 +218,6 @@ html[data-sidebar-init="collapsed"] .sidebar {
 
 .sidebar--collapsed .sidebar__search-btn {
   display: block;
-}
-
-.sidebar--collapsed .sidebar__toggle {
-  display: inline-flex;
-  margin-left: 0;
 }
 
 .sidebar--collapsed .sidebar__header {
@@ -242,7 +271,7 @@ html[data-sidebar-init="collapsed"] .sidebar {
   height: var(--nyx-topbar-height);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 1.25rem;
   background-color: var(--nyx-bg-body);
   border-bottom: var(--nyx-border-width-1) solid var(--nyx-border-primary);
