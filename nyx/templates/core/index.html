@@ -5,8 +5,47 @@
 {% block main %}
 <main class="p-4">
     <section class="">
+
+        <div class="d-grid grid-cols-3">
+            <div class="bg-alt p-4">bg-alt
+                <div class="bg-alt-secondary p-4">bg-alt-secondary
+                    <div class="bg-alt-tertiary p-4">bg-alt-tertiary</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-grid grid-cols-4 gap-3 mt-4">
+            <div class="bg-brand p-3">bg-brand</div>
+            <div class="bg-info p-3">bg-info</div>
+            <div class="bg-warning p-3">bg-warning</div>
+            <div class="bg-danger p-3">bg-danger</div>
+            <div class="bg-success p-3">bg-success</div>
+            <div class="bg-attention p-3">bg-attention</div>
+            <div class="bg-promoted p-3">bg-promoted</div>
+            <div class="bg-discovery p-3">bg-discovery</div>
+        </div>
+        <div class="d-grid mt-4">
+            <div class="text-brand">text-brand</div>
+            <div class="text-info">text-info</div>
+            <div class="text-warning">text-warning</div>
+            <div class="text-danger">text-danger</div>
+            <div class="text-success">text-success</div>
+            <div class="text-attention">text-attention</div>
+            <div class="text-promoted">text-promoted</div>
+            <div class="text-discovery">text-discovery</div>
+        </div>
+        <div class="d-grid grid-cols-4 gap-3 mt-4">
+            <div class="text-bg-brand p-3">text-bg-brand</div>
+            <div class="text-bg-info p-3">text-bg-info</div>
+            <div class="text-bg-warning p-3">text-bg-warning</div>
+            <div class="text-bg-danger p-3">text-bg-danger</div>
+            <div class="text-bg-success p-3">text-bg-success</div>
+            <div class="text-bg-attention p-3">text-bg-attention</div>
+            <div class="text-bg-promoted p-3">text-bg-promoted</div>
+            <div class="text-bg-discovery p-3">text-bg-discovery</div>
+        </div>
         
-        <c-tabs variant="tabs--pills">
+        <c-tabs variant="tabs--pills mt-4">
             <c-slot name="tabs">
                 <button class="tabs__tab active" data-tab="dados"   role="tab">Dados</button>
                 <button class="tabs__tab"        data-tab="config"  role="tab">Configurações</button>
@@ -19,12 +58,30 @@
                     <label for="cpf" class="form-label">CPF</label>
                     <input type="text" name="cpf" id="cpf" class="form-control form-control-sm mw-2xs">
                 </form>
-                
+                <a href="" class="btn btn-ghost-brand">Aguarde</a>
             </div>
             <div class="tabs__panel" data-panel="config">
-                <p>Conteúdo da aba Configurações</p>
+                <div class="d-flex">
+                    <p>Conteúdo da aba<div class="divider-v divider-v--md"></div>Configurações</p>
+                </div>
+                <hr class="divider">
             </div>
         </c-tabs>
+        <div class="p-3 bg-secondary">
+            <a href="" class="btn btn-body">Button</a>
+            <a href="" class="btn btn-tertiary">Button</a>
+            <a href="" class="btn btn-alt">Button</a>
+            <a href="" class="btn btn-alt-secondary">Button</a>
+            <a href="" class="btn btn-brand">Button</a>
+            <a href="" class="btn btn-info">Button</a>
+            <a href="" class="btn btn-warning">Button</a>
+            <a href="" class="btn btn-danger">Button</a>
+            <a href="" class="btn btn-success">Button</a>
+            <a href="" class="btn btn-attention">Button</a>
+            <a href="" class="btn btn-promoted">Button</a>
+            <a href="" class="btn btn-discovery">Button</a>
+        </div>
+        <a href="" class="btn btn-secondary mt-4">secondary</a>
     </section>
 </main>
 {% endblock %}
