@@ -270,4 +270,5 @@ html[data-sidebar-init="collapsed"] .sidebar {
 #main-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: clip;
 }
