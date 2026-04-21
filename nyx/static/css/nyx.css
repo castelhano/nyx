@@ -1257,3 +1257,30 @@ input[type="radio"].form-check-input:checked {
 
 .form-switch-label    { font-size: var(--nyx-font-sm); color: var(--nyx-text-primary); line-height: 1.4; }
 .form-switch-sm .form-switch-label { font-size: var(--nyx-font-xs); }
+
+
+/* ——— 20. ANIMAÇÕES & EFEITOS ————————————————————————————————— */
+
+@keyframes nyx-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nyx-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes nyx-slide-down-in {
+  from { transform: translateY(-16px) scale(.97); opacity: 0; }
+  to   { transform: translateY(0)      scale(1);  opacity: 1; }
+}
+@keyframes nyx-slide-down-out {
+  from { transform: translateY(0)      scale(1);  opacity: 1; }
+  to   { transform: translateY(-10px) scale(.97); opacity: 0; }
+}
+
+.animate-fade-in        { animation: nyx-fade-in  .18s ease; }
+.animate-fade-out       { animation: nyx-fade-out .15s ease forwards; }
+.animate-slide-down-in  { animation: nyx-slide-down-in  .2s cubic-bezier(.22,.68,0,1.2); }
+.animate-slide-down-out { animation: nyx-slide-down-out .15s ease forwards; }
+
+/* Backdrop com desfoque — overlay para modais e dialogs */
+.modal-backdrop {
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}

@@ -3,7 +3,7 @@
  *
  * @version  7.0
  * @since    05/08/2024
- * @release  2026 [v7: remoção de i18n/gettext, suporte a data-keybind, modal com CSS interno,
+ * @release  2026 [v7: remoção de i18n/gettext, suporte a data-keybind, modal com classes externas (nyx.css),
  *                     watchHtmx(), scanBindings(), ciclo de vida automático por group]
  * @author   Rafael Gustavo Alves
  *
@@ -137,14 +137,15 @@ class Keywatch {
             shortcutMaplistDesc: 'Exibir atalhos disponíveis',
             shortcutMaplistIcon: 'bi bi-keyboard',
             shortcutMaplistOnlyContextActive: true,
-            // CSS interno — substitua por classes externas se preferir Bootstrap/Tailwind
-            // Passe { useExternalStyles: true } para desativar todo CSS injetado
-            useExternalStyles: false,
+            // Mapa de classes CSS do modal — cada chave pode ser sobrescrita ao instanciar
+            // Exemplo: new Keywatch({ classes: { table: 'minha-tabela table-sm' } })
+            classes: {},
         };
 
         for (const k in instanceDefaults) {
             this[k] = options.hasOwnProperty(k) ? options[k] : instanceDefaults[k];
         }
+        this.classes = { ...this._defaultClasses(), ...(options.classes || {}) };
 
         // ── Mapa de aliases de teclas ─────────────────────────────────────────
         this.modifier = {
@@ -165,7 +166,7 @@ class Keywatch {
         window.addEventListener('focus', () => { this.pressed = []; }, false);
 
         // ── Modal de atalhos ─────────────────────────────────────────────────
-        if (!this.useExternalStyles) this._injectStyles();
+        this._injectStyles();
         this._createModal();
 
         if (this.shortcutMaplist) {
@@ -179,272 +180,89 @@ class Keywatch {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // CSS INTERNO
+    // CLASSES & ESTILOS
     // ═══════════════════════════════════════════════════════════════════════════
+
+    _defaultClasses() {
+        return {
+            overlay:    'modal-backdrop',
+            box:        'bg-body border rounded-lg shadow-lg d-flex flex-column overflow-hidden',
+            header:     'd-flex align-center gap-2 px-4 py-2 border-b flex-shrink-0',
+            closeBtn:   'btn btn-ghost btn-icon btn-sm',
+            searchWrap: 'flex-shrink-0 px-4 py-2',
+            search:     'form-control form-control-sm w-full',
+            tableWrap:  'flex-1 overflow-y px-4 pb-3',
+            table:      'table table-striped table-hover table-sm',
+        };
+    }
 
     _injectStyles() {
         if (document.getElementById('keywatch-styles')) return;
         const style = document.createElement('style');
         style.id = 'keywatch-styles';
         style.textContent = `
-            /* ── Keywatch Modal ── */
+            /* ── Keywatch: estado & animação ─────────────────────────────────── */
             #keywatch-modal {
-                /*
-                 * Tokens mapeados para o design system Nyx.
-                 * Cada --kw-* faz fallback para valor hardcoded caso
-                 * as variaveis Nyx nao estejam disponiveis.
-                 */
-                --kw-bg:           var(--nyx-bg-body,           #ffffff);
-                --kw-bg-row-alt:   var(--nyx-bg-secondary,      #f5f5f5);
-                --kw-surface:      var(--nyx-bg-tertiary,        #ebebeb);
-                --kw-border:       var(--nyx-border-primary,     #dee2e6);
-                --kw-accent:       var(--nyx-text-brand,         #5a7d9a);
-                --kw-accent-soft:  var(--nyx-bg-brand,           #eff2f4);
-                --kw-text:         var(--nyx-text-primary,       #373b3e);
-                --kw-text-dim:     var(--nyx-text-tertiary,      #80868b);
-                --kw-text-header:  var(--nyx-text-secondary,     #5f6368);
-                --kw-badge-bg:     var(--nyx-bg-tertiary,        #ebebeb);
-                --kw-badge-border: var(--nyx-border-secondary,   #ced4da);
-                --kw-input-bg:     var(--nyx-bg-secondary,       #f5f5f5);
-                --kw-shadow:       var(--nyx-shadow-lg,  0 8px 24px rgba(0,0,0,.12));
-                --kw-radius:       var(--nyx-radius-lg,  12px);
-                --kw-radius-sm:    var(--nyx-radius-sm,   4px);
-                --kw-font:         var(--nyx-typeface-base, system-ui, sans-serif);
-                --kw-font-mono:    var(--nyx-typeface-mono, monospace);
-                /* painel de rastreio (linha expandida) */
-                --kw-meta-bg:      var(--nyx-bg-secondary,   #f9f9f9);
-                --kw-meta-text:    var(--nyx-text-secondary,      #5f6368);
-
-                display:    none;
-                position:   fixed;
-                inset:      0;
-                z-index:    99999;
+                display: none;
+                position: fixed;
+                inset: 0;
+                z-index: 99999;
                 align-items: flex-start;
                 justify-content: center;
                 padding-top: 60px;
-                background: rgba(0,0,0,.55);
-                backdrop-filter: blur(4px);
-                -webkit-backdrop-filter: blur(4px);
             }
-            #keywatch-modal.kw-open {
-                display: flex;
-                animation: kw-fade-in .18s ease;
-            }
-            #keywatch-modal.kw-closing {
-                animation: kw-fade-out .15s ease forwards;
-            }
-            @keyframes kw-fade-in {
-                from { opacity: 0; }
-                to   { opacity: 1; }
-            }
-            @keyframes kw-fade-out {
-                from { opacity: 1; }
-                to   { opacity: 0; }
-            }
-            #keywatch-modal-box {
-                background:    var(--kw-bg);
-                border:        1px solid var(--kw-border);
-                border-radius: var(--kw-radius);
-                box-shadow:    var(--kw-shadow);
-                width:         min(780px, 92vw);
-                max-height:    78vh;
-                display:       flex;
-                flex-direction: column;
-                overflow:      hidden;
-                animation:     kw-slide-in .2s cubic-bezier(.22,.68,0,1.2);
-            }
-            #keywatch-modal.kw-closing #keywatch-modal-box {
-                animation: kw-slide-out .15s ease forwards;
-            }
-            @keyframes kw-slide-in {
-                from { transform: translateY(-18px) scale(.97); opacity: 0; }
-                to   { transform: translateY(0)      scale(1);   opacity: 1; }
-            }
-            @keyframes kw-slide-out {
-                from { transform: translateY(0)     scale(1);   opacity: 1; }
-                to   { transform: translateY(-12px) scale(.97); opacity: 0; }
-            }
+            #keywatch-modal.kw-open    { display: flex; animation: nyx-fade-in .18s ease; }
+            #keywatch-modal.kw-closing { animation: nyx-fade-out .15s ease forwards; }
+            #keywatch-modal-box        { animation: nyx-slide-down-in .2s cubic-bezier(.22,.68,0,1.2); }
+            #keywatch-modal.kw-closing #keywatch-modal-box { animation: nyx-slide-down-out .15s ease forwards; }
 
-            /* Cabeçalho */
-            #keywatch-modal-header {
-                display:        flex;
-                align-items:    center;
-                gap:            12px;
-                padding:        20px 24px 16px;
-                border-bottom:  1px solid var(--kw-border);
-                flex-shrink:    0;
-            }
-            #keywatch-modal-header .kw-icon {
-                font-size:  22px;
-                line-height: 1;
-            }
-            #keywatch-modal-header .kw-title {
-                flex:        1;
-                font-family: var(--kw-font);
-                font-size:   15px;
-                font-weight: 600;
-                color:       var(--kw-text);
-                margin:      0;
-            }
+            /* ── Contexto: hint sutil à direita do search ────────────────────── */
             #keywatch-context-badge {
-                font-family:   var(--kw-font-mono);
-                font-size:     10px;
-                color:         var(--kw-accent);
-                background:    var(--kw-accent-soft);
-                border:        1px solid var(--kw-accent);
-                border-radius: 6px;
-                text-transform: uppercase;
-                padding:       2px 10px;
-                opacity:       .5;
-            }
-            #keywatch-close-btn {
-                background:    none;
-                border:        none;
-                cursor:        pointer;
-                color:         var(--kw-text-dim);
-                font-size:     20px;
-                line-height:   1;
-                padding:       4px;
-                border-radius: var(--kw-radius-sm);
-                transition:    color .15s, background .15s;
-            }
-            #keywatch-close-btn:hover { color: var(--kw-text); background: var(--kw-surface); }
-
-            /* Busca */
-            #keywatch-search-wrap {
-                padding:   12px 24px;
-                flex-shrink: 0;
-            }
-            #keywatch-search {
-                width:         100%;
-                box-sizing:    border-box;
-                background:    var(--kw-input-bg);
-                border:        1px solid var(--kw-border);
-                border-radius: var(--kw-radius-sm);
-                color:         var(--kw-text);
-                font-family:   var(--kw-font);
-                padding: var(--nyx-input-padding-y-sm) var(--nyx-input-padding-x-sm);
-                font-size: var(--nyx-font-sm);
-                outline:       none;
-                transition:    border-color .15s;
-            }
-            #keywatch-search:focus { border-color: var(--kw-accent); }
-            #keywatch-search::placeholder { color: var(--kw-text-dim); }
-
-            /* Tabela */
-            #keywatch-table-wrap {
-                overflow-y: auto;
-                flex:       1;
-                padding:    0 24px 20px;
-            }
-            #keywatch-table-wrap::-webkit-scrollbar { width: 6px; }
-            #keywatch-table-wrap::-webkit-scrollbar-track { background: transparent; }
-            #keywatch-table-wrap::-webkit-scrollbar-thumb { background: var(--kw-border); border-radius: 3px; }
-
-            #keywatch-table {
-                width:           100%;
-                border-collapse: collapse;
-                font-family:     var(--kw-font);
-                font-size:       13px;
-            }
-            #keywatch-table thead th {
-                position:    sticky;
-                top:         0;
-                background:  var(--kw-bg);
-                color:       var(--kw-text-header);
-                font-weight: 600;
-                font-size:   11px;
-                text-transform: uppercase;
-                letter-spacing: .06em;
-                padding:     8px 12px;
-                text-align: left;
-                border-bottom: 1px solid var(--kw-border);
-            }
-            #keywatch-table tbody tr {
-                border-bottom: 1px solid var(--kw-border);
-                transition: background .1s;
-            }
-            #keywatch-table tbody tr:nth-child(even) { background: var(--kw-bg-row-alt); }
-            #keywatch-table tbody tr:hover { background: var(--kw-surface); }
-            #keywatch-table td {
-                padding:     9px 12px;
-                color:       var(--kw-text);
-                vertical-align: middle;
-            }
-
-            /* Badge de tecla */
-            .kw-key {
-                display:       inline-flex;
-                align-items:   center;
-                font-family:   var(--kw-font-mono);
-                font-size:     11px;
-                font-weight:   600;
-                color:         var(--kw-text);
-                background:    var(--kw-badge-bg);
-                border:        1px solid var(--kw-badge-border);
-                border-radius: 4px;
-                padding:       2px 7px;
-                white-space:   nowrap;
-            }
-            .kw-key-sep {
-                color:      var(--kw-text-dim);
-                margin:     0 3px;
-                font-size:  12px;
-            }
-            .kw-or {
-                color:      var(--kw-text-dim);
-                font-size:  11px;
-                margin:     0 8px;
-            }
-            .kw-empty {
-                text-align: center;
-                color:      var(--kw-text-dim);
-                padding:    32px 0 !important;
-                font-style: italic;
-            }
-
-            /* Linha de rastreio (expandida ao clicar no botao de detalhes) */
-            .kw-meta-row { display: none; }
-            .kw-meta-row.kw-meta-open { display: table-row; }
-            .kw-meta-row td {
-                padding:    5px !important;
-                background: var(--kw-meta-bg) !important;
-            }
-            .kw-meta-inner {
-                display:       flex;
-                flex-wrap:     wrap;
-                gap:           6px 16px;
-                font-family:   var(--kw-font-mono);
-                font-size:     10px;
-                color:         var(--kw-meta-text);
-                padding:       8px 10px;
-                border-radius: var(--kw-radius-sm);
-                border:        1px solid var(--kw-border);
-                background:    var(--kw-bg);
-                text-transform: uppercase;
-            }
-            .kw-meta-item { display: flex; gap: 4px; align-items: center; }
-            .kw-meta-label {
-                color:       var(--kw-text-dim);
-                font-weight: 600;
+                position: absolute;
+                right: 8px; top: 50%;
+                transform: translateY(-50%);
+                pointer-events: none;
+                opacity: .5;
+                font-size: 10px;
                 letter-spacing: .04em;
+                text-transform: uppercase;
+                white-space: nowrap;
             }
-            .kw-meta-value { color: var(--kw-text-secondary); }
 
-            /* Botao toggle de rastreio */
-            .kw-detail-btn {
-                background:    none;
-                border:        none;
-                cursor:        pointer;
-                color:         var(--kw-text-dim);
-                font-size:     14px;
-                padding:       2px 6px;
-                border-radius: var(--kw-radius-sm);
-                transition:    color .15s, background .15s;
-                line-height:   1;
+            /* ── Badge de tecla ──────────────────────────────────────────────── */
+            .kw-key {
+                display: inline-flex; align-items: center;
+                font-family: var(--nyx-typeface-mono);
+                font-size: 11px; font-weight: 600;
+                color: var(--nyx-text-primary);
+                background: var(--nyx-bg-tertiary);
+                border: 1px solid var(--nyx-border-secondary);
+                border-radius: 4px;
+                padding: 2px 7px; white-space: nowrap;
             }
-            .kw-detail-btn:hover    { color: var(--kw-text); background: var(--kw-surface); }
-            .kw-detail-btn.kw-open  { color: var(--kw-accent); }
+            .kw-key-sep { color: var(--nyx-text-tertiary); margin: 0 3px; font-size: 12px; }
+            .kw-or      { color: var(--nyx-text-tertiary); font-size: 11px; margin: 0 8px; }
+            .kw-empty   { text-align: center; color: var(--nyx-text-tertiary); padding: 32px 0 !important; font-style: italic; }
+
+            /* ── Thead sticky ────────────────────────────────────────────────── */
+            #keywatch-table thead th { position: sticky; top: 0; background: var(--nyx-bg-body); z-index: 1; }
+
+            /* ── Painel de detalhes flutuante ────────────────────────────────── */
+            #keywatch-meta-panel { animation: nyx-fade-in .12s ease; }
+            .kw-meta-inner { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-family: var(--nyx-typeface-mono); font-size: 10px; text-transform: uppercase; align-items: baseline; }
+            .kw-meta-item  { display: contents; }
+            .kw-meta-label { color: var(--nyx-text-tertiary); font-weight: 600; letter-spacing: .04em; }
+            .kw-meta-value { color: var(--nyx-text-secondary); }
+
+            /* ── Botão de detalhe ────────────────────────────────────────────── */
+            .kw-detail-btn { background: none; border: none; cursor: pointer; color: var(--nyx-text-tertiary); font-size: 14px; padding: 2px 6px; border-radius: var(--nyx-radius-sm); transition: color .15s, background .15s; line-height: 1; }
+            .kw-detail-btn:hover   { color: var(--nyx-text-primary); background: var(--nyx-bg-tertiary); }
+            .kw-detail-btn.kw-open { color: var(--nyx-text-brand); }
+
+            /* ── Scrollbar ───────────────────────────────────────────────────── */
+            #keywatch-table-wrap::-webkit-scrollbar       { width: 6px; }
+            #keywatch-table-wrap::-webkit-scrollbar-track { background: transparent; }
+            #keywatch-table-wrap::-webkit-scrollbar-thumb { background: var(--nyx-border-primary); border-radius: 3px; }
         `;
         document.head.appendChild(style);
     }
@@ -454,9 +272,12 @@ class Keywatch {
     // ═══════════════════════════════════════════════════════════════════════════
 
     _createModal() {
+        const cls = this.classes;
+
         // Overlay
         this._modal = document.createElement('div');
         this._modal.id = 'keywatch-modal';
+        this._modal.className = cls.overlay;
         this._modal.setAttribute('role', 'dialog');
         this._modal.setAttribute('aria-modal', 'true');
         this._modal.setAttribute('aria-label', 'Mapa de atalhos');
@@ -464,35 +285,54 @@ class Keywatch {
         // Box
         const box = document.createElement('div');
         box.id = 'keywatch-modal-box';
+        box.className = cls.box;
+        box.style.cssText = 'width: min(860px, 92vw); max-height: 80vh;';
 
-        // Header
+        // Header (compacto)
         const header = document.createElement('div');
         header.id = 'keywatch-modal-header';
+        header.className = cls.header;
         header.innerHTML = `
-            <span class="kw-icon"><i class="${this.shortcutMaplistIcon}"></i></span>
-            <span class="kw-title">Atalhos de teclado</span>
-            <span id="keywatch-context-badge">${this.context}</span>
-            <button id="keywatch-close-btn" title="Fechar (Esc)">✕</button>
+            <i class="${this.shortcutMaplistIcon} text-secondary" style="font-size:18px;line-height:1;flex-shrink:0"></i>
+            <span class="text-sm font-semibold flex-1">Atalhos de teclado</span>
+            <button id="keywatch-close-btn" class="${cls.closeBtn}" title="Fechar (Esc)">✕</button>
         `;
-        this._contextBadge = header.querySelector('#keywatch-context-badge');
         header.querySelector('#keywatch-close-btn').addEventListener('click', () => this.hideKeymap());
 
         // Search
         const searchWrap = document.createElement('div');
         searchWrap.id = 'keywatch-search-wrap';
+        searchWrap.className = cls.searchWrap;
+
+        const searchInner = document.createElement('div');
+        searchInner.className = 'position-relative';
+
         this._searchInput = document.createElement('input');
         this._searchInput.id = 'keywatch-search';
+        this._searchInput.className = cls.search;
         this._searchInput.type = 'search';
         this._searchInput.placeholder = 'Pesquisar atalho ou descrição...';
         this._searchInput.setAttribute('data-keywatch', 'escape');
+        this._searchInput.style.paddingRight = '6rem';
         this._searchInput.addEventListener('input', () => this._filterTable());
-        searchWrap.appendChild(this._searchInput);
+
+        this._contextBadge = document.createElement('span');
+        this._contextBadge.id = 'keywatch-context-badge';
+        this._contextBadge.className = 'font-mono text-tertiary';
+        this._contextBadge.textContent = this.context;
+
+        searchInner.appendChild(this._searchInput);
+        searchInner.appendChild(this._contextBadge);
+        searchWrap.appendChild(searchInner);
 
         // Table
         const tableWrap = document.createElement('div');
         tableWrap.id = 'keywatch-table-wrap';
+        tableWrap.className = cls.tableWrap;
+
         this._table = document.createElement('table');
         this._table.id = 'keywatch-table';
+        this._table.className = cls.table;
         this._table.innerHTML = `
             <thead>
                 <tr>
@@ -524,6 +364,17 @@ class Keywatch {
                 this.hideKeymap();
             }
         });
+
+        // Painel de detalhes flutuante (portal no body para evitar clipping do overflow)
+        this._metaPanel = document.createElement('div');
+        this._metaPanel.id = 'keywatch-meta-panel';
+        this._metaPanel.className = 'bg-body border rounded-md shadow-lg';
+        this._metaPanel.style.cssText = 'position:fixed;display:none;z-index:100000;padding:10px 14px;min-width:180px;max-width:260px;';
+        document.body.appendChild(this._metaPanel);
+        this._activeMetaBtn = null;
+
+        document.addEventListener('click', () => { if (this.locked) this._closeMetaPanel(); });
+        tableWrap.addEventListener('scroll', () => this._closeMetaPanel());
     }
 
     showKeymap() {
@@ -537,6 +388,7 @@ class Keywatch {
     }
 
     hideKeymap() {
+        this._closeMetaPanel();
         this._modal.classList.add('kw-closing');
         setTimeout(() => {
             this._modal.classList.remove('kw-open', 'kw-closing');
@@ -546,7 +398,38 @@ class Keywatch {
         }, 150);
     }
 
+    _closeMetaPanel() {
+        if (!this._metaPanel || this._metaPanel.style.display === 'none') return;
+        this._metaPanel.style.display = 'none';
+        if (this._activeMetaBtn) {
+            this._activeMetaBtn.classList.remove('kw-open');
+            this._activeMetaBtn = null;
+        }
+    }
+
+    _showMetaPanel(btn, html) {
+        if (this._activeMetaBtn === btn) { this._closeMetaPanel(); return; }
+        if (this._activeMetaBtn) this._activeMetaBtn.classList.remove('kw-open');
+        this._activeMetaBtn = btn;
+        btn.classList.add('kw-open');
+
+        const panel = this._metaPanel;
+        panel.innerHTML = `<div class="kw-meta-inner">${html}</div>`;
+        panel.style.visibility = 'hidden';
+        panel.style.display = 'block';
+
+        const rect = btn.getBoundingClientRect();
+        const ph   = panel.offsetHeight;
+        const pw   = panel.offsetWidth;
+        const top  = rect.top - ph - 8 > 8 ? rect.top - ph - 8 : rect.bottom + 8;
+        const left = Math.max(8, rect.right - pw);
+        panel.style.top  = top  + 'px';
+        panel.style.left = left + 'px';
+        panel.style.visibility = '';
+    }
+
     _refreshTable() {
+        this._closeMetaPanel();
         if (this._contextBadge) this._contextBadge.textContent = this.context;
         const fragment = document.createDocumentFragment();
         let count = 0;
@@ -560,54 +443,35 @@ class Keywatch {
 
                         // ── Linha principal ──────────────────────────────────
                         const tr = document.createElement('tr');
-                        const uid = `kw-meta-${count}`;
 
                         const desc = `${handler.icon ? `<i class="${handler.icon}" style="margin-right:6px"></i>` : ''}${handler.desc || '<span style="opacity:.4">—</span>'}`;
+
+                        const metaHtml = [
+                            { label: 'context', value: handler.context },
+                            { label: 'event',   value: [handler.keydown && 'keydown', handler.keyup && 'keyup'].filter(Boolean).join('+') },
+                            handler.origin ? { label: 'origin', value: handler.origin } : null,
+                            handler.group  ? { label: 'group',  value: handler.group  } : null,
+                            { label: 'capture',  value: handler.useCapture    ? 'sim' : 'nao' },
+                            { label: 'composed', value: handler.composed      ? 'sim' : 'nao' },
+                            { label: 'prevent',  value: handler.preventDefault ? 'sim' : 'nao' },
+                        ].filter(Boolean).map(i =>
+                            `<span class="kw-meta-item"><span class="kw-meta-label">${i.label}</span><span class="kw-meta-value">${i.value}</span></span>`
+                        ).join('');
 
                         tr.innerHTML = `
                             <td>${this._humanize(handler.schema)}</td>
                             <td>${desc}</td>
-                            <td style="text-align:center;padding:0 8px">
-                                <button class="kw-detail-btn" data-target="${uid}" title="Detalhes de rastreio">›</button>
+                            <td style="text-align:center;padding:0 4px">
+                                <button class="kw-detail-btn" title="Detalhes de rastreio"><i class="bi bi-info-circle"></i></button>
                             </td>
                         `;
 
-                        // Toggle da linha de rastreio
                         tr.querySelector('.kw-detail-btn').addEventListener('click', (e) => {
-                            const btn     = e.currentTarget;
-                            const metaRow = document.getElementById(btn.dataset.target);
-                            const open    = metaRow.classList.toggle('kw-meta-open');
-                            btn.classList.toggle('kw-open', open);
-                            btn.textContent = open ? '⌄' : '›';
+                            e.stopPropagation();
+                            this._showMetaPanel(e.currentTarget, metaHtml);
                         });
 
-                        // ── Linha de rastreio (oculta por padrao) ────────────
-                        const metaRow = document.createElement('tr');
-                        metaRow.id        = uid;
-                        metaRow.className = 'kw-meta-row';
-
-                        // Monta os itens de rastreio — so exibe os relevantes
-                        const metaItems = [
-                            { label: 'context', value: handler.context },
-                            { label: 'event',   value: [handler.keydown && 'keydown', handler.keyup && 'keyup'].filter(Boolean).join(' + ') },
-                            handler.origin  ? { label: 'origin',  value: handler.origin }  : null,
-                            handler.group   ? { label: 'group',   value: handler.group }   : null,
-                            { label: 'capture',  value: handler.useCapture  ? 'sim' : 'nao' },
-                            { label: 'composed', value: handler.composed    ? 'sim' : 'nao' },
-                            { label: 'prevent',  value: handler.preventDefault ? 'sim' : 'nao' },
-                        ].filter(Boolean);
-
-                        const itemsHtml = metaItems.map(i =>
-                            `<span class="kw-meta-item">
-                                <span class="kw-meta-label">${i.label}</span>
-                                <span class="kw-meta-value">${i.value}</span>
-                            </span>`
-                        ).join('');
-
-                        metaRow.innerHTML = `<td colspan="3"><div class="kw-meta-inner">${itemsHtml}</div></td>`;
-
                         fragment.appendChild(tr);
-                        fragment.appendChild(metaRow);
                         count++;
                     }
                 }
@@ -629,17 +493,12 @@ class Keywatch {
             const term = this._searchInput.value.toLowerCase().replace(/\s+/g, '');
             let visible = 0;
 
-            // Percorre apenas as linhas principais (nao as de rastreio)
-            this._tbody.querySelectorAll('tr:not(.kw-meta-row):not(.kw-empty)').forEach(tr => {
+            this._closeMetaPanel();
+
+            this._tbody.querySelectorAll('tr:not(.kw-empty)').forEach(tr => {
                 const text = tr.textContent.toLowerCase().replace(/\s+/g, '');
                 const show = text.includes(term);
                 tr.style.display = show ? '' : 'none';
-
-                // Esconde tambem a linha de rastreio correspondente
-                const btn     = tr.querySelector('.kw-detail-btn');
-                const metaRow = btn ? document.getElementById(btn.dataset.target) : null;
-                if (metaRow) metaRow.style.display = show ? '' : 'none';
-
                 if (show) visible++;
             });
 
