@@ -5,41 +5,63 @@
 {% block main %}
 <main class="p-4">
     
-    <section class="table-wrapper mb-4">
-        <table class="table table-sm actions-end">
-            <caption>Minha tabela</caption>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Nome</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>22</td>
-                    <td>Rafael</td>
-                    <td class="fit"><button class="btn btn-xs btn-surface"><i class="bi bi-pencil-fill"></i></button></td>
-                </tr>
-                <tr>
-                    <td>65</td>
-                    <td>Joaquim</td>
-                    <td class="fit"><button class="btn btn-xs btn-surface"><i class="bi bi-pencil-fill"></i></button></td>
-                </tr>
-                <tr>
-                    <td>26</td>
-                    <td>Maria</td>
-                    <td class="fit"><button class="btn btn-xs btn-surface"><i class="bi bi-pencil-fill"></i></button></td>
-                </tr>
-                <tr>
-                    <td>66</td>
-                    <td>Claudio</td>
-                    <td class="fit"><button class="btn btn-xs btn-surface"><i class="bi bi-pencil-fill"></i></button></td>
-                </tr>
-            </tbody>
-        </table>
+    <section class="mb-5">
 
+        <div class="dropdown" data-component="dropdown">
+            <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>Opções</button>
+            <ul class="dropdown-menu" data-dropdown-menu>
+                <li class="dropdown-item">Editar</li>
+                <li class="dropdown-item dropdown-item--danger">Excluir</li>
+            </ul>
+        </div>
+
+        <div class="dropdown" data-component="dropdown" data-variant="split">
+            <div class="dropdown__split">
+                <button class="btn btn-info dropdown__split-link" onclick="alert('clicado')">Label</button>
+                <button class="btn btn-info btn-sm dropdown__split-trigger" data-dropdown-toggle aria-label="Mais opções">
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+            </div>
+            <ul class="dropdown-menu dropdown-menu--end" data-dropdown-menu>
+                <li class="dropdown-item">Duplicar</li>
+            </ul>
+        </div>
+
+
+        <div class="dropdown" data-component="dropdown" data-variant="hover" data-delay-open="400" data-delay-close="250">
+            <button class="btn btn-outline btn-dropdown" onclick="alert('clicado 1')" data-dropdown-toggle>Opções</button>
+            <ul class="dropdown-menu" data-dropdown-menu>
+                <li class="dropdown-item" onclick="alert('clicado 2')">Editar</li>
+            </ul>
+        </div>
+
+        <hr class="divider my-4">
+
+        <c-dropdown>
+            <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>Opções</button>
+            <c-slot name="menu">
+                <li class="dropdown-item">Editar</li>
+                <li class="dropdown-item dropdown-item--danger">Excluir</li>
+            </c-slot>
+        </c-dropdown>
+
+        <c-dropdown variant="split" align="end" btn_class="btn-outline btn-sm">
+            <c-slot name="link">
+                <button class="btn btn-outline btn-sm dropdown__split-link" onclick="alert('clicado')">Label</button>
+            </c-slot>
+            <c-slot name="menu">
+                <li class="dropdown-item">Duplicar</li>
+            </c-slot>
+        </c-dropdown>
+
+        <c-dropdown variant="hover" delay_open="300" delay_close="150">
+            <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>Opções</button>
+            <c-slot name="menu">
+                <li class="dropdown-item" onclick="alert('clicado 2')">Editar</li>
+            </c-slot>
+        </c-dropdown>
     </section>
+    
     <section class="">
         <div class="d-grid grid-cols-2">
             <div class="bg-secondary p-4">bg-body

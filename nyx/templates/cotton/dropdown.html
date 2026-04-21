@@ -1,8 +1,39 @@
-<div class="dropdown {{ attrs.class }}" data-component="dropdown">
-    <button class="btn btn-dropdown {{ trigger_class|default:'btn-outline' }}" data-dropdown-toggle>
-        {{ label }}
-    </button>
-    <ul class="dropdown-menu {{ menu_class }}" data-dropdown-menu>
-        {{ slot }}
+<c-vars variant="" align="" delay_open="" delay_close="" long_press="" label="" btn_class="btn-outline" menu_class="" />
+
+{% if variant == "split" %}
+<div class="dropdown {{ attrs.class }}" data-component="dropdown" data-variant="split">
+    <div class="dropdown__split">
+        {% if link %}
+            {{ link }}
+        {% else %}
+            <button class="btn {{ btn_class }} dropdown__split-link">{{ label }}</button>
+        {% endif %}
+        <button class="btn {{ btn_class }} dropdown__split-trigger"
+                data-dropdown-toggle aria-label="Mais opções">
+            <i class="bi bi-chevron-down"></i>
+        </button>
+    </div>
+    <ul class="dropdown-menu{% if align == 'end' %} dropdown-menu--end{% elif align == 'top' %} dropdown-menu--top{% endif %} {{ menu_class }}"
+        data-dropdown-menu>
+        {{ menu }}
     </ul>
 </div>
+
+{% else %}
+<div class="dropdown {{ attrs.class }}"
+     data-component="dropdown"
+     {% if variant %}data-variant="{{ variant }}"{% endif %}
+     {% if delay_open %}data-delay-open="{{ delay_open }}"{% endif %}
+     {% if delay_close %}data-delay-close="{{ delay_close }}"{% endif %}
+     {% if long_press %}data-long-press="{{ long_press }}"{% endif %}>
+    {% if slot %}
+        {{ slot }}
+    {% else %}
+        <button class="btn {{ btn_class }} btn-dropdown" data-dropdown-toggle>{{ label }}</button>
+    {% endif %}
+    <ul class="dropdown-menu{% if align == 'end' %} dropdown-menu--end{% elif align == 'top' %} dropdown-menu--top{% endif %} {{ menu_class }}"
+        data-dropdown-menu>
+        {{ menu }}
+    </ul>
+</div>
+{% endif %}

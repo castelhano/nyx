@@ -143,6 +143,144 @@
 
 .dropdown-divider { height: var(--nyx-border-width-1); background-color: var(--nyx-border-primary); margin: 0.3rem 0; pointer-events: none; }
 
+/* ============================================================
+   VARIANTS
+
+     data-variant="split"
+       → Divide o trigger em link (ação primária) + chevron (toggle do menu).
+         Estrutura esperada:
+         <div class="dropdown" data-component="dropdown" data-variant="split">
+           <div class="dropdown__split">
+             <a  class="btn btn-outline btn-sm dropdown__split-link"
+                 hx-get="..." hx-target="#main-content" hx-push-url="true">
+               Label
+             </a>
+             <button class="btn btn-outline btn-sm dropdown__split-trigger"
+                     data-dropdown-toggle
+                     aria-label="Mais opções">
+               <i class="bi bi-chevron-down"></i>
+             </button>
+           </div>
+           <ul class="dropdown-menu" data-dropdown-menu>
+             <li class="dropdown-item">…</li>
+           </ul>
+         </div>
+
+     data-variant="hover"
+       → Abre no hover (desktop) com delay configurável via
+         data-delay-open / data-delay-close (ms). No mobile
+         responde a long press (500ms por padrão, configurável
+         via data-long-press).
+         Estrutura esperada (idêntica ao dropdown padrão):
+         <div class="dropdown" data-component="dropdown"
+              data-variant="hover"
+              data-delay-open="400"
+              data-delay-close="200"
+              data-long-press="500">
+           <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>
+             Label
+           </button>
+           <ul class="dropdown-menu" data-dropdown-menu>
+             <li class="dropdown-item">…</li>
+           </ul>
+         </div>
+
+   Ambas as variantes herdam todas as classes de menu existentes:
+     .dropdown-menu--end | --top | --brand
+     .dropdown-item--danger | --success | --muted | aria-disabled
+   ============================================================ */
+
+
+/* ——— VARIANT: SPLIT ——————————————————————————————————————————
+   O wrapper .dropdown__split cria a linha visual que une o link
+   ao trigger. Os dois filhos herdam a variante de cor do botão
+   externamente (btn-outline, btn-ghost, btn-sm, etc).
+   ——————————————————————————————————————————————————————————— */
+
+.dropdown__split {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+/* Link principal — lado esquerdo */
+.dropdown__split-link {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  /* Remove a borda direita para que a linha separadora
+     seja controlada pelo trigger, evitando borda dupla */
+  border-right: none;
+}
+
+/* Trigger (chevron) — lado direito */
+.dropdown__split-trigger {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-inline: 0.55rem;   /* área clicável confortável sem ser larga */
+  font-size: 0.8em;          /* ícone levemente menor que o texto do link */
+  line-height: 1;
+
+  /* Linha separadora sutil entre link e trigger */
+  border-left: 0;
+  /* border-left: var(--nyx-border-width-1) solid color-mix(in srgb, currentColor 25%, transparent); */
+  /* Mantém o outline lateral da borda do btn-outline (ou ghost) */
+  position: relative;
+}
+
+/* Foco independente em cada metade */
+.dropdown__split-link:focus-visible,
+.dropdown__split-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--nyx-focus-ring);
+  z-index: 1;
+}
+
+/* Hover: o split inteiro não brighten junto — cada parte reage sozinha.
+   Anula o filter: brightness herdado do .btn:hover para que os dois
+   lados não pisquem juntos quando o mouse passa entre eles. */
+.dropdown__split-link:hover,
+.dropdown__split-trigger:hover {
+  filter: brightness(0.88);
+}
+
+/* Quando o menu está aberto, mantém o trigger com feedback visual */
+.dropdown[data-variant="split"] .dropdown-menu.open
+  ~ .dropdown__split .dropdown__split-trigger,
+.dropdown[data-variant="split"]:has(.dropdown-menu.open) .dropdown__split-trigger {
+  filter: brightness(0.88);
+}
+
+
+
+/* ——— VARIANT: HOVER ——————————————————————————————————————————
+   O CSS aqui é mínimo — apenas o cursor e a transição de saída
+   suavizada. A lógica de delay e long press vive no JS.
+   O estado .open é o mesmo do dropdown padrão, então não há
+   nada novo a declarar para a aparência do menu.
+   ——————————————————————————————————————————————————————————— */
+
+/* Indica visualmente que hover é suficiente para abrir */
+.dropdown[data-variant="hover"] [data-dropdown-toggle] {
+  cursor: default;
+}
+
+/* No mobile, o long press deve ter um feedback tátil sutil.
+   Usamos :active para dar um leve sink durante o press. */
+.dropdown[data-variant="hover"] [data-dropdown-toggle]:active {
+  filter: brightness(0.9);
+}
+
+/* Transição de saída levemente mais lenta que a de entrada
+   para evitar que o menu feche abruptamente ao mover o mouse.
+   A entrada usa a transition já definida em .dropdown-menu (0.15s).
+   A saída (classe sendo removida) herda a mesma transition,
+   então o comportamento de delay real fica no JS. */
+.dropdown[data-variant="hover"] .dropdown-menu {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
 
 /* ——— 2. TABS —————————————————————————————————————————————————
 
