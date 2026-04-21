@@ -478,8 +478,13 @@
   transform: translateX(-6px) scale(0.97);
 }
 
-/* Alinhamento --end: painel alinha à direita do trigger */
-.hcard__panel--end { left: auto; right: 0; }
+/* Alinhamento: end → painel alinha à direita do trigger (classe manual ou via JS) */
+.hcard__panel--end,
+.hcard[data-align="end"] .hcard__panel { left: auto; right: 0; }
+
+/* Chevron segue o alinhamento em bottom/top */
+.hcard[data-align="end"] .hcard__panel::before,
+.hcard[data-align="end"] .hcard__panel::after { left: auto; right: 1.25rem; }
 
 /* Estado aberto */
 .hcard__panel.open {

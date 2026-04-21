@@ -266,9 +266,9 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .font-bold     { font-weight: 700 !important; }
 
 /* Alinhamento */
-.text-left   { text-align: left   !important; }
+.text-start  { text-align: left   !important; }
 .text-center { text-align: center !important; }
-.text-right  { text-align: right  !important; }
+.text-end    { text-align: right  !important; }
 
 /* Utilitarios */
 .text-italic      { font-style: italic;         }

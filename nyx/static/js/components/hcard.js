@@ -1,9 +1,10 @@
 NyxDom.register('hover-card', el => {
-    const trigger  = NyxDom.find('[data-hcard-trigger]', el);
-    const panel    = NyxDom.find('[data-hcard-panel]', el);
-    const mode     = el.dataset.trigger  || 'hover';
-    const dismiss  = el.dataset.dismiss  || 'auto';
+    const trigger   = NyxDom.find('[data-hcard-trigger]', el);
+    const panel     = NyxDom.find('[data-hcard-panel]', el);
+    const mode      = el.dataset.trigger || 'hover';
+    const dismiss   = el.dataset.dismiss || 'auto';
     const openDelay = parseInt(el.dataset.delay ?? 0, 10);
+    const isAuto    = !el.dataset.placement || el.dataset.placement === 'auto';
 
     let openTimer  = null;
     let closeTimer = null;
@@ -12,6 +13,7 @@ NyxDom.register('hover-card', el => {
         if (el.dataset.disabled === 'true') return;
         clearTimeout(closeTimer);
         clearTimeout(openTimer);
+        if (isAuto) NyxUtils.autoPlace(el, panel);
         if (openDelay > 0) {
             openTimer = setTimeout(() => panel.classList.add('open'), openDelay);
         } else {
@@ -37,12 +39,10 @@ NyxDom.register('hover-card', el => {
     const onToggle = e => {
         if (el.dataset.disabled === 'true') return;
         e.stopPropagation();
-        panel.classList.toggle('open');
+        panel.classList.contains('open') ? close() : open();
     };
 
-    const onOutside = e => {
-        if (!el.contains(e.target)) close();
-    };
+    const onOutside = e => { if (!el.contains(e.target)) close(); };
 
     if (mode === 'click' || mode === 'both') {
         trigger?.addEventListener('click', onToggle);
@@ -52,6 +52,9 @@ NyxDom.register('hover-card', el => {
     if (dismiss === 'manual') {
         NyxDom.find('[data-hcard-close]', panel)?.addEventListener('click', close);
     }
+
+    // Posiciona corretamente antes do primeiro paint para não causar scroll horizontal
+    if (isAuto) NyxUtils.autoPlace(el, panel);
 
     return () => document.removeEventListener('click', onOutside);
 });

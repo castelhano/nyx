@@ -25,19 +25,18 @@
                 <p>Conteúdo da aba Configurações</p>
             </div>
         </c-tabs>
-        
-        <c-hcard name="João Silva" sub="@joao" dismiss="manual" mode="click" placement="top" balloon="true">
-            <c-slot name="trigger">
-                <span>Foo</span>
-            </c-slot>
-            Desenvolvedor full-stack.
-            <c-slot name="footer">
-                <span><strong>128</strong> seguindo</span>
-            </c-slot>
-        </c-hcard>
 
-
-
+        <div class="text-end">
+            <c-hcard name="João Silva" sub="@joao">
+                <c-slot name="trigger">
+                    <span>Foo</span>
+                </c-slot>
+                Desenvolvedor full-stack.
+                <c-slot name="footer">
+                    <span><strong>128</strong> seguindo</span>
+                </c-slot>
+            </c-hcard>
+        </div>
     </section>
 </main>
 {% endblock %}
