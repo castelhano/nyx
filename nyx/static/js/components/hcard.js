@@ -91,5 +91,9 @@ NyxDom.register('hover-card', el => {
     // Posiciona antes do primeiro paint para não causar scroll horizontal
     if (isAuto) NyxUtils.autoPlace(el, panel);
 
-    return () => document.removeEventListener('click', onOutside);
+    return () => {
+        clearTimeout(openTimer);
+        clearTimeout(closeTimer);
+        document.removeEventListener('click', onOutside);
+    };
 });

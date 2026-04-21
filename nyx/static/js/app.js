@@ -37,7 +37,7 @@ keys.scanBindings(document); // realiza primeiro scan na pagina
 
 // ── Integração HTMX ───────────────────────────────────────────────────────────
 keys.watchHtmx();
-// htmx.config.allowScriptTags = true; // permite execucao JS nos fragmentos
+htmx.config.allowScriptTags = true;
 
 // ── Ciclo de vida dos módulos de página ───────────────────────────────────────
 const NyxApp = (() => {
@@ -61,6 +61,7 @@ const NyxApp = (() => {
     // Monta ao carregar a página inteira
     document.addEventListener("DOMContentLoaded", () => {
         NyxDom.init();
+        NyxResponse.scan(document);
         mountPage();
     });
 
@@ -73,6 +74,7 @@ const NyxApp = (() => {
     document.addEventListener("htmx:afterSwap", (e) => {
         if (e.detail?.target) {
             NyxDom.init(e.detail.target);
+            NyxResponse.scan(e.detail.target);
             mountPage(e.detail.target);
         }
     });

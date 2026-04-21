@@ -362,10 +362,10 @@
   animation: toast-in 0.2s ease;
 }
 
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+@keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toast-out { from { opacity: 1; transform: translateY(0); }   to { opacity: 0; transform: translateY(-6px); } }
+
+.toast.is-removing { animation: toast-out 0.2s ease forwards; pointer-events: none; }
 
 .toast__body  { flex: 1; }
 
@@ -388,6 +388,17 @@
 .toast--danger       { background-color: var(--nyx-bg-danger);   color: var(--nyx-text-danger);   border-color: var(--nyx-border-danger); }
 .toast--warning      { background-color: var(--nyx-bg-warning);  color: var(--nyx-text-warning);  border-color: var(--nyx-border-warning); }
 .toast--info         { background-color: var(--nyx-bg-info);     color: var(--nyx-text-info);     border-color: var(--nyx-border-info); }
+
+/* ── Field feedback (NyxResponse handler: field) ─────────────── */
+
+.is-invalid { border-color: var(--nyx-border-danger)  !important; }
+.is-warning { border-color: var(--nyx-border-warning) !important; }
+.is-valid   { border-color: var(--nyx-border-success) !important; }
+
+.field-feedback             { display: block; font-size: var(--nyx-font-xs); margin-top: var(--nyx-spacer-1); }
+.field-feedback--error      { color: var(--nyx-text-danger);  }
+.field-feedback--warning    { color: var(--nyx-text-warning); }
+.field-feedback--success    { color: var(--nyx-text-success); }
 
 
 /* ——— 10. HOVER CARD ——————————————————————————————————————————

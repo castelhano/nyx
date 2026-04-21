@@ -30,7 +30,7 @@
 
     {% if messages %}
         {% for message in messages %}
-            <c-toast type="{{ message.tags }}">{{ message }}</c-toast>
+            <template data-response="toast" data-status="{{ message.tags }}">{{ message }}</template>
         {% endfor %}
     {% endif %}
 
@@ -48,6 +48,8 @@
     {# 2. Core utilitários #}
     <script src="{% static 'js/core/utils.js' %}"></script>
     <script src="{% static 'js/core/dom.js' %}"></script>
+    <script src="{% static 'js/core/toast.js' %}"></script>
+    <script src="{% static 'js/core/response.js' %}"></script>
     
     {# 3. Componentes #}
     <script src="{% static 'js/components/dropdown.js' %}"></script>
@@ -60,7 +62,10 @@
 
     {# 5. Orquestrador — sempre por último #}
     <script src="{% static 'js/app.js' %}"></script>
-    {% block extra_js %}{% endblock %}
+    
+    <script>
+        {% block script %}{% endblock %}
+    </script>
 
 </body>
 </html>
