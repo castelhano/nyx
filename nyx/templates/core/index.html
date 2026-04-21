@@ -15,7 +15,7 @@
                 
                 <form autocomplete="off" class="d-grid grid-fit-rest align-center gap-2">
                     <label for="nome" class="form-label">Nome</label>
-                    <input type="text" name="nome" id="nome" class="form-control form-control-sm mt-1" placeholder="Nome completo">
+                    <input type="text" data-autofocus name="nome" id="nome" class="form-control form-control-sm mt-1" placeholder="Nome completo">
                     <label for="cpf" class="form-label">CPF</label>
                     <input type="text" name="cpf" id="cpf" class="form-control form-control-sm mw-2xs">
                 </form>
@@ -25,18 +25,6 @@
                 <p>Conteúdo da aba Configurações</p>
             </div>
         </c-tabs>
-
-        <div class="text-end">
-            <c-hcard name="João Silva" sub="@joao">
-                <c-slot name="trigger">
-                    <span>Foo</span>
-                </c-slot>
-                Desenvolvedor full-stack.
-                <c-slot name="footer">
-                    <span><strong>128</strong> seguindo</span>
-                </c-slot>
-            </c-hcard>
-        </div>
     </section>
 </main>
 

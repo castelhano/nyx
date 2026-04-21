@@ -1,3 +1,38 @@
+/**
+ * Hover Card — Painel flutuante ativado por hover ou clique.
+ *
+ * HTML mínimo:
+ *   <div data-component="hover-card">
+ *     <div data-hcard-trigger>...</div>
+ *     <div data-hcard-panel>...</div>
+ *   </div>
+ *
+ * Cotton:
+ *   <c-hcard name="João Silva" sub="@joao" avatar="foto.jpg"
+ *            mode="hover" placement="auto" delay="300" balloon="true">
+ *     <c-slot name="trigger">
+ *       <button class="btn btn-sm">João</button>
+ *     </c-slot>
+ *     Texto do corpo aqui.
+ *     <c-slot name="footer">
+ *       <span><strong>128</strong> seguindo</span>
+ *     </c-slot>
+ *   </c-hcard>
+ *
+ * Opções (data-attrs no container):
+ *   data-trigger="hover"          modo de abertura: hover | click | both  (padrão: hover)
+ *   data-placement="auto"         posição do painel: auto | top | bottom | start | end  (padrão: auto)
+ *   data-dismiss="auto"           fechamento: auto (fora do elemento) | manual  (padrão: auto)
+ *   data-delay="300"              delay em ms para abrir no hover  (padrão: 0)
+ *   data-disabled="true"          desativa o componente
+ *
+ * Dismiss manual:
+ *   Com data-dismiss="manual", adicione dentro do panel um botão com data-hcard-close.
+ *
+ * Placement auto:
+ *   Calcula o melhor lado com base no espaço disponível no viewport via NyxUtils.autoPlace.
+ *   O alinhamento (start/end) também é ajustado automaticamente.
+ */
 NyxDom.register('hover-card', el => {
     const trigger   = NyxDom.find('[data-hcard-trigger]', el);
     const panel     = NyxDom.find('[data-hcard-panel]', el);
@@ -53,7 +88,7 @@ NyxDom.register('hover-card', el => {
         NyxDom.find('[data-hcard-close]', panel)?.addEventListener('click', close);
     }
 
-    // Posiciona corretamente antes do primeiro paint para não causar scroll horizontal
+    // Posiciona antes do primeiro paint para não causar scroll horizontal
     if (isAuto) NyxUtils.autoPlace(el, panel);
 
     return () => document.removeEventListener('click', onOutside);
