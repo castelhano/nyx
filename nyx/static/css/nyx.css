@@ -91,30 +91,31 @@ select { appearance: none; }
   --nyx-bg-warning:   light-dark(#BCB08D, #454026);
   --nyx-bg-danger:    light-dark(#BD9EA1, #452F32);
   --nyx-bg-success:   light-dark(#98AF9F, #2A3B35);
-  --nyx-bg-attention: light-dark(#B59D8B, #45362C);
   --nyx-bg-promoted:  light-dark(#A999A9, #3D2D3D);
+  --nyx-bg-attention:   light-dark(#B8896B, #583F30);
   --nyx-bg-discovery: light-dark(#9D96B8, #342D4D);
-
-
-  /* — Tipografia (fonte) — */
+  
+  
+/* — Tipografia (fonte) — */
   --nyx-typeface-base:        system-ui, sans-serif;
   --nyx-typeface-mono:        "Roboto Mono", monospace;
 
   /* — Tipografia (cor) — */
-  --nyx-text-primary:         light-dark(#1e2428,  #c9d1d9);
-  --nyx-text-secondary:       light-dark(#3a4650,  #8b949e);
-  --nyx-text-tertiary:        light-dark(#556070,  #596169);
-  --nyx-text-emp:             light-dark(#0a0e12,  #f0f0f0);
+  --nyx-text-primary:         light-dark(#1e2428, #c9d1d9);
+  --nyx-text-secondary:       light-dark(#3a4650, #8b949e);
+  --nyx-text-tertiary:        light-dark(#556070, #596169);
+  --nyx-text-emp:             light-dark(#0a0e12, #f0f0f0);
 
   /* — Tipografia (estados semânticos) — */
-  --nyx-text-brand:           light-dark(#1e4d6e,  #8eb3d3);
-  --nyx-text-info:            light-dark(#0e5060,  #6edff6);
-  --nyx-text-warning:         light-dark(#584008,  #e6c25d);
-  --nyx-text-danger:          light-dark(#8c2020,  #ff8585);
-  --nyx-text-success:         light-dark(#0e5232,  #48d381);
-  --nyx-text-discovery:       light-dark(#48288c,  #A699FF);
-  --nyx-text-attention:       light-dark(#963e00,  #feb272);
-  --nyx-text-promoted:        light-dark(#840e50,  #e685b5);
+  --nyx-text-brand:           light-dark(#1e4d6e, #8eb3d3);
+  --nyx-text-info:            light-dark(#0e5060, #6edff6);
+  --nyx-text-warning:         light-dark(#584008, #e6c25d);
+  --nyx-text-danger:          light-dark(#8c2020, #ff8585);
+  --nyx-text-success:         light-dark(#2B4B3B, #4DBF7C);
+  --nyx-text-attention:       light-dark(#963e00, #feb272);
+  --nyx-text-discovery:       light-dark(#48288c, #A699FF);
+  --nyx-text-promoted:        light-dark(#840e50, #e685b5);
+
 
   /* — Tipografia (escala) — */
   --nyx-font-xs:              0.75rem;    /* 12px */
@@ -619,6 +620,8 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
   gap: var(--grid-gap, 1rem);
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--grid-min, 250px)), 1fr));
 }
+.grid-fit-rest { grid-template-columns: minmax(min-content, 100px) 1fr; } /* [auto][ -- full -- ] */
+
 .grid-xs { --grid-min: 150px; }
 .grid-sm { --grid-min: 200px; }
 .grid-md { --grid-min: 300px; }
@@ -630,7 +633,6 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
 .grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
 .grid-cols-4 { grid-template-columns: repeat(4, 1fr) !important; }
-.grid-fit-rest { grid-template-columns: minmax(min-content, 100px) 1fr; }
 
 /* Altura mínima das linhas */
 .grid-min-h-xs { grid-auto-rows: minmax(40px, auto)  !important; }

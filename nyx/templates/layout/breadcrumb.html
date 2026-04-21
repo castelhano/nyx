@@ -7,12 +7,10 @@
                     {% if forloop.first %}
                         <a href="{% url item.url %}"
                            class="btn btn-sm btn-ghost"
-                           {% if item.url == back_url %}
-                           data-keybind="alt+v"
-                           title="Voltar para {{ item.label }}"
-                           data-keybind-icon="bi bi-arrow-counterclockwise"
-                           data-keybind-origin="nyx.breadcrumbs"
-                           {% endif %}>{{ item.label }}</a>
+                           data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
+                           title="{{ item.label }}"
+                           data-keybind-icon="bi bi-house"
+                           data-keybind-origin="nyx.breadcrumbs">{{ item.label }}</a>
                     {% else %}
                         <a hx-get="{% url item.url %}"
                            hx-target="#main-content"
@@ -41,12 +39,10 @@
             {% if forloop.first %}
                 <a href="{% url item.url %}"
                    class="btn btn-sm btn-ghost"
-                   {% if item.url == back_url %}
-                   data-keybind="alt+v"
-                   title="Voltar para {{ item.label }}"
-                   data-keybind-icon="bi bi-arrow-counterclockwise"
-                   data-keybind-origin="nyx.breadcrumbs"
-                   {% endif %}>{{ item.label }}</a>
+                   data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
+                   title="{{ item.label }}"
+                   data-keybind-icon="bi bi-house"
+                   data-keybind-origin="nyx.breadcrumbs">{{ item.label }}</a>
             {% else %}
                 <a hx-get="{% url item.url %}"
                    hx-target="#main-content"

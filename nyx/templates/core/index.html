@@ -5,8 +5,12 @@
 {% block main %}
 <main class="p-4">
     <section class="">
-
-        <div class="d-grid grid-cols-3">
+        <div class="d-grid grid-cols-2">
+            <div class="bg-secondary p-4">bg-body
+                <div class="bg-body p-4">bg-secondary
+                    <div class="bg-tertiary p-4">bg-tertiary</div>
+                </div>
+            </div>
             <div class="bg-alt p-4">bg-alt
                 <div class="bg-alt-secondary p-4">bg-alt-secondary
                     <div class="bg-alt-tertiary p-4">bg-alt-tertiary</div>
@@ -24,6 +28,17 @@
             <div class="bg-promoted p-3">bg-promoted</div>
             <div class="bg-discovery p-3">bg-discovery</div>
         </div>
+        <hr class="divider my-4">
+        <div class="d-grid grid-cols-4 gap-3">
+            <div class="text-bg-brand p-3">text-bg-brand</div>
+            <div class="text-bg-info p-3">text-bg-info</div>
+            <div class="text-bg-warning p-3">text-bg-warning</div>
+            <div class="text-bg-danger p-3">text-bg-danger</div>
+            <div class="text-bg-success p-3">text-bg-success</div>
+            <div class="text-bg-attention p-3">text-bg-attention</div>
+            <div class="text-bg-promoted p-3">text-bg-promoted</div>
+            <div class="text-bg-discovery p-3">text-bg-discovery</div>
+        </div>
         <div class="d-grid mt-4">
             <div class="text-brand">text-brand</div>
             <div class="text-info">text-info</div>
@@ -34,17 +49,6 @@
             <div class="text-promoted">text-promoted</div>
             <div class="text-discovery">text-discovery</div>
         </div>
-        <div class="d-grid grid-cols-4 gap-3 mt-4">
-            <div class="text-bg-brand p-3">text-bg-brand</div>
-            <div class="text-bg-info p-3">text-bg-info</div>
-            <div class="text-bg-warning p-3">text-bg-warning</div>
-            <div class="text-bg-danger p-3">text-bg-danger</div>
-            <div class="text-bg-success p-3">text-bg-success</div>
-            <div class="text-bg-attention p-3">text-bg-attention</div>
-            <div class="text-bg-promoted p-3">text-bg-promoted</div>
-            <div class="text-bg-discovery p-3">text-bg-discovery</div>
-        </div>
-        
         <c-tabs variant="tabs--pills mt-4">
             <c-slot name="tabs">
                 <button class="tabs__tab active" data-tab="dados"   role="tab">Dados</button>

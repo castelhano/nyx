@@ -60,6 +60,7 @@ const NyxApp = (() => {
 
     // Monta ao carregar a página inteira
     document.addEventListener("DOMContentLoaded", () => {
+        NyxUtils.initTheme();
         NyxDom.init();
         NyxResponse.scan(document);
         mountPage();

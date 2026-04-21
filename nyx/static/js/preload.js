@@ -25,9 +25,18 @@ window.NyxPreload = (function () {
         document.documentElement.setAttribute('data-sidebar-init', 'collapsed');
     }
 
+    // ── Theme ─────────────────────────────────────────────────────
+    var THEME_KEY = 'nyx:theme';
+    var savedTheme = localStorage.getItem(THEME_KEY);
+    var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = savedTheme || (systemDark ? 'dark' : 'light');
+
+    document.documentElement.setAttribute('data-theme', theme);
+
     // ── API pública ───────────────────────────────────────────────
     return {
         sidebar: { collapsed: sidebarCollapsed },
+        theme:   theme,
     };
 
 })();

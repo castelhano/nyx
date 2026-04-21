@@ -1,13 +1,24 @@
 
 
 const NyxUtils = {
+    _THEME_KEY: 'nyx:theme',
+
     toggleTheme() {
-      const html  = document.documentElement;
-      const label = document.getElementById('theme-label');
-      const curr  = html.getAttribute('data-theme');
-      const next  = curr === 'dark' ? 'light' : 'dark';
-      html.setAttribute('data-theme', next);
-      label.textContent = next === 'dark' ? 'Light' : 'Dark';
+        const html = document.documentElement;
+        const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem(this._THEME_KEY, next);
+        this._applyThemeLabel(next);
+    },
+
+    initTheme() {
+        const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+        this._applyThemeLabel(theme);
+    },
+
+    _applyThemeLabel(theme) {
+        const label = document.getElementById('theme-label');
+        if (label) label.textContent = theme === 'dark' ? 'Light' : 'Dark';
     },
 
     // Calcula o melhor placement para um painel flutuante relativo ao anchor,
