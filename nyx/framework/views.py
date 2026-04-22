@@ -122,7 +122,14 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
         model        = getattr(self, 'model', None)
         view_context = _VIEW_CONTEXT.get(self._permission_action, '')
 
-        model_verbose = self.model._meta.verbose_name_plural.capitalize() if model else ''
+        if model:
+            meta          = self.model._meta
+            model_verbose = (meta.verbose_name_plural if view_context == 'list' else meta.verbose_name).capitalize()
+            ctx['app_name'] = meta.app_config.verbose_name
+        else:
+            model_verbose   = ''
+            ctx['app_name'] = ''
+
         ctx['ui'] = {
             'icon':        getattr(schema, 'icon', ''),
             'title':       getattr(schema, 'title', model_verbose),

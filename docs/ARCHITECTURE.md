@@ -28,7 +28,8 @@ framework/
 ├── registry.py         — registro de navegação: hierarquia, parents, actions
 ├── views.py            — classes base: BaseListView, BaseCreateView, BaseUpdateView, BaseDeleteView
 ├── ui.py               — estruturas declarativas de UI (FormLayout, ListLayout, toolbar, columns)
-├── messages.py         — mensagens padrão do sistema (CREATED, UPDATED, DELETED, FORM_ERROR)
+├── messages.py         — mensagens padrão do sistema (CREATED, UPDATED, DELETED, FORM_ERROR) + classe V (mensagens de validação de campos)
+├── forms.py            — NyxModelForm: base para todos os forms; aplica V, autofocus, placeholder e data-mask automaticamente
 ├── apps.py             — FrameworkConfig: dispara registry._flush() no ready()
 ├── context_processors.py
 ├── mixins/
@@ -276,6 +277,7 @@ Usado pelo `hcard.js`. Disponível para qualquer componente que precise de posic
 | URL de criação | `app:modelo_create` | `pessoal:funcionario_create` |
 | URL de edição | `app:modelo_update` | `pessoal:funcionario_update` |
 | Classe UI | `ModeloUI` em `app/ui/modelo.py` | `EmpresaUI` |
+| Form | `ModeloForm` em `app/forms/modelo.py` herdando `NyxModelForm` | `EmpresaForm` |
 
 ### Frontend JS
 
@@ -333,6 +335,15 @@ Usado pelo `hcard.js`. Disponível para qualquer componente que precise de posic
 3. **Mensagens de sucesso** usam `nyx.framework.messages` como base
 4. **success_url** é inferido por convenção (`app:modelo_list`) — declarar só se diferente
 5. **`toolbar` e `row_actions` são aditivos** — declaram apenas extras; create/edit são controlados por `enable_create`/`enable_update` (ver 4.8)
+6. **Contexto automático**: `app_name` (verbose_name do AppConfig) e `ui.title` (singular em forms, plural em list)
+
+### Forms
+
+1. **Sempre herdar de `NyxModelForm`** — nunca `forms.ModelForm` diretamente
+2. **Form é só declaração de `fields`** — label, required, maxlength vêm do model; mensagens de erro, autofocus, placeholder e máscara são aplicados automaticamente
+3. **`get_placeholder(field_name)`** no model — retorna dict `{field_name: texto}` para placeholder do input
+4. **`get_mask(field_name)`** no model — retorna dict `{field_name: padrão}` para `data-mask` (chave = nome do atributo Python, não verbose_name)
+5. **`help_text`** no model field — exibido como orientação abaixo do input (não usar como placeholder)
 
 ### CSS
 
@@ -424,4 +435,5 @@ NyxModules["meu-modulo"] = {
 | Estilos de componentes | `nyx/static/css/components.css` |
 | Ciclo de vida JS | `nyx/static/js/core/dom.js` |
 | Atalhos de teclado | `nyx/static/js/libs/keywatch.js` |
-| Mensagens padrão | `nyx/framework/messages.py` |
+| Mensagens padrão e de validação | `nyx/framework/messages.py` |
+| Criar form de modelo | `nyx/framework/forms.py` + `app/forms/modelo.py` |

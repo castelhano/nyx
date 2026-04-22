@@ -1,11 +1,11 @@
-<nav class="breadcrumb" aria-label="navegacao">
+<nav class="breadcrumb text-lg bg-tertiary p-2 rounded" aria-label="navegacao">
     {% for item in breadcrumbs %}
         {% if item.actions %}
             <div class="breadcrumb__dropdown-wrap">
                 {% if item.url %}
                     {% if forloop.first %}
                         <a href="{% url item.url %}"
-                           class="btn btn-surface"
+                           class="btn btn-ghost-brand"
                            data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                            title="{{ item.label }}"
                            ui="_1"
@@ -15,7 +15,7 @@
                         <a hx-get="{% url item.url %}"
                            hx-target="#main-content"
                            hx-push-url="true"
-                           class="btn btn-surface"
+                           class="btn btn-ghost"
                            {% if item.url == back_url %}
                            ui="_2"
                            data-keybind="alt+v"
@@ -39,7 +39,7 @@
         {% elif item.url %}
             {% if forloop.first %}
                 <a href="{% url item.url %}"
-                   class="btn btn-surface"
+                   class="btn btn-ghost-brand"
                    data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                    title="{{ item.label }}"
                    ui="_3"
@@ -49,7 +49,7 @@
                 <a hx-get="{% url item.url %}"
                    hx-target="#main-content"
                    hx-push-url="true"
-                   class="btn btn-surface"
+                   class="btn btn-ghost-brand"
                    {% if item.url == back_url %}
                    ui="_4"
                    data-keybind="alt+v"
@@ -59,7 +59,7 @@
                    {% endif %}>{{ item.label }}</a>
             {% endif %}
         {% else %}
-            <span class="btn btn-surface disabled">{{ item.label }}</span>
+            <span class="btn btn-ghost disabled text-info">{{ item.label }}</span>
         {% endif %}
 
         {% if not forloop.last %}

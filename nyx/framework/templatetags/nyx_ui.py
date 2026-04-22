@@ -69,6 +69,16 @@ def action_button(context, action, obj=None):
     }
 
 
+@register.filter(name='add_class')
+def add_class(field, css_class):
+    """Renderiza o widget adicionando css_class e is-invalid quando o campo tiver erros."""
+    existing = field.field.widget.attrs.get('class', '')
+    classes  = f'{existing} {css_class}'.strip() if existing else css_class
+    if field.errors:
+        classes += ' is-invalid'
+    return field.as_widget(attrs={'class': classes})
+
+
 @register.simple_tag
 def get_field(obj, field_path: str):
     """

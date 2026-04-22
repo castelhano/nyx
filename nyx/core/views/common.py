@@ -1,5 +1,6 @@
 from nyx.framework.views import BaseListView, BaseCreateView, BaseUpdateView, BaseDeleteView
 from nyx.core.models.empresa import Empresa
+from nyx.core.forms import EmpresaForm
 
 
 class EmpresaListView(BaseListView):
@@ -7,13 +8,13 @@ class EmpresaListView(BaseListView):
 
 
 class EmpresaCreateView(BaseCreateView):
-    model  = Empresa
-    fields = ['nome', 'cnpj_base', 'razao_social']
+    model      = Empresa
+    form_class = EmpresaForm
 
 
 class EmpresaUpdateView(BaseUpdateView):
-    model  = Empresa
-    fields = ['nome', 'cnpj_base', 'razao_social']
+    model      = Empresa
+    form_class = EmpresaForm
 
 
 class EmpresaDeleteView(BaseDeleteView):

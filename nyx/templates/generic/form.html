@@ -8,26 +8,44 @@
 <div class="{{ui.layout.container_class}}" data-keybind-group="{{ ui.title|slugify }}-form">
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
-    <h1>{{ ui.title }}</h1>
+    <h3>
+        <span>{{ app_name }}</span>
+        <i class="bi bi-arrow-return-right text-xs mx-2 text-"></i>
+        <span>{{ ui.title }}</span>
+    </h3>
 
     <form method="post"
           hx-post="{{ request.path }}"
           hx-target="#main-content"
           hx-swap="innerHTML"
+          autocomplete="off"
           novalidate>
         {% csrf_token %}
-        {{ form.as_p }}
+        <div class="d-grid grid-fit-rest align-center gap-2 my-3">
+            {% for field in form %}
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            <div>
+                {{ field|add_class:"form-control form-control-sm" }}
+                {% if field.errors %}
+                {% for error in field.errors %}<span class="form-error">{{ error }}</span>{% endfor %}
+                {% elif field.help_text %}<div class="form-hint ps-1">{{ field.help_text }}</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
         <button type="submit"
-                data-keybind="ctrl+s"
-                data-keybind-desc="Salvar">
+                data-keybind="alt+g"
+                class="btn btn-sm btn-brand"
+                title="Salvar">
             Salvar
         </button>
         <a hx-get="{{ cancel_url }}"
            hx-target="#main-content"
            hx-swap="innerHTML"
            hx-push-url="true"
+           class="btn btn-sm btn-secondary"
            data-keybind="esc"
-           data-keybind-desc="Cancelar">
+           title="Cancelar">
             Cancelar
         </a>
     </form>
