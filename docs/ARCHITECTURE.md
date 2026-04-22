@@ -217,6 +217,37 @@ Atalhos do sistema:
 | `ctrl+s` | Salvar formulário | generic/form.html |
 | `esc` | Cancelar formulário | generic/form.html |
 
+### 4.8 Toolbar e Row Actions (`framework/ui.py`)
+
+Ambos seguem o mesmo padrão: botão padrão auto-injetado + extras aditivos.
+
+**Toolbar** (`resolve_toolbar`) — resolvido só em `view_context == 'list'`:
+- `enable_create = True` (default) → create auto-injetado, `permission = app.add_model`
+- `enable_create = False` → sem create
+- `toolbar = [...]` → extras appendados após o create
+
+**Row actions** (`resolve_row_actions`):
+- `enable_update = True` (default) → edit auto-injetado, `permission = app.change_model`
+- `enable_update = False` → sem edit
+- `row_actions = [...]` → extras appendados após o edit
+
+`Action.keybind` → renderizado como `data-keybind` no botão via `_action_button.html`.
+`Action.css_class` → override completo das classes CSS; se vazio, `variant` é expandido para `btn btn-sm btn-{variant}` pela tag `action_button`; sem nenhum dos dois → `btn btn-sm btn-secondary`. Os resolve functions usam `css_class` diretamente nos botões auto-injetados.
+
+```python
+# mínimo — create e edit auto-injetados com permissão inferida
+class EmpresaUI:
+    columns = [...]
+
+# desativar create ou edit
+enable_create = False
+enable_update = False
+
+# adicionar controles extras
+toolbar     = [Action(url_name='core:export', icon='bi bi-download')]
+row_actions = [Action(url_name='core:empresa_delete', icon='bi bi-trash', variant='danger')]
+```
+
 ### 4.7 NyxUtils.autoPlace (`core/utils.js`)
 
 Utilitário para posicionamento de painéis flutuantes. Calcula o melhor placement baseado no espaço disponível no viewport e aplica `data-placement` e `data-align` no elemento âncora.
@@ -301,6 +332,7 @@ Usado pelo `hcard.js`. Disponível para qualquer componente que precise de posic
 2. **Permissões** são inferidas automaticamente — declarar `permission_required` só para exceções
 3. **Mensagens de sucesso** usam `nyx.framework.messages` como base
 4. **success_url** é inferido por convenção (`app:modelo_list`) — declarar só se diferente
+5. **`toolbar` e `row_actions` são aditivos** — declaram apenas extras; create/edit são controlados por `enable_create`/`enable_update` (ver 4.8)
 
 ### CSS
 

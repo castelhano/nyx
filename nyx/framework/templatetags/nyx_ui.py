@@ -57,10 +57,15 @@ def action_button(context, action, obj=None):
         except NoReverseMatch:
             url = "#"
 
+    css_class = action.css_class or (f'btn btn-sm btn-{action.variant}' if action.variant else 'btn btn-sm btn-secondary')
+    title     = action.title or action.label or ''
+
     return {
-        "visible": True,
-        "action":  action,
-        "url":     url,
+        "visible":   True,
+        "action":    action,
+        "url":       url,
+        "css_class": css_class,
+        "title":     title,
     }
 
 

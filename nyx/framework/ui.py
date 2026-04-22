@@ -15,7 +15,7 @@ Convenção > personalização:
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field as dc_field
+from dataclasses import dataclass, field as dc_field, replace
 from typing import Callable
 
 
@@ -45,7 +45,20 @@ class Link:
 class Keybind:
     """Atalho de teclado mapeado via data-keybind no elemento."""
     keys:   str
-    action: str = ''   # data-action; se vazio o keywatch.js infere click/focus
+    desc:   str = ''
+    icon:   str = ''
+    action: str = ''
+    origin: str = ''
+    title:  str = ''
+
+    @property
+    def attrs(self):
+        return {k: v for k, v in {
+            'desc':   self.desc or self.title,
+            'icon':   self.icon,
+            'action': self.action,
+            'origin': self.origin,
+        }.items() if v}
 
 
 # =============================================================================
@@ -64,9 +77,11 @@ class Action:
     label:      str     = ''
     url_name:   str     = ''
     icon:       str     = ''
-    variant:    str     = ''
-    permission: str     = ''   # se vazio, inferida pelo registry
-    condition:  str     = ''   # atributo booleano no obj (ex: 'ativo')
+    variant:    str     = ''       # shorthand → expande para 'btn btn-sm btn-{variant}'
+    css_class:  str     = ''       # override completo — se preenchido, variant é ignorado
+    permission: str     = ''       # se vazio, inferida pelo registry
+    title:      str     = ''       # title elemento
+    condition:  str     = ''       # atributo booleano no obj (ex: 'ativo')
     keybind:    Keybind = None
 
 
@@ -80,7 +95,7 @@ class ListLayout:
     table_class:            str  = 'table table-hover table-striped'
     header_class:           str  = ''
     header_title_class:     str  = ''
-    header_actions_class:   str  = ''
+    header_actions_class:   str  = 'py-1'
 
 @dataclass
 class FormLayout:
@@ -192,39 +207,70 @@ def filter_sections(sections: list[Section], view_context: str) -> list[Section]
     return result
 
 
+def resolve_row_actions(schema, model) -> list[Action]:
+    """
+    Resolve row_actions para a listagem.
+
+    - enable_update = True (default) → botão de edição auto-injetado como primeiro item,
+      com permission = app.change_model inferida automaticamente
+    - enable_update = False → sem botão de edição
+    - row_actions = [...] → controles adicionais, sempre appendados após o edit
+    """
+    app_label  = model._meta.app_label
+    model_name = model._meta.model_name
+
+    result = []
+
+    schema_origin = f'{schema.__module__}.{schema.__qualname__}'
+
+    if getattr(schema, 'enable_update', True):
+        result.append(Action(
+            label      = '',
+            url_name   = f'{app_label}:{model_name}_update',
+            icon       = 'bi bi-pencil',
+            css_class  = 'btn btn-xs btn-surface',
+            permission = f'{app_label}.change_{model_name}',
+        ))
+
+    for action in getattr(schema, 'row_actions', []):
+        if action.keybind and not action.keybind.origin:
+            action = replace(action, keybind=replace(action.keybind, origin=schema_origin))
+        result.append(action)
+    return result
+
+
 def resolve_toolbar(schema, model, view_context: str) -> list[Action]:
     """
     Resolve o toolbar final para a view.
 
-    - toolbar não declarado + list view → injeta Action de create automático
-    - toolbar não declarado + outras views → lista vazia
-    - toolbar declarado → normaliza Actions (preenche url_name/label ausentes)
-    - toolbar = [] → lista vazia (sem toolbar)
+    - view_context != 'list' → lista vazia
+    - enable_create = True (default) → create auto-injetado como primeiro botão
+    - enable_create = False → sem botão de create
+    - toolbar → controles adicionais, sempre appendados após o create
     """
-    declared = getattr(schema, 'toolbar', None)
+    if view_context != 'list':
+        return []
+
     app_label  = model._meta.app_label
     model_name = model._meta.model_name
-    verbose    = str(model._meta.verbose_name).capitalize()
-
-    if declared is None:
-        if view_context != 'list':
-            return []
-        return [Action(
-            label    = verbose,
-            url_name = f'{app_label}:{model_name}_create',
-            icon     = 'bi bi-plus-lg',
-        )]
 
     result = []
-    for action in declared:
-        if not action.url_name and view_context == 'list':
-            action = Action(
-                label    = action.label or verbose,
-                url_name = f'{app_label}:{model_name}_create',
-                icon     = action.icon or 'bi bi-plus-lg',
-                variant  = action.variant,
-                keybind  = action.keybind,
-                permission = action.permission,
-            )
+
+    schema_origin = f'{schema.__module__}.{schema.__qualname__}'
+
+    if getattr(schema, 'enable_create', True):
+        result.append(Action(
+            label      = '',
+            url_name   = f'{app_label}:{model_name}_create',
+            icon       = 'bi bi-plus-lg',
+            css_class  = 'btn btn-sm btn-success',
+            title      = 'FOO',
+            keybind    = Keybind(keys='alt+n', origin='nyx.framework.ui.resolve_toolbar'),
+            permission = f'{app_label}.add_{model_name}',
+        ))
+
+    for action in getattr(schema, 'toolbar', []):
+        if action.keybind and not action.keybind.origin:
+            action = replace(action, keybind=replace(action.keybind, origin=schema_origin))
         result.append(action)
     return result

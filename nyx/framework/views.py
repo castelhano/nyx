@@ -34,7 +34,7 @@ from nyx.framework.mixins.breadcrumbs import BreadcrumbMixin, BreadcrumbItem
 from nyx.framework.mixins.scoping import FilialScopeMixin
 from nyx.framework.registry import get_nav
 from nyx.framework.ui import (
-    FormLayout, ListLayout, normalize_columns, filter_sections, resolve_toolbar,
+    FormLayout, ListLayout, normalize_columns, filter_sections, resolve_toolbar, resolve_row_actions,
 )
 
 # Mapeamento de _permission_action → contexto de UI
@@ -130,7 +130,7 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
             'layout':      getattr(schema, 'layout', FormLayout() if view_context in ('create', 'update') else ListLayout()),
             'columns':     normalize_columns(getattr(schema, 'columns', [])),
             'toolbar':     resolve_toolbar(schema, model, view_context) if model else [],
-            'row_actions': getattr(schema, 'row_actions', []),
+            'row_actions': resolve_row_actions(schema, model) if model else [],
             'sections':    filter_sections(getattr(schema, 'sections', []), view_context),
         }
         return ctx

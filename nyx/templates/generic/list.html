@@ -6,7 +6,7 @@
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
     <div class="{{ui.layout.header_class}}">
-        <h1 class="{{ui.layout.header_title_class}}">{{ ui.title }}</h1>
+        <h6 class="{{ui.layout.header_title_class}}">{{ ui.title }}</h6>
         <div class="{{ui.layout.header_actions_class}}">
             {% for action in ui.toolbar %}
                 {% action_button action %}

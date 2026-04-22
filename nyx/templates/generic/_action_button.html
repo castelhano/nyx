@@ -1,11 +1,12 @@
 {# _action_button.html — Renderizado pela template tag action_button. #}
 {% if visible %}
 <a href="{{ url }}"
-   class="nyx-action nyx-action--{{ action.style }}"
+   class="{{ css_class }}"
    hx-get="{{ url }}"
    hx-target="#main-content"
    hx-push-url="true"
-   {% if action.icon %}title="{{ action.label }}"{% endif %}>
+   {% if title %}title="{{ title }}"{% endif %}
+   {% if action.keybind %}data-keybind="{{ action.keybind.keys }}"{% for name, val in action.keybind.attrs.items %} data-keybind-{{ name }}="{{ val }}"{% endfor %}{% endif %}>
     {% if action.icon %}<i class="{{ action.icon }}"></i>{% endif %}
     {{ action.label }}
 </a>

@@ -1,23 +1,14 @@
-from nyx.framework.ui import Action, Column, Field, Keybind, Section
+from nyx.framework.ui import Column, Field, Section
 
 
 class EmpresaUI:
     icon = 'bi bi-building'
-    title = 'Fooo'
 
     # ── List ─────────────────────────────────────────────────────────
     columns = [
         'nome',
         Column('cnpj_base', label='CNPJ', breakpoint='sm'),
         Column('razao_social', label='Razão Social', breakpoint='lg'),
-    ]
-
-    toolbar = [
-        Action(keybind=Keybind(keys='alt+n')),
-    ]
-
-    row_actions = [
-        Action(url_name='core:empresa_update', icon='bi-pencil'),
     ]
 
     # ── Form ─────────────────────────────────────────────────────────
