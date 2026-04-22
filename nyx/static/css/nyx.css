@@ -1017,7 +1017,8 @@ select.form-control-sm {
   text-decoration: none;
 }
 .btn:focus-visible      { outline: none; box-shadow: var(--nyx-focus-ring);         }
-.btn:disabled           { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+.btn:disabled,
+.btn.disabled           { opacity: 0.70; cursor: not-allowed; pointer-events: none; }
 .btn:hover:not(.active) { color: inherit; filter: brightness(0.92);                 }
 
 /* Tamanhos */
@@ -1031,9 +1032,10 @@ select.form-control-sm {
 .btn-tertiary      { background-color: var(--nyx-bg-tertiary);      }
 .btn-alt           { background-color: var(--nyx-bg-alt);           }
 .btn-alt-secondary { background-color: var(--nyx-bg-alt-secondary); }
-.btn-surface       { 
+.btn-surface,
+.btn-surface:hover { 
   background-color: var(--nyx-surface-bg-raized);
-  color:            var(--nyx-surface-text-raized);
+  color:            var(--nyx-surface-text-raized)!important;
 }
 
 .btn-brand,

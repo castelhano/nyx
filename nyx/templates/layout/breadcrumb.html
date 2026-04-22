@@ -1,26 +1,27 @@
 <nav class="breadcrumb" aria-label="navegacao">
     {% for item in breadcrumbs %}
-
         {% if item.actions %}
             <div class="breadcrumb__dropdown-wrap">
                 {% if item.url %}
                     {% if forloop.first %}
                         <a href="{% url item.url %}"
-                           class="btn btn-sm btn-ghost"
+                           class="btn btn-surface"
                            data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                            title="{{ item.label }}"
+                           ui="_1"
                            data-keybind-icon="bi bi-house"
-                           data-keybind-origin="nyx.breadcrumbs">{{ item.label }}</a>
+                           data-keybind-origin="nyx.breadcrumbs._1">{{ item.label }}</a>
                     {% else %}
                         <a hx-get="{% url item.url %}"
                            hx-target="#main-content"
                            hx-push-url="true"
-                           class="btn btn-sm btn-ghost"
+                           class="btn btn-surface"
                            {% if item.url == back_url %}
+                           ui="_2"
                            data-keybind="alt+v"
                            title="Voltar para {{ item.label }}"
                            data-keybind-icon="bi bi-arrow-counterclockwise"
-                           data-keybind-origin="nyx.breadcrumbs"
+                           data-keybind-origin="nyx.breadcrumbs._2"
                            {% endif %}>{{ item.label }}</a>
                     {% endif %}
                 {% else %}
@@ -38,25 +39,27 @@
         {% elif item.url %}
             {% if forloop.first %}
                 <a href="{% url item.url %}"
-                   class="btn btn-sm btn-ghost"
+                   class="btn btn-surface"
                    data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                    title="{{ item.label }}"
+                   ui="_3"
                    data-keybind-icon="bi bi-house"
-                   data-keybind-origin="nyx.breadcrumbs">{{ item.label }}</a>
+                   data-keybind-origin="nyx.breadcrumbs._3">{{ item.label }}</a>
             {% else %}
                 <a hx-get="{% url item.url %}"
                    hx-target="#main-content"
                    hx-push-url="true"
-                   class="btn btn-sm btn-ghost"
+                   class="btn btn-surface"
                    {% if item.url == back_url %}
+                   ui="_4"
                    data-keybind="alt+v"
                    title="Voltar para {{ item.label }}"
                    data-keybind-icon="bi bi-arrow-counterclockwise"
-                   data-keybind-origin="nyx.breadcrumbs"
+                   data-keybind-origin="nyx.breadcrumbs._4"
                    {% endif %}>{{ item.label }}</a>
             {% endif %}
         {% else %}
-            <span class="btn btn-sm text-brand">{{ item.label }}</span>
+            <span class="btn btn-surface disabled">{{ item.label }}</span>
         {% endif %}
 
         {% if not forloop.last %}

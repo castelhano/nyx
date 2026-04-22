@@ -230,18 +230,25 @@ class Keywatch {
             }
 
             /* ── Badge de tecla ──────────────────────────────────────────────── */
-            .kw-key {
-                display: inline-flex; align-items: center;
+            .kw-keys {
+                display: flex; align-items: center; justify-content: flex-end;
+                gap: 3px; flex-wrap: nowrap;
+            }
+            kbd.kw-key {
+                display: inline-flex; align-items: center; justify-content: center;
                 font-family: var(--nyx-typeface-mono);
-                font-size: 11px; font-weight: 600;
+                font-size: 10px;
                 color: var(--nyx-text-primary);
                 background: var(--nyx-bg-tertiary);
                 border: 1px solid var(--nyx-border-secondary);
+                border-bottom-width: 2px;
                 border-radius: 4px;
-                padding: 2px 7px; white-space: nowrap;
+                padding: 2px 6px;
+                min-width: 2.2em;
+                white-space: nowrap;
             }
-            .kw-key-sep { color: var(--nyx-text-tertiary); margin: 0 3px; font-size: 12px; }
-            .kw-or      { color: var(--nyx-text-tertiary); font-size: 11px; margin: 0 8px; }
+            .kw-key-sep { color: var(--nyx-text-tertiary); font-size: 10px; user-select: none; }
+            .kw-or      { color: var(--nyx-text-tertiary); font-size: 11px; margin: 0 6px; user-select: none; }
             .kw-empty   { text-align: center; color: var(--nyx-text-tertiary); padding: 32px 0 !important; font-style: italic; }
 
             /* ── Thead sticky ────────────────────────────────────────────────── */
@@ -249,7 +256,7 @@ class Keywatch {
 
             /* ── Painel de detalhes flutuante ────────────────────────────────── */
             #keywatch-meta-panel { animation: nyx-fade-in .12s ease; }
-            .kw-meta-inner { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-family: var(--nyx-typeface-mono); font-size: 10px; text-transform: uppercase; align-items: baseline; }
+            .kw-meta-inner { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-family: var(--nyx-typeface-mono); font-size: 10px; align-items: baseline; }
             .kw-meta-item  { display: contents; }
             .kw-meta-label { color: var(--nyx-text-tertiary); font-weight: 600; letter-spacing: .04em; }
             .kw-meta-value { color: var(--nyx-text-secondary); }
@@ -318,7 +325,7 @@ class Keywatch {
 
         this._contextBadge = document.createElement('span');
         this._contextBadge.id = 'keywatch-context-badge';
-        this._contextBadge.className = 'font-mono text-tertiary';
+        this._contextBadge.className = 'font-mono';
         this._contextBadge.textContent = this.context;
 
         searchInner.appendChild(this._searchInput);
@@ -336,8 +343,8 @@ class Keywatch {
         this._table.innerHTML = `
             <thead>
                 <tr>
-                    <th>Atalho</th>
                     <th>Descrição</th>
+                    <th style="width:180px;text-align:right">Atalho</th>
                     <th style="width:32px"></th>
                 </tr>
             </thead>
@@ -459,8 +466,8 @@ class Keywatch {
                         ).join('');
 
                         tr.innerHTML = `
-                            <td>${this._humanize(handler.schema)}</td>
                             <td>${desc}</td>
+                            <td style="text-align:right"><div class="kw-keys">${this._humanize(handler.schema)}</div></td>
                             <td style="text-align:center;padding:0 4px">
                                 <button class="kw-detail-btn" title="Detalhes de rastreio"><i class="bi bi-info-circle"></i></button>
                             </td>
@@ -549,6 +556,7 @@ class Keywatch {
                 context:        el.dataset.keybindContext        || this.handlerDefaults.context,
                 desc:           el.dataset.keybindDesc           || el.title || el.textContent?.trim().slice(0, 60) || '',
                 icon:           el.dataset.keybindIcon           || null,
+                origin:         el.dataset.keybindOrigin         || undefined,
                 group:          group,
                 keydown:        el.dataset.keybindKeydown        !== 'false',
                 keyup:          el.dataset.keybindKeyup          === 'true',
@@ -1082,7 +1090,7 @@ class Keywatch {
                 for (const alias in this.modifier) {
                     if (this.modifier[alias] === k) k = alias;
                 }
-                return `<span class="kw-key">${k.toUpperCase()}</span>`;
+                return `<kbd class="kw-key">${k.toUpperCase()}</kbd>`;
             }).join('<span class="kw-key-sep">+</span>');
         }).join('<span class="kw-or">ou</span>');
     }
