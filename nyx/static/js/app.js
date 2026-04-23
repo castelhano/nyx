@@ -80,5 +80,16 @@ const NyxApp = (() => {
         }
     });
 
+    // Restauração do histórico HTMX (browser back/forward):
+    // o body inteiro é substituído, então todos os componentes e bindings
+    // precisam ser reinicializados a partir dos novos elementos do DOM.
+    document.addEventListener("htmx:historyRestore", () => {
+        NyxDom.reset();
+        keys.reinit();
+        keys.scanBindings(document);
+        NyxResponse.scan(document);
+        mountPage(document);
+    });
+
     return { mountPage };
 })();

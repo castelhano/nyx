@@ -167,7 +167,7 @@ class BaseCreateView(NyxBaseMixin, CreateView):
 
     def get_breadcrumb_extra(self):
         verbose = self.model._meta.verbose_name.capitalize()
-        return [BreadcrumbItem(label=f'Novo {verbose}')]
+        return [BreadcrumbItem(label=f'Novo')]
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)

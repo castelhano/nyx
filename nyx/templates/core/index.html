@@ -4,38 +4,31 @@
 
 {% block main %}
 <main class="p-4">
+
+    <c-tabs variant="tabs--pills mt-4">
+            <c-slot name="tabs">
+                <button class="tabs__tab active" data-tab="dados"   role="tab">Dados</button>
+                <button class="tabs__tab"        data-tab="config"  role="tab">Configurações</button>
+            </c-slot>
+            <div class="tabs__panel active" data-panel="dados">
+                
+                <form autocomplete="off" class="d-grid grid-fit-rest align-center gap-2">
+                    <label for="nome" class="form-label">Nome</label>
+                    <input type="text" data-autofocus name="nome" id="nome" class="form-control form-control-sm mt-1" placeholder="Nome completo">
+                    <label for="cpf" class="form-label">CPF</label>
+                    <input type="text" name="cpf" id="cpf" class="form-control form-control-sm mw-2xs">
+                </form>
+                <a href="" class="btn btn-ghost-brand">Aguarde</a>
+            </div>
+            <div class="tabs__panel" data-panel="config">
+                <div class="d-flex">
+                    <p>Conteúdo da aba<div class="divider-v divider-v--md"></div>Configurações</p>
+                </div>
+                <hr class="divider">
+            </div>
+        </c-tabs>
     
     <section class="mb-5">
-
-        <div class="dropdown" data-component="dropdown">
-            <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>Opções</button>
-            <ul class="dropdown-menu" data-dropdown-menu>
-                <li class="dropdown-item">Editar</li>
-                <li class="dropdown-item dropdown-item--danger">Excluir</li>
-            </ul>
-        </div>
-
-        <div class="dropdown" data-component="dropdown" data-variant="split">
-            <div class="dropdown__split">
-                <button class="btn btn-info dropdown__split-link" onclick="alert('clicado')">Label</button>
-                <button class="btn btn-info btn-sm dropdown__split-trigger" data-dropdown-toggle aria-label="Mais opções">
-                    <i class="bi bi-chevron-down"></i>
-                </button>
-            </div>
-            <ul class="dropdown-menu dropdown-menu--end" data-dropdown-menu>
-                <li class="dropdown-item">Duplicar</li>
-            </ul>
-        </div>
-
-
-        <div class="dropdown" data-component="dropdown" data-variant="hover" data-delay-open="400" data-delay-close="250">
-            <button class="btn btn-outline btn-dropdown" onclick="alert('clicado 1')" data-dropdown-toggle>Opções</button>
-            <ul class="dropdown-menu" data-dropdown-menu>
-                <li class="dropdown-item" onclick="alert('clicado 2')">Editar</li>
-            </ul>
-        </div>
-
-        <hr class="divider my-4">
 
         <c-dropdown>
             <button class="btn btn-outline btn-dropdown" data-dropdown-toggle>Opções</button>
@@ -107,28 +100,7 @@
             <div class="text-promoted">text-promoted</div>
             <div class="text-discovery">text-discovery</div>
         </div>
-        <c-tabs variant="tabs--pills mt-4">
-            <c-slot name="tabs">
-                <button class="tabs__tab active" data-tab="dados"   role="tab">Dados</button>
-                <button class="tabs__tab"        data-tab="config"  role="tab">Configurações</button>
-            </c-slot>
-            <div class="tabs__panel active" data-panel="dados">
-                
-                <form autocomplete="off" class="d-grid grid-fit-rest align-center gap-2">
-                    <label for="nome" class="form-label">Nome</label>
-                    <input type="text" data-autofocus name="nome" id="nome" class="form-control form-control-sm mt-1" placeholder="Nome completo">
-                    <label for="cpf" class="form-label">CPF</label>
-                    <input type="text" name="cpf" id="cpf" class="form-control form-control-sm mw-2xs">
-                </form>
-                <a href="" class="btn btn-ghost-brand">Aguarde</a>
-            </div>
-            <div class="tabs__panel" data-panel="config">
-                <div class="d-flex">
-                    <p>Conteúdo da aba<div class="divider-v divider-v--md"></div>Configurações</p>
-                </div>
-                <hr class="divider">
-            </div>
-        </c-tabs>
+        
         <div class="p-3 bg-secondary">
             <a href="" class="btn btn-body">Button</a>
             <a href="" class="btn btn-tertiary">Button</a>

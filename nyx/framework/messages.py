@@ -14,9 +14,9 @@ Uso:
 """
 
 # — CRUD —
-CREATED    = "{model} criado com sucesso"
-UPDATED    = "{model} atualizado com sucesso"
-DELETED    = "{model} excluído"
+CREATED    = "Registro criado com sucesso"
+UPDATED    = "Registro atualizado com sucesso"
+DELETED    = "Registro excluído"
 FORM_ERROR = "Verifique os campos destacados"
 
 # — Validação de datas —
@@ -38,7 +38,7 @@ class V:
         raise ValidationError(V.max_length % {'limit_value': 50})
     """
     # obrigatoriedade
-    required        = "Este campo é obrigatório"
+    required        = "Campo obrigatório"
 
     # tamanho / valor
     max_length      = "Máximo de %(limit_value)s caracteres"

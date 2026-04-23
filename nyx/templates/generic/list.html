@@ -6,7 +6,11 @@
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
     <div class="{{ui.layout.header_class}}">
-        <h6 class="{{ui.layout.header_title_class}}">{{ ui.title }}</h6>
+        <h3 class="{{ui.layout.header_title_class}}">
+            <span>{{ app_name }}</span>
+            <i class="bi bi-arrow-return-right text-xs mx-2 text-"></i>
+            <span>{{ ui.title }}</span>
+        </h3>
         <div class="{{ui.layout.header_actions_class}}">
             {% for action in ui.toolbar %}
                 {% action_button action %}

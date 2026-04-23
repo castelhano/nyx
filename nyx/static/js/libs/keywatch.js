@@ -256,7 +256,7 @@ class Keywatch {
 
             /* ── Painel de detalhes flutuante ────────────────────────────────── */
             #keywatch-meta-panel { animation: nyx-fade-in .12s ease; }
-            .kw-meta-inner { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-family: var(--nyx-typeface-mono); font-size: 10px; align-items: baseline; }
+            .kw-meta-inner { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-family: var(--nyx-typeface-mono); font-size: 11px; align-items: baseline; }
             .kw-meta-item  { display: contents; }
             .kw-meta-label { color: var(--nyx-text-tertiary); font-weight: 600; letter-spacing: .04em; }
             .kw-meta-value { color: var(--nyx-text-secondary); }
@@ -852,6 +852,19 @@ class Keywatch {
 
     /** Remove todos os atalhos. */
     unbindAll() { this.handlers = {}; }
+
+    /** Reseta handlers para o estado pós-construtor (mantém apenas o atalho do modal). */
+    reinit() {
+        this.handlers = {};
+        if (this.shortcutMaplist) {
+            this.bind(this.shortcutMaplist, () => this.showKeymap(), {
+                origin:  'Keywatch',
+                context: 'all',
+                icon:    this.shortcutMaplistIcon,
+                desc:    this.shortcutMaplistDesc,
+            });
+        }
+    }
 
     /** Sobrescreve um atalho existente (unbind + bind). */
     overwrite(scope, method, options = {}) {

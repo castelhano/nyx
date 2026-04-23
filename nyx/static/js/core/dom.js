@@ -65,4 +65,12 @@ const NyxDom = {
             this._instances.delete(el);
         });
     },
+
+    // Destrói todos os componentes ativos e reinicializa a partir do document.
+    // Usado pelo htmx:historyRestore, onde o body inteiro é substituído.
+    reset() {
+        this._instances.forEach(destroyFn => destroyFn?.());
+        this._instances.clear();
+        this.init(document);
+    },
 };

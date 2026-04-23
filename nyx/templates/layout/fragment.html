@@ -1,1 +1,2 @@
 {% block main %}{% endblock %}
+{% if messages %}{% for message in messages %}<template data-response="toast" data-status="{{ message.tags }}">{{ message }}</template>{% endfor %}{% endif %}

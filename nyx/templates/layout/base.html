@@ -13,6 +13,28 @@
     <link rel="stylesheet" href="{% static 'css/layout.css' %}">
     <link rel="stylesheet" href="{% static 'css/components.css' %}">
     {% block extra_css %}{% endblock %}
+
+    {# 1. Libs externas #}
+    <script defer src="{% static 'js/libs/htmx.js' %}"></script>
+    <script defer src="{% static 'js/libs/keywatch.js' %}"></script>
+
+    {# 2. Core utilitários #}
+    <script defer src="{% static 'js/core/utils.js' %}"></script>
+    <script defer src="{% static 'js/core/dom.js' %}"></script>
+    <script defer src="{% static 'js/core/toast.js' %}"></script>
+    <script defer src="{% static 'js/core/response.js' %}"></script>
+
+    {# 3. Componentes #}
+    <script defer src="{% static 'js/components/dropdown.js' %}"></script>
+    <script defer src="{% static 'js/components/tabs.js' %}"></script>
+    <script defer src="{% static 'js/components/sidebar.js' %}"></script>
+    <script defer src="{% static 'js/components/hcard.js' %}"></script>
+
+    {# 4. Módulos de página — registram em NyxModules, não executam nada ainda #}
+    {# <script defer src="{% static 'js/modules/viagem-form.js' %}"></script> #}
+
+    {# 5. Orquestrador — sempre por último #}
+    <script defer src="{% static 'js/app.js' %}"></script>
 </head>
 <body>
 
@@ -41,28 +63,6 @@
         });
     </script>
 
-    {# 1. Libs externas #}
-    <script src="{% static 'js/libs/htmx.js' %}"></script>
-    <script src="{% static 'js/libs/keywatch.js' %}"></script>
-
-    {# 2. Core utilitários #}
-    <script src="{% static 'js/core/utils.js' %}"></script>
-    <script src="{% static 'js/core/dom.js' %}"></script>
-    <script src="{% static 'js/core/toast.js' %}"></script>
-    <script src="{% static 'js/core/response.js' %}"></script>
-    
-    {# 3. Componentes #}
-    <script src="{% static 'js/components/dropdown.js' %}"></script>
-    <script src="{% static 'js/components/tabs.js' %}"></script>
-    <script src="{% static 'js/components/sidebar.js' %}"></script>
-    <script src="{% static 'js/components/hcard.js' %}"></script>
-
-    {# 4. Módulos de página — registram em NyxModules, não executam nada ainda #}
-    {# <script src="{% static 'js/modules/viagem-form.js' %}"></script> #}
-
-    {# 5. Orquestrador — sempre por último #}
-    <script src="{% static 'js/app.js' %}"></script>
-    
     <script>
         {% block script %}{% endblock %}
     </script>

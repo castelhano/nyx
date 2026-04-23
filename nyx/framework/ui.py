@@ -92,14 +92,16 @@ class Action:
 @dataclass
 class ListLayout:
     container_class:        str  = 'p-4'
-    table_class:            str  = 'table table-hover table-striped'
+    table_class:            str  = 'table table-striped'
     header_class:           str  = ''
-    header_title_class:     str  = ''
+    header_title_class:     str  = 'mb-2'
     header_actions_class:   str  = 'py-1'
 
 @dataclass
 class FormLayout:
     container_class:        str  = 'p-4'
+    header_class:           str  = ''
+    header_title_class:     str  = 'mb-2'
 
 
 # =============================================================================
@@ -227,8 +229,8 @@ def resolve_row_actions(schema, model) -> list[Action]:
         result.append(Action(
             label      = '',
             url_name   = f'{app_label}:{model_name}_update',
-            icon       = 'bi bi-pencil',
-            css_class  = 'btn btn-xs btn-surface',
+            icon       = 'bi bi-pencil-fill',
+            css_class  = 'btn btn-xs btn-info',
             permission = f'{app_label}.change_{model_name}',
         ))
 
@@ -264,8 +266,8 @@ def resolve_toolbar(schema, model, view_context: str) -> list[Action]:
             url_name   = f'{app_label}:{model_name}_create',
             icon       = 'bi bi-plus-lg',
             css_class  = 'btn btn-sm btn-success',
-            title      = 'FOO',
-            keybind    = Keybind(keys='alt+n', origin='nyx.framework.ui.resolve_toolbar'),
+            title      = 'Adicionar novo registro',
+            keybind    = Keybind(keys='alt+n', icon='bi bi-plus-lg', origin='nyx.framework.ui.resolve_toolbar'),
             permission = f'{app_label}.add_{model_name}',
         ))
 

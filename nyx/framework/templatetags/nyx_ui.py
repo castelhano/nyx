@@ -69,6 +69,15 @@ def action_button(context, action, obj=None):
     }
 
 
+@register.filter(name='form_field')
+def form_field(form, field_name):
+    """Retorna o BoundField pelo nome. Ex: {{ form|form_field:section_field.name }}"""
+    try:
+        return form[field_name]
+    except KeyError:
+        return None
+
+
 @register.filter(name='add_class')
 def add_class(field, css_class):
     """Renderiza o widget adicionando css_class e is-invalid quando o campo tiver erros."""

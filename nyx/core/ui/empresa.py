@@ -13,7 +13,7 @@ class EmpresaUI:
 
     # ── Form ─────────────────────────────────────────────────────────
     sections = [
-        Section('Dados gerais', fields=[
+        Section('Geral', fields=[
             Field('nome', col_span=8),
             Field('cnpj_base', label='CNPJ', col_span=4),
             Field('razao_social', col_span=12),

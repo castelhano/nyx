@@ -8,7 +8,7 @@
 <div class="{{ui.layout.container_class}}" data-keybind-group="{{ ui.title|slugify }}-form">
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
-    <h3>
+    <h3 class="{{ui.layout.header_title_class}}">
         <span>{{ app_name }}</span>
         <i class="bi bi-arrow-return-right text-xs mx-2 text-"></i>
         <span>{{ ui.title }}</span>
@@ -21,20 +21,60 @@
           autocomplete="off"
           novalidate>
         {% csrf_token %}
-        <div class="d-grid grid-fit-rest align-center gap-2 my-3">
-            {% for field in form %}
-            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            <div>
-                {{ field|add_class:"form-control form-control-sm" }}
-                {% if field.errors %}
-                {% for error in field.errors %}<span class="form-error">{{ error }}</span>{% endfor %}
-                {% elif field.help_text %}<div class="form-hint ps-1">{{ field.help_text }}</div>{% endif %}
+
+        {% if ui.sections %}
+        <c-tabs variant="tabs--pills mt-4">
+            <c-slot name="tabs">
+                {% for section in ui.sections %}
+                <button type="button" class="tabs__tab{% if forloop.first %} active{% endif %}"
+                        data-tab="{{ section.title|slugify }}" role="tab">{{ section.title }}</button>
+                {% endfor %}
+            </c-slot>
+            {% for section in ui.sections %}
+            <div class="tabs__panel{% if forloop.first %} active{% endif %}" data-panel="{{ section.title|slugify }}">
+                <div class="d-grid grid-fit-rest gap-2">
+                    {% for section_field in section.fields %}
+                    {% with bf=form|form_field:section_field.name %}
+                    {% if bf %}
+                    <label class="form-label pt-1" for="{{ bf.id_for_label }}">{{ section_field.label|default:bf.label }}</label>
+                    <div>
+                        {{ bf|add_class:"form-control form-control-sm" }}
+                        {% if bf.errors %}
+                        {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
+                        {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
             </div>
             {% endfor %}
-        </div>
+        </c-tabs>
+        {% else %}
+        <c-tabs variant="tabs--pills mt-4">
+            <c-slot name="tabs">
+                <button type="button" class="tabs__tab active" data-tab="dados" role="tab">Dados</button>
+            </c-slot>
+            <div class="tabs__panel active" data-panel="dados">
+                <div class="d-grid grid-fit-rest gap-2">
+                    {% for field in form %}
+                    <label class="form-label pt-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    <div>
+                        {{ field|add_class:"form-control form-control-sm" }}
+                        {% if field.errors %}
+                        {% for error in field.errors %}<span class="form-error">{{ error }}</span>{% endfor %}
+                        {% elif field.help_text %}<div class="form-hint ps-1">{{ field.help_text }}</div>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </c-tabs>
+        {% endif %}
+
         <hr class="divider">
         <button type="submit"
                 data-keybind="alt+g"
+                data-keybind-icon="bi bi-floppy-fill"
                 class="btn btn-sm btn-brand"
                 title="Salvar">
             Salvar
@@ -45,6 +85,7 @@
            hx-push-url="true"
            class="btn btn-sm btn-secondary"
            data-keybind="esc"
+           data-keybind-icon="bi bi-escape"
            title="Cancelar">
             Cancelar
         </a>
