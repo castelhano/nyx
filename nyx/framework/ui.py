@@ -49,6 +49,7 @@ class Keybind:
     icon:   str = ''
     action: str = ''
     origin: str = ''
+    order:  int = 3
     title:  str = ''
 
     @property
@@ -58,7 +59,8 @@ class Keybind:
             'icon':   self.icon,
             'action': self.action,
             'origin': self.origin,
-        }.items() if v}
+            'order':  self.order,
+        }.items() if v is not None and v != ''}
 
 
 # =============================================================================
@@ -267,7 +269,7 @@ def resolve_toolbar(schema, model, view_context: str) -> list[Action]:
             icon       = 'bi bi-plus-lg',
             css_class  = 'btn btn-sm btn-success',
             title      = 'Adicionar novo registro',
-            keybind    = Keybind(keys='alt+n', icon='bi bi-plus-lg', origin='nyx.framework.ui.resolve_toolbar'),
+            keybind    = Keybind(keys='alt+n', icon='bi bi-plus-lg', order=3, origin='nyx.framework.ui.resolve_toolbar'),
             permission = f'{app_label}.add_{model_name}',
         ))
 

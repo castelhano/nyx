@@ -2,7 +2,13 @@
 
     <div class="sidebar__header">
         <span class="sidebar__logo">Nyx <sup class="text-discovery"><i class="bi bi-braces-asterisk"></i></sup></span>
-        <button class="btn btn-sm btn-ghost me-1" data-sidebar-toggle data-keybind="ctrl+'" title="Expandir / Recolher menu" data-keybind-icon="bi bi-layout-sidebar-inset">
+        <button 
+            class="btn btn-sm btn-ghost me-1" 
+            data-sidebar-toggle 
+            data-keybind="ctrl+'" 
+            title="Expandir / Recolher menu" 
+            data-keybind-icon="bi bi-layout-sidebar-inset"
+            data-keybind-order="2">
             <i class="bi bi-layout-sidebar-inset"></i>
         </button>
     </div>
@@ -18,7 +24,8 @@
                     placeholder="Pesquisa"
                     data-keybind="f3"
                     data-keybind-icon="bi bi-search"
-                    title="Pesquisar menu"
+                    data-keybind-order="2"
+                    title="Pesquisar menu de módulos"
                     data-sidebar-search>
                 <span class="input-icon input-icon-end">F3</span>
             </div>

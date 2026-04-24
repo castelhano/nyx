@@ -8,8 +8,8 @@
                            class="btn btn-ghost-brand"
                            data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                            title="{{ item.label }}"
-                           ui="_1"
                            data-keybind-icon="bi bi-house"
+                           data-keybind-order="1"
                            data-keybind-origin="nyx.breadcrumbs._1">{{ item.label }}</a>
                     {% else %}
                         <a hx-get="{% url item.url %}"
@@ -17,11 +17,11 @@
                            hx-push-url="true"
                            class="btn btn-ghost"
                            {% if item.url == back_url %}
-                           ui="_2"
                            data-keybind="alt+v"
                            title="Voltar para {{ item.label }}"
                            data-keybind-icon="bi bi-arrow-counterclockwise"
                            data-keybind-origin="nyx.breadcrumbs._2"
+                           data-keybind-order="2"
                            {% endif %}>{{ item.label }}</a>
                     {% endif %}
                 {% else %}
@@ -42,8 +42,8 @@
                    class="btn btn-ghost-brand"
                    data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                    title="{{ item.label }}"
-                   ui="_3"
                    data-keybind-icon="bi bi-house"
+                   data-keybind-order="1"
                    data-keybind-origin="nyx.breadcrumbs._3">{{ item.label }}</a>
             {% else %}
                 <a hx-get="{% url item.url %}"
@@ -51,11 +51,11 @@
                    hx-push-url="true"
                    class="btn btn-ghost-brand"
                    {% if item.url == back_url %}
-                   ui="_4"
                    data-keybind="alt+v"
                    title="Voltar para {{ item.label }}"
                    data-keybind-icon="bi bi-arrow-counterclockwise"
                    data-keybind-origin="nyx.breadcrumbs._4"
+                   data-keybind-order="2"
                    {% endif %}>{{ item.label }}</a>
             {% endif %}
         {% else %}

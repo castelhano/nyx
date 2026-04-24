@@ -16,6 +16,7 @@
  *       init(container) {
  *           keys.bind("alt+s", () => container.querySelector("form").requestSubmit(), {
  *               group: "viagem-form",
+ *               order: 3,
  *               desc:  "Salvar viagem",
  *           });
  *       },

@@ -32,6 +32,7 @@
  *   data-keybind-prevent="false"      desativa preventDefault (default: true)
  *   data-keybind-capture="true"       usa useCapture (default: false)
  *   data-keybind-display="false"      oculta do modal de atalhos (default: true)
+ *   data-keybind-order="0"            prioridade de exibição no modal 0–10, crescente (default: 5)
  *   data-keybind-action="click"       ação: "click" | "focus" | "submit"
  *
  * Comportamento padrão de data-keybind-action (quando omitido):
@@ -119,6 +120,7 @@ class Keywatch {
             keyup:          false,
             group:          null,
             display:        true,
+            order:          5,
             preventDefault: true,
             useCapture:     false,
             composed:       false,
@@ -376,7 +378,7 @@ class Keywatch {
         this._metaPanel = document.createElement('div');
         this._metaPanel.id = 'keywatch-meta-panel';
         this._metaPanel.className = 'bg-body border rounded-md shadow-lg';
-        this._metaPanel.style.cssText = 'position:fixed;display:none;z-index:100000;padding:10px 14px;min-width:180px;max-width:260px;';
+        this._metaPanel.style.cssText = 'position:fixed;display:none;z-index:100000;padding:10px 14px;min-width:180px;';
         document.body.appendChild(this._metaPanel);
         this._activeMetaBtn = null;
 
@@ -438,55 +440,58 @@ class Keywatch {
     _refreshTable() {
         this._closeMetaPanel();
         if (this._contextBadge) this._contextBadge.textContent = this.context;
-        const fragment = document.createDocumentFragment();
-        let count = 0;
 
+        const visible = [];
         for (const type in this.handlers) {
             for (const ctx in this.handlers[type]) {
                 if (this.shortcutMaplistOnlyContextActive && ctx !== this.context && ctx !== 'all') continue;
                 for (const scope in this.handlers[type][ctx]) {
                     for (const handler of this.handlers[type][ctx][scope]) {
-                        if (!handler.display) continue;
-
-                        // ── Linha principal ──────────────────────────────────
-                        const tr = document.createElement('tr');
-
-                        const desc = `${handler.icon ? `<i class="${handler.icon}" style="margin-right:6px"></i>` : ''}${handler.desc || '<span style="opacity:.4">—</span>'}`;
-
-                        const metaHtml = [
-                            { label: 'context', value: handler.context },
-                            { label: 'event',   value: [handler.keydown && 'keydown', handler.keyup && 'keyup'].filter(Boolean).join('+') },
-                            handler.origin ? { label: 'origin', value: handler.origin } : null,
-                            handler.group  ? { label: 'group',  value: handler.group  } : null,
-                            { label: 'capture',  value: handler.useCapture    ? 'sim' : 'nao' },
-                            { label: 'composed', value: handler.composed      ? 'sim' : 'nao' },
-                            { label: 'prevent',  value: handler.preventDefault ? 'sim' : 'nao' },
-                        ].filter(Boolean).map(i =>
-                            `<span class="kw-meta-item"><span class="kw-meta-label">${i.label}</span><span class="kw-meta-value">${i.value}</span></span>`
-                        ).join('');
-
-                        tr.innerHTML = `
-                            <td>${desc}</td>
-                            <td style="text-align:right"><div class="kw-keys">${this._humanize(handler.schema)}</div></td>
-                            <td style="text-align:center;padding:0 4px">
-                                <button class="kw-detail-btn" title="Detalhes de rastreio"><i class="bi bi-info-circle"></i></button>
-                            </td>
-                        `;
-
-                        tr.querySelector('.kw-detail-btn').addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            this._showMetaPanel(e.currentTarget, metaHtml);
-                        });
-
-                        fragment.appendChild(tr);
-                        count++;
+                        if (handler.display) visible.push(handler);
                     }
                 }
             }
         }
 
+        visible.sort((a, b) => (a.order ?? 5) - (b.order ?? 5));
+
+        const fragment = document.createDocumentFragment();
+        for (const handler of visible) {
+            const tr = document.createElement('tr');
+
+            const desc = `${handler.icon ? `<i class="${handler.icon}" style="margin-right:6px"></i>` : ''}${handler.desc || '<span style="opacity:.4">—</span>'}`;
+
+            const metaHtml = [
+                { label: 'context', value: handler.context },
+                { label: 'event',   value: [handler.keydown && 'keydown', handler.keyup && 'keyup'].filter(Boolean).join('+') },
+                handler.origin ? { label: 'origin', value: handler.origin } : null,
+                handler.group  ? { label: 'group',  value: handler.group  } : null,
+                { label: 'order',    value: handler.order ?? 5 },
+                { label: 'capture',  value: handler.useCapture    ? 'sim' : 'nao' },
+                { label: 'composed', value: handler.composed      ? 'sim' : 'nao' },
+                { label: 'prevent',  value: handler.preventDefault ? 'sim' : 'nao' },
+            ].filter(Boolean).map(i =>
+                `<span class="kw-meta-item"><span class="kw-meta-label">${i.label}</span><span class="kw-meta-value">${i.value}</span></span>`
+            ).join('');
+
+            tr.innerHTML = `
+                <td>${desc}</td>
+                <td style="text-align:right"><div class="kw-keys">${this._humanize(handler.schema)}</div></td>
+                <td style="text-align:center;padding:0 4px">
+                    <button class="kw-detail-btn" title="Detalhes de rastreio"><i class="bi bi-info-circle"></i></button>
+                </td>
+            `;
+
+            tr.querySelector('.kw-detail-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._showMetaPanel(e.currentTarget, metaHtml);
+            });
+
+            fragment.appendChild(tr);
+        }
+
         this._tbody.innerHTML = '';
-        if (count === 0) {
+        if (!visible.length) {
             const tr = document.createElement('tr');
             tr.innerHTML = `<td class="kw-empty" colspan="3">Nenhum atalho registrado para este contexto</td>`;
             this._tbody.appendChild(tr);
@@ -563,6 +568,7 @@ class Keywatch {
                 preventDefault: el.dataset.keybindPrevent        !== 'false',
                 useCapture:     el.dataset.keybindCapture        === 'true',
                 display:        el.dataset.keybindDisplay === 'true' || !!(el.dataset.keybindDesc || el.title),
+                order:          el.dataset.keybindOrder !== undefined ? Number(el.dataset.keybindOrder) : this.handlerDefaults.order,
                 element:        document,
             };
 
