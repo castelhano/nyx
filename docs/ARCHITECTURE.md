@@ -30,6 +30,7 @@ framework/
 ├── ui.py               — estruturas declarativas de UI (FormLayout, ListLayout, toolbar, columns)
 ├── messages.py         — mensagens padrão do sistema (CREATED, UPDATED, DELETED, FORM_ERROR) + classe V (mensagens de validação de campos)
 ├── forms.py            — NyxModelForm: base para todos os forms; aplica V, autofocus, placeholder e data-mask automaticamente
+├── validators.py       — DynamicPasswordValidator: lê PasswordPolicy do banco (lru_cache); limpo via PasswordPolicy.save()
 ├── apps.py             — FrameworkConfig: dispara registry._flush() no ready()
 ├── context_processors.py
 ├── mixins/
@@ -39,7 +40,21 @@ framework/
     └── nyx_ui.py       — template tags: action_button, get_field, sort_url, page_url, form_field, add_class
 ```
 
-### 2.2 Frontend (`nyx/static/js/`)
+### 2.2 Models principais (`nyx/core/models/`)
+
+```
+core/models/
+├── empresa.py   — Empresa, Filial
+├── usuario.py   — Profile (OneToOne com auth.User): filiais, force_password_change, config JSONField)
+│                  config armazena entre outros password_history (lista de hashes anteriores)
+│                  sinal post_save garante Profile para todo User criado
+└── policy.py    — PasswordPolicy (singleton pk=1): política global de senhas
+                   campos: min_length, require_alpha, require_uppercase, require_digits,
+                           require_symbols, reuse_limit (0 = histórico desabilitado)
+                   save() invalida o cache do DynamicPasswordValidator automaticamente
+```
+
+### 2.3 Frontend (`nyx/static/js/`)
 
 ```
 static/js/
@@ -61,7 +76,7 @@ static/js/
     └── mask.js             — aplica IMask em inputs com data-mask dentro do container
 ```
 
-### 2.3 Templates (`nyx/templates/`)
+### 2.4 Templates (`nyx/templates/`)
 
 ```
 templates/
@@ -82,7 +97,7 @@ templates/
     └── toast.html
 ```
 
-### 2.4 CSS (`nyx/static/css/`)
+### 2.5 CSS (`nyx/static/css/`)
 
 ```
 static/css/
@@ -302,6 +317,17 @@ NyxUtils.autoPlace(anchor, panel, { gap = 8 } = {})
 
 Usado pelo `hcard.js`. Disponível para qualquer componente que precise de posicionamento inteligente.
 
+### 4.10 Autenticação
+
+**Login:** `_LoginView` (subclasse de `auth_views.LoginView`) declarada em `nyx/urls.py`.
+- Implementa *remember me*: se o campo `remember_me` não vier no POST, chama `request.session.set_expiry(0)` após o login (sessão expira ao fechar o navegador). Se marcado, mantém o padrão (`SESSION_COOKIE_AGE`).
+
+**Política de senhas:** singleton `PasswordPolicy` (`core/models/policy.py`) + `DynamicPasswordValidator` (`framework/validators.py`).
+- O validator é registrado em `AUTH_PASSWORD_VALIDATORS` e lê a policy via `lru_cache`.
+- `PasswordPolicy.save()` chama `_get_policy.cache_clear()` automaticamente — não é necessário invalidar o cache manualmente ao salvar a policy.
+- O validator *verifica* histórico de senhas mas não *salva* — o append em `profile.config['password_history']` deve ser feito na view de troca de senha.
+- Se `PasswordPolicy` não existir no banco, o validator não rejeita nenhuma senha (fail-open).
+
 ---
 
 ## 5. Convenções de Nomenclatura
@@ -479,3 +505,7 @@ NyxModules["meu-modulo"] = {
 | Atalhos de teclado | `nyx/static/js/libs/keywatch.js` |
 | Mensagens padrão e de validação | `nyx/framework/messages.py` |
 | Criar form de modelo | `nyx/framework/forms.py` + `app/forms/modelo.py` |
+| Política de senhas (model) | `nyx/core/models/policy.py` |
+| Validator de senhas dinâmico | `nyx/framework/validators.py` |
+| Lógica de login / remember me | `nyx/urls.py` (`_LoginView`) |
+| Perfil de usuário / histórico de senhas | `nyx/core/models/usuario.py` (`Profile.config`) |

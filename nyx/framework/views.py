@@ -24,6 +24,8 @@ Exemplo com override:
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
+from django.core.exceptions import FieldError, ImproperlyConfigured
+from django.db.models import Q as DQ
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -94,7 +96,6 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
         try:
             return reverse(url_name)
         except Exception:
-            from django.core.exceptions import ImproperlyConfigured
             raise ImproperlyConfigured(
                 f"{self.__class__.__name__} não encontrou a URL '{url_name}'. "
                 "Declare success_url na view ou registre a rota de listagem via generate_urls."
@@ -167,9 +168,6 @@ class BaseListView(NyxBaseMixin, ListView):
         return self.paginate_by
 
     def get_queryset(self):
-        from django.core.exceptions import FieldError
-        from django.db.models import Q as DQ
-
         qs     = super().get_queryset()
         schema = self._get_schema()
         if schema is None:

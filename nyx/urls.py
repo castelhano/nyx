@@ -2,9 +2,21 @@ from django.urls import path, include
 from django.conf import settings
 from django.contrib.auth import views as auth_views
 
+
+class _LoginView(auth_views.LoginView):
+    """LoginView com suporte a remember_me: sem o campo, a sessão expira ao fechar o navegador."""
+    template_name = 'registration/login.html'
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if not self.request.POST.get('remember_me'):
+            self.request.session.set_expiry(0)
+        return response
+
+
 urlpatterns = [
     path('', include('nyx.core.urls')),
-    path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
+    path('login/', _LoginView.as_view(), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     # path('operacao/', include('nyx.operacao.urls')),
 ]

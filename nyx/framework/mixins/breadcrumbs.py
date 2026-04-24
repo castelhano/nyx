@@ -36,6 +36,10 @@ CASO COMPLETAMENTE FORA DO PADRAO:
 
 from dataclasses import dataclass, field
 
+from django.views.generic.list import MultipleObjectMixin
+
+from nyx.framework.registry import get_nav
+
 
 # =============================================================================
 # ESTRUTURA DE ITEM
@@ -77,9 +81,6 @@ class BreadcrumbMixin:
         Sobrescreva apenas para casos completamente fora do padrao.
         Para adicionar niveis apos o automatico, use get_breadcrumb_extra().
         """
-        from nyx.framework.registry import get_nav
-        from django.views.generic.list import MultipleObjectMixin
-
         crumbs = [BreadcrumbItem('Inicio', 'core:index')]
 
         if not hasattr(self, 'model') or self.model is None:
@@ -155,8 +156,6 @@ class BreadcrumbMixin:
         Ex: Dependente -> Funcionario -> None
             retorna: [Funcionario]  (Dependente em si nao entra — e o nivel atual)
         """
-        from nyx.framework.registry import get_nav
-
         if result is None:
             result = []
 

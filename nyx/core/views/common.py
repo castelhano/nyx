@@ -1,3 +1,4 @@
+"""common.py — Views CRUD padrão de Empresa e Filial."""
 from nyx.framework.views import BaseListView, BaseCreateView, BaseUpdateView, BaseDeleteView
 from nyx.core.models.empresa import Empresa, Filial
 from nyx.core.forms import EmpresaForm, FilialForm

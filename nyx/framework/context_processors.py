@@ -1,7 +1,9 @@
+"""context_processors.py — Context processors globais do Nyx."""
 from nyx.framework.registry import get_all, get_app_ui
 
 
 def nyx_nav(request):
+    """Injeta nav_groups no contexto: grupos de navegação filtrados por permissão do usuário."""
     if not request.user.is_authenticated:
         return {}
 

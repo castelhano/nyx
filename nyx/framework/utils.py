@@ -1,8 +1,9 @@
+"""utils.py — Utilitários gerais do framework Nyx."""
 import zoneinfo
 
+
 def get_timezone_choices():
-    # retorna lista de tuplas (valor, rotulo) ordenada
-    # return [(tz, tz) for tz in sorted(zoneinfo.available_timezones())]
+    """Retorna lista de tuplas (valor, rótulo) de fusos horários, excluindo entradas Etc/."""
     tzs = [
         (tz, tz.replace('_', ' ')) 
         for tz in sorted(zoneinfo.available_timezones()) 

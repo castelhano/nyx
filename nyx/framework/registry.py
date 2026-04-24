@@ -42,7 +42,9 @@ USO:
 """
 
 import importlib
+import logging
 from dataclasses import dataclass, field
+
 from django.apps import apps as django_apps
 
 
@@ -342,7 +344,6 @@ def _discover_ui(app_name: str, model_name: str):
     Retorna None silenciosamente se não encontrado.
     Erros internos ao módulo são logados em DEBUG para não suprimir bugs.
     """
-    import logging
     ui_class = f"{model_name}UI"
     for module_path in (f"{app_name}.ui.{model_name.lower()}", f"{app_name}.ui"):
         try:
@@ -365,7 +366,6 @@ def _discover_app_ui(app_name: str, app_label_short: str):
     Convenção: nyx.core.ui.app → AppUI
     Retorna None silenciosamente se o arquivo não existir.
     """
-    import logging
     module_path = f"{app_name}.ui.app"
     try:
         module = importlib.import_module(module_path)

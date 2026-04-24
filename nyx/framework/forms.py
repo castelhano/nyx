@@ -39,12 +39,14 @@ class NyxModelForm(forms.ModelForm):
         self._apply_widget_attrs()
 
     def _apply_error_messages(self):
+        """Substitui mensagens de erro padrão do Django pelas mensagens padronizadas do Nyx."""
         for field in self.fields.values():
             for key, msg in _FIELD_MESSAGES.items():
                 if key in field.error_messages:
                     field.error_messages[key] = msg
 
     def _apply_widget_attrs(self):
+        """Aplica autofocus no primeiro campo visível, placeholder, title (help_text) e data-mask."""
         has_placeholder = hasattr(self.instance, 'get_placeholder')
         has_mask        = hasattr(self.instance, 'get_mask')
         first           = True
