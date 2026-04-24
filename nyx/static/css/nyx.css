@@ -194,14 +194,14 @@ select { appearance: none; }
   --nyx-z-tooltip:            1060;
 
   /* — Controles interativos (checkbox, radio, switch, etc.) — */
-  --nyx-control-bg:           light-dark(#9ea2aa,  var(--nyx-bg-body));
-  --nyx-control-border:       light-dark(#737880,  var(--nyx-border-secondary));
-  --nyx-control-checked-bg:   light-dark(#1e4d6e,  var(--nyx-bg-brand));
-  --nyx-control-checked-border: light-dark(#1e4d6e, var(--nyx-bg-brand));
-  --nyx-control-hover-bg:     light-dark(#858a94,  var(--nyx-bg-brand));
-  --nyx-control-hover-border: light-dark(var(--nyx-control-border), var(--nyx-border-brand));
-  --nyx-control-off-bg:       light-dark(#8a8f98,  var(--nyx-border-secondary));
-  --nyx-control-success-bg:   light-dark(#0e5232,  var(--nyx-bg-success));
+  --nyx-control-bg:             light-dark(var(--nyx-input-bg),  var(--nyx-input-bg));
+  --nyx-control-border:         light-dark(var(--nyx-input-border),  var(--nyx-input-border));
+  --nyx-control-checked-bg:     light-dark(#1e4d6e, #1e4d6e);
+  --nyx-control-checked-border: light-dark(#1e4d6e, #1e4d6e);
+  --nyx-control-hover-bg:       light-dark(var(--nyx-input-bg-focus),  var(--nyx-input-bg-focus));
+  --nyx-control-hover-border:   light-dark(var(--nyx-control-border), var(--nyx-border-brand));
+  --nyx-control-off-bg:         light-dark(#8a8f98,  var(--nyx-border-secondary));
+  --nyx-control-success-bg:     light-dark(#0e5232,  var(--nyx-bg-success));
 
   /* — Superfícies (cards, modais, dropdowns, tooltips) — */
   --nyx-surface-bg:           light-dark(#d2d3d8,  var(--nyx-bg-secondary));
@@ -858,7 +858,9 @@ select.form-control-sm {
      </table>
    </div>
    ——————————————————————————————————————————————————————— */
-
+:root {
+  --nyx-table-hover: light-dark(#c0c1c7, #25282c);
+}
 .table-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -899,7 +901,7 @@ select.form-control-sm {
 .table-sm tbody td { padding: 0.4rem 0.75rem; }
 
 .table-striped tbody tr:nth-child(even) { background-color: var(--nyx-bg-secondary); }
-.table-hover tbody tr:hover             { background-color: var(--nyx-bg-tertiary); transition: background-color 0.1s ease; }
+.table-hover tbody tr:hover             { background-color: var(--nyx-table-hover); transition: background-color 0.1s ease; }
 
 .table-bordered td,
 .table-bordered th   { border: var(--nyx-border-width-1) solid var(--nyx-border-primary); }
@@ -1117,7 +1119,7 @@ select.form-control-sm {
   vertical-align: middle;
   cursor: pointer;
   background-color: var(--nyx-control-bg);
-  border: var(--nyx-border-width-2) solid var(--nyx-control-border);
+  border: var(--nyx-border-width-1) solid var(--nyx-control-border);
   transition: var(--nyx-transition-fast);
   position: relative;
 }

@@ -94,7 +94,7 @@ class Action:
 @dataclass
 class ListLayout:
     container_class:        str  = 'p-4'
-    table_class:            str  = 'table table-striped'
+    table_class:            str  = 'table table-striped table-hover'
     header_class:           str  = ''
     header_title_class:     str  = 'mb-2'
     header_actions_class:   str  = 'py-1'
