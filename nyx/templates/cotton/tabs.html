@@ -1,4 +1,5 @@
-<div class="tabs {{ variant }} {{ attrs.class }}" data-component="tabs">
+<c-vars navigate="true" />
+<div class="tabs {{ variant }} {{ attrs.class }}" data-component="tabs" data-navigate="{{ navigate }}">
     <div class="tabs__list {{ list_class }}" role="tablist">
         {{ tabs }}
     </div>

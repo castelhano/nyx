@@ -22,20 +22,60 @@
  * Foco automático ao entrar na aba:
  *   Adicione data-autofocus no elemento que deve receber foco dentro do panel.
  *   <input data-autofocus ...>
+ *
+ * Navegação por teclado (data-navigate="true", default):
+ *   ctrl+arrowleft  — aba anterior
+ *   ctrl+arrowright — próxima aba
+ *   Requer data-keybind-group no container ancestral para limpeza correta no swap HTMX.
+ *   Desative com data-navigate="false" ou <c-tabs navigate="false">.
  */
 NyxDom.register('tabs', el => {
     const tabs   = NyxDom.findAll('[data-tab]', el);
     const panels = NyxDom.findAll('[data-panel]', el);
 
+    const focusPanel = panel => {
+        const target = panel.querySelector('[data-autofocus]')
+            ?? panel.querySelector('input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])');
+        target?.focus();
+    };
+
     const activate = key => {
         tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === key));
         panels.forEach(p => p.classList.toggle('active', p.dataset.panel === key));
-        panels.find(p => p.dataset.panel === key)?.querySelector('[data-autofocus]')?.focus();
+        const active = panels.find(p => p.dataset.panel === key);
+        if (active) focusPanel(active);
     };
 
     const onClick = e => activate(e.currentTarget.dataset.tab);
-
     tabs.forEach(t => t.addEventListener('click', onClick));
 
+    // ── Atalhos de navegação ─────────────────────────────────────────────────
+    const navigate = el.dataset.navigate !== 'false' && tabs.length > 1;
+
+    if (navigate && typeof keys !== 'undefined') {
+        const group = el.closest('[data-keybind-group]')?.dataset.keybindGroup || null;
+        if (group) {
+            const navStep = delta => {
+                const current = tabs.findIndex(t => t.classList.contains('active'));
+                const next = (current + delta + tabs.length) % tabs.length;
+                activate(tabs[next].dataset.tab);
+            };
+
+            keys.bind('ctrl+arrowleft', () => navStep(-1), {
+                group,
+                desc:   'Aba anterior',
+                icon:   'bi bi-arrow-left',
+                origin: 'nyx.tabs',
+            });
+            keys.bind('ctrl+arrowright', () => navStep(1), {
+                group,
+                desc:   'Próxima aba',
+                icon:   'bi bi-arrow-right',
+                origin: 'nyx.tabs',
+            });
+        }
+    }
+
     return () => tabs.forEach(t => t.removeEventListener('click', onClick));
+    // Limpeza keywatch via unbindGroup (htmx:beforeSwap em app.js) — sem necessidade de unbind manual aqui
 });

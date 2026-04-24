@@ -337,21 +337,26 @@ def _infer_actions(model_class, resolved: dict, app_label_short: str) -> list:
 def _discover_ui(app_name: str, model_name: str):
     """
     Tenta importar {app}.ui.{model_snake} e retorna a classe {ModelName}UI.
-    Retorna None silenciosamente se o arquivo não existir.
+    Fallback: tenta {app}.ui (__init__.py do pacote) — permite agrupar várias
+    UIs no mesmo arquivo e re-exportá-las no __init__.
+    Retorna None silenciosamente se não encontrado.
     Erros internos ao módulo são logados em DEBUG para não suprimir bugs.
     """
     import logging
-    module_path = f"{app_name}.ui.{model_name.lower()}"
-    try:
-        module = importlib.import_module(module_path)
-        return getattr(module, f"{model_name}UI", None)
-    except ImportError:
-        return None
-    except Exception:
-        logging.getLogger('nyx').debug(
-            f'Erro ao descobrir UI para {module_path}', exc_info=True
-        )
-        return None
+    ui_class = f"{model_name}UI"
+    for module_path in (f"{app_name}.ui.{model_name.lower()}", f"{app_name}.ui"):
+        try:
+            module = importlib.import_module(module_path)
+            cls = getattr(module, ui_class, None)
+            if cls is not None:
+                return cls
+        except ImportError:
+            continue
+        except Exception:
+            logging.getLogger('nyx').debug(
+                f'Erro ao descobrir UI para {module_path}', exc_info=True
+            )
+    return None
 
 
 def _discover_app_ui(app_name: str, app_label_short: str):

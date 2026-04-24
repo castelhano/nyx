@@ -19,7 +19,8 @@
           hx-target="#main-content"
           hx-swap="innerHTML"
           autocomplete="off"
-          novalidate>
+          novalidate
+          data-component="mask">
         {% csrf_token %}
 
         {% if ui.sections %}
