@@ -33,7 +33,7 @@
     <script defer src="{% static 'js/components/mask.js' %}"></script>
 
     {# 4. Módulos de página — registram em NyxModules, não executam nada ainda #}
-    {# <script defer src="{% static 'js/modules/viagem-form.js' %}"></script> #}
+    <script defer src="{% static 'js/modules/index.js' %}"></script>
 
     {# 5. Orquestrador — sempre por último #}
     <script defer src="{% static 'js/app.js' %}"></script>
@@ -65,8 +65,11 @@
         });
     </script>
 
-    <script>
-        {% block script %}{% endblock %}
+    {# script_defer: executa após todos os scripts defer (usa type=module internamente) #}
+    {# Use para scripts simples que precisam de keys/NyxDom/etc sem criar um módulo #}
+    {# Limitação: não re-executa em navegação HTMX — para isso use NyxModules        #}
+    <script type="module">
+        {% block script_defer %}{% endblock %}
     </script>
 
 </body>

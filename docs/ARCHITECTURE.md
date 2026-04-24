@@ -133,6 +133,8 @@ User clica link com hx-get / hx-target="#main-content"
     → htmx:beforeSwap:
         NyxDom.destroy(#main-content)    — remove listeners externos dos componentes saindo
         keys.unbindGroup(group)          — remove atalhos do fragmento saindo
+    → swap (HTMX substitui o DOM):
+        <script> no fragmento executado  — htmx.config.allowScriptTags = true
     → htmx:afterSwap:
         NyxDom.init(#main-content)       — inicializa componentes do novo fragmento
         NyxResponse.scan(#main-content)  — processa respostas declarativas
@@ -394,7 +396,17 @@ Usado pelo `hcard.js`. Disponível para qualquer componente que precise de posic
 1. **Todo fragmento com componentes** deve ter `data-keybind-group` no container raiz
 2. **Listagens** usam `data-keybind-group="{{ ui.title|slugify }}-list"` (já em `generic/list.html`)
 3. **Forms** usam `data-keybind-group="{{ ui.title|slugify }}-form"` (já em `generic/form.html`)
-4. **Respostas do servidor** devem usar `<template data-response>`, nunca `<script>` inline
+4. **Respostas do servidor** (toasts, erros de campo) devem usar `<template data-response>`, nunca `<script>`
+5. **`<script>` inline no fragmento é permitido** para `keys.bind()` simples — o script executa no swap e o bind é limpo automaticamente no próximo `beforeSwap` via `unbindGroup`. Obrigatório: o bind deve ter `group` correspondente ao `data-keybind-group` do container. Para lógica com `document.addEventListener`, timers ou destroy explícito, usar `NyxModules`.
+
+### Scripts de página — quando usar cada abordagem
+
+| Caso | Abordagem |
+|---|---|
+| Atalho simples em botão/link | `data-keybind` declarativo no elemento |
+| `keys.bind()` no fragmento HTMX | `<script>` inline no fragmento com `group` |
+| Lógica complexa, timers, listeners externos | `NyxModules` (arquivo em `static/js/modules/`) |
+| Script que precisa de globals Nyx em full page load | `{% block script_defer %}` (não re-executa em HTMX) |
 
 ### Views
 

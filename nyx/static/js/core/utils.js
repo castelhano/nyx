@@ -52,3 +52,7 @@ const NyxUtils = {
     // debounce(fn, delay) { ... },
     // isEmpty(value) { ... },
 };
+
+// Registro global de módulos de página — preenchido pelos arquivos em js/modules/
+// antes do app.js orquestrar o ciclo de vida (init / destroy).
+const NyxModules = {};
