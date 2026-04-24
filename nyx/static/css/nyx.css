@@ -278,6 +278,10 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .text-attention { color: var(--nyx-text-attention) !important; }
 
 /* Texto + Fundo combinados */
+.text-bg-primary     { background-color: var(--nyx-bg-primary)     !important; color: var(--nyx-text-primary)     !important; }
+.text-bg-secondary     { background-color: var(--nyx-bg-secondary)     !important; color: var(--nyx-text-secondary)     !important; }
+.text-bg-tertiary     { background-color: var(--nyx-bg-tertiary)     !important; color: var(--nyx-text-tertiary)     !important; }
+
 .text-bg-brand     { background-color: var(--nyx-bg-brand)     !important; color: var(--nyx-text-brand)     !important; }
 .text-bg-info      { background-color: var(--nyx-bg-info)      !important; color: var(--nyx-text-info)      !important; }
 .text-bg-warning   { background-color: var(--nyx-bg-warning)   !important; color: var(--nyx-text-warning)   !important; }
