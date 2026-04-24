@@ -111,18 +111,33 @@ class FormLayout:
 # =============================================================================
 
 @dataclass
+class ListConfig:
+    """
+    Comportamento da listagem. Declare em ModeloUI.list_config para sobrescrever os defaults.
+
+        class FilialUI:
+            list_config = ListConfig(export_csv=True, page_size=50)
+            columns = [...]
+    """
+    searchable: bool = True    # exibe campo de busca
+    page_size:  int  = 25      # itens por página; 0 = sem paginação
+    export_csv: bool = False   # exibe botão de exportação CSV
+
+
+@dataclass
 class Column:
     """
     Coluna de tabela. Use string pura para defaults completos:
         columns = ['nome', Column('status', breakpoint='sm')]
     """
-    field:        str
-    label:        str      = ''       # vazio → verbose_name do model field
-    breakpoint:   str      = ''       # 'sm' | 'md' | 'lg' | 'xl'
-    align:        str      = 'start'  # 'start' | 'center' | 'end'
-    sortable:     bool     = True
-    extra_classes: str     = ''
-    format:       Callable = None     # fn(value, obj) → Badge | Link | str
+    field:         str
+    label:         str      = ''       # vazio → verbose_name do model field
+    breakpoint:    str      = ''       # 'sm' | 'md' | 'lg' | 'xl'
+    align:         str      = 'start'  # 'start' | 'center' | 'end'
+    sortable:      bool     = True
+    search_fields: list     = None     # None = busca em self.field; [] = não pesquisável
+    extra_classes: str      = ''
+    format:        Callable = None     # fn(value, obj) → Badge | Link | str
 
 
 # =============================================================================

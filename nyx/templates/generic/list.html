@@ -1,76 +1,118 @@
 {% extends base_template %}
+{% load nyx_ui %}
 
 {% block main %}
-<div class="{{ui.layout.container_class}}" data-page-module="{{ ui.title|slugify }}-list" data-keybind-group="{{ ui.title|slugify }}-list">
+<div class="{{ ui.layout.container_class }}" data-page-module="{{ ui.title|slugify }}-list" data-keybind-group="{{ ui.title|slugify }}-list">
 
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
-    <div class="{{ui.layout.header_class}}">
-        <h3 class="{{ui.layout.header_title_class}}">
+    {# ── Cabeçalho ────────────────────────────────────────────────────────── #}
+    <div class="{{ ui.layout.header_class }}">
+        <h3 class="{{ ui.layout.header_title_class }}">
             <span>{{ app_name }}</span>
-            <i class="bi bi-arrow-return-right text-xs mx-2 text-"></i>
+            <i class="bi bi-arrow-return-right text-xs mx-2"></i>
             <span>{{ ui.title }}</span>
         </h3>
-        <div class="{{ui.layout.header_actions_class}}">
-            {% for action in ui.toolbar %}
-                {% action_button action %}
-            {% endfor %}
+        <div class="{{ ui.layout.header_actions_class }}">
+            {% for action in ui.toolbar %}{% action_button action %}{% endfor %}
+            {% if ui.list_config.export_csv %}
+            <a href="{% page_url 1 %}&format=csv"
+               class="btn btn-sm btn-secondary"
+               title="Exportar CSV">
+                <i class="bi bi-download"></i>
+            </a>
+            {% endif %}
         </div>
     </div>
 
+    {# ── Busca ────────────────────────────────────────────────────────────── #}
+    {% if ui.list_config.searchable %}
+    <form hx-get=""
+          hx-target="#main-content"
+          hx-push-url="true"
+          hx-trigger="input changed delay:400ms from:#list-search, submit"
+          class="mb-2">
+        <input type="hidden" name="sort"  value="{{ current_sort }}">
+        <input type="hidden" name="order" value="{{ current_order }}">
+        <input id="list-search"
+               name="q"
+               type="search"
+               value="{{ current_q }}"
+               placeholder="Pesquisar..."
+               autocomplete="off"
+               class="form-control form-control-sm"
+               data-keywatch="escape">
+    </form>
+    {% endif %}
+
+    {# ── Tabela ───────────────────────────────────────────────────────────── #}
     <div class="table-wrapper">
-        <table class="{{ui.layout.table_class}}">
+        <table class="{{ ui.layout.table_class }}">
             <thead>
                 <tr>
                     {% for col in ui.columns %}
-                        <th>{{ col.label }}</th>
+                    <th class="{% if col.breakpoint %}d-none d-{{ col.breakpoint }}-table-cell {% endif %}{% if col.align != 'start' %}col-{{ col.align }} {% endif %}{% if current_sort == col.field %}th-sorted th-sorted--{{ current_order }}{% endif %}">
+                        {% if col.sortable %}
+                        <a hx-get="{% sort_url col.field %}"
+                           hx-target="#main-content"
+                           hx-push-url="true">{{ col.label }}</a>
+                        {% else %}
+                        {{ col.label }}
+                        {% endif %}
+                    </th>
                     {% endfor %}
                     {% if ui.row_actions %}<th class="col-actions"></th>{% endif %}
                 </tr>
             </thead>
             <tbody>
                 {% for obj in object_list %}
-                    <tr>
-                        {% for col in ui.columns %}
-                            <td>{% get_field obj col.field %}</td>
-                        {% endfor %}
-                        {% if ui.row_actions %}
-                            <td class="col-actions">
-                                {% for action in ui.row_actions %}
-                                    {% action_button action obj %}
-                                {% endfor %}
-                            </td>
-                        {% endif %}
-                    </tr>
+                <tr>
+                    {% for col in ui.columns %}
+                    <td class="{% if col.breakpoint %}d-none d-{{ col.breakpoint }}-table-cell {% endif %}{% if col.align != 'start' %}col-{{ col.align }}{% endif %}">
+                        {% get_field obj col.field %}
+                    </td>
+                    {% endfor %}
+                    {% if ui.row_actions %}
+                    <td class="col-actions">
+                        {% for action in ui.row_actions %}{% action_button action obj %}{% endfor %}
+                    </td>
+                    {% endif %}
+                </tr>
                 {% empty %}
-                    <tr>
-                        <td colspan="{{ ui.columns|length|add:1 }}" class="text-center text-muted p-3">
-                            Nenhum registro encontrado.
-                        </td>
-                    </tr>
+                <tr>
+                    <td colspan="{{ ui.columns|length|add:1 }}" class="text-center text-secondary p-4">
+                        {% if current_q %}
+                        Nenhum resultado para "<strong>{{ current_q }}</strong>".
+                        {% else %}
+                        Nenhum registro encontrado.
+                        {% endif %}
+                    </td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
+    {# ── Paginação ────────────────────────────────────────────────────────── #}
     {% if is_paginated %}
     <nav class="pagination" aria-label="paginação">
         {% if page_obj.has_previous %}
-            <a href="?page={{ page_obj.previous_page_number }}"
-               class="btn btn-sm btn-ghost"
-               hx-get="?page={{ page_obj.previous_page_number }}"
-               hx-target="#main-content"
-               hx-push-url="true">Anterior</a>
+        <a href="{% page_url page_obj.previous_page_number %}"
+           hx-get="{% page_url page_obj.previous_page_number %}"
+           hx-target="#main-content"
+           hx-push-url="true"
+           class="btn btn-sm btn-ghost">Anterior</a>
         {% endif %}
-        <span class="text-sm text-muted">
+        <span class="text-sm text-secondary">
             {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+            <span class="text-tertiary">({{ page_obj.paginator.count }})</span>
         </span>
         {% if page_obj.has_next %}
-            <a href="?page={{ page_obj.next_page_number }}"
-               class="btn btn-sm btn-ghost"
-               hx-get="?page={{ page_obj.next_page_number }}"
-               hx-target="#main-content"
-               hx-push-url="true">Próxima</a>
+        <a href="{% page_url page_obj.next_page_number %}"
+           hx-get="{% page_url page_obj.next_page_number %}"
+           hx-target="#main-content"
+           hx-push-url="true"
+           class="btn btn-sm btn-ghost">Próxima</a>
         {% endif %}
     </nav>
     {% endif %}

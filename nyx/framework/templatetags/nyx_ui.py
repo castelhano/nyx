@@ -88,6 +88,39 @@ def add_class(field, css_class):
     return field.as_widget(attrs={'class': classes})
 
 
+@register.simple_tag(takes_context=True)
+def sort_url(context, field):
+    """Gera URL de ordenação preservando q atual e alternando asc/desc."""
+    from urllib.parse import urlencode
+    q      = context.get('current_q', '')
+    c_sort = context.get('current_sort', '')
+    c_ord  = context.get('current_order', 'asc')
+    order  = 'desc' if (c_sort == field and c_ord == 'asc') else 'asc'
+    params = {}
+    if q:
+        params['q'] = q
+    params['sort']  = field
+    params['order'] = order
+    return '?' + urlencode(params)
+
+
+@register.simple_tag(takes_context=True)
+def page_url(context, page_num):
+    """Gera URL de paginação preservando q, sort e order atuais."""
+    from urllib.parse import urlencode
+    params = {}
+    q     = context.get('current_q', '')
+    sort  = context.get('current_sort', '')
+    order = context.get('current_order', 'asc')
+    if q:
+        params['q'] = q
+    if sort:
+        params['sort']  = sort
+        params['order'] = order
+    params['page'] = page_num
+    return '?' + urlencode(params)
+
+
 @register.simple_tag
 def get_field(obj, field_path: str):
     """

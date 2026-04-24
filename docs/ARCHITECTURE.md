@@ -36,7 +36,7 @@ framework/
 │   ├── breadcrumbs.py  — BreadcrumbMixin + BreadcrumbItem
 │   └── scoping.py      — FilialScopeMixin (escopo automático por filial)
 └── templatetags/
-    └── nyx_ui.py       — template tags utilitários
+    └── nyx_ui.py       — template tags: action_button, get_field, sort_url, page_url, form_field, add_class
 ```
 
 ### 2.2 Frontend (`nyx/static/js/`)
@@ -226,11 +226,41 @@ Atalhos do sistema:
 | Atalho | Descrição | Origem |
 |--------|-----------|--------|
 | `alt+k` | Exibir todos os atalhos | app.js |
+| `alt+l` | Recarregar fragmento atual | app.js |
+| `alt+n` | Novo registro (listagem) | ui.resolve_toolbar |
 | `alt+v` | Voltar um nível no breadcrumb | nyx.breadcrumbs |
 | `ctrl+s` | Salvar formulário | generic/form.html |
 | `esc` | Cancelar formulário | generic/form.html |
+| `ctrl+←/→` | Navegar entre abas | tabs.js (requer `data-navigate != 'false'`) |
 
-### 4.8 Toolbar e Row Actions (`framework/ui.py`)
+### 4.8 ListConfig, Column e Section (`framework/ui.py`)
+
+**`ListConfig`** — controla comportamento da listagem. Declarado em `ModeloUI.list_config`:
+```python
+list_config = ListConfig(searchable=True, page_size=25, export_csv=False)
+```
+- `searchable` — exibe campo de busca (GET `?q=`); busca em todos os campos marcados nas colunas
+- `page_size` — itens por página; `0` = sem paginação
+- `export_csv` — exibe botão de download; interceptado via `?format=csv`
+
+**`Column.search_fields`**:
+- `None` (default) — busca em `col.field`
+- `['outro__campo']` — busca nos campos listados
+- `[]` — coluna não participa da busca
+
+**`Section.layout`** — controla renderização do form:
+- `'label-inline'` (default) — grid `label | input` (`.grid-fit-rest`)
+- `'label-above'` — label acima do input, largura total
+- `'grid'` — grade 12 colunas; `Field.col_span` é respeitado
+
+**`BaseListView`** automaticamente:
+- Filtra via `Q` construído das colunas quando `?q=` presente
+- Ordena via `order_by` quando `?sort=` + `?order=` presentes (apenas campos `sortable=True`)
+- Preserva `q/sort/order` nos links de paginação via `sort_url` e `page_url` template tags
+
+---
+
+### 4.9 Toolbar e Row Actions (`framework/ui.py`)
 
 Ambos seguem o mesmo padrão: botão padrão auto-injetado + extras aditivos.
 
@@ -346,7 +376,7 @@ Usado pelo `hcard.js`. Disponível para qualquer componente que precise de posic
 2. **Permissões** são inferidas automaticamente — declarar `permission_required` só para exceções
 3. **Mensagens de sucesso** usam `nyx.framework.messages` como base
 4. **success_url** é inferido por convenção (`app:modelo_list`) — declarar só se diferente
-5. **`toolbar` e `row_actions` são aditivos** — declaram apenas extras; create/edit são controlados por `enable_create`/`enable_update` (ver 4.8)
+5. **`toolbar` e `row_actions` são aditivos** — declaram apenas extras; create/edit são controlados por `enable_create`/`enable_update` (ver 4.9)
 6. **Contexto automático**: `app_name` (verbose_name do AppConfig) e `ui.title` (singular em forms, plural em list)
 
 ### Forms

@@ -34,7 +34,8 @@ from nyx.framework.mixins.breadcrumbs import BreadcrumbMixin, BreadcrumbItem
 from nyx.framework.mixins.scoping import FilialScopeMixin
 from nyx.framework.registry import get_nav
 from nyx.framework.ui import (
-    FormLayout, ListLayout, normalize_columns, filter_sections, resolve_toolbar, resolve_row_actions,
+    FormLayout, ListLayout, ListConfig, normalize_columns, filter_sections,
+    resolve_toolbar, resolve_row_actions, resolve_attr,
 )
 
 # Mapeamento de _permission_action → contexto de UI
@@ -139,6 +140,7 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
             'toolbar':     resolve_toolbar(schema, model, view_context) if model else [],
             'row_actions': resolve_row_actions(schema, model) if model else [],
             'sections':    filter_sections(getattr(schema, 'sections', []), view_context),
+            'list_config': getattr(schema, 'list_config', ListConfig()),
         }
         return ctx
 
@@ -149,12 +151,116 @@ class BaseListView(NyxBaseMixin, ListView):
     Template padrão: generic/list.html
 
     Atributos opcionais:
-        paginate_by  (default: 25)
+        paginate_by  (default: ListConfig.page_size → 25)
         ordering     (default: definido no model.Meta)
     """
     _permission_action = 'view'
     template_name      = "generic/list.html"
     paginate_by        = 25
+
+    def get_paginate_by(self, queryset):
+        schema = self._get_schema()
+        if schema:
+            lc = getattr(schema, 'list_config', None)
+            if lc is not None:
+                return lc.page_size or None
+        return self.paginate_by
+
+    def get_queryset(self):
+        from django.core.exceptions import FieldError
+        from django.db.models import Q as DQ
+
+        qs     = super().get_queryset()
+        schema = self._get_schema()
+        if schema is None:
+            return qs
+
+        columns = normalize_columns(getattr(schema, 'columns', []))
+
+        # ── Busca ─────────────────────────────────────────────────────────────
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            combined = DQ()
+            for col in columns:
+                if col.search_fields == []:
+                    continue
+                fields = col.search_fields if col.search_fields else [col.field]
+                for sf in fields:
+                    combined |= DQ(**{f'{sf}__icontains': q})
+            try:
+                qs = qs.filter(combined)
+            except FieldError:
+                pass
+
+        # ── Ordenação ─────────────────────────────────────────────────────────
+        sort  = self.request.GET.get('sort', '')
+        order = self.request.GET.get('order', 'asc')
+        if sort:
+            sortable = {col.field for col in columns if col.sortable}
+            if sort in sortable:
+                qs = qs.order_by(f'{"-" if order == "desc" else ""}{sort}')
+
+        return qs
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get('format') == 'csv':
+            return self._export_csv()
+        return super().get(request, *args, **kwargs)
+
+    def _export_csv(self):
+        import csv
+
+        schema  = self._get_schema()
+        columns = normalize_columns(getattr(schema, 'columns', [])) if schema else []
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{self.model._meta.model_name}.csv"'
+        )
+        response.write('﻿')  # BOM para Excel
+
+        writer = csv.writer(response)
+
+        # Cabeçalho
+        headers = []
+        for col in columns:
+            if col.label:
+                headers.append(col.label)
+            else:
+                try:
+                    headers.append(
+                        self.model._meta.get_field(col.field.split('__')[0]).verbose_name.capitalize()
+                    )
+                except Exception:
+                    headers.append(col.field)
+        writer.writerow(headers)
+
+        # Dados
+        for obj in self.get_queryset():
+            row = []
+            for col in columns:
+                val = resolve_attr(obj, col.field)
+                if hasattr(val, 'label'):   # Badge / Link
+                    val = val.label
+                row.append(str(val) if val is not None else '')
+            writer.writerow(row)
+
+        return response
+
+    def get_context_data(self, **kwargs):
+        ctx   = super().get_context_data(**kwargs)
+        q     = self.request.GET.get('q', '')
+        sort  = self.request.GET.get('sort', '')
+        order = self.request.GET.get('order', 'asc')
+
+        params = self.request.GET.copy()
+        params.pop('page', None)
+
+        ctx['current_q']     = q
+        ctx['current_sort']  = sort
+        ctx['current_order'] = order
+        ctx['query_params']  = params.urlencode()
+        return ctx
 
 
 class BaseCreateView(NyxBaseMixin, CreateView):
