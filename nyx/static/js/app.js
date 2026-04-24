@@ -40,6 +40,15 @@ keys.scanBindings(document); // realiza primeiro scan na pagina
 keys.watchHtmx();
 htmx.config.allowScriptTags = true;
 
+// ── Atalhos globais ───────────────────────────────────────────────────────────
+keys.bind('alt+l', () => htmx.ajax('GET', window.location.href, { target: '#main-content', swap: 'innerHTML' }), {
+    context: 'all',
+    desc:    'Recarregar página',
+    icon:    'bi bi-arrow-clockwise',
+    origin:  'nyx.app',
+    order:   2,
+});
+
 // ── Ciclo de vida dos módulos de página ───────────────────────────────────────
 const NyxApp = (() => {
     let _current = null;
