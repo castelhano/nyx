@@ -46,7 +46,8 @@ static/js/
 ├── app.js                  — orquestrador: Keywatch, NyxModules, ciclo de vida HTMX
 ├── preload.js              — executa antes do CSS/body (ex: tema)
 ├── libs/
-│   └── keywatch.js         — gerenciador de atalhos de teclado
+│   ├── keywatch.js         — gerenciador de atalhos de teclado
+│   └── imask.min.js        — lib de máscara de input (IMask 7.x)
 ├── core/
 │   ├── dom.js              — NyxDom: registro e ciclo de vida de componentes UI
 │   ├── utils.js            — NyxUtils: funções utilitárias stateless (ex: autoPlace)
@@ -54,9 +55,10 @@ static/js/
 │   └── response.js         — NyxResponse: processamento de intenções declaradas pelo servidor
 └── components/
     ├── dropdown.js
-    ├── tabs.js
+    ├── tabs.js             — navegação por abas; suporta data-navigate (ctrl+←/→)
     ├── sidebar.js
-    └── hcard.js
+    ├── hcard.js
+    └── mask.js             — aplica IMask em inputs com data-mask dentro do container
 ```
 
 ### 2.3 Templates (`nyx/templates/`)
@@ -140,6 +142,15 @@ Para cada model registrado, o registry infere:
 
 Acesso: `get_nav(ModelClass)` → `NavEntry | None`
 
+**Descoberta de UI (`_discover_ui`):** o registry tenta primeiro `app/ui/{modelo}.py` → `{Modelo}UI`.
+Se não encontrar, cai no `app/ui/__init__.py` como fallback — permite agrupar UIs de models relacionados
+num mesmo arquivo e re-exportá-las no `__init__`:
+
+```python
+# app/ui/__init__.py — agrupa Empresa e Filial no mesmo arquivo
+from .empresa import EmpresaUI, FilialUI
+```
+
 ### 4.2 Breadcrumb (`mixins/breadcrumbs.py`)
 
 Construído automaticamente em `BreadcrumbMixin.get_breadcrumbs()`:
@@ -209,6 +220,7 @@ Atributos relevantes:
 - `data-keybind-icon="bi bi-*"` — ícone no modal
 - `data-keybind-origin="modulo"` — informativo, indica o módulo que declarou o atalho
 - `data-keybind-group="nome"` — associa ao grupo para unbind no swap
+- `data-keybind-order="0"` — prioridade de exibição no modal (0–10, crescente; default: 5)
 
 Atalhos do sistema:
 | Atalho | Descrição | Origem |
