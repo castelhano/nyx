@@ -1,10 +1,13 @@
 ﻿/**
  * Keywatch — Gerenciador de atalhos de teclado
  *
- * @version  7.0
+ * @version  7.1
  * @since    05/08/2024
  * @release  2026 [v7: remoção de i18n/gettext, suporte a data-keybind, modal com classes externas (nyx.css),
  *                     watchHtmx(), scanBindings(), ciclo de vida automático por group]
+ *           2026 [v7.1: composedListener recebe objeto {state,scope,target}; composedPattern como função;
+ *                       modifier hint listener (checkInputHint/setupModifierHint/checkInputModifier/checkInputHintDelay);
+ *                       .kw-hint position:absolute para seguir o scroll do container]
  * @author   Rafael Gustavo Alves
  *
  * ---------------------------------------------------------------------------
@@ -142,12 +145,24 @@ class Keywatch {
             // Mapa de classes CSS do modal — cada chave pode ser sobrescrita ao instanciar
             // Exemplo: new Keywatch({ classes: { table: 'minha-tabela table-sm' } })
             classes: {},
+            // Modifier hint — detecta pressão de modificador isolado e chama setupModifierHint
+            // setupModifierHint: fn({state: 1|0, modifier: 'control', ev}) — state 1=press, 0=release
+            checkInputHint:      false,
+            checkInputModifier:  ['ctrl'],
+            checkInputHintDelay: 400,
+            setupModifierHint:   null,
+            // composedPattern: fn(schema, mods, mainKey) => bool — null usa lógica interna padrão
+            composedPattern:     null,
         };
 
         for (const k in instanceDefaults) {
             this[k] = options.hasOwnProperty(k) ? options[k] : instanceDefaults[k];
         }
         this.classes = { ...this._defaultClasses(), ...(options.classes || {}) };
+
+        // ── Estado interno do modifier hint ──────────────────────────────────
+        this._modifierHintTimer  = null;
+        this._modifierHintActive = null;
 
         // ── Mapa de aliases de teclas ─────────────────────────────────────────
         this.modifier = {
@@ -159,6 +174,9 @@ class Keywatch {
             '→':       'arrowright',
             '←':       'arrowleft',
         };
+
+        // Normaliza checkInputModifier para nomes internos ('ctrl' → 'control')
+        this.checkInputModifier = this.checkInputModifier.map(m => this.modifier[m] || m.toLowerCase());
 
         // ── Listeners base ───────────────────────────────────────────────────
         document.addEventListener('keydown', (ev) => this._eventHandler(ev), false);
@@ -275,7 +293,7 @@ class Keywatch {
 
             /* ─ Composed hint ─ */
             .kw-hint {
-                position: fixed;
+                position: absolute;
                 display: inline-flex;
                 align-items: center;
                 gap: 5px;
@@ -680,13 +698,28 @@ class Keywatch {
             const key = this._normalize(ev.key);
             if (ev.key && !this.pressed.includes(key)) this.pressed.push(key);
 
+            // ── Modifier hint ────────────────────────────────────────────────
+            if (this.checkInputHint && this.setupModifierHint) {
+                if (this.pressed.length === 1 && this.checkInputModifier.includes(key)) {
+                    clearTimeout(this._modifierHintTimer);
+                    this._modifierHintTimer = setTimeout(() => {
+                        this._modifierHintTimer = null;
+                        this._modifierHintActive = key;
+                        this.setupModifierHint({ state: 1, modifier: key, ev });
+                    }, this.checkInputHintDelay);
+                } else if (this._modifierHintTimer !== null) {
+                    clearTimeout(this._modifierHintTimer);
+                    this._modifierHintTimer = null;
+                }
+            }
+
             const scope = this._buildScope();
             const found = this._eventsMatch(scope, ev);
 
             // Limpa composedMatch se nenhum atalho found e não é o trigger
             if (!found && ev.key !== this.composedTrigger && this.composedMatch.length > 0) {
                 this.composedMatch = [];
-                this.composedListener(false, scope);
+                this.composedListener({ state: 0, scope, target: ev.target });
             }
 
             // tabOnEnter — avança foco ao pressionar Enter em inputs/selects
@@ -708,6 +741,25 @@ class Keywatch {
             }
 
         } else if (ev.type === 'keyup') {
+            // ── Modifier hint release ────────────────────────────────────────
+            if (this.checkInputHint && this.setupModifierHint) {
+                const modCodeMap = {
+                    AltLeft: 'alt', AltRight: 'alt',
+                    ControlLeft: 'control', ControlRight: 'control',
+                    ShiftLeft: 'shift', ShiftRight: 'shift',
+                    MetaLeft: 'meta', MetaRight: 'meta',
+                };
+                const releasedKey = modCodeMap[ev.code] || this._normalize(ev.key);
+                if (this.checkInputModifier.includes(releasedKey)) {
+                    clearTimeout(this._modifierHintTimer);
+                    this._modifierHintTimer = null;
+                    if (this._modifierHintActive === releasedKey) {
+                        this._modifierHintActive = null;
+                        this.setupModifierHint({ state: 0, modifier: releasedKey, ev });
+                    }
+                }
+            }
+
             const scope = this._buildScope();
             this._eventsMatch(scope, ev);
             this._removeKeyFromPressed(ev);
@@ -748,7 +800,7 @@ class Keywatch {
                 } else if (!this.composedMatch[1].includes(ev.type)) {
                     this.composedMatch[1].push(ev.type);
                 }
-                this.composedListener(true, resolvedScope);
+                this.composedListener({ state: 1, scope: resolvedScope, target: ev.target });
                 count++;
                 return;
             }
@@ -758,7 +810,7 @@ class Keywatch {
                 this.composedMatch = this.composedMatch[1].length === 1
                     ? []
                     : [this.composedMatch[0], this.composedMatch[1].filter(t => t !== ev.type)];
-                if (this.composedMatch.length === 0) this.composedListener(false, resolvedScope);
+                if (this.composedMatch.length === 0) this.composedListener({ state: 0, scope: resolvedScope, target: ev.target });
             }
 
             handler.method(ev, handler);
@@ -786,8 +838,10 @@ class Keywatch {
      *   keys.bind('alt+e;ctrl+e', editar, { context: 'default', icon: '✏️' });
      */
     bind(scope, method, options = {}) {
-        const keys = this._getMultipleKeys(scope);
-        const defaultMods = ['control', 'shift', 'alt', 'meta'];
+        const keys     = this._getMultipleKeys(scope);
+        const resolver = typeof this.composedPattern === 'function'
+            ? this.composedPattern
+            : (s, mods, key) => this._defaultComposedPattern(mods, key);
 
         keys.forEach((entry, index) => {
             const handler = { ...this.handlerDefaults };
@@ -803,8 +857,7 @@ class Keywatch {
             // Atalhos com múltiplos scopes: apenas o primeiro aparece no modal
             if (index > 0) handler.display = false;
 
-            // composed = usa modificador não convencional (ex: 'g', 'c' em vez de ctrl/alt/meta)
-            handler.composed = handler.mods.some(m => !defaultMods.includes((m || '').toLowerCase()));
+            handler.composed = resolver(entry, handler.mods, handler.key);
 
             this._spreadHandler(handler);
         });
@@ -1058,6 +1111,19 @@ class Keywatch {
     // ═══════════════════════════════════════════════════════════════════════════
     // INTERNOS
     // ═══════════════════════════════════════════════════════════════════════════
+
+    _defaultComposedPattern(mods, mainKey) {
+        const defaultMods = ['control', 'shift', 'alt', 'meta'];
+        const fKeyRx = /^f(?:[1-9]|1[0-2])$/;
+        if (mods.length === 0) return !fKeyRx.test(mainKey) && mainKey !== 'escape';
+        if (mods.length === 1) {
+            const m = mods[0];
+            if (m === 'control' || m === 'shift') return true;
+            if (m === 'alt'     || m === 'meta')  return false;
+            return true; // modificador não convencional (ex: 'g', 'c')
+        }
+        return mods.some(m => !defaultMods.includes(m));
+    }
 
     _spreadHandler(handler) {
         const sorter = (a, b) => b.useCapture - a.useCapture;

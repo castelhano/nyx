@@ -1,4 +1,4 @@
-from nyx.framework.ui import Column, Field, Section
+from nyx.framework.ui import Column, Field, Section, Keybind
 
 
 class EmpresaUI:

@@ -42,10 +42,12 @@
                     {% if bf %}
                     <div class="col-span-{{ section_field.col_span }} d-flex flex-column gap-1">
                         <label class="form-label" for="{{ bf.id_for_label }}">{{ section_field.label|default:bf.label }}</label>
-                        {{ bf|add_class:"form-control form-control-sm" }}
-                        {% if bf.errors %}
-                        {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
-                        {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                        <div data-kw-field-container>
+                            {{ bf|add_class:"form-control form-control-sm" }}
+                            {% if bf.errors %}
+                            {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
+                            {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                        </div>
                     </div>
                     {% endif %}
                     {% endwith %}
@@ -60,10 +62,12 @@
                     {% if bf %}
                     <div>
                         <label class="form-label" for="{{ bf.id_for_label }}">{{ section_field.label|default:bf.label }}</label>
-                        {{ bf|add_class:"form-control form-control-sm" }}
-                        {% if bf.errors %}
-                        {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
-                        {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                        <div data-kw-field-container>
+                            {{ bf|add_class:"form-control form-control-sm" }}
+                            {% if bf.errors %}
+                            {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
+                            {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                        </div>
                     </div>
                     {% endif %}
                     {% endwith %}
@@ -77,7 +81,7 @@
                     {% with bf=form|form_field:section_field.name %}
                     {% if bf %}
                     <label class="form-label pt-1" for="{{ bf.id_for_label }}">{{ section_field.label|default:bf.label }}</label>
-                    <div>
+                    <div data-kw-field-container>
                         {{ bf|add_class:"form-control form-control-sm" }}
                         {% if bf.errors %}
                         {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
@@ -101,7 +105,7 @@
                 <div class="d-grid grid-fit-rest gap-2">
                     {% for field in form %}
                     <label class="form-label pt-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                    <div>
+                    <div data-kw-field-container>
                         {{ field|add_class:"form-control form-control-sm" }}
                         {% if field.errors %}
                         {% for error in field.errors %}<span class="form-error">{{ error }}</span>{% endfor %}

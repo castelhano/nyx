@@ -44,13 +44,14 @@ class Link:
 @dataclass
 class Keybind:
     """Atalho de teclado mapeado via data-keybind no elemento."""
-    keys:   str
-    desc:   str = ''
-    icon:   str = ''
-    action: str = ''
-    origin: str = ''
-    order:  int = 3
-    title:  str = ''
+    keys:    str
+    desc:    str = ''
+    icon:    str = ''
+    action:  str = ''
+    origin:  str = ''
+    order:   int = 3
+    display: str = 'true'
+    title:   str = ''
 
     @property
     def attrs(self):

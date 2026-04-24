@@ -26,37 +26,81 @@
  *   };
  */
 
+// ── Mapa de nome interno do modificador → sufixo do atributo de hint ─────────
+const _kwModAttr = { control: 'ctrl', alt: 'alt', shift: 'shift', meta: 'meta' };
+
+// Garante existência do wrapper de badges dentro do container
+function _kwBadgesWrapper(container) {
+    let w = container.querySelector(':scope > .kw-input-badges');
+    if (!w) {
+        w = document.createElement('div');
+        w.className = 'kw-input-badges';
+        container.appendChild(w);
+    }
+    return w;
+}
+
 // ── Composed hint — badge de confirmação para atalhos compostos em inputs ─────
-NyxDom.register('kw-composed-hint', () => {});
+function _composedHint({ state, target }) {
+    const container = target?.closest('[data-kw-field-container]');
+    if (!container) return;
 
-let _composedHintPortal = null;
-
-function _composedHint(active) {
-    if (active) {
-        if (_composedHintPortal) return;
-        const input = document.activeElement;
-        if (!input || !['INPUT', 'SELECT', 'TEXTAREA'].includes(input.nodeName)) return;
-
-        const rect  = input.getBoundingClientRect();
+    if (state === 1) {
+        const wrapper = _kwBadgesWrapper(container);
+        if (wrapper.querySelector('.kw-hint')) return;
         const badge = document.createElement('div');
-        badge.setAttribute('data-component', 'kw-composed-hint');
         badge.className = 'kw-hint';
         badge.innerHTML = `<i class="bi bi-keyboard"></i><span>${keys.composedTrigger.toUpperCase()}</span>`;
-        badge.style.top    = `${rect.top    + 3}px`;
-        badge.style.right  = `${window.innerWidth - rect.right + 3}px`;
-        badge.style.height = `${rect.height - 6}px`;
-
-        const portal = document.createElement('div');
-        portal.appendChild(badge);
-        document.body.appendChild(portal);
-        NyxDom.init(portal);
-        _composedHintPortal = portal;
+        wrapper.appendChild(badge);
     } else {
-        if (!_composedHintPortal) return;
-        NyxDom.destroy(_composedHintPortal);
-        _composedHintPortal.remove();
-        _composedHintPortal = null;
+        container.querySelector('.kw-input-badges .kw-hint')?.remove();
     }
+}
+
+// ── Input hints — adiciona spans de hint nos containers dos inputs ────────────
+function _nyxInputHints(root = document) {
+    const els = root.querySelectorAll('[data-keybind]');
+    els.forEach(el => {
+        const shortcut = el.dataset.keybind;
+        if (!shortcut) return;
+
+        // Somente elementos focus-target
+        const tag    = el.tagName.toLowerCase();
+        const action = el.dataset.keybindAction?.toLowerCase();
+        if (action === 'click' || action === 'submit') return;
+        if (!action && (tag === 'button' || tag === 'a')) return;
+
+        // Primeiro scope; somente 1 modificador padrão (alt/ctrl/shift) + 1 tecla
+        const first = shortcut.split(';')[0].trim().toLowerCase();
+        const parts = first.split('+').filter(Boolean);
+        const key   = parts[parts.length - 1];
+        const mods  = parts.slice(0, -1);
+        if (mods.length !== 1) return;
+
+        const mod = mods[0] === 'control' ? 'ctrl' : mods[0];
+        if (!['ctrl', 'alt', 'shift'].includes(mod)) return;
+
+        const container = el.closest('[data-kw-field-container]');
+        if (!container) return;
+        if (container.querySelector(`[data-keywatch-${mod}hint]`)) return; // evita duplicatas
+
+        const wrapper = _kwBadgesWrapper(container);
+        const span    = document.createElement('span');
+        span.className = 'kw-field-hint';
+        span.setAttribute(`data-keywatch-${mod}hint`, '');
+        span.textContent = key.toUpperCase();
+        span.hidden = true;
+        wrapper.appendChild(span);
+    });
+}
+
+// ── Modifier hint — mostra/oculta hints ao pressionar/soltar o modificador ────
+function _setupModifierHint({ state, modifier }) {
+    const attr = _kwModAttr[modifier];
+    if (!attr) return;
+    document.querySelectorAll(`[data-keywatch-${attr}hint]`).forEach(el => {
+        el.hidden = state === 0;
+    });
 }
 
 // ── Instância global do Keywatch ──────────────────────────────────────────────
@@ -64,8 +108,13 @@ const keys = new Keywatch({
     shortcutMaplist:     "alt+k",
     shortcutMaplistDesc: "Exibir atalhos disponíveis",
     composedListener:    _composedHint,
+    checkInputHint:      true,
+    checkInputModifier:  ['alt', 'ctrl', 'shift'],
+    checkInputHintDelay: 500,
+    setupModifierHint:   _setupModifierHint,
 });
 keys.scanBindings(document); // realiza primeiro scan na pagina
+_nyxInputHints(document);
 
 // ── Integração HTMX ───────────────────────────────────────────────────────────
 keys.watchHtmx();
@@ -150,6 +199,7 @@ const NyxApp = (() => {
             NyxDom.init(e.detail.target);
             NyxResponse.scan(e.detail.target);
             mountPage(e.detail.target);
+            _nyxInputHints(e.detail.target);
         }
     });
 
@@ -160,6 +210,7 @@ const NyxApp = (() => {
         NyxDom.reset();
         keys.reinit();
         keys.scanBindings(document);
+        _nyxInputHints(document);
         NyxResponse.scan(document);
         mountPage(document);
     });

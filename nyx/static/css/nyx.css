@@ -852,6 +852,48 @@ select.form-control-sm {
 
 .input-icon-wrap:has(.form-control:focus) .input-icon { color: var(--nyx-text-brand); }
 
+/* ── Keywatch: field container & input hint badges ──────────────────────── */
+[data-kw-field-container] { position: relative; }
+
+.kw-input-badges {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Override: dentro do wrapper flex, composed badge não precisa de position absoluta */
+.kw-input-badges .kw-hint { position: static; }
+
+/* Modifier hint — badge simples que aparece ao segurar o modificador */
+.kw-field-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--nyx-input-padding-y-sm) * 2 + var(--nyx-font-sm) * 1.5 + 2px);
+  min-width: 1.6em;
+  padding: 0 5px;
+  background: var(--nyx-bg-tertiary);
+  color: var(--nyx-text-secondary);
+  border: 1px solid var(--nyx-border-secondary);
+  border-radius: var(--nyx-radius-sm);
+  font-family: var(--nyx-typeface-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  transition: opacity .08s;
+}
+.kw-field-hint[hidden] { display: none; }
+
+/* Composed hint: mesma altura do input sm quando dentro do wrapper */
+.kw-input-badges .kw-hint {
+  height: calc(var(--nyx-input-padding-y-sm) * 2 + var(--nyx-font-sm) * 1.5 + 2px);
+}
+
 
 /* ——— 15. COMPONENTES — TABELA ——————————————————————————————
    Estrutura recomendada:
