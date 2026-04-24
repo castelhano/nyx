@@ -153,9 +153,17 @@ class Section:
     Seções com tab definido são agrupadas como abas pelo template.
     Seções sem tab são renderizadas sequencialmente.
 
+    layout — controla a renderização dos campos:
+        'label-inline' (default) — grid label | input (grid-fit-rest)
+        'label-above'            — label acima do input, campo ocupa largura total
+        'grid'                   — grade 12 colunas; col_span de cada Field é respeitado
+
         sections = [
             Section('Dados',    fields=['nome', Field('codigo', col_span=4)]),
             Section('Status',   fields=['ativo'], tab='Config', only='update'),
+            Section('Fiscal',   layout='grid', fields=[
+                Field('cnpj', col_span=4), Field('ie', col_span=4), Field('im', col_span=4),
+            ]),
         ]
     """
     title:    str  = ''
@@ -163,6 +171,7 @@ class Section:
     tab:      str  = ''       # se preenchido, agrupa nesta aba
     only:     str  = ''       # 'create' | 'update' | '' (ambos)
     col_span: int  = 12
+    layout:   str  = 'label-inline'  # 'label-inline' | 'label-above' | 'grid'
 
 
 # =============================================================================
@@ -207,6 +216,7 @@ def filter_sections(sections: list[Section], view_context: str) -> list[Section]
                 fields=visible_fields,
                 tab=s.tab,
                 col_span=s.col_span,
+                layout=s.layout,
             ))
     return result
 

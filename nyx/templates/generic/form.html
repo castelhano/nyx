@@ -33,6 +33,45 @@
             </c-slot>
             {% for section in ui.sections %}
             <div class="tabs__panel{% if forloop.first %} active{% endif %}" data-panel="{{ section.title|slugify }}">
+
+                {% if section.layout == 'grid' %}
+                {# ── grid: 12 colunas, col_span por field ──────────────────── #}
+                <div class="d-grid grid-cols-12 gap-2">
+                    {% for section_field in section.fields %}
+                    {% with bf=form|form_field:section_field.name %}
+                    {% if bf %}
+                    <div class="col-span-{{ section_field.col_span }} d-flex flex-column gap-1">
+                        <label class="form-label" for="{{ bf.id_for_label }}">{{ section_field.label|default:bf.label }}</label>
+                        {{ bf|add_class:"form-control form-control-sm" }}
+                        {% if bf.errors %}
+                        {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
+                        {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+
+                {% elif section.layout == 'label-above' %}
+                {# ── label-above: label em cima, campo full width ──────────── #}
+                <div class="d-flex flex-column gap-3">
+                    {% for section_field in section.fields %}
+                    {% with bf=form|form_field:section_field.name %}
+                    {% if bf %}
+                    <div>
+                        <label class="form-label" for="{{ bf.id_for_label }}">{{ section_field.label|default:bf.label }}</label>
+                        {{ bf|add_class:"form-control form-control-sm" }}
+                        {% if bf.errors %}
+                        {% for error in bf.errors %}<span class="form-feedback invalid">{{ error }}</span>{% endfor %}
+                        {% elif bf.help_text %}<div class="form-hint ps-1">{{ bf.help_text }}</div>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+                    {% endfor %}
+                </div>
+
+                {% else %}
+                {# ── label-inline (default): grid label | input ────────────── #}
                 <div class="d-grid grid-fit-rest gap-2">
                     {% for section_field in section.fields %}
                     {% with bf=form|form_field:section_field.name %}
@@ -48,6 +87,8 @@
                     {% endwith %}
                     {% endfor %}
                 </div>
+                {% endif %}
+
             </div>
             {% endfor %}
         </c-tabs>
@@ -76,6 +117,7 @@
         <button type="submit"
                 data-keybind="alt+g"
                 data-keybind-icon="bi bi-floppy-fill"
+                data-keybind-origin="nyx.templates.generic.form"
                 class="btn btn-sm btn-brand"
                 title="Salvar">
             Salvar
@@ -87,6 +129,7 @@
            class="btn btn-sm btn-secondary"
            data-keybind="esc"
            data-keybind-icon="bi bi-escape"
+           data-keybind-origin="nyx.templates.generic.form"
            title="Cancelar">
             Cancelar
         </a>

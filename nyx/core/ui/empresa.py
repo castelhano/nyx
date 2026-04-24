@@ -33,7 +33,7 @@ class FilialUI:
 
     # ── Form ─────────────────────────────────────────────────────────
     sections = [
-        Section('Identificação', fields=[
+        Section('Geral', fields=[
             Field('empresa',             col_span=12),
             Field('nome',                col_span=6),
             Field('nome_fantasia',       col_span=6),
