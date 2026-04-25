@@ -9,3 +9,7 @@ auditlog                 # geracao automatica de logs
 # ── Frontend helpers ──────────────────────────────────────────────────────────
 django-htmx              # middleware + template tag para HTMX
 django-cotton            # componentes UI (templates/cotton/)
+
+# ── Docs ──────────────────────────────────────────────────────────────────────
+markdown                 # renderização de .md para HTML
+python-frontmatter       # leitura de frontmatter YAML nos .md

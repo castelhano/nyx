@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     # Nyx
     'nyx.framework',
     'nyx.core',
+    'nyx.docs',
     # 'nyx.framework',
     # 'nyx.operacao',
 ]

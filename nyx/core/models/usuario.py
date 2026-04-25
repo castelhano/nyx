@@ -16,9 +16,17 @@ from nyx.core.models.empresa import Filial
 
 
 class Profile(models.Model):
+    DOC_LEVEL_USER  = "user"
+    DOC_LEVEL_STAFF = "staff"
+    DOC_LEVEL_CHOICES = [
+        (DOC_LEVEL_USER,  _("Usuário")),
+        (DOC_LEVEL_STAFF, _("Staff")),
+    ]
+
     user    = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     filiais = models.ManyToManyField(Filial, blank=True, verbose_name=_('Filiais'))
     force_password_change = models.BooleanField(_('Forçar troca de senha'), default=True)
+    doc_level = models.CharField( _("Perfil"), max_length=10, choices=DOC_LEVEL_CHOICES, default=DOC_LEVEL_USER)
     config = models.JSONField(_('Configurações'), default=dict, blank=True, null=True)
     class Meta:
         verbose_name        = "Profile"

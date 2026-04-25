@@ -4,6 +4,9 @@
 
 {% block main %}
 <main class="p-4" data-page-module="index" data-keybind-group="index">
+    <a hx-get="{% url 'docs:doc' 'ARCHITECTURE' %}" hx-target="#main-content" hx-push-url="true">Foo HTMX</a>
+    
+    <a href="{% url 'docs:doc' 'ARCHITECTURE' %}">Foo</a>
 
     <c-tabs variant="tabs--pills mt-4">
             <c-slot name="tabs">

@@ -1,0 +1,49 @@
+{% extends base_template %}
+
+{% block title %}Busca — Docs{% endblock %}
+
+{% block main %}
+<div class="doc-page" data-keybind-group="docs-search">
+
+    <div class="doc-header">
+        <h1 class="doc-title">Documentação</h1>
+    </div>
+
+    <form class="doc-search-form" method="get" action="{% url 'docs:search' %}">
+        <input
+            type="search"
+            name="q"
+            value="{{ q }}"
+            placeholder="Buscar por módulo, funcionalidade ou palavra-chave..."
+            class="doc-search-input"
+            autofocus
+        >
+    </form>
+
+    {% if q %}
+        {% if results %}
+        <ul class="doc-results">
+            {% for result in results %}
+            <li class="doc-result">
+                <a class="doc-result__title" href="{% url 'docs:doc' result.slug %}">{{ result.title }}</a>
+                {% if result.app_required %}
+                <span class="doc-result__module">{{ result.app_required }}</span>
+                {% endif %}
+                {% if result.excerpt %}
+                <p class="doc-result__excerpt">{{ result.excerpt }}</p>
+                {% endif %}
+                {% if result.tags %}
+                <div class="doc-tags">
+                    {% for tag in result.tags %}<span class="doc-tag">{{ tag }}</span>{% endfor %}
+                </div>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="doc-empty">Nenhum resultado para <strong>{{ q }}</strong>.</p>
+        {% endif %}
+    {% endif %}
+
+</div>
+{% endblock %}
