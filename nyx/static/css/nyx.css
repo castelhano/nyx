@@ -69,13 +69,13 @@ select { appearance: none; }
   ————————————————————————————————————————————————————————————— */
   
   /* ——— 02.1.A COLD AMETHIST  ———————————————————————————————— */
-  --nyx-bg-alt:           light-dark(#9E97B8, #2E2B3D); 
+  /* --nyx-bg-alt:           light-dark(#9E97B8, #2E2B3D); 
   --nyx-bg-alt-secondary: light-dark(#BCB6D1, #393549);
   --nyx-bg-alt-tertiary:  light-dark(#DAD6E6, #444056);
   --nyx-text-alt:         light-dark(#1C1A26, #E5E2F0);
   --nyx-border-alt:       light-dark(#7F76A1, #48435C);
   --nyx-bg-alt-off:       light-dark(#F3F2F7, #E5E2F0);
-
+  --nyx-text-alt-emp:     light-dark(#5B4D94, #B4A9E0); */
 
   
   /* ——— 02.1.B COLD STEAL  ——————————————————————————————————— */
@@ -84,16 +84,18 @@ select { appearance: none; }
   --nyx-bg-alt-tertiary:  light-dark(#C6D0D9, #495E6E);
   --nyx-text-alt:         light-dark(#1B242C, #D1DAE3);
   --nyx-border-alt:       light-dark(#6B7C8C, #435463); 
-  --nyx-bg-alt-off:       light-dark(#F0F3F5, #D1DAE3); */
+  --nyx-bg-alt-off:       light-dark(#F0F3F5, #D1DAE3);
+  --nyx-text-alt-emp:     light-dark(#3D5A75, #9CC0DE); */
 
 
   /* ——— 02.1.C COLD EUCALYPTUS  —————————————————————————————— */
-  /* --nyx-bg-alt:           light-dark(#8F9D8D, #2D352F); 
+  --nyx-bg-alt:           light-dark(#8F9D8D, #2D352F); 
   --nyx-bg-alt-secondary: light-dark(#A6B2A4, #3B453D);
   --nyx-bg-alt-tertiary:  light-dark(#BFC8BD, #4A574D);
   --nyx-text-alt:         light-dark(#181C18, #E0E6DF);
   --nyx-border-alt:       light-dark(#758373, #434D45);
-  --nyx-bg-alt-off:       light-dark(#F1F3F1, #E0E6DF);*/
+  --nyx-bg-alt-off:       light-dark(#F1F3F1, #E0E6DF); 
+  --nyx-text-alt-emp:     light-dark(#4A6647, #A8C9A5);
 
   /* ——— 02.1.D HOT TERRACOTA  ———————————————————————————————— */
   /* --nyx-bg-alt:           light-dark(#C59991, #382D2B); 
@@ -101,7 +103,8 @@ select { appearance: none; }
   --nyx-bg-alt-tertiary:  light-dark(#E3CFCA, #554643);
   --nyx-text-alt:         light-dark(#2A1F1D, #EBE0DE);
   --nyx-border-alt:       light-dark(#A67B74, #544441);
-  --nyx-bg-alt-off:       light-dark(#F7F1F0, #EBE0DE); */
+  --nyx-bg-alt-off:       light-dark(#F7F1F0, #EBE0DE);
+  --nyx-text-alt-emp:     light-dark(#964B3D, #E8A395); */
 
 
   /* ——— 02.1.E HOT MUSGO  ———————————————————————————————————— */
@@ -110,7 +113,8 @@ select { appearance: none; }
   --nyx-bg-alt-tertiary:  light-dark(#E8E9DE, #4B4E41);
   --nyx-text-alt:         light-dark(#1A1C14, #E2E4D5);
   --nyx-border-alt:       light-dark(#92987E, #4A4D40);
-  --nyx-bg-alt-off:       light-dark(#F5F6F1, #E2E4D5); */
+  --nyx-bg-alt-off:       light-dark(#F5F6F1, #E2E4D5);
+  --nyx-text-alt-emp:     light-dark(#6B733D, #CCD690); */
 
 
   /* ——— 02.1.F HOT LAVANDA  —————————————————————————————————— */
@@ -119,7 +123,8 @@ select { appearance: none; }
   --nyx-bg-alt-tertiary:  light-dark(#E9E4E9, #4D454D);
   --nyx-text-alt:         light-dark(#251F25, #E9E4E9);
   --nyx-border-alt:       light-dark(#9A899A, #5A515A);
-  --nyx-bg-alt-off:       light-dark(#F6F3F6, #E9E4E9); */
+  --nyx-bg-alt-off:       light-dark(#F6F3F6, #E9E4E9);
+  --nyx-text-alt-emp:     light-dark(#855E85, #E3ADE3); */
 
 
 
@@ -303,6 +308,8 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .font-mono { font-family: var(--nyx-typeface-mono); }
 
 /* Cor */
+.text-alt         { color: var(--nyx-text-alt)            !important; }
+.text-alt-emp     { color: var(--nyx-text-alt-emp)        !important; }
 .text-primary     { color: var(--nyx-text-primary)        !important; }
 .text-secondary,
 .text-muted       { color: var(--nyx-text-secondary)      !important; }
@@ -1032,9 +1039,10 @@ select.form-control-sm {
 .table thead th.th-sorted {
   color: var(--nyx-text-primary);
   background-color: var(--nyx-table-sorteded-bg);
+  opacity: 0.7;
 }
 .table thead th.th-sorted a {
-  color: var(--nyx-text-primary);
+  color: var(--nyx-text-alt);
   text-decoration: none;
 }
 .table thead th.th-sorted::after {
@@ -1076,7 +1084,7 @@ select.form-control-sm {
 
 /* ——— 17. COMPONENTES — BOTÕES ——————————————————————————————— */
 
-.btn {
+.btn, .btn-static {
   display: inline-flex;
   color: var(--nyx-text-primary);
   align-items: center;
@@ -1086,12 +1094,12 @@ select.form-control-sm {
   line-height: 1.5;
   border-radius: var(--nyx-radius-sm);
   border: var(--nyx-border-width-1) solid transparent;
-  cursor: pointer;
-  transition: var(--nyx-transition-fast);
   white-space: nowrap;
   user-select: none;
   text-decoration: none;
 }
+.btn                    { cursor: pointer; transition: var(--nyx-transition-fast);  }
+.btn-static             { letter-spacing: 0.03em;                                   }
 .btn:focus-visible      { outline: none; box-shadow: var(--nyx-focus-ring);         }
 .btn:disabled,
 .btn.disabled           { opacity: 0.70; cursor: not-allowed; pointer-events: none; }
@@ -1131,6 +1139,7 @@ select.form-control-sm {
 
 /* Ghost */
 .btn-ghost           { background-color: transparent; color: var(--nyx-text-secondary);  }
+.btn-ghost-alt     { background-color: transparent;   color: var(--nyx-text-alt);        }
 .btn-ghost-brand     { background-color: transparent; color: var(--nyx-text-brand);      }
 .btn-ghost-info      { background-color: transparent; color: var(--nyx-text-info);       }
 .btn-ghost-danger    { background-color: transparent; color: var(--nyx-text-danger);     }
@@ -1142,6 +1151,7 @@ select.form-control-sm {
 
 .btn-ghost:not(.active):hover,
 .btn-outline:not(.active):hover          { background-color: var(--nyx-bg-secondary);   color: var(--nyx-text-emp);       }
+.btn-ghost-alt:not(.active):hover        { background-color: var(--nyx-bg-alt);         color: var(--nyx-text-alt);       }
 .btn-ghost-brand:not(.active):hover      { background-color: var(--nyx-bg-brand);       color: var(--nyx-text-brand);     }
 .btn-ghost-info:not(.active):hover       { background-color: var(--nyx-bg-info);        color: var(--nyx-text-info);      }
 .btn-ghost-danger:not(.active):hover     { background-color: var(--nyx-bg-danger);      color: var(--nyx-text-danger);    }

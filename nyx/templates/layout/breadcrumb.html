@@ -1,11 +1,11 @@
-<nav class="breadcrumb text-lg bg-tertiary p-2 rounded" aria-label="navegacao">
+<nav class="breadcrumb bg-tertiary p-2 rounded" aria-label="navegacao">
     {% for item in breadcrumbs %}
         {% if item.actions %}
             <div class="breadcrumb__dropdown-wrap">
                 {% if item.url %}
                     {% if forloop.first %}
                         <a href="{% url item.url %}"
-                           class="btn btn-ghost-brand"
+                           class="btn btn-ghost-alt"
                            data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                            title="{{ item.label }}"
                            data-keybind-icon="bi bi-house-fill"
@@ -25,7 +25,7 @@
                            {% endif %}>{{ item.label }}</a>
                     {% endif %}
                 {% else %}
-                    <span class="text-brand">{{ item.label }}</span>
+                    <span class="text-alt">{{ item.label }}</span>
                 {% endif %}
                 <i class="bi bi-arrow-right text-muted"></i>
                 <div class="breadcrumb__dropdown">
@@ -39,7 +39,7 @@
         {% elif item.url %}
             {% if forloop.first %}
                 <a href="{% url item.url %}"
-                   class="btn btn-ghost-brand"
+                   class="btn btn-ghost-alt"
                    data-keybind="{% if item.url == back_url %}alt+v;{% endif %}alt+i"
                    title="{{ item.label }}"
                    data-keybind-icon="bi bi-house-fill"
@@ -49,7 +49,7 @@
                 <a hx-get="{% url item.url %}"
                    hx-target="#main-content"
                    hx-push-url="true"
-                   class="btn btn-ghost-brand"
+                   class="btn btn-ghost-alt"
                    {% if item.url == back_url %}
                    data-keybind="alt+v"
                    title="Voltar para {{ item.label }}"
@@ -59,7 +59,7 @@
                    {% endif %}>{{ item.label }}</a>
             {% endif %}
         {% else %}
-            <span class="btn btn-ghost disabled text-info">{{ item.label }}</span>
+            <span class="btn-static font-medium text-alt-emp">{{ item.label }}</span>
         {% endif %}
 
         {% if not forloop.last %}
