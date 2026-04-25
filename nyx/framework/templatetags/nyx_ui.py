@@ -23,6 +23,7 @@ Exemplo no template genérico:
 """
 
 from django import template
+from django.utils.safestring import mark_safe
 from django.urls import reverse, NoReverseMatch
 
 register = template.Library()
@@ -86,6 +87,25 @@ def add_class(field, css_class):
     if field.errors:
         classes += ' is-invalid'
     return field.as_widget(attrs={'class': classes})
+
+
+@register.simple_tag
+def form_input(bf, section_field, css_class='form-control form-control-sm'):
+    """Renderiza o widget de um BoundField aplicando css_class e data-keybind do Field."""
+    existing = bf.field.widget.attrs.get('class', '')
+    classes  = f'{existing} {css_class}'.strip() if existing else css_class
+    if bf.errors:
+        classes += ' is-invalid'
+
+    attrs = {'class': classes}
+
+    if section_field.keybind:
+        kb = section_field.keybind
+        attrs['data-keybind'] = kb.keys
+        for name, val in kb.attrs.items():
+            attrs[f'data-keybind-{name}'] = str(val)
+
+    return mark_safe(bf.as_widget(attrs=attrs))
 
 
 @register.simple_tag(takes_context=True)

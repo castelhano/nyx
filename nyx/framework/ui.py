@@ -258,7 +258,7 @@ def resolve_row_actions(schema, model) -> list[Action]:
             label      = '',
             url_name   = f'{app_label}:{model_name}_update',
             icon       = 'bi bi-pencil-fill',
-            css_class  = 'btn btn-xs btn-info',
+            css_class  = 'btn btn-xs btn-alt',
             permission = f'{app_label}.change_{model_name}',
         ))
 

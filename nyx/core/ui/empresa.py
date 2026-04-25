@@ -35,9 +35,9 @@ class FilialUI:
     sections = [
         Section('Geral', fields=[
             Field('empresa',             col_span=12),
-            Field('nome',                col_span=6),
+            Field('nome',                col_span=6, keybind=Keybind(keys='alt+f')),
             Field('nome_fantasia',       col_span=6),
-            Field('cnpj',                col_span=4),
+            Field('cnpj',                col_span=4, keybind=Keybind(keys='g+i')),
             Field('inscricao_estadual',  col_span=4),
             Field('inscricao_municipal', col_span=4),
             Field('cnae',                col_span=4),

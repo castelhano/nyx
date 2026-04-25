@@ -91,7 +91,7 @@ html[data-sidebar-init="collapsed"] .sidebar {
   justify-content: center;
   width: 1.125rem;
   flex-shrink: 0;
-  color: var(--nyx-text-tertiary);
+  color: var(--nyx-text-alt);
 }
 
 .sidebar--collapsed .sidebar__group-icon {

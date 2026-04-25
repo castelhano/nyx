@@ -110,7 +110,7 @@ const keys = new Keywatch({
     composedListener:    _composedHint,
     checkInputHint:      true,
     checkInputModifier:  ['alt', 'ctrl', 'shift'],
-    checkInputHintDelay: 500,
+    checkInputHintDelay: 350,
     setupModifierHint:   _setupModifierHint,
 });
 keys.scanBindings(document); // realiza primeiro scan na pagina

@@ -59,34 +59,70 @@ select { appearance: none; }
   color-scheme: light dark;
 
   /* — Background (camadas de densidade) — */
-  --nyx-bg-body:              light-dark(#c8c9cf,  #1a1c1e);
-  --nyx-bg-secondary:         light-dark(#babcc3,  #212327);
-  --nyx-bg-tertiary:          light-dark(#acaeb6,  #2a2d31);
+  --nyx-bg-body:              light-dark(#c8c9cf, #1a1c1e);
+  --nyx-bg-secondary:         light-dark(#babcc3, #212327);
+  --nyx-bg-tertiary:          light-dark(#acaeb6, #2a2d31);
+  --nyx-bg-quaternary:        light-dark(#9FA1AA, #33373C);
 
-  /* Cold Amethist */
-  --nyx-bg-alt:           light-dark(#9E97B8, #29343D); 
-  --nyx-bg-alt-secondary: light-dark(#BCB6D1, #394956);
-  --nyx-bg-alt-tertiary:  light-dark(#DAD6E6, #495E6E);
+  /* ——— 02.1 ALT VARIATIONS
+  **  aplicado em btn de interface, controles, estados active
+  ————————————————————————————————————————————————————————————— */
   
-  /* Cold Steal */
-  /* --nyx-bg-alt:           light-dark(#AAB7C4, #29343D); 
-  --nyx-bg-alt-secondary: light-dark(#C6D0D9, #394956);
-  --nyx-bg-alt-tertiary:  light-dark(#E1E7ED, #495E6E); */
-  
-  /* Hot Terracota */
-  /* --nyx-bg-alt:           light-dark(#E2B3AB, #29343D); 
-  --nyx-bg-alt-secondary: light-dark(#EBCDC6, #394956);
-  --nyx-bg-alt-tertiary:  light-dark(#F4E2DE, #495E6E); */
+  /* ——— 02.1.A COLD AMETHIST  ———————————————————————————————— */
+  --nyx-bg-alt:           light-dark(#9E97B8, #2E2B3D); 
+  --nyx-bg-alt-secondary: light-dark(#BCB6D1, #393549);
+  --nyx-bg-alt-tertiary:  light-dark(#DAD6E6, #444056);
+  --nyx-text-alt:         light-dark(#1C1A26, #E5E2F0);
+  --nyx-border-alt:       light-dark(#7F76A1, #48435C);
+  --nyx-bg-alt-off:       light-dark(#F3F2F7, #E5E2F0);
 
-  /* Hot Musgo */
-  /* --nyx-bg-alt:           light-dark(#B5BAA3, #29343D); 
-  --nyx-bg-alt-secondary: light-dark(#D1D4C2, #394956);
-  --nyx-bg-alt-tertiary:  light-dark(#E8E9DE, #495E6E); */
+
   
-  /* Hot Lavanda */
-  /* --nyx-bg-alt:           light-dark(#B8A9B8, #29343D); 
-  --nyx-bg-alt-secondary: light-dark(#D1C7D1, #394956);
-  --nyx-bg-alt-tertiary:  light-dark(#E9E4E9, #495E6E); */
+  /* ——— 02.1.B COLD STEAL  ——————————————————————————————————— */
+  /* --nyx-bg-alt:           light-dark(#8E9BA7, #29343D); 
+  --nyx-bg-alt-secondary: light-dark(#AAB7C4, #394956);
+  --nyx-bg-alt-tertiary:  light-dark(#C6D0D9, #495E6E);
+  --nyx-text-alt:         light-dark(#1B242C, #D1DAE3);
+  --nyx-border-alt:       light-dark(#6B7C8C, #435463); 
+  --nyx-bg-alt-off:       light-dark(#F0F3F5, #D1DAE3); */
+
+
+  /* ——— 02.1.C COLD EUCALYPTUS  —————————————————————————————— */
+  /* --nyx-bg-alt:           light-dark(#8F9D8D, #2D352F); 
+  --nyx-bg-alt-secondary: light-dark(#A6B2A4, #3B453D);
+  --nyx-bg-alt-tertiary:  light-dark(#BFC8BD, #4A574D);
+  --nyx-text-alt:         light-dark(#181C18, #E0E6DF);
+  --nyx-border-alt:       light-dark(#758373, #434D45);
+  --nyx-bg-alt-off:       light-dark(#F1F3F1, #E0E6DF);*/
+
+  /* ——— 02.1.D HOT TERRACOTA  ———————————————————————————————— */
+  /* --nyx-bg-alt:           light-dark(#C59991, #382D2B); 
+  --nyx-bg-alt-secondary: light-dark(#D4B4AD, #463937);
+  --nyx-bg-alt-tertiary:  light-dark(#E3CFCA, #554643);
+  --nyx-text-alt:         light-dark(#2A1F1D, #EBE0DE);
+  --nyx-border-alt:       light-dark(#A67B74, #544441);
+  --nyx-bg-alt-off:       light-dark(#F7F1F0, #EBE0DE); */
+
+
+  /* ——— 02.1.E HOT MUSGO  ———————————————————————————————————— */
+  /* --nyx-bg-alt:           light-dark(#B5BAA3, #31332A); 
+  --nyx-bg-alt-secondary: light-dark(#D1D4C2, #3E4136);
+  --nyx-bg-alt-tertiary:  light-dark(#E8E9DE, #4B4E41);
+  --nyx-text-alt:         light-dark(#1A1C14, #E2E4D5);
+  --nyx-border-alt:       light-dark(#92987E, #4A4D40);
+  --nyx-bg-alt-off:       light-dark(#F5F6F1, #E2E4D5); */
+
+
+  /* ——— 02.1.F HOT LAVANDA  —————————————————————————————————— */
+  /* --nyx-bg-alt:           light-dark(#B8A9B8, #352F35); 
+  --nyx-bg-alt-secondary: light-dark(#D1C7D1, #413A41);
+  --nyx-bg-alt-tertiary:  light-dark(#E9E4E9, #4D454D);
+  --nyx-text-alt:         light-dark(#251F25, #E9E4E9);
+  --nyx-border-alt:       light-dark(#9A899A, #5A515A);
+  --nyx-bg-alt-off:       light-dark(#F6F3F6, #E9E4E9); */
+
+
+
 
   /* — Background (estados semânticos) — */
   --nyx-bg-brand:             light-dark(#9BA9B8, #2D3945);
@@ -175,7 +211,7 @@ select { appearance: none; }
   --nyx-transition-normal:    all 0.2s ease;
 
   /* — Focus Ring — */
-  --nyx-focus-ring:           0 0 0 3px var(--nyx-bg-info);
+  --nyx-focus-ring:           0 0 0 3px var(--nyx-bg-alt);
 
   /* — Form (tokens internos) — */
   --nyx-input-padding-y:      0.6rem;
@@ -194,14 +230,14 @@ select { appearance: none; }
   --nyx-z-tooltip:            1060;
 
   /* — Controles interativos (checkbox, radio, switch, etc.) — */
-  --nyx-control-bg:             light-dark(var(--nyx-input-bg),  var(--nyx-input-bg));
-  --nyx-control-border:         light-dark(var(--nyx-input-border),  var(--nyx-input-border));
-  --nyx-control-checked-bg:     light-dark(#1e4d6e, #1e4d6e);
-  --nyx-control-checked-border: light-dark(#1e4d6e, #1e4d6e);
-  --nyx-control-hover-bg:       light-dark(var(--nyx-input-bg-focus),  var(--nyx-input-bg-focus));
-  --nyx-control-hover-border:   light-dark(var(--nyx-control-border), var(--nyx-border-brand));
-  --nyx-control-off-bg:         light-dark(#8a8f98,  var(--nyx-border-secondary));
-  --nyx-control-success-bg:     light-dark(#0e5232,  var(--nyx-bg-success));
+  --nyx-control-bg:             var(--nyx-input-bg);
+  --nyx-control-border:         var(--nyx-input-border);
+  --nyx-control-checked-bg:     var(--nyx-bg-alt);
+  --nyx-control-checked-border: var(--nyx-border-alt);
+  --nyx-control-hover-bg:       var(--nyx-bg-alt-secondary);
+  --nyx-control-hover-border:   var(--nyx-border-alt);
+  --nyx-control-off-bg:         var(--nyx-input-bg);
+  --nyx-control-success-bg:     var(--nyx-bg-success);
 
   /* — Superfícies (cards, modais, dropdowns, tooltips) — */
   --nyx-surface-bg:           light-dark(#d2d3d8,  var(--nyx-bg-secondary));
@@ -210,10 +246,10 @@ select { appearance: none; }
   --nyx-surface-border:       light-dark(#9ea2aa,  var(--nyx-border-primary));
 
   /* — Inputs / formulários — */
-  --nyx-input-bg:             light-dark(#babcc3,  var(--nyx-bg-secondary));
-  --nyx-input-bg-focus:       light-dark(#c8c9cf,  var(--nyx-bg-body));
-  --nyx-input-border:         light-dark(#9ea2aa,  var(--nyx-border-primary));
-  --nyx-input-border-focus:   light-dark(#1e4d6e,  var(--nyx-border-brand));
+  --nyx-input-bg:             var(--nyx-bg-secondary);
+  --nyx-input-bg-focus:       var(--nyx-bg-body);
+  --nyx-input-border:         var(--nyx-border-primary);
+  --nyx-input-border-focus:   var(--nyx-border-alt);
 
   /* — Breakpoints — */
   --nyx-bp-sm:                480px;   /* Mobile largo / landscape */
@@ -245,7 +281,11 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .bg-tertiary      { background-color: var(--nyx-bg-tertiary)      !important; }
 .bg-alt           { background-color: var(--nyx-bg-alt)           !important; }
 .bg-alt-secondary { background-color: var(--nyx-bg-alt-secondary) !important; }
-.bg-alt-tertiary { background-color: var(--nyx-bg-alt-tertiary) !important; }
+.bg-alt-tertiary  { background-color: var(--nyx-bg-alt-tertiary)  !important; }
+
+.bg-surf          { background-color: var(--nyx-surface-bg)       !important; }
+.bg-surf-raized   { background-color: var(--nyx-surface-bg-raized)!important; }
+
 .bg-brand         { background-color: var(--nyx-bg-brand)         !important; }
 .bg-info          { background-color: var(--nyx-bg-info)          !important; }
 .bg-warning       { background-color: var(--nyx-bg-warning)       !important; }
@@ -263,24 +303,27 @@ a:hover:not(.active) { color: var(--nyx-text-brand); }
 .font-mono { font-family: var(--nyx-typeface-mono); }
 
 /* Cor */
-.text-primary   { color: var(--nyx-text-primary)   !important; }
+.text-primary     { color: var(--nyx-text-primary)        !important; }
 .text-secondary,
-.text-muted     { color: var(--nyx-text-secondary) !important; }
-.text-tertiary  { color: var(--nyx-text-tertiary)  !important; }
-.text-emp       { color: var(--nyx-text-emp)       !important; }
-.text-brand     { color: var(--nyx-text-brand)     !important; }
-.text-info      { color: var(--nyx-text-info)      !important; }
-.text-warning   { color: var(--nyx-text-warning)   !important; }
-.text-danger    { color: var(--nyx-text-danger)    !important; }
-.text-success   { color: var(--nyx-text-success)   !important; }
-.text-discovery { color: var(--nyx-text-discovery) !important; }
-.text-promoted  { color: var(--nyx-text-promoted)  !important; }
-.text-attention { color: var(--nyx-text-attention) !important; }
+.text-muted       { color: var(--nyx-text-secondary)      !important; }
+.text-tertiary    { color: var(--nyx-text-tertiary)       !important; }
+.text-emp         { color: var(--nyx-text-emp)            !important; }
+.text-surf-raized { color: var(--nyx-surface-text-raized) !important; }
+.text-brand       { color: var(--nyx-text-brand)          !important; }
+.text-info        { color: var(--nyx-text-info)           !important; }
+.text-warning     { color: var(--nyx-text-warning)        !important; }
+.text-danger      { color: var(--nyx-text-danger)         !important; }
+.text-success     { color: var(--nyx-text-success)        !important; }
+.text-discovery   { color: var(--nyx-text-discovery)      !important; }
+.text-promoted    { color: var(--nyx-text-promoted)       !important; }
+.text-attention   { color: var(--nyx-text-attention)      !important; }
 
 /* Texto + Fundo combinados */
-.text-bg-primary     { background-color: var(--nyx-bg-primary)     !important; color: var(--nyx-text-primary)     !important; }
-.text-bg-secondary     { background-color: var(--nyx-bg-secondary)     !important; color: var(--nyx-text-secondary)     !important; }
-.text-bg-tertiary     { background-color: var(--nyx-bg-tertiary)     !important; color: var(--nyx-text-tertiary)     !important; }
+.text-bg-primary   { background-color: var(--nyx-bg-primary)   !important; color: var(--nyx-text-primary)   !important; }
+.text-bg-secondary { background-color: var(--nyx-bg-secondary) !important; color: var(--nyx-text-secondary) !important; }
+.text-bg-tertiary  { background-color: var(--nyx-bg-tertiary)  !important; color: var(--nyx-text-tertiary)  !important; }
+.text-bg-alt       { background-color: var(--nyx-bg-alt)       !important; color: var(--nyx-text-alt)       !important; }
+
 
 .text-bg-brand     { background-color: var(--nyx-bg-brand)     !important; color: var(--nyx-text-brand)     !important; }
 .text-bg-info      { background-color: var(--nyx-bg-info)      !important; color: var(--nyx-text-info)      !important; }
@@ -857,8 +900,8 @@ select.form-control-sm {
 
 .kw-input-badges {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 6px;
+  right: 6px;
   display: flex;
   align-items: stretch;
   gap: 2px;
@@ -874,12 +917,12 @@ select.form-control-sm {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: calc(var(--nyx-input-padding-y-sm) * 2 + var(--nyx-font-sm) * 1.5 + 2px);
+  height: calc(var(--nyx-input-padding-y-sm) * 2 + var(--nyx-font-sm) * 1.5 - 12px);
   min-width: 1.6em;
-  padding: 0 5px;
-  background: var(--nyx-bg-tertiary);
-  color: var(--nyx-text-secondary);
-  border: 1px solid var(--nyx-border-secondary);
+  padding: 0 8px;
+  background: var(--nyx-bg-discovery);
+  color: var(--nyx-text-discovery);
+  border: 1px solid var(--nyx-border-primary);
   border-radius: var(--nyx-radius-sm);
   font-family: var(--nyx-typeface-mono);
   font-size: 10px;
@@ -891,7 +934,7 @@ select.form-control-sm {
 
 /* Composed hint: mesma altura do input sm quando dentro do wrapper */
 .kw-input-badges .kw-hint {
-  height: calc(var(--nyx-input-padding-y-sm) * 2 + var(--nyx-font-sm) * 1.5 + 2px);
+  height: calc(var(--nyx-input-padding-y-sm) * 2 + var(--nyx-font-sm) * 1.5 - 12px);
 }
 
 
@@ -905,6 +948,8 @@ select.form-control-sm {
    </div>
    ——————————————————————————————————————————————————————— */
 :root {
+  --nyx-table-hover: light-dark(#c0c1c7, #25282c);
+  --nyx-table-sorteded-bg: var(--nyx-bg-alt);
   --nyx-table-hover: light-dark(#c0c1c7, #25282c);
 }
 .table-wrapper {
@@ -923,7 +968,7 @@ select.form-control-sm {
 
 .table thead th {
   padding: 0.65rem 0.9rem;
-  background-color: var(--nyx-bg-tertiary);
+  background-color: var(--nyx-control-bg);
   color: var(--nyx-text-secondary);
   font-weight: 600;
   font-size: var(--nyx-font-xs);
@@ -986,7 +1031,7 @@ select.form-control-sm {
 /* Coluna ordenada */
 .table thead th.th-sorted {
   color: var(--nyx-text-primary);
-  background-color: var(--nyx-bg-alt-secondary);
+  background-color: var(--nyx-table-sorteded-bg);
 }
 .table thead th.th-sorted a {
   color: var(--nyx-text-primary);
@@ -995,11 +1040,13 @@ select.form-control-sm {
 .table thead th.th-sorted::after {
   display: inline-block;
   margin-left: 0.35em;
-  font-size: 0.75em;
+  font-size: 0.9em;
   opacity: 0.75;
+  font-family: "bootstrap-icons";
+  vertical-align: middle;
 }
-.table thead th.th-sorted.th-sorted--asc::after  { content: '↑'; }
-.table thead th.th-sorted.th-sorted--desc::after { content: '↓'; }
+.table thead th.th-sorted.th-sorted--asc::after { content: "\F148"; }
+.table thead th.th-sorted.th-sorted--desc::after { content: "\F128"; }
 
 
 /* ——— 16. COMPONENTES — BADGE ———————————————————————————————— */
@@ -1059,10 +1106,10 @@ select.form-control-sm {
 .btn-body          { background-color: var(--nyx-bg-body);          }
 .btn-secondary     { background-color: var(--nyx-bg-secondary);     }
 .btn-tertiary      { background-color: var(--nyx-bg-tertiary);      }
-.btn-alt           { background-color: var(--nyx-bg-alt);           }
+.btn-alt           { background-color: var(--nyx-bg-alt); color: var(--nyx-text-alt);}
 .btn-alt-secondary { background-color: var(--nyx-bg-alt-secondary); }
-.btn-surface,
-.btn-surface:hover { 
+.btn-surf,
+.btn-surf:hover { 
   background-color: var(--nyx-surface-bg-raized);
   color:            var(--nyx-surface-text-raized)!important;
 }
@@ -1104,7 +1151,7 @@ select.form-control-sm {
 .btn-ghost-promoted:not(.active):hover   { background-color: var(--nyx-bg-promoted);    color: var(--nyx-text-promoted);  }
 .btn-ghost-discovery:not(.active):hover  { background-color: var(--nyx-bg-discovery);   color: var(--nyx-text-discovery); }
 
-.btn-ghost.active { background-color: var(--nyx-bg-alt-secondary); opacity: 1; }
+.btn-ghost.active { background-color: var(--nyx-bg-alt); color: var(--nyx-text-alt); opacity: 1; }
 
 /* Ícone puro (quadrado) */
 .btn-icon         { padding: 0.5rem; aspect-ratio: 1; justify-content: center; }
@@ -1261,7 +1308,7 @@ input[type="radio"].form-check-input:checked {
   top: var(--_sw-gap); left: var(--_sw-gap);
   width: var(--_sw-thumb); height: var(--_sw-thumb);
   border-radius: 50%;
-  background-color: #fff;
+  background-color: var(--nyx-bg-alt-off);
   box-shadow: var(--nyx-shadow-sm);
   transition: transform 0.2s cubic-bezier(0.34, 1.2, 0.64, 1), width 0.1s ease;
 }

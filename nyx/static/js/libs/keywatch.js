@@ -7,7 +7,6 @@
  *                     watchHtmx(), scanBindings(), ciclo de vida automático por group]
  *           2026 [v7.1: composedListener recebe objeto {state,scope,target}; composedPattern como função;
  *                       modifier hint listener (checkInputHint/setupModifierHint/checkInputModifier/checkInputHintDelay);
- *                       .kw-hint position:absolute para seguir o scroll do container]
  * @author   Rafael Gustavo Alves
  *
  * ---------------------------------------------------------------------------
@@ -290,34 +289,6 @@ class Keywatch {
             #keywatch-table-wrap::-webkit-scrollbar       { width: 6px; }
             #keywatch-table-wrap::-webkit-scrollbar-track { background: transparent; }
             #keywatch-table-wrap::-webkit-scrollbar-thumb { background: var(--nyx-border-primary); border-radius: 3px; }
-
-            /* ─ Composed hint ─ */
-            .kw-hint {
-                position: absolute;
-                display: inline-flex;
-                align-items: center;
-                gap: 5px;
-                padding: 0 8px;
-                background: var(--nyx-bg-brand);
-                color: var(--nyx-text-brand);
-                border: 1px solid var(--nyx-border-brand);
-                border-radius: var(--nyx-radius-sm);
-                font-family: var(--nyx-typeface-mono);
-                font-size: 11px;
-                font-weight: 600;
-                letter-spacing: .04em;
-                white-space: nowrap;
-                pointer-events: none;
-                z-index: 9998;
-                box-shadow: var(--nyx-shadow-sm);
-                animation: kw-hint-in .18s cubic-bezier(.22,.68,0,1.2) both;
-            }
-            .kw-hint i { font-size: 12px; opacity: .8; }
-
-            @keyframes kw-hint-in {
-                from { opacity: 0; transform: translateX(10px); }
-                to   { opacity: 1; transform: translateX(0);    }
-            }
         `;
         document.head.appendChild(style);
     }
