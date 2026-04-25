@@ -5,7 +5,7 @@
 {% block title %}{{ ui.title }}{% endblock %}
 
 {% block main %}
-<div class="{{ui.layout.container_class}}" data-keybind-group="{{ ui.title|slugify }}-form">
+<div class="{{ui.layout.container_class}}" data-keybind-group="{{ ui.title|slugify }}-form"{% if ui.min_viewport %} data-min-viewport="{{ ui.min_viewport }}"{% endif %}>
     {% if breadcrumbs %}{% include "layout/breadcrumb.html" %}{% endif %}
 
     <h3 class="{{ui.layout.header_title_class}}">
@@ -76,7 +76,7 @@
 
                 {% else %}
                 {# ── label-inline (default): grid label | input ────────────── #}
-                <div class="d-grid grid-fit-rest gap-2">
+                <div class="d-grid grid-fit-rest break-md gap-x-3 gap-y-2">
                     {% for section_field in section.fields %}
                     {% with bf=form|form_field:section_field.name %}
                     {% if bf %}
@@ -130,11 +130,7 @@
            hx-target="#main-content"
            hx-swap="innerHTML"
            hx-push-url="true"
-           class="btn btn-sm btn-secondary"
-           data-keybind="esc"
-           data-keybind-icon="bi bi-escape"
-           data-keybind-origin="nyx.templates.generic.form"
-           title="Cancelar">
+           class="btn btn-sm btn-secondary">
             Cancelar
         </a>
     </form>

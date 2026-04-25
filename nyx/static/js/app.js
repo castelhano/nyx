@@ -103,6 +103,49 @@ function _setupModifierHint({ state, modifier }) {
     });
 }
 
+// ── NyxViewportGuard — restrição de viewport por fragmento ───────────────────
+// Ativado quando o fragmento carregado declara data-min-viewport="lg" (ou sm|md|xl).
+// Exibe um overlay bloqueante enquanto o viewport for menor que o mínimo.
+// Desativado automaticamente ao navegar para um fragmento sem restrição.
+const NyxViewportGuard = (() => {
+    const _bp = { sm: 576, md: 768, lg: 1024, xl: 1280 };
+    let _minWidth      = 0;
+    let _resizeHandler = null;
+
+    const _el = () => document.getElementById('viewport_guard');
+
+    function _check() {
+        const el = _el();
+        if (!el) return;
+        el.classList.toggle('active', _minWidth > 0 && window.innerWidth < _minWidth);
+    }
+
+    function activate(breakpoint) {
+        _minWidth = _bp[breakpoint] ?? parseInt(breakpoint) ?? 0;
+        if (!_resizeHandler) {
+            _resizeHandler = _check;
+            window.addEventListener('resize', _resizeHandler);
+        }
+        _check();
+    }
+
+    function deactivate() {
+        _minWidth = 0;
+        if (_resizeHandler) {
+            window.removeEventListener('resize', _resizeHandler);
+            _resizeHandler = null;
+        }
+        _el()?.classList.remove('active');
+    }
+
+    function scan(root = document) {
+        const el = (root === document ? root : root).querySelector('[data-min-viewport]');
+        el ? activate(el.dataset.minViewport) : deactivate();
+    }
+
+    return { scan, activate, deactivate };
+})();
+
 // ── Instância global do Keywatch ──────────────────────────────────────────────
 const keys = new Keywatch({
     shortcutMaplist:     "alt+k",
@@ -153,6 +196,7 @@ const NyxApp = (() => {
         NyxUtils.initTheme();
         NyxDom.init();
         NyxResponse.scan(document);
+        NyxViewportGuard.scan(document);
         mountPage();
     });
 
@@ -198,6 +242,7 @@ const NyxApp = (() => {
         if (e.detail?.target) {
             NyxDom.init(e.detail.target);
             NyxResponse.scan(e.detail.target);
+            NyxViewportGuard.scan(e.detail.target);
             mountPage(e.detail.target);
             _nyxInputHints(e.detail.target);
         }
@@ -212,6 +257,7 @@ const NyxApp = (() => {
         keys.scanBindings(document);
         _nyxInputHints(document);
         NyxResponse.scan(document);
+        NyxViewportGuard.scan(document);
         mountPage(document);
     });
 

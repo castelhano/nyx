@@ -132,16 +132,25 @@ class NyxBaseMixin(LoginRequiredMixin, PermissionRequiredMixin, FilialScopeMixin
             model_verbose   = ''
             ctx['app_name'] = ''
 
+        # min_viewport: resolução em cascata por contexto de view
+        # min_viewport_list / min_viewport_form → sobrescreve min_viewport para a view específica
+        _vp_base = getattr(schema, 'min_viewport', '')
+        if view_context == 'list':
+            min_viewport = getattr(schema, 'min_viewport_list', _vp_base)
+        else:
+            min_viewport = getattr(schema, 'min_viewport_form', _vp_base)
+
         ctx['ui'] = {
-            'icon':        getattr(schema, 'icon', ''),
-            'title':       getattr(schema, 'title', model_verbose),
-            'view':        view_context,
-            'layout':      getattr(schema, 'layout', FormLayout() if view_context in ('create', 'update') else ListLayout()),
-            'columns':     normalize_columns(getattr(schema, 'columns', [])),
-            'toolbar':     resolve_toolbar(schema, model, view_context) if model else [],
-            'row_actions': resolve_row_actions(schema, model) if model else [],
-            'sections':    filter_sections(getattr(schema, 'sections', []), view_context),
-            'list_config': getattr(schema, 'list_config', ListConfig()),
+            'icon':         getattr(schema, 'icon', ''),
+            'title':        getattr(schema, 'title', model_verbose),
+            'view':         view_context,
+            'layout':       getattr(schema, 'layout', FormLayout() if view_context in ('create', 'update') else ListLayout()),
+            'columns':      normalize_columns(getattr(schema, 'columns', [])),
+            'toolbar':      resolve_toolbar(schema, model, view_context) if model else [],
+            'row_actions':  resolve_row_actions(schema, model) if model else [],
+            'sections':     filter_sections(getattr(schema, 'sections', []), view_context),
+            'list_config':  getattr(schema, 'list_config', ListConfig()),
+            'min_viewport': min_viewport,
         }
         return ctx
 

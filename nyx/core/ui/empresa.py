@@ -3,6 +3,7 @@ from nyx.framework.ui import Column, Field, Section, Keybind
 
 class EmpresaUI:
     icon = 'bi bi-buildings-fill'
+    min_viewport = 'lg'
 
     # ── List ─────────────────────────────────────────────────────────
     columns = [

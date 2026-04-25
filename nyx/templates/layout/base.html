@@ -42,6 +42,15 @@
 <body>
 
     {% include "layout/sidebar.html" %}
+
+    <div id="viewport_guard" class="viewport-guard">
+        <div class="d-flex flex-column align-center text-center" style="gap:.75rem;max-width:360px;padding:2rem">
+            <i class="bi bi-display text-tertiary" style="font-size:2.5rem"></i>
+            <p class="text-emp font-semibold m-0">Tela insuficiente</p>
+            <p class="text-secondary text-sm m-0">Esta página requer uma janela maior para ser exibida corretamente.</p>
+        </div>
+    </div>
+
     <div id="toast_container">
         {% block toasts %}{% endblock %}
     </div>

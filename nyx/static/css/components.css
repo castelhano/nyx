@@ -758,3 +758,21 @@
 }
 .hcard--balloon.hcard[data-placement="end"] .hcard__panel::before { right: 100%; border-right-color: var(--nyx-surface-border); }
 .hcard--balloon.hcard[data-placement="end"] .hcard__panel::after  { right: calc(100% - 1.5px); border-right-color: var(--nyx-surface-bg); }
+
+/* ============================================================
+   VIEWPORT GUARD
+   Sobrepõe o conteúdo quando o viewport é menor que o mínimo
+   declarado em ModeloUI.min_viewport. Controlado via JS (NyxViewportGuard).
+   ============================================================ */
+
+.viewport-guard {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--nyx-z-modal);
+  background: var(--nyx-bg-body);
+  align-items: center;
+  justify-content: center;
+}
+
+.viewport-guard.active { display: flex; }

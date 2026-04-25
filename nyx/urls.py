@@ -14,6 +14,10 @@ class _LoginView(auth_views.LoginView):
         return response
 
 
+handler403 = 'nyx.core.views.errors.error_403'
+handler404 = 'nyx.core.views.errors.error_404'
+handler500 = 'nyx.core.views.errors.error_500'
+
 urlpatterns = [
     path('', include('nyx.core.urls')),
     path('docs/', include('nyx.docs.urls')),
@@ -24,4 +28,10 @@ urlpatterns = [
 
 if settings.DEBUG:
     from debug_toolbar.toolbar import debug_toolbar_urls
+    from nyx.core.views.errors import error_403, error_404, error_500
     urlpatterns += debug_toolbar_urls()
+    urlpatterns += [
+        path('errors/403/', error_403, name='preview_403'),
+        path('errors/404/', error_404, name='preview_404'),
+        path('errors/500/', error_500, name='preview_500'),
+    ]

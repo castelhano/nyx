@@ -1,5 +1,6 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import render
 from django.views import View
 
@@ -14,8 +15,10 @@ _MD_EXTENSIONS = ["fenced_code", "tables", "toc"]
 class DocView(LoginRequiredMixin, View):
     def get(self, request, doc_path):
         entry = DOC_INDEX.get(doc_path)
-        if not entry or not can_access(request.user, entry):
+        if not entry:
             raise Http404
+        if not can_access(request.user, entry):
+            raise PermissionDenied
 
         with open(entry["path"], encoding="utf-8") as f:
             post = frontmatter.load(f)

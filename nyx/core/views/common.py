@@ -5,6 +5,22 @@ from nyx.core.forms import EmpresaForm, FilialForm
 
 
 # =============================================================================
+# DEV
+# =============================================================================
+
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
+
+class ShowcaseView(LoginRequiredMixin, TemplateView):
+    template_name = "dev/showcase.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['base_template'] = 'layout/fragment.html' if self.request.htmx else 'layout/base.html'
+        return ctx
+
+
+# =============================================================================
 # EMPRESA
 # =============================================================================
 
