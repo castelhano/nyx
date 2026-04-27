@@ -2,13 +2,278 @@
 
 {% block title %}Showcase{% endblock %}
 
-{% block main %}
-<div class="p-4" data-keybind-group="showcase">
 
-    <h2>Nyx CSS Showcase</h2>
-    <div class="d-grid grid-fit-rest gap-2">
-        <div class="bg-info">Conteudo longo q nao deve ser quebrado</div>
-        <div class="bg-success">Bar</div>
+
+<style>
+    {% block style %}
+    .border-emp-alt{
+        border-left: 3px solid var(--nyx-border-alt);
+        border-bottom-left-radius: 0;
+    }       
+    {% endblock style %}
+    </style>
+
+{% block main %}
+<div class="h-full p-3" data-keybind-group="showcase">
+    
+    <div class="d-grid grid-fit-rest grid-fit-rest break-lg gap-2 h-full border rounded" style="--mw: 230px;">
+        
+        <!-- ——— CONTAINER NAV ————————————————————————————————————————————— -->
+        <div class="position-stick bg-alt-tertiary bg-grad-e rounded-s border-e h-full d-none d-lg-block">
+            
+            <!-- ——— NAV ——————————————————————————————————————————————————— -->
+            <ul class="d-grid p-2 gap-1" data-component="scrollspy">
+                <li><a href="#grid_flex" class="d-block btn btn-ghost-alt">Grid & Flex</a></li>
+                <li class="ps-3"><a href="#grid-auto" class="d-block btn btn-ghost-alt-secondary border-emp-alt">Auto Grids</a></li>
+                <li><a href="#espacamento" class="d-block btn btn-ghost-alt">Espaçamento</a></li>
+                <li><a href="#background" class="d-block btn btn-ghost-alt">Background</a></li>
+                <li class="ps-3"><a href="#bg-estados-semanticos" class="d-block btn btn-ghost-alt-secondary border-emp-alt">Estados Semânticos</a></li>
+                <li class="ps-3"><a href="#bg-text-bg" class="d-block btn btn-ghost-alt-secondary border-emp-alt">Background & Text</a></li>
+                <li class="ps-3"><a href="#grad_tex" class="d-block btn btn-ghost-alt-secondary border-emp-alt">Gradiente & Textura</a></li>
+                <li><a href="#typo" class="d-block btn btn-ghost-alt">Tipografia</a></li>
+                <li><a href="#borda-sombra" class="d-block btn btn-ghost-alt">Borda & Sombra</a></li>
+            </ul>
+            
+        </div><!-- ——— FECHA CONTAINER NAV ————————————————————————————————— -->
+        <div class="p-4 overflow-y scroll-smooth">
+            <h4 class="">Nyx CSS Showcase</h4>
+            <div class="divider-label">V 1.03</div>
+            
+            <!-- ——— GRID & FLEX  —————————————————————————————————————————— -->
+            <section id="grid_flex">
+                <h5 class="text-alt-emp mb-3">Grid & Flex</h5>
+                
+                <!-- ——— CARD CONTAINER - GRID ————————————————————————————— -->
+                <div class="d-grid grid-card-container gap-2 text-center" style="--cols-lg:3;--cols-md:2">
+                    
+                    <div class="border rounded grid-card">
+                        <h6 class="bg-tertiary rounded-t p-2 text-alt-emp">d-grid</h6>
+                        
+                        <div class="d-grid p-2 align-items-center">
+                            <div class="border bg-secondary">div 1</div>
+                            <div class="border bg-secondary">div 2</div>
+                            <div class="border bg-secondary">div 3</div>
+                        </div>
+                        
+                        <div class="grid-card-footer p-2 text-start">
+                            <div class="divider-label">code</div>
+                            <pre><code>Código <br>com <br>várias linhas</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div class="border rounded grid-card">
+                        <h6 class="bg-tertiary rounded-t p-2 text-alt-emp">d-grid grid-cols-2</h6>
+                        <div class="d-grid grid-cols-2 p-2 align-items-center">
+                            <div class="border bg-secondary">div 1</div>
+                            <div class="border bg-secondary">div 2</div>
+                            <div class="border bg-secondary">div 3</div>
+                        </div>
+                        <div class="grid-card-footer p-2 text-start">
+                            <div class="divider-label">code</div>
+                            <pre><code>...</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div class="border rounded grid-card">
+                        <h6 class="bg-tertiary rounded-t p-2 text-alt-emp">d-grid- grid-cols-4</h6>
+                        <div class="d-grid grid-cols-4 p-2 align-items-center">
+                            <div class="border bg-secondary">div 1</div>
+                            <div class="border bg-alt-tertiary col-span-3"><span>div 2 <code>.col-span-3</code></span></div>
+                            <div class="border bg-secondary">div 3</div>
+                            <div class="border bg-secondary">div 4</div>
+                            <div class="border bg-secondary">div 5</div>
+                            <div class="border bg-secondary">div 6</div>
+                        </div>
+                        <div class="p-2">
+                            <div class="divider-label">code</div>
+                            <pre><code>...</code></pre>
+                        </div>
+                    </div>
+                    
+                </div><!-- ——— CARD CONTAINER - GRID ——————————————————————— -->
+
+                <!-- ——— AUTO GRIDS ———————————————————————————————————————— -->
+                <section id="grid-auto" class="mt-4">
+                    <h5>Auto Grids</h5>
+                    
+                    <div class="text-bg-brand rounded my-3 p-3">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <span>Grid system implementa layouts conceituais configuraveis.</span>
+                    </div>
+
+                    <!-- ——— GRID-FIT-REST ————————————————————————————————— -->
+                    <div class=" border rounded p-3">
+                        <h6>[ <span class="code">d-grid grid-fit-rest</span> ]</h6>
+                        <small>Aplicação: <span class="text-alt-emp">Forms</span>, <span class="text-alt-emp">description-list</span>, etc</small>
+                        <div class="d-grid grid-fit-rest break-md gap-x-3 gap-y-2 mt-4">
+                            <span class="form-label pt-1">Nome</span><div><input type="text" class="form-control form-control-sm" placeholder="Nome"></div>
+                            <span class="form-label pt-1">Fone</span><div class="mw-xs"><input type="text" class="form-control form-control-sm" placeholder="00 0000-0000"></div>
+                            <span class="form-label pt-1">Email</span><div class="mw-lg"><input type="text" class="form-control form-control-sm" placeholder="seu_email@dominio.com"></div>
+                        </div>
+                    </div><!-- ——— GRID-FIT-REST ——————————————————————————— -->
+
+                    <!-- ——— GRID-CARD ————————————————————————————————————— -->
+                    <div class="border rounded p-3 mt-4">
+                        <h6>[ <span class="code">d-grid grid-card-container</span> ] <span class="px-2">&</span> [ <span class="code">grid-card</span> ]</h6>
+                        <small>Aplicação: <span class="text-alt-emp">Cards</span></small>
+                        
+                        <div class="d-grid grid-card-container gap-2 text-center mt-4" style="--cols-lg:3;--cols-md:2">
+                            
+                            <div class="border rounded-t grid-card">
+                                <h6 class="bg-tertiary rounded-t p-2 text-alt-emp select-all">d-grid grid-card-container</h6>
+                                
+                                <div class="d-grid mx-2 px-2 pb-2 align-items-center border">
+                                    <div class="text-alt-emp select-all">grid-card</div>
+                                    <div class="border bg-secondary">div 1</div>
+                                    <div class="border bg-secondary">div 2</div>
+                                    <div class="border bg-secondary">div 3</div>
+                                </div>
+                            </div>
+
+                            <div class="border rounded grid-card">
+                                <h6 class="bg-tertiary p-2 text-alt-emp select-all">d-grid grid-card-container</h6>
+                                
+                                <div class="border px-2 pb-2">
+                                    <div class="text-alt-emp select-all">grid-card</div>
+                                    <div class="d-grid align-items-center ">
+                                        <div class="border bg-secondary">div 1</div>
+                                        <div class="border bg-secondary">div 2</div>
+                                        <div class="border bg-secondary">div 3</div>
+                                    </div>
+                                </div>
+                                <div class="grid-card-footer p-2 text-start bg-secondary text-sm text-center select-all">grid-card-footer</div>
+                            </div>
+
+                        </div>
+
+                    </div><!-- ——— GRID-CARD ——————————————————————————————— -->
+
+                </section><!-- ——— AUTO GRIDS —————————————————————————————— -->
+            
+            </section><!-- ——— GRID & FLEX  ———————————————————————————————— -->
+            
+            <hr class="mt-5 mb-3">
+            <!-- ——— ESPAÇAMENTO  —————————————————————————————————————————— -->
+            <section id="espacamento">
+
+                <h5 class="text-alt-emp pt-4 mb-3">Espaçamento</h5>
+
+                <h6 class="my-1">Margin</h6>
+                <div class="rounded p-1 bg-alt-tertiary">
+                    <div class="d-grid grid-cols-7 bg-alt-secondary align-items-center">
+                        <div class="mt-0 bg-alt">mt-0</div>
+                        <div class="mt-1 bg-alt">mt-1</div>
+                        <div class="mt-2 bg-alt">mt-2</div>                        
+                        <div class="mt-3 bg-alt">mt-3</div>                        
+                        <div class="mt-4 bg-alt">mt-4</div>                        
+                        <div class="mt-5 bg-alt">mt-5</div>                        
+                        <div class="mt-auto bg-alt">mt-auto</div>                        
+                    </div>
+                </div>
+                
+                <h6 class="mt-4 mb-1">Padding</h6>
+                <div class="rounded p-1 bg-alt-tertiary">
+                    <div class="d-grid grid-cols-7 bg-alt-secondary">
+                        <div class="pt-0"><div class="bg-alt">pt-0</div></div>
+                        <div class="pt-1"><div class="bg-alt">pt-1</div></div>
+                        <div class="pt-2"><div class="bg-alt">pt-2</div></div>                        
+                        <div class="pt-3"><div class="bg-alt">pt-3</div></div>                        
+                        <div class="pt-4"><div class="bg-alt">pt-4</div></div>                        
+                        <div class="pt-5"><div class="bg-alt">pt-5</div></div>                        
+                        <div class="pt-auto bg-alt">pt-auto</div>                        
+                    </div>
+                </div>
+
+            </section><!-- ——— ESPAÇAMENTO  ———————————————————————————————— -->
+            
+            <div class="divider mt-5 mb-4"></div>
+            
+            <!-- ——— BACKGROUND  ——————————————————————————————————————————— -->
+            <section id="background">
+
+                <h5 class="text-alt-emp mb-3">Background</h5>
+                
+                <!-- ——— BG - ESTADOS SEMANTICOS  —————————————————————————  -->
+                <section id="bg-estados-semanticos">
+                    
+                    <h6 class="mb-2">Estados Semânticos</h6>
+                    <div class="d-grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 text-center border rounded-sm text-sm">
+                        <div class="select-all p-2 bg-body">bg-body</div>
+                        <div class="select-all p-2 bg-secondary">bg-secondary</div>
+                        <div class="select-all p-2 bg-tertiary">bg-tertiary</div>
+                        <div class="select-all p-2 bg-alt">bg-alt</div>
+                        <div class="select-all p-2 bg-alt-secondary">bg-alt-secondary</div>
+                        <div class="select-all p-2 bg-alt-tertiary">bg-alt-tertiary</div>
+                        <div class="select-all p-2 bg-surf">bg-surf</div>
+                        <div class="select-all p-2 bg-surf-raized">bg-surf-raized</div>
+                        <div class="select-all p-2 bg-brand">bg-brand</div>
+                        <div class="select-all p-2 bg-info">bg-info</div>
+                        <div class="select-all p-2 bg-warning">bg-warning</div>
+                        <div class="select-all p-2 bg-danger">bg-danger</div>
+                        <div class="select-all p-2 bg-success">bg-success</div>
+                        <div class="select-all p-2 bg-discovery">bg-discovery</div>
+                        <div class="select-all p-2 bg-promoted">bg-promoted</div>
+                        <div class="select-all p-2 bg-attention">bg-attention</div>
+                    </div>                  
+
+                </section><!-- ——— BG - ESTADOS SEMANTICOS  ———————————————  -->
+
+                <!-- ——— BG - BACKGROUND & TEXT  ——————————————————————————  -->
+                <section id="bg-text-bg" class="mt-4">
+                    
+                    <h6 class="mb-2">Background & Text</h6>
+                    <div class="d-grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 text-center border rounded-sm text-sm">
+                        <div class="select-all p-2 text-bg-body">text-bg-body</div>
+                        <div class="select-all p-2 text-bg-secondary">text-bg-secondary</div>
+                        <div class="select-all p-2 text-bg-tertiary">text-bg-tertiary</div>
+                        <div class="select-all p-2 text-bg-alt">text-bg-alt</div>
+                        <div class="select-all p-2 text-bg-alt-secondary">text-bg-alt-secondary</div>
+                        <div class="select-all p-2 text-bg-alt-tertiary">text-bg-alt-tertiary</div>
+                        <div class="select-all p-2 text-bg-brand">text-bg-brand</div>
+                        <div class="select-all p-2 text-bg-info">text-bg-info</div>
+                        <div class="select-all p-2 text-bg-warning">text-bg-warning</div>
+                        <div class="select-all p-2 text-bg-danger">text-bg-danger</div>
+                        <div class="select-all p-2 text-bg-success">text-bg-success</div>
+                        <div class="select-all p-2 text-bg-discovery">text-bg-discovery</div>
+                        <div class="select-all p-2 text-bg-promoted">text-bg-promoted</div>
+                        <div class="select-all p-2 text-bg-attention">text-bg-attention</div>
+                    </div>
+                    
+                </section><!-- ——— BG - BACKGROUND & TEXT  ————————————————  -->
+                
+                <section id="grad_tex" class="mt-4">
+                    
+                    <h6 class="mb-2">Gradiente & Textura</h6>
+                    <div class="d-grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 text-center border rounded-sm text-sm">
+                        
+                        <!-- ——— GRADIENTE ————————————————————————————————— -->
+                        <div class="select-all p-2 bg-alt bg-grad-t">bg-grad-t</div>
+                        <div class="select-all p-2 bg-alt bg-grad-b">bg-grad-b</div>
+                        <div class="select-all p-2 bg-alt bg-grad-s">bg-grad-s</div>
+                        <div class="select-all p-2 bg-alt bg-grad-e">bg-grad-e</div>
+                        
+                        <!-- ——— TEXTURAS —————————————————————————————————— -->
+                        <div class="select-all p-2 bg-alt bg-tex-noise">bg-tex-noise</div>
+                        <div class="select-all p-2 bg-alt bg-tex-lines">bg-tex-lines</div>
+                        <div class="select-all p-2 bg-alt bg-tex-lines-te">bg-tex-lines-te</div>
+                        <div class="select-all p-2 bg-alt bg-tex-dots">bg-tex-dots</div>
+                    </div>
+                    
+                </section><!-- ——— BG - BACKGROUND & TEXT  ————————————————  -->
+                
+            </section>
+            
+            
+            <!-- ——— TIPOGRAFIA  ——————————————————————————————————————————  -->
+            <section id="typo" class="mt-4">
+                
+                <h5 class="text-alt-emp mb-3">Tipografia</h5>
+
+            </section>
+            
+            <!-- ——— BORDA & SOMBRA  ——————————————————————————————————————  -->
+            <section id="borda-sombra">Borda & Sombra</section>
+        </div>
     </div>
 </div>
 {% endblock %}

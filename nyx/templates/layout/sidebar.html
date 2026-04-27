@@ -3,7 +3,7 @@
     <div class="sidebar__header">
         <span class="sidebar__logo">Nyx <sup class="text-discovery"><i class="bi bi-braces-asterisk"></i></sup></span>
         <button 
-            class="btn btn-sm btn-ghost me-1" 
+            class="btn btn-sm btn-ghost-alt me-1" 
             data-sidebar-toggle 
             data-keybind="ctrl+'" 
             title="Expandir / Recolher menu" 
@@ -31,14 +31,14 @@
             </div>
         </search>
         <div class="sidebar__search-btn px-2">
-            <button class="btn btn-sm btn-ghost w-100" type="button" title="Pesquisa" data-sidebar-search-btn>
+            <button class="btn btn-sm btn-ghost-alt w-100" type="button" title="Pesquisa" data-sidebar-search-btn>
                 <i class="bi bi-search"></i>
             </button>
         </div>
 
         {% for group in nav_groups %}
         <div class="sidebar__group open" data-sidebar-group>
-            <button class="btn btn-sm btn-ghost btn-dropdown sidebar__group-toggle mx-2" data-sidebar-group-toggle type="button">
+            <button class="btn btn-sm btn-ghost-alt btn-dropdown sidebar__group-toggle mx-2" data-sidebar-group-toggle type="button">
                 {% if group.app_ui.icon %}
                 <span class="sidebar__group-icon"><i class="{{ group.app_ui.icon }}"></i></span>
                 {% endif %}
@@ -48,7 +48,7 @@
                 <div>
                 {% for item in group.items %}
                 <a href="{% url item.entry.list_url %}"
-                   class="sidebar__link btn btn-sm btn-ghost mx-2{% if item.active %} active{% endif %}"
+                   class="sidebar__link btn btn-sm btn-ghost-alt mx-2{% if item.active %} active{% endif %}"
                    data-sidebar-link
                    hx-get="{% url item.entry.list_url %}"
                    hx-target="#main-content"

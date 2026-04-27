@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="{% static 'css/components.css' %}">
     <link rel="stylesheet" href="{% static 'css/docs.css' %}">
     {% block extra_css %}{% endblock %}
+    <style>{% block style %}{% endblock %}</style>
+    
 
     {# 1. Libs externas #}
     <script defer src="{% static 'js/libs/htmx.js' %}"></script>
@@ -32,6 +34,7 @@
     <script defer src="{% static 'js/components/sidebar.js' %}"></script>
     <script defer src="{% static 'js/components/hcard.js' %}"></script>
     <script defer src="{% static 'js/components/mask.js' %}"></script>
+    <script defer src="{% static 'js/components/scrollspy.js' %}"></script>
 
     {# 4. Módulos de página — registram em NyxModules, não executam nada ainda #}
     <script defer src="{% static 'js/modules/index.js' %}"></script>
