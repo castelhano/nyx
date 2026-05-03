@@ -1,9 +1,11 @@
 import { SidebarProvider } from './sidebar-context'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
+import { KeywatchProvider } from '@/lib/keywatch'
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
+    <KeywatchProvider>
     <SidebarProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
@@ -15,5 +17,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </SidebarProvider>
+    </KeywatchProvider>
   )
 }
