@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "paths": {
+      "@nyx/schemas": ["../../packages/schemas/index.ts"],
+      "@nyx/schemas/*": ["../../packages/schemas/*"],
+      "@nyx/types": ["../../packages/types/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "../../packages/schemas/**/*", "../../packages/types/**/*"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@nyx/schemas",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "dependencies": {
+    "zod": "^3.23.8",
+    "@nyx/types": "workspace:*"
+  }
+}
