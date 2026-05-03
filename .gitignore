@@ -1,1 +1,23 @@
+# dependencies
 node_modules
+
+# build outputs
+dist
+.next
+
+# environment files
+.env
+.env.*.local
+
+# logs
+*.log
+
+# editor directories
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# turborepo cache
+.turbo/
