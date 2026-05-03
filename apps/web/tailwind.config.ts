@@ -9,7 +9,10 @@ const config: Config = {
         background:  'hsl(var(--background))',
         foreground:  'hsl(var(--foreground))',
         border:      'hsl(var(--border))',
-        input:       'hsl(var(--input))',
+        input: {
+          DEFAULT: 'hsl(var(--input))',       /* border-input — borda de controles */
+          bg:      'hsl(var(--input-bg))',    /* bg-input-bg  — fundo de controles */
+        },
         ring:        'hsl(var(--ring))',
         primary: {
           DEFAULT:    'hsl(var(--primary))',

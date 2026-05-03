@@ -4,64 +4,98 @@
 
 @layer base {
   :root {
-    --background:          240 11% 96%;
-    --foreground:          222 47% 11%;
-    --card:                0 0% 100%;
-    --card-foreground:     222 47% 11%;
-    --popover:             0 0% 100%;
-    --popover-foreground:  222 47% 11%;
-    --primary:             221 83% 53%;
-    --primary-foreground:  210 40% 98%;
-    --muted:               210 40% 96%;
-    --muted-foreground:    215 16% 47%;
-    --accent:              210 40% 96%;
-    --accent-foreground:   222 47% 11%;
-    --destructive:         0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-    --border:              214 32% 91%;
-    --input:               214 32% 91%;
-    --ring:                221 83% 53%;
-    --radius:              0.5rem;
+    /* ── App ─────────────────────────────────────────────────────────────── */
+    --background:             240 11% 96%;    /* corpo, área principal de conteúdo        */
+    --foreground:             222 47% 11%;    /* texto primário sobre --background        */
 
-    --sidebar-bg:         0 0% 98%;
-    --sidebar-fg:         240 5% 26%;
-    --sidebar-border:     220 13% 91%;
-    --sidebar-accent:     240 5% 94%;
-    --sidebar-accent-fg:  240 6% 10%;
+    /* ── Superfícies elevadas ────────────────────────────────────────────── */
+    --card:                   0 0% 100%;      /* cards, painéis, seções de formulário     */
+    --card-foreground:        222 47% 11%;    /* texto sobre --card                       */
+
+    --popover:                0 0% 100%;      /* dropdowns, tooltips, modais              */
+    --popover-foreground:     222 47% 11%;    /* texto sobre --popover                    */
+
+    /* ── Ações ───────────────────────────────────────────────────────────── */
+    --primary:                221 83% 53%;    /* botão primário, link de destaque         */
+    --primary-foreground:     210 40% 98%;    /* texto/ícone sobre --primary              */
+
+    --accent:                 210 40% 96%;    /* hover de controles ghost/icon; tema do usuário */
+    --accent-foreground:      222 47% 11%;    /* texto/ícone sobre --accent               */
+
+    --muted:                  210 40% 96%;    /* superfície desabilitada, ghost           */
+    --muted-foreground:       215 16% 47%;    /* texto secundário, placeholder            */
+
+    --destructive:            0 84% 60%;      /* botão/ação destrutiva                    */
+    --destructive-foreground: 210 40% 98%;    /* texto/ícone sobre --destructive          */
+
+    /* ── Controles de formulário ─────────────────────────────────────────── */
+    --input-bg:               0 0% 100%;      /* fundo de inputs, selects, textareas      */
+    --input:                  214 32% 91%;    /* borda de inputs, selects, textareas      */
+    --ring:                   221 83% 53%;    /* anel de foco (navegação por teclado)     */
+
+    /* ── Estrutura ───────────────────────────────────────────────────────── */
+    --border:                 214 32% 91%;    /* bordas de card, divisores, tabelas       */
+    --radius:                 0.5rem;         /* border-radius global de controles/cards  */
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    --sidebar-bg:             0 0% 98%;       /* fundo da sidebar                         */
+    --sidebar-fg:             240 5% 26%;     /* texto/ícone padrão na sidebar            */
+    --sidebar-border:         220 13% 91%;    /* divisores internos da sidebar            */
+    --sidebar-accent:         240 5% 94%;     /* fundo de hover/active em itens de nav    */
+    --sidebar-accent-fg:      240 6% 10%;     /* texto/ícone no estado hover/active       */
   }
 
   .dark {
-    --background:          210 5% 10%;
-    --foreground:          210 5% 85%;
-    --card:                214 8% 16%;
-    --card-foreground:     210 40% 98%;
-    --popover:             210 5% 12%;
-    --popover-foreground:  210 40% 98%;
-    --primary:             217 91% 60%;
-    --primary-foreground:  222 47% 11%;
-    --muted:               210  5% 30%;
-    --muted-foreground:    210  0% 70%;
-    /* ——— Cold Eucaliptus —————————————————————————————————————————————————— */
-    --accent:              135 8% 19%;
-    --accent-foreground:   111 12% 89%;
-    --sidebar-accent:      135 8% 20%;
-    
-    /* —————————————————————————————————————————————————————————————————————— */
-    --destructive:         0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    
-    --border:              210 5% 18%;
-    --input:               217 33% 17%;
-    --ring:                224 76% 48%;
+    /* ── App ─────────────────────────────────────────────────────────────── */
+    --background:             210 5% 10%;     /* corpo, área principal de conteúdo        */
+    --foreground:             210 5% 85%;     /* texto primário — mesma base HSL, L=85    */
 
-    --sidebar-bg:         210 5% 12%;
-    --sidebar-fg:         240 5% 96%;
-    --sidebar-border:     210 4% 16%;
-    --sidebar-accent-fg:  240 5% 96%;
+    /* ── Superfícies elevadas ────────────────────────────────────────────── */
+    --card:                   214 8% 16%;     /* cards, painéis, seções de formulário     */
+    --card-foreground:        210 40% 98%;    /* texto sobre --card                       */
+
+    --popover:                210 5% 12%;     /* dropdowns, tooltips, modais              */
+    --popover-foreground:     210 40% 98%;    /* texto sobre --popover                    */
+
+    /* ── Ações ───────────────────────────────────────────────────────────── */
+    --primary:                217 91% 60%;    /* botão primário, link de destaque         */
+    --primary-foreground:     222 47% 11%;    /* texto/ícone sobre --primary              */
+
+    /* — Cold Eucalyptus ———————————————————————————————————————————————————— */
+    --accent:                 135 8% 19%;     /* hover de controles ghost/icon (topbar)   */
+    --accent-foreground:      111 12% 89%;    /* texto/ícone sobre --accent               */
+    /* —————————————————————————————————————————————————————————————————————— */
+
+    --muted:                  210 5% 30%;     /* superfície desabilitada, ghost           */
+    --muted-foreground:       210 0% 70%;     /* texto secundário, placeholder            */
+
+    --destructive:            10 63% 31%;      /* botão ação destrutiva                    */
+    --destructive-foreground: 210 40% 98%;     /* texto ícone sobre --destructive          */
+
+    /* ── Controles de formulário ─────────────────────────────────────────── */
+    --input-bg:               220 8% 14%;     /* fundo de inputs — recuado em relação ao card (L=16) */
+    --input:                  210 5% 22%;     /* borda de inputs — mais visível que --border (L=18)  */
+    --ring:                   224 76% 48%;    /* anel de foco (navegação por teclado)     */
+
+    /* ── Estrutura ───────────────────────────────────────────────────────── */
+    --border:                 210 5% 18%;     /* bordas de card, divisores, tabelas       */
+    --radius:                 0.5rem;         /* border-radius global de controles/cards  */
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    --sidebar-bg:             210 5% 12%;     /* fundo da sidebar                         */
+    --sidebar-fg:             210 5% 85%;     /* texto/ícone padrão na sidebar            */
+    --sidebar-border:         210 4% 16%;     /* divisores internos da sidebar            */
+    --sidebar-accent:         210 5% 17%;     /* fundo de hover/active em itens de nav    */
+    --sidebar-accent-fg:      240 5% 96%;     /* texto/ícone no estado hover/active       */
   }
 }
 
 @layer base {
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    background-color: hsl(var(--input-bg));
+  }
 }

@@ -83,7 +83,7 @@ export function AutoList({ domain, resource, onEdit }: Props) {
         </div>
       )}
 
-      <div className="flex items-center gap-2 text-sm text-gray-600">
+      <div className="flex items-center gap-2 text-sm text-muted">
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page === 1}
