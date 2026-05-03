@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background:          0 0% 100%;
+    --background:          240 11% 96%;
     --foreground:          222 47% 11%;
     --card:                0 0% 100%;
     --card-foreground:     222 47% 11%;
@@ -31,28 +31,32 @@
   }
 
   .dark {
-    --background:          222 84% 5%;
-    --foreground:          210 40% 98%;
-    --card:                222 84% 5%;
+    --background:          210 5% 10%;
+    --foreground:          210 5% 85%;
+    --card:                214 8% 16%;
     --card-foreground:     210 40% 98%;
-    --popover:             222 47% 8%;
+    --popover:             210 5% 12%;
     --popover-foreground:  210 40% 98%;
     --primary:             217 91% 60%;
     --primary-foreground:  222 47% 11%;
-    --muted:               217 33% 17%;
-    --muted-foreground:    215 20% 65%;
-    --accent:              217 33% 17%;
-    --accent-foreground:   210 40% 98%;
+    --muted:               210  5% 30%;
+    --muted-foreground:    210  0% 70%;
+    /* ——— Cold Eucaliptus —————————————————————————————————————————————————— */
+    --accent:              135 8% 19%;
+    --accent-foreground:   111 12% 89%;
+    --sidebar-accent:      135 8% 20%;
+    
+    /* —————————————————————————————————————————————————————————————————————— */
     --destructive:         0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    --border:              217 33% 17%;
+    
+    --border:              210 5% 18%;
     --input:               217 33% 17%;
     --ring:                224 76% 48%;
 
-    --sidebar-bg:         240 6% 10%;
+    --sidebar-bg:         210 5% 12%;
     --sidebar-fg:         240 5% 96%;
-    --sidebar-border:     240 4% 16%;
-    --sidebar-accent:     240 4% 16%;
+    --sidebar-border:     210 4% 16%;
     --sidebar-accent-fg:  240 5% 96%;
   }
 }

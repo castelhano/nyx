@@ -14,8 +14,10 @@ export function Sidebar() {
   const { isOpen } = useSidebar()
   const router = useRouter()
   const [user, setUser] = useState<{ username: string; role: string } | null>(null)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     setUser(getUserFromToken())
   }, [])
 
@@ -56,11 +58,11 @@ export function Sidebar() {
                 'focus:outline-none transition-colors',
               )}>
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium uppercase">
-                  {user?.username?.slice(0, 2) ?? '??'}
+                  {mounted ? (user?.username?.slice(0, 2) ?? '??') : '??'}
                 </div>
                 <div className="flex-1 text-left leading-tight">
-                  <p className="font-medium text-sm truncate">{user?.username ?? '—'}</p>
-                  <p className="text-xs text-sidebar-foreground/60 truncate capitalize">{user?.role ?? ''}</p>
+                  <p className="font-medium text-sm truncate">{mounted ? (user?.username ?? '—') : '—'}</p>
+                  <p className="text-xs text-sidebar-foreground/60 truncate capitalize">{mounted ? (user?.role ?? '') : ''}</p>
                 </div>
                 <ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-foreground/50" />
               </button>
@@ -68,11 +70,11 @@ export function Sidebar() {
 
             <DropdownMenu.Portal>
               <DropdownMenu.Content
-                side="top"
-                align="start"
+                side="right"
+                align="end"
                 sideOffset={8}
                 className={cn(
-                  'z-50 min-w-[200px] rounded-md border border-border bg-popover p-1 shadow-lg',
+                  'z-50 min-w-[200px] rounded-md border border-border bg-popover p-1 ms-1 shadow-lg',
                   'text-popover-foreground text-sm',
                   'data-[state=open]:animate-in data-[state=closed]:animate-out',
                   'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',

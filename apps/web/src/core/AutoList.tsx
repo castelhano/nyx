@@ -46,46 +46,48 @@ export function AutoList({ domain, resource, onEdit }: Props) {
       {isLoading ? (
         <div className="text-sm text-gray-500">Loading…</div>
       ) : (
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-gray-100">
-              {columns.map((col) => (
-                <th key={col.name} className="text-left px-3 py-2 border-b font-medium text-gray-700">
-                  {col.label}
-                </th>
-              ))}
-              {onEdit && <th className="px-3 py-2 border-b" />}
-            </tr>
-          </thead>
-          <tbody>
-            {data?.data.map((row) => (
-              <tr key={String(row.id)} className="hover:bg-gray-50 border-b">
+        <div className='overflow-hidden rounded-sm border'>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted">
                 {columns.map((col) => (
-                  <td key={col.name} className="px-3 py-2 text-gray-800">
-                    {String(row[col.name] ?? '')}
-                  </td>
+                  <th key={col.name} className="text-left px-3 py-2 border-b font-medium">
+                    {col.label}
+                  </th>
                 ))}
-                {onEdit && (
-                  <td className="px-3 py-2">
-                    <button
-                      onClick={() => onEdit(String(row.id))}
-                      className="text-blue-600 hover:underline text-xs"
-                    >
-                      Edit
-                    </button>
-                  </td>
-                )}
+                {onEdit && <th className="px-3 py-2 border-b" />}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data?.data.map((row) => (
+                <tr key={String(row.id)} className="hover:bg-accent border-b">
+                  {columns.map((col) => (
+                    <td key={col.name} className="px-3 py-2">
+                      {String(row[col.name] ?? '')}
+                    </td>
+                  ))}
+                  {onEdit && (
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => onEdit(String(row.id))}
+                        className="text-blue-600 hover:underline text-xs"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <div className="flex items-center gap-2 text-sm text-gray-600">
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page === 1}
-          className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+          className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-accent"
         >
           Prev
         </button>
@@ -93,7 +95,7 @@ export function AutoList({ domain, resource, onEdit }: Props) {
         <button
           onClick={() => setPage((p) => p + 1)}
           disabled={!data || page * 20 >= data.total}
-          className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-gray-50"
+          className="px-3 py-1 border rounded disabled:opacity-40 hover:bg-accent"
         >
           Next
         </button>
