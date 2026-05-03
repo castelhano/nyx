@@ -60,7 +60,7 @@ export function AutoList({ domain, resource, onEdit }: Props) {
             </thead>
             <tbody>
               {data?.data.map((row) => (
-                <tr key={String(row.id)} className="hover:bg-accent border-b">
+                <tr key={String(row.id)} className="hover:bg-muted border-b">
                   {columns.map((col) => (
                     <td key={col.name} className="px-3 py-2">
                       {String(row[col.name] ?? '')}

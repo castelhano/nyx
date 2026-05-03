@@ -5,6 +5,12 @@ node_modules
 dist
 .next
 
+# sqlite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
 # environment files
 .env
 .env.*.local
