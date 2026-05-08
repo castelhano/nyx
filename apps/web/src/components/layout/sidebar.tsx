@@ -7,12 +7,13 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Collapsible from '@radix-ui/react-collapsible'
 import {
   LogOut, User, KeyRound, ChevronsUpDown, ChevronRight,
-  Shield, Users, Building2, Building,
+  Shield, Users, Building2, Building, PanelLeft,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn, getUserFromToken } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
 import { useSidebar } from './sidebar-context'
+import { useShortcut } from '@/lib/keywatch'
 
 const SIDEBAR_WIDTH = 240
 const SIDEBAR_COLLAPSED_WIDTH = 56
@@ -42,7 +43,15 @@ const NAV: NavModule[] = [
 ]
 
 export function Sidebar() {
-  const { isOpen } = useSidebar()
+  const { isOpen, toggle } = useSidebar()
+
+  useShortcut("ctrl+'", toggle, {
+    desc: 'Toggle sidebar',
+    origin: 'apps.web.src.components.layout.sidebar',
+    icon: PanelLeft,
+    order: 1,
+    context: 'default',
+  })
   const router = useRouter()
   const pathname = usePathname()
   const [user, setUser] = useState<{ username: string; role: string } | null>(null)

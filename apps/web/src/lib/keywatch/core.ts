@@ -4,10 +4,12 @@
  * Toda interação com DOM (event listeners, modal) fica na camada React.
  */
 
+export type ShortcutIcon = unknown
+
 export interface HandlerOptions {
   context?:        string
   desc?:           string
-  icon?:           string | null
+  icon?:           ShortcutIcon | null
   origin?:         string
   keydown?:        boolean
   keyup?:          boolean
@@ -23,7 +25,7 @@ export interface HandlerEntry {
   id:              symbol
   context:         string
   desc:            string
-  icon:            string | null
+  icon:            ShortcutIcon | null
   origin:          string | undefined
   keydown:         boolean
   keyup:           boolean
@@ -165,14 +167,15 @@ export class KeywatchCore {
       }
 
       // tabOnEnter — avança foco ao pressionar Enter em inputs/selects
-      if (!found && this.tabOnEnter && ev.key === 'Enter' && target?.form &&
-          (target.nodeName === 'INPUT' || target.nodeName === 'SELECT')) {
-        const kw = target.dataset?.keywatch
+      const inputTarget = target as HTMLInputElement | null
+      if (!found && this.tabOnEnter && ev.key === 'Enter' && inputTarget?.form &&
+          (target?.nodeName === 'INPUT' || target?.nodeName === 'SELECT')) {
+        const kw = target?.dataset?.keywatch
         if (kw === 'default') return
         ev.preventDefault()
         if (kw === 'none') return
-        const form  = target.form
-        const index = Array.prototype.indexOf.call(form.elements, target)
+        const form  = inputTarget.form
+        const index = Array.prototype.indexOf.call(form.elements, inputTarget)
         for (let i = index + 1; i < form.elements.length; i++) {
           const el = form.elements[i] as HTMLElement
           if (this._isFieldFocusable(el)) { el.focus(); break }

@@ -9,6 +9,7 @@ import {
   useCallback,
   type RefObject,
 } from 'react'
+import { Keyboard } from 'lucide-react'
 import { KeywatchCore, type CoreOptions } from './core'
 import { ShortcutsModal } from './modal'
 
@@ -39,7 +40,6 @@ export function KeywatchProvider({
   options,
   shortcutMapKey = 'alt+k',
 }: KeywatchProviderProps) {
-  const coreRef             = useRef<KeywatchCore | null>(null)
   const [isModalOpen,    setIsModalOpen]    = useState(false)
   const [currentContext, setCurrentContext] = useState('default')
 
@@ -49,21 +49,25 @@ export function KeywatchProvider({
     if (coreRef.current) coreRef.current.pressed = []
   }, [])
 
-  useEffect(() => {
+  // Inicialização lazy síncrona — core disponível antes de qualquer effect filho
+  const coreRef = useRef<KeywatchCore | null>(null)
+  if (coreRef.current === null) {
     const core = new KeywatchCore({
       ...options,
       onContextChange: (ctx) => setCurrentContext(ctx),
     })
-    coreRef.current = core
-
-    // Atalho para abrir o modal de atalhos
     core.bind(shortcutMapKey, () => setIsModalOpen(true), {
       context: 'all',
       desc:    'Exibir atalhos disponíveis',
+      icon:    Keyboard,
       origin:  'Keywatch',
       order:   0,
     })
+    coreRef.current = core
+  }
 
+  useEffect(() => {
+    const core = coreRef.current!
     const onKeyDown = (ev: KeyboardEvent) => core.handleEvent(ev)
     const onKeyUp   = (ev: KeyboardEvent) => core.handleEvent(ev)
     const onChange  = () => { core.pressed = [] }

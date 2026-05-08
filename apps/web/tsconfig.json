@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2022", "dom", "dom.iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",

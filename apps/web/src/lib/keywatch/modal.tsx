@@ -35,6 +35,12 @@ function Combo({ keys }: { keys: string[] }) {
   )
 }
 
+function ShortcutIcon({ icon }: { icon: unknown }) {
+  if (!icon) return null
+  const Icon = icon as React.ElementType
+  return <Icon className="h-4 w-4" />
+}
+
 function ShortcutBadge({ schema, core }: { schema: string; core: KeywatchCore }) {
   const combos = core.parseSchema(schema)
   return (
@@ -67,7 +73,7 @@ function MetaPanel({ h }: { h: HandlerEntry }) {
 
   return (
     <tr>
-      <td colSpan={3} className="px-4 pb-2.5 pt-0">
+      <td colSpan={4} className="px-4 pb-2.5 pt-0">
         <div className={cn(
           'grid gap-x-4 gap-y-1 p-3 rounded-md',
           'bg-muted/50 border border-border/60',
@@ -190,10 +196,11 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="sticky top-0 bg-popover border-b border-border">
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">
+                  <th className="w-10" />
+                  <th className="text-left pe-4 py-2 font-medium text-muted-foreground">
                     Descrição
                   </th>
-                  <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
+                  <th className="text-right px-4 py-2 font-medium text-muted-foreground">
                     Atalho
                   </th>
                   <th className="w-8" />
@@ -210,7 +217,12 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
                           ? 'border-border/0 bg-accent/20'
                           : 'border-border/40 hover:bg-accent/20',
                       )}>
-                        <td className="px-4 py-2.5">
+                        <td className="w-10 px-1 py-2.5 text-muted-foreground">
+                          <div className="flex items-center justify-center">
+                            <ShortcutIcon icon={h.icon} />
+                          </div>
+                        </td>
+                        <td className="pr-4 py-2.5">
                           {h.desc || <span className="text-muted-foreground/40">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-right">
@@ -220,7 +232,7 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
                           <button
                             onClick={() => setOpenInfoId(isOpen ? null : h.id)}
                             className={cn(
-                              'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
+                              'flex h-6 w-10 items-center justify-center rounded-md transition-colors',
                               'focus:outline-none',
                               isOpen
                                 ? 'text-primary'
