@@ -87,13 +87,13 @@ export function Sidebar() {
 
         {/* Header */}
         <div className={cn(
-          'flex items-center border-b border-sidebar-border py-4',
+          'flex h-12 shrink-0 items-center border-b border-sidebar-border',
           isOpen ? 'gap-2 px-4' : 'justify-center px-2',
         )}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
             N
           </div>
-          {isOpen && <span className="font-semibold text-sm">Nyx ERP</span>}
+          {isOpen && <span className="font-semibold text-sm">Nyx <span className='text-fuchsia-400'>app</span></span>}
         </div>
 
         {/* Navigation */}
@@ -119,7 +119,7 @@ export function Sidebar() {
                     )}>
                       <Link
                         href={mod.href}
-                        className="flex flex-1 items-center gap-2 px-2 py-1.5 text-sm font-medium border-r border-sidebar-border"
+                        className="flex flex-1 items-center gap-2 px-2 py-2 text-sm font-medium border-r border-sidebar-border"
                       >
                         <mod.icon className="h-4 w-4 shrink-0" />
                         <span>{mod.label}</span>
@@ -145,7 +145,7 @@ export function Sidebar() {
                               key={item.href}
                               href={item.href}
                               className={cn(
-                                'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+                                'flex items-center gap-2 rounded-md px-2 py-2 text-sm',
                                 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors',
                                 isActive
                                   ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'

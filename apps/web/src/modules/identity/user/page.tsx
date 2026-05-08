@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { AutoList } from '@/core/AutoList'
+import { Button } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
 
 export default function UserListPage() {
   const router = useRouter()
@@ -9,12 +11,9 @@ export default function UserListPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Users</h1>
-        <button
-          onClick={() => router.push('/identity/user/new')}
-          className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
-        >
-          New User
-        </button>
+        <Button onClick={() => router.push('/identity/user/new')} size='sm'>
+          <Plus className='w-4 h-4' />
+        </Button>
       </div>
       <AutoList domain="identity" resource="user" onEdit={(id) => router.push(`/identity/user/${id}`)} />
     </div>
