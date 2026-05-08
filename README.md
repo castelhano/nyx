@@ -41,6 +41,12 @@ DATABASE_URL="file:./dev.db"   # caminho do banco SQLite (desenvolvimento)
 JWT_SECRET="troque-em-producao" # segredo para assinar tokens JWT
 ```
 
+Para gerar um `JWT_SECRET` forte é possivel usar o próprio Node.js (funciona no Linux e no Windows):
+
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
 > **Importante:** nunca comite o arquivo `.env`. Ele já está no `.gitignore`.
 
 ### 3. Criar o banco de dados e aplicar migrations
