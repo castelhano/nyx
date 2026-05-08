@@ -1,26 +1,26 @@
 # ERP Conventions Reference
 
-> Nomenclatura, schemas Zod e checklist de novo recurso. Leia junto com `ARCHITECTURE.md`. Este documento é a fonte de verdade para decisões de código repetitivo.
+> Naming conventions, Zod schemas and new resource checklist. Read alongside `ARCHITECTURE.md`. This document is the source of truth for repetitive code decisions.
 
 ---
 
 ## 1. Naming & Language
 
-**Regra geral:** código em inglês, rótulos de UI em pt-BR.
+**General rule:** code in English, UI labels in pt-BR.
 
-| Artefato | Convenção | Exemplo |
-|----------|-----------|---------|
-| Arquivos e diretórios | `kebab-case` | `company.service.ts`, `crm/` |
-| Classes e interfaces | `PascalCase` | `CompanyService`, `BaseController` |
-| Variáveis e funções | `camelCase` | `findAll`, `taxId` |
-| Constantes globais | `UPPER_SNAKE_CASE` | `ROUTES`, `DEFAULT_PAGE_SIZE` |
-| Campos Prisma / Zod | `camelCase` | `legalName`, `isActive` |
-| Rotas de API | `kebab-case` | `/crm/company`, `/identity/user` |
-| Variáveis CSS | `--kebab-case` | `--sidebar-accent`, `--input-bg` |
+| Artifact | Convention | Example |
+|----------|------------|---------|
+| Files and directories | `kebab-case` | `company.service.ts`, `crm/` |
+| Classes and interfaces | `PascalCase` | `CompanyService`, `BaseController` |
+| Variables and functions | `camelCase` | `findAll`, `taxId` |
+| Global constants | `UPPER_SNAKE_CASE` | `ROUTES`, `DEFAULT_PAGE_SIZE` |
+| Prisma / Zod fields | `camelCase` | `legalName`, `isActive` |
+| API routes | `kebab-case` | `/crm/company`, `/identity/user` |
+| CSS variables | `--kebab-case` | `--sidebar-accent`, `--input-bg` |
 
-### Routes constants
+### Route constants
 
-Prefira constantes tipadas a strings literais espalhadas pelo código:
+Prefer typed constants over literal strings scattered throughout the code:
 
 ```typescript
 // packages/types/routes.ts
@@ -44,7 +44,7 @@ export const ROUTES = {
 
 ## 2. Zod Schema Pattern
 
-O Zod schema é a **fonte única de verdade** para tipos no DB, validação na API e formulários no frontend. Vive em `packages/schemas/<domain>/<resource>.schema.ts`.
+The Zod schema is the **single source of truth** for DB types, API validation and frontend forms. Lives in `packages/schemas/<domain>/<resource>.schema.ts`.
 
 ```typescript
 // packages/schemas/crm/company.schema.ts
@@ -54,7 +54,7 @@ import { z } from 'zod'
 
 export const CompanyTypeEnum = z.enum(['client', 'supplier', 'partner', 'other'])
 
-// ── Base (campos sempre presentes) ────────────────────────────────────────
+// ── Base (always-present fields) ──────────────────────────────────────────
 
 const companyBase = z.object({
   legalName:  z.string().min(2).meta({ label: 'Razão Social' }),
@@ -70,7 +70,7 @@ export const createCompanySchema = companyBase
 
 export const updateCompanySchema = companyBase.partial()
 
-// ── Entidade completa (resposta da API) ───────────────────────────────────
+// ── Full entity (API response) ────────────────────────────────────────────
 
 export const companySchema = companyBase.extend({
   id:        z.string().uuid(),
@@ -78,40 +78,40 @@ export const companySchema = companyBase.extend({
   updatedAt: z.coerce.date(),
 })
 
-// ── Tipos inferidos ───────────────────────────────────────────────────────
+// ── Inferred types ────────────────────────────────────────────────────────
 
 export type Company       = z.infer<typeof companySchema>
 export type CreateCompany = z.infer<typeof createCompanySchema>
 export type UpdateCompany = z.infer<typeof updateCompanySchema>
 ```
 
-### `.meta()` disponíveis
+### Available `.meta()` options
 
-| Propriedade | Tipo | Default | Efeito |
-|-------------|------|---------|--------|
-| `label` | `string` | `camelCase → Title Case` | Rótulo em formulários e colunas |
-| `showInList` | `boolean` | `true` (não-relação, não-senha) | Inclui na `AutoList` |
-| `showInForm` | `boolean` | `true` | Inclui no `AutoForm` |
-| `sortable` | `boolean` | `true` para string/number/date | Ativa sorting na coluna |
-| `widget` | `string` | derivado do tipo Zod | Componente de form: `'textarea'`, `'select'`, `'date'`, etc. |
+| Property | Type | Default | Effect |
+|----------|------|---------|--------|
+| `label` | `string` | `camelCase → Title Case` | Label in forms and columns |
+| `showInList` | `boolean` | `true` (non-relation, non-password) | Includes field in `AutoList` |
+| `showInForm` | `boolean` | `true` | Includes field in `AutoForm` |
+| `sortable` | `boolean` | `true` for string/number/date | Enables column sorting |
+| `widget` | `string` | derived from Zod type | Form component: `'textarea'`, `'select'`, `'date'`, etc. |
 
 ---
 
 ## 3. Adding a New Resource
 
-Checklist mínimo para adicionar um recurso ao ERP. Cada passo cria um artefato; nenhum é opcional.
+Minimum checklist for adding a resource to the ERP. Each step produces an artifact; none are optional.
 
-### Passo 1 — Schema Zod
+### Step 1 — Zod Schema
 
-Crie `packages/schemas/<domain>/<resource>.schema.ts` seguindo o padrão da seção 2. Exporte os tipos em `packages/types/index.ts`.
+Create `packages/schemas/<domain>/<resource>.schema.ts` following the pattern in section 2. Export the types in `packages/types/index.ts`.
 
-### Passo 2 — Prisma model
+### Step 2 — Prisma model
 
-Adicione o model em `apps/api/prisma/schema.prisma`, rode `pnpm prisma migrate dev` e `pnpm prisma generate`.
+Add the model to `apps/api/prisma/schema.prisma`, run `pnpm prisma migrate dev` and `pnpm prisma generate`.
 
-### Passo 3 — Service
+### Step 3 — Service
 
-Crie `apps/api/src/modules/<domain>/<resource>/<resource>.service.ts` extendendo `BaseService`:
+Create `apps/api/src/modules/<domain>/<resource>/<resource>.service.ts` extending `BaseService`:
 
 ```typescript
 @Injectable()
@@ -122,13 +122,13 @@ export class CompanyService extends BaseService<Company, CreateCompany, UpdateCo
 }
 ```
 
-### Passo 4 — Controller & Module
+### Step 4 — Controller & Module
 
-Crie `<resource>.controller.ts` extendendo `BaseController` e `<resource>.module.ts` registrando ambos. Registre o módulo no módulo de domínio (`crm.module.ts`).
+Create `<resource>.controller.ts` extending `BaseController` and `<resource>.module.ts` registering both. Register the module in the domain module (`crm.module.ts`).
 
-### Passo 5 — Frontend
+### Step 5 — Frontend
 
-Crie as páginas `apps/web/src/modules/<domain>/<resource>/page.tsx` e `[id]/page.tsx`. Use `AutoList` e `AutoForm` consumindo o endpoint de metadata:
+Create the pages `apps/web/src/modules/<domain>/<resource>/page.tsx` and `[id]/page.tsx`. Use `AutoList` and `AutoForm` consuming the metadata endpoint:
 
 ```tsx
 // page.tsx
@@ -140,4 +140,4 @@ const { data: metadata } = useMetadata('/crm/company/metadata')
 return <AutoForm metadata={metadata} defaultValues={company} onSubmit={save} />
 ```
 
-Adicione a rota em `ROUTES` (`packages/types/routes.ts`) e o item de navegação no array `NAV` do sidebar.
+Add the route to `ROUTES` (`packages/types/routes.ts`) and the navigation item to the `NAV` array in the sidebar.

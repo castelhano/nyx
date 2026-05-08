@@ -1,6 +1,6 @@
 # ERP Architecture Reference
 
-> Referência autoritativa da arquitetura do sistema. Descreve estrutura, stack, padrões e infraestrutura transversal. Leia este documento antes de escrever código. Para convenções de nomenclatura, schemas e checklists de novo recurso, consulte `conventions.md`.
+> Authoritative reference for the system architecture. Describes structure, stack, patterns and cross-cutting infrastructure. Read this document before writing code. For naming conventions, schemas and new-resource checklists, see `conventions.md`.
 
 ---
 
@@ -8,10 +8,10 @@
 
 | Goal | Description |
 |------|-------------|
-| **Modular & scalable** | Módulos de domínio independentes, separáveis em microserviços sem reescrita |
-| **Convention over configuration** | O framework aplica defaults automaticamente; configuração explícita só quando há desvio |
-| **Maximum automation** | Prisma model + Zod schema + `BaseService` → recurso CRUD completo com API validada, metadata endpoint e UI auto-renderizada |
-| **Type safety end-to-end** | Um único Zod schema é a fonte de verdade para tipos no DB, validação na API e formulários no frontend |
+| **Modular & scalable** | Independent domain modules, extractable into microservices without rewriting |
+| **Convention over configuration** | The framework applies defaults automatically; explicit configuration only when deviating |
+| **Maximum automation** | Prisma model + Zod schema + `BaseService` → full CRUD resource with validated API, metadata endpoint and auto-rendered UI |
+| **Type safety end-to-end** | A single Zod schema is the source of truth for DB types, API validation and frontend forms |
 
 ---
 
@@ -22,7 +22,7 @@ erp-monorepo/
 ├── apps/
 │   ├── api/                        # NestJS backend
 │   │   └── src/
-│   │       ├── core/               # Infraestrutura compartilhada (sem lógica de negócio)
+│   │       ├── core/               # Shared infrastructure (no business logic)
 │   │       │   ├── base.service.ts
 │   │       │   ├── base.controller.ts
 │   │       │   ├── base.types.ts
@@ -34,7 +34,7 @@ erp-monorepo/
 │   │       │   ├── jwt.strategy.ts
 │   │       │   ├── casl.factory.ts
 │   │       │   └── policies.guard.ts
-│   │       └── modules/            # Módulos de domínio de negócio
+│   │       └── modules/            # Business domain modules
 │   │           ├── identity/
 │   │           │   ├── identity.module.ts
 │   │           │   └── user/
@@ -52,13 +52,13 @@ erp-monorepo/
 │   └── web/                        # Next.js frontend
 │       └── src/
 │           ├── lib/
-│           │   └── keywatch/       # Gerenciador de atalhos de teclado
-│           ├── core/               # Infraestrutura frontend compartilhada
+│           │   └── keywatch/       # Keyboard shortcut manager
+│           ├── core/               # Shared frontend infrastructure
 │           │   ├── AutoForm.tsx
 │           │   ├── AutoList.tsx
 │           │   ├── FieldRenderer.tsx
 │           │   └── useMetadata.ts
-│           └── modules/            # Páginas espelhando os módulos da API
+│           └── modules/            # Pages mirroring API modules
 │               ├── identity/
 │               │   └── user/
 │               │       ├── page.tsx
@@ -68,24 +68,24 @@ erp-monorepo/
 │                       ├── page.tsx
 │                       └── [id]/page.tsx
 ├── packages/
-│   ├── schemas/                    # Zod schemas — compartilhados por api e web
+│   ├── schemas/                    # Zod schemas — shared by api and web
 │   │   ├── identity/
 │   │   │   └── user.schema.ts
 │   │   └── crm/
 │   │       └── company.schema.ts
 │   └── types/
-│       └── index.ts                # z.infer<> exports de todos os schemas
+│       └── index.ts                # z.infer<> exports for all schemas
 └── docs/
     ├── architecture/
-    │   ├── ARCHITECTURE.md         # Este arquivo
-    │   ├── conventions.md          # Nomenclatura, schemas, checklists
+    │   ├── ARCHITECTURE.md         # This file
+    │   ├── conventions.md          # Naming, Zod schemas, checklists
     │   └── decisions/              # Architecture Decision Records (ADRs)
     └── user-manual/
         ├── identity/
         └── crm/
 ```
 
-**Regra:** o nome do diretório de um modelo (ex: `company`) determina o prefixo de rota da API (`/crm/company`), o arquivo de schema Zod (`packages/schemas/crm/company.schema.ts`) e o caminho da página frontend (`modules/crm/company/page.tsx`). Nenhuma configuração adicional necessária.
+**Rule:** the directory name of a model (e.g. `company`) determines the API route prefix (`/crm/company`), the Zod schema file (`packages/schemas/crm/company.schema.ts`) and the frontend page path (`modules/crm/company/page.tsx`). No additional configuration required.
 
 ---
 
@@ -95,30 +95,30 @@ erp-monorepo/
 
 | Technology | Role |
 |------------|------|
-| **NestJS** | Framework principal — DI container, módulos, orquestração de rotas |
-| **Prisma ORM** | Acesso ao banco, migrations, queries type-safe |
-| **Zod** | Definição de schemas e validação (compartilhado com o frontend) |
-| **Passport.js / @nestjs/jwt** | Autenticação — estratégia JWT e guards de rota |
-| **CASL** | Autorização baseada em abilities — `can('update', 'Company')` |
+| **NestJS** | Main framework — DI container, modules, route orchestration |
+| **Prisma ORM** | Database access, migrations, type-safe queries |
+| **Zod** | Schema definition and validation (shared with frontend) |
+| **Passport.js / @nestjs/jwt** | Authentication — JWT strategy and route guards |
+| **CASL** | Ability-based authorization — `can('update', 'Company')` |
 
 ### Frontend
 
 | Technology | Role |
 |------------|------|
-| **Next.js (App Router)** | Framework UI — Server Components, Server Actions, roteamento por arquivo |
-| **TanStack Query** | Gerenciamento de estado servidor — cache, sync em background, invalidação |
-| **TanStack Table** | Engine de tabela headless para `AutoList` — sorting, filtering, paginação |
-| **React Hook Form** | Gerenciamento de formulários, integrado ao Zod via `zodResolver` |
-| **Radix UI** | Primitivas de componente acessíveis (Dropdown, Collapsible, Dialog…) |
-| **Shadcn/ui + Tailwind CSS** | Sistema de design — componentes padronizados para todo o ERP |
+| **Next.js (App Router)** | UI framework — Server Components, Server Actions, file-based routing |
+| **TanStack Query** | Server state management — cache, background sync, invalidation |
+| **TanStack Table** | Headless table engine for `AutoList` — sorting, filtering, pagination |
+| **React Hook Form** | Form management, integrated with Zod via `zodResolver` |
+| **Radix UI** | Accessible component primitives (Dropdown, Collapsible, Dialog…) |
+| **Shadcn/ui + Tailwind CSS** | Design system — standardized components across the ERP |
 
 ### Monorepo
 
 | Technology | Role |
 |------------|------|
-| **pnpm workspaces** | Gerenciador de pacotes e orquestração de workspace |
-| **Turborepo** | Pipeline de build, cache de tarefas entre apps e packages |
-| **TypeScript** | Strict mode em todos os apps e packages |
+| **pnpm workspaces** | Package manager and workspace orchestration |
+| **Turborepo** | Build pipeline, task caching across apps and packages |
+| **TypeScript** | Strict mode across all apps and packages |
 
 ---
 
@@ -126,23 +126,23 @@ erp-monorepo/
 
 ### 4.1 Modular Monolith
 
-O código é organizado como **monolito modular**: todos os módulos vivem no mesmo repositório e processo. No caso comum, módulos podem importar serviços uns dos outros diretamente. Para módulos marcados como **extractable** (candidatos a microserviço), regras mais rígidas se aplicam: comunicação via interfaces de serviço, referências cruzadas por ID, sem imports de implementação interna.
+The codebase is organized as a **modular monolith**: all modules live in the same repository and process. In the common case, modules may import each other's services directly. For modules marked as **extractable** (microservice candidates), stricter rules apply: communication via service interfaces, cross-references by ID only, no imports of internal implementation.
 
-### 4.2 Clean Architecture (por módulo)
+### 4.2 Clean Architecture (per module)
 
 ```
 Request → Controller → Service → Prisma → Database
                           ↑
-                    Lógica de negócio aqui apenas
+                    Business logic here only
 ```
 
-- **Controller** — parsing de input, definição de rota, chama service, retorna resposta. Sem lógica de negócio.
-- **Service** — toda a lógica de negócio. Chama Prisma diretamente. Sem conceitos HTTP.
-- **Prisma** — camada de acesso a dados.
+- **Controller** — input parsing, route definition, calls service, returns response. No business logic.
+- **Service** — all business logic. Calls Prisma directly. No HTTP concepts.
+- **Prisma** — data access layer.
 
 ### 4.3 BaseService & BaseController
 
-Todo recurso herda de classes base genéricas que implementam CRUD padrão automaticamente:
+Every resource extends generic base classes that implement standard CRUD automatically:
 
 ```typescript
 abstract class BaseService<T, CreateDTO, UpdateDTO> {
@@ -166,20 +166,20 @@ abstract class BaseController<T, CreateDTO, UpdateDTO> {
 
 ### 4.4 Convention → Configuration
 
-Em cada camada, o sistema verifica: *há configuração explícita?* Se sim, usa. Se não, aplica a convenção:
+At each layer, the system checks: *is there explicit configuration?* If yes, uses it. If not, applies the convention:
 
 | Layer | Convention (default) | Override |
 |-------|---------------------|----------|
-| Route prefix | derivado do caminho do diretório | `@Controller('custom-path')` |
-| Label do campo | `camelCase → Title Case` | `.meta({ label: 'Razão Social' })` |
-| Campo exibido na lista | `true` para não-relação e não-senha | `.meta({ showInList: false })` |
-| Campo exibido no form | `true` | `.meta({ showInForm: false })` |
-| Campo ordenável | `true` para string/number/date | `.meta({ sortable: false })` |
-| Componente do form | derivado do tipo Zod | `.meta({ widget: 'textarea' })` |
+| Route prefix | derived from directory path | `@Controller('custom-path')` |
+| Field label | `camelCase → Title Case` | `.meta({ label: 'Legal Name' })` |
+| Field shown in list | `true` for non-relation, non-password | `.meta({ showInList: false })` |
+| Field shown in form | `true` | `.meta({ showInForm: false })` |
+| Sortable field | `true` for string/number/date | `.meta({ sortable: false })` |
+| Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
 
 ### 4.5 Metadata API
 
-Todo recurso expõe `GET /<domain>/<resource>/metadata`, gerado automaticamente pelo `BaseController` a partir do Zod schema. O frontend consome esse endpoint para renderizar `AutoForm` e `AutoList` sem HTML específico do recurso.
+Every resource exposes `GET /<domain>/<resource>/metadata`, generated automatically by `BaseController` from the Zod schema. The frontend consumes this endpoint to render `AutoForm` and `AutoList` without resource-specific HTML.
 
 ```typescript
 interface ResourceMetadata {
@@ -193,12 +193,12 @@ interface ResourceMetadata {
 
 ### 4.6 AutoForm & AutoList
 
-Componentes de ordem superior que consomem a Metadata API:
+Higher-order components that consume the Metadata API:
 
-- **AutoForm** — itera `fields` com `showInForm: true`, delega cada campo ao `FieldRenderer` que mapeia o tipo Zod para um componente Shadcn. Aplica validação Zod via `zodResolver`.
-- **AutoList** — itera `fields` com `showInList: true` para construir `ColumnDef[]` para TanStack Table. Flags `sortable` e `searchable` ativam sorting e filtros automaticamente. `actions` viram botões verificados pelo CASL.
+- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each field to `FieldRenderer` which maps the Zod type to a Shadcn component. Applies Zod validation via `zodResolver`.
+- **AutoList** — iterates `fields` with `showInList: true` to build `ColumnDef[]` for TanStack Table. `sortable` and `searchable` flags enable sorting and filters automatically. `actions` become CASL-checked buttons.
 
-Os ~20% de recursos que precisam de UI customizada substituem `AutoForm` ou `AutoList` por componentes hand-crafted — o contrato de metadata não impõe seu uso.
+The ~20% of resources that need custom UI replace `AutoForm` or `AutoList` with hand-crafted components — the metadata contract does not enforce its use.
 
 ---
 
@@ -206,17 +206,17 @@ Os ~20% de recursos que precisam de UI customizada substituem `AutoForm` ou `Aut
 
 ### 5.1 `identity`
 
-**Propósito:** gestão de usuários e autenticação.
+**Purpose:** user management and authentication.
 
 `User` — `id`, `name`, `email` (unique), `passwordHash` (hidden), `role` (admin | operator | viewer), `isActive`, `createdAt`, `updatedAt`
 
 Extras: `changePassword(id, dto)`, `deactivate(id)`.
 
-**Auth flow:** `POST /auth/login` → valida credenciais → retorna JWT. Todas as outras rotas exigem o JWT guard. Abilities CASL derivadas de `user.role`.
+**Auth flow:** `POST /auth/login` → validates credentials → returns JWT. All other routes require the JWT guard. CASL abilities derived from `user.role`.
 
 ### 5.2 `crm`
 
-**Propósito:** registros de empresa (cliente/fornecedor/parceiro).
+**Purpose:** company records (customer/supplier/partner).
 
 `Company` — `id`, `legalName`, `tradeName` (nullable), `taxId` (CNPJ, unique), `type` (client | supplier | partner | other), `isActive`, `createdAt`, `updatedAt`
 
@@ -226,54 +226,57 @@ Extras: `deactivate(id)`.
 
 ## 6. Design System
 
-O frontend usa CSS custom properties (HSL) organizadas por camada semântica, definidas em `apps/web/src/app/globals.css` e mapeadas para utilitários Tailwind em `tailwind.config.ts`.
+The frontend uses HSL CSS custom properties organized by semantic layer, defined in `apps/web/src/app/globals.css` and mapped to Tailwind utilities in `tailwind.config.ts`.
 
-### Camadas de tokens
+### Token layers
 
-| Grupo | Tokens | Aplicação |
-|-------|--------|-----------|
-| **App** | `--background`, `--foreground` | body, área principal de conteúdo |
-| **Superfícies** | `--card`, `--popover` (+ foregrounds) | cards/painéis, dropdowns/modais |
-| **Ações** | `--primary`, `--accent`, `--muted`, `--destructive` (+ foregrounds) | botões e estados interativos |
-| **Controles** | `--input-bg`, `--input`, `--ring` | inputs, selects, textareas, foco |
-| **Estrutura** | `--border`, `--radius` | bordas de card, divisores, border-radius global |
-| **Sidebar** | `--sidebar-bg`, `--sidebar-fg`, `--sidebar-border`, `--sidebar-accent`, `--sidebar-accent-fg` | exclusivos da sidebar |
+| Group | Tokens | Usage |
+|-------|--------|-------|
+| **App** | `--background`, `--foreground` | body, main content area |
+| **Surfaces** | `--card`, `--popover` (+ foregrounds) | cards/panels, dropdowns/modals |
+| **Actions** | `--primary`, `--accent`, `--muted`, `--destructive` (+ foregrounds) | buttons and interactive states |
+| **Controls** | `--input-bg`, `--input`, `--ring` | inputs, selects, textareas, focus |
+| **Structure** | `--border`, `--radius` | card borders, dividers, global border-radius |
+| **Sidebar** | `--sidebar-bg`, `--sidebar-fg`, `--sidebar-border`, `--sidebar-accent`, `--sidebar-accent-fg` | sidebar-exclusive tokens |
 
-### Regras críticas
+### Critical rules
 
-- **`--accent`** é a cor de tema substituível pelo usuário — usada em hover de botões ghost/icon (topbar, etc.). Atualmente "Cold Eucalyptus" no dark mode.
-- **`--sidebar-accent`** é um token de elevação estrutural — sempre neutro, independente do tema. Não deve ser igualado ao `--accent`.
-- **`--input`** (borda de controles interativos) deve ter maior contraste que **`--border`** (bordas estruturais passivas). São semanticamente distintos.
-- `--input-bg` é aplicado automaticamente via `@layer base` em `input`, `select` e `textarea`.
+- **`--accent`** is the user-replaceable theme color — used on ghost/icon button hover (topbar, etc.). Currently "Cold Eucalyptus" in dark mode.
+- **`--sidebar-accent`** is a structural elevation token — always neutral, independent of the theme. Must not be equated to `--accent`.
+- **`--input`** (interactive control border) must have higher contrast than **`--border`** (passive structural borders). They are semantically distinct.
+- `--input-bg` is applied automatically via `@layer base` to `input`, `select` and `textarea`.
 
 ---
 
-## 7. Keywatch — Atalhos de Teclado
+## 7. Keywatch — Keyboard Shortcuts
 
-Infraestrutura transversal do frontend para gerenciamento de keyboard shortcuts.
+Cross-cutting frontend infrastructure for keyboard shortcut management.
 
-**Localização:** `apps/web/src/lib/keywatch/`
+**Location:** `apps/web/src/lib/keywatch/`
 
-| Arquivo | Responsabilidade |
-|---------|-----------------|
-| `core.ts` | Registry + matching de eventos, zero DOM — instanciável em qualquer contexto |
-| `context.tsx` | React Provider: registra event listeners, gerencia estado do modal |
-| `use-shortcut.ts` | `useShortcut` e `useShortcutContext` — bind/unbind pelo ciclo de vida do componente |
-| `modal.tsx` | `ShortcutsModal` — lista todos os atalhos ativos com painel de rastreio |
-| `index.ts` | Exports públicos |
+| File | Responsibility |
+|------|---------------|
+| `core.ts` | Registry + event matching, zero DOM — instantiable in any context |
+| `context.tsx` | React Provider: registers event listeners, manages modal state |
+| `use-shortcut.ts` | `useShortcut` and `useShortcutContext` — bind/unbind via component lifecycle |
+| `modal.tsx` | `ShortcutsModal` — lists all active shortcuts with a debug metadata panel |
+| `index.ts` | Public exports |
 
-**Integração:** `KeywatchProvider` envolve o `AppLayout`. Qualquer componente registra atalhos via hook:
+**Integration:** `KeywatchProvider` wraps `AppLayout`. Any component registers shortcuts via hook:
 
 ```tsx
-useShortcut('ctrl+s', save, { desc: 'Salvar', origin: 'ClienteForm' })
-useShortcutContext('modal') // empilha contexto no mount, restaura no unmount
+useShortcut('ctrl+s', save, { desc: 'Save', origin: 'ClientForm' })
+useShortcut('alt+n',  openNew, { desc: 'New', icon: PlusCircle, origin: 'List', context: 'all' })
+useShortcutContext('modal') // pushes context on mount, restores on unmount
 ```
 
-**`Alt+K`** abre o modal com todos os atalhos do contexto atual.
+**`useShortcut` options:** `desc` (modal label), `icon` (React component — e.g. Lucide icon), `origin` (source identifier), `context` (`'default'` | `'all'` | custom), `order` (modal ordering), `group` (collective cleanup), `preventDefault`, `enabled`.
 
-**Comportamento em inputs (composed pattern):** quando o cursor está em um campo de formulário, o atalho não dispara imediatamente — fica pendente até que uma tecla de confirmação (`;` por padrão) seja pressionada, evitando acionamentos acidentais ao digitar.
+**`Alt+K`** opens the modal listing all shortcuts for the current context.
 
-**Contextos:** atalhos podem ser escopados por contexto (ex: `'default'`, `'modal'`). O contexto `'all'` responde sempre, independente do contexto ativo.
+**Input behavior (composed pattern):** when the cursor is in a form field, the shortcut does not fire immediately — it stays pending until a confirmation key (`;` by default) is pressed, preventing accidental triggers while typing.
+
+**Contexts:** shortcuts can be scoped by context (e.g. `'default'`, `'modal'`). The `'all'` context always responds, regardless of the active context.
 
 ---
 
@@ -282,8 +285,8 @@ useShortcutContext('modal') // empilha contexto no mount, restaura no unmount
 ```
 docs/
 ├── architecture/
-│   ├── ARCHITECTURE.md     # Este arquivo — visão geral da arquitetura
-│   ├── conventions.md      # Nomenclatura, schemas Zod, checklist de novo recurso
+│   ├── ARCHITECTURE.md     # This file — architecture overview
+│   ├── conventions.md      # Naming, Zod schemas, new resource checklist
 │   └── decisions/          # Architecture Decision Records (ADRs)
 │       └── ADR-001-monorepo.md
 └── user-manual/
@@ -293,4 +296,4 @@ docs/
         └── companies.md
 ```
 
-**ADRs** seguem o formato: contexto → decisão → consequências. Crie um para cada escolha arquitetural significativa.
+**ADRs** follow the format: context → decision → consequences. Create one for each significant architectural choice.
