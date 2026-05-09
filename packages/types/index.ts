@@ -48,6 +48,12 @@ export interface MetadataField {
   width?: string
   resource?: string
   labelField?: string
+  group?: string
+}
+
+export interface TabGroup {
+  label:  string
+  fields: string[]
 }
 
 export interface ResourceAction {
@@ -66,11 +72,12 @@ export interface ResourcePermissions {
 }
 
 export interface ResourceMetadata {
-  resource: string
-  label: string
+  resource:    string
+  label:       string
   labelPlural: string
-  nameField: string
+  nameField:   string
   permissions: ResourcePermissions
-  fields: MetadataField[]
-  actions: ResourceAction[]
+  fields:      MetadataField[]
+  actions:     ResourceAction[]
+  groups?:     TabGroup[]
 }

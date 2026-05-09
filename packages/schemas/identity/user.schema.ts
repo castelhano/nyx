@@ -1,17 +1,27 @@
 import { z } from 'zod'
 import '../zod-meta'
+import { withMeta } from '../with-meta'
 
-export const userSchema = z.object({
-  id:           z.string().uuid(),
-  name:         z.string().min(2).meta({ label: 'Nome', showInList: true, placeholder: 'Nome completo' }),
-  username:     z.string().min(3).meta({ label: 'Username', showInList: true, searchable: true, placeholder: 'Username' }),
-  email:        z.string().email().nullable().optional().meta({ label: 'E-mail', showInList: false, placeholder: 'email@domain.com' }),
-  passwordHash: z.string().meta({ showInList: false, showInForm: false }),
-  role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', showInList: true, width: 'w-full md:w-60' }),
-  isActive:     z.boolean().default(true).meta({ label: 'Ativo', showInList: true }),
-  createdAt:    z.date().meta({ showInForm: false }),
-  updatedAt:    z.date().meta({ showInForm: false }),
-})
+export const userSchema = withMeta(
+  z.object({
+    id:           z.string().uuid(),
+    name:         z.string().min(2).meta({ label: 'Nome', showInList: true, placeholder: 'Nome completo' }),
+    username:     z.string().min(3).meta({ label: 'Username', showInList: true, searchable: true, placeholder: 'Username' }),
+    email:        z.string().email().nullable().optional().meta({ label: 'E-mail', showInList: false, placeholder: 'email@domain.com' }),
+    passwordHash: z.string().meta({ showInList: false, showInForm: false }),
+    role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', showInList: true, width: 'w-full md:w-60' }),
+    isActive:     z.boolean().default(true).meta({ label: 'Ativo', showInList: true }),
+    createdAt:    z.date().meta({ showInForm: false }),
+    updatedAt:    z.date().meta({ showInForm: false }),
+  }),
+  {
+    label:       'Usuário',
+    labelPlural: 'Usuários',
+    groups: {
+      'Acesso':       ['role', 'isActive'],
+    },
+  },
+)
 
 export const createUserSchema = userSchema
   .omit({ id: true, createdAt: true, updatedAt: true, passwordHash: true })

@@ -2,7 +2,7 @@ import {
   ZodType, ZodObject, ZodString, ZodNumber, ZodBoolean,
   ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault,
 } from 'zod'
-import type { ResourceMetadata, MetadataField } from '@nyx/types'
+import type { ResourceMetadata, MetadataField, TabGroup } from '@nyx/types'
 
 function unwrap(field: ZodType): ZodType {
   if (field instanceof ZodOptional || field instanceof ZodNullable || field instanceof ZodDefault) {
@@ -30,7 +30,18 @@ function toTitleCase(str: string): string {
 }
 
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
-  const schemaMeta = (schema as any)._fieldMeta ?? {}
+  const schemaMeta = (schema as any)._schemaMeta ?? (schema as any)._fieldMeta ?? {}
+
+  const rawGroups = schemaMeta.groups as Record<string, string[]> | undefined
+  const fieldGroupMap = new Map<string, string>()
+  if (rawGroups) {
+    for (const [tabLabel, fieldNames] of Object.entries(rawGroups)) {
+      for (const fieldName of fieldNames) {
+        fieldGroupMap.set(fieldName, tabLabel)
+      }
+    }
+  }
+
   const fields: MetadataField[] = []
 
   for (const [name, rawField] of Object.entries(schema.shape)) {
@@ -53,20 +64,25 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
       sortable:   meta.sortable   ?? (['string', 'number', 'date', 'enum'] as string[]).includes(type),
       searchable: meta.searchable ?? false,
-      ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
-      ...(meta.helpText    ? { helpText:    meta.helpText }    : {}),
-      ...(meta.mask        ? { mask:        meta.mask }        : {}),
-      ...(meta.widget      ? { widget:      meta.widget }      : {}),
-      ...(meta.width       ? { width:       meta.width }       : {}),
-      ...(meta.resource    ? { resource:    meta.resource }    : {}),
-      ...(meta.labelField  ? { labelField:  meta.labelField }  : {}),
+      ...(meta.placeholder         ? { placeholder: meta.placeholder }         : {}),
+      ...(meta.helpText            ? { helpText:    meta.helpText }             : {}),
+      ...(meta.mask                ? { mask:        meta.mask }                 : {}),
+      ...(meta.widget              ? { widget:      meta.widget }               : {}),
+      ...(meta.width               ? { width:       meta.width }                : {}),
+      ...(meta.resource            ? { resource:    meta.resource }             : {}),
+      ...(meta.labelField          ? { labelField:  meta.labelField }           : {}),
+      ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
     })
   }
 
-  const defaultLabel  = toTitleCase(resource)
-  const label         = schemaMeta.label       ?? defaultLabel
-  const labelPlural   = schemaMeta.labelPlural ?? `${label}s`
-  const nameField     = schemaMeta.nameField   ?? 'name'
+  const defaultLabel = toTitleCase(resource)
+  const label        = schemaMeta.label       ?? defaultLabel
+  const labelPlural  = schemaMeta.labelPlural ?? `${label}s`
+  const nameField    = schemaMeta.nameField   ?? 'name'
+
+  const groups: TabGroup[] | undefined = rawGroups
+    ? Object.keys(rawGroups).map((tabLabel) => ({ label: tabLabel, fields: rawGroups[tabLabel] }))
+    : undefined
 
   return {
     resource,
@@ -75,6 +91,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     nameField,
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
-    actions:     [],
+    actions: [],
+    ...(groups ? { groups } : {}),
   }
 }
