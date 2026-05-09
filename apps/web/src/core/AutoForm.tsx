@@ -20,13 +20,17 @@ export function AutoForm({ domain, resource, defaultValues, onSubmit, formId, re
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ defaultValues })
 
+  const visibleFields = meta?.fields.filter((f) => f.showInForm) ?? []
+
   useEffect(() => { if (defaultValues) reset(defaultValues) }, [JSON.stringify(defaultValues)])
-  useEffect(() => { if (resetSignal) reset(defaultValues ?? {}) }, [resetSignal])
+  useEffect(() => {
+    if (!resetSignal || !meta) return
+    const empty = Object.fromEntries(visibleFields.map(f => [f.name, '']))
+    reset(defaultValues ?? empty)
+  }, [resetSignal])
 
   if (isLoading) return <div className="text-sm text-gray-500">Loading form…</div>
   if (!meta) return null
-
-  const visibleFields = meta.fields.filter((f) => f.showInForm)
 
   function fieldGrid(fields: MetadataField[], autoFocusFirst = false) {
     return (

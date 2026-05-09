@@ -10,7 +10,15 @@
       "Bash(python3 -m json.tool)",
       "Bash(curl -s http://localhost:3001/identity/users/metadata)",
       "Bash(fuser -k 3000/tcp 3001/tcp 3002/tcp)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(pnpm --filter @nyx/api add @prisma/client@^7 @prisma/adapter-libsql @libsql/client)",
+      "Bash(pnpm --filter @nyx/api add -D prisma@^7 dotenv)",
+      "Bash(nvm ls *)",
+      "Bash(fnm ls *)",
+      "Bash(volta list *)",
+      "Bash(apt list *)",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

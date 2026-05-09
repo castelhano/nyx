@@ -109,7 +109,7 @@ erp-monorepo/
 | Technology | Role |
 |------------|------|
 | **NestJS** | Main framework — DI container, modules, route orchestration |
-| **Prisma ORM** | Database access, migrations, type-safe queries |
+| **Prisma ORM 7** | Database access, migrations, type-safe queries — Rust-free, LibSQL adapter |
 | **Zod** | Schema definition and validation (shared with frontend) |
 | **Passport.js / @nestjs/jwt** | Authentication — JWT strategy and route guards |
 | **CASL** | Ability-based authorization — `can('update', 'Company')` |
@@ -131,6 +131,7 @@ erp-monorepo/
 | **pnpm workspaces** | Package manager and workspace orchestration |
 | **Turborepo** | Build pipeline, task caching across apps and packages |
 | **TypeScript** | Strict mode across all apps and packages |
+| **Node.js >= 22.12** | Minimum version required by Prisma 7 |
 
 ---
 
@@ -140,7 +141,28 @@ erp-monorepo/
 
 The codebase is organized as a **modular monolith**: all modules live in the same repository and process. In the common case, modules may import each other's services directly. For modules marked as **extractable** (microservice candidates), stricter rules apply: communication via service interfaces, cross-references by ID only, no imports of internal implementation.
 
-### 4.2 Clean Architecture (per module)
+### 4.2 Prisma Setup
+
+The project uses **Prisma ORM 7** with the LibSQL (SQLite) driver adapter. Key files:
+
+| File | Role |
+|------|------|
+| `apps/api/prisma/schema.prisma` | Data model and generator config. No connection URL — moved to config file. |
+| `apps/api/prisma.config.ts` | Prisma CLI config: datasource URL, LibSQL adapter for migrations, seed script. |
+| `apps/api/src/generated/prisma/` | Generated Prisma Client — gitignored, rebuilt by `pnpm db:migrate` or `pnpm db:generate`. |
+| `apps/api/src/prisma/prisma.service.ts` | NestJS service that extends `PrismaClient`, injected globally via `PrismaModule`. |
+
+**Why LibSQL?** Prisma 7 replaced its Rust query engine with a TypeScript-native driver adapter layer. For SQLite, the adapter is `@prisma/adapter-libsql`, which reduces bundle size by ~90% and improves query performance.
+
+**Workflow after changing the schema:**
+
+```bash
+pnpm db:migrate   # from apps/api/ — applies migration + regenerates client
+```
+
+---
+
+### 4.3 Clean Architecture (per module)
 
 ```
 Request → Controller → Service → Prisma → Database
@@ -152,7 +174,7 @@ Request → Controller → Service → Prisma → Database
 - **Service** — all business logic. Calls Prisma directly. No HTTP concepts.
 - **Prisma** — data access layer.
 
-### 4.3 BaseService & BaseController
+### 4.4 BaseService & BaseController
 
 Every resource extends generic base classes that implement standard CRUD automatically:
 
@@ -176,7 +198,7 @@ abstract class BaseController<T, CreateDTO, UpdateDTO> {
 }
 ```
 
-### 4.4 Convention → Configuration
+### 4.5 Convention → Configuration
 
 At each layer, the system checks: *is there explicit configuration?* If yes, uses it. If not, applies the convention:
 
@@ -194,7 +216,7 @@ At each layer, the system checks: *is there explicit configuration?* If yes, use
 | Field help text | none | `.meta({ helpText: 'Texto de ajuda abaixo do campo' })` |
 | Field width | `w-full` (fills grid column) | `.meta({ width: 'w-48' })` — any Tailwind width class |
 
-### 4.5 Metadata API
+### 4.6 Metadata API
 
 Every resource exposes `GET /<domain>/<resource>/metadata`, generated automatically by `BaseController` from the Zod schema. The frontend consumes this endpoint to render `AutoForm` and `AutoList` without resource-specific HTML.
 
@@ -212,7 +234,7 @@ interface ResourceMetadata {
 
 `label`, `labelPlural` and `nameField` are read from `schema._fieldMeta` (set via `schema.meta({...})`); all fall back to convention if not declared. `useMetadata` caches the response with `staleTime: Infinity` in production and `staleTime: 0` in development.
 
-### 4.6 AutoForm, AutoList & AutoBreadcrumb
+### 4.7 AutoForm, AutoList & AutoBreadcrumb
 
 Higher-order components that consume the Metadata API:
 

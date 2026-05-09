@@ -54,10 +54,11 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
   }
 
   protected buildSearchWhere(search: string) {
+    const s = search.toLowerCase()
     return {
       OR: [
-        { name:     { contains: search, mode: 'insensitive' as const } },
-        { username: { contains: search, mode: 'insensitive' as const } },
+        { name:     { contains: s } },
+        { username: { contains: s } },
       ],
     }
   }

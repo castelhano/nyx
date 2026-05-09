@@ -1,109 +1,165 @@
 # Nyx
 
-Monorepo full-stack com NestJS (API) e Next.js (Web), gerenciado via pnpm workspaces e Turborepo.
+Full-stack monorepo with NestJS (API) and Next.js (Web), managed via pnpm workspaces and Turborepo.
 
-## Estrutura
+## Structure
 
 ```
 nyx/
 ├── apps/
-│   ├── api/        # NestJS + Prisma (backend)
+│   ├── api/        # NestJS + Prisma 7 + SQLite (backend)
 │   └── web/        # Next.js 14 + Tailwind (frontend)
 ├── packages/
-│   ├── schemas/    # Schemas Zod compartilhados
-│   └── types/      # Tipos TypeScript compartilhados
-└── docs/           # Documentação de arquitetura e uso
+│   ├── schemas/    # Shared Zod schemas
+│   └── types/      # Shared TypeScript types
+└── docs/           # Architecture and user documentation
 ```
 
-## Pré-requisitos
+## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 20
-- [pnpm](https://pnpm.io/) >= 10 — instale com `npm install -g pnpm`
+- [Node.js](https://nodejs.org/) >= 22.12 — required by Prisma 7
+- [pnpm](https://pnpm.io/) >= 10 — install with `npm install -g pnpm`
 
-## Configuração do ambiente (primeiro uso)
+## First-time setup
 
-### 1. Instalar dependências
+### 1. Install dependencies
 
 ```bash
 pnpm install
 ```
 
-### 2. Configurar variáveis de ambiente da API
+### 2. Configure environment variables
 
 ```bash
 cp apps/api/.env.example apps/api/.env
 ```
 
-Edite `apps/api/.env` e ajuste os valores:
+Edit `apps/api/.env`:
 
 ```env
-DATABASE_URL="file:./dev.db"   # caminho do banco SQLite (desenvolvimento)
-JWT_SECRET="troque-em-producao" # segredo para assinar tokens JWT
+DATABASE_URL="file:./dev.db"        # SQLite file path (development)
+JWT_SECRET="change-in-production"   # secret used to sign JWT tokens
 ```
 
-Para gerar um `JWT_SECRET` forte é possivel usar o próprio Node.js (funciona no Linux e no Windows):
+To generate a strong `JWT_SECRET`:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-> **Importante:** nunca comite o arquivo `.env`. Ele já está no `.gitignore`.
+> **Important:** never commit `.env`. It is already listed in `.gitignore`.
 
-### 3. Criar o banco de dados e aplicar migrations
+### 3. Apply migrations and generate the Prisma client
 
 ```bash
 cd apps/api
-pnpm exec prisma migrate dev
+pnpm db:migrate
 ```
-> 🛈 -- Essa etapa já executa o db:seed, populando banco com dados iniciais
+
+> `db:migrate` runs `prisma migrate dev && prisma generate`. The generated client (`src/generated/prisma/`) is gitignored and must always be built locally — it is never committed to the repository.
+>
+> In Prisma 7, `migrate dev` no longer runs the seed automatically. You must seed manually (step 4).
+
+### 4. Seed the database
+
 ```bash
 cd apps/api
 pnpm db:seed
 ```
 
-Isso cria o usuário administrador padrão:
+This creates the default administrator account:
 
-| Campo    | Valor     |
+| Field    | Value     |
 |----------|-----------|
 | username | `admin`   |
-| senha    | `admin123` |
+| password | `admin123` |
 
-> Troque a senha após o primeiro login.
+> Change the password after the first login.
 
-### 4. Iniciar o ambiente de desenvolvimento
+### 5. Start the development environment
 
-A partir da raiz do monorepo:
+From the monorepo root:
 
 ```bash
 pnpm dev
 ```
 
-Isso inicia em paralelo via Turbo:
+Turbo starts both apps in parallel:
 
-| App | URL padrão            |
+| App | Default URL           |
 |-----|-----------------------|
-| API | http://localhost:3000 |
-| Web | http://localhost:3001 |
+| Web | http://localhost:3000 |
+| API | http://localhost:3001 |
 
-## Scripts disponíveis
+---
 
-| Comando       | Descrição                                  |
-|---------------|--------------------------------------------|
-| `pnpm dev`    | Inicia todos os apps em modo desenvolvimento |
-| `pnpm build`  | Compila todos os apps para produção         |
-| `pnpm lint`   | Executa o linter em todos os workspaces     |
+## Setting up on another machine / after a major upgrade
 
-### Scripts específicos da API (`apps/api/`)
+> **Recommended approach: clone fresh.** The SQLite database is gitignored and recreated by the seed, so there is nothing to lose by starting clean.
 
-| Comando                       | Descrição                           |
-|-------------------------------|-------------------------------------|
-| `pnpm exec prisma migrate dev` | Aplica migrations e sincroniza o schema |
-| `pnpm exec prisma studio`      | Abre o Prisma Studio (GUI do banco) |
-| `pnpm db:seed`                 | Popula o banco com dados iniciais   |
-| `pnpm build`                   | Compila o NestJS para produção      |
+### 1. Prerequisites
 
-## Tecnologias
+Ensure **Node.js >= 22.12** is installed (required by Prisma 7). To upgrade on Ubuntu/Debian:
 
-- **Backend:** NestJS · Prisma ORM · SQLite (dev) · JWT · CASL (autorização)
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version   # should print v22.x.x
+```
+
+### 2. Clone and set up
+
+```bash
+git clone <repository-url>
+cd nyx
+pnpm install
+cp apps/api/.env.example apps/api/.env   # then edit DATABASE_URL and JWT_SECRET
+cd apps/api
+pnpm db:migrate   # creates the database, applies migrations, generates Prisma client
+pnpm db:seed      # creates the admin user
+```
+
+### If you prefer to update an existing clone
+
+```bash
+git pull
+pnpm install          # picks up new dependencies (Prisma 7, libsql adapter, etc.)
+cd apps/api
+pnpm db:migrate       # applies any new migrations and regenerates the client
+```
+
+> The generated Prisma client (`src/generated/prisma/`) is gitignored — `db:migrate` always rebuilds it. Never copy it manually between machines.
+
+---
+
+## Available scripts
+
+### Root (monorepo)
+
+| Command      | Description                              |
+|--------------|------------------------------------------|
+| `pnpm dev`   | Start all apps in development mode       |
+| `pnpm build` | Build all apps for production            |
+| `pnpm lint`  | Run the linter across all workspaces     |
+
+### API (`apps/api/`)
+
+Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
+
+| Command           | Description                                          |
+|-------------------|------------------------------------------------------|
+| `pnpm db:migrate` | Apply pending migrations and regenerate Prisma client |
+| `pnpm db:push`    | Push schema changes without a migration file (prototyping only) |
+| `pnpm db:generate`| Regenerate the Prisma client after manual schema edits |
+| `pnpm db:seed`    | Populate the database with initial data              |
+| `pnpm build`      | Compile NestJS for production                        |
+
+> `db:migrate` chains `prisma migrate dev && prisma generate` because Prisma 7 no longer runs `generate` automatically after migrations.
+
+---
+
+## Tech stack
+
+- **Backend:** NestJS · Prisma ORM 7 · SQLite (dev) · JWT · CASL (authorization)
 - **Frontend:** Next.js 14 · React 18 · Tailwind CSS · TanStack Query/Table · React Hook Form · Zod
 - **Tooling:** pnpm workspaces · Turborepo · TypeScript 5

@@ -107,7 +107,17 @@ Create `packages/schemas/<domain>/<resource>.schema.ts` following the pattern in
 
 ### Step 2 — Prisma model
 
-Add the model to `apps/api/prisma/schema.prisma`, run `pnpm prisma migrate dev` and `pnpm prisma generate`.
+Add the model to `apps/api/prisma/schema.prisma`, then run from `apps/api/`:
+
+```bash
+pnpm db:migrate   # prisma migrate dev + prisma generate (chained — Prisma 7 no longer auto-generates)
+```
+
+To prototype without a migration file (dev only):
+
+```bash
+pnpm db:push      # prisma db push + prisma generate
+```
 
 ### Step 3 — Service
 

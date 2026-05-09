@@ -1,7 +1,10 @@
-import { PrismaClient } from '@prisma/client'
+import 'dotenv/config'
+import { PrismaClient } from '../src/generated/prisma'
+import { PrismaLibSql } from '@prisma/adapter-libsql'
 import * as bcrypt from 'bcrypt'
 
-const prisma = new PrismaClient()
+const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
+const prisma  = new PrismaClient({ adapter })
 
 async function main() {
   const existing = await prisma.user.findUnique({ where: { username: 'admin' } })

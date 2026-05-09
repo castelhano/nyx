@@ -15,11 +15,12 @@ export class CompanyService extends BaseService<Company, CreateCompanyDto, Updat
   }
 
   protected buildSearchWhere(search: string) {
+    const s = search.toLowerCase()
     return {
       OR: [
-        { legalName: { contains: search, mode: 'insensitive' as const } },
-        { tradeName: { contains: search, mode: 'insensitive' as const } },
-        { taxId:     { contains: search, mode: 'insensitive' as const } },
+        { legalName: { contains: s } },
+        { tradeName: { contains: s } },
+        { taxId:     { contains: s } },
       ],
     }
   }

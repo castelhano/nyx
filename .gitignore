@@ -5,6 +5,9 @@ node_modules
 dist
 .next
 
+# prisma generated client
+**/src/generated/
+
 # sqlite
 *.db
 *.db-journal
