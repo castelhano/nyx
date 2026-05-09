@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { Save } from 'lucide-react'
+import { Save, ArrowLeft } from 'lucide-react'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
@@ -11,7 +11,6 @@ import { apiFetch } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
-import { ArrowLeft } from 'lucide-react'
 
 const FORM_ID = 'record-form'
 

@@ -1,22 +1,39 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { Plus, ArrowLeft } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
+import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
-import { ArrowLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default function ResourceListPage({ params }: { params: { domain: string; resource: string } }) {
   const { domain, resource } = params
-  const router = useRouter()
+  const router  = useRouter()
   const { data: meta } = useMetadata(domain, resource)
 
-  useShortcut('alt+v', () => router.push('/'), {
-    desc:    'Voltar',
-    icon:    ArrowLeft,
-    origin:  'apps/web/src/app/[domain]/[resource]/page',
-    context: 'all',
+  const newPath = `/${domain}/${resource}/new`
+
+  useTopbarActions(
+    <Button onClick={() => router.push(newPath)} size="sm">
+      <Plus className="w-3.5 h-3.5" />
+      Novo
+    </Button>,
+    [],
+  )
+
+  useShortcut('alt+n', () => router.push(newPath), {
+    desc:   'Novo registro',
+    icon:   Plus,
+    origin: 'apps/web/src/app/[domain]/[resource]/page',
+  })
+
+  useShortcut('alt+v', () => router.push(`/${domain}`), {
+    desc:   'Voltar',
+    icon:   ArrowLeft,
+    origin: 'apps/web/src/app/[domain]/[resource]/page',
   })
 
   return (
@@ -27,7 +44,6 @@ export default function ResourceListPage({ params }: { params: { domain: string;
         domain={domain}
         resource={resource}
         onEdit={(id) => router.push(`/${domain}/${resource}/${id}`)}
-        onNew={() => router.push(`/${domain}/${resource}/new`)}
       />
     </div>
   )

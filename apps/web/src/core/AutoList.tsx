@@ -4,16 +4,14 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMetadata } from './useMetadata'
 import { apiFetch } from '@/lib/auth'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Plus, SquarePen } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, SquarePen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useShortcut } from '@/lib/keywatch'
 import type { MetadataField, PaginatedResult } from '@nyx/types'
 
 interface Props {
   domain:   string
   resource: string
   onEdit?:  (id: string) => void
-  onNew?:   () => void
 }
 
 function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' }) {
@@ -22,20 +20,13 @@ function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' })
   return                        <ChevronDown    className="w-3 h-3 text-ring" />
 }
 
-export function AutoList({ domain, resource, onEdit, onNew }: Props) {
+export function AutoList({ domain, resource, onEdit }: Props) {
   const [page, setPage]           = useState(1)
   const [search, setSearch]       = useState('')
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
 
   const { data: meta } = useMetadata(domain, resource)
-
-  useShortcut('alt+n', () => onNew?.(), {
-    desc:    'Novo registro',
-    icon:    Plus,
-    origin:  'apps/web/src/core/AutoList',
-    enabled: !!onNew,
-  })
 
   const { data, isLoading } = useQuery<PaginatedResult<Record<string, unknown>>>({
     queryKey: [domain, resource, page, search, sortField, sortOrder],
@@ -70,20 +61,13 @@ export function AutoList({ domain, resource, onEdit, onNew }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <input
-          type="search"
-          placeholder="Pesquisa"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          className="border rounded px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        {onNew && (
-          <Button onClick={onNew} size="icon">
-            <Plus className="w-4 h-4" />
-          </Button>
-        )}
-      </div>
+      <input
+        type="search"
+        placeholder="Pesquisa"
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+        className="border rounded px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-ring"
+      />
       {isLoading ? (
         <div className="text-sm text-gray-500">Loading…</div>
       ) : (

@@ -69,12 +69,14 @@ erp-monorepo/
 │           │   ├── AutoBreadcrumb.tsx
 │           │   ├── FieldRenderer.tsx
 │           │   ├── useMetadata.ts
-│           │   └── domains.ts      # domain label map (identity → "Identidade")
+│           │   └── domains.ts      # domain registry (label, icon, resources)
 │           └── app/                # Next.js App Router
+│               ├── page.tsx                    # home — domain selection
 │               ├── [domain]/
+│               │   ├── page.tsx                # domain dashboard
 │               │   └── [resource]/
-│               │       ├── page.tsx        # list — handles any resource
-│               │       └── [id]/page.tsx   # form — handles any resource
+│               │       ├── page.tsx            # list — handles any resource
+│               │       └── [id]/page.tsx       # form — handles any resource
 │               └── login/page.tsx
 ├── packages/
 │   ├── schemas/                    # Zod schemas — shared by api and web
@@ -93,6 +95,8 @@ erp-monorepo/
         ├── identity/
         └── crm/
 ```
+
+**Navigation hierarchy:** `/ (home)` → `/{domain} (dashboard)` → `/{domain}/{resource} (list)` → `/{domain}/{resource}/{id} (form)`. The breadcrumb follows this path exactly; `Alt+V` navigates up one level at each page.
 
 **Rule:** the directory name of a model (e.g. `company`) determines the API route prefix (`/crm/company`) and the Zod schema file (`packages/schemas/crm/company.schema.ts`). The frontend is handled automatically by the dynamic routes `[domain]/[resource]` — no page files required. To override with custom UI for a specific resource, create `app/<domain>/<resource>/page.tsx`; Next.js will prefer the static route over the dynamic one.
 
@@ -371,7 +375,27 @@ useTopbarActions(node: ReactNode, deps: DependencyList)
 
 Sets the topbar slot on mount and whenever `deps` changes. Clears the slot on unmount. The `deps` array follows the same convention as `useEffect` — list every value the `node` closes over that can change.
 
-**Standard usage — form detail page:**
+**Standard usage — list page (New record):**
+
+```tsx
+const newPath = `/${domain}/${resource}/new`
+
+useTopbarActions(
+  <Button onClick={() => router.push(newPath)} size="sm">
+    <Plus className="w-3.5 h-3.5" />
+    Novo
+  </Button>,
+  [],
+)
+
+useShortcut('alt+n', () => router.push(newPath), {
+  desc:   'Novo registro',
+  icon:   Plus,
+  origin: 'apps/web/src/app/[domain]/[resource]/page',
+})
+```
+
+**Standard usage — form detail page (Save):**
 
 ```tsx
 const FORM_ID = 'record-form'
@@ -387,10 +411,12 @@ useTopbarActions(
 
 useShortcut('alt+g', () => {
   (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-}, { desc: 'Salvar registro', context: 'all' })
+}, { desc: 'Salvar registro', origin: '...' })
 ```
 
 `AutoForm` is passed `formId={FORM_ID}`, which sets `id` on `<form>` and hides its internal submit button. The topbar button submits the form via HTML5's `form` attribute; `alt+g` calls `requestSubmit()` programmatically — both trigger react-hook-form's `handleSubmit` and its validation.
+
+**Rule:** primary page actions (New, Save, etc.) always live in the topbar — never inline inside `AutoList`, `AutoForm`, or other core components. The topbar is the single canonical location for page-level action buttons.
 
 ---
 

@@ -7,66 +7,45 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import * as Collapsible from '@radix-ui/react-collapsible'
 import {
   LogOut, User, KeyRound, ChevronsUpDown, ChevronRight,
-  Shield, Users, Building2, Building, PanelLeft,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { cn, getUserFromToken } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
 import { useSidebar } from './sidebar-context'
-import { useShortcut } from '@/lib/keywatch'
+import { domains } from '@/core/domains'
 
-const SIDEBAR_WIDTH = 240
+const SIDEBAR_WIDTH           = 240
 const SIDEBAR_COLLAPSED_WIDTH = 56
 
-type NavItem   = { label: string; href: string; icon: LucideIcon }
-type NavModule = { key: string; label: string; icon: LucideIcon; href: string; items: NavItem[] }
-
-const NAV: NavModule[] = [
-  {
-    key: 'identity',
-    label: 'Identity',
-    icon: Shield,
-    href: '/identity/user',
-    items: [
-      { label: 'Usuários', href: '/identity/user', icon: Users },
-    ],
-  },
-  {
-    key: 'crm',
-    label: 'CRM',
-    icon: Building2,
-    href: '/crm/company',
-    items: [
-      { label: 'Empresas', href: '/crm/company', icon: Building },
-    ],
-  },
-]
+const NAV = Object.entries(domains).map(([key, config]) => ({
+  key,
+  label: config.label,
+  icon:  config.icon,
+  href:  `/${key}`,
+  items: config.resources.map((r) => ({
+    label: r.label,
+    href:  `/${key}/${r.key}`,
+    icon:  r.icon,
+  })),
+}))
 
 export function Sidebar() {
-  const { isOpen, toggle } = useSidebar()
+  const { isOpen } = useSidebar()
 
-  useShortcut("ctrl+'", toggle, {
-    desc: 'Toggle sidebar',
-    origin: 'apps.web.src.components.layout.sidebar',
-    icon: PanelLeft,
-    order: 1,
-    context: 'default',
-  })
-  const router = useRouter()
+  const router   = useRouter()
   const pathname = usePathname()
-  const [user, setUser] = useState<{ username: string; role: string } | null>(null)
+  const [user, setUser]       = useState<{ username: string; role: string } | null>(null)
   const [mounted, setMounted] = useState(false)
   const [openModules, setOpenModules] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     setMounted(true)
     setUser(getUserFromToken())
-    const active = NAV.find(m => pathname.startsWith(`/${m.key}`))
+    const active = NAV.find((m) => pathname.startsWith(`/${m.key}`))
     if (active) setOpenModules(new Set([active.key]))
   }, [])
 
   function toggleModule(key: string) {
-    setOpenModules(prev => {
+    setOpenModules((prev) => {
       const next = new Set(prev)
       next.has(key) ? next.delete(key) : next.add(key)
       return next
@@ -100,7 +79,7 @@ export function Sidebar() {
         <div className="flex-1 overflow-y-auto py-2">
           {isOpen ? (
             <nav className="flex flex-col gap-0.5 px-2">
-              {NAV.map(mod => {
+              {NAV.map((mod) => {
                 const isModActive = pathname.startsWith(`/${mod.key}`)
                 const isExpanded  = openModules.has(mod.key)
 
@@ -110,7 +89,6 @@ export function Sidebar() {
                     open={isExpanded}
                     onOpenChange={() => toggleModule(mod.key)}
                   >
-                    {/* Module row — button group */}
                     <div className={cn(
                       'flex items-center rounded-md overflow-hidden transition-colors',
                       isModActive
@@ -135,10 +113,9 @@ export function Sidebar() {
                       </Collapsible.Trigger>
                     </div>
 
-                    {/* Sub-items */}
                     <Collapsible.Content>
                       <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3">
-                        {mod.items.map(item => {
+                        {mod.items.map((item) => {
                           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                           return (
                             <Link
@@ -164,9 +141,8 @@ export function Sidebar() {
               })}
             </nav>
           ) : (
-            /* Icon-only mode */
             <nav className="flex flex-col items-center gap-1 px-2 py-1">
-              {NAV.map(mod => {
+              {NAV.map((mod) => {
                 const isModActive = pathname.startsWith(`/${mod.key}`)
                 return (
                   <Link
