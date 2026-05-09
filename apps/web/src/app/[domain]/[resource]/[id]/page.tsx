@@ -11,6 +11,7 @@ import { apiFetch } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
+import { ArrowLeft } from 'lucide-react'
 
 const FORM_ID = 'record-form'
 
@@ -43,12 +44,19 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { 
-      desc: 'Salvar registro', 
-      context: 'all', 
-      icon: Save,
-      origin: 'apps/web/src/app/[domain]/[resource]/[id]/page',
-    })
+  }, {
+    desc:    'Salvar registro',
+    icon:    Save,
+    origin:  'apps/web/src/app/[domain]/[resource]/[id]/page',
+    context: 'all',
+  })
+
+  useShortcut('alt+v', () => router.push(`/${domain}/${resource}`), {
+    desc:    'Voltar',
+    icon:    ArrowLeft,
+    origin:  'apps/web/src/app/[domain]/[resource]/[id]/page',
+    context: 'all',
+  })
 
   async function handleSubmit(data: Record<string, unknown>) {
     setIsPending(true)

@@ -399,9 +399,10 @@ useShortcut('alt+g', () => {
 ```
 docs/
 ├── architecture/
-│   ├── ARCHITECTURE.md     # This file — architecture overview
-│   ├── conventions.md      # Naming, Zod schemas, new resource checklist
-│   └── decisions/          # Architecture Decision Records (ADRs)
+│   ├── ARCHITECTURE.md          # This file — architecture overview
+│   ├── conventions.md           # Naming, Zod schemas, new resource checklist
+│   ├── keyboard-shortcuts.md    # Global key map and shortcut registration rules
+│   └── decisions/               # Architecture Decision Records (ADRs)
 │       └── ADR-001-monorepo.md
 └── user-manual/
     ├── identity/
