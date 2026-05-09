@@ -62,10 +62,8 @@
     --primary:                217 91% 60%;    /* botão primário, link de destaque         */
     --primary-foreground:     222 47% 11%;    /* texto/ícone sobre --primary              */
 
-    /* — Cold Eucalyptus ———————————————————————————————————————————————————— */
-    --accent:                 135 8% 20%;     /* hover de controles ghost/icon            */
-    --accent-foreground:      111 12% 89%;    /* texto/ícone sobre --accent               */
-    /* —————————————————————————————————————————————————————————————————————— */
+    --accent:                 215  8% 20%;    /* hover ghost/icon — neutro sem tema       */
+    --accent-foreground:      215  5% 85%;    /* texto/ícone sobre --accent               */
 
     --muted:                  210 5% 30%;     /* superfície desabilitada, ghost           */
     --muted-foreground:       210 0% 70%;     /* texto secundário, placeholder            */
@@ -76,7 +74,7 @@
     /* ── Controles de formulário ─────────────────────────────────────────── */
     --input-bg:               220 8% 14%;     /* fundo de inputs — recuado em relação ao card (L=16) */
     --input:                  210 5% 22%;     /* borda de inputs — mais visível que --border (L=18)  */
-    --ring:                   224 76% 48%;    /* anel de foco (navegação por teclado)     */
+    --ring:                   224 76% 48%;    /* anel de foco — neutro sem tema           */
 
     /* ── Estrutura ───────────────────────────────────────────────────────── */
     --border:                 210 5% 18%;     /* bordas de card, divisores, tabelas       */
@@ -93,6 +91,13 @@
 }
 
 @layer base {
+  /* ── Cold Eucalyptus ──────────────────────────────────────────────────── */
+  .dark.theme-eucalyptus {
+    --accent:             158 18% 26%;    /* hover ghost/icon — eucalyptus fosco      */
+    --accent-foreground:  155 15% 88%;    /* texto/ícone sobre --accent               */
+    --ring:               158 38% 50%;    /* focus ring + destaque de coluna          */
+  }
+
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
   input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),

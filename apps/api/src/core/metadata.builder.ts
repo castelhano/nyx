@@ -50,7 +50,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       options:    type === 'enum' ? (inner as ZodEnum<any>)._def.values : undefined,
       showInList: meta.showInList ?? (!isId && !isPassword && !isTimestamp),
       showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
-      sortable:   meta.sortable   ?? (type === 'string' || type === 'number' || type === 'date'),
+      sortable:   meta.sortable   ?? (['string', 'number', 'date', 'enum'] as string[]).includes(type),
       searchable: meta.searchable ?? false,
       ...(meta.mask       ? { mask:       meta.mask }       : {}),
       ...(meta.widget     ? { widget:     meta.widget }     : {}),

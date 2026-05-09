@@ -14,7 +14,7 @@ export function FieldRenderer({ field, register, error }: Props) {
 
   if (field.type === 'boolean') {
     return (
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 text-sm select-none">
         <input type="checkbox" {...register} className="rounded" />
         {field.label}
         {error && <span className="text-red-500 text-xs ml-2">{error}</span>}

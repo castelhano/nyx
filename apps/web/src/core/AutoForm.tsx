@@ -3,6 +3,7 @@
 import { useForm } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   domain:        string
