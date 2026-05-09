@@ -9,7 +9,8 @@
       "Bash(curl -s http://localhost:3000/api/identity/users/metadata)",
       "Bash(python3 -m json.tool)",
       "Bash(curl -s http://localhost:3001/identity/users/metadata)",
-      "Bash(fuser -k 3000/tcp 3001/tcp 3002/tcp)"
+      "Bash(fuser -k 3000/tcp 3001/tcp 3002/tcp)",
+      "WebSearch"
     ]
   }
 }

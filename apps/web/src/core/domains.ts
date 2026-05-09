@@ -15,16 +15,10 @@ export interface DomainConfig {
 
 export const domains: Record<string, DomainConfig> = {
   identity: {
-    label: 'Identidade',
+    label: 'Controle',
     icon:  Shield,
     resources: [
       { key: 'user', label: 'Usuários', icon: Users },
-    ],
-  },
-  crm: {
-    label: 'CRM',
-    icon:  Building2,
-    resources: [
       { key: 'company', label: 'Empresas', icon: Building },
     ],
   },
