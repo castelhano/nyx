@@ -18,7 +18,8 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   const { domain, resource, id } = params
   const router  = useRouter()
   const isNew   = id === 'new'
-  const [isPending, setIsPending] = useState(false)
+  const [isPending, setIsPending]     = useState(false)
+  const [resetSignal, setResetSignal] = useState(0)
 
   const { data: meta }   = useMetadata(domain, resource)
   const { data: record } = useQuery<Record<string, unknown>>({
@@ -50,6 +51,11 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
     context: 'all',
   })
 
+  useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
+    display: false,
+    origin:  'apps/web/src/app/[domain]/[resource]/[id]/page',
+  })
+
   useShortcut('alt+v', () => router.push(`/${domain}/${resource}`), {
     desc:    'Voltar',
     icon:    ArrowLeft,
@@ -76,7 +82,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   return (
     <div className="p-6 space-y-4">
       <AutoBreadcrumb domain={domain} resource={resource} id={id} recordName={recordName} />
-      <AutoForm domain={domain} resource={resource} defaultValues={record} onSubmit={handleSubmit} formId={FORM_ID} />
+      <AutoForm domain={domain} resource={resource} defaultValues={record} onSubmit={handleSubmit} formId={FORM_ID} resetSignal={resetSignal} />
     </div>
   )
 }

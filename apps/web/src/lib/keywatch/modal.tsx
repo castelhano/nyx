@@ -15,7 +15,7 @@ function Key({ label }: { label: string }) {
       'inline-flex items-center justify-center min-w-[1.8em]',
       'rounded border border-b-2 border-border',
       'bg-muted px-1.5 py-0.5',
-      'font-mono text-[10px] text-foreground/80',
+      'font-mono text-[11px] text-foreground/80',
     )}>
       {label.toUpperCase()}
     </kbd>

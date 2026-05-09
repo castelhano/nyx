@@ -64,7 +64,7 @@ Fast-access shortcuts for primary page actions. Fire immediately even inside for
 
 | Key | Action | Notes |
 |-----|--------|-------|
-| `Alt+L` | Refresh current page | — |
+| `Alt+L` | Refresh current page | Composed: `GlobalShortcuts` calls `invalidateQueries()` (refetch); form pages additionally register a local handler (`display: false`) that increments `resetSignal` on `AutoForm`, resetting fields to the last server-fetched values. Both handlers fire on the same keypress. |
 | `Alt+N` | New record | — |
 | `Alt+V` | Navigate back (one breadcrumb level) | — |
 | `Alt+G` | Save / commit changes | — |

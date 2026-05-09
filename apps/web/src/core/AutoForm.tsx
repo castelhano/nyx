@@ -13,13 +13,15 @@ interface Props {
   defaultValues?: Record<string, unknown>
   onSubmit:       (data: Record<string, unknown>) => Promise<void>
   formId?:        string
+  resetSignal?:   number
 }
 
-export function AutoForm({ domain, resource, defaultValues, onSubmit, formId }: Props) {
+export function AutoForm({ domain, resource, defaultValues, onSubmit, formId, resetSignal }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ defaultValues })
 
   useEffect(() => { if (defaultValues) reset(defaultValues) }, [JSON.stringify(defaultValues)])
+  useEffect(() => { if (resetSignal) reset(defaultValues ?? {}) }, [resetSignal])
 
   if (isLoading) return <div className="text-sm text-gray-500">Loading form…</div>
   if (!meta) return null
