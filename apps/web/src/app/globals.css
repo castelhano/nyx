@@ -35,6 +35,7 @@
 
     /* ── Estrutura ───────────────────────────────────────────────────────── */
     --border:                 214 32% 91%;    /* bordas de card, divisores, tabelas       */
+    --row-hover:              214 32% 94%;    /* hover de linha de tabela                 */
     --radius:                 0.5rem;         /* border-radius global de controles/cards  */
 
     /* ── Sidebar ─────────────────────────────────────────────────────────── */
@@ -79,6 +80,7 @@
 
     /* ── Estrutura ───────────────────────────────────────────────────────── */
     --border:                 210 5% 18%;     /* bordas de card, divisores, tabelas       */
+    --row-hover:              210 5% 14%;     /* hover de linha de tabela                 */
     --radius:                 0.5rem;         /* border-radius global de controles/cards  */
 
     /* ── Sidebar ─────────────────────────────────────────────────────────── */

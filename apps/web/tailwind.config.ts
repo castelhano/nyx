@@ -38,6 +38,7 @@ const config: Config = {
           DEFAULT:    'hsl(var(--popover))',
           foreground: 'hsl(var(--popover-foreground))',
         },
+        'row-hover': 'hsl(var(--row-hover))',
         sidebar: {
           DEFAULT:             'hsl(var(--sidebar-bg))',
           foreground:          'hsl(var(--sidebar-fg))',

@@ -55,9 +55,7 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 cd apps/api
 pnpm exec prisma migrate dev
 ```
-
-### 4. Popular o banco com dados iniciais (seed)
-
+> 🛈 -- Essa etapa já executa o db:seed, populando banco com dados iniciais
 ```bash
 cd apps/api
 pnpm db:seed
@@ -72,7 +70,7 @@ Isso cria o usuário administrador padrão:
 
 > Troque a senha após o primeiro login.
 
-### 5. Iniciar o ambiente de desenvolvimento
+### 4. Iniciar o ambiente de desenvolvimento
 
 A partir da raiz do monorepo:
 

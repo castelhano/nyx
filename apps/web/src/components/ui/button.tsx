@@ -1,8 +1,8 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
-type Variant = 'default' | 'destructive' | 'outline' | 'ghost'
-type Size    = 'sm' | 'default' | 'lg'
+type Variant = 'default' | 'destructive' | 'outline' | 'ghost' | 'rowAction'
+type Size    = 'sm' | 'default' | 'lg' | 'icon'
 
 const variants: Record<Variant, string> = {
   default:     'bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:text-emerald-50',
@@ -10,12 +10,14 @@ const variants: Record<Variant, string> = {
   destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
   outline:     'border border-input bg-transparent hover:bg-accent hover:text-accent-foreground',
   ghost:       'hover:bg-accent hover:text-accent-foreground',
+  rowAction: 'hover:bg-muted hover:text-foreground',
 }
 
 const sizes: Record<Size, string> = {
   sm:      'h-8 px-3 text-xs',
   default: 'h-9 px-4 text-sm',
   lg:      'h-10 px-6 text-sm',
+  icon:    'h-8 w-8 p-0',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
