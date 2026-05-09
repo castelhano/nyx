@@ -53,11 +53,23 @@ erp-monorepo/
 │       └── src/
 │           ├── lib/
 │           │   └── keywatch/       # Keyboard shortcut manager
+│           ├── components/
+│           │   ├── layout/
+│           │   │   ├── app-layout.tsx
+│           │   │   ├── topbar.tsx
+│           │   │   ├── topbar-actions-context.tsx  # page → topbar slot injection
+│           │   │   ├── sidebar.tsx
+│           │   │   └── sidebar-context.tsx
+│           │   └── ui/
+│           │       ├── button.tsx
+│           │       └── breadcrumb.tsx
 │           ├── core/               # Shared frontend infrastructure
 │           │   ├── AutoForm.tsx
 │           │   ├── AutoList.tsx
+│           │   ├── AutoBreadcrumb.tsx
 │           │   ├── FieldRenderer.tsx
-│           │   └── useMetadata.ts
+│           │   ├── useMetadata.ts
+│           │   └── domains.ts      # domain label map (identity → "Identidade")
 │           └── app/                # Next.js App Router
 │               ├── [domain]/
 │               │   └── [resource]/
@@ -104,10 +116,9 @@ erp-monorepo/
 |------------|------|
 | **Next.js (App Router)** | UI framework — Server Components, Server Actions, file-based routing |
 | **TanStack Query** | Server state management — cache, background sync, invalidation |
-| **TanStack Table** | Headless table engine for `AutoList` — sorting, filtering, pagination |
 | **React Hook Form** | Form management, integrated with Zod via `zodResolver` |
-| **Radix UI** | Accessible component primitives (Dropdown, Collapsible, Dialog…) |
-| **Shadcn/ui + Tailwind CSS** | Design system — standardized components across the ERP |
+| **Tailwind CSS** | Utility-first styling — design tokens via CSS custom properties |
+| **Lucide React** | Icon library used across all components |
 
 ### Monorepo
 
@@ -186,24 +197,36 @@ Every resource exposes `GET /<domain>/<resource>/metadata`, generated automatica
 ```typescript
 interface ResourceMetadata {
   resource:    string
-  label:       string        // singular — "Usuário"
-  labelPlural: string        // plural   — "Usuários"
+  label:       string        // singular  — "Usuário"
+  labelPlural: string        // plural    — "Usuários"
+  nameField:   string        // display field for breadcrumb — default: "name"
   permissions: { create: boolean; read: boolean; update: boolean; delete: boolean }
   fields:      MetadataField[]
   actions:     ResourceAction[]
 }
 ```
 
-`label` and `labelPlural` are read from `schema._fieldMeta` (set via `schema.meta({...})`); both fall back to convention if not declared. `useMetadata` caches the response with `staleTime: Infinity` in production and `staleTime: 0` in development.
+`label`, `labelPlural` and `nameField` are read from `schema._fieldMeta` (set via `schema.meta({...})`); all fall back to convention if not declared. `useMetadata` caches the response with `staleTime: Infinity` in production and `staleTime: 0` in development.
 
-### 4.6 AutoForm & AutoList
+### 4.6 AutoForm, AutoList & AutoBreadcrumb
 
 Higher-order components that consume the Metadata API:
 
-- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each field to `FieldRenderer`. Layout is a responsive CSS grid: `[label] [control]` side-by-side on `md+`, stacked on mobile. `placeholder`, `helpText` and `width` from metadata are applied automatically by `FieldRenderer`.
-- **AutoList** — iterates `fields` with `showInList: true` to render the table. `sortable: true` on a field enables server-side sorting: clicking the column header sends `sortField` and `sortOrder` to `BaseService.findAll`, which applies them via Prisma `orderBy`. `searchable` and `actions` flags follow the same pattern.
+- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each field to `FieldRenderer`. Layout is a responsive CSS grid: `[label] [control]` side-by-side on `md+`, stacked on mobile. `placeholder`, `helpText` and `width` from metadata are applied automatically. When `defaultValues` change (edit page fetch), the form resets via `react-hook-form`'s `reset()`. Accepts an optional `formId` prop: when set, the `<form>` element gets that `id` and the internal submit button is hidden — the external button (e.g. in the topbar) takes ownership via the HTML5 `form` attribute.
+- **AutoList** — iterates `fields` with `showInList: true` to render the table. `sortable: true` on a field enables server-side sorting: clicking the column header sends `sortField` and `sortOrder` to `BaseService.findAll`, which applies them via Prisma `orderBy`.
+- **AutoBreadcrumb** — reads the URL segments, resolves labels from `domains.ts` (domain) and `useMetadata` (resource), and renders `Início > Domain > Resource > Record`. The `[id]/page.tsx` fetches the record and passes `record[meta.nameField]` as `recordName` — one fetch feeds both the form `defaultValues` and the breadcrumb label. Customize per segment via the `overrides` prop (label, dropdown items).
 
-The ~20% of resources that need custom UI replace `AutoForm` or `AutoList` with hand-crafted components — the metadata contract does not enforce its use.
+```tsx
+// default — zero config
+<AutoBreadcrumb domain={domain} resource={resource} id={id} recordName={name} />
+
+// with dropdown on a segment
+<AutoBreadcrumb domain={domain} resource={resource}
+  overrides={{ user: { items: [{ label: 'Admins', href: '/identity/user?role=admin' }] } }}
+/>
+```
+
+The ~20% of resources that need custom UI replace these components with hand-crafted alternatives — the metadata contract does not enforce its use.
 
 ---
 
@@ -229,7 +252,30 @@ Extras: `deactivate(id)`.
 
 ---
 
-## 6. Design System
+## 6. UI Components
+
+### How components are built — critical for AI
+
+**This project does NOT use the Shadcn CLI.** There is no `components.json` and `npx shadcn add` must never be run. Components follow the Shadcn visual design and API conventions but are written by hand.
+
+**Rule:** when creating a new UI component, model it after `apps/web/src/components/ui/button.tsx`:
+- Plain TypeScript + Tailwind — no Radix, no external primitives unless already present in the project
+- Use `cn()` from `@/lib/utils` for class merging
+- Use Lucide React for icons
+- Consume design tokens via Tailwind utilities (`bg-primary`, `text-muted-foreground`, `border-ring`, etc.) — never hardcode colors
+
+**Existing components:**
+
+| Component | File | Notes |
+|-----------|------|-------|
+| `Button` | `components/ui/button.tsx` | variants: default, destructive, outline, ghost, rowAction |
+| `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
+
+When a new interaction primitive is needed (modal, toast, select, etc.), build it following this same pattern — do not install additional UI libraries.
+
+---
+
+## 7. Design System
 
 The frontend uses HSL CSS custom properties organized by semantic layer, defined in `apps/web/src/app/globals.css` and mapped to Tailwind utilities in `tailwind.config.ts`.
 
@@ -273,7 +319,7 @@ All Shadcn components inherit theme changes automatically via these tokens. `--p
 
 ---
 
-## 7. Keywatch — Keyboard Shortcuts
+## 8. Keywatch — Keyboard Shortcuts
 
 Cross-cutting frontend infrastructure for keyboard shortcut management.
 
@@ -301,11 +347,54 @@ useShortcutContext('modal') // pushes context on mount, restores on unmount
 
 **Input behavior (composed pattern):** when the cursor is in a form field, the shortcut does not fire immediately — it stays pending until a confirmation key (`;` by default) is pressed, preventing accidental triggers while typing.
 
+**Alt modifier exception:** `alt+*` shortcuts bypass the composed pattern and fire immediately even inside form inputs. `alt` combos are unlikely to conflict with typing, so no confirmation step is needed. Use `context: 'all'` alongside to ensure the shortcut fires regardless of active Keywatch context (e.g. `alt+g` → save record).
+
 **Contexts:** shortcuts can be scoped by context (e.g. `'default'`, `'modal'`). The `'all'` context always responds, regardless of the active context.
 
 ---
 
-## 8. Documentation Structure
+## 9. TopbarActionsContext — Topbar Slot
+
+Cross-cutting frontend infrastructure for injecting page-specific controls into the topbar center slot.
+
+**Location:** `apps/web/src/components/layout/topbar-actions-context.tsx`
+
+**Pattern:** same model as `useSidebar` — a React context with a provider in `AppLayout` and a hook for pages. The topbar renders whatever `ReactNode` the active page has set; nothing when no page has registered actions.
+
+**Topbar layout:** `[sidebar-toggle] [actions — right-aligned] [system-buttons]`
+
+**API:**
+
+```tsx
+useTopbarActions(node: ReactNode, deps: DependencyList)
+```
+
+Sets the topbar slot on mount and whenever `deps` changes. Clears the slot on unmount. The `deps` array follows the same convention as `useEffect` — list every value the `node` closes over that can change.
+
+**Standard usage — form detail page:**
+
+```tsx
+const FORM_ID = 'record-form'
+const [isPending, setIsPending] = useState(false)
+
+useTopbarActions(
+  <Button type="submit" form={FORM_ID} size="sm" disabled={isPending}>
+    <Save className="w-3.5 h-3.5" />
+    {isPending ? 'Salvando…' : 'Salvar'}
+  </Button>,
+  [isPending],
+)
+
+useShortcut('alt+g', () => {
+  (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
+}, { desc: 'Salvar registro', context: 'all' })
+```
+
+`AutoForm` is passed `formId={FORM_ID}`, which sets `id` on `<form>` and hides its internal submit button. The topbar button submits the form via HTML5's `form` attribute; `alt+g` calls `requestSubmit()` programmatically — both trigger react-hook-form's `handleSubmit` and its validation.
+
+---
+
+## 10. Documentation Structure
 
 ```
 docs/

@@ -4,10 +4,12 @@ import { PanelLeft, Bell, Sun, Moon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { useSidebar } from './sidebar-context'
+import { useTopbarActionsContext } from './topbar-actions-context'
 
 export function Topbar() {
   const { toggle } = useSidebar()
   const { theme, setTheme } = useTheme()
+  const { actions } = useTopbarActionsContext()
 
   return (
     <header className="flex h-12 shrink-0 items-center border-b border-border bg-background px-3 gap-2">
@@ -25,8 +27,10 @@ export function Topbar() {
         <PanelLeft className="h-4 w-4" />
       </button>
 
-      {/* Center — reserved for page controls */}
-      <div id="topbar-center" className="flex-1" />
+      {/* Center — page-injected actions */}
+      <div className="flex flex-1 items-center justify-end pr-1">
+        {actions}
+      </div>
 
       {/* Right — system controls */}
       <div className="flex items-center gap-1">

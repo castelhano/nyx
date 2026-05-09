@@ -26,6 +26,9 @@ export interface FieldMeta {
   width?: string
   resource?: string
   labelField?: string
+  // schema-level only
+  labelPlural?: string
+  nameField?: string
 }
 
 export interface MetadataField {
@@ -66,6 +69,7 @@ export interface ResourceMetadata {
   resource: string
   label: string
   labelPlural: string
+  nameField: string
   permissions: ResourcePermissions
   fields: MetadataField[]
   actions: ResourceAction[]

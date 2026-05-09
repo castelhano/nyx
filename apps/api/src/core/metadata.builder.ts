@@ -66,11 +66,13 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const defaultLabel  = toTitleCase(resource)
   const label         = schemaMeta.label       ?? defaultLabel
   const labelPlural   = schemaMeta.labelPlural ?? `${label}s`
+  const nameField     = schemaMeta.nameField   ?? 'name'
 
   return {
     resource,
     label,
     labelPlural,
+    nameField,
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
     actions:     [],

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { AutoList } from '@/core/AutoList'
+import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -12,8 +13,9 @@ export default function ResourceListPage({ params }: { params: { domain: string;
   const { data: meta } = useMetadata(domain, resource)
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-6 space-y-4">
+      <AutoBreadcrumb domain={domain} resource={resource} />
+      <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">{meta?.labelPlural ?? resource}</h1>
         <Button onClick={() => router.push(`/${domain}/${resource}/new`)} size="icon">
           <Plus className="w-4 h-4" />
