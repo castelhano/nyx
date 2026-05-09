@@ -5,7 +5,7 @@ type Variant = 'default' | 'destructive' | 'outline' | 'ghost' | 'rowAction'
 type Size    = 'sm' | 'default' | 'lg' | 'icon'
 
 const variants: Record<Variant, string> = {
-  default:     'bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:text-emerald-50',
+  default:     'bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:hover:bg-emerald-800/90 dark:text-emerald-50',
   // default:     'bg-primary text-primary-foreground hover:bg-primary/90',
   destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
   outline:     'border border-input bg-transparent hover:bg-accent hover:text-accent-foreground',

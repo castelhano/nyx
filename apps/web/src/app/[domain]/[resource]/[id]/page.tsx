@@ -36,14 +36,19 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   useTopbarActions(
     <Button type="submit" form={FORM_ID} size="sm" disabled={isPending}>
       <Save className="w-3.5 h-3.5" />
-      {isPending ? 'Salvando…' : 'Salvar'}
+      {isPending ? 'Gravar…' : 'Gravar'}
     </Button>,
     [isPending],
   )
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar registro', context: 'all' })
+  }, { 
+      desc: 'Salvar registro', 
+      context: 'all', 
+      icon: Save,
+      origin: 'apps/web/src/app/[domain]/[resource]/[id]/page',
+    })
 
   async function handleSubmit(data: Record<string, unknown>) {
     setIsPending(true)
