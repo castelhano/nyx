@@ -58,15 +58,12 @@ erp-monorepo/
 │           │   ├── AutoList.tsx
 │           │   ├── FieldRenderer.tsx
 │           │   └── useMetadata.ts
-│           └── modules/            # Pages mirroring API modules
-│               ├── identity/
-│               │   └── user/
-│               │       ├── page.tsx
-│               │       └── [id]/page.tsx
-│               └── crm/
-│                   └── company/
-│                       ├── page.tsx
-│                       └── [id]/page.tsx
+│           └── app/                # Next.js App Router
+│               ├── [domain]/
+│               │   └── [resource]/
+│               │       ├── page.tsx        # list — handles any resource
+│               │       └── [id]/page.tsx   # form — handles any resource
+│               └── login/page.tsx
 ├── packages/
 │   ├── schemas/                    # Zod schemas — shared by api and web
 │   │   ├── identity/
@@ -85,7 +82,7 @@ erp-monorepo/
         └── crm/
 ```
 
-**Rule:** the directory name of a model (e.g. `company`) determines the API route prefix (`/crm/company`), the Zod schema file (`packages/schemas/crm/company.schema.ts`) and the frontend page path (`modules/crm/company/page.tsx`). No additional configuration required.
+**Rule:** the directory name of a model (e.g. `company`) determines the API route prefix (`/crm/company`) and the Zod schema file (`packages/schemas/crm/company.schema.ts`). The frontend is handled automatically by the dynamic routes `[domain]/[resource]` — no page files required. To override with custom UI for a specific resource, create `app/<domain>/<resource>/page.tsx`; Next.js will prefer the static route over the dynamic one.
 
 ---
 
@@ -174,7 +171,7 @@ At each layer, the system checks: *is there explicit configuration?* If yes, use
 | Field label | `camelCase → Title Case` | `.meta({ label: 'Legal Name' })` |
 | Field shown in list | `true` for non-relation, non-password | `.meta({ showInList: false })` |
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
-| Sortable field | `true` for string/number/date | `.meta({ sortable: false })` |
+| Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
 
 ### 4.5 Metadata API
@@ -196,7 +193,7 @@ interface ResourceMetadata {
 Higher-order components that consume the Metadata API:
 
 - **AutoForm** — iterates `fields` with `showInForm: true`, delegates each field to `FieldRenderer` which maps the Zod type to a Shadcn component. Applies Zod validation via `zodResolver`.
-- **AutoList** — iterates `fields` with `showInList: true` to build `ColumnDef[]` for TanStack Table. `sortable` and `searchable` flags enable sorting and filters automatically. `actions` become CASL-checked buttons.
+- **AutoList** — iterates `fields` with `showInList: true` to render the table. `sortable: true` on a field enables server-side sorting: clicking the column header sends `sortField` and `sortOrder` to `BaseService.findAll`, which applies them via Prisma `orderBy`. `searchable` and `actions` flags follow the same pattern.
 
 The ~20% of resources that need custom UI replace `AutoForm` or `AutoList` with hand-crafted components — the metadata contract does not enforce its use.
 
@@ -239,9 +236,29 @@ The frontend uses HSL CSS custom properties organized by semantic layer, defined
 | **Structure** | `--border`, `--radius` | card borders, dividers, global border-radius |
 | **Sidebar** | `--sidebar-bg`, `--sidebar-fg`, `--sidebar-border`, `--sidebar-accent`, `--sidebar-accent-fg` | sidebar-exclusive tokens |
 
+### Theme system
+
+User-selectable themes are applied as a class on `<html>` (e.g. `theme-eucalyptus`) alongside `dark`. A theme overrides exactly three tokens:
+
+| Token | Role |
+|-------|------|
+| `--accent` / `--accent-foreground` | hover color for ghost/icon buttons — the visible "brand" of the theme |
+| `--ring` | focus ring on all Shadcn controls + active sort column border |
+
+All Shadcn components inherit theme changes automatically via these tokens. `--primary` (action buttons, links) is stable and does not change with the theme.
+
+```css
+.dark.theme-eucalyptus {
+  --accent:            158 18% 26%;
+  --accent-foreground: 155 15% 88%;
+  --ring:              158 38% 50%;
+}
+```
+
 ### Critical rules
 
-- **`--accent`** is the user-replaceable theme color — used on ghost/icon button hover (topbar, etc.). Currently "Cold Eucalyptus" in dark mode.
+- **`--accent`** is the theme color — ghost/icon button hover. Neutral by default; overridden by theme class.
+- **`--ring`** follows the theme — used for focus rings and active sort column highlight. Do not hardcode `--primary` in these roles.
 - **`--sidebar-accent`** is a structural elevation token — always neutral, independent of the theme. Must not be equated to `--accent`.
 - **`--input`** (interactive control border) must have higher contrast than **`--border`** (passive structural borders). They are semantically distinct.
 - `--input-bg` is applied automatically via `@layer base` to `input`, `select` and `textarea`.
