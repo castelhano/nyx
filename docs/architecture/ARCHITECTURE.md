@@ -168,11 +168,16 @@ At each layer, the system checks: *is there explicit configuration?* If yes, use
 | Layer | Convention (default) | Override |
 |-------|---------------------|----------|
 | Route prefix | derived from directory path | `@Controller('custom-path')` |
-| Field label | `camelCase → Title Case` | `.meta({ label: 'Legal Name' })` |
+| Resource label | `camelCase → Title Case` | `schema.meta({ label: 'Empresa' })` |
+| Resource label plural | `label + 's'` | `schema.meta({ labelPlural: 'Empresas' })` |
+| Field label | `camelCase → Title Case` | `.meta({ label: 'Razão Social' })` |
 | Field shown in list | `true` for non-relation, non-password | `.meta({ showInList: false })` |
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
+| Field placeholder | none | `.meta({ placeholder: 'Ex: João Silva' })` |
+| Field help text | none | `.meta({ helpText: 'Texto de ajuda abaixo do campo' })` |
+| Field width | `w-full` (fills grid column) | `.meta({ width: 'w-48' })` — any Tailwind width class |
 
 ### 4.5 Metadata API
 
@@ -181,18 +186,21 @@ Every resource exposes `GET /<domain>/<resource>/metadata`, generated automatica
 ```typescript
 interface ResourceMetadata {
   resource:    string
-  label:       string
+  label:       string        // singular — "Usuário"
+  labelPlural: string        // plural   — "Usuários"
   permissions: { create: boolean; read: boolean; update: boolean; delete: boolean }
   fields:      MetadataField[]
   actions:     ResourceAction[]
 }
 ```
 
+`label` and `labelPlural` are read from `schema._fieldMeta` (set via `schema.meta({...})`); both fall back to convention if not declared. `useMetadata` caches the response with `staleTime: Infinity` in production and `staleTime: 0` in development.
+
 ### 4.6 AutoForm & AutoList
 
 Higher-order components that consume the Metadata API:
 
-- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each field to `FieldRenderer` which maps the Zod type to a Shadcn component. Applies Zod validation via `zodResolver`.
+- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each field to `FieldRenderer`. Layout is a responsive CSS grid: `[label] [control]` side-by-side on `md+`, stacked on mobile. `placeholder`, `helpText` and `width` from metadata are applied automatically by `FieldRenderer`.
 - **AutoList** — iterates `fields` with `showInList: true` to render the table. `sortable: true` on a field enables server-side sorting: clicking the column header sends `sortField` and `sortOrder` to `BaseService.findAll`, which applies them via Prisma `orderBy`. `searchable` and `actions` flags follow the same pattern.
 
 The ~20% of resources that need custom UI replace `AutoForm` or `AutoList` with hand-crafted components — the metadata contract does not enforce its use.
