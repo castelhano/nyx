@@ -4,7 +4,12 @@
       "Bash(Get-ChildItem -Path \"d:\\\\Studio\\\\nyx\" -Recurse -Force)",
       "Bash(Select-Object -Property FullName, PSIsContainer)",
       "Bash(Sort-Object FullName)",
-      "Bash(Format-Table -AutoSize)"
+      "Bash(Format-Table -AutoSize)",
+      "Bash(curl -s http://localhost:3001/api/identity/users/metadata)",
+      "Bash(curl -s http://localhost:3000/api/identity/users/metadata)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s http://localhost:3001/identity/users/metadata)",
+      "Bash(fuser -k 3000/tcp 3001/tcp 3002/tcp)"
     ]
   }
 }

@@ -12,6 +12,6 @@ export function useMetadata(domain: string, resource: string) {
       if (!res.ok) throw new Error('Failed to fetch metadata')
       return res.json()
     },
-    staleTime: Infinity,
+    staleTime: process.env.NODE_ENV === 'production' ? Infinity : 0,
   })
 }

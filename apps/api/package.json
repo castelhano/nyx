@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "nodemon",
+    "dev": "nodemon --watch src --watch ../../packages/schemas --watch ../../packages/types",
     "build": "nest build",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "db:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"

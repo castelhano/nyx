@@ -30,6 +30,7 @@ function toTitleCase(str: string): string {
 }
 
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
+  const schemaMeta = (schema as any)._fieldMeta ?? {}
   const fields: MetadataField[] = []
 
   for (const [name, rawField] of Object.entries(schema.shape)) {
@@ -52,16 +53,24 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
       sortable:   meta.sortable   ?? (['string', 'number', 'date', 'enum'] as string[]).includes(type),
       searchable: meta.searchable ?? false,
-      ...(meta.mask       ? { mask:       meta.mask }       : {}),
-      ...(meta.widget     ? { widget:     meta.widget }     : {}),
-      ...(meta.resource   ? { resource:   meta.resource }   : {}),
-      ...(meta.labelField ? { labelField: meta.labelField } : {}),
+      ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
+      ...(meta.helpText    ? { helpText:    meta.helpText }    : {}),
+      ...(meta.mask        ? { mask:        meta.mask }        : {}),
+      ...(meta.widget      ? { widget:      meta.widget }      : {}),
+      ...(meta.width       ? { width:       meta.width }       : {}),
+      ...(meta.resource    ? { resource:    meta.resource }    : {}),
+      ...(meta.labelField  ? { labelField:  meta.labelField }  : {}),
     })
   }
 
+  const defaultLabel  = toTitleCase(resource)
+  const label         = schemaMeta.label       ?? defaultLabel
+  const labelPlural   = schemaMeta.labelPlural ?? `${label}s`
+
   return {
     resource,
-    label:       toTitleCase(resource),
+    label,
+    labelPlural,
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
     actions:     [],

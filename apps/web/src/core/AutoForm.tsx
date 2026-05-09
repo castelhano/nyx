@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
-import { Button } from '@/components/ui/button'
+
 
 interface Props {
   domain:        string
@@ -22,7 +22,11 @@ export function AutoForm({ domain, resource, defaultValues, onSubmit }: Props) {
   const visibleFields = meta.fields.filter((f) => f.showInForm)
 
   return (
-    <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onSubmit as any)}
+      className="grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start"
+      autoComplete='off'
+    >
       {visibleFields.map((field) => (
         <FieldRenderer
           key={field.name}
@@ -34,7 +38,7 @@ export function AutoForm({ domain, resource, defaultValues, onSubmit }: Props) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+        className="md:col-start-2 bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
       >
         {isSubmitting ? 'Saving…' : 'Save'}
       </button>

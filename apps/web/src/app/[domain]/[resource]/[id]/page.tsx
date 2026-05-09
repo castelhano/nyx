@@ -24,7 +24,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   const title = meta?.label ?? resource
 
   return (
-    <div className="p-6 max-w-lg">
+    <div className="p-6">
       <h1 className="text-xl font-semibold mb-4">{isNew ? `New ${title}` : `Edit ${title}`}</h1>
       <AutoForm domain={domain} resource={resource} onSubmit={handleSubmit} />
     </div>

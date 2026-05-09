@@ -15,12 +15,15 @@ export interface PaginationQuery {
 
 export interface FieldMeta {
   label?: string
+  placeholder?: string
+  helpText?: string
   showInList?: boolean
   showInForm?: boolean
   sortable?: boolean
   searchable?: boolean
   widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password'
   mask?: 'cnpj' | 'cpf' | 'phone' | 'cep'
+  width?: string
   resource?: string
   labelField?: string
 }
@@ -28,6 +31,8 @@ export interface FieldMeta {
 export interface MetadataField {
   name: string
   label: string
+  placeholder?: string
+  helpText?: string
   type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation'
   required: boolean
   options?: string[]
@@ -37,6 +42,7 @@ export interface MetadataField {
   searchable: boolean
   mask?: string
   widget?: string
+  width?: string
   resource?: string
   labelField?: string
 }
@@ -59,6 +65,7 @@ export interface ResourcePermissions {
 export interface ResourceMetadata {
   resource: string
   label: string
+  labelPlural: string
   permissions: ResourcePermissions
   fields: MetadataField[]
   actions: ResourceAction[]

@@ -1,5 +1,6 @@
 'use client'
 
+import { ChevronDown } from 'lucide-react'
 import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 
@@ -9,31 +10,37 @@ interface Props {
   error?:   string
 }
 
-export function FieldRenderer({ field, register, error }: Props) {
-  const base = 'w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+const inputBase = 'w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
 
+export function FieldRenderer({ field, register, error }: Props) {
   if (field.type === 'boolean') {
     return (
-      <label className="flex items-center gap-2 text-sm select-none">
-        <input type="checkbox" {...register} className="rounded" />
-        {field.label}
-        {error && <span className="text-red-500 text-xs ml-2">{error}</span>}
-      </label>
+      <div className="md:col-start-2 flex items-center gap-2 pt-1">
+        <input id={field.name} type="checkbox" {...register} className="rounded" />
+        <label htmlFor={field.name} className="text-sm select-none cursor-pointer">{field.label}</label>
+        {error && <p className="text-xs text-destructive ml-1">{error}</p>}
+      </div>
     )
   }
 
   if (field.type === 'enum' && field.options) {
     return (
-      <div>
-        <label className="block text-sm font-medium mb-1">{field.label}</label>
-        <select {...register} className={base}>
-          <option value="">Select…</option>
-          {field.options.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-        {error && <span className="text-red-500 text-xs">{error}</span>}
-      </div>
+      <>
+        <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
+        <div className={`space-y-1 ${field.width ?? ''}`}>
+          <div className="relative">
+            <select id={field.name} {...register} className={`${inputBase} appearance-none pr-9`}>
+              <option value="">{field.placeholder ?? 'Selecione…'}</option>
+              {field.options.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          </div>
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      </>
     )
   }
 
@@ -42,11 +49,18 @@ export function FieldRenderer({ field, register, error }: Props) {
     field.type   === 'number'   ? 'number'   :
     field.type   === 'date'     ? 'date'     : 'text'
 
+  const control = field.widget === 'textarea'
+    ? <textarea id={field.name} {...register} rows={3} placeholder={field.placeholder} className={inputBase} />
+    : <input id={field.name} type={inputType} {...register} placeholder={field.placeholder} className={inputBase} />
+
   return (
-    <div>
-      <label className="block text-sm font-medium mb-1">{field.label}</label>
-      <input type={inputType} {...register} className={base} />
-      {error && <span className="text-red-500 text-xs">{error}</span>}
-    </div>
+    <>
+      <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
+      <div className={`space-y-1 ${field.width ?? ''}`}>
+        {control}
+        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    </>
   )
 }
