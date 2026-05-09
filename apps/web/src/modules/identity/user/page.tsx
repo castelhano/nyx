@@ -11,7 +11,7 @@ export default function UserListPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Users</h1>
-        <Button onClick={() => router.push('/identity/user/new')} size='sm'>
+        <Button onClick={() => router.push('/identity/user/new')} size='icon'>
           <Plus className='w-4 h-4' />
         </Button>
       </div>

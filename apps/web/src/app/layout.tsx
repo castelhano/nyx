@@ -5,6 +5,9 @@ import { ClientLayout } from '@/components/layout/client-layout'
 
 export const metadata: Metadata = {
   title: 'Nyx ERP',
+  icons: {
+    icon: '/favicon.ico',
+  }
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

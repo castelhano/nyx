@@ -62,7 +62,7 @@ export function AutoList({ domain, resource, onEdit }: Props) {
             </thead>
             <tbody>
               {data?.data.map((row) => (
-                <tr key={String(row.id)} className="group hover:bg-row-hover border-b">
+                <tr key={String(row.id)} className="hover:bg-row-hover border-b">
                   {columns.map((col) => (
                     <td key={col.name} className="px-3 py-2">
                       {String(row[col.name] ?? '')}
@@ -73,9 +73,7 @@ export function AutoList({ domain, resource, onEdit }: Props) {
                       <Button
                         onClick={() => onEdit(String(row.id))}
                         size='icon'
-                        variant='rowAction'
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
+                        variant='rowAction'>
                         <SquarePen className='w-4 h-4' />
                       </Button>
                     </td>
