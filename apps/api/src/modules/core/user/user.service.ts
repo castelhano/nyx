@@ -3,10 +3,14 @@ import * as bcrypt from 'bcrypt'
 import { userSchema, User, CreateUserDto, UpdateUserDto } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
+import { PasswordPolicyService } from '../../settings/password-policy/password-policy.service'
 
 @Injectable()
 export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto> {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly passwordPolicy: PasswordPolicyService,
+  ) {
     super(prisma, 'user', userSchema)
   }
 
@@ -30,8 +34,10 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
 
   async create(dto: CreateUserDto): Promise<User> {
     const { password, ...rest } = dto
+    await this.passwordPolicy.validate(password)
     const passwordHash = await bcrypt.hash(password, 10)
     const user = await this.prisma.user.create({ data: { ...rest, passwordHash } }) as User
+    await this.passwordPolicy.recordHistory(user.id, passwordHash)
     return this.sanitize(user)
   }
 
@@ -49,8 +55,10 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
     const user = await this.prisma.user.findUnique({ where: { id } }) as User
     const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash)
     if (!valid) throw new Error('Invalid current password')
+    await this.passwordPolicy.validate(dto.newPassword, id)
     const passwordHash = await bcrypt.hash(dto.newPassword, 10)
     await this.prisma.user.update({ where: { id }, data: { passwordHash } })
+    await this.passwordPolicy.recordHistory(id, passwordHash)
   }
 
   protected buildSearchWhere(search: string) {

@@ -1,4 +1,4 @@
-import { Shield, Users, Building2, Building } from 'lucide-react'
+import { Shield, Users, Building2, Building, GitBranch, Lock } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface DomainResource {
@@ -14,12 +14,14 @@ export interface DomainConfig {
 }
 
 export const domains: Record<string, DomainConfig> = {
-  identity: {
+  core: {
     label: 'Controle',
     icon:  Shield,
     resources: [
       { key: 'user', label: 'Usuários', icon: Users },
       { key: 'company', label: 'Empresas', icon: Building },
+      { key: 'branch',          label: 'Filiais',          icon: GitBranch },
+      { key: 'password-policy', label: 'Política de Senha', icon: Lock },
     ],
   },
 }

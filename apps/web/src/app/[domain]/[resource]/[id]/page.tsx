@@ -25,7 +25,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   const { data: record } = useQuery<Record<string, unknown>>({
     queryKey: [domain, resource, id],
     queryFn:  async () => {
-      const res = await apiFetch(`/${domain}/${resource}s/${id}`)
+      const res = await apiFetch(`/${domain}/${resource}/${id}`)
       if (!res.ok) throw new Error('Failed to fetch record')
       return res.json()
     },
@@ -66,7 +66,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   async function handleSubmit(data: Record<string, unknown>) {
     setIsPending(true)
     try {
-      const path = isNew ? `/${domain}/${resource}s` : `/${domain}/${resource}s/${id}`
+      const path = isNew ? `/${domain}/${resource}` : `/${domain}/${resource}/${id}`
       const res  = await apiFetch(path, {
         method:  isNew ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },

@@ -64,6 +64,12 @@ export interface ResourceAction {
   icon?: string
 }
 
+export interface AuthUser {
+  id:        string
+  role:      string
+  branchIds: string[]
+}
+
 export interface ResourcePermissions {
   create: boolean
   read: boolean

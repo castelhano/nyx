@@ -8,7 +8,7 @@ export function useMetadata(domain: string, resource: string) {
   return useQuery<ResourceMetadata>({
     queryKey: ['metadata', domain, resource],
     queryFn: async () => {
-      const res = await apiFetch(`/${domain}/${resource}s/metadata`)
+      const res = await apiFetch(`/${domain}/${resource}/metadata`)
       if (!res.ok) throw new Error('Failed to fetch metadata')
       return res.json()
     },

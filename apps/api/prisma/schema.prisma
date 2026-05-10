@@ -1,3 +1,7 @@
+// ======================================================================
+// SETTINGS
+// ======================================================================
+
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -7,29 +11,159 @@ datasource db {
   provider = "sqlite"
 }
 
+// ======================================================================
+// ENUMS
+// ======================================================================
+
+// Role global do usuário no sistema
+enum UserRole {
+  admin    // acesso total, bypass de filtros por filial
+  operator // acesso às filiais associadas
+  viewer   // somente leitura nas filiais associadas
+}
+
+// Role do usuário dentro de uma filial específica
+enum BranchUserRole {
+  owner   // responsável pela filial
+  manager // gerencia registros da filial
+  member  // acesso de leitura e operações básicas
+}
+
+enum CompanyType {
+  client
+  supplier
+  partner
+  other
+}
+
+// ======================================================================
+// AUTH / IDENTITY
+// ======================================================================
+
 model User {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   name         String
-  username     String   @unique
-  email        String?
+  username     String    @unique
+  email        String?   @unique
   passwordHash String
-  role         String   @default("operator")
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role         UserRole  @default(operator)
+  preferences  Json?     // { theme, language, sidebar, notifications, ... }
+  lastLoginAt  DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  branches        UserBranch[]
+  permissions     UserPermission[]
+  passwordHistory UserPasswordHistory[]
 
   @@map("users")
 }
 
+// ======================================================================
+// CORE
+// ======================================================================
+
 model Company {
-  id        String   @id @default(uuid())
+  id        String      @id @default(uuid())
   legalName String
   tradeName String?
-  taxId     String   @unique
-  type      String
+  taxId     String      @unique // CNPJ da matriz
+  type      CompanyType
+  phone     String?
+  email     String?
+  website   String?
+  // Endereço
+  address   String?
+  city      String?
+  state     String?     // UF — 2 chars
+  zipCode   String?
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  branches Branch[]
+
+  @@map("companies")
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String   // ex: "Filial São Paulo", "CD Sul"
+  taxId     String?  @unique // CNPJ da filial (opcional — pode usar o da matriz)
+  phone     String?
+  email     String?
+  // Endereço próprio da filial
+  address   String?
+  city      String?
+  state     String?  // UF — 2 chars
+  zipCode   String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("companies")
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  users   UserBranch[]
+
+  @@map("branches")
+}
+
+// Permissões explícitas por usuário (sobrescrevem/estendem o role global)
+model UserPermission {
+  id        String   @id @default(uuid())
+  userId    String
+  resource  String   // 'User', 'Company', 'Branch', etc.
+  action    String   // 'create', 'read', 'update', 'delete'
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resource, action])
+  @@map("user_permissions")
+}
+
+// Histórico de senhas para evitar reutilização
+model UserPasswordHistory {
+  id           String   @id @default(uuid())
+  userId       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_password_history")
+}
+
+// ======================================================================
+// SETTINGS
+// ======================================================================
+
+// Política global de senhas (singleton — uma única linha)
+model PasswordPolicy {
+  id               String   @id @default(uuid())
+  minLength        Int      @default(8)
+  requireUppercase Boolean  @default(false)
+  requireNumbers   Boolean  @default(false)
+  requireSpecial   Boolean  @default(false)
+  historyCount     Int      @default(0)  // 0 = não verifica histórico
+  expiresInDays    Int      @default(0)  // 0 = não expira
+  updatedAt        DateTime @updatedAt
+
+  @@map("password_policy")
+}
+
+// Associação usuário ↔ filial com role por filial
+model UserBranch {
+  id       String         @id @default(uuid())
+  userId   String
+  branchId String
+  role     BranchUserRole @default(member)
+  createdAt DateTime      @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@map("user_branches")
 }

@@ -37,7 +37,7 @@ export function AutoList({ domain, resource, onEdit }: Props) {
         ...(search    ? { search }              : {}),
         ...(sortField ? { sortField, sortOrder } : {}),
       })
-      const res = await apiFetch(`/${domain}/${resource}s?${params}`)
+      const res = await apiFetch(`/${domain}/${resource}?${params}`)
       if (!res.ok) throw new Error('Failed to fetch list')
       return res.json()
     },

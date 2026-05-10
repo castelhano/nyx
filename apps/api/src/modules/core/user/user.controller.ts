@@ -1,14 +1,18 @@
 import { Controller, Post, Patch, Param, Body, UseGuards } from '@nestjs/common'
 import { User, CreateUserDto, UpdateUserDto } from '@nyx/schemas'
 import { BaseController } from '../../../core/base.controller'
+import { CaslAbilityFactory } from '../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../auth/policies.guard'
 import { UserService } from './user.service'
 
-@Controller('identity/users')
+@Controller('core/user')
 @UseGuards(JwtAuthGuard)
 export class UserController extends BaseController<User, CreateUserDto, UpdateUserDto> {
-  constructor(private readonly userService: UserService) {
-    super(userService)
+  constructor(
+    private readonly userService: UserService,
+    caslFactory: CaslAbilityFactory,
+  ) {
+    super(userService, caslFactory)
   }
 
   @Post(':id/deactivate')
