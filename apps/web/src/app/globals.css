@@ -105,4 +105,46 @@
   textarea {
     background-color: hsl(var(--input-bg));
   }
+
+  input[type='checkbox'] {
+    appearance: none;
+    -webkit-appearance: none;
+    accent-color: hsl(var(--accent));
+    width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 0.15rem;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--input-bg));
+    color: hsl(var(--accent-foreground));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  input[type='checkbox']::before {
+    content: '';
+    width: 0.2rem;
+    height: 0.55rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg) scale(0);
+    opacity: 0;
+    transition: transform 150ms ease, opacity 150ms ease;
+  }
+
+  input[type='checkbox']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px hsla(var(--accent), 0.25);
+  }
+
+  input[type='checkbox']:checked {
+    background-color: hsl(var(--accent));
+    border-color: hsl(var(--accent));
+  }
+
+  input[type='checkbox']:checked::before {
+    transform: rotate(45deg) scale(1);
+    opacity: 1;
+  }
 }
