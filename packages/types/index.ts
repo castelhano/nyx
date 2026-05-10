@@ -23,7 +23,7 @@ export interface FieldMeta {
   sortable?: boolean
   searchable?: boolean
   widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password'
-  mask?: 'cnpj' | 'cpf' | 'phone' | 'cep'
+  mask?: 'cnpj' | 'cnpj-base' | 'cpf' | 'phone' | 'cep'
   width?: string
   resource?: string
   labelField?: string
@@ -40,6 +40,7 @@ export interface MetadataField {
   type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation'
   required: boolean
   options?: string[]
+  defaultValue?: unknown
   listVisibility: 'visible' | 'hidden' | 'never'
   showInList: boolean
   showInForm: boolean

@@ -5,10 +5,10 @@ import { withMeta } from '../with-meta'
 export const branchSchema = withMeta(
   z.object({
     id:        z.string().uuid(),
-    companyId: z.string().uuid().meta({ label: 'Empresa', listVisibility: 'hidden' }),
-    // Identificação
-    name:      z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Ex: Filial São Paulo' }),
-    taxId:     z.string().length(14).nullable().optional().meta({ label: 'CNPJ', mask: 'cnpj', placeholder: '00000000000000', helpText: 'Deixe em branco para usar o CNPJ da empresa', listVisibility: 'hidden' }),
+    companyId: z.string().uuid().meta({ label: 'Empresa', listVisibility: 'hidden', widget: 'select', resource: 'company', labelField: 'legalName' }),
+    // Geral
+    name:      z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome abreviado' }),
+    taxId:     z.string().length(14).nullable().optional().meta({ label: 'CNPJ', mask: 'cnpj', placeholder: '00.000.000/00', listVisibility: 'hidden' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     // Contato
     phone:     z.string().nullable().optional().meta({ label: 'Telefone', mask: 'phone', placeholder: '(00) 00000-0000', listVisibility: 'hidden' }),
@@ -27,7 +27,6 @@ export const branchSchema = withMeta(
     labelPlural: 'Filiais',
     nameField:   'name',
     groups: {
-      'Identificação': ['name', 'companyId', 'taxId', 'isActive'],
       'Contato':       ['phone', 'email'],
       'Endereço':      ['address', 'city', 'state', 'zipCode'],
     },

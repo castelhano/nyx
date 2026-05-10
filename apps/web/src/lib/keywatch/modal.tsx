@@ -75,7 +75,7 @@ function MetaPanel({ h }: { h: HandlerEntry }) {
     <tr>
       <td colSpan={4} className="px-4 pb-2.5 pt-0">
         <div className={cn(
-          'grid gap-x-4 gap-y-1 p-3 rounded-md',
+          'grid gap-x-4 gap-y-1 p-3 rounded-md mt-2',
           'bg-muted/50 border border-border/60',
         )}
           style={{ gridTemplateColumns: 'auto 1fr auto 1fr' }}

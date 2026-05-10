@@ -1,19 +1,109 @@
 'use client'
 
+import { Controller, type Control } from 'react-hook-form'
+import { useQuery } from '@tanstack/react-query'
+import { IMaskInput } from 'react-imask'
 import { ChevronDown } from 'lucide-react'
-import type { MetadataField } from '@nyx/types'
+import type { MetadataField, PaginatedResult } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
+import { apiFetch } from '@/lib/auth'
 
 interface Props {
   field:       MetadataField
   register:    UseFormRegisterReturn
+  control?:    Control<any>
   error?:      string
   autoFocus?:  boolean
 }
 
-const inputBase = 'w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+const inputBase = 'w-full border border-input rounded-[--radius] px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
 
-export function FieldRenderer({ field, register, error, autoFocus }: Props) {
+type MaskDef = string | { mask: string }[]
+
+const MASKS: Record<string, MaskDef> = {
+  'cnpj':      '00.000.000/0000-00',
+  'cnpj-base': '00.000.000',
+  'cpf':       '000.000.000-00',
+  'cep':       '00000-000',
+  'phone':     [{ mask: '(00) 0000-0000' }, { mask: '(00) 00000-0000' }],
+}
+
+function MaskedInput({
+  field, control, autoFocus, className,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string
+}) {
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required }}
+      render={({ field: ctrl }) => (
+        <IMaskInput
+          mask={MASKS[field.mask!] as any}
+          value={ctrl.value ?? ''}
+          inputRef={ctrl.ref}
+          onAccept={(val: string) => ctrl.onChange(val)}
+          onBlur={ctrl.onBlur}
+          id={field.name}
+          autoFocus={autoFocus}
+          placeholder={field.placeholder}
+          className={className}
+        />
+      )}
+    />
+  )
+}
+
+function RelationSelect({
+  field, control, autoFocus, className,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string
+}) {
+  const { data } = useQuery<PaginatedResult<Record<string, unknown>>>({
+    queryKey:  ['relation', field.resource],
+    queryFn:   async () => {
+      const res = await apiFetch(`/core/${field.resource}?pageSize=999`)
+      if (!res.ok) throw new Error('Failed to fetch relation')
+      return res.json()
+    },
+    staleTime: 30_000,
+  })
+
+  const options = data?.data ?? []
+  const labelField = field.labelField ?? 'name'
+
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required }}
+      render={({ field: ctrl }) => (
+        <div className="relative">
+          <select
+            id={field.name}
+            autoFocus={autoFocus}
+            value={ctrl.value ?? ''}
+            onChange={ctrl.onChange}
+            onBlur={ctrl.onBlur}
+            ref={ctrl.ref}
+            className={`${className} appearance-none pr-9`}
+          >
+            <option value="">{field.placeholder ?? 'Selecione…'}</option>
+            {options.map((opt) => (
+              <option key={String(opt.id)} value={String(opt.id)}>
+                {String(opt[labelField] ?? opt.id)}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        </div>
+      )}
+    />
+  )
+}
+
+export function FieldRenderer({ field, register, control, error, autoFocus }: Props) {
   if (field.type === 'boolean') {
     return (
       <div className="md:col-start-2 flex items-center gap-2 pt-1">
@@ -50,15 +140,23 @@ export function FieldRenderer({ field, register, error, autoFocus }: Props) {
     field.type   === 'number'   ? 'number'   :
     field.type   === 'date'     ? 'date'     : 'text'
 
-  const control = field.widget === 'textarea'
-    ? <textarea id={field.name} autoFocus={autoFocus} {...register} rows={3} placeholder={field.placeholder} className={inputBase} />
-    : <input id={field.name} type={inputType} autoFocus={autoFocus} {...register} placeholder={field.placeholder} className={inputBase} />
+  let controlEl: React.ReactNode
+
+  if (field.resource && control) {
+    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={inputBase} />
+  } else if (field.mask && control) {
+    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBase} />
+  } else if (field.widget === 'textarea') {
+    controlEl = <textarea id={field.name} autoFocus={autoFocus} {...register} rows={3} placeholder={field.placeholder} className={inputBase} />
+  } else {
+    controlEl = <input id={field.name} type={inputType} autoFocus={autoFocus} {...register} placeholder={field.placeholder} className={inputBase} />
+  }
 
   return (
     <>
       <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
       <div className={`space-y-1 ${field.width ?? ''}`}>
-        {control}
+        {controlEl}
         {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>

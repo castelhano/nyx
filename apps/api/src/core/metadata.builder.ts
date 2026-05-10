@@ -53,6 +53,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     const isPassword  = name === 'passwordHash' || meta.widget === 'password'
     const isTimestamp = name === 'createdAt' || name === 'updatedAt'
     const isId        = name === 'id'
+    const defaultValue = field instanceof ZodDefault ? (field as any)._def.defaultValue() : undefined
 
     let listVisibility: 'visible' | 'hidden' | 'never'
     if (meta.listVisibility) {
@@ -73,6 +74,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       type,
       required:       isRequired(field),
       options:        type === 'enum' ? (inner as ZodEnum<any>)._def.values : undefined,
+      ...(defaultValue !== undefined ? { defaultValue } : {}),
       listVisibility,
       showInList:     listVisibility === 'visible',
       showInForm:     meta.showInForm ?? (!isId && !isPassword && !isTimestamp),

@@ -18,18 +18,36 @@ interface Props {
 
 export function AutoForm({ domain, resource, defaultValues, onSubmit, formId, resetSignal }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ defaultValues })
+  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
+    defaultValues,
+  })
 
   const visibleFields = meta?.fields.filter((f) => f.showInForm) ?? []
 
+  // Aplica defaults do schema (ex: isActive: true) quando metadata carrega, para novos registros
+  useEffect(() => {
+    if (!meta || defaultValues) return
+    const schemaDefaults = Object.fromEntries(
+      meta.fields
+        .filter((f) => f.defaultValue !== undefined)
+        .map((f) => [f.name, f.defaultValue]),
+    )
+    if (Object.keys(schemaDefaults).length > 0) reset(schemaDefaults)
+  }, [meta?.resource])
+
   useEffect(() => { if (defaultValues) reset(defaultValues) }, [JSON.stringify(defaultValues)])
+
   useEffect(() => {
     if (!resetSignal || !meta) return
-    const empty = Object.fromEntries(visibleFields.map(f => [f.name, '']))
-    reset(defaultValues ?? empty)
+    const schemaDefaults = Object.fromEntries(
+      meta.fields
+        .filter((f) => f.defaultValue !== undefined)
+        .map((f) => [f.name, f.defaultValue]),
+    )
+    reset({ ...schemaDefaults, ...defaultValues })
   }, [resetSignal])
 
-  if (isLoading) return <div className="text-sm text-gray-500">Loading form…</div>
+  if (isLoading) return <div className="text-sm text-muted-foreground">Carregando…</div>
   if (!meta) return null
 
   function fieldGrid(fields: MetadataField[], autoFocusFirst = false) {
@@ -40,6 +58,7 @@ export function AutoForm({ domain, resource, defaultValues, onSubmit, formId, re
             key={field.name}
             field={field}
             register={register(field.name, { required: field.required })}
+            control={control}
             error={errors[field.name]?.message as string | undefined}
             autoFocus={autoFocusFirst && i === 0}
           />
