@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { userBranchSchema, UserBranch, CreateUserBranchDto, UpdateUserBranchDto } from '@nyx/schemas'
-import { BranchUserRole } from '../../../generated/prisma'
+import { BranchUserRole } from '@prisma/client'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
 
