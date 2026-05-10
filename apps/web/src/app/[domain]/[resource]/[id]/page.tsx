@@ -60,7 +60,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
         const childDomain = child.domain ?? domain
         const href = `/${childDomain}/${child.resource}?${child.contextField}=${record?.id}`
         return (
-          <Button key={child.resource} variant="outline" size="sm" onClick={() => router.push(href)}>
+          <Button key={child.resource} variant="ghost" size="sm" onClick={() => router.push(href)}>
             {child.label}
           </Button>
         )

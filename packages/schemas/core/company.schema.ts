@@ -6,7 +6,7 @@ export const companySchema = withMeta(
   z.object({
     id:        z.string().uuid(),
     // Geral
-    legalName: z.string().min(2).meta({ label: 'Razão Social', showInList: true, placeholder: 'Razão Social completa' }),
+    legalName: z.string().min(2).meta({ label: 'Razão Social', showInList: true, placeholder: 'Razão social' }),
     tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', showInList: true, placeholder: 'Nome Fantasia' }),
     taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', mask: 'cnpj-base', searchable: true, placeholder: '00.000.000', listVisibility: 'hidden' }),
     type:      z.enum(['client', 'supplier', 'partner', 'other']).meta({ label: 'Tipo', listVisibility: 'visible', widget: 'select' }),
