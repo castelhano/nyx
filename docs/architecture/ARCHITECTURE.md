@@ -220,7 +220,7 @@ abstract class BaseController<T, CreateDTO, UpdateDTO> {
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
 | Field placeholder | none | `.meta({ placeholder: 'Ex: João Silva' })` |
 | Field help text | none | `.meta({ helpText: 'Texto de ajuda' })` |
-| Field width | `w-full` | `.meta({ width: 'w-48' })` — any Tailwind width class |
+| Field className | none | `.meta({ className: 'w-48' })` — any Tailwind class(es) applied to the field wrapper |
 
 ### 4.6 Metadata API
 

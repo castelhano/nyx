@@ -9,7 +9,7 @@ export const userSchema = withMeta(
     username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', searchable: true, placeholder: 'Username' }),
     email:        z.string().email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com' }),
     passwordHash: z.string().meta({ listVisibility: 'never', showInForm: false }),
-    role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', listVisibility: 'visible', width: 'w-full md:w-60' }),
+    role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', listVisibility: 'visible', className: 'w-full md:w-60' }),
     isActive:     z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     createdAt:    z.date().meta({ showInForm: false }),
     updatedAt:    z.date().meta({ showInForm: false }),

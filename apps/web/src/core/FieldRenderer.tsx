@@ -129,7 +129,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
     return (
       <>
         <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
-        <div className={`space-y-1 ${field.width ?? ''}`}>
+        <div className={`space-y-1 ${field.className ?? ''}`}>
           <div className="relative">
             <select
               id={field.name}
@@ -192,7 +192,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   return (
     <>
       <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
-      <div className={`space-y-1 ${field.width ?? ''}`}>
+      <div className={`space-y-1 ${field.className ?? ''}`}>
         {controlEl}
         {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}

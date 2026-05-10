@@ -84,7 +84,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.helpText            ? { helpText:    meta.helpText }             : {}),
       ...(meta.mask                ? { mask:        meta.mask }                 : {}),
       ...(meta.widget              ? { widget:      meta.widget }               : {}),
-      ...(meta.width               ? { width:       meta.width }                : {}),
+      ...(meta.className           ? { className:   meta.className }            : {}),
       ...(meta.resource            ? { resource:    meta.resource }             : {}),
       ...(meta.labelField          ? { labelField:  meta.labelField }           : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),

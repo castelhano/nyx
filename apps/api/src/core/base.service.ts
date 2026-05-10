@@ -19,10 +19,20 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
   async findAll(query: PaginationQuery): Promise<PaginatedResult<T>> {
     const page     = Number(query.page)     || 1
     const pageSize = Number(query.pageSize) || 20
-    const where    = query.search ? this.buildSearchWhere(query.search) : {}
     const orderBy  = query.sortField
       ? { [query.sortField]: query.sortOrder ?? 'asc' }
       : { createdAt: 'desc' as const }
+
+    const KNOWN_KEYS = new Set(['page', 'pageSize', 'search', 'sortField', 'sortOrder'])
+    const contextFilters: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(query)) {
+      if (!KNOWN_KEYS.has(k) && v !== undefined) contextFilters[k] = v
+    }
+
+    const where = {
+      ...(query.search ? this.buildSearchWhere(query.search) : {}),
+      ...contextFilters,
+    }
 
     const [data, total] = await Promise.all([
       this.model.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),

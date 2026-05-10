@@ -11,6 +11,7 @@ export interface PaginationQuery {
   search?: string
   sortField?: string
   sortOrder?: 'asc' | 'desc'
+  [key: string]: unknown
 }
 
 export interface FieldMeta {
@@ -24,7 +25,7 @@ export interface FieldMeta {
   searchable?: boolean
   widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password'
   mask?: 'cnpj' | 'cnpj-base' | 'cpf' | 'phone' | 'cep'
-  width?: string
+  className?: string
   resource?: string
   labelField?: string
   // schema-level only
@@ -48,7 +49,7 @@ export interface MetadataField {
   searchable: boolean
   mask?: string
   widget?: string
-  width?: string
+  className?: string
   resource?: string
   labelField?: string
   group?: string

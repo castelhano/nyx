@@ -90,7 +90,7 @@ export const companySchema = withMeta(
 | `mask` | `string` | none | Input mask: `'cnpj'`, `'cnpj-base'` (8-digit root), `'cpf'`, `'phone'`, `'cep'` |
 | `placeholder` | `string` | none | Input placeholder text |
 | `helpText` | `string` | none | Help text rendered below the field |
-| `width` | `string` | `w-full` | Any Tailwind width class — controls field width in the form grid |
+| `className` | `string` | none | Any Tailwind class(es) applied to the field wrapper — e.g. `'w-24'`, `'w-full md:w-60'` |
 | `resource` | `string` | none | For `widget: 'select'` — API resource to fetch options from (e.g. `'company'`) |
 | `labelField` | `string` | none | Field used as display label for relation select options |
 

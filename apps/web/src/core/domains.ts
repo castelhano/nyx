@@ -20,7 +20,6 @@ export const domains: Record<string, DomainConfig> = {
     resources: [
       { key: 'user', label: 'Usuários', icon: Users },
       { key: 'company', label: 'Empresas', icon: Building },
-      { key: 'branch',          label: 'Filiais',          icon: GitBranch },
       { key: 'password-policy', label: 'Política de Senha', icon: Lock },
     ],
   },

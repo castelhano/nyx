@@ -28,12 +28,6 @@ enum BranchUserRole {
   member  // acesso de leitura e operações básicas
 }
 
-enum CompanyType {
-  client
-  supplier
-  partner
-  other
-}
 
 // ======================================================================
 // AUTH / IDENTITY
@@ -68,7 +62,6 @@ model Company {
   legalName String
   tradeName String?
   taxId     String      @unique // CNPJ da matriz
-  type      CompanyType
   phone     String?
   email     String?
   website   String?

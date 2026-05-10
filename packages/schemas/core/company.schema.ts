@@ -9,7 +9,6 @@ export const companySchema = withMeta(
     legalName: z.string().min(2).meta({ label: 'Razão Social', showInList: true, placeholder: 'Razão social' }),
     tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', showInList: true, placeholder: 'Nome Fantasia' }),
     taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', mask: 'cnpj-base', searchable: true, placeholder: '00.000.000', listVisibility: 'hidden' }),
-    type:      z.enum(['client', 'supplier', 'partner', 'other']).meta({ label: 'Tipo', listVisibility: 'visible', widget: 'select' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     // Contato
     phone:     z.string().nullable().optional().meta({ label: 'Telefone', mask: 'phone', placeholder: '(00) 00000-0000', listVisibility: 'hidden' }),
@@ -17,8 +16,8 @@ export const companySchema = withMeta(
     website:   z.string().nullable().optional().meta({ label: 'Website', placeholder: 'https://empresa.com.br', listVisibility: 'never' }),
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never' }),
-    city:      z.string().nullable().optional().meta({ label: 'Cidade', listVisibility: 'hidden' }),
-    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', width: 'w-24', placeholder: 'SP', listVisibility: 'hidden' }),
+    city:      z.string().nullable().optional().meta({ label: 'Cidade', className: 'lg:w-1/2', listVisibility: 'hidden' }),
+    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-24', placeholder: 'SP', listVisibility: 'hidden' }),
     zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', placeholder: '00000-000', listVisibility: 'hidden' }),
     // Controle
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
