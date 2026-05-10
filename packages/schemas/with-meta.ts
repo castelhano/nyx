@@ -4,6 +4,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   label?:       string
   labelPlural?: string
   nameField?:   string
+  allowCsv?:    boolean
   groups?:      { [tabLabel: string]: (keyof T & string)[] }
 }
 

@@ -18,7 +18,12 @@
       "Bash(volta list *)",
       "Bash(apt list *)",
       "Bash(npx prisma *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(pnpm --filter @nyx/web tsc --noEmit)",
+      "Bash(mkdir -p /home/rafael/studio/nyx/packages/schemas/core && mv /home/rafael/studio/nyx/packages/schemas/crm/* /home/rafael/studio/nyx/packages/schemas/identity/* /home/rafael/studio/nyx/packages/schemas/core/ && rmdir /home/rafael/studio/nyx/packages/schemas/crm /home/rafael/studio/nyx/packages/schemas/identity)"
+    ],
+    "additionalDirectories": [
+      "/home/rafael/studio/nyx/packages/schemas/crm"
     ]
   }
 }

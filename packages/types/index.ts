@@ -17,6 +17,7 @@ export interface FieldMeta {
   label?: string
   placeholder?: string
   helpText?: string
+  listVisibility?: 'visible' | 'hidden' | 'never'
   showInList?: boolean
   showInForm?: boolean
   sortable?: boolean
@@ -39,6 +40,7 @@ export interface MetadataField {
   type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation'
   required: boolean
   options?: string[]
+  listVisibility: 'visible' | 'hidden' | 'never'
   showInList: boolean
   showInForm: boolean
   sortable: boolean
@@ -82,6 +84,7 @@ export interface ResourceMetadata {
   label:       string
   labelPlural: string
   nameField:   string
+  allowCsv:    boolean
   permissions: ResourcePermissions
   fields:      MetadataField[]
   actions:     ResourceAction[]

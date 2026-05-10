@@ -5,12 +5,12 @@ import { withMeta } from '../with-meta'
 export const userSchema = withMeta(
   z.object({
     id:           z.string().uuid(),
-    name:         z.string().min(2).meta({ label: 'Nome', showInList: true, placeholder: 'Nome completo' }),
-    username:     z.string().min(3).meta({ label: 'Username', showInList: true, searchable: true, placeholder: 'Username' }),
-    email:        z.string().email().nullable().optional().meta({ label: 'E-mail', showInList: false, placeholder: 'email@domain.com' }),
-    passwordHash: z.string().meta({ showInList: false, showInForm: false }),
-    role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', showInList: true, width: 'w-full md:w-60' }),
-    isActive:     z.boolean().default(true).meta({ label: 'Ativo', showInList: true }),
+    name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome completo' }),
+    username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', searchable: true, placeholder: 'Username' }),
+    email:        z.string().email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com' }),
+    passwordHash: z.string().meta({ listVisibility: 'never', showInForm: false }),
+    role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', listVisibility: 'visible', width: 'w-full md:w-60' }),
+    isActive:     z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     createdAt:    z.date().meta({ showInForm: false }),
     updatedAt:    z.date().meta({ showInForm: false }),
   }),

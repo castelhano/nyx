@@ -54,14 +54,28 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     const isTimestamp = name === 'createdAt' || name === 'updatedAt'
     const isId        = name === 'id'
 
+    let listVisibility: 'visible' | 'hidden' | 'never'
+    if (meta.listVisibility) {
+      listVisibility = meta.listVisibility
+    } else if (isId || isPassword) {
+      listVisibility = 'never'
+    } else if (isTimestamp) {
+      listVisibility = 'hidden'
+    } else if (meta.showInList === false) {
+      listVisibility = 'hidden'
+    } else {
+      listVisibility = 'visible'
+    }
+
     fields.push({
       name,
-      label:      meta.label      ?? toTitleCase(name),
+      label:          meta.label      ?? toTitleCase(name),
       type,
-      required:   isRequired(field),
-      options:    type === 'enum' ? (inner as ZodEnum<any>)._def.values : undefined,
-      showInList: meta.showInList ?? (!isId && !isPassword && !isTimestamp),
-      showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
+      required:       isRequired(field),
+      options:        type === 'enum' ? (inner as ZodEnum<any>)._def.values : undefined,
+      listVisibility,
+      showInList:     listVisibility === 'visible',
+      showInForm:     meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
       sortable:   meta.sortable   ?? (['string', 'number', 'date', 'enum'] as string[]).includes(type),
       searchable: meta.searchable ?? false,
       ...(meta.placeholder         ? { placeholder: meta.placeholder }         : {}),
@@ -79,6 +93,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const label        = schemaMeta.label       ?? defaultLabel
   const labelPlural  = schemaMeta.labelPlural ?? `${label}s`
   const nameField    = schemaMeta.nameField   ?? 'name'
+  const allowCsv     = schemaMeta.allowCsv    ?? true
 
   const groups: TabGroup[] | undefined = rawGroups
     ? Object.keys(rawGroups).map((tabLabel) => ({ label: tabLabel, fields: rawGroups[tabLabel] }))
@@ -89,6 +104,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     label,
     labelPlural,
     nameField,
+    allowCsv,
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
     actions: [],
