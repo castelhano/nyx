@@ -2,16 +2,22 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api'
 
 export function getToken(): string {
   if (typeof window === 'undefined') return ''
-  return localStorage.getItem('token') ?? ''
+  return localStorage.getItem('token') ?? sessionStorage.getItem('token') ?? ''
 }
 
-export function setToken(token: string) {
-  localStorage.setItem('token', token)
-  document.cookie = `token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+export function setToken(token: string, persistent = true) {
+  if (persistent) {
+    localStorage.setItem('token', token)
+    document.cookie = `token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+  } else {
+    sessionStorage.setItem('token', token)
+    document.cookie = `token=${token}; path=/; SameSite=Lax`
+  }
 }
 
 export function clearToken() {
   localStorage.removeItem('token')
+  sessionStorage.removeItem('token')
   document.cookie = 'token=; path=/; max-age=0'
 }
 
@@ -33,7 +39,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   return res
 }
 
-export async function login(username: string, password: string): Promise<void> {
+export async function login(username: string, password: string, persistent = true): Promise<void> {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -43,5 +49,5 @@ export async function login(username: string, password: string): Promise<void> {
   if (!res.ok) throw new Error('Invalid credentials')
 
   const { accessToken } = await res.json()
-  setToken(accessToken)
+  setToken(accessToken, persistent)
 }
