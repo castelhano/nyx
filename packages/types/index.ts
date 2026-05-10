@@ -80,6 +80,21 @@ export interface ResourcePermissions {
   delete: boolean
 }
 
+export interface ChildResourceDef {
+  resource:     string
+  domain?:      string
+  label:        string
+  contextField: string
+}
+
+export interface BreadcrumbDef {
+  resource:     string
+  domain?:      string
+  contextField: string
+  listLabel?:   string
+  nameField?:   string
+}
+
 export interface ResourceMetadata {
   resource:    string
   label:       string
@@ -90,4 +105,6 @@ export interface ResourceMetadata {
   fields:      MetadataField[]
   actions:     ResourceAction[]
   groups?:     TabGroup[]
+  breadcrumb?: BreadcrumbDef[]
+  children?:   ChildResourceDef[]
 }

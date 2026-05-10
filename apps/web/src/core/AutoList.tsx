@@ -20,9 +20,10 @@ import type { MetadataField, PaginatedResult } from '@nyx/types'
 type Row = Record<string, unknown>
 
 interface Props {
-  domain:   string
-  resource: string
-  onEdit?:  (id: string) => void
+  domain:    string
+  resource:  string
+  onEdit?:   (id: string) => void
+  filters?:  Record<string, string>
 }
 
 function SortIcon({ state }: { state: false | 'asc' | 'desc' }) {
@@ -89,7 +90,7 @@ function buildColumns(
   return cols
 }
 
-export function AutoList({ domain, resource, onEdit }: Props) {
+export function AutoList({ domain, resource, onEdit, filters }: Props) {
   const [page,      setPage]      = useState(1)
   const [search,    setSearch]    = useState('')
   const [sorting,   setSorting]   = useState<SortingState>([])
@@ -103,13 +104,14 @@ export function AutoList({ domain, resource, onEdit }: Props) {
   const sortOrder = sorting[0]?.desc   ? 'desc' : 'asc'
 
   const { data, isLoading } = useQuery<PaginatedResult<Row>>({
-    queryKey: [domain, resource, page, search, sortField, sortOrder],
+    queryKey: [domain, resource, page, search, sortField, sortOrder, filters],
     queryFn:  async () => {
       const params = new URLSearchParams({
         page:     String(page),
         pageSize: '20',
         ...(search    ? { search }              : {}),
         ...(sortField ? { sortField, sortOrder } : {}),
+        ...(filters   ? filters                  : {}),
       })
       const res = await apiFetch(`/${domain}/${resource}?${params}`)
       if (!res.ok) throw new Error('Failed to fetch list')

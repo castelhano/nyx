@@ -8,61 +8,77 @@ import { Tabs } from '@/components/ui/tabs'
 import type { MetadataField } from '@nyx/types'
 
 interface Props {
-  domain:         string
-  resource:       string
-  defaultValues?: Record<string, unknown>
-  onSubmit:       (data: Record<string, unknown>) => Promise<void>
-  formId?:        string
-  resetSignal?:   number
+  domain:          string
+  resource:        string
+  defaultValues?:  Record<string, unknown>
+  readonlyFields?: string[]
+  onSubmit:        (data: Record<string, unknown>) => Promise<void>
+  formId?:         string
+  resetSignal?:    number
 }
 
-export function AutoForm({ domain, resource, defaultValues, onSubmit, formId, resetSignal }: Props) {
+export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSubmit, formId, resetSignal }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
     defaultValues,
   })
-
   const visibleFields = meta?.fields.filter((f) => f.showInForm) ?? []
 
-  // Aplica defaults do schema (ex: isActive: true) quando metadata carrega, para novos registros
-  useEffect(() => {
-    if (!meta || defaultValues) return
-    const schemaDefaults = Object.fromEntries(
+  function buildSchemaDefaults(exclude: Record<string, unknown> = {}) {
+    if (!meta) return {}
+    return Object.fromEntries(
       meta.fields
-        .filter((f) => f.defaultValue !== undefined)
+        .filter((f) => f.defaultValue !== undefined && !(f.name in exclude))
         .map((f) => [f.name, f.defaultValue]),
     )
-    if (Object.keys(schemaDefaults).length > 0) reset(schemaDefaults)
+  }
+
+  // Aplica defaults do schema mesclados com defaultValues quando metadata carrega
+  useEffect(() => {
+    if (!meta) return
+    const schemaDefaults = buildSchemaDefaults(defaultValues ?? {})
+    reset({ ...schemaDefaults, ...defaultValues })
   }, [meta?.resource])
 
-  useEffect(() => { if (defaultValues) reset(defaultValues) }, [JSON.stringify(defaultValues)])
+  // Quando defaultValues muda (registro carregado da API), reaplica mesclando schema defaults
+  useEffect(() => {
+    if (!defaultValues) return
+    const schemaDefaults = buildSchemaDefaults(defaultValues)
+    reset({ ...schemaDefaults, ...defaultValues })
+  }, [JSON.stringify(defaultValues)])
 
+  // Reset signal: volta ao estado inicial (novo registro)
   useEffect(() => {
     if (!resetSignal || !meta) return
-    const schemaDefaults = Object.fromEntries(
-      meta.fields
-        .filter((f) => f.defaultValue !== undefined)
-        .map((f) => [f.name, f.defaultValue]),
-    )
+    const schemaDefaults = buildSchemaDefaults(defaultValues ?? {})
     reset({ ...schemaDefaults, ...defaultValues })
   }, [resetSignal])
 
   if (isLoading) return <div className="text-sm text-muted-foreground">Carregando…</div>
   if (!meta) return null
 
+  const readonlySet = new Set(readonlyFields ?? [])
+
   function fieldGrid(fields: MetadataField[], autoFocusFirst = false) {
+    let focusGiven = false
     return (
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start">
-        {fields.map((field, i) => (
-          <FieldRenderer
-            key={field.name}
-            field={field}
-            register={register(field.name, { required: field.required })}
-            control={control}
-            error={errors[field.name]?.message as string | undefined}
-            autoFocus={autoFocusFirst && i === 0}
-          />
-        ))}
+        {fields.map((field) => {
+          const isReadonly = readonlySet.has(field.name)
+          const giveFocus  = autoFocusFirst && !focusGiven && !isReadonly
+          if (giveFocus) focusGiven = true
+          return (
+            <FieldRenderer
+              key={field.name}
+              field={field}
+              register={register(field.name, { required: field.required })}
+              control={control}
+              readonly={isReadonly}
+              error={errors[field.name]?.message as string | undefined}
+              autoFocus={giveFocus}
+            />
+          )
+        })}
       </div>
     )
   }
@@ -82,15 +98,11 @@ export function AutoForm({ domain, resource, defaultValues, onSubmit, formId, re
 
     if (ungrouped.length > 0) tabs.unshift({ label: 'Geral', fields: ungrouped })
 
-    return <Tabs tabs={tabs.map((g) => ({ label: g.label, content: fieldGrid(g.fields) }))} />
+    return <Tabs tabs={tabs.map((g) => ({ label: g.label, content: fieldGrid(g.fields, false) }))} />
   }
 
   return (
-    <form
-      id={formId}
-      onSubmit={handleSubmit(onSubmit as any)}
-      autoComplete="off"
-    >
+    <form id={formId} onSubmit={handleSubmit(onSubmit as any)} autoComplete="off">
       {buildContent()}
       {!formId && (
         <button

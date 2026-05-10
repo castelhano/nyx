@@ -51,38 +51,29 @@ The Zod schema is the **single source of truth** for DB types, API validation an
 
 ```typescript
 // packages/schemas/core/company.schema.ts
-import { z } from 'zod'
-import '../zod-meta'
-import { withMeta } from '../with-meta'
-
 export const companySchema = withMeta(
   z.object({
     id:        z.string().uuid(),
     legalName: z.string().min(2).meta({ label: 'Razão Social', showInList: true }),
-    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia' }),
-    taxId:     z.string().length(14).meta({ label: 'CNPJ', mask: 'cnpj' }),
+    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', showInList: true }),
+    taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', mask: 'cnpj-base', listVisibility: 'hidden' }),
     type:      z.enum(['client', 'supplier', 'partner', 'other']).meta({ label: 'Tipo', widget: 'select' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo' }),
-    createdAt: z.date().meta({ showInForm: false }),
-    updatedAt: z.date().meta({ showInForm: false }),
+    createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
+    updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
     label:       'Empresa',
     labelPlural: 'Empresas',
     nameField:   'legalName',
+    children: [
+      { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId' },
+    ],
     groups: {
-      'Identificação': ['legalName', 'tradeName', 'taxId', 'type', 'isActive'],
-      'Contato':       ['phone', 'email', 'website'],
+      'Contato': ['phone', 'email', 'website'],
     },
   },
 )
-
-export const createCompanySchema = companySchema.omit({ id: true, createdAt: true, updatedAt: true })
-export const updateCompanySchema = createCompanySchema.partial()
-
-export type Company          = z.infer<typeof companySchema>
-export type CreateCompanyDto = z.infer<typeof createCompanySchema>
-export type UpdateCompanyDto = z.infer<typeof updateCompanySchema>
 ```
 
 ### Available `.meta()` field options
@@ -91,14 +82,19 @@ export type UpdateCompanyDto = z.infer<typeof updateCompanySchema>
 |----------|------|---------|--------|
 | `label` | `string` | `camelCase → Title Case` | Label in forms and list columns |
 | `showInList` | `boolean` | `true` (non-id, non-password, non-timestamp) | Includes field in `AutoList` |
+| `listVisibility` | `'visible' \| 'hidden' \| 'never'` | computed | `visible` = shown by default; `hidden` = hidden by default, user can toggle; `never` = not in picker or table |
 | `showInForm` | `boolean` | `true` | Includes field in `AutoForm` |
 | `sortable` | `boolean` | `true` for string/number/date/enum | Enables server-side column sorting |
 | `searchable` | `boolean` | `false` | Marks field for search filtering |
 | `widget` | `string` | derived from Zod type | Form component: `'textarea'`, `'select'`, `'switch'`, `'datepicker'`, `'password'`, `'combobox'` |
-| `mask` | `string` | none | Input mask: `'cnpj'`, `'cpf'`, `'phone'`, `'cep'` |
+| `mask` | `string` | none | Input mask: `'cnpj'`, `'cnpj-base'` (8-digit root), `'cpf'`, `'phone'`, `'cep'` |
 | `placeholder` | `string` | none | Input placeholder text |
 | `helpText` | `string` | none | Help text rendered below the field |
 | `width` | `string` | `w-full` | Any Tailwind width class — controls field width in the form grid |
+| `resource` | `string` | none | For `widget: 'select'` — API resource to fetch options from (e.g. `'company'`) |
+| `labelField` | `string` | none | Field used as display label for relation select options |
+
+`defaultValue` is automatically extracted from Zod's `.default()` and pre-filled in `AutoForm`.
 
 ### Available `withMeta()` schema options
 
@@ -107,7 +103,10 @@ export type UpdateCompanyDto = z.infer<typeof updateCompanySchema>
 | `label` | `string` | Singular label — "Empresa" |
 | `labelPlural` | `string` | Plural label — "Empresas" (default: `label + 's'`) |
 | `nameField` | `string` | Field used as display name in breadcrumb (default: `'name'`) |
+| `allowCsv` | `boolean` | Adds CSV download button to list topbar |
 | `groups` | `Record<string, string[]>` | Tab groups for `AutoForm` — `{ 'Tab label': ['field1', 'field2'] }` |
+| `children` | `ChildResourceDef[]` | Child resources — adds navigation buttons to parent form topbar |
+| `breadcrumb` | `BreadcrumbDef[]` | Parent chain — used by `AutoBreadcrumb` to resolve parent labels |
 
 ---
 
@@ -199,3 +198,62 @@ core: {
 The sidebar and breadcrumb update automatically. No page files required for standard CRUD — the dynamic routes `[domain]/[resource]` and `[domain]/[resource]/[id]` handle it.
 
 To override with custom UI, create `app/core/<resource>/page.tsx`.
+
+**Child resources** (e.g. `branch`) must **not** be added to `domains.ts` — they are accessed only through the parent form's topbar button, never directly from the sidebar.
+
+---
+
+## 4. Parent-Child Resource Pattern
+
+Used when a resource only makes sense in the context of a parent (e.g. Branch → Company). No custom pages required.
+
+### Parent schema — declare `children`
+
+```typescript
+// packages/schemas/core/company.schema.ts
+withMeta(z.object({ ... }), {
+  children: [
+    { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId' },
+  ],
+})
+```
+
+`AutoForm` renders a "Filiais" button in the topbar (only when editing an existing record) that navigates to `/{domain}/branch?companyId={id}`.
+
+### Child schema — declare `breadcrumb`
+
+```typescript
+// packages/schemas/core/branch.schema.ts
+withMeta(z.object({
+  companyId: z.string().uuid().meta({
+    label: 'Empresa',
+    widget: 'select',
+    resource: 'company',
+    labelField: 'legalName',
+    listVisibility: 'hidden',
+  }),
+  ...
+}), {
+  breadcrumb: [
+    { resource: 'company', contextField: 'companyId', listLabel: 'Empresas', nameField: 'legalName' },
+  ],
+})
+```
+
+`AutoBreadcrumb` uses `breadcrumb` to fetch parent records and build the full chain.
+
+### URL context params convention
+
+When navigating from parent to child list/form, the parent ID is passed as a query param:
+
+| Param form | Behavior |
+|-----------|----------|
+| `?companyId=xxx` | Pre-fills `companyId` field as **readonly** in new records |
+| `?_taxId=00.000.000` | Pre-fills `taxId` field as **editable** default (underscore prefix = derived default) |
+
+The list page propagates context params to the "New" button and the edit row links, so context is never lost.
+
+### `Alt+V` behavior
+
+- In child list (`/core/branch?companyId=xxx`): navigates to the parent record (`/core/company/xxx`)
+- In child form (`/core/branch/yyy?companyId=xxx`): navigates back to the child list with context preserved

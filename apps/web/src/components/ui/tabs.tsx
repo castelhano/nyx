@@ -19,7 +19,9 @@ export function Tabs({ tabs, className }: TabsProps) {
 
   useEffect(() => {
     panelRefs.current[active]
-      ?.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea')
+      ?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled]):not([readonly])',
+      )
       ?.focus()
   }, [active])
 

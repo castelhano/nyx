@@ -12,11 +12,13 @@ interface Props {
   field:       MetadataField
   register:    UseFormRegisterReturn
   control?:    Control<any>
+  readonly?:   boolean
   error?:      string
   autoFocus?:  boolean
 }
 
 const inputBase = 'w-full border border-input rounded-[--radius] px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
+const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 
 type MaskDef = string | { mask: string }[]
 
@@ -29,9 +31,9 @@ const MASKS: Record<string, MaskDef> = {
 }
 
 function MaskedInput({
-  field, control, autoFocus, className,
+  field, control, autoFocus, className, readonly,
 }: {
-  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean
 }) {
   return (
     <Controller
@@ -48,7 +50,8 @@ function MaskedInput({
           id={field.name}
           autoFocus={autoFocus}
           placeholder={field.placeholder}
-          className={className}
+          readOnly={readonly}
+          className={`${className} ${readonly ? readonlyCls : ''}`}
         />
       )}
     />
@@ -56,9 +59,9 @@ function MaskedInput({
 }
 
 function RelationSelect({
-  field, control, autoFocus, className,
+  field, control, autoFocus, className, readonly,
 }: {
-  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean
 }) {
   const { data } = useQuery<PaginatedResult<Record<string, unknown>>>({
     queryKey:  ['relation', field.resource],
@@ -70,7 +73,7 @@ function RelationSelect({
     staleTime: 30_000,
   })
 
-  const options = data?.data ?? []
+  const options    = data?.data ?? []
   const labelField = field.labelField ?? 'name'
 
   return (
@@ -87,7 +90,8 @@ function RelationSelect({
             onChange={ctrl.onChange}
             onBlur={ctrl.onBlur}
             ref={ctrl.ref}
-            className={`${className} appearance-none pr-9`}
+            disabled={readonly}
+            className={`${className} appearance-none pr-9 ${readonly ? readonlyCls : ''}`}
           >
             <option value="">{field.placeholder ?? 'Selecione…'}</option>
             {options.map((opt) => (
@@ -103,11 +107,18 @@ function RelationSelect({
   )
 }
 
-export function FieldRenderer({ field, register, control, error, autoFocus }: Props) {
+export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
   if (field.type === 'boolean') {
     return (
       <div className="md:col-start-2 flex items-center gap-2 pt-1">
-        <input id={field.name} type="checkbox" autoFocus={autoFocus} {...register} className="rounded" />
+        <input
+          id={field.name}
+          type="checkbox"
+          autoFocus={autoFocus}
+          disabled={readonly}
+          {...register}
+          className={`rounded ${readonly ? readonlyCls : ''}`}
+        />
         <label htmlFor={field.name} className="text-sm select-none cursor-pointer">{field.label}</label>
         {error && <p className="text-xs text-destructive ml-1">{error}</p>}
       </div>
@@ -120,7 +131,13 @@ export function FieldRenderer({ field, register, control, error, autoFocus }: Pr
         <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
         <div className={`space-y-1 ${field.width ?? ''}`}>
           <div className="relative">
-            <select id={field.name} autoFocus={autoFocus} {...register} className={`${inputBase} appearance-none pr-9`}>
+            <select
+              id={field.name}
+              autoFocus={autoFocus}
+              disabled={readonly}
+              {...register}
+              className={`${inputBase} appearance-none pr-9 ${readonly ? readonlyCls : ''}`}
+            >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
                 <option key={o} value={o}>{o}</option>
@@ -143,13 +160,33 @@ export function FieldRenderer({ field, register, control, error, autoFocus }: Pr
   let controlEl: React.ReactNode
 
   if (field.resource && control) {
-    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={inputBase} />
+    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={inputBase} readonly={readonly} />
   } else if (field.mask && control) {
-    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBase} />
+    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBase} readonly={readonly} />
   } else if (field.widget === 'textarea') {
-    controlEl = <textarea id={field.name} autoFocus={autoFocus} {...register} rows={3} placeholder={field.placeholder} className={inputBase} />
+    controlEl = (
+      <textarea
+        id={field.name}
+        autoFocus={autoFocus}
+        readOnly={readonly}
+        {...register}
+        rows={3}
+        placeholder={field.placeholder}
+        className={`${inputBase} ${readonly ? readonlyCls : ''}`}
+      />
+    )
   } else {
-    controlEl = <input id={field.name} type={inputType} autoFocus={autoFocus} {...register} placeholder={field.placeholder} className={inputBase} />
+    controlEl = (
+      <input
+        id={field.name}
+        type={inputType}
+        autoFocus={autoFocus}
+        readOnly={readonly}
+        {...register}
+        placeholder={field.placeholder}
+        className={`${inputBase} ${readonly ? readonlyCls : ''}`}
+      />
+    )
   }
 
   return (

@@ -232,14 +232,18 @@ interface ResourceMetadata {
   label:       string
   labelPlural: string
   nameField:   string
+  allowCsv?:   boolean
   permissions: { create: boolean; read: boolean; update: boolean; delete: boolean }
-  fields:      MetadataField[]
-  actions:     ResourceAction[]
-  groups?:     TabGroup[]         // tab groups for AutoForm
+  fields:      MetadataField[]    // includes listVisibility, defaultValue, mask, widget, resource, labelField
+  groups?:     TabGroup[]
+  children?:   ChildResourceDef[] // { resource, domain, label, contextField }
+  breadcrumb?: BreadcrumbDef[]    // { resource, contextField, listLabel, nameField }
 }
 ```
 
 `permissions` reflects the **actual abilities of the authenticated user** — the frontend uses this to show/hide action buttons (New, Save, Delete) without additional permission checks.
+
+`defaultValue` on each field is extracted automatically from Zod's `.default()` by `metadata.builder.ts`.
 
 `useMetadata(domain, resource)` caches with `staleTime: Infinity` in production and `staleTime: 0` in development.
 
@@ -247,9 +251,11 @@ interface ResourceMetadata {
 
 Higher-order components that consume the Metadata API:
 
-- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each to `FieldRenderer`. Supports `formId` (external submit button via HTML5 `form` attribute) and `resetSignal` (force-reset without `defaultValues` change). When `groups` is present in metadata, renders a tabbed layout.
-- **AutoList** — renders a table from `fields` with `showInList: true`. Sortable columns send `sortField`/`sortOrder` to `BaseService.findAll`.
-- **AutoBreadcrumb** — resolves labels from `domains.ts` (domain) and `useMetadata` (resource). Pass `recordName` from the fetched record for the leaf segment.
+- **AutoForm** — iterates `fields` with `showInForm: true`, delegates each to `FieldRenderer`. Schema `defaultValue`s are merged with `defaultValues` prop on metadata load. Supports `readonlyFields` (field names rendered as non-editable), `formId` (external submit button via HTML5 `form` attribute), and `resetSignal` (force-reset). When `groups` is present, renders a tabbed layout via `Tabs` — tab switching moves focus imperatively to the first non-disabled field.
+- **AutoList** — TanStack Table (`@tanstack/react-table`) with server-side sorting and pagination. Column visibility is driven by `listVisibility`: `visible` = shown by default, `hidden` = hidden by default (user can toggle), `never` = excluded from picker. Accepts `filters` prop (passed as query params to `BaseService.findAll`). CSV download available when `allowCsv: true`.
+- **AutoBreadcrumb** — resolves parent labels using `meta.breadcrumb` and `useQueries` for parallel fetches. Accepts `contextParams` to propagate URL context through the breadcrumb links.
+
+- **FieldRenderer** — renders the correct widget per field type: plain input, masked input (`react-imask`), relation select (fetches `GET /{domain}/{resource}?pageSize=999`), switch, textarea, etc. Supports `readonly` prop (visual + functional lock).
 
 The ~20% of resources that need custom UI replace these with hand-crafted components.
 
@@ -359,6 +365,7 @@ prisma.someModel.findMany({ where: { branchId: { in: user.branchIds } } })
 |-----------|------|-------|
 | `Button` | `components/ui/button.tsx` | variants: default, destructive, outline, ghost, rowAction |
 | `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
+| `Tabs` | `components/ui/tabs.tsx` | all panels stay mounted (`hidden` attr); focuses first non-disabled field on tab change |
 
 ---
 

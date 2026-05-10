@@ -96,6 +96,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const labelPlural  = schemaMeta.labelPlural ?? `${label}s`
   const nameField    = schemaMeta.nameField   ?? 'name'
   const allowCsv     = schemaMeta.allowCsv    ?? true
+  const breadcrumb   = schemaMeta.breadcrumb  as import('@nyx/types').BreadcrumbDef[]      | undefined
+  const children     = schemaMeta.children    as import('@nyx/types').ChildResourceDef[]   | undefined
 
   const groups: TabGroup[] | undefined = rawGroups
     ? Object.keys(rawGroups).map((tabLabel) => ({ label: tabLabel, fields: rawGroups[tabLabel] }))
@@ -110,6 +112,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
     actions: [],
-    ...(groups ? { groups } : {}),
+    ...(groups      ? { groups }      : {}),
+    ...(breadcrumb  ? { breadcrumb }  : {}),
+    ...(children    ? { children }    : {}),
   }
 }
