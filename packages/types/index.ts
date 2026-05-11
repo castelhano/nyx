@@ -28,6 +28,7 @@ export interface FieldMeta {
   className?: string
   resource?: string
   labelField?: string
+  keybind?: string
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -52,6 +53,7 @@ export interface MetadataField {
   className?: string
   resource?: string
   labelField?: string
+  keybind?: string
   group?: string
 }
 

@@ -69,12 +69,14 @@ Fast-access shortcuts for primary page actions. Fire immediately even inside for
 | `Alt+V` | Navigate back (one breadcrumb level) | — |
 | `Alt+G` | Save / commit changes | — |
 | `Alt+Q` | Log out | ⚠ Requires confirmation dialog before executing |
+| `Alt+[` | Previous tab | Registered by `Tabs` when mounted — fires inside inputs |
+| `Alt+]` | Next tab | Registered by `Tabs` when mounted — fires inside inputs |
 
 ---
 
 ### Ctrl — Navigation
 
-Structural navigation shortcuts. Operate on layout primitives (sidebar, tabs, table, form fields).
+Structural navigation shortcuts. Operate on layout primitives (sidebar, table, form fields).
 
 #### General
 
@@ -83,15 +85,6 @@ Structural navigation shortcuts. Operate on layout primitives (sidebar, tabs, ta
 | `Ctrl+'` | Toggle sidebar |
 | `Ctrl+F1` | Open page-local help |
 | `Ctrl+Enter` | Access / open focused item |
-
-#### Tab Navigation
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+ArrowLeft` | Previous tab |
-| `Ctrl+ArrowRight` | Next tab |
-| `Ctrl+1` | Focus first tab |
-| `Ctrl+N` | Focus tab N (2–9) |
 
 #### Table Navigation
 
@@ -104,19 +97,20 @@ Structural navigation shortcuts. Operate on layout primitives (sidebar, tabs, ta
 
 #### Form Field Navigation
 
-`Ctrl+[key]` moves focus to the field that declares `keybind: '[key]'` in its schema field meta. The binding is registered automatically by `AutoForm` via Keywatch when the form mounts.
+`Ctrl+Shift+[key]` moves focus to the field that declares `keybind: '[key]'` in its schema field meta. The binding is registered automatically by `AutoForm` via Keywatch when the form mounts and fires **even when focus is inside another input** — `Ctrl+Shift+*` with two standard modifiers bypasses Keywatch's composed-input guard by design.
 
 ```typescript
 // company.schema.ts — example
-legalName: z.string().meta({ label: 'Razão Social', keybind: 's' }),
-// registers Ctrl+S → focus #legalName while the form is active
+taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'j' }),
+// registers Ctrl+Shift+J → focus #taxId while the form is active
 ```
 
 **Rules:**
 - Keys must be a single lowercase letter (`a–z`). Do not use digits or special characters.
-- The key must not conflict with any `Ctrl+[key]` entry in this document.
-- Bindings are scoped to the form's Keywatch context and unregistered on unmount — no global pollution.
+- Avoid `z` (redo in some browsers) and letters used by browser DevTools shortcuts.
+- Bindings are scoped to the form's Keywatch group and unregistered on unmount — no global pollution.
 - Only one field per form may declare the same key.
+- These shortcuts have `display: false` — they do not appear in the `Alt+K` shortcuts modal.
 
 ---
 

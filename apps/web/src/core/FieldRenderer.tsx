@@ -4,6 +4,7 @@ import { Controller, type Control } from 'react-hook-form'
 import { useQuery } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
 import { ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import type { MetadataField, PaginatedResult } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import { apiFetch } from '@/lib/auth'
@@ -30,6 +31,18 @@ const MASKS: Record<string, MaskDef> = {
   'phone':     [{ mask: '(00) 0000-0000' }, { mask: '(00) 00000-0000' }],
 }
 
+function KeyHint({ k, className }: { k: string; className?: string }) {
+  return (
+    <span className={cn(
+      'pointer-events-none select-none absolute top-1/2 -translate-y-1/2 right-3',
+      'text-[12px] font-mono text-muted-foreground/80',
+      className,
+    )}>
+      {k.toUpperCase()}
+    </span>
+  )
+}
+
 function MaskedInput({
   field, control, autoFocus, className, readonly,
 }: {
@@ -41,18 +54,21 @@ function MaskedInput({
       control={control}
       rules={{ required: field.required }}
       render={({ field: ctrl }) => (
-        <IMaskInput
-          mask={MASKS[field.mask!] as any}
-          value={ctrl.value ?? ''}
-          inputRef={ctrl.ref}
-          onAccept={(val: string) => ctrl.onChange(val)}
-          onBlur={ctrl.onBlur}
-          id={field.name}
-          autoFocus={autoFocus}
-          placeholder={field.placeholder}
-          readOnly={readonly}
-          className={`${className} ${readonly ? readonlyCls : ''}`}
-        />
+        <div className="relative">
+          <IMaskInput
+            mask={MASKS[field.mask!] as any}
+            value={ctrl.value ?? ''}
+            inputRef={ctrl.ref}
+            onAccept={(val: string) => ctrl.onChange(val)}
+            onBlur={ctrl.onBlur}
+            id={field.name}
+            autoFocus={autoFocus}
+            placeholder={field.placeholder}
+            readOnly={readonly}
+            className={cn(className, field.keybind && 'pr-10', readonly && readonlyCls)}
+          />
+          {field.keybind && <KeyHint k={field.keybind} />}
+        </div>
       )}
     />
   )
@@ -91,7 +107,7 @@ function RelationSelect({
             onBlur={ctrl.onBlur}
             ref={ctrl.ref}
             disabled={readonly}
-            className={`${className} appearance-none pr-9 ${readonly ? readonlyCls : ''}`}
+            className={cn(className, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
           >
             <option value="">{field.placeholder ?? 'Selecione…'}</option>
             {options.map((opt) => (
@@ -100,7 +116,8 @@ function RelationSelect({
               </option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
+          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         </div>
       )}
     />
@@ -136,13 +153,14 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
               autoFocus={autoFocus}
               disabled={readonly}
               {...register}
-              className={`${inputBase} appearance-none pr-9 ${readonly ? readonlyCls : ''}`}
+              className={cn(inputBase, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
             >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
                 <option key={o} value={o}>{o}</option>
               ))}
             </select>
+            {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           </div>
           {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
@@ -165,27 +183,33 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
     controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBase} readonly={readonly} />
   } else if (field.widget === 'textarea') {
     controlEl = (
-      <textarea
-        id={field.name}
-        autoFocus={autoFocus}
-        readOnly={readonly}
-        {...register}
-        rows={3}
-        placeholder={field.placeholder}
-        className={`${inputBase} ${readonly ? readonlyCls : ''}`}
-      />
+      <div className="relative">
+        <textarea
+          id={field.name}
+          autoFocus={autoFocus}
+          readOnly={readonly}
+          {...register}
+          rows={3}
+          placeholder={field.placeholder}
+          className={cn(inputBase, field.keybind && 'pr-10', readonly && readonlyCls)}
+        />
+        {field.keybind && <KeyHint k={field.keybind} className="top-3 -translate-y-0" />}
+      </div>
     )
   } else {
     controlEl = (
-      <input
-        id={field.name}
-        type={inputType}
-        autoFocus={autoFocus}
-        readOnly={readonly}
-        {...register}
-        placeholder={field.placeholder}
-        className={`${inputBase} ${readonly ? readonlyCls : ''}`}
-      />
+      <div className="relative">
+        <input
+          id={field.name}
+          type={inputType}
+          autoFocus={autoFocus}
+          readOnly={readonly}
+          {...register}
+          placeholder={field.placeholder}
+          className={cn(inputBase, field.keybind && 'pr-10', readonly && readonlyCls)}
+        />
+        {field.keybind && <KeyHint k={field.keybind} />}
+      </div>
     )
   }
 

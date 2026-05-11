@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
-import { Tabs } from '@/components/ui/tabs'
+import { Tabs, type TabsHandle } from '@/components/ui/tabs'
+import { useKeywatch } from '@/lib/keywatch/context'
 import type { MetadataField } from '@nyx/types'
 
 interface Props {
@@ -23,6 +24,56 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSu
     defaultValues,
   })
   const visibleFields = meta?.fields.filter((f) => f.showInForm) ?? []
+  const { coreRef }   = useKeywatch()
+  const keybindGroup  = useRef(`autoform-${resource}`)
+  const tabsRef       = useRef<TabsHandle>(null)
+
+  // Registra Ctrl+Shift+[keybind] para campos que declaram keybind no schema.
+  // Se o campo estiver em outra aba, troca de aba antes de focar.
+  useEffect(() => {
+    if (!meta) return
+    const core = coreRef.current
+    if (!core) return
+    const group = keybindGroup.current
+
+    // Monta mapa fieldName → tabIndex para campos agrupados
+    const tabIndexMap = new Map<string, number>()
+    if (meta.groups?.length) {
+      const groupedNames = new Set(meta.groups.flatMap((g) => g.fields))
+      const hasUngrouped = visibleFields.some((f) => !groupedNames.has(f.name))
+      const offset       = hasUngrouped ? 1 : 0  // "Geral" ocupa index 0 quando existe
+
+      meta.groups.forEach((g, i) => {
+        g.fields.forEach((name) => tabIndexMap.set(name, i + offset))
+      })
+      if (hasUngrouped) {
+        visibleFields
+          .filter((f) => !groupedNames.has(f.name))
+          .forEach((f) => tabIndexMap.set(f.name, 0))
+      }
+    }
+
+    meta.fields
+      .filter((f) => f.showInForm && f.keybind)
+      .forEach((f) => {
+        core.bind(`ctrl+shift+${f.keybind}`, () => {
+          const tabIdx = tabIndexMap.get(f.name) ?? -1
+          if (tabIdx >= 0 && tabsRef.current) {
+            tabsRef.current.switchTo(tabIdx)
+            requestAnimationFrame(() => document.getElementById(f.name)?.focus())
+          } else {
+            document.getElementById(f.name)?.focus()
+          }
+        }, {
+          desc:    `Focar: ${f.label}`,
+          display: false,
+          group,
+          origin:  'apps/web/src/core/AutoForm',
+        })
+      })
+
+    return () => { core.unbindGroup(group) }
+  }, [meta?.resource]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function buildSchemaDefaults(exclude: Record<string, unknown> = {}) {
     if (!meta) return {}
@@ -33,21 +84,18 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSu
     )
   }
 
-  // Aplica defaults do schema mesclados com defaultValues quando metadata carrega
   useEffect(() => {
     if (!meta) return
     const schemaDefaults = buildSchemaDefaults(defaultValues ?? {})
     reset({ ...schemaDefaults, ...defaultValues })
   }, [meta?.resource])
 
-  // Quando defaultValues muda (registro carregado da API), reaplica mesclando schema defaults
   useEffect(() => {
     if (!defaultValues) return
     const schemaDefaults = buildSchemaDefaults(defaultValues)
     reset({ ...schemaDefaults, ...defaultValues })
   }, [JSON.stringify(defaultValues)])
 
-  // Reset signal: volta ao estado inicial (novo registro)
   useEffect(() => {
     if (!resetSignal || !meta) return
     const schemaDefaults = buildSchemaDefaults(defaultValues ?? {})
@@ -98,7 +146,12 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSu
 
     if (ungrouped.length > 0) tabs.unshift({ label: 'Geral', fields: ungrouped })
 
-    return <Tabs tabs={tabs.map((g) => ({ label: g.label, content: fieldGrid(g.fields, false) }))} />
+    return (
+      <Tabs
+        ref={tabsRef}
+        tabs={tabs.map((g) => ({ label: g.label, content: fieldGrid(g.fields, false) }))}
+      />
+    )
   }
 
   return (

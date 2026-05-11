@@ -87,6 +87,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.className           ? { className:   meta.className }            : {}),
       ...(meta.resource            ? { resource:    meta.resource }             : {}),
       ...(meta.labelField          ? { labelField:  meta.labelField }           : {}),
+      ...(meta.keybind             ? { keybind:     meta.keybind }              : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
     })
   }

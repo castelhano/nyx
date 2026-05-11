@@ -91,12 +91,15 @@ function buildColumns(
 }
 
 export function AutoList({ domain, resource, onEdit, filters }: Props) {
-  const [page,      setPage]      = useState(1)
-  const [search,    setSearch]    = useState('')
-  const [sorting,   setSorting]   = useState<SortingState>([])
+  const [page,       setPage]       = useState(1)
+  const [search,     setSearch]     = useState('')
+  const [sorting,    setSorting]    = useState<SortingState>([])
   const [visibility, setVisibility] = useState<VisibilityState>({})
   const [pickerOpen, setPickerOpen] = useState(false)
-  const pickerRef = useRef<HTMLDivElement>(null)
+  const [focusedRow, setFocusedRow] = useState<number | null>(null)
+  const pickerRef       = useRef<HTMLDivElement>(null)
+  const tableRef        = useRef<HTMLDivElement>(null)
+  const initialFocus    = useRef(false)
 
   const { data: meta } = useMetadata(domain, resource)
 
@@ -130,6 +133,17 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
     setVisibility(initial)
   }, [meta?.resource])
 
+  // Reset focused row when data set changes
+  useEffect(() => { setFocusedRow(null) }, [page, search, sorting, filters])
+
+  // Auto-foca a tabela na primeira carga para permitir navegação imediata sem click
+  useEffect(() => {
+    if (data && !initialFocus.current) {
+      initialFocus.current = true
+      tableRef.current?.focus({ preventScroll: true })
+    }
+  }, [data])
+
   // Close picker on outside click
   useEffect(() => {
     if (!pickerOpen) return
@@ -141,6 +155,37 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
     document.addEventListener('mousedown', onOutside)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [pickerOpen])
+
+  function handleTableKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!e.ctrlKey) return
+    const rows = table.getRowModel().rows
+    if (!rows.length && e.key !== 'PageUp' && e.key !== 'PageDown') return
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setFocusedRow((prev) => prev === null ? 0 : Math.min(prev + 1, rows.length - 1))
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setFocusedRow((prev) => prev === null ? rows.length - 1 : Math.max(prev - 1, 0))
+        break
+      case 'PageDown':
+        e.preventDefault()
+        if (data && page * 20 < data.total) { setPage((p) => p + 1) }
+        break
+      case 'PageUp':
+        e.preventDefault()
+        if (page > 1) { setPage((p) => Math.max(1, p - 1)) }
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (focusedRow !== null && onEdit && rows[focusedRow]) {
+          onEdit(String(rows[focusedRow].original.id))
+        }
+        break
+    }
+  }
 
   function handleSort(col: MetadataField) {
     setSorting((prev) => {
@@ -216,7 +261,12 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : (
-        <div className="overflow-hidden rounded-sm border border-border">
+        <div
+          ref={tableRef}
+          tabIndex={0}
+          onKeyDown={handleTableKeyDown}
+          className="overflow-hidden rounded-sm border border-border focus:outline-none"
+        >
           <table className="w-full text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
@@ -240,8 +290,15 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="hover:bg-accent/20 border-b border-border">
+              {table.getRowModel().rows.map((row, rowIdx) => (
+                <tr
+                  key={row.id}
+                  onClick={() => setFocusedRow(rowIdx)}
+                  className={cn(
+                    'hover:bg-accent/20 border-b border-border cursor-default',
+                    rowIdx === focusedRow && 'bg-ring/10 shadow-[inset_2px_0_0_hsl(var(--ring)_/_0.5),inset_-2px_0_0_hsl(var(--ring)_/_0.5)]',
+                  )}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}

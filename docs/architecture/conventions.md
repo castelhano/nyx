@@ -93,6 +93,7 @@ export const companySchema = withMeta(
 | `className` | `string` | none | Any Tailwind class(es) applied to the field wrapper — e.g. `'w-24'`, `'w-full md:w-60'` |
 | `resource` | `string` | none | For `widget: 'select'` — API resource to fetch options from (e.g. `'company'`) |
 | `labelField` | `string` | none | Field used as display label for relation select options |
+| `keybind` | `string` | none | Single lowercase letter (`a–z`). Registers `Ctrl+Shift+[key]` to focus this field from anywhere in the form (including other inputs or other tabs). Renders a `⌃⇧K` hint inside the control. Avoid `z` and browser-reserved letters. |
 
 `defaultValue` is automatically extracted from Zod's `.default()` and pre-filled in `AutoForm`.
 
