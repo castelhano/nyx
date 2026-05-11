@@ -66,7 +66,7 @@ export const Tabs = forwardRef<TabsHandle, TabsProps>(function Tabs({ tabs, clas
     core.bind('alt+[', () => {
       activateRef.current(Math.max(0, activeRef.current - 1))
     }, {
-      desc:    'Aba anterior',
+      desc:    'Tab - Aba anterior',
       icon:    ChevronLeft,
       group,
       origin:  'apps/web/src/components/ui/tabs',
@@ -75,7 +75,7 @@ export const Tabs = forwardRef<TabsHandle, TabsProps>(function Tabs({ tabs, clas
     core.bind('alt+]', () => {
       activateRef.current(Math.min(tabs.length - 1, activeRef.current + 1))
     }, {
-      desc:    'Próxima aba',
+      desc:    'Tab - Próxima aba',
       icon:    ChevronRight,
       group,
       origin:  'apps/web/src/components/ui/tabs',

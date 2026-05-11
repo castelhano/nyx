@@ -92,8 +92,10 @@ Structural navigation shortcuts. Operate on layout primitives (sidebar, table, f
 |-----|--------|
 | `Ctrl+ArrowUp` | Previous row |
 | `Ctrl+ArrowDown` | Next row |
-| `Ctrl+PageUp` | Previous page |
-| `Ctrl+PageDown` | Next page |
+| `Alt+PageUp` | Previous page |
+| `Alt+PageDown` | Next page |
+
+> For page navigation, the modifier has been changed to Alt to avoid conflicts when switching browser tabs.
 
 #### Form Field Navigation
 

@@ -11,6 +11,7 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table'
 import { useMetadata } from './useMetadata'
+import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -97,14 +98,12 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
   const [visibility, setVisibility] = useState<VisibilityState>({})
   const [pickerOpen, setPickerOpen] = useState(false)
   const [focusedRow, setFocusedRow] = useState<number | null>(null)
-  const pickerRef       = useRef<HTMLDivElement>(null)
-  const tableRef        = useRef<HTMLDivElement>(null)
-  const initialFocus    = useRef(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   const { data: meta } = useMetadata(domain, resource)
 
-  const sortField = sorting[0]?.id     ?? null
-  const sortOrder = sorting[0]?.desc   ? 'desc' : 'asc'
+  const sortField = sorting[0]?.id   ?? null
+  const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
 
   const { data, isLoading } = useQuery<PaginatedResult<Row>>({
     queryKey: [domain, resource, page, search, sortField, sortOrder, filters],
@@ -123,7 +122,6 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
     enabled: !!meta,
   })
 
-  // Initialize column visibility from listVisibility
   useEffect(() => {
     if (!meta) return
     const initial: VisibilityState = {}
@@ -133,18 +131,8 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
     setVisibility(initial)
   }, [meta?.resource])
 
-  // Reset focused row when data set changes
   useEffect(() => { setFocusedRow(null) }, [page, search, sorting, filters])
 
-  // Auto-foca a tabela na primeira carga para permitir navegação imediata sem click
-  useEffect(() => {
-    if (data && !initialFocus.current) {
-      initialFocus.current = true
-      tableRef.current?.focus({ preventScroll: true })
-    }
-  }, [data])
-
-  // Close picker on outside click
   useEffect(() => {
     if (!pickerOpen) return
     function onOutside(e: MouseEvent) {
@@ -156,36 +144,33 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
     return () => document.removeEventListener('mousedown', onOutside)
   }, [pickerOpen])
 
-  function handleTableKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (!e.ctrlKey) return
+  useShortcut('ctrl+arrowdown', () => {
     const rows = table.getRowModel().rows
-    if (!rows.length && e.key !== 'PageUp' && e.key !== 'PageDown') return
+    
+    if (!rows.length) return
+    setFocusedRow((prev) => prev === null ? 0 : Math.min(prev + 1, rows.length - 1))
+  }, { desc: 'Tabela - Linha seguinte', icon: ChevronDown, origin: 'apps.web.src.core.AutoList' })
 
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        setFocusedRow((prev) => prev === null ? 0 : Math.min(prev + 1, rows.length - 1))
-        break
-      case 'ArrowUp':
-        e.preventDefault()
-        setFocusedRow((prev) => prev === null ? rows.length - 1 : Math.max(prev - 1, 0))
-        break
-      case 'PageDown':
-        e.preventDefault()
-        if (data && page * 20 < data.total) { setPage((p) => p + 1) }
-        break
-      case 'PageUp':
-        e.preventDefault()
-        if (page > 1) { setPage((p) => Math.max(1, p - 1)) }
-        break
-      case 'Enter':
-        e.preventDefault()
-        if (focusedRow !== null && onEdit && rows[focusedRow]) {
-          onEdit(String(rows[focusedRow].original.id))
-        }
-        break
+  useShortcut('ctrl+arrowup', () => {
+    const rows = table.getRowModel().rows
+    if (!rows.length) return
+    setFocusedRow((prev) => prev === null ? rows.length - 1 : Math.max(prev - 1, 0))
+  }, { desc: 'Tabela - Linha anterior', icon: ChevronUp, origin: 'apps.web.src.core.AutoList' })
+
+  useShortcut('alt+pagedown', () => {
+    if (data && page * 20 < data.total) setPage((p) => p + 1)
+  }, { desc: 'Tabela - Próxima página', icon: ArrowRightFromLine, origin: 'apps.web.src.core.AutoList' })
+
+  useShortcut('alt+pageup', () => {
+    if (page > 1) setPage((p) => Math.max(1, p - 1))
+  }, { desc: 'Tabela - Página anterior', icon: ArrowLeftFromLine, origin: 'apps.web.src.core.AutoList' })
+
+  useShortcut('ctrl+enter', () => {
+    const rows = table.getRowModel().rows
+    if (focusedRow !== null && onEdit && rows[focusedRow]) {
+      onEdit(String(rows[focusedRow].original.id))
     }
-  }
+  }, { desc: 'Tabela - Editar linha selecionada', icon: SquarePen, origin: 'apps.web.src.core.AutoList' })
 
   function handleSort(col: MetadataField) {
     setSorting((prev) => {
@@ -261,12 +246,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : (
-        <div
-          ref={tableRef}
-          tabIndex={0}
-          onKeyDown={handleTableKeyDown}
-          className="w-full overflow-x-auto rounded-sm border border-border focus:outline-none"
-        >
+        <div className="w-full overflow-x-auto rounded-sm border border-border">
           <table className="w-full min-w-max text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
@@ -319,34 +299,33 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
 
       {/* Pagination */}
       <div className="flex items-center justify-between ps-1 pt-1 text-sm text-muted-foreground">
-        {/* Records & Page summary */}
         <div className='flex items-center gap-x-2'>
           <Layers className='w-4 h-4' />
-          <span>{(data?.total)}</span>
+          <span>{data?.total}</span>
         </div>
         <div className='flex items-center'>
           <div className='flex items-center gap-x-2 me-3'>
             <BetweenVerticalStart className='w-4 h-4' />
             <span>
               {data && data.total > 0 ? (
-              <>
-                {data.page} . {Math.ceil(data.total / data.pageSize)}
-              </>
-            ): '' }
+                <>{data.page} . {Math.ceil(data.total / data.pageSize)}</>
+              ) : ''}
             </span>
           </div>
           <Button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1 }
+            disabled={page === 1 && false}
             size="icon"
-            variant="outline">
+            variant="ghost"
+          >
             <ArrowLeftFromLine className='w-4 h-4' />
           </Button>
           <Button
             onClick={() => setPage((p) => p + 1)}
-            disabled={!data || page * 20 >= data.total}
+            disabled={!data || page * 20 >= data.total && false}
             size="icon"
-            variant="destructive">
+            variant="ghost"
+          >
             <ArrowRightFromLine className='w-4 h-4' />
           </Button>
         </div>
