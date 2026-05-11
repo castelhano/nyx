@@ -88,6 +88,7 @@ export interface ChildResourceDef {
   domain?:      string
   label:        string
   contextField: string
+  keybind?:     string
 }
 
 export interface BreadcrumbDef {

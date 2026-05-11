@@ -16,6 +16,35 @@
 
 ---
 
+## Shortcut Groups & Modal Order
+
+Shortcuts are assigned an `order` value that controls grouping and display sequence in the `Alt+K` modal. Groups are a guide — no rule here is enforced at runtime — but consistent placement builds muscle memory across all screens.
+
+| Group | Order range | Intent | Preferred zone | Preferred keys |
+|-------|--------------|--------|---------------|----------------|
+| **1 — System & Utilities** | `0–3` | Infrastructure that floats above any screen: global search, module menu, notifications, help, logout | Anywhere (global) | `F1–F4`, `Alt+*` |
+| **2 — Operations** | `4–6` | Actions on the current record or its hierarchy: save, delete, download, navigate to child resource, navigate back | Topbar + Breadcrumb | `F9–F11`, `Alt+*` |
+| **3 — Navigation & Components** | `7–9` | Movement within layout primitives: form field focus, table row navigation, tab switching, sidebar | Main content | `Ctrl+*`, `Alt+*` |
+| **4 — General** | `10+` | Page-specific fragments with no natural home in the groups above | Main content | — |
+
+**Ordering within a group:** use the midpoint (`2`, `5`, `8`) when display order is irrelevant. Declare a lower value to appear earlier, a higher value to appear later. Multiple shortcuts may share the same `order` — first-registered wins within a tie.
+
+**`Alt+V` (navigate back)** belongs to Group 2. Although it is rendered inside the breadcrumb component, it moves the user out of the current record — the same semantic intent as saving or navigating to a child resource.
+
+**Reference values for standard actions:**
+
+| Action | Suggested `order` |
+|--------|------------------|
+| Global search, help, logout | `0–2` |
+| Save record | `4` |
+| Navigate to child resource | `5` |
+| Navigate back (`Alt+V`) | `6` |
+| Form field focus (`Ctrl+Shift+*`) | `display: false` — omit `order` |
+| Table row / page navigation | `7–8` |
+| Tab switching | `9` |
+
+---
+
 ## Key Map
 
 ### Fn — Context Operations
@@ -113,6 +142,32 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'j' }),
 - Bindings are scoped to the form's Keywatch group and unregistered on unmount — no global pollution.
 - Only one field per form may declare the same key.
 - These shortcuts have `display: false` — they do not appear in the `Alt+K` shortcuts modal.
+
+---
+
+### Schema-Driven Child Resource Shortcuts
+
+Child resource links declared in a schema's `children[]` array can optionally bind a keyboard shortcut via `keybind`:
+
+```typescript
+// company.schema.ts
+children: [
+  { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId', keybind: 'f9' },
+]
+```
+
+`[id]/page.tsx` reads `meta.children` and automatically registers each entry that declares `keybind` via `core.bind()`. The shortcut navigates to `/{domain}/{resource}?{contextField}={id}`.
+
+**Defaults applied automatically:**
+- `desc` — `child.label`
+- `icon` — `LayoutList`
+- `context` — `'default'`
+- `order` — `'4'`
+
+**Key assignment rules:**
+- Use `F9–F11` (reserved for page context per the Fn key map).
+- Alternatively, use an unassigned `Alt+*` key if the resource deserves a globally memorable binding.
+- Do not use `Ctrl+Shift+*` — that modifier group is reserved for form field focus.
 
 ---
 

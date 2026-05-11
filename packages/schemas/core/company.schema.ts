@@ -28,7 +28,7 @@ export const companySchema = withMeta(
     labelPlural: 'Empresas',
     nameField:   'legalName',
     children: [
-      { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId' },
+      { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId', keybind: 'f9' },
     ],
     groups: {
       'Contato':       ['phone', 'email', 'website'],

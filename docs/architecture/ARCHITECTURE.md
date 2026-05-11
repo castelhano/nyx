@@ -236,7 +236,7 @@ interface ResourceMetadata {
   permissions: { create: boolean; read: boolean; update: boolean; delete: boolean }
   fields:      MetadataField[]    // includes listVisibility, defaultValue, mask, widget, resource, labelField
   groups?:     TabGroup[]
-  children?:   ChildResourceDef[] // { resource, domain, label, contextField }
+  children?:   ChildResourceDef[] // { resource, domain, label, contextField, keybind? }
   breadcrumb?: BreadcrumbDef[]    // { resource, contextField, listLabel, nameField }
 }
 ```

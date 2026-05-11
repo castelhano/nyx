@@ -55,7 +55,7 @@ function DropdownSegment({ label, href, items }: BreadcrumbSegment) {
 
 export function Breadcrumb({ segments }: { segments: BreadcrumbSegment[] }) {
   return (
-    <nav aria-label="breadcrumb" className='mb-5'>
+    <nav aria-label="breadcrumb" className='mb-6'>
       <ol className="flex items-center gap-1.5 text-sm text-muted-foreground">
         {segments.map((seg, i) => {
           const isLast = i === segments.length - 1

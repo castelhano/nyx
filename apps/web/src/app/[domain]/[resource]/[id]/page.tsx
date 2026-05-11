@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Save, ArrowLeft, LayoutList } from 'lucide-react'
@@ -9,7 +9,7 @@ import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
 import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
-import { useShortcut } from '@/lib/keywatch'
+import { useShortcut, useKeywatch } from '@/lib/keywatch'
 
 const FORM_ID = 'record-form'
 
@@ -57,7 +57,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
           label:   child.label,
           icon:    LayoutList,
           onClick: () => router.push(href),
-          variant: 'outline' as const,
+          variant: 'ghost' as const,
           primary: false,
         }
       })
@@ -67,6 +67,21 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
     ...childActions,
     { label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true },
   ], [isNew, meta?.children, record?.id, isPending])
+
+  const { coreRef } = useKeywatch()
+  useEffect(() => {
+    const core = coreRef.current
+    if (!core || isNew || !meta?.children || !record?.id) return
+    const group = '_children_kb'
+    for (const child of meta.children) {
+      if (!child.keybind) continue
+      const href = `/${child.domain ?? domain}/${child.resource}?${child.contextField}=${record.id}`
+      core.bind(child.keybind, () => router.push(href), {
+        desc: child.label, icon: LayoutList, group, order: 4,
+      })
+    }
+    return () => { core.unbindGroup('_children_kb') }
+  }, [isNew, meta?.children, record?.id])
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()

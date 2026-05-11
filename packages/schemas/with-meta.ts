@@ -5,6 +5,7 @@ export type ChildResourceDef = {
   domain?:      string
   label:        string
   contextField: string
+  keybind?:     string
 }
 
 export type BreadcrumbDef = {
