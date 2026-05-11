@@ -271,7 +271,7 @@ POST /auth/login  →  validates credentials  →  returns JWT
 
 **JWT payload:**
 ```typescript
-{ sub: string; role: string; branchIds: string[] }
+{ sub: string; username: string; role: string; branchIds: string[] }
 ```
 
 `branchIds` is computed at login time from `UserBranch`. Storing it in the token avoids a DB query on every request. Trade-off: branch assignment changes take effect only after re-login.
@@ -418,32 +418,44 @@ useShortcut('alt+g', save,    { desc: 'Salvar',        icon: Save, origin: 'Form
 **Location:** `apps/web/src/components/layout/topbar-actions-context.tsx`
 
 ```tsx
-useTopbarActions(node: ReactNode, deps: DependencyList)
+useTopbarActions(actions: TopbarAction[], deps: DependencyList)
 ```
 
-Sets the topbar center slot on mount, updates on `deps` change, clears on unmount.
+Accepts a structured action array instead of a `ReactNode`. Sets the slot on mount, updates on `deps` change, clears on unmount.
+
+```ts
+interface TopbarAction {
+  label:     string
+  icon?:     React.ElementType
+  onClick?:  () => void
+  type?:     'submit'
+  form?:     string
+  disabled?: boolean
+  variant?:  'default' | 'outline' | 'ghost'
+  primary?:  boolean  // default true
+}
+```
+
+**Responsive rendering (handled automatically by `Topbar`):**
+- **Desktop (≥ md):** all actions rendered as icon + label buttons.
+- **Mobile (< md):** `primary: true` actions rendered as icon-only buttons; `primary: false` actions collapse into a `⋯` overflow dropdown.
 
 **Rule:** primary page actions (New, Save, etc.) always live in the topbar — never inline inside `AutoList`, `AutoForm`, or other core components.
 
 **Standard usage — list page:**
 ```tsx
-useTopbarActions(
-  <Button onClick={() => router.push(`/${domain}/${resource}/new`)} size="sm">
-    <Plus className="w-3.5 h-3.5" /> Novo
-  </Button>,
-  [],
-)
+useTopbarActions([
+  { label: 'New', icon: Plus, onClick: () => router.push(newPath), primary: true },
+  { label: 'CSV', icon: Download, onClick: handleDownloadCsv, variant: 'ghost', primary: false },
+], [newPath])
 ```
 
 **Standard usage — form page:**
 ```tsx
 const FORM_ID = 'record-form'
-useTopbarActions(
-  <Button type="submit" form={FORM_ID} size="sm" disabled={isPending}>
-    <Save className="w-3.5 h-3.5" /> {isPending ? 'Gravando…' : 'Gravar'}
-  </Button>,
-  [isPending],
-)
+useTopbarActions([
+  { label: isPending ? 'Saving…' : 'Save', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true },
+], [isPending])
 ```
 
 `AutoForm` receives `formId={FORM_ID}` — hides its internal submit button and lets the topbar button own the submission via the HTML5 `form` attribute.

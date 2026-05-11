@@ -17,7 +17,7 @@ interface Props {
   autoFocus?:  boolean
 }
 
-const inputBase = 'w-full border border-input rounded-[--radius] px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
+const inputBase = 'w-full border border-input rounded-sm px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 
 type MaskDef = string | { mask: string }[]

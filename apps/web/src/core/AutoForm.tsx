@@ -108,7 +108,7 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSu
         <button
           type="submit"
           disabled={isSubmitting}
-          className="mt-4 bg-primary text-primary-foreground px-4 py-2 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          className="mt-4 bg-primary text-primary-foreground px-4 py-2 rounded-[--radius] text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
           {isSubmitting ? 'Salvando…' : 'Salvar'}
         </button>

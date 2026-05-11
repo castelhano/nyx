@@ -3,12 +3,11 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { Save, ArrowLeft } from 'lucide-react'
+import { Save, ArrowLeft, LayoutList } from 'lucide-react'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
 import { apiFetch } from '@/lib/auth'
-import { Button } from '@/components/ui/button'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 
@@ -20,10 +19,9 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   const searchParams = useSearchParams()
   const isNew        = id === 'new'
 
-  const [isPending,    setIsPending]    = useState(false)
-  const [resetSignal,  setResetSignal]  = useState(0)
+  const [isPending,   setIsPending]   = useState(false)
+  const [resetSignal, setResetSignal] = useState(0)
 
-  // Separa params de contexto (pré-preenchimento readonly) dos defaults derivados (_campo)
   const contextParams:  Record<string, string>  = {}
   const derivedDefaults: Record<string, unknown> = {}
   for (const [key, value] of searchParams.entries()) {
@@ -31,12 +29,9 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
     else                     contextParams[key]             = value
   }
 
-  const newRecordDefaults = isNew
-    ? { ...contextParams, ...derivedDefaults }
-    : undefined
-
-  const readonlyFields  = isNew ? Object.keys(contextParams) : []
-  const contextQuery    = Object.keys(contextParams).length
+  const newRecordDefaults = isNew ? { ...contextParams, ...derivedDefaults } : undefined
+  const readonlyFields    = isNew ? Object.keys(contextParams) : []
+  const contextQuery      = Object.keys(contextParams).length
     ? `?${new URLSearchParams(contextParams)}`
     : ''
   const listPath = `/${domain}/${resource}${contextQuery}`
@@ -54,24 +49,24 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
 
   const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
 
-  useTopbarActions(
-    <div className="flex items-center gap-2">
-      {!isNew && meta?.children?.map((child) => {
+  const childActions = (!isNew && meta?.children && record?.id)
+    ? meta.children.map((child) => {
         const childDomain = child.domain ?? domain
-        const href = `/${childDomain}/${child.resource}?${child.contextField}=${record?.id}`
-        return (
-          <Button key={child.resource} variant="ghost" size="sm" onClick={() => router.push(href)}>
-            {child.label}
-          </Button>
-        )
-      })}
-      <Button type="submit" form={FORM_ID} size="sm" disabled={isPending}>
-        <Save className="w-3.5 h-3.5" />
-        {isPending ? 'Gravar…' : 'Gravar'}
-      </Button>
-    </div>,
-    [isNew, meta?.children, record?.id, isPending],
-  )
+        const href = `/${childDomain}/${child.resource}?${child.contextField}=${record.id}`
+        return {
+          label:   child.label,
+          icon:    LayoutList,
+          onClick: () => router.push(href),
+          variant: 'outline' as const,
+          primary: false,
+        }
+      })
+    : []
+
+  useTopbarActions([
+    ...childActions,
+    { label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true },
+  ], [isNew, meta?.children, record?.id, isPending])
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()

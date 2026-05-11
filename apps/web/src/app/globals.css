@@ -36,7 +36,7 @@
     /* ── Estrutura ───────────────────────────────────────────────────────── */
     --border:                 214 32% 91%;    /* bordas de card, divisores, tabelas       */
     --row-hover:              214 32% 94%;    /* hover de linha de tabela                 */
-    --radius:                 0.5rem;         /* border-radius global de controles/cards  */
+    --radius:                 0.1rem;         /* border-radius global de controles/cards  */
 
     /* ── Sidebar ─────────────────────────────────────────────────────────── */
     --sidebar-bg:             0 0% 98%;       /* fundo da sidebar                         */

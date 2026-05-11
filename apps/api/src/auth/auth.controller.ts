@@ -39,6 +39,7 @@ export class AuthController {
 
     const payload = {
       sub:       user.id,
+      username:  user.username,
       role:      user.role,
       branchIds: branches.map(b => b.branchId),
     }

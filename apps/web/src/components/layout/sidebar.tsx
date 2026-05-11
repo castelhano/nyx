@@ -203,7 +203,7 @@ export function Sidebar() {
                   {isOpen && (
                     <>
                       <div className="flex-1 text-left leading-tight">
-                        <p className="font-medium text-sm truncate">{mounted ? (user?.username ?? '—') : '—'}</p>
+                        <p className="font-medium text-sm truncate capitalize">{mounted ? (user?.username ?? '—') : '—'}</p>
                         <p className="text-xs text-sidebar-foreground/60 truncate capitalize">{mounted ? (user?.role ?? '') : ''}</p>
                       </div>
                       <ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-foreground/50" />

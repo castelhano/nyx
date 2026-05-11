@@ -103,9 +103,9 @@ export const companySchema = withMeta(
 | `label` | `string` | Singular label — "Empresa" |
 | `labelPlural` | `string` | Plural label — "Empresas" (default: `label + 's'`) |
 | `nameField` | `string` | Field used as display name in breadcrumb (default: `'name'`) |
-| `allowCsv` | `boolean` | Adds CSV download button to list topbar |
+| `allowCsv` | `boolean` | Adds CSV download button to list topbar (rendered as `primary: false` — icon-only on mobile via overflow menu) |
 | `groups` | `Record<string, string[]>` | Tab groups for `AutoForm` — `{ 'Tab label': ['field1', 'field2'] }` |
-| `children` | `ChildResourceDef[]` | Child resources — adds navigation buttons to parent form topbar |
+| `children` | `ChildResourceDef[]` | Child resources — adds navigation buttons to parent form topbar as `primary: false` (overflow on mobile) |
 | `breadcrumb` | `BreadcrumbDef[]` | Parent chain — used by `AutoBreadcrumb` to resolve parent labels |
 
 ---

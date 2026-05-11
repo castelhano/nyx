@@ -7,7 +7,6 @@ import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
-import { Button } from '@/components/ui/button'
 import { apiFetch } from '@/lib/auth'
 import { downloadCsv } from '@/lib/csv'
 
@@ -28,7 +27,6 @@ export default function ResourceListPage({ params }: { params: { domain: string;
 
   const newPath = `/${domain}/${resource}/new${contextQuery}`
 
-  // Sobe para o pai declarado no breadcrumb quando há contexto; senão vai para o domain
   const bc       = meta?.breadcrumb?.[meta.breadcrumb.length - 1]
   const parentId = bc ? filters[bc.contextField] : undefined
   const backPath = bc && parentId
@@ -44,21 +42,10 @@ export default function ResourceListPage({ params }: { params: { domain: string;
     downloadCsv(data, meta.fields, meta.labelPlural)
   }
 
-  useTopbarActions(
-    <div className="flex items-center gap-2">
-      <Button onClick={() => router.push(newPath)} size="sm">
-        <Plus className="w-3.5 h-3.5" />
-        Novo
-      </Button>
-      {meta?.allowCsv && (
-        <Button variant="ghost" size="sm" onClick={handleDownloadCsv}>
-          <Download className="w-3.5 h-3.5" />
-          CSV
-        </Button>
-      )}
-    </div>,
-    [meta?.allowCsv],
-  )
+  useTopbarActions([
+    { label: 'Novo', icon: Plus, onClick: () => router.push(newPath), primary: true },
+    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Download, onClick: handleDownloadCsv, variant: 'ghost' as const, primary: false }] : []),
+  ], [meta?.allowCsv, newPath])
 
   useShortcut('alt+n', () => router.push(newPath), {
     desc:   'Novo registro',

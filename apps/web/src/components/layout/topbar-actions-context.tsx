@@ -2,18 +2,30 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode, type DependencyList } from 'react'
 
+export interface TopbarAction {
+  label:     string
+  icon?:     React.ElementType
+  onClick?:  () => void
+  type?:     'submit'
+  form?:     string
+  disabled?: boolean
+  variant?:  'default' | 'outline' | 'ghost'
+  // primary: sempre visível no mobile; false: colapsa no menu ⋯
+  primary?:  boolean
+}
+
 interface TopbarActionsContextValue {
-  actions:    ReactNode
-  setActions: (node: ReactNode) => void
+  actions:    TopbarAction[]
+  setActions: (actions: TopbarAction[]) => void
 }
 
 const TopbarActionsContext = createContext<TopbarActionsContextValue>({
-  actions:    null,
+  actions:    [],
   setActions: () => {},
 })
 
 export function TopbarActionsProvider({ children }: { children: ReactNode }) {
-  const [actions, setActions] = useState<ReactNode>(null)
+  const [actions, setActions] = useState<TopbarAction[]>([])
   return (
     <TopbarActionsContext.Provider value={{ actions, setActions }}>
       {children}
@@ -25,15 +37,8 @@ export function useTopbarActionsContext() {
   return useContext(TopbarActionsContext)
 }
 
-export function useTopbarActions(node: ReactNode, deps: DependencyList = []) {
+export function useTopbarActions(actions: TopbarAction[], deps: DependencyList = []) {
   const { setActions } = useTopbarActionsContext()
-
-  // Update slot when deps change
-  useEffect(() => {
-    setActions(node)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
-
-  // Clear slot on unmount
-  useEffect(() => () => { setActions(null) }, []) // eslint-disable-line
+  useEffect(() => { setActions(actions) }, deps)           // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { setActions([]) }, [])            // eslint-disable-line react-hooks/exhaustive-deps
 }
