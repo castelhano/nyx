@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-table'
 import { useMetadata } from './useMetadata'
 import { apiFetch } from '@/lib/auth'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { MetadataField, PaginatedResult } from '@nyx/types'
@@ -224,7 +224,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
           placeholder="Pesquisar…"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          className="border border-input rounded px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-1 focus:ring-ring"
+          className="border border-input rounded px-3 py-1.5 text-sm w-64 hidden sm:block focus:outline-none focus:ring-1 focus:ring-ring"
         />
 
         <div className="relative ml-auto" ref={pickerRef}>
@@ -234,7 +234,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
             onClick={() => setPickerOpen((o) => !o)}
           >
             <Columns3 className="w-3.5 h-3.5" />
-            Colunas
+            <span className='hidden md:inline'>Colunas</span>
           </Button>
 
           {pickerOpen && (
@@ -265,9 +265,9 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
           ref={tableRef}
           tabIndex={0}
           onKeyDown={handleTableKeyDown}
-          className="overflow-hidden rounded-sm border border-border focus:outline-none"
+          className="w-full overflow-x-auto rounded-sm border border-border focus:outline-none"
         >
-          <table className="w-full text-sm">
+          <table className="w-full min-w-max text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id} className="bg-muted">
@@ -318,22 +318,38 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
       )}
 
       {/* Pagination */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <button
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-          disabled={page === 1}
-          className="px-3 py-1 border border-border rounded-sm disabled:opacity-40 hover:bg-accent hover:text-accent-foreground"
-        >
-          Anterior
-        </button>
-        <span>{data?.total ?? 0} registros — página {page}</span>
-        <button
-          onClick={() => setPage((p) => p + 1)}
-          disabled={!data || page * 20 >= data.total}
-          className="px-3 py-1 border border-border rounded-sm disabled:opacity-40 hover:bg-accent hover:text-accent-foreground"
-        >
-          Próxima
-        </button>
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        {/* Records & Page summary */}
+        <div className='flex items-center gap-x-2'>
+          <Layers className='w-4 h-4' />
+          <span>{(data?.total)}</span>
+        </div>
+        <div className='flex items-center'>
+          <div className='flex items-center gap-x-2 me-3'>
+            <BetweenVerticalStart className='w-4 h-4' />
+            <span>
+              {data && data.total > 0 ? (
+              <>
+                {data.page} . {Math.ceil(data.total / data.pageSize)}
+              </>
+            ): '' }
+            </span>
+          </div>
+          <Button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1 }
+            size="icon"
+            variant="outline">
+            <ArrowLeftFromLine className='w-4 h-4' />
+          </Button>
+          <Button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={!data || page * 20 >= data.total}
+            size="icon"
+            variant="ghost">
+            <ArrowRightFromLine className='w-4 h-4' />
+          </Button>
+        </div>
       </div>
     </div>
   )
