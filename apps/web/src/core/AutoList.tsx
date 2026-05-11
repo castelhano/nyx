@@ -216,15 +216,15 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
   if (!meta) return <div className="text-sm text-muted-foreground">Carregando…</div>
 
   return (
-    <div className="space-y-3">
+    <div>
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-x-2 mb-2">
         <input
           type="search"
           placeholder="Pesquisar…"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          className="border border-input rounded px-3 py-1.5 text-sm w-64 hidden sm:block focus:outline-none focus:ring-1 focus:ring-ring"
+          className="border border-input rounded px-3 py-1.5 text-sm w-full max-w-[600px] focus:outline-none focus:ring-1 focus:ring-ring"
         />
 
         <div className="relative ml-auto" ref={pickerRef}>
@@ -234,7 +234,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
             onClick={() => setPickerOpen((o) => !o)}
           >
             <Columns3 className="w-3.5 h-3.5" />
-            <span className='hidden md:inline'>Colunas</span>
+            <span className='hidden sm:inline'>Colunas</span>
           </Button>
 
           {pickerOpen && (
@@ -318,7 +318,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
       )}
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex items-center justify-between ps-1 pt-1 text-sm text-muted-foreground">
         {/* Records & Page summary */}
         <div className='flex items-center gap-x-2'>
           <Layers className='w-4 h-4' />
@@ -346,7 +346,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
             onClick={() => setPage((p) => p + 1)}
             disabled={!data || page * 20 >= data.total}
             size="icon"
-            variant="ghost">
+            variant="destructive">
             <ArrowRightFromLine className='w-4 h-4' />
           </Button>
         </div>

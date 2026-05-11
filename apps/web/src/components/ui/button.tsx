@@ -1,12 +1,12 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
 
-type Variant = 'default' | 'destructive' | 'outline' | 'ghost' | 'rowAction'
+type Variant = 'default' | 'safeConfirm' |'destructive' | 'outline' | 'ghost' | 'rowAction'
 type Size    = 'sm' | 'default' | 'lg' | 'icon'
 
 const variants: Record<Variant, string> = {
-  default:     'bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:hover:bg-emerald-800/90 dark:text-emerald-50',
-  // default:     'bg-primary text-primary-foreground hover:bg-primary/90',
+  default:     'bg-accent hover:bg-accent/90 text-accent-foreground',
+  safeConfirm: 'bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:hover:bg-emerald-800/90 dark:text-emerald-50',
   destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
   outline:     'border border-input bg-transparent hover:bg-accent hover:text-accent-foreground',
   ghost:       'hover:bg-accent hover:text-accent-foreground',

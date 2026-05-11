@@ -102,9 +102,7 @@
   body { @apply bg-background text-foreground; }
   input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
   select,
-  textarea {
-    background-color: hsl(var(--input-bg));
-  }
+  textarea { background-color: hsl(var(--input-bg)); }
 
   input[type='checkbox'] {
     appearance: none;
