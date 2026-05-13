@@ -17,6 +17,7 @@ export const userSchema = withMeta(
   {
     label:       'Usuário',
     labelPlural: 'Usuários',
+    icon:        'Users',
     groups: {
       'Acesso':       ['role', 'isActive'],
     },

@@ -27,7 +27,7 @@ export const branchSchema = withMeta(
     labelPlural: 'Filiais',
     nameField:   'name',
     breadcrumb: [
-      { resource: 'company', contextField: 'companyId', listLabel: 'Empresas', nameField: 'legalName' },
+      { resource: 'company', contextField: 'companyId', listLabel: 'Empresas', nameField: 'legalName', keybind: 'f9' },
     ],
     groups: {
       'Contato':       ['phone', 'email'],

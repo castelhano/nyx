@@ -14,6 +14,7 @@ export type BreadcrumbDef = {
   contextField: string
   listLabel?:   string
   nameField?:   string
+  keybind?:     string   // atalho do botão que o PAI renderiza para navegar até este filho
 }
 
 export type SchemaMeta<T extends z.ZodRawShape> = {
@@ -21,9 +22,10 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   labelPlural?: string
   nameField?:   string
   allowCsv?:    boolean
+  icon?:        string   // nome do ícone — resolvido pelo frontend via lib/icons.ts
   breadcrumb?:  BreadcrumbDef[]
-  children?:    ChildResourceDef[]
   groups?:      { [tabLabel: string]: (keyof T & string)[] }
+  // 'children' não existe mais no schema — é derivado automaticamente pelo backend via resourceRegistry
 }
 
 export function withMeta<T extends z.ZodRawShape>(

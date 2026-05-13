@@ -6,20 +6,21 @@ import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { DomainCard } from '@/components/ui/domain-card'
 import { useCardNavigation } from '@/core/useCardNavigation'
 import { useShortcut } from '@/lib/keywatch'
-import { domains } from '@/core/domains'
+import { useDiscovery } from '@/core/useDiscovery'
 
 export default function DomainPage({ params }: { params: { domain: string } }) {
-  const { domain } = params
+  const { domain: domainKey } = params
   const router = useRouter()
-  const config = domains[domain]
+  const { data: domains } = useDiscovery()
 
-  if (!config) notFound()
+  const config = domains.find((d) => d.key === domainKey)
+  if (domains.length > 0 && !config) notFound()
 
-  const resources = config.resources
+  const resources = config?.resources ?? []
 
   const { active } = useCardNavigation(
     resources.length,
-    (i) => router.push(`/${domain}/${resources[i].key}`),
+    (i) => router.push(`/${domainKey}/${resources[i].key}`),
   )
 
   useShortcut('alt+v', () => router.push('/'), {
@@ -27,6 +28,8 @@ export default function DomainPage({ params }: { params: { domain: string } }) {
     icon:    ArrowLeft,
     origin:  'apps/web/src/app/[domain]/page',
   })
+
+  if (!config) return null
 
   return (
     <div className="p-6 space-y-6">
@@ -41,7 +44,7 @@ export default function DomainPage({ params }: { params: { domain: string } }) {
             key={res.key}
             label={res.label}
             icon={res.icon}
-            href={`/${domain}/${res.key}`}
+            href={`/${domainKey}/${res.key}`}
             active={i === active}
           />
         ))}

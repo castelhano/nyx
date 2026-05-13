@@ -6,7 +6,7 @@ import { BaseService } from '../../../core/base.service'
 @Injectable()
 export class BranchService extends BaseService<Branch, CreateBranchDto, UpdateBranchDto> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'branch', branchSchema)
+    super(prisma, 'branch', branchSchema, 'core')
   }
 
   findByCompany(companyId: string): Promise<Branch[]> {
@@ -25,12 +25,11 @@ export class BranchService extends BaseService<Branch, CreateBranchDto, UpdateBr
   }
 
   protected buildSearchWhere(search: string) {
-    const s = search.toLowerCase()
     return {
       OR: [
-        { name:  { contains: s } },
-        { taxId: { contains: s } },
-        { city:  { contains: s } },
+        { name:  { contains: search, mode: 'insensitive' as const } },
+        { taxId: { contains: search, mode: 'insensitive' as const } },
+        { city:  { contains: search, mode: 'insensitive' as const } },
       ],
     }
   }

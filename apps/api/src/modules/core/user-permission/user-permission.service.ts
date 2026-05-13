@@ -13,7 +13,7 @@ export class UserPermissionService extends BaseService<
   UpdateUserPermissionDto
 > {
   constructor(prisma: PrismaService) {
-    super(prisma, 'userPermission', userPermissionSchema)
+    super(prisma, 'user-permission', userPermissionSchema, 'core')
   }
 
   findByUser(userId: string): Promise<UserPermission[]> {

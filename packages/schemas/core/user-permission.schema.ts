@@ -16,6 +16,9 @@ export const userPermissionSchema = withMeta(
     label:       'Permissão',
     labelPlural: 'Permissões',
     nameField:   'resource',
+    breadcrumb: [
+      { resource: 'user', contextField: 'userId', listLabel: 'Usuários', nameField: 'name', keybind: 'p' },
+    ],
   },
 )
 

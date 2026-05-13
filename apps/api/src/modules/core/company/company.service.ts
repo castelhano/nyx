@@ -6,7 +6,7 @@ import { BaseService } from '../../../core/base.service'
 @Injectable()
 export class CompanyService extends BaseService<Company, CreateCompanyDto, UpdateCompanyDto> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'company', companySchema)
+    super(prisma, 'company', companySchema, 'core')
   }
 
   async deactivate(id: string): Promise<Company> {
@@ -15,12 +15,11 @@ export class CompanyService extends BaseService<Company, CreateCompanyDto, Updat
   }
 
   protected buildSearchWhere(search: string) {
-    const s = search.toLowerCase()
     return {
       OR: [
-        { legalName: { contains: s } },
-        { tradeName: { contains: s } },
-        { taxId:     { contains: s } },
+        { legalName: { contains: search, mode: 'insensitive' as const } },
+        { tradeName: { contains: search, mode: 'insensitive' as const } },
+        { taxId:     { contains: search, mode: 'insensitive' as const } },
       ],
     }
   }

@@ -17,6 +17,7 @@ export const passwordPolicySchema = withMeta(
     label:       'Política de Senha',
     labelPlural: 'Política de Senha',
     nameField:   'id',
+    icon:        'Lock',
   },
 )
 

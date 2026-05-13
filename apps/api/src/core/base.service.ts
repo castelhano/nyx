@@ -3,6 +3,7 @@ import { ZodObject } from 'zod'
 import type { PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
+import { resourceRegistry } from './resource-registry'
 
 @Injectable()
 export abstract class BaseService<T, CreateDTO, UpdateDTO> {
@@ -10,7 +11,11 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     protected readonly prisma: PrismaService,
     private readonly modelName: string,
     private readonly schema: ZodObject<any>,
-  ) {}
+    private readonly domain: string,
+    private readonly scopeField?: string,
+  ) {
+    resourceRegistry.push({ domain, resource: modelName, schema })
+  }
 
   private get model() {
     return (this.prisma as any)[this.modelName]

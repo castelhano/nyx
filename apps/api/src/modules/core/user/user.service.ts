@@ -11,7 +11,7 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
     prisma: PrismaService,
     private readonly passwordPolicy: PasswordPolicyService,
   ) {
-    super(prisma, 'user', userSchema)
+    super(prisma, 'user', userSchema, 'core')
   }
 
   private sanitize(user: User): User {
@@ -62,11 +62,10 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
   }
 
   protected buildSearchWhere(search: string) {
-    const s = search.toLowerCase()
     return {
       OR: [
-        { name:     { contains: s } },
-        { username: { contains: s } },
+        { name:     { contains: search, mode: 'insensitive' as const } },
+        { username: { contains: search, mode: 'insensitive' as const } },
       ],
     }
   }

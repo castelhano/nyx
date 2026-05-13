@@ -7,7 +7,7 @@ import { BaseService } from '../../../core/base.service'
 @Injectable()
 export class UserBranchService extends BaseService<UserBranch, CreateUserBranchDto, UpdateUserBranchDto> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'userBranch', userBranchSchema)
+    super(prisma, 'user-branch', userBranchSchema, 'core')
   }
 
   findByUser(userId: string): Promise<UserBranch[]> {

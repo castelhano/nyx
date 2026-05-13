@@ -16,6 +16,9 @@ export const userBranchSchema = withMeta(
     label:       'Vínculo de Filial',
     labelPlural: 'Vínculos de Filial',
     nameField:   'branchId',
+    breadcrumb: [
+      { resource: 'user', contextField: 'userId', listLabel: 'Usuários', nameField: 'name', keybind: 'b' },
+    ],
   },
 )
 

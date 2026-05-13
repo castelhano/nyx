@@ -97,6 +97,29 @@ export interface BreadcrumbDef {
   contextField: string
   listLabel?:   string
   nameField?:   string
+  keybind?:     string   // atalho do botão que o PAI renderiza para navegar até este filho
+}
+
+export interface DiscoveryResource {
+  key:         string
+  label:       string
+  labelPlural: string
+  icon:        string
+}
+
+export interface DiscoveryDomain {
+  key:       string
+  label:     string
+  icon:      string
+  resources: DiscoveryResource[]
+}
+
+export function apiRoute(domain: string, resource: string, suffix?: string): string {
+  return `/${domain}/${resource}${suffix ? `/${suffix}` : ''}`
+}
+
+export function navRoute(domain: string, resource: string, suffix?: string): string {
+  return `/${domain}/${resource}${suffix ? `/${suffix}` : ''}`
 }
 
 export interface ResourceMetadata {
@@ -110,5 +133,5 @@ export interface ResourceMetadata {
   actions:     ResourceAction[]
   groups?:     TabGroup[]
   breadcrumb?: BreadcrumbDef[]
-  children?:   ChildResourceDef[]
+  children?:   ChildResourceDef[]   // derivado automaticamente pelo backend via registry
 }

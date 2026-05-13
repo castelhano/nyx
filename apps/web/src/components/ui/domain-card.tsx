@@ -1,16 +1,18 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { resolveIcon } from '@/lib/icons'
 import type { LucideIcon } from 'lucide-react'
 
 interface DomainCardProps {
   label:    string
-  icon:     LucideIcon
+  icon:     LucideIcon | string
   href:     string
   active?:  boolean
   badge?:   number
 }
 
-export function DomainCard({ label, icon: Icon, href, active, badge }: DomainCardProps) {
+export function DomainCard({ label, icon, href, active, badge }: DomainCardProps) {
+  const Icon = typeof icon === 'string' ? resolveIcon(icon) : icon
   return (
     <Link
       href={href}

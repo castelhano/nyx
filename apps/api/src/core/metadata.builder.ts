@@ -2,7 +2,8 @@ import {
   ZodType, ZodObject, ZodString, ZodNumber, ZodBoolean,
   ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault,
 } from 'zod'
-import type { ResourceMetadata, MetadataField, TabGroup } from '@nyx/types'
+import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef } from '@nyx/types'
+import { resourceRegistry } from './resource-registry'
 
 function unwrap(field: ZodType): ZodType {
   if (field instanceof ZodOptional || field instanceof ZodNullable || field instanceof ZodDefault) {
@@ -27,6 +28,27 @@ function isRequired(field: ZodType): boolean {
 
 function toTitleCase(str: string): string {
   return str.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()).trim()
+}
+
+function deriveChildren(resource: string): ChildResourceDef[] | undefined {
+  const children: ChildResourceDef[] = []
+
+  for (const entry of resourceRegistry) {
+    if (entry.resource === resource) continue
+    const m = (entry.schema as any)._schemaMeta
+    if (!m?.breadcrumb) continue
+    const breadcrumbEntry = (m.breadcrumb as any[]).find((b) => b.resource === resource)
+    if (!breadcrumbEntry) continue
+    children.push({
+      resource:     entry.resource,
+      domain:       entry.domain,
+      label:        m.labelPlural ?? toTitleCase(entry.resource),
+      contextField: breadcrumbEntry.contextField,
+      ...(breadcrumbEntry.keybind ? { keybind: breadcrumbEntry.keybind } : {}),
+    })
+  }
+
+  return children.length > 0 ? children : undefined
 }
 
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
@@ -98,7 +120,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const nameField    = schemaMeta.nameField   ?? 'name'
   const allowCsv     = schemaMeta.allowCsv    ?? true
   const breadcrumb   = schemaMeta.breadcrumb  as import('@nyx/types').BreadcrumbDef[]      | undefined
-  const children     = schemaMeta.children    as import('@nyx/types').ChildResourceDef[]   | undefined
+  const children     = deriveChildren(resource)
 
   const groups: TabGroup[] | undefined = rawGroups
     ? Object.keys(rawGroups).map((tabLabel) => ({ label: tabLabel, fields: rawGroups[tabLabel] }))
