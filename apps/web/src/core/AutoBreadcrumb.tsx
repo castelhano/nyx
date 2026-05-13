@@ -2,9 +2,9 @@
 
 import { useQueries } from '@tanstack/react-query'
 import { useMetadata } from './useMetadata'
+import { useDiscovery } from './useDiscovery'
 import { Breadcrumb, type BreadcrumbSegment } from '@/components/ui/breadcrumb'
 import { apiFetch } from '@/lib/auth'
-import { domains } from './domains'
 
 interface Props {
   domain:         string
@@ -19,7 +19,8 @@ function toTitleCase(str: string) {
 }
 
 export function AutoBreadcrumb({ domain, resource, id, recordName, contextParams = {} }: Props) {
-  const { data: meta } = useMetadata(domain, resource)
+  const { data: meta }    = useMetadata(domain, resource)
+  const { data: domains } = useDiscovery()
 
   const breadcrumbDefs = meta?.breadcrumb ?? []
 
@@ -42,7 +43,7 @@ export function AutoBreadcrumb({ domain, resource, id, recordName, contextParams
     }),
   })
 
-  const domainLabel   = domains[domain]?.label ?? toTitleCase(domain)
+  const domainLabel   = domains.find((d) => d.key === domain)?.label ?? toTitleCase(domain)
   const resourceLabel = meta?.labelPlural       ?? toTitleCase(resource)
 
   const segments: BreadcrumbSegment[] = [

@@ -98,7 +98,7 @@ export default function LoginPage() {
                   href="/login/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
-                  Esqueci minha senha
+                  Recuperar senha
                 </a>
               </div>
 

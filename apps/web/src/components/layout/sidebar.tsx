@@ -184,6 +184,7 @@ export function Sidebar() {
             <Dropdown
               side="right"
               align="end"
+              sideOffset={10}
               trigger={
                 <button className={cn(
                   'flex w-full items-center rounded-md px-2 py-2 text-sm',

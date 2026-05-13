@@ -59,6 +59,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
           onClick: () => router.push(href),
           variant: 'ghost' as const,
           primary: false,
+          ...(child.keybind ? { keybind: child.keybind.toUpperCase() } : {}),
         }
       })
     : []

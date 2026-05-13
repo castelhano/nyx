@@ -9,7 +9,8 @@ import { useSidebar } from './sidebar-context'
 import { useTopbarActionsContext, type TopbarAction } from './topbar-actions-context'
 
 function ActionButton({ action }: { action: TopbarAction }) {
-  const Icon = action.icon
+  const Icon  = action.icon
+  const title = action.keybind ? `${action.label} (${action.keybind})` : action.label
   return (
     <Button
       type={action.type ?? 'button'}
@@ -18,6 +19,7 @@ function ActionButton({ action }: { action: TopbarAction }) {
       size="sm"
       disabled={action.disabled}
       onClick={action.onClick}
+      title={title}
     >
       {Icon && <Icon className="w-3.5 h-3.5" />}
       <span className="hidden md:inline">{action.label}</span>
