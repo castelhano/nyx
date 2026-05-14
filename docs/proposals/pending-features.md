@@ -13,23 +13,24 @@
 - [ ] Row action: "Copy permissions" — opens user-selection modal (see 1.6)
 
 ### 1.2 User form — tabbed layout
-- [ ] Custom page `app/core/user/[id]/page.tsx` with three tabs: **Data**, **Branches**, **Permissions**
-- [ ] **Data tab:** user fields (excluding `passwordHash`, `preferences`, `lastLoginAt`)
-- [ ] **Password block (conditional):** on create — required password + confirm; on edit — collapsed block with "Change password" toggle, shows current + new + confirm fields
-- [ ] Real-time `PasswordPolicy` criteria indicator below the new password field (fetch `GET /core/password-policy`)
+- [x] Custom page `app/core/user/[id]/page.tsx` with three tabs: **Dados**, **Filiais**, **Permissões**
+- [x] **Data tab:** user fields (excluding `passwordHash`, `preferences`, `lastLoginAt`)
+- [x] **Password block (conditional):** on create — required password + confirm with real-time policy indicator; on edit — collapsed "Redefinir senha" block (admin flow: new + confirm only, via `PATCH /core/user/:id/reset-password` — no current password required)
+- [x] Real-time `PasswordPolicy` criteria indicator below the new password field (fetch `GET /core/password-policy`)
 
 ### 1.3 `AssociationList` component
-- [ ] Location: `apps/web/src/components/ui/association-list.tsx`
-- [ ] Lists associated items with role select and remove button per row
-- [ ] "+ Add" button opens a searchable combobox of available (not yet associated) items
-- [ ] Local state — persists only on topbar Save
+- [x] Location: `apps/web/src/components/ui/association-list.tsx`
+- [x] Lists associated items with role select (`member` / `manager` / `owner`) and remove button per row; items grouped by parent company with a text divider
+- [x] "+ Add" button opens a searchable combobox of available (not yet associated) items, also grouped by company
+- [x] Local state — persists only on topbar Save
 
 ### 1.4 `CheckboxGroup` component
-- [ ] Location: `apps/web/src/components/ui/checkbox-group.tsx`
-- [ ] Collapsible groups with "select all" / "deselect all" per group
-- [ ] Global filter input at the top
-- [ ] Desktop: table layout (resources as rows, actions as columns); mobile: accordion
-- [ ] Local state — persists only on Save
+- [x] Location: `apps/web/src/components/ui/checkbox-group.tsx`
+- [x] Groups with "Marcar todos" / "Desmarcar todos" per section (static headers — not collapsible)
+- [x] Global filter input at the top
+- [x] Desktop: table layout (resources as rows, actions as columns)
+- [ ] Mobile: accordion layout — pending
+- [x] Local state — persists only on Save
 
 ### 1.5 Permission Templates
 - [ ] `PermissionGroup` Prisma model: `id`, `name` (unique), `description`, `permissions` (Json)

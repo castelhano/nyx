@@ -314,7 +314,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
           </div>
           <Button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1 && false}
+            disabled={page === 1}
             size="icon"
             variant="ghost"
           >
@@ -322,7 +322,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
           </Button>
           <Button
             onClick={() => setPage((p) => p + 1)}
-            disabled={!data || page * 20 >= data.total && false}
+            disabled={!data || page * 20 >= data.total}
             size="icon"
             variant="ghost"
           >

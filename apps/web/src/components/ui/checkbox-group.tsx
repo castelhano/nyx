@@ -49,9 +49,9 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
   }
 
   function toggleSection(section: CheckboxSection) {
-    const all    = section.resources.flatMap((r) => ACTIONS.map((a) => `${r.key}:${a.key}`))
-    const allOn  = all.every((k) => value.has(k))
-    const next   = new Set(value)
+    const all   = section.resources.flatMap((r) => ACTIONS.map((a) => `${r.key}:${a.key}`))
+    const allOn = all.every((k) => value.has(k))
+    const next  = new Set(value)
     if (allOn) all.forEach((k) => next.delete(k))
     else       all.forEach((k) => next.add(k))
     onChange(next)
@@ -90,38 +90,46 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
               </button>
             </div>
 
-            <div
-              className="grid text-xs font-medium text-muted-foreground bg-muted/20 border-b border-border"
-              style={{ gridTemplateColumns: '1fr repeat(4, 72px)' }}
-            >
-              <div className="px-3 py-2">Recurso</div>
-              {ACTIONS.map((a) => (
-                <div key={a.key} className="py-2 text-center">{a.label}</div>
-              ))}
-            </div>
-
-            {section.resources.map((resource, i) => (
-              <div
-                key={resource.key}
-                className={cn(
-                  'grid items-center hover:bg-row-hover transition-colors',
-                  i < section.resources.length - 1 && 'border-b border-border',
-                )}
-                style={{ gridTemplateColumns: '1fr repeat(4, 72px)' }}
-              >
-                <div className="px-3 py-2.5 text-sm">{resource.label}</div>
-                {ACTIONS.map((action) => (
-                  <div key={action.key} className="flex justify-center py-2.5">
-                    <input
-                      type="checkbox"
-                      checked={value.has(`${resource.key}:${action.key}`)}
-                      onChange={() => toggle(resource.key, action.key)}
-                      className="rounded"
-                    />
-                  </div>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-muted/20 border-b border-border">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    Recurso
+                  </th>
+                  {ACTIONS.map((a) => (
+                    <th
+                      key={a.key}
+                      className="w-16 py-2 text-center text-xs font-medium text-muted-foreground"
+                    >
+                      {a.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {section.resources.map((resource, i) => (
+                  <tr
+                    key={resource.key}
+                    className={cn(
+                      'hover:bg-row-hover transition-colors',
+                      i < section.resources.length - 1 && 'border-b border-border',
+                    )}
+                  >
+                    <td className="px-3 py-2.5">{resource.label}</td>
+                    {ACTIONS.map((action) => (
+                      <td key={action.key} className="w-16 py-2.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={value.has(`${resource.key}:${action.key}`)}
+                          onChange={() => toggle(resource.key, action.key)}
+                          className="rounded"
+                        />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </div>
-            ))}
+              </tbody>
+            </table>
           </div>
         )
       })}

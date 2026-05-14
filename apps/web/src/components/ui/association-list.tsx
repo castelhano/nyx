@@ -6,38 +6,38 @@ import { cn } from '@/lib/utils'
 import { Button } from './button'
 
 const ROLES = [
-  { value: 'member',  label: 'Membro',      title: 'Leitura e operações básicas' },
-  { value: 'manager', label: 'Gerente',     title: 'Gerencia registros da filial' },
-  { value: 'owner',   label: 'Responsável', title: 'Responsável pela filial' },
+  { value: 'member', label: 'Membro', title: 'Leitura e operações básicas' },
+  { value: 'manager', label: 'Gerente', title: 'Gerencia registros da filial' },
+  { value: 'owner', label: 'Responsável', title: 'Responsável pela filial' },
 ] as const
 
 export interface BranchAssoc {
   branchId: string
-  role:     string
+  role: string
 }
 
 interface Branch {
-  id:         string
-  name:       string
+  id: string
+  name: string
   companyId?: string
 }
 
 interface Company {
-  id:   string
+  id: string
   name: string
 }
 
 interface Props {
-  items:      BranchAssoc[]
-  onChange:   (items: BranchAssoc[]) => void
-  branches:   Branch[]
+  items: BranchAssoc[]
+  onChange: (items: BranchAssoc[]) => void
+  branches: Branch[]
   companies?: Company[]
 }
 
 const inputBase = 'w-full border border-input rounded-sm px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
 
 function groupByCompany<T extends { companyId?: string }>(
-  items:     T[],
+  items: T[],
   companies: Company[],
 ): { company: Company | null; items: T[] }[] {
   const map = new Map<string, T[]>()
@@ -63,9 +63,9 @@ function groupByCompany<T extends { companyId?: string }>(
 
 export function AssociationList({ items, onChange, branches, companies = [] }: Props) {
   const [search, setSearch] = useState('')
-  const [open, setOpen]     = useState(false)
-  const inputRef            = useRef<HTMLInputElement>(null)
-  const containerRef        = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const associatedIds = new Set(items.map((i) => i.branchId))
 
@@ -221,7 +221,7 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
             <div key={company?.id ?? '__none'}>
               {company && (
                 <div className={cn(
-                  'px-3 py-1.5 text-xs font-medium text-muted-foreground bg-muted/40',
+                  'px-3 py-1.5 text-sm font-medium text-muted-foreground bg-muted/40',
                   gi > 0 && 'border-t border-border',
                 )}>
                   {company.name}

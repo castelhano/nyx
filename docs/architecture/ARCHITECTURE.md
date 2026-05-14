@@ -92,7 +92,10 @@ nyx/
 │               │   ├── page.tsx
 │               │   └── [resource]/
 │               │       ├── page.tsx
-│               │       └── [id]/page.tsx
+│               │       └── [id]/page.tsx       # generic detail page (AutoForm)
+│               ├── core/
+│               │   └── user/
+│               │       └── [id]/page.tsx       # custom detail page (overrides generic)
 │               └── login/page.tsx
 ├── packages/
 │   ├── schemas/
@@ -352,7 +355,25 @@ interface ResourceMetadata {
 
 `children` is always derived — it never comes from the parent schema directly.
 
-### 4.10 AutoForm, AutoList & AutoBreadcrumb
+### 4.10 Custom Resource Pages
+
+When a resource requires behaviour that `AutoForm` / `AutoList` cannot express (multi-endpoint save, conditional password block, many-to-many tabs, etc.), create a **static route** that shadows the generic dynamic one:
+
+```
+app/core/user/[id]/page.tsx   ← takes priority over
+app/[domain]/[resource]/[id]/page.tsx
+```
+
+Next.js App Router resolves static segments before dynamic ones, so no configuration is needed — the file just takes precedence.
+
+**Conventions for custom pages:**
+- Keep the same topbar pattern (`useTopbarActions` + `FORM_ID` + `form.requestSubmit()`)
+- Keep the same shortcuts (`alt+g` save, `alt+v` back)
+- Keep `AutoBreadcrumb` — pass `domain`, `resource`, `id`, `recordName`
+- Data outside the main form (related entities, associations) is held in `useState`; refs guard one-time initialisation from query data
+- Multi-endpoint saves run in `Promise.all()` where order allows
+
+### 4.11 AutoForm, AutoList & AutoBreadcrumb
 
 These components consume the `GET /metadata` response to render their UI without any hardcoded field definitions.
 
@@ -360,7 +381,7 @@ These components consume the `GET /metadata` response to render their UI without
 - **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
 
-### 4.11 Frontend — Icon Resolution
+### 4.12 Frontend — Icon Resolution
 
 Icons are centralized in `apps/web/src/lib/icons.ts`. No component imports Lucide directly — only `icons.ts` does.
 
@@ -380,7 +401,7 @@ export function resolveIcon(name?: string | null): LucideIcon {
 
 When adding a new icon: import it in `icons.ts` and add it to the `Icons` map. No other file needs to change.
 
-### 4.12 Frontend — useDiscovery
+### 4.13 Frontend — useDiscovery
 
 ```typescript
 // apps/web/src/core/useDiscovery.ts
@@ -397,7 +418,7 @@ export function useDiscovery(): DiscoveryDomain[] {
 
 Used by: `Sidebar`, `app/page.tsx`, `app/[domain]/page.tsx`, `AutoBreadcrumb`.
 
-### 4.13 Route Helpers
+### 4.14 Route Helpers
 
 In `packages/types/index.ts`:
 
@@ -446,6 +467,12 @@ super(prisma, 'order', orderSchema, 'sales', 'branchId')
 // findAll applies: { branchId: { in: user.branchIds } } for non-admin roles
 ```
 
+### Admin Password Reset
+
+`PATCH /core/user/:id/reset-password` — sets a new password without requiring the current one. Intended for admin use only. Validates against `PasswordPolicy` and records history identically to `changePassword`.
+
+The self-service flow (`PATCH /core/user/:id/change-password`) still requires `currentPassword` and is intended for the user changing their own password.
+
 ### Password Policy
 
 `PasswordPolicy` is a global singleton (single DB row). It governs minimum length, character requirements, history count and expiry. Enforced at password change time.
@@ -483,6 +510,8 @@ All models follow these conventions:
 | `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
 | `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change |
 | `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset` |
+| `AssociationList` | `components/ui/association-list.tsx` | many-to-many with a per-row role select; "+ Add" opens a searchable combobox filtered to unassociated items; items grouped by parent entity when `companies` prop is provided; local state — persists only on topbar Save |
+| `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (create/read/update/delete) as columns; section-level "Marcar todos / Desmarcar todos"; global filter input; local state — persists only on topbar Save |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
 
 ### Dropdown — Portal Architecture
