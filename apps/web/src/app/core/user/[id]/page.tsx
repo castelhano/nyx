@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { Save, ArrowLeft, ChevronDown, Eye, EyeOff, Check } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useDiscovery } from '@/core/useDiscovery'
@@ -18,7 +20,6 @@ import { cn } from '@/lib/utils'
 import type { PasswordPolicy } from '@nyx/schemas'
 
 const FORM_ID  = 'user-form'
-const inputBase = 'w-full border border-input rounded-sm px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
 const labelCls  = 'text-sm font-medium pt-2'
 const gridCls   = 'grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start'
 
@@ -93,12 +94,12 @@ function PasswordInput({
   return (
     <div className="space-y-1">
       <div className="relative">
-        <input
+        <Input
           id={id}
           type={show ? 'text' : 'password'}
           placeholder={placeholder}
           autoFocus={autoFocus}
-          className={cn(inputBase, 'pr-10')}
+          className="w-full pr-10"
           {...register}
         />
         <button
@@ -356,11 +357,11 @@ export default function UserDetailPage({
         <div className={gridCls}>
           <label htmlFor="name" className={labelCls}>Nome</label>
           <div className="space-y-1">
-            <input
+            <Input
               id="name"
               autoFocus
               placeholder="Nome completo"
-              className={inputBase}
+              className="w-full"
               {...register('name', { required: 'Nome obrigatório' })}
             />
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
@@ -368,37 +369,30 @@ export default function UserDetailPage({
 
           <label htmlFor="username" className={labelCls}>Username</label>
           <div className="space-y-1">
-            <input
+            <Input
               id="username"
               placeholder="Username"
-              className={`${inputBase} md:w-96`}
+              className="w-full md:w-96"
               {...register('username', { required: 'Username obrigatório' })}
             />
             {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
           </div>
 
           <label htmlFor="email" className={labelCls}>E-mail</label>
-          <input
+          <Input
             id="email"
             type="email"
             placeholder="email@domain.com"
-            className={`${inputBase} md:w-1/2`}
+            className="w-full md:w-1/2"
             {...register('email')}
           />
 
           <label htmlFor="role" className={labelCls}>Perfil</label>
-          <div className="relative w-full md:w-96">
-            <select
-              id="role"
-              className={cn(inputBase, 'appearance-none pr-9')}
-              {...register('role')}
-            >
-              <option value="admin">Admin</option>
-              <option value="operator">Operador</option>
-              <option value="viewer">Leitor</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          </div>
+          <Select id="role" wrapperClassName="w-full md:w-96" {...register('role')}>
+            <option value="admin">Admin</option>
+            <option value="operator">Operador</option>
+            <option value="viewer">Leitor</option>
+          </Select>
 
           <div className="md:col-start-2 flex items-center gap-2 pt-1">
             <input id="isActive" type="checkbox" className="rounded" {...register('isActive')} />

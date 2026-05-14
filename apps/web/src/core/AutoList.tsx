@@ -15,6 +15,8 @@ import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine, X, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { FilterDef, MetadataField, PaginatedResult } from '@nyx/types'
 
@@ -31,22 +33,20 @@ interface Props {
 // FilterBar
 // ---------------------------------------------------------------------------
 
-const controlCls = 'border border-input rounded px-2 py-1.5 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
-
 function RelationFilter({
   field,
   filterDef,
   value,
   parentValue,
   onChange,
-  className,
+  wrapperClassName,
 }: {
-  field:       MetadataField
-  filterDef:   Extract<FilterDef, { type: 'relation' }>
-  value:       string
-  parentValue: string | undefined
-  onChange:    (v: string) => void
-  className?:  string
+  field:             MetadataField
+  filterDef:         Extract<FilterDef, { type: 'relation' }>
+  value:             string
+  parentValue:       string | undefined
+  onChange:          (v: string) => void
+  wrapperClassName?: string
 }) {
   const { data: options = [] } = useQuery<{ id: string; [k: string]: unknown }[]>({
     queryKey: ['filter-options', filterDef.endpoint, parentValue],
@@ -64,14 +64,12 @@ function RelationFilter({
   useEffect(() => { onChange('') }, [parentValue])
 
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={className ?? controlCls}>
+    <Select size="sm" value={value} onChange={(e) => onChange(e.target.value)} wrapperClassName={wrapperClassName}>
       <option value="">{field.label}</option>
       {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {String(o[filterDef.labelField] ?? o.id)}
-        </option>
+        <option key={o.id} value={o.id}>{String(o[filterDef.labelField] ?? o.id)}</option>
       ))}
-    </select>
+    </Select>
   )
 }
 
@@ -94,7 +92,6 @@ function FilterBar({
   if (!filterable.length) return null
 
   const stacked = layout === 'stacked'
-  const ctrl    = stacked ? cn(controlCls, 'w-full') : controlCls
 
   const hasActive = filterable.some((f) => {
     const key = `f_${f.name}`
@@ -109,35 +106,35 @@ function FilterBar({
 
         if (filter.type === 'select') {
           return (
-            <select key={field.name} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={ctrl}>
+            <Select key={field.name} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined}>
               <option value="">{field.label}</option>
               {(field.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-            </select>
+            </Select>
           )
         }
 
         if (filter.type === 'boolean') {
           return (
-            <select key={field.name} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={ctrl}>
+            <Select key={field.name} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined}>
               <option value="">{field.label}</option>
               <option value="true">Sim</option>
               <option value="false">Não</option>
-            </select>
+            </Select>
           )
         }
 
         if (filter.type === 'text') {
           return (
-            <input key={field.name} type="text" placeholder={field.label} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={cn(ctrl, !stacked && 'min-w-32')} />
+            <Input key={field.name} size="sm" type="text" placeholder={field.label} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={stacked ? 'w-full' : 'min-w-32'} />
           )
         }
 
         if (filter.type === 'number_range') {
           return (
             <span key={field.name} className={cn('flex items-center gap-1', stacked && 'w-full')}>
-              <input type="number" placeholder={`${field.label} mín`} value={values[`${key}_min`] ?? ''} onChange={(e) => onChange(`${key}_min`, e.target.value)} className={cn(controlCls, stacked ? 'flex-1' : 'w-28')} />
+              <Input size="sm" type="number" placeholder={`${field.label} mín`} value={values[`${key}_min`] ?? ''} onChange={(e) => onChange(`${key}_min`, e.target.value)} className={stacked ? 'flex-1' : 'w-28'} />
               <span className="text-muted-foreground text-xs">–</span>
-              <input type="number" placeholder={`${field.label} máx`} value={values[`${key}_max`] ?? ''} onChange={(e) => onChange(`${key}_max`, e.target.value)} className={cn(controlCls, stacked ? 'flex-1' : 'w-28')} />
+              <Input size="sm" type="number" placeholder={`${field.label} máx`} value={values[`${key}_max`] ?? ''} onChange={(e) => onChange(`${key}_max`, e.target.value)} className={stacked ? 'flex-1' : 'w-28'} />
             </span>
           )
         }
@@ -145,9 +142,9 @@ function FilterBar({
         if (filter.type === 'date_range') {
           return (
             <span key={field.name} className={cn('flex items-center gap-1', stacked && 'w-full')}>
-              <input type="date" title={`${field.label} de`} value={values[`${key}_from`] ?? ''} onChange={(e) => onChange(`${key}_from`, e.target.value)} className={cn(controlCls, stacked && 'flex-1')} />
+              <Input size="sm" type="date" title={`${field.label} de`} value={values[`${key}_from`] ?? ''} onChange={(e) => onChange(`${key}_from`, e.target.value)} className={stacked ? 'flex-1' : undefined} />
               <span className="text-muted-foreground text-xs">–</span>
-              <input type="date" title={`${field.label} até`} value={values[`${key}_to`] ?? ''} onChange={(e) => onChange(`${key}_to`, e.target.value)} className={cn(controlCls, stacked && 'flex-1')} />
+              <Input size="sm" type="date" title={`${field.label} até`} value={values[`${key}_to`] ?? ''} onChange={(e) => onChange(`${key}_to`, e.target.value)} className={stacked ? 'flex-1' : undefined} />
             </span>
           )
         }
@@ -156,7 +153,7 @@ function FilterBar({
           const parentKey   = filter.dependsOn ? `f_${filter.dependsOn}` : undefined
           const parentValue = parentKey ? (values[parentKey] ?? undefined) : undefined
           return (
-            <RelationFilter key={field.name} field={field} filterDef={filter} value={values[key] ?? ''} parentValue={parentValue} onChange={(v) => onChange(key, v)} className={ctrl} />
+            <RelationFilter key={field.name} field={field} filterDef={filter} value={values[key] ?? ''} parentValue={parentValue} onChange={(v) => onChange(key, v)} wrapperClassName={stacked ? 'w-full' : undefined} />
           )
         }
 
@@ -164,10 +161,10 @@ function FilterBar({
       })}
 
       {hasActive && (
-        <button type="button" onClick={onClear} className={cn('flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors', stacked && 'mt-1')}>
+        <Button type="button" variant="ghost" size="sm" onClick={onClear} className={cn('text-muted-foreground', stacked && 'mt-1 w-full')}>
           <X className="w-3.5 h-3.5" />
           {stacked && 'Limpar'}
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -390,7 +387,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
           <div className="relative md:hidden" ref={filterRef}>
             <Button variant="outline" size="sm" onClick={() => setFilterOpen((o) => !o)} className="relative">
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="sr-only">Filtros</span>
+              <span>Filtros</span>
               {activeCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-0.5 rounded-full bg-ring text-[10px] text-white flex items-center justify-center">
                   {activeCount}

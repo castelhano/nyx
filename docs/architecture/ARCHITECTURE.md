@@ -235,6 +235,7 @@ abstract class BaseService<T, CreateDTO, UpdateDTO> {
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
+| List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 
 ### 4.6 Resource Registry and Domain Registry
 
@@ -377,11 +378,55 @@ Next.js App Router resolves static segments before dynamic ones, so no configura
 
 These components consume the `GET /metadata` response to render their UI without any hardcoded field definitions.
 
-- **AutoList** — renders a filterable, sortable, paginated table. Columns are derived from fields with `showInList: true`. Supports CSV export when `allowCsv` is set. Row actions navigate to the detail page.
+- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `showInList: true`. Supports CSV export when `allowCsv` is set. Row actions navigate to the detail page. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`).
 - **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
 
-### 4.12 Frontend — Icon Resolution
+### 4.12 Filter System
+
+Typed, schema-driven filters for AutoList. Two sides: declaration (schema) and execution (backend + frontend).
+
+**Declaration — `FieldMeta.filter`:**
+
+```typescript
+// Auto-derived from Zod type when filter: true
+role:      z.enum([...]).meta({ filter: true })        // → select (enum values as options)
+isActive:  z.boolean().meta({ filter: true })           // → boolean (Sim / Não)
+salary:    z.number().meta({ filter: true })            // → number_range (min / max)
+createdAt: z.date().meta({ filter: true })              // → date_range (from / to)
+name:      z.string().meta({ filter: true })            // → text (contains, insensitive)
+
+// Explicit for relation filters (cannot be auto-derived)
+branchId: z.string().optional().meta({
+  filter: { type: 'relation', endpoint: 'core/branch', labelField: 'name', dependsOn: 'companyId' }
+})
+```
+
+**`FilterDef` union (from `@nyx/types`):**
+`'text' | 'select' | 'boolean' | 'number_range' | 'date_range' | { type: 'relation'; endpoint; labelField; dependsOn? }`
+
+**Backend — `apps/api/src/core/filter.builder.ts`:**
+- `resolveFilterDef(field, meta.filter)` — auto-derives `FilterDef` from Zod type when `filter: true`
+- `buildFilterWhere(schema, query)` — reads `f_*` query params and translates to Prisma `where` conditions
+- Called from `BaseService.findAll()`; `f_*` params are excluded from `contextFilters`
+
+**Query param format:**
+- Simple: `f_role=admin`, `f_isActive=true`
+- Range: `f_salary_min=1000&f_salary_max=5000`, `f_createdAt_from=2024-01-01&f_createdAt_to=2024-12-31`
+
+**Frontend — `FilterBar` (inside `AutoList.tsx`):**
+- Reads `filter` from each `MetadataField` in the metadata response
+- Renders appropriate control per type (select, boolean toggle, text, range inputs, relation combobox)
+- `relation` type fetches options from `endpoint`; re-fetches and clears when `dependsOn` field changes
+- Responsive: inline on `md+`, collapsed behind icon button with active-count badge on mobile
+
+**Adding a filter to any field:**
+```typescript
+// packages/schemas/<domain>/<resource>.schema.ts
+fieldName: z.enum([...]).meta({ filter: true })   // done — no other files to edit
+```
+
+### 4.13 Frontend — Icon Resolution
 
 Icons are centralized in `apps/web/src/lib/icons.ts`. No component imports Lucide directly — only `icons.ts` does.
 
@@ -507,6 +552,8 @@ All models follow these conventions:
 | Component | File | Notes |
 |-----------|------|-------|
 | `Button` | `components/ui/button.tsx` | variants: default, destructive, outline, ghost, rowAction |
+| `Input` | `components/ui/input.tsx` | size variants: default (`px-3 py-2`), sm (`px-2 py-1.5`); also exports `inputBaseCls` string for elements that can't use the component (IMaskInput, textarea) |
+| `Select` | `components/ui/select.tsx` | wraps native `<select>` with built-in `ChevronDown` overlay; same size variants; `wrapperClassName` for outer div sizing |
 | `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
 | `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change |
 | `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset` |

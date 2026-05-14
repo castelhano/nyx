@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import type { MetadataField, PaginatedResult } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import { apiFetch } from '@/lib/auth'
+import { inputBaseCls } from '@/components/ui/input'
 
 interface Props {
   field:       MetadataField
@@ -18,7 +19,6 @@ interface Props {
   autoFocus?:  boolean
 }
 
-const inputBase = 'w-full border border-input rounded-sm px-3 py-2 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 
 type MaskDef = string | { mask: string }[]
@@ -153,7 +153,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
               autoFocus={autoFocus}
               disabled={readonly}
               {...register}
-              className={cn(inputBase, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
+              className={cn(inputBaseCls, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
             >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
@@ -178,9 +178,9 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   let controlEl: React.ReactNode
 
   if (field.resource && control) {
-    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={inputBase} readonly={readonly} />
+    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={inputBaseCls} readonly={readonly} />
   } else if (field.mask && control) {
-    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBase} readonly={readonly} />
+    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBaseCls} readonly={readonly} />
   } else if (field.widget === 'textarea') {
     controlEl = (
       <div className="relative">
@@ -191,7 +191,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           {...register}
           rows={3}
           placeholder={field.placeholder}
-          className={cn(inputBase, field.keybind && 'pr-10', readonly && readonlyCls)}
+          className={cn(inputBaseCls, field.keybind && 'pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} className="top-3 -translate-y-0" />}
       </div>
@@ -206,7 +206,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           readOnly={readonly}
           {...register}
           placeholder={field.placeholder}
-          className={cn(inputBase, field.keybind && 'pr-10', readonly && readonlyCls)}
+          className={cn(inputBaseCls, field.keybind && 'pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} />}
       </div>
