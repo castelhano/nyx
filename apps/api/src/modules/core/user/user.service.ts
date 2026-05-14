@@ -61,6 +61,13 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
     await this.passwordPolicy.recordHistory(id, passwordHash)
   }
 
+  async resetPassword(id: string, newPassword: string): Promise<void> {
+    await this.passwordPolicy.validate(newPassword, id)
+    const passwordHash = await bcrypt.hash(newPassword, 10)
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } })
+    await this.passwordPolicy.recordHistory(id, passwordHash)
+  }
+
   protected buildSearchWhere(search: string) {
     return {
       OR: [

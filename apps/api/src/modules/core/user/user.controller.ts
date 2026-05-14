@@ -27,4 +27,12 @@ export class UserController extends BaseController<User, CreateUserDto, UpdateUs
   ) {
     return this.userService.changePassword(id, dto)
   }
+
+  @Patch(':id/reset-password')
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: { newPassword: string },
+  ) {
+    return this.userService.resetPassword(id, dto.newPassword)
+  }
 }
