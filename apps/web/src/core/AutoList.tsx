@@ -13,10 +13,10 @@ import {
 import { useMetadata } from './useMetadata'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine, X, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { MetadataField, PaginatedResult } from '@nyx/types'
+import type { FilterDef, MetadataField, PaginatedResult } from '@nyx/types'
 
 type Row = Record<string, unknown>
 
@@ -25,6 +25,152 @@ interface Props {
   resource:  string
   onEdit?:   (id: string) => void
   filters?:  Record<string, string>
+}
+
+// ---------------------------------------------------------------------------
+// FilterBar
+// ---------------------------------------------------------------------------
+
+const controlCls = 'border border-input rounded px-2 py-1.5 text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring'
+
+function RelationFilter({
+  field,
+  filterDef,
+  value,
+  parentValue,
+  onChange,
+  className,
+}: {
+  field:       MetadataField
+  filterDef:   Extract<FilterDef, { type: 'relation' }>
+  value:       string
+  parentValue: string | undefined
+  onChange:    (v: string) => void
+  className?:  string
+}) {
+  const { data: options = [] } = useQuery<{ id: string; [k: string]: unknown }[]>({
+    queryKey: ['filter-options', filterDef.endpoint, parentValue],
+    queryFn: async () => {
+      const params = new URLSearchParams({ pageSize: '999' })
+      if (filterDef.dependsOn && parentValue) params.set(filterDef.dependsOn, parentValue)
+      const res = await apiFetch(`/${filterDef.endpoint}?${params}`)
+      if (!res.ok) return []
+      const json = await res.json()
+      return json.data ?? []
+    },
+    staleTime: 60_000,
+  })
+
+  useEffect(() => { onChange('') }, [parentValue])
+
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={className ?? controlCls}>
+      <option value="">{field.label}</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {String(o[filterDef.labelField] ?? o.id)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function FilterBar({
+  fields,
+  values,
+  onChange,
+  onClear,
+  layout = 'inline',
+  className,
+}: {
+  fields:     MetadataField[]
+  values:     Record<string, string>
+  onChange:   (key: string, value: string) => void
+  onClear:    () => void
+  layout?:    'inline' | 'stacked'
+  className?: string
+}) {
+  const filterable = fields.filter((f) => f.filter)
+  if (!filterable.length) return null
+
+  const stacked = layout === 'stacked'
+  const ctrl    = stacked ? cn(controlCls, 'w-full') : controlCls
+
+  const hasActive = filterable.some((f) => {
+    const key = `f_${f.name}`
+    return values[key] || values[`${key}_min`] || values[`${key}_max`] || values[`${key}_from`] || values[`${key}_to`]
+  })
+
+  return (
+    <div className={className}>
+      {filterable.map((field) => {
+        const key    = `f_${field.name}`
+        const filter = field.filter!
+
+        if (filter.type === 'select') {
+          return (
+            <select key={field.name} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={ctrl}>
+              <option value="">{field.label}</option>
+              {(field.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          )
+        }
+
+        if (filter.type === 'boolean') {
+          return (
+            <select key={field.name} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={ctrl}>
+              <option value="">{field.label}</option>
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+          )
+        }
+
+        if (filter.type === 'text') {
+          return (
+            <input key={field.name} type="text" placeholder={field.label} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={cn(ctrl, !stacked && 'min-w-32')} />
+          )
+        }
+
+        if (filter.type === 'number_range') {
+          return (
+            <span key={field.name} className={cn('flex items-center gap-1', stacked && 'w-full')}>
+              <input type="number" placeholder={`${field.label} mín`} value={values[`${key}_min`] ?? ''} onChange={(e) => onChange(`${key}_min`, e.target.value)} className={cn(controlCls, stacked ? 'flex-1' : 'w-28')} />
+              <span className="text-muted-foreground text-xs">–</span>
+              <input type="number" placeholder={`${field.label} máx`} value={values[`${key}_max`] ?? ''} onChange={(e) => onChange(`${key}_max`, e.target.value)} className={cn(controlCls, stacked ? 'flex-1' : 'w-28')} />
+            </span>
+          )
+        }
+
+        if (filter.type === 'date_range') {
+          return (
+            <span key={field.name} className={cn('flex items-center gap-1', stacked && 'w-full')}>
+              <input type="date" title={`${field.label} de`} value={values[`${key}_from`] ?? ''} onChange={(e) => onChange(`${key}_from`, e.target.value)} className={cn(controlCls, stacked && 'flex-1')} />
+              <span className="text-muted-foreground text-xs">–</span>
+              <input type="date" title={`${field.label} até`} value={values[`${key}_to`] ?? ''} onChange={(e) => onChange(`${key}_to`, e.target.value)} className={cn(controlCls, stacked && 'flex-1')} />
+            </span>
+          )
+        }
+
+        if (filter.type === 'relation') {
+          const parentKey   = filter.dependsOn ? `f_${filter.dependsOn}` : undefined
+          const parentValue = parentKey ? (values[parentKey] ?? undefined) : undefined
+          return (
+            <RelationFilter key={field.name} field={field} filterDef={filter} value={values[key] ?? ''} parentValue={parentValue} onChange={(v) => onChange(key, v)} className={ctrl} />
+          )
+        }
+
+        return null
+      })}
+
+      {hasActive && (
+        <button type="button" onClick={onClear} className={cn('flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors', stacked && 'mt-1')}>
+          <X className="w-3.5 h-3.5" />
+          {stacked && 'Limpar'}
+        </button>
+      )}
+    </div>
+  )
 }
 
 function SortIcon({ state }: { state: false | 'asc' | 'desc' }) {
@@ -92,13 +238,25 @@ function buildColumns(
 }
 
 export function AutoList({ domain, resource, onEdit, filters }: Props) {
-  const [page,       setPage]       = useState(1)
-  const [search,     setSearch]     = useState('')
-  const [sorting,    setSorting]    = useState<SortingState>([])
-  const [visibility, setVisibility] = useState<VisibilityState>({})
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [focusedRow, setFocusedRow] = useState<number | null>(null)
+  const [page,          setPage]          = useState(1)
+  const [sorting,       setSorting]       = useState<SortingState>([])
+  const [visibility,    setVisibility]    = useState<VisibilityState>({})
+  const [pickerOpen,    setPickerOpen]    = useState(false)
+  const [filterOpen,    setFilterOpen]    = useState(false)
+  const [focusedRow,    setFocusedRow]    = useState<number | null>(null)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const pickerRef = useRef<HTMLDivElement>(null)
+  const filterRef = useRef<HTMLDivElement>(null)
+
+  function handleFilterChange(key: string, value: string) {
+    setActiveFilters((prev) => ({ ...prev, [key]: value }))
+    setPage(1)
+  }
+
+  function handleFilterClear() {
+    setActiveFilters({})
+    setPage(1)
+  }
 
   const { data: meta } = useMetadata(domain, resource)
 
@@ -106,14 +264,14 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
   const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
 
   const { data, isLoading } = useQuery<PaginatedResult<Row>>({
-    queryKey: [domain, resource, page, search, sortField, sortOrder, filters],
+    queryKey: [domain, resource, page, sortField, sortOrder, filters, activeFilters],
     queryFn:  async () => {
       const params = new URLSearchParams({
         page:     String(page),
         pageSize: '20',
-        ...(search    ? { search }              : {}),
         ...(sortField ? { sortField, sortOrder } : {}),
         ...(filters   ? filters                  : {}),
+        ...activeFilters,
       })
       const res = await apiFetch(`/${domain}/${resource}?${params}`)
       if (!res.ok) throw new Error('Failed to fetch list')
@@ -131,18 +289,25 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
     setVisibility(initial)
   }, [meta?.resource])
 
-  useEffect(() => { setFocusedRow(null) }, [page, search, sorting, filters])
+  useEffect(() => { setFocusedRow(null) }, [page, sorting, filters, activeFilters])
 
   useEffect(() => {
     if (!pickerOpen) return
     function onOutside(e: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setPickerOpen(false)
-      }
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false)
     }
     document.addEventListener('mousedown', onOutside)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [pickerOpen])
+
+  useEffect(() => {
+    if (!filterOpen) return
+    function onOutside(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [filterOpen])
 
   useShortcut('ctrl+arrowdown', () => {
     const rows = table.getRowModel().rows
@@ -197,38 +362,66 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
   })
 
   const toggleableFields = meta?.fields.filter((f) => f.listVisibility !== 'never') ?? []
+  const filterableFields = meta?.fields.filter((f) => f.filter) ?? []
+  const activeCount      = filterableFields.filter((f) => {
+    const key = `f_${f.name}`
+    return activeFilters[key] || activeFilters[`${key}_min`] || activeFilters[`${key}_max`] || activeFilters[`${key}_from`] || activeFilters[`${key}_to`]
+  }).length
 
   if (!meta) return <div className="text-sm text-muted-foreground">Carregando…</div>
 
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center gap-x-2 mb-2">
-        <input
-          type="search"
-          placeholder="Pesquisar…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-          className="border border-input rounded px-3 py-1.5 text-sm w-full max-w-[600px] focus:outline-none focus:ring-1 focus:ring-ring"
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+
+        {/* Desktop: filtros inline */}
+        <FilterBar
+          fields={meta.fields}
+          values={activeFilters}
+          onChange={handleFilterChange}
+          onClear={handleFilterClear}
+          layout="inline"
+          className="hidden md:flex flex-wrap items-center gap-2 flex-1"
         />
 
-        <div className="relative ml-auto" ref={pickerRef}>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPickerOpen((o) => !o)}
-          >
-            <Columns3 className="w-3.5 h-3.5" />
-            <span className='hidden sm:inline'>Colunas</span>
-          </Button>
+        {/* Mobile: botão Filtros + dropdown */}
+        {filterableFields.length > 0 && (
+          <div className="relative md:hidden" ref={filterRef}>
+            <Button variant="outline" size="sm" onClick={() => setFilterOpen((o) => !o)} className="relative">
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span className="sr-only">Filtros</span>
+              {activeCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-0.5 rounded-full bg-ring text-[10px] text-white flex items-center justify-center">
+                  {activeCount}
+                </span>
+              )}
+            </Button>
+            {filterOpen && (
+              <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-[--radius] shadow-md p-3 min-w-56">
+                <FilterBar
+                  fields={meta.fields}
+                  values={activeFilters}
+                  onChange={handleFilterChange}
+                  onClear={handleFilterClear}
+                  layout="stacked"
+                  className="flex flex-col gap-2"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
+        {/* Colunas */}
+        <div className="relative ml-auto" ref={pickerRef}>
+          <Button variant="outline" size="sm" onClick={() => setPickerOpen((o) => !o)}>
+            <Columns3 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Colunas</span>
+          </Button>
           {pickerOpen && (
             <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-[--radius] shadow-md p-1 min-w-44">
               {toggleableFields.map((f) => (
-                <label
-                  key={f.name}
-                  className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm select-none"
-                >
+                <label key={f.name} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm select-none">
                   <input
                     type="checkbox"
                     checked={table.getColumn(f.name)?.getIsVisible() ?? true}

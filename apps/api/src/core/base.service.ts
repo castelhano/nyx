@@ -3,6 +3,7 @@ import { ZodObject } from 'zod'
 import type { PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
+import { buildFilterWhere } from './filter.builder'
 import { resourceRegistry } from './resource-registry'
 
 @Injectable()
@@ -31,12 +32,13 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const KNOWN_KEYS = new Set(['page', 'pageSize', 'search', 'sortField', 'sortOrder'])
     const contextFilters: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(query)) {
-      if (!KNOWN_KEYS.has(k) && v !== undefined) contextFilters[k] = v
+      if (!KNOWN_KEYS.has(k) && !k.startsWith('f_') && v !== undefined) contextFilters[k] = v
     }
 
     const where = {
       ...(query.search ? this.buildSearchWhere(query.search) : {}),
       ...contextFilters,
+      ...buildFilterWhere(this.schema, query as Record<string, unknown>),
     }
 
     const [data, total] = await Promise.all([

@@ -4,6 +4,7 @@ import {
 } from 'zod'
 import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef } from '@nyx/types'
 import { resourceRegistry } from './resource-registry'
+import { resolveFilterDef } from './filter.builder'
 
 function unwrap(field: ZodType): ZodType {
   if (field instanceof ZodOptional || field instanceof ZodNullable || field instanceof ZodDefault) {
@@ -111,6 +112,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.labelField          ? { labelField:  meta.labelField }           : {}),
       ...(meta.keybind             ? { keybind:     meta.keybind }              : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
+      ...(resolveFilterDef(field, meta.filter) ? { filter: resolveFilterDef(field, meta.filter) } : {}),
     })
   }
 

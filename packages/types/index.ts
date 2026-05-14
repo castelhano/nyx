@@ -14,6 +14,14 @@ export interface PaginationQuery {
   [key: string]: unknown
 }
 
+export type FilterDef =
+  | { type: 'text' }
+  | { type: 'select' }
+  | { type: 'boolean' }
+  | { type: 'number_range' }
+  | { type: 'date_range' }
+  | { type: 'relation'; endpoint: string; labelField: string; dependsOn?: string }
+
 export interface FieldMeta {
   label?: string
   placeholder?: string
@@ -29,6 +37,7 @@ export interface FieldMeta {
   resource?: string
   labelField?: string
   keybind?: string
+  filter?: boolean | FilterDef
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -55,6 +64,7 @@ export interface MetadataField {
   labelField?: string
   keybind?: string
   group?: string
+  filter?: FilterDef
 }
 
 export interface TabGroup {

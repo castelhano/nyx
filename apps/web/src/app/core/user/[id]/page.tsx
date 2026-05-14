@@ -371,7 +371,7 @@ export default function UserDetailPage({
             <input
               id="username"
               placeholder="Username"
-              className={inputBase}
+              className={`${inputBase} md:w-96`}
               {...register('username', { required: 'Username obrigatório' })}
             />
             {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
@@ -382,12 +382,12 @@ export default function UserDetailPage({
             id="email"
             type="email"
             placeholder="email@domain.com"
-            className={inputBase}
+            className={`${inputBase} md:w-1/2`}
             {...register('email')}
           />
 
           <label htmlFor="role" className={labelCls}>Perfil</label>
-          <div className="relative w-full md:w-60">
+          <div className="relative w-full md:w-96">
             <select
               id="role"
               className={cn(inputBase, 'appearance-none pr-9')}
