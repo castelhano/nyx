@@ -1,17 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
 import * as bcrypt from 'bcrypt'
-import { passwordPolicySchema, UpsertPasswordPolicyDto, PasswordPolicy } from '@nyx/schemas'
-import { PrismaService } from '../../../prisma/prisma.service'
-import { resourceRegistry } from '../../../core/resource-registry'
+import { UpsertPasswordPolicyDto, PasswordPolicy } from '@nyx/schemas'
+import { PrismaService } from '../../../../prisma/prisma.service'
 
 const KEY   = 'password_policy'
 const SCOPE = 'global'
 
 @Injectable()
 export class PasswordPolicyService {
-  constructor(private readonly prisma: PrismaService) {
-    resourceRegistry.push({ domain: 'core', resource: 'password-policy', schema: passwordPolicySchema })
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
   async findCurrent(): Promise<PasswordPolicy | null> {
     const row = await this.prisma.settings.findUnique({

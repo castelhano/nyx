@@ -1,6 +1,6 @@
 import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common'
 import { UpsertPasswordPolicyDto } from '@nyx/schemas'
-import { JwtAuthGuard } from '../../../auth/policies.guard'
+import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { PasswordPolicyService } from './password-policy.service'
 
 @Controller('core/password-policy')

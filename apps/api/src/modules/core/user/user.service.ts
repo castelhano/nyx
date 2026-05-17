@@ -4,7 +4,7 @@ import { userSchema, User, CreateUserDto, UpdateUserDto } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
 import { stringContains } from '../../../core/db.utils'
-import { PasswordPolicyService } from '../../settings/password-policy/password-policy.service'
+import { PasswordPolicyService } from '../settings/password-policy/password-policy.service'
 
 @Injectable()
 export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto> {

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useShortcut } from '@/lib/keywatch'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, User, KeyRound, ChevronsUpDown, ChevronRight, Settings, Lock } from 'lucide-react'
+import { LogOut, User, KeyRound, ChevronsUpDown, ChevronRight } from 'lucide-react'
 import { cn, getUserFromToken } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
 import { resolveIcon } from '@/lib/icons'
@@ -18,8 +18,8 @@ export function Sidebar() {
 
   const router   = useRouter()
   const pathname = usePathname()
-  const [user, setUser]           = useState<{ username: string; role: string } | null>(null)
-  const [mounted, setMounted]     = useState(false)
+  const [user, setUser]               = useState<{ username: string; role: string } | null>(null)
+  const [mounted, setMounted]         = useState(false)
   const [openModules, setOpenModules] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -28,7 +28,6 @@ export function Sidebar() {
     const initial = new Set<string>()
     const active = domains.find((d) => pathname.startsWith(`/${d.key}`))
     if (active) initial.add(active.key)
-    if (pathname.startsWith('/core/password-policy')) initial.add('__settings__')
     setOpenModules(initial)
   }, [domains])
 
@@ -60,10 +59,10 @@ export function Sidebar() {
   }
 
   useShortcut('alt+q', handleLogout, {
-    desc:    'Sair da sessão',
-    icon:    LogOut,
-    origin:  'apps/web/src/components/layout/sidebar',
-    order: 99,
+    desc:   'Sair da sessão',
+    icon:   LogOut,
+    origin: 'apps/web/src/components/layout/sidebar',
+    order:  99,
   })
 
   return (
@@ -101,7 +100,7 @@ export function Sidebar() {
             {isOpen ? (
               <nav className="flex flex-col gap-0.5 px-2">
                 {domains.map((mod) => {
-                  const ModIcon    = resolveIcon(mod.icon)
+                  const ModIcon     = resolveIcon(mod.icon)
                   const isModActive = pathname.startsWith(`/${mod.key}`)
                   const isExpanded  = openModules.has(mod.key)
 
@@ -166,62 +165,11 @@ export function Sidebar() {
                     </div>
                   )
                 })}
-
-                {/* Configurações — seção estática, fora do discovery */}
-                <div>
-                  <div className={cn(
-                    'flex items-center rounded-md overflow-hidden transition-colors',
-                    pathname.startsWith('/core/password-policy')
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                  )}>
-                    <button
-                      type="button"
-                      onClick={() => toggleModule('__settings__')}
-                      className="flex flex-1 items-center gap-2 px-2 py-2 text-sm font-medium border-r border-sidebar-border"
-                    >
-                      <Settings className="h-4 w-4 shrink-0" />
-                      <span>Configurações</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleModule('__settings__')}
-                      className="flex w-7 shrink-0 self-stretch items-center justify-center focus:outline-none"
-                      aria-expanded={openModules.has('__settings__')}
-                    >
-                      <ChevronRight className={cn(
-                        'h-3.5 w-3.5 transition-transform duration-200',
-                        openModules.has('__settings__') && 'rotate-90',
-                      )} />
-                    </button>
-                  </div>
-
-                  <div className={cn(
-                    'overflow-hidden transition-all duration-200',
-                    openModules.has('__settings__') ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0',
-                  )}>
-                    <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3">
-                      <Link
-                        href="/core/password-policy"
-                        className={cn(
-                          'flex items-center gap-2 rounded-md px-2 py-2 text-sm',
-                          'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors',
-                          pathname === '/core/password-policy'
-                            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                            : 'text-sidebar-foreground/70',
-                        )}
-                      >
-                        <Lock className="h-4 w-4 shrink-0" />
-                        <span>Política de Senha</span>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
               </nav>
             ) : (
               <nav className="flex flex-col items-center gap-1 px-2 py-1">
                 {domains.map((mod) => {
-                  const ModIcon    = resolveIcon(mod.icon)
+                  const ModIcon     = resolveIcon(mod.icon)
                   const isModActive = pathname.startsWith(`/${mod.key}`)
                   return (
                     <Link
@@ -237,19 +185,6 @@ export function Sidebar() {
                     </Link>
                   )
                 })}
-
-                {/* Configurações — modo colapsado */}
-                <Link
-                  href="/core/password-policy"
-                  title="Configurações"
-                  className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-md',
-                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors',
-                    pathname.startsWith('/core/password-policy') && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                  )}
-                >
-                  <Settings className="h-4 w-4" />
-                </Link>
               </nav>
             )}
           </div>

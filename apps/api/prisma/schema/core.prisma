@@ -114,3 +114,14 @@ model UserPasswordHistory {
 
   @@map("user_password_history")
 }
+
+// Configurações do app
+model Settings {
+  key       String
+  scope     String   @default("global") // 'global' | branchId
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@id([key, scope])
+  @@map("settings")
+}
