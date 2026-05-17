@@ -93,9 +93,44 @@
 @layer base {
   /* ── Cold Eucalyptus ──────────────────────────────────────────────────── */
   .dark.theme-eucalyptus {
-    --accent:             158 18% 26%;    /* hover ghost/icon — eucalyptus fosco      */
-    --accent-foreground:  155 15% 88%;    /* texto/ícone sobre --accent               */
-    --ring:               158 38% 50%;    /* focus ring + destaque de coluna          */
+    --accent:             158 18% 26%;
+    --accent-foreground:  155 15% 88%;
+    --ring:               158 38% 50%;
+  }
+
+  /* ── Ocean ────────────────────────────────────────────────────────────── */
+  .dark.theme-ocean {
+    --accent:             210 30% 26%;
+    --accent-foreground:  210 60% 88%;
+    --ring:               210 65% 55%;
+  }
+
+  /* ── Sunset ───────────────────────────────────────────────────────────── */
+  .dark.theme-sunset {
+    --accent:             20 35% 26%;
+    --accent-foreground:  20 55% 88%;
+    --ring:               20 65% 55%;
+  }
+
+  /* ── Lavender ─────────────────────────────────────────────────────────── */
+  .dark.theme-lavender {
+    --accent:             258 20% 28%;
+    --accent-foreground:  258 40% 88%;
+    --ring:               258 50% 62%;
+  }
+
+  /* ── Rose ─────────────────────────────────────────────────────────────── */
+  .dark.theme-rose {
+    --accent:             340 25% 26%;
+    --accent-foreground:  340 50% 88%;
+    --ring:               340 55% 58%;
+  }
+
+  /* ── Slate ────────────────────────────────────────────────────────────── */
+  .dark.theme-slate {
+    --accent:             215 8% 22%;
+    --accent-foreground:  215 5% 88%;
+    --ring:               215 25% 55%;
   }
 
   * { @apply border-border; }

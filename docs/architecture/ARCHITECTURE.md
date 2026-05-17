@@ -66,6 +66,7 @@ nyx/
 │           ├── lib/
 │           │   ├── icons.ts        # Single file with all Lucide imports; resolveIcon() helper
 │           │   ├── auth.ts
+│           │   ├── auth-context.tsx    # AuthProvider + useAuth() — fetches /auth/me, applies theme
 │           │   ├── utils.ts
 │           │   ├── csv.ts
 │           │   └── keywatch/
@@ -79,8 +80,9 @@ nyx/
 │           │   └── ui/
 │           │       ├── button.tsx
 │           │       ├── breadcrumb.tsx
-│           │       ├── dropdown.tsx        # Portal-based, viewport-aware
-│           │       └── tabs.tsx
+│           │       ├── dropdown.tsx        # Portal-based, viewport-aware; DropdownItem supports href
+│           │       ├── tabs.tsx
+│           │       └── theme-card.tsx      # Reusable theme selector card with color swatch
 │           ├── core/               # Shared frontend infrastructure
 │           │   ├── AutoForm.tsx
 │           │   ├── AutoList.tsx
@@ -98,7 +100,8 @@ nyx/
 │               │       └── [id]/page.tsx    # generic detail page (AutoForm)
 │               ├── core/
 │               │   └── user/
-│               │       └── [id]/page.tsx    # custom detail page (overrides generic)
+│               │       ├── [id]/page.tsx           # custom detail page (overrides generic)
+│               │       └── preferences/page.tsx    # user preferences (theme, sidebar, dateFormat)
 │               └── login/page.tsx
 ├── packages/
 │   ├── schemas/
@@ -108,7 +111,7 @@ nyx/
 │   │   ├── zod-meta.ts
 │   │   └── index.ts
 │   └── types/
-│       └── index.ts                # Includes apiRoute() and navRoute() helpers, DiscoveryDomain/DiscoveryResource interfaces
+│       └── index.ts                # apiRoute/navRoute helpers; DiscoveryDomain/DiscoveryResource; AuthUser; UserPreferences/CurrentUser/ThemeName
 └── docs/
 ```
 
@@ -679,9 +682,29 @@ Register the module in `SettingsModule` (and export the service if other modules
 ### Authentication Flow
 
 1. `POST /auth/login` — validates credentials, returns JWT
-2. JWT payload: `{ sub: userId, role: UserRole, branchIds: string[] }`
+2. JWT payload: `{ sub: userId, username, role: UserRole, branchIds: string[] }`
 3. All protected routes use `JwtAuthGuard` (validates token, attaches user to request)
 4. `PoliciesGuard` checks CASL abilities after `JwtAuthGuard`
+
+**Self-service endpoints** (require only a valid JWT, no resource-level permission):
+
+| Endpoint | Description |
+|---|---|
+| `GET /auth/me` | Returns `{ id, name, username, role, branchIds, preferences }` for the logged-in user |
+| `PATCH /auth/me/preferences` | Merges the request body into `User.preferences` (Json) |
+
+### Frontend — AuthProvider and useAuth
+
+`AuthProvider` (`apps/web/src/lib/auth-context.tsx`) wraps the app inside `QueryClientProvider`. It:
+
+- Fetches `GET /auth/me` once on mount (when a token exists); `staleTime: 300_000`
+- Applies the user's `theme` preference as a CSS class on `<html>` (e.g. `theme-lavender`) whenever `user.preferences.theme` changes
+- Exposes `useAuth()` → `{ user: CurrentUser | null, updatePreferences(patch) }`
+- `updatePreferences` does an optimistic cache update first, then `PATCH /auth/me/preferences`
+
+**JWT intentionally stays lean** — it carries only security-relevant claims (`sub`, `role`, `branchIds`). `name` and `preferences` are fetched separately via `/auth/me` to avoid stale data after updates.
+
+> **TanStack Query note:** do **not** use `initialData` on the `['auth', 'me']` query. With `staleTime > 0`, `initialData` is treated as fresh for the full `staleTime` window, preventing the initial fetch entirely.
 
 ### Authorization — CASL
 
@@ -749,9 +772,10 @@ All models follow these conventions:
 | `Select` | `components/ui/select.tsx` | wraps native `<select>` with built-in `ChevronDown` overlay; same size variants; `wrapperClassName` for outer div sizing |
 | `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
 | `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change |
-| `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset` |
+| `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset`; `DropdownItem` accepts `href` (renders `Link`) or `onClick` |
 | `AssociationList` | `components/ui/association-list.tsx` | many-to-many with a per-row role select; "+ Add" opens a searchable combobox filtered to unassociated items; items grouped by parent entity when `companies` prop is provided; local state — persists only on topbar Save |
 | `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (create/read/update/delete) as columns; section-level "Marcar todos / Desmarcar todos"; global filter input; local state — persists only on topbar Save |
+| `ThemeCard` | `components/ui/theme-card.tsx` | theme selector card with color swatch preview; `selected` state shows checkmark; used in the preferences page |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
 
 ### Dropdown — Portal Architecture
@@ -776,6 +800,38 @@ Tokens are defined as HSL custom properties in `globals.css` and mapped in `tail
 Token categories: `background`, `foreground`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `sidebar-*`.
 
 All components reference tokens via Tailwind classes (`bg-primary`, `text-foreground`, etc.) — no hardcoded color values.
+
+### Accent Themes
+
+The base dark mode defines neutral `--accent`, `--accent-foreground` and `--ring` tokens. Per-user accent themes override only these three tokens via a CSS class on `<html>`:
+
+```css
+/* applied by AuthProvider based on user.preferences.theme */
+.dark.theme-eucalyptus { --accent: …; --accent-foreground: …; --ring: …; }
+.dark.theme-ocean      { … }
+.dark.theme-sunset     { … }
+.dark.theme-lavender   { … }
+.dark.theme-rose       { … }
+.dark.theme-slate      { … }
+```
+
+`AuthProvider` applies the class via `applyTheme()` whenever `user.preferences.theme` changes. The preferences page provides live preview by applying the class directly while the user selects, reverting on `alt+l` if not saved.
+
+---
+
+## 8.1 User Preferences
+
+Persisted in `User.preferences` (Json column). Read and written via `GET /auth/me` and `PATCH /auth/me/preferences`. Managed in the frontend through `useAuth()`.
+
+| Preference | Type | Default | Effect |
+|---|---|---|---|
+| `theme` | `ThemeName` | `'eucalyptus'` | Accent color theme — CSS class on `<html>` |
+| `sidebarCollapsed` | `boolean` | `false` | Sidebar initial state on page load |
+| `dateFormat` | `'DD/MM/YYYY' \| 'MM/DD/YYYY' \| 'YYYY-MM-DD'` | `'DD/MM/YYYY'` | Date display format across the app |
+
+**Schema convention:** every field must have a `.default()` — `AuthProvider` merges `defaultPreferences` with whatever is stored, so adding a new preference field requires no migration.
+
+The preferences page lives at `/core/user/preferences` — a static route that takes priority over the generic `[id]` route. It uses `<form onSubmit>` + `type: 'submit'` in the topbar (same as all other pages) to avoid stale-closure issues with `onClick` handlers.
 
 ---
 

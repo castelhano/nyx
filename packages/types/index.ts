@@ -90,6 +90,29 @@ export interface AuthUser {
   branchIds: string[]
 }
 
+export type ThemeName = 'eucalyptus' | 'ocean' | 'sunset' | 'lavender' | 'rose' | 'slate'
+
+export interface UserPreferences {
+  theme:            ThemeName
+  sidebarCollapsed: boolean
+  dateFormat:       'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD'
+}
+
+export const defaultPreferences: UserPreferences = {
+  theme:            'eucalyptus',
+  sidebarCollapsed: false,
+  dateFormat:       'DD/MM/YYYY',
+}
+
+export interface CurrentUser {
+  id:          string
+  name:        string
+  username:    string
+  role:        string
+  branchIds:   string[]
+  preferences: UserPreferences
+}
+
 export interface ResourcePermissions {
   create: boolean
   read: boolean

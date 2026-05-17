@@ -28,6 +28,7 @@ export function Stepper({ value, onChange, min = 0, max, disabled, className }: 
       <button
         type="button"
         disabled={disabled}
+        tabIndex={-1}
         onClick={() => onChange(clamp(value - 1))}
         className={cn(btnCls, 'rounded-l-sm')}
       >−</button>
@@ -48,6 +49,7 @@ export function Stepper({ value, onChange, min = 0, max, disabled, className }: 
       <button
         type="button"
         disabled={disabled}
+        tabIndex={-1}
         onClick={() => onChange(clamp(value + 1))}
         className={cn(btnCls, 'rounded-r-sm')}
       >+</button>

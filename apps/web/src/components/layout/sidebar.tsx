@@ -1,40 +1,48 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShortcut } from '@/lib/keywatch'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, User, KeyRound, ChevronsUpDown, ChevronRight } from 'lucide-react'
+import { LogOut, User, KeyRound, Settings, ChevronsUpDown, ChevronRight } from 'lucide-react'
 import { cn, getUserFromToken } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
 import { resolveIcon } from '@/lib/icons'
 import { useDiscovery } from '@/core/useDiscovery'
 import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown'
 import { useSidebar } from './sidebar-context'
+import { useAuth } from '@/lib/auth-context'
 
 export function Sidebar() {
-  const { isOpen, close } = useSidebar()
-  const { data: domains }  = useDiscovery()
+  const { isOpen, open, close } = useSidebar()
+  const { data: domains }       = useDiscovery()
+  const { user }                = useAuth()
 
   const router   = useRouter()
   const pathname = usePathname()
-  const [user, setUser]               = useState<{ username: string; role: string } | null>(null)
-  const [mounted, setMounted]         = useState(false)
   const [openModules, setOpenModules] = useState<Set<string>>(new Set())
+  const prefApplied = useRef(false)
 
+  // Expande o módulo activo ao carregar domains
   useEffect(() => {
-    setMounted(true)
-    setUser(getUserFromToken())
     const initial = new Set<string>()
-    const active = domains.find((d) => pathname.startsWith(`/${d.key}`))
+    const active  = domains.find((d) => pathname.startsWith(`/${d.key}`))
     if (active) initial.add(active.key)
     setOpenModules(initial)
-  }, [domains])
+  }, [domains]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Aplica sidebarCollapsed da preferência — apenas uma vez
+  useEffect(() => {
+    if (!user || prefApplied.current) return
+    prefApplied.current = true
+    if (user.preferences.sidebarCollapsed) close()
+    else open()
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fecha no mobile ao navegar
   useEffect(() => {
     if (window.innerWidth < 768) close()
-  }, [pathname])
+  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fecha no mobile com Esc
   useEffect(() => {
@@ -43,7 +51,7 @@ export function Sidebar() {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleModule(key: string) {
     setOpenModules((prev) => {
@@ -64,6 +72,14 @@ export function Sidebar() {
     origin: 'apps/web/src/components/layout/sidebar',
     order:  99,
   })
+
+  // Fallback síncrono do JWT enquanto /auth/me não resolve
+  const tokenUser   = user ? null : getUserFromToken()
+  const displayName = user?.name ?? user?.username ?? tokenUser?.username ?? '—'
+  const displayRole = user?.role ?? tokenUser?.role ?? ''
+  // Iniciais sempre derivadas do username — 2 chars, previsível independente do auth estar carregado
+  const displayUsername = user?.username ?? tokenUser?.username ?? '??'
+  const initials        = displayUsername.slice(0, 2).toUpperCase()
 
   return (
     <>
@@ -203,13 +219,13 @@ export function Sidebar() {
                   'focus:outline-none transition-colors',
                 )}>
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-medium uppercase">
-                    {mounted ? (user?.username?.slice(0, 2) ?? '??') : '??'}
+                    {initials}
                   </div>
                   {isOpen && (
                     <>
                       <div className="flex-1 text-left leading-tight">
-                        <p className="font-medium text-sm truncate capitalize">{mounted ? (user?.username ?? '—') : '—'}</p>
-                        <p className="text-xs text-sidebar-foreground/60 truncate capitalize">{mounted ? (user?.role ?? '') : ''}</p>
+                        <p className="font-medium text-sm truncate capitalize">{displayName}</p>
+                        <p className="text-xs text-sidebar-foreground/60 truncate capitalize">{displayRole}</p>
                       </div>
                       <ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-foreground/50" />
                     </>
@@ -217,9 +233,9 @@ export function Sidebar() {
                 </button>
               }
             >
-              <DropdownItem>
-                <User className="h-4 w-4" />
-                Perfil
+              <DropdownItem href="/core/user/preferences">
+                <Settings className="h-4 w-4" />
+                Preferências
               </DropdownItem>
 
               <DropdownItem>

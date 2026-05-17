@@ -5,6 +5,7 @@ import {
   type ReactNode, type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
@@ -189,32 +190,43 @@ export function Dropdown({
 // ---------------------------------------------------------------------------
 
 interface DropdownItemProps {
-  children:    ReactNode
-  onClick?:    () => void
-  className?:  string
+  children:     ReactNode
+  onClick?:     () => void
+  href?:        string
+  className?:   string
   destructive?: boolean
-  disabled?:   boolean
+  disabled?:    boolean
 }
 
 export function DropdownItem({
-  children, onClick, className, destructive, disabled,
+  children, onClick, href, className, destructive, disabled,
 }: DropdownItemProps) {
+  const itemCls = cn(
+    'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
+    'transition-colors focus:outline-none',
+    disabled
+      ? 'opacity-50 cursor-not-allowed'
+      : destructive
+        ? 'cursor-pointer hover:bg-destructive hover:text-destructive-foreground'
+        : 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
+    className,
+  )
+
+  if (href) {
+    return (
+      <Link href={href} role="menuitem" className={itemCls}>
+        {children}
+      </Link>
+    )
+  }
+
   return (
     <button
       type="button"
       role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
-        'transition-colors focus:outline-none',
-        disabled
-          ? 'opacity-50 cursor-not-allowed'
-          : destructive
-            ? 'cursor-pointer hover:bg-destructive hover:text-destructive-foreground'
-            : 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
-        className,
-      )}
+      className={itemCls}
     >
       {children}
     </button>
