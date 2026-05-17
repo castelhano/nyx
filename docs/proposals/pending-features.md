@@ -56,7 +56,7 @@
 
 - [x] Login page refactored — card layout, pt-BR labels, `--card`/`--border`/`--input` tokens
 - [x] "Stay logged in" checkbox (default: checked) — `localStorage` + 7-day cookie when checked, `sessionStorage` + session cookie when unchecked (`apps/web/src/lib/auth.ts`)
-- [ ] Split layout — left branding panel, right form (desktop only)
+- [x] Split layout — left branding panel, right form (desktop only)
 - [ ] JWT `expiresIn` driven by `PasswordPolicy.expiresInDays` when > 0
 
 ### 3.1 Password recovery

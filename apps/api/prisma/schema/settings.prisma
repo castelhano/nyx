@@ -1,13 +1,9 @@
-// Política global de senhas (singleton — uma única linha)
-model PasswordPolicy {
-  id               String   @id @default(uuid())
-  minLength        Int      @default(8)
-  requireUppercase Boolean  @default(false)
-  requireNumbers   Boolean  @default(false)
-  requireSpecial   Boolean  @default(false)
-  historyCount     Int      @default(0)  // 0 = não verifica histórico
-  expiresInDays    Int      @default(0)  // 0 = não expira
-  updatedAt        DateTime @updatedAt
+model Settings {
+  key       String
+  scope     String   @default("global") // 'global' | branchId
+  value     Json
+  updatedAt DateTime @updatedAt
 
-  @@map("password_policy")
+  @@id([key, scope])
+  @@map("settings")
 }
