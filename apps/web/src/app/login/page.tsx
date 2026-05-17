@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { login } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
+import { PasswordInput } from '@/components/ui/password-input'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -72,14 +73,13 @@ export default function LoginPage() {
                 <label className="block text-sm font-medium text-card-foreground">
                   Senha
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
                   placeholder="Digite sua senha"
-                  className="w-full rounded-[--radius] border border-input bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="w-full"
                 />
               </div>
 

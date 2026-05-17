@@ -89,6 +89,7 @@ nyx/
 │           │   ├── AutoBreadcrumb.tsx
 │           │   ├── SettingsPanel.tsx   # Template para recursos singleton (isSingleton: true)
 │           │   ├── FieldRenderer.tsx
+│           │   ├── PolicyIndicator.tsx # Password policy hint strip — reused in user/[id] and password page
 │           │   ├── useMetadata.ts
 │           │   └── useDiscovery.ts    # Hook for GET /discovery — replaces static domains.ts
 │           └── app/
@@ -101,7 +102,8 @@ nyx/
 │               ├── core/
 │               │   └── user/
 │               │       ├── [id]/page.tsx           # custom detail page (overrides generic)
-│               │       └── preferences/page.tsx    # user preferences (theme, sidebar, dateFormat)
+│               │       ├── preferences/page.tsx    # user preferences (theme, sidebar, dateFormat)
+│               │       └── password/page.tsx       # self-service change password
 │               └── login/page.tsx
 ├── packages/
 │   ├── schemas/
@@ -383,6 +385,10 @@ Next.js App Router resolves static segments before dynamic ones, so no configura
 - Keep `AutoBreadcrumb` — pass `domain`, `resource`, `id`, `recordName`
 - Data outside the main form (related entities, associations) is held in `useState`; refs guard one-time initialisation from query data
 - Multi-endpoint saves run in `Promise.all()` where order allows
+
+**Standalone pages** (not tied to a domain/resource list — e.g., preferences, change password) differ from custom resource pages in two ways:
+- Use `<Breadcrumb>` directly with custom segments (e.g. `[{ label: 'Início', href: '/' }, { label: 'Preferências' }]`) instead of `AutoBreadcrumb`, which always builds the domain → resource trail from the URL
+- `alt+v` and post-save navigation go to `/` (home), not to a resource list
 
 ### 4.11 AutoForm, AutoList & AutoBreadcrumb
 
@@ -732,7 +738,37 @@ super(prisma, 'order', orderSchema, 'sales', 'branchId')
 
 `PATCH /core/user/:id/reset-password` — sets a new password without requiring the current one. Intended for admin use only. Validates against `PasswordPolicy` and records history identically to `changePassword`.
 
-The self-service flow (`PATCH /core/user/:id/change-password`) still requires `currentPassword` and is intended for the user changing their own password.
+The self-service flow (`PATCH /core/user/:id/change-password`) requires `currentPassword` and is exposed via the change-password page at `/core/user/password`.
+
+### AllExceptionsFilter — Response Shape
+
+`exception.filter.ts` wraps the full `HttpException.getResponse()` object inside the `message` field of the JSON response:
+
+```json
+{
+  "statusCode": 400,
+  "timestamp": "...",
+  "path": "/api/core/user/.../change-password",
+  "message": { "statusCode": 400, "message": "Senha atual incorreta", "error": "Bad Request" }
+}
+```
+
+When `BadRequestException` is called with an array (e.g., from `PasswordPolicyService.validate`), `message.message` will be an array of strings.
+
+**Frontend pattern:** never read `json.message` directly as a string. Use an extractor that handles the nesting and the string/array variants:
+
+```typescript
+function extractError(json: Record<string, unknown>): string | string[] {
+  const outer = json?.message
+  const payload = (outer && typeof outer === 'object' && !Array.isArray(outer))
+    ? (outer as Record<string, unknown>)
+    : json
+  const msg = payload?.message ?? payload
+  if (typeof msg === 'string') return msg
+  if (Array.isArray(msg))      return msg as string[]
+  return 'Erro desconhecido.'
+}
+```
 
 ### Password Policy
 
@@ -776,6 +812,7 @@ All models follow these conventions:
 | `AssociationList` | `components/ui/association-list.tsx` | many-to-many with a per-row role select; "+ Add" opens a searchable combobox filtered to unassociated items; items grouped by parent entity when `companies` prop is provided; local state — persists only on topbar Save |
 | `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (create/read/update/delete) as columns; section-level "Marcar todos / Desmarcar todos"; global filter input; local state — persists only on topbar Save |
 | `ThemeCard` | `components/ui/theme-card.tsx` | theme selector card with color swatch preview; `selected` state shows checkmark; used in the preferences page |
+| `PasswordInput` | `components/ui/password-input.tsx` | `Input` wrapper with Eye/EyeOff toggle; uses `forwardRef` so `{...register(...)}` from React Hook Form works correctly — any input wrapper that receives RHF spread must use `forwardRef` |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
 
 ### Dropdown — Portal Architecture

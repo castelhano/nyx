@@ -238,7 +238,7 @@ export function Sidebar() {
                 Preferências
               </DropdownItem>
 
-              <DropdownItem>
+              <DropdownItem href="/core/user/password">
                 <KeyRound className="h-4 w-4" />
                 Alterar Senha
               </DropdownItem>

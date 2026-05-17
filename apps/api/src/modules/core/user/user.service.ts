@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, BadRequestException } from '@nestjs/common'
 import * as bcrypt from 'bcrypt'
 import { userSchema, User, CreateUserDto, UpdateUserDto } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
@@ -55,7 +55,7 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
   async changePassword(id: string, dto: { currentPassword: string; newPassword: string }): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id } }) as User
     const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash)
-    if (!valid) throw new Error('Invalid current password')
+    if (!valid) throw new BadRequestException('Senha atual incorreta')
     await this.passwordPolicy.validate(dto.newPassword, id)
     const passwordHash = await bcrypt.hash(dto.newPassword, 10)
     await this.prisma.user.update({ where: { id }, data: { passwordHash } })

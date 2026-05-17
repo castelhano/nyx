@@ -4,12 +4,13 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import { Save, ArrowLeft, ChevronDown, Eye, EyeOff, Check, Copy } from 'lucide-react'
+import { Save, ArrowLeft, ChevronDown, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import type { UseFormRegisterReturn } from 'react-hook-form'
+import { PasswordInput } from '@/components/ui/password-input'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
+import { PolicyIndicator } from '@/core/PolicyIndicator'
 import { useDiscovery } from '@/core/useDiscovery'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -34,87 +35,6 @@ interface FormValues {
   confirmPassword:    string
   newPassword:        string
   newConfirmPassword: string
-}
-
-// ---------------------------------------------------------------------------
-// PolicyIndicator
-// ---------------------------------------------------------------------------
-
-function PolicyIndicator({
-  password,
-  policy,
-}: {
-  password: string
-  policy:   PasswordPolicy | null | undefined
-}) {
-  if (!policy || !password) return null
-
-  const checks = [
-    { ok: password.length >= policy.minLength, label: `Mín. ${policy.minLength} caracteres` },
-    ...(policy.requireUppercase ? [{ ok: /[A-Z]/.test(password), label: 'Letra maiúscula' }]  : []),
-    ...(policy.requireNumbers   ? [{ ok: /[0-9]/.test(password), label: 'Número' }]            : []),
-    ...(policy.requireSpecial   ? [{ ok: /[^A-Za-z0-9]/.test(password), label: 'Símbolo' }]   : []),
-  ]
-
-  return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
-      {checks.map((c) => (
-        <span
-          key={c.label}
-          className={cn(
-            'flex items-center gap-1 text-xs transition-colors',
-            c.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
-          )}
-        >
-          <Check className={cn('w-3 h-3', !c.ok && 'opacity-30')} />
-          {c.label}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// PasswordInput
-// ---------------------------------------------------------------------------
-
-function PasswordInput({
-  id,
-  placeholder,
-  register,
-  error,
-  autoFocus,
-}: {
-  id:          string
-  placeholder?: string
-  register:    UseFormRegisterReturn
-  error?:      string
-  autoFocus?:  boolean
-}) {
-  const [show, setShow] = useState(false)
-  return (
-    <div className="space-y-1">
-      <div className="relative">
-        <Input
-          id={id}
-          type={show ? 'text' : 'password'}
-          placeholder={placeholder}
-          autoFocus={autoFocus}
-          className="w-full pr-10"
-          {...register}
-        />
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={() => setShow((v) => !v)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
-      </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -490,11 +410,12 @@ export default function UserDetailPage({
                 <PasswordInput
                   id="password"
                   placeholder="Senha"
-                  register={register('password', {
+                  error={errors.password?.message}
+                  className="w-full"
+                  {...register('password', {
                     required: 'Senha obrigatória',
                     minLength: { value: 8, message: 'Mínimo 8 caracteres' },
                   })}
-                  error={errors.password?.message}
                 />
                 <PolicyIndicator password={passwordValue} policy={policy} />
               </div>
@@ -503,11 +424,12 @@ export default function UserDetailPage({
               <PasswordInput
                 id="confirmPassword"
                 placeholder="Confirmar senha"
-                register={register('confirmPassword', {
+                error={errors.confirmPassword?.message}
+                className="w-full"
+                {...register('confirmPassword', {
                   required: 'Confirmação obrigatória',
                   validate:  (v) => v === passwordValue || 'As senhas não conferem',
                 })}
-                error={errors.confirmPassword?.message}
               />
             </div>
           </div>
@@ -530,8 +452,9 @@ export default function UserDetailPage({
                     id="newPassword"
                     placeholder="Nova senha"
                     autoFocus
-                    register={register('newPassword')}
                     error={errors.newPassword?.message}
+                    className="w-full"
+                    {...register('newPassword')}
                   />
                   <PolicyIndicator password={newPasswordValue} policy={policy} />
                 </div>
@@ -540,11 +463,12 @@ export default function UserDetailPage({
                 <PasswordInput
                   id="newConfirmPassword"
                   placeholder="Confirmar nova senha"
-                  register={register('newConfirmPassword', {
+                  error={errors.newConfirmPassword?.message}
+                  className="w-full"
+                  {...register('newConfirmPassword', {
                     validate: (v) =>
                       !newPasswordValue || v === newPasswordValue || 'As senhas não conferem',
                   })}
-                  error={errors.newConfirmPassword?.message}
                 />
               </div>
             )}

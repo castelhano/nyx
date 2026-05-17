@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Save, ArrowLeft, Palette, SlidersHorizontal, CalendarDays } from 'lucide-react'
-import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
+import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { useAuth } from '@/lib/auth-context'
@@ -105,7 +105,7 @@ export default function PreferencesPage() {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
   }, { desc: 'Salvar preferências', icon: Save, context: 'all', origin: 'preferences/page' })
 
-  useShortcut('alt+v', () => router.push('/core/user'), {
+  useShortcut('alt+v', () => router.push('/'), {
     desc: 'Voltar', icon: ArrowLeft, context: 'all', origin: 'preferences/page',
   })
 
@@ -115,7 +115,7 @@ export default function PreferencesPage() {
 
   return (
     <div className="p-6 max-w-3xl flex flex-col gap-8">
-      <AutoBreadcrumb domain="core" resource="user" />
+      <Breadcrumb segments={[{ label: 'Início', href: '/' }, { label: 'Preferências' }]} />
 
       <form id={FORM_ID} onSubmit={onSubmit} className="flex flex-col gap-8">
 
