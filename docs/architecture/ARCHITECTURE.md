@@ -50,15 +50,16 @@ nyx/
 │   │           │   ├── discovery.controller.ts
 │   │           │   └── discovery.module.ts
 │   │           ├── core/
-│   │           │   ├── core.module.ts      # @Domain({ label: 'Core', icon: 'Shield' })
+│   │           │   ├── core.module.ts      # @Domain({ label: 'Controle', icon: 'Shield' })
 │   │           │   ├── user/
 │   │           │   ├── company/
 │   │           │   ├── branch/
 │   │           │   ├── user-permission/
-│   │           │   └── user-branch/
-│   │           └── settings/
-│   │               ├── settings.module.ts  # No @Domain — all resources route under 'core'
-│   │               └── password-policy/
+│   │           │   ├── user-branch/
+│   │           │   └── settings/           # Part of core domain — no separate @Domain
+│   │           │       ├── settings.module.ts
+│   │           │       ├── settings.service.ts  # Registers 'settings' in resourceRegistry
+│   │           │       └── password-policy/
 │   └── web/                        # Next.js frontend
 │       └── src/
 │           ├── lib/
@@ -94,8 +95,10 @@ nyx/
 │               │       ├── page.tsx
 │               │       └── [id]/page.tsx       # generic detail page (AutoForm)
 │               ├── core/
-│               │   └── user/
-│               │       └── [id]/page.tsx       # custom detail page (overrides generic)
+│               │   ├── user/
+│               │   │   └── [id]/page.tsx       # custom detail page (overrides generic)
+│               │   └── settings/
+│               │       └── page.tsx            # custom singleton settings page (overrides generic)
 │               └── login/page.tsx
 ├── packages/
 │   ├── schemas/
@@ -238,6 +241,18 @@ abstract class BaseService<T, CreateDTO, UpdateDTO> {
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |
 
+**Registration-only schema (custom singleton pages):** when a resource needs to appear in discovery/sidebar but uses a fully custom page (no AutoForm/AutoList, no CRUD), create a minimal schema with only `withMeta` metadata and an empty `z.object({})`. Manually push it to `resourceRegistry` in a dedicated service. Example: `settingsPageSchema` in `settings.service.ts`.
+
+```typescript
+export const settingsPageSchema = withMeta(z.object({}), {
+  label: 'Configurações', labelPlural: 'Configurações', nameField: 'id', icon: 'Settings',
+})
+// In the service constructor:
+resourceRegistry.push({ domain: 'core', resource: 'settings', schema: settingsPageSchema })
+```
+
+The custom page at `app/core/settings/page.tsx` shadows the generic `app/[domain]/[resource]/page.tsx` automatically via Next.js routing. Use `Breadcrumb` directly (not `AutoBreadcrumb`) since there are no parent records.
+
 ### 4.6 Resource Registry and Domain Registry
 
 ```typescript
@@ -278,7 +293,7 @@ Usage:
 export class CoreModule {}
 ```
 
-> **Settings module note:** `SettingsModule` does **not** carry `@Domain` because all its resources are routed under `core/` (e.g., `@Controller('core/password-policy')`). Each settings service registers directly in `resourceRegistry` with `domain: 'core'`, making those resources appear under the Core domain in discovery.
+> **Settings module note:** `SettingsModule` lives inside `CoreModule` (`modules/core/settings/`) and is part of the Core domain. It does **not** carry `@Domain` — `CoreModule` owns the domain declaration. A dedicated `SettingsService` registers the aggregate `settings` resource in `resourceRegistry` with `domain: 'core'`, making it appear in discovery alongside other Core resources.
 
 ### 4.7 Discovery API
 
