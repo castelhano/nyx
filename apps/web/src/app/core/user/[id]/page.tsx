@@ -591,7 +591,7 @@ export default function UserDetailPage({
                       className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <ChevronDown className={cn('w-4 h-4 transition-transform', copyOpen && 'rotate-180')} />
-                      Copiar de outro usuário
+                      Copiar permissões
                     </button>
 
                     {copyOpen && (
