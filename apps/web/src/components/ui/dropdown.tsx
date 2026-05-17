@@ -211,7 +211,7 @@ export function DropdownItem({
         disabled
           ? 'opacity-50 cursor-not-allowed'
           : destructive
-            ? 'cursor-pointer hover:bg-destructive/10 hover:text-destructive'
+            ? 'cursor-pointer hover:bg-destructive hover:text-destructive-foreground'
             : 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
         className,
       )}

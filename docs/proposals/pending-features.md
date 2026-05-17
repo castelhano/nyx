@@ -7,10 +7,10 @@
 ## 1. User Screens
 
 ### 1.1 User list (`/core/user`)
-- [ ] Custom page `app/core/user/page.tsx` replacing generic `AutoList`
-- [ ] Toolbar filters: by company, by branch (dependent on company), by role, by status
-- [ ] Extra column: "Branches" badge showing count of associated branches
-- [ ] Row action: "Copy permissions" — opens user-selection modal (see 1.6)
+- [x] Custom page `app/core/user/page.tsx` replacing generic `AutoList`
+- [x] Toolbar filters: by company, by branch (dependent on company), by role, by status
+- [x] Extra column: "Branches" badge showing count of associated branches
+- [x] Row action: "Copy permissions" — opens user-selection modal (see 1.6)
 
 ### 1.2 User form — tabbed layout
 - [x] Custom page `app/core/user/[id]/page.tsx` with three tabs: **Dados**, **Filiais**, **Permissões**
@@ -29,7 +29,7 @@
 - [x] Groups with "Marcar todos" / "Desmarcar todos" per section (static headers — not collapsible)
 - [x] Global filter input at the top
 - [x] Desktop: table layout (resources as rows, actions as columns)
-- [ ] Mobile: accordion layout — pending
+- [x] Mobile: accordion layout — pending
 - [x] Local state — persists only on Save
 
 ### 1.5 Permission Templates
