@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { companySchema, Company, CreateCompanyDto, UpdateCompanyDto } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
+import { stringContains } from '../../../core/db.utils'
 
 @Injectable()
 export class CompanyService extends BaseService<Company, CreateCompanyDto, UpdateCompanyDto> {
@@ -17,9 +18,9 @@ export class CompanyService extends BaseService<Company, CreateCompanyDto, Updat
   protected buildSearchWhere(search: string) {
     return {
       OR: [
-        { legalName: { contains: search, mode: 'insensitive' as const } },
-        { tradeName: { contains: search, mode: 'insensitive' as const } },
-        { taxId:     { contains: search, mode: 'insensitive' as const } },
+        { legalName: stringContains(search) },
+        { tradeName: stringContains(search) },
+        { taxId:     stringContains(search) },
       ],
     }
   }

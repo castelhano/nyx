@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt'
 import { userSchema, User, CreateUserDto, UpdateUserDto } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
+import { stringContains } from '../../../core/db.utils'
 import { PasswordPolicyService } from '../../settings/password-policy/password-policy.service'
 
 @Injectable()
@@ -71,8 +72,8 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
   protected buildSearchWhere(search: string) {
     return {
       OR: [
-        { name:     { contains: search, mode: 'insensitive' as const } },
-        { username: { contains: search, mode: 'insensitive' as const } },
+        { name:     stringContains(search) },
+        { username: stringContains(search) },
       ],
     }
   }

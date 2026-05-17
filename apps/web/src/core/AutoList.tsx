@@ -161,7 +161,7 @@ function FilterBar({
       })}
 
       {hasActive && (
-        <Button type="button" variant="ghost" size="sm" onClick={onClear} className={cn('text-muted-foreground', stacked && 'mt-1 w-full')}>
+        <Button type="button" variant="outline" size="sm" onClick={onClear} className={cn('text-muted-foreground', stacked && 'mt-1 w-full')}>
           <X className="w-3.5 h-3.5" />
           {stacked && 'Limpar'}
         </Button>

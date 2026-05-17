@@ -3,6 +3,7 @@ import {
   ZodEnum, ZodBoolean, ZodNumber, ZodDate, ZodObject,
 } from 'zod'
 import type { FilterDef } from '@nyx/types'
+import { stringContains } from './db.utils'
 
 function unwrap(field: ZodType): ZodType {
   if (field instanceof ZodOptional || field instanceof ZodNullable || field instanceof ZodDefault) {
@@ -38,7 +39,7 @@ export function buildFilterWhere(schema: ZodObject<any>, query: Record<string, u
     switch (filterDef.type) {
       case 'text': {
         const val = query[key] as string | undefined
-        if (val) where[name] = { contains: val, mode: 'insensitive' }
+        if (val) where[name] = stringContains(val)
         break
       }
       case 'select':
