@@ -4,27 +4,24 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Plus, ArrowLeft, Download } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
+import { SettingsPanel } from '@/core/SettingsPanel'
 import { useMetadata } from '@/core/useMetadata'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { downloadCsv } from '@/lib/csv'
+import type { ResourceMetadata } from '@nyx/types'
 
-export default function ResourceListPage({ params }: { params: { domain: string; resource: string } }) {
-  const { domain, resource } = params
-  const router       = useRouter()
-  const searchParams = useSearchParams()
-  const { data: meta } = useMetadata(domain, resource)
-
-  const filters: Record<string, string> = {}
-  for (const [key, value] of searchParams.entries()) {
-    if (!key.startsWith('_')) filters[key] = value
-  }
-
-  const contextQuery = Object.keys(filters).length
-    ? `?${new URLSearchParams(filters)}`
-    : ''
-
+// Renderiza a lista padrão de um recurso. Componente separado para isolar hooks
+// e permitir que [resource]/page.tsx delegue para SettingsPanel sem conflito.
+function ResourceListContent({ domain, resource, meta, filters, contextQuery }: {
+  domain:       string
+  resource:     string
+  meta:         ResourceMetadata | undefined
+  filters:      Record<string, string>
+  contextQuery: string
+}) {
+  const router  = useRouter()
   const newPath = `/${domain}/${resource}/new${contextQuery}`
 
   const bc       = meta?.breadcrumb?.[meta.breadcrumb.length - 1]
@@ -76,5 +73,35 @@ export default function ResourceListPage({ params }: { params: { domain: string;
         onEdit={(id) => router.push(`/${domain}/${resource}/${id}${contextQuery}`)}
       />
     </div>
+  )
+}
+
+// Ponto de entrada. Só chama useMetadata aqui — os demais hooks ficam nos
+// componentes filhos para evitar conflito de topbar entre lista e singleton.
+export default function ResourceListPage({ params }: { params: { domain: string; resource: string } }) {
+  const { domain, resource } = params
+  const searchParams = useSearchParams()
+  const { data: meta } = useMetadata(domain, resource)
+
+  const filters: Record<string, string> = {}
+  for (const [key, value] of searchParams.entries()) {
+    if (!key.startsWith('_')) filters[key] = value
+  }
+  const contextQuery = Object.keys(filters).length
+    ? `?${new URLSearchParams(filters)}`
+    : ''
+
+  if (meta?.isSingleton) {
+    return <SettingsPanel domain={domain} resource={resource} />
+  }
+
+  return (
+    <ResourceListContent
+      domain={domain}
+      resource={resource}
+      meta={meta}
+      filters={filters}
+      contextQuery={contextQuery}
+    />
   )
 }

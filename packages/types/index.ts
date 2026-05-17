@@ -31,7 +31,9 @@ export interface FieldMeta {
   showInForm?: boolean
   sortable?: boolean
   searchable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password'
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper'
+  min?: number
+  max?: number
   mask?: 'cnpj' | 'cnpj-base' | 'cpf' | 'phone' | 'cep'
   className?: string
   resource?: string
@@ -57,6 +59,8 @@ export interface MetadataField {
   showInForm: boolean
   sortable: boolean
   searchable: boolean
+  min?: number
+  max?: number
   mask?: string
   widget?: string
   className?: string
@@ -111,10 +115,11 @@ export interface BreadcrumbDef {
 }
 
 export interface DiscoveryResource {
-  key:         string
-  label:       string
-  labelPlural: string
-  icon:        string
+  key:          string
+  label:        string
+  labelPlural:  string
+  icon:         string
+  isSingleton?: boolean
 }
 
 export interface DiscoveryDomain {
@@ -146,16 +151,17 @@ export interface RowActionDef {
 }
 
 export interface ResourceMetadata {
-  resource:    string
-  label:       string
-  labelPlural: string
-  nameField:   string
-  allowCsv:    boolean
-  permissions: ResourcePermissions
-  fields:      MetadataField[]
-  actions:     ResourceAction[]
-  groups?:     TabGroup[]
-  breadcrumb?: BreadcrumbDef[]
-  children?:   ChildResourceDef[]   // derivado automaticamente pelo backend via registry
-  rowActions?: RowActionDef[]
+  resource:     string
+  label:        string
+  labelPlural:  string
+  nameField:    string
+  allowCsv:     boolean
+  isSingleton?: boolean
+  permissions:  ResourcePermissions
+  fields:       MetadataField[]
+  actions:      ResourceAction[]
+  groups?:      TabGroup[]
+  breadcrumb?:  BreadcrumbDef[]
+  children?:    ChildResourceDef[]   // derivado automaticamente pelo backend via registry
+  rowActions?:  RowActionDef[]
 }

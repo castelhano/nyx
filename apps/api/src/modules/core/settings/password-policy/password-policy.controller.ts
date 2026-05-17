@@ -1,20 +1,13 @@
-import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common'
-import { UpsertPasswordPolicyDto } from '@nyx/schemas'
+import { Controller, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
+import { BaseSettingsController } from '../../../../core/base-settings.controller'
 import { PasswordPolicyService } from './password-policy.service'
+import type { PasswordPolicy } from '@nyx/schemas'
 
 @Controller('core/password-policy')
 @UseGuards(JwtAuthGuard)
-export class PasswordPolicyController {
-  constructor(private readonly service: PasswordPolicyService) {}
-
-  @Get()
-  findCurrent() {
-    return this.service.findCurrent()
-  }
-
-  @Put()
-  upsert(@Body() dto: UpsertPasswordPolicyDto) {
-    return this.service.upsert(dto)
+export class PasswordPolicyController extends BaseSettingsController<PasswordPolicy> {
+  constructor(service: PasswordPolicyService) {
+    super(service)
   }
 }

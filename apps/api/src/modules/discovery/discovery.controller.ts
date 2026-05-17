@@ -30,6 +30,7 @@ export class DiscoveryController {
         label:       meta.label       ?? toTitleCase(entry.resource),
         labelPlural: meta.labelPlural ?? `${meta.label ?? toTitleCase(entry.resource)}s`,
         icon:        meta.icon        ?? '',
+        ...(meta.isSingleton ? { isSingleton: true } : {}),
       }
       if (!grouped.has(entry.domain)) grouped.set(entry.domain, [])
       grouped.get(entry.domain)!.push(resource)

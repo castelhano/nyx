@@ -35,7 +35,8 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   labelPlural?: string
   nameField?:   string
   allowCsv?:    boolean
-  icon?:        string   // nome do ícone — resolvido pelo frontend via lib/icons.ts
+  icon?:        string       // nome do ícone — resolvido pelo frontend via lib/icons.ts
+  isSingleton?: boolean      // singleton sem lista/create/delete; setado automaticamente pelo BaseSettingsService
   breadcrumb?:  BreadcrumbDef[]
   groups?:      { [tabLabel: string]: (keyof T & string)[] }
   rowActions?:  RowActionInput[]

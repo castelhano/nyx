@@ -121,6 +121,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.helpText            ? { helpText:    meta.helpText }             : {}),
       ...(meta.mask                ? { mask:        meta.mask }                 : {}),
       ...(meta.widget              ? { widget:      meta.widget }               : {}),
+      ...(meta.min !== undefined   ? { min:         meta.min }                  : {}),
+      ...(meta.max !== undefined   ? { max:         meta.max }                  : {}),
       ...(meta.className           ? { className:   meta.className }            : {}),
       ...(meta.resource            ? { resource:    meta.resource }             : {}),
       ...(meta.labelField          ? { labelField:  meta.labelField }           : {}),
@@ -135,6 +137,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const labelPlural  = schemaMeta.labelPlural ?? `${label}s`
   const nameField    = schemaMeta.nameField   ?? 'name'
   const allowCsv     = schemaMeta.allowCsv    ?? true
+  const isSingleton  = schemaMeta.isSingleton === true
   const breadcrumb   = schemaMeta.breadcrumb  as import('@nyx/types').BreadcrumbDef[]      | undefined
   const children     = deriveChildren(resource)
   const rowActions   = serializeRowActions(schemaMeta.rowActions)
@@ -149,6 +152,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     labelPlural,
     nameField,
     allowCsv,
+    ...(isSingleton ? { isSingleton } : {}),
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
     actions: [],

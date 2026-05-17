@@ -25,8 +25,7 @@ nyx/
 │   │   ├── prisma/
 │   │   │   ├── schema/             # Multi-file Prisma schema (one file per domain)
 │   │   │   │   ├── _base.prisma    # generator + datasource (loads first alphabetically)
-│   │   │   │   ├── core.prisma     # User, Company, Branch, UserBranch, UserPermission models
-│   │   │   │   └── settings.prisma # PasswordPolicy model
+│   │   │   │   └── core.prisma     # User, Company, Branch, UserBranch, UserPermission, Settings models
 │   │   │   └── migrations/         # Prisma migration history
 │   │   ├── prisma.config.ts        # Prisma CLI config: schema folder, adapter, seed
 │   │   └── src/
@@ -34,9 +33,12 @@ nyx/
 │   │       │   ├── base.service.ts
 │   │       │   ├── base.controller.ts
 │   │       │   ├── base.types.ts
+│   │       │   ├── base-settings.service.ts    # Abstract base for settings resources
+│   │       │   ├── base-settings.controller.ts # Abstract base for settings controllers
 │   │       │   ├── metadata.builder.ts
-│   │       │   ├── resource-registry.ts   # Global registry — populated by BaseService
-│   │       │   ├── domain-registry.ts     # Global registry + @Domain decorator
+│   │       │   ├── resource-registry.ts        # Global registry — populated by BaseService and BaseSettingsService
+│   │       │   ├── settings-registry.ts        # Settings-specific registry — populated by BaseSettingsService
+│   │       │   ├── domain-registry.ts          # Global registry + @Domain decorator
 │   │       │   ├── pagination.interceptor.ts
 │   │       │   └── exception.filter.ts
 │   │       ├── auth/               # Cross-cutting: JWT, Guards, CASL
@@ -58,8 +60,7 @@ nyx/
 │   │           │   ├── user-branch/
 │   │           │   └── settings/           # Part of core domain — no separate @Domain
 │   │           │       ├── settings.module.ts
-│   │           │       ├── settings.service.ts  # Registers 'settings' in resourceRegistry
-│   │           │       └── password-policy/
+│   │           │       └── password-policy/    # Extends BaseSettingsService/Controller
 │   └── web/                        # Next.js frontend
 │       └── src/
 │           ├── lib/
@@ -84,21 +85,20 @@ nyx/
 │           │   ├── AutoForm.tsx
 │           │   ├── AutoList.tsx
 │           │   ├── AutoBreadcrumb.tsx
+│           │   ├── SettingsPanel.tsx   # Template para recursos singleton (isSingleton: true)
 │           │   ├── FieldRenderer.tsx
 │           │   ├── useMetadata.ts
-│           │   └── useDiscovery.ts  # Hook for GET /discovery — replaces static domains.ts
+│           │   └── useDiscovery.ts    # Hook for GET /discovery — replaces static domains.ts
 │           └── app/
 │               ├── page.tsx
 │               ├── [domain]/
 │               │   ├── page.tsx
 │               │   └── [resource]/
-│               │       ├── page.tsx
-│               │       └── [id]/page.tsx       # generic detail page (AutoForm)
+│               │       ├── page.tsx         # delega para SettingsPanel quando isSingleton
+│               │       └── [id]/page.tsx    # generic detail page (AutoForm)
 │               ├── core/
-│               │   ├── user/
-│               │   │   └── [id]/page.tsx       # custom detail page (overrides generic)
-│               │   └── settings/
-│               │       └── page.tsx            # custom singleton settings page (overrides generic)
+│               │   └── user/
+│               │       └── [id]/page.tsx    # custom detail page (overrides generic)
 │               └── login/page.tsx
 ├── packages/
 │   ├── schemas/
@@ -241,17 +241,7 @@ abstract class BaseService<T, CreateDTO, UpdateDTO> {
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |
 
-**Registration-only schema (custom singleton pages):** when a resource needs to appear in discovery/sidebar but uses a fully custom page (no AutoForm/AutoList, no CRUD), create a minimal schema with only `withMeta` metadata and an empty `z.object({})`. Manually push it to `resourceRegistry` in a dedicated service. Example: `settingsPageSchema` in `settings.service.ts`.
-
-```typescript
-export const settingsPageSchema = withMeta(z.object({}), {
-  label: 'Configurações', labelPlural: 'Configurações', nameField: 'id', icon: 'Settings',
-})
-// In the service constructor:
-resourceRegistry.push({ domain: 'core', resource: 'settings', schema: settingsPageSchema })
-```
-
-The custom page at `app/core/settings/page.tsx` shadows the generic `app/[domain]/[resource]/page.tsx` automatically via Next.js routing. Use `Breadcrumb` directly (not `AutoBreadcrumb`) since there are no parent records.
+**Settings resources (singleton):** use `BaseSettingsService` — see §4.17.
 
 ### 4.6 Resource Registry and Domain Registry
 
@@ -293,7 +283,7 @@ Usage:
 export class CoreModule {}
 ```
 
-> **Settings module note:** `SettingsModule` lives inside `CoreModule` (`modules/core/settings/`) and is part of the Core domain. It does **not** carry `@Domain` — `CoreModule` owns the domain declaration. A dedicated `SettingsService` registers the aggregate `settings` resource in `resourceRegistry` with `domain: 'core'`, making it appear in discovery alongside other Core resources.
+> **Settings module note:** `SettingsModule` lives inside `CoreModule` (`modules/core/settings/`) and is part of the Core domain. It does **not** carry `@Domain` — `CoreModule` owns the domain declaration. Each settings resource (e.g. `PasswordPolicyService`) registers itself in `resourceRegistry` and `settingsRegistry` via `BaseSettingsService` — see §4.17.
 
 ### 4.7 Discovery API
 
@@ -312,10 +302,11 @@ interface DiscoveryDomain {
 }
 
 interface DiscoveryResource {
-  key:         string
-  label:       string
-  labelPlural: string
-  icon:        string
+  key:          string
+  label:        string
+  labelPlural:  string
+  icon:         string
+  isSingleton?: boolean   // true para settings resources — sem lista, sem create/delete
 }
 ```
 
@@ -548,6 +539,138 @@ export const navRoute = (domain: string, resource: string, suffix?: string) =>
 ```
 
 `apiRoute` and `navRoute` share the same implementation — the distinction is semantic. The `/api` prefix is added by the Next.js proxy, not the helper.
+
+---
+
+### 4.17 Settings Architecture
+
+Settings resources are singleton configurations managed by a centralised infrastructure. They appear in the sidebar and domain grid like any other resource, but have no list, no create and no delete — only a form page that reads and writes a single record.
+
+#### Storage
+
+A single generic `Settings` table in `core.prisma` stores all settings as JSON keyed by `(key, scope)`:
+
+```prisma
+model Settings {
+  key       String
+  scope     String   @default("global")  // 'global' | branchId
+  value     Json
+  updatedAt DateTime @updatedAt
+  @@id([key, scope])
+  @@map("settings")
+}
+```
+
+`scope: 'global'` = single value for the whole system. `scope: branchId` = one value per branch (per-branch settings).
+
+#### Data Consistency — Lazy Defaults
+
+When `get()` fetches a row, it always applies `schema.parse(row?.value ?? {})` before returning. Zod fills any field that is missing from the stored JSON with the declared `.default()` value. This means:
+
+- Adding a new field with `.default()` requires zero migration — old rows receive the default on the next read.
+- Removing a field leaves its value in the JSON column but the app ignores it (Zod strips unknown keys by default).
+
+**Convention:** every field in a settings schema **must** declare a `.default()`. `BaseSettingsService` registers the schema so violations surface immediately at startup as Zod parse errors in dev.
+
+> ⚠️ **Pending review:** destructive changes (field rename, field removal with data migration, or type change) are not handled automatically. A manual migration script is required in these cases. Define a convention for this before the first production deployment with live settings data.
+
+#### BaseSettingsService
+
+```typescript
+// apps/api/src/core/base-settings.service.ts
+abstract class BaseSettingsService<T> {
+  constructor(
+    prisma:  PrismaService,
+    key:     string,        // 'password-policy' — matches the route segment
+    domain:  string,        // 'core'
+    schema:  ZodObject<any>,
+    scope:   'global' | 'branch' = 'global',
+  )
+
+  get(branchId?: string):           Promise<T>   // reads + schema.parse (fills defaults)
+  put(dto: unknown, branchId?: string): Promise<T>   // validates + upserts
+  getMetadata():                    ResourceMetadata
+}
+```
+
+The constructor:
+1. Mutates `schema._schemaMeta.isSingleton = true` so `metadata.builder` and `discovery` propagate the flag.
+2. Pushes to `settingsRegistry` (internal settings list).
+3. Pushes to `resourceRegistry` (discovery + sidebar + metadata API).
+
+#### BaseSettingsController
+
+```typescript
+// apps/api/src/core/base-settings.controller.ts
+abstract class BaseSettingsController<T> {
+  @Get('metadata')  getMetadata(): ResourceMetadata
+  @Get()            get():         Promise<T>
+  @Put()            put(dto):      Promise<T>
+}
+```
+
+No `findAll`, `findOne`, `create`, `update`, `remove` — settings have no list or identity.
+
+#### Registries
+
+| Registry | File | Populated by |
+|---|---|---|
+| `resourceRegistry` | `core/resource-registry.ts` | `BaseService` and `BaseSettingsService` constructors |
+| `settingsRegistry` | `core/settings-registry.ts` | `BaseSettingsService` constructor only |
+
+#### Frontend — SettingsPanel
+
+`SettingsPanel` (`apps/web/src/core/SettingsPanel.tsx`) is the dedicated template for singleton settings pages. It is **not** AutoForm — it has its own layout and widget set tuned for settings UX.
+
+- Fetches current values via `GET /<domain>/<resource>`
+- Renders fields grouped by `meta.groups` as labelled card sections
+- Saves via `PUT /<domain>/<resource>` on topbar Gravar / `alt+g`
+- Uses `AutoBreadcrumb` (no `id` — trail ends at the resource label)
+- Widget rendering in `SettingsField`:
+  - `widget: 'switch'` or `type: 'boolean'` → toggle switch
+  - `widget: 'stepper'` or `type: 'number'` → stepper with `min`/`max` from field metadata
+  - default → text input
+
+`[domain]/[resource]/page.tsx` delegates to `SettingsPanel` when `meta.isSingleton === true`, using an inner-component pattern to avoid hook-ordering conflicts between the list page and the settings page.
+
+#### Adding a New Settings Resource
+
+Minimum required: **3 files** (schema + service + controller).
+
+**Step 1 — Schema** (`packages/schemas/<domain>/<key>.schema.ts`):
+```typescript
+export const emailConfigSchema = withMeta(
+  z.object({
+    fromAddress: z.string().email().default('no-reply@example.com').meta({ label: 'Remetente' }),
+    smtpHost:    z.string().default('').meta({ label: 'Servidor SMTP' }),
+  }),
+  { label: 'Config. de E-mail', labelPlural: 'Config. de E-mail', nameField: 'fromAddress', icon: 'Mail' },
+)
+export type EmailConfig = z.infer<typeof emailConfigSchema>
+```
+
+**Step 2 — Service** (`apps/api/src/modules/<domain>/settings/<key>/<key>.service.ts`):
+```typescript
+@Injectable()
+export class EmailConfigService extends BaseSettingsService<EmailConfig> {
+  constructor(prisma: PrismaService) {
+    super(prisma, 'email-config', 'core', emailConfigSchema, 'global')
+  }
+}
+```
+
+**Step 3 — Controller + Module**:
+```typescript
+@Controller('core/email-config')
+@UseGuards(JwtAuthGuard)
+export class EmailConfigController extends BaseSettingsController<EmailConfig> {
+  constructor(service: EmailConfigService) { super(service) }
+}
+```
+
+Register the module in `SettingsModule` (and export the service if other modules need it).
+
+**Result:** `email-config` appears in the sidebar under Core, has `GET /core/email-config/metadata`, `GET /core/email-config` and `PUT /core/email-config`, and renders via `SettingsPanel` at `/core/email-config` with no extra frontend files.
 
 ---
 
