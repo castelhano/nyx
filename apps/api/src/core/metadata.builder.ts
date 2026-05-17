@@ -2,7 +2,7 @@ import {
   ZodType, ZodObject, ZodString, ZodNumber, ZodBoolean,
   ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault,
 } from 'zod'
-import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef } from '@nyx/types'
+import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef, RowActionDef } from '@nyx/types'
 import { resourceRegistry } from './resource-registry'
 import { resolveFilterDef } from './filter.builder'
 
@@ -29,6 +29,20 @@ function isRequired(field: ZodType): boolean {
 
 function toTitleCase(str: string): string {
   return str.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()).trim()
+}
+
+function extractTemplate(fn: (row: any) => string): string {
+  const proxy = new Proxy({}, { get: (_, key) => `{${String(key)}}` })
+  return fn(proxy)
+}
+
+function serializeRowActions(actions: any[] | undefined): RowActionDef[] | undefined {
+  if (!actions?.length) return undefined
+  return actions.map(({ href, endpoint, ...rest }) => ({
+    ...rest,
+    ...(href     ? { hrefTemplate:     extractTemplate(href) }     : {}),
+    ...(endpoint ? { endpointTemplate: extractTemplate(endpoint) } : {}),
+  }))
 }
 
 function deriveChildren(resource: string): ChildResourceDef[] | undefined {
@@ -123,6 +137,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const allowCsv     = schemaMeta.allowCsv    ?? true
   const breadcrumb   = schemaMeta.breadcrumb  as import('@nyx/types').BreadcrumbDef[]      | undefined
   const children     = deriveChildren(resource)
+  const rowActions   = serializeRowActions(schemaMeta.rowActions)
 
   const groups: TabGroup[] | undefined = rawGroups
     ? Object.keys(rawGroups).map((tabLabel) => ({ label: tabLabel, fields: rawGroups[tabLabel] }))
@@ -140,5 +155,6 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     ...(groups      ? { groups }      : {}),
     ...(breadcrumb  ? { breadcrumb }  : {}),
     ...(children    ? { children }    : {}),
+    ...(rowActions  ? { rowActions }  : {}),
   }
 }

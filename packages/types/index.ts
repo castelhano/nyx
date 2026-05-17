@@ -132,6 +132,19 @@ export function navRoute(domain: string, resource: string, suffix?: string): str
   return `/${domain}/${resource}${suffix ? `/${suffix}` : ''}`
 }
 
+export interface RowActionDef {
+  action:            string
+  label:             string
+  icon:              string
+  variant?:          'default' | 'destructive'
+  group?:            string
+  permission:        'create' | 'read' | 'update' | 'delete'
+  hrefTemplate?:     string
+  method?:           'POST' | 'PATCH' | 'DELETE'
+  endpointTemplate?: string
+  body?:             Record<string, unknown>
+}
+
 export interface ResourceMetadata {
   resource:    string
   label:       string
@@ -144,4 +157,5 @@ export interface ResourceMetadata {
   groups?:     TabGroup[]
   breadcrumb?: BreadcrumbDef[]
   children?:   ChildResourceDef[]   // derivado automaticamente pelo backend via registry
+  rowActions?: RowActionDef[]
 }

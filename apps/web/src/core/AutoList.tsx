@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,14 +19,20 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { FilterDef, MetadataField, PaginatedResult } from '@nyx/types'
+import type { FilterDef, MetadataField, PaginatedResult, RowActionDef } from '@nyx/types'
+import { RowActionsCell } from './RowActionsCell'
 
 type Row = Record<string, unknown>
+
+function resolveTemplate(template: string, row: Row): string {
+  return template.replace(/\{(\w+)\}/g, (_, key) => String(row[key] ?? ''))
+}
 
 interface Props {
   domain:    string
   resource:  string
   onEdit?:   (id: string) => void
+  onAction?: (action: string, row: Row) => void | Promise<void>
   filters?:  Record<string, string>
 }
 
@@ -181,6 +188,8 @@ function buildColumns(
   sorting: SortingState,
   onSort: (field: MetadataField) => void,
   onEdit?: (id: string) => void,
+  rowActions?: RowActionDef[],
+  onRowAction?: (action: RowActionDef, row: Row) => void,
 ): ColumnDef<Row>[] {
   const cols: ColumnDef<Row>[] = fields
     .filter((f) => f.listVisibility !== 'never')
@@ -214,6 +223,21 @@ function buildColumns(
       },
     }))
 
+  if (rowActions?.length && onRowAction) {
+    cols.push({
+      id:           '_rowActions',
+      enableHiding: false,
+      header:       () => null,
+      cell:         ({ row }) => (
+        <RowActionsCell
+          row={row.original}
+          actions={rowActions}
+          onExecute={onRowAction}
+        />
+      ),
+    })
+  }
+
   if (onEdit) {
     cols.push({
       id:           '_actions',
@@ -234,7 +258,10 @@ function buildColumns(
   return cols
 }
 
-export function AutoList({ domain, resource, onEdit, filters }: Props) {
+export function AutoList({ domain, resource, onEdit, onAction, filters }: Props) {
+  const router      = useRouter()
+  const queryClient = useQueryClient()
+
   const [page,          setPage]          = useState(1)
   const [sorting,       setSorting]       = useState<SortingState>([])
   const [visibility,    setVisibility]    = useState<VisibilityState>({})
@@ -256,6 +283,28 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
   }
 
   const { data: meta } = useMetadata(domain, resource)
+
+  const visibleRowActions = useMemo(
+    () => (meta?.rowActions ?? []).filter((a) => meta!.permissions[a.permission]),
+    [meta?.rowActions, meta?.permissions],
+  )
+
+  const handleRowAction = useCallback(async (action: RowActionDef, row: Row) => {
+    if (action.hrefTemplate) {
+      router.push(resolveTemplate(action.hrefTemplate, row))
+      return
+    }
+    if (action.method && action.endpointTemplate) {
+      await apiFetch(resolveTemplate(action.endpointTemplate, row), {
+        method:  action.method,
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(action.body ?? {}),
+      })
+      queryClient.invalidateQueries({ queryKey: [domain, resource] })
+      return
+    }
+    onAction?.(action.action, row)
+  }, [domain, resource, onAction, router, queryClient])
 
   const sortField = sorting[0]?.id   ?? null
   const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
@@ -344,8 +393,8 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
   }
 
   const columns = useMemo(
-    () => buildColumns(meta?.fields ?? [], sorting, handleSort, onEdit),
-    [meta?.fields, sorting, onEdit],
+    () => buildColumns(meta?.fields ?? [], sorting, handleSort, onEdit, visibleRowActions, handleRowAction),
+    [meta?.fields, sorting, onEdit, visibleRowActions, handleRowAction],
   )
 
   const table = useReactTable({
@@ -474,7 +523,7 @@ export function AutoList({ domain, resource, onEdit, filters }: Props) {
                       key={cell.id}
                       className={cn(
                         'px-3 py-2',
-                        cell.column.id === '_actions' && 'text-end px-1 py-1',
+                        (cell.column.id === '_actions' || cell.column.id === '_rowActions') && 'text-end px-1 py-1',
                       )}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

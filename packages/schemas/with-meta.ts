@@ -17,6 +17,19 @@ export type BreadcrumbDef = {
   keybind?:     string   // atalho do botão que o PAI renderiza para navegar até este filho
 }
 
+export type RowActionInput = {
+  action:      string
+  label:       string
+  icon:        string
+  variant?:    'default' | 'destructive'
+  group?:      string
+  permission:  'create' | 'read' | 'update' | 'delete'
+  href?:       (row: Record<string, unknown>) => string
+  method?:     'POST' | 'PATCH' | 'DELETE'
+  endpoint?:   (row: Record<string, unknown>) => string
+  body?:       Record<string, unknown>
+}
+
 export type SchemaMeta<T extends z.ZodRawShape> = {
   label?:       string
   labelPlural?: string
@@ -25,6 +38,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   icon?:        string   // nome do ícone — resolvido pelo frontend via lib/icons.ts
   breadcrumb?:  BreadcrumbDef[]
   groups?:      { [tabLabel: string]: (keyof T & string)[] }
+  rowActions?:  RowActionInput[]
   // 'children' não existe mais no schema — é derivado automaticamente pelo backend via resourceRegistry
 }
 

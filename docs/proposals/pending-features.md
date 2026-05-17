@@ -39,8 +39,7 @@
 - [ ] Management screen `/core/permission-group` (CRUD or embedded `CheckboxGroup`)
 
 ### 1.6 Copy permissions between users
-- [ ] Flow: select origin user → preview permissions (read-only `CheckboxGroup`) → choose Replace or Merge → `PUT /core/user-permission/by-user/:targetId`
-- [ ] No new backend endpoint needed — frontend fetches origin and writes to target
+- [x] Done
 
 ---
 

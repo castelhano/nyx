@@ -236,6 +236,7 @@ abstract class BaseService<T, CreateDTO, UpdateDTO> {
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
+| Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |
 
 ### 4.6 Resource Registry and Domain Registry
 
@@ -378,7 +379,7 @@ Next.js App Router resolves static segments before dynamic ones, so no configura
 
 These components consume the `GET /metadata` response to render their UI without any hardcoded field definitions.
 
-- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `showInList: true`. Supports CSV export when `allowCsv` is set. Row actions navigate to the detail page. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`).
+- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `showInList: true`. Supports CSV export when `allowCsv` is set. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`). Accepts an `onAction` prop as an escape hatch for row actions that cannot be expressed declaratively in the schema (see §4.13).
 - **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
 
@@ -426,7 +427,61 @@ branchId: z.string().optional().meta({
 fieldName: z.enum([...]).meta({ filter: true })   // done — no other files to edit
 ```
 
-### 4.13 Frontend — Icon Resolution
+### 4.13 Row Actions
+
+Per-row contextual actions declared in the schema and executed by `AutoList` automatically.
+
+**Declaration** — in `withMeta`, alongside every other resource-level option:
+
+```typescript
+rowActions: [
+  {
+    action:     'viewBranches',
+    label:      'View branches',
+    icon:       'GitBranch',
+    group:      'nav',
+    permission: 'read',                              // maps to metadata.permissions
+    href:       (row) => `/core/branch?companyId=${row.id}`,
+  },
+  {
+    action:     'deactivate',
+    label:      'Deactivate',
+    icon:       'Ban',
+    group:      'danger',
+    variant:    'destructive',
+    permission: 'update',
+    method:     'PATCH',
+    endpoint:   (row) => `/core/company/${row.id}`,
+    body:       { isActive: false },
+  },
+]
+```
+
+**Execution model** — `AutoList` resolves every action internally:
+
+| Declaration | Execution |
+|---|---|
+| `href` | `router.push(resolved url)` |
+| `method + endpoint` | `apiFetch(resolved endpoint, { method, body })` + `queryClient.invalidateQueries` |
+| neither | `onAction?.(action, row)` — escape hatch for the parent page |
+
+**Permission filtering** — `metadata.permissions[action.permission]` evaluated on the frontend; the backend re-validates on the actual API call.
+
+**Rendering** — handled by `RowActionsCell` (`apps/web/src/core/RowActionsCell.tsx`):
+
+| Visible actions | Rendering |
+|---|---|
+| 0 | `null` — column not rendered |
+| 1 | Inline `<Button variant="rowAction">` with icon + label |
+| 2+ | `<MoreHorizontal>` button opening the portal `Dropdown` |
+
+**Groups** — actions with the same `group` value are rendered together; a `DropdownSeparator` is inserted at every group boundary.
+
+**`href`/`endpoint` functions** are called once at metadata-build time via a Proxy that converts field accesses to `{fieldName}` placeholders. Keep these functions as simple string templates — conditional logic belongs in `onAction`.
+
+Adding a row action requires editing **one file** (`packages/schemas/<domain>/<resource>.schema.ts`) for the standard case. See `docs/proposals/rowaction-proposal.md` for the full specification.
+
+### 4.14 Frontend — Icon Resolution
 
 Icons are centralized in `apps/web/src/lib/icons.ts`. No component imports Lucide directly — only `icons.ts` does.
 
@@ -446,7 +501,7 @@ export function resolveIcon(name?: string | null): LucideIcon {
 
 When adding a new icon: import it in `icons.ts` and add it to the `Icons` map. No other file needs to change.
 
-### 4.13 Frontend — useDiscovery
+### 4.15 Frontend — useDiscovery
 
 ```typescript
 // apps/web/src/core/useDiscovery.ts
@@ -463,7 +518,7 @@ export function useDiscovery(): DiscoveryDomain[] {
 
 Used by: `Sidebar`, `app/page.tsx`, `app/[domain]/page.tsx`, `AutoBreadcrumb`.
 
-### 4.14 Route Helpers
+### 4.16 Route Helpers
 
 In `packages/types/index.ts`:
 
