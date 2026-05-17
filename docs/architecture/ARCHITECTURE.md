@@ -791,6 +791,38 @@ Key concepts:
 
 Dynamic bindings (e.g., child navigation buttons from schema metadata) are managed via `core.bind()` / `core.unbindGroup()` in `useEffect`.
 
+### Global shortcut conventions
+
+Every page that holds editable state **must** implement these three shortcuts:
+
+| Shortcut | Action | `context` | `display` |
+|---|---|---|---|
+| `alt+g` | Salvar / submit do form principal | `'all'` | `true` |
+| `alt+v` | Voltar (lista ou domain) | `'all'` | `true` |
+| `alt+l` | Limpar — restaura o estado original da página | omit (default) | `false` |
+
+**`alt+l` — reset ao estado original**
+
+`alt+l` desfaz qualquer edição pendente e retorna o formulário ao último estado confirmado pelo servidor (o que foi salvo, não o que está editado). Nunca navega — apenas limpa.
+
+Implementação padrão com `resetSignal`:
+
+```tsx
+const [resetSignal, setResetSignal] = useState(0)
+
+// reseta quando o sinal muda OU quando os dados do servidor chegam
+useEffect(() => {
+  if (serverValues) reset(serverValues)
+}, [serverValues, resetSignal])
+
+useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
+  display: false,
+  origin:  'nome-do-componente',
+})
+```
+
+**Regra:** toda página que permite edição deve implementar `alt+l` — páginas genéricas (`AutoForm` via `[id]/page.tsx`), páginas custom (ex: `core/user/[id]/page.tsx`) e `SettingsPanel`. Nenhuma exceção.
+
 ---
 
 ## 10. TopbarActionsContext — Topbar Slot

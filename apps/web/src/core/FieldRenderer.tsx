@@ -9,6 +9,7 @@ import type { MetadataField, PaginatedResult } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import { apiFetch } from '@/lib/auth'
 import { inputBaseCls } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 
 interface Props {
   field:       MetadataField
@@ -125,6 +126,33 @@ function RelationSelect({
 }
 
 export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
+  if (field.widget === 'switch' && control) {
+    return (
+      <div className="md:col-start-2 flex items-center gap-2 pt-1">
+        <Controller
+          name={field.name}
+          control={control}
+          render={({ field: ctrl }) => (
+            <>
+              <Switch
+                checked={Boolean(ctrl.value)}
+                onToggle={() => ctrl.onChange(!ctrl.value)}
+                disabled={readonly}
+              />
+              <span
+                className={cn('text-sm select-none', !readonly && 'cursor-pointer')}
+                onClick={() => !readonly && ctrl.onChange(!ctrl.value)}
+              >
+                {field.label}
+              </span>
+            </>
+          )}
+        />
+        {error && <p className="text-xs text-destructive ml-1">{error}</p>}
+      </div>
+    )
+  }
+
   if (field.type === 'boolean') {
     return (
       <div className="md:col-start-2 flex items-center gap-2 pt-1">
