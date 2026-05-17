@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useShortcut } from '@/lib/keywatch'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { LogOut, User, KeyRound, ChevronsUpDown, ChevronRight } from 'lucide-react'
@@ -54,6 +55,13 @@ export function Sidebar() {
     clearToken()
     router.push('/login')
   }
+
+  useShortcut('alt+q', handleLogout, {
+    desc:    'Sair da sessão',
+    icon:    LogOut,
+    origin:  'apps/web/src/components/layout/sidebar',
+    order: 99,
+  })
 
   return (
     <>
