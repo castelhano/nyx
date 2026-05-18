@@ -320,17 +320,19 @@ interface DiscoveryDomain {
 }
 
 interface DiscoveryResource {
-  key:          string
-  label:        string
-  labelPlural:  string
-  icon:         string
-  isSingleton?: boolean   // true para settings resources — sem lista, sem create/delete
+  key:                 string
+  label:               string
+  labelPlural:         string
+  icon:                string
+  isSingleton?:        boolean  // settings resource — no list, create or delete
+  privatePermissions?: boolean  // child resource requiring explicit grants — not shown in sidebar
 }
 ```
 
 Implemented in `DiscoveryController`, which reads `resourceRegistry` and `domainRegistry`:
-- Filters out resources whose schema has `breadcrumb` (child resources — not shown in sidebar)
-- Filters out resources the requesting user cannot `read` (checked via CASL ability)
+- Includes **top-level resources** (no `breadcrumb`) that the user can `read`
+- Also includes **child resources with `privatePermissions: true`** that the user can `read` — these require explicit grants and must appear in the permission management UI (`CheckboxGroup`)
+- Excludes regular child resources (those inherit permissions automatically — see §5 Permission Inheritance)
 - Filters out domains that have no visible resources after the permission filter
 - Groups remaining resources by `domain`
 - Extracts `label`, `labelPlural`, `icon` from the schema's `_schemaMeta`
@@ -346,11 +348,12 @@ Children are **never** declared in the parent schema. Instead, `metadata.builder
 ```typescript
 // Auto-derived — no declaration needed in the parent schema
 {
-  resource:     'branch',
-  domain:       'core',
-  label:        'Branches',        // = child.labelPlural
-  contextField: 'companyId',       // = breadcrumb[].contextField
-  keybind:      'f9',              // = breadcrumb[].keybind (declared in child)
+  resource:            'branch',
+  domain:              'core',
+  label:               'Branches',   // = child.labelPlural
+  contextField:        'companyId',  // = breadcrumb[].contextField
+  keybind:             'f9',         // = breadcrumb[].keybind (declared in child)
+  privatePermissions?: true,         // present only when child declares privatePermissions: true
 }
 ```
 
@@ -758,6 +761,54 @@ Abilities are built per-request by `CaslAbilityFactory` based on the user's `rol
 `UserPermission { userId, resource, action }` stores individual grants (e.g. `{ resource: 'user', action: 'read' }`). The `resource` field uses the lowercase resource key; `CaslAbilityFactory` capitalizes it to match the CASL subject convention (`'user'` → `'User'`).
 
 A user with no `UserPermission` rows sees an empty sidebar and receives `403 Forbidden` on any data endpoint. Self-service endpoints (`GET /auth/me`, `PATCH /auth/me/preferences`, `PATCH /core/user/:id/change-password`) are exempt — they require only a valid JWT.
+
+### Permission Inheritance
+
+Child resources declared via `breadcrumb` automatically inherit permissions from their parent. Granting any action on a parent resource implicitly grants the same action on all descendants — recursively, across any number of levels.
+
+**Default behavior (auto-inherit):**
+```typescript
+// Granting company.read also grants branch.read (direct child)
+// and any of branch's non-private children transitively
+{ resource: 'company', action: 'read' }  →  can('read', 'Company'), can('read', 'Branch'), …
+```
+
+**`privatePermissions: true` — opt-out:**
+A child resource that requires an explicit, independent grant declares `privatePermissions: true` in `withMeta()`. It is excluded from the inheritance chain entirely and must be granted separately.
+
+```typescript
+// packages/schemas/hr/medical-certificate.schema.ts
+withMeta(schema, {
+  label: 'Medical Certificate',
+  privatePermissions: true,  // not inherited from Employee — requires explicit grant
+})
+```
+
+`privatePermissions: true` resources:
+- Do **not** inherit from parent
+- Appear in the `GET /discovery` response (so they show up in the `CheckboxGroup` permission UI)
+- Do **not** appear in the sidebar navigation
+
+**Implementation — precomputed transitive closure:**
+
+On first use, `CaslAbilityFactory` builds a `Map<string, string[]>` from `resourceRegistry` that maps each parent resource to **all** its descendants (direct and transitive), excluding `privatePermissions` nodes. This is computed once and cached for the lifetime of the process.
+
+```
+// Example map (computed at startup, reused on every request)
+'company'  → ['branch']
+'employee' → ['dependent', 'contract', 'contract-item']  // transitive
+'contract' → ['contract-item']
+```
+
+Per-request cost: one DB query (fetch `UserPermission` rows) + O(1) map lookups. The registry traversal happens only once at startup.
+
+**Frontend — `visibleChildren` in the detail page:**
+
+Child navigation buttons (topbar + keyboard shortcuts) are filtered before rendering:
+- **Regular children** (`!privatePermissions`): always shown — backend guarantees access via inheritance as long as the parent page is accessible
+- **`privatePermissions` children**: shown only if the resource appears in the `useDiscovery()` response (meaning the user holds an explicit `read` grant)
+
+The backend re-validates on every API call regardless of what the frontend shows.
 
 ### Branch Scoping
 
