@@ -24,8 +24,22 @@ export class AuthController {
   async login(@Body() body: unknown) {
     const { username, password } = loginSchema.parse(body)
 
+    console.log(`[login] attempt — username: "${username}"`)
+
     const user = await this.userService.findByUsername(username)
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+
+    if (!user) {
+      console.log(`[login] FAIL — user not found: "${username}"`)
+      throw new UnauthorizedException('Invalid credentials')
+    }
+
+    console.log(`[login] user found — id: ${user.id}, hasPasswordHash: ${!!user.passwordHash}`)
+
+    const passwordMatch = await bcrypt.compare(password, user.passwordHash)
+    console.log(`[login] bcrypt.compare result: ${passwordMatch}`)
+
+    if (!passwordMatch) {
+      console.log(`[login] FAIL — password mismatch for user: "${username}"`)
       throw new UnauthorizedException('Invalid credentials')
     }
 
