@@ -53,12 +53,24 @@ function DropdownSegment({ label, href, items }: BreadcrumbSegment) {
   )
 }
 
+function collapseSegments(segments: BreadcrumbSegment[]): BreadcrumbSegment[] {
+  // Keep first + last 2 visible; collapse everything in-between into a dropdown
+  if (segments.length < 5) return segments
+  const middle = segments.slice(1, segments.length - 2)
+  const collapsed: BreadcrumbSegment = {
+    label: '…',
+    items: middle.map((s) => ({ label: s.label, href: s.href ?? '#' })),
+  }
+  return [segments[0], collapsed, ...segments.slice(segments.length - 2)]
+}
+
 export function Breadcrumb({ segments }: { segments: BreadcrumbSegment[] }) {
+  const visible = collapseSegments(segments)
   return (
     <nav aria-label="breadcrumb" className='mb-6'>
-      <ol className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        {segments.map((seg, i) => {
-          const isLast = i === segments.length - 1
+      <ol className="flex items-center gap-1.5 text-sm text-muted-foreground flex-wrap">
+        {visible.map((seg, i) => {
+          const isLast = i === visible.length - 1
           return (
             <li key={i} className="flex items-center gap-1.5">
               {i > 0 && (
