@@ -14,20 +14,14 @@ export class CaslAbilityFactory {
     if (user.role === 'admin') {
       can('manage', 'all')
     } else {
-      // baseline por role — permissões explícitas sobrescrevem quando necessário
-      can('read', 'all')
-
-      if (user.role === 'operator') {
-        can('create', 'all')
-        can('update', 'all')
-      }
-
+      // deny-by-default: apenas permissões explicitamente concedidas por recurso
       const userPermissions = await this.prisma.userPermission.findMany({
         where: { userId: user.id },
       })
 
       for (const p of userPermissions) {
-        can(p.action, p.resource)
+        const subject = p.resource[0].toUpperCase() + p.resource.slice(1)
+        can(p.action, subject)
       }
     }
 

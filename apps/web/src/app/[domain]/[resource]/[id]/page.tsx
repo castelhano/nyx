@@ -7,6 +7,7 @@ import { Save, ArrowLeft, LayoutList } from 'lucide-react'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
+import { Forbidden } from '@/components/ui/forbidden'
 import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useKeywatch } from '@/lib/keywatch'
@@ -39,7 +40,9 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
     : ''
   const listPath = `/${domain}/${resource}${contextQuery}`
 
-  const { data: meta }   = useMetadata(domain, resource)
+  const { data: meta, error } = useMetadata(domain, resource)
+
+  if ((error as any)?.status === 403 || (meta && !meta.permissions?.read)) return <Forbidden />
   const { data: record } = useQuery<Record<string, unknown>>({
     queryKey: [domain, resource, id],
     queryFn:  async () => {

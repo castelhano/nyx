@@ -402,7 +402,6 @@ export default function UserDetailPage({
           <Select id="role" wrapperClassName="w-full md:w-96" {...register('role')}>
             <option value="admin">Admin</option>
             <option value="operator">Operador</option>
-            <option value="viewer">Leitor</option>
           </Select>
 
           <div className="md:col-start-2 flex items-center gap-2 pt-1">

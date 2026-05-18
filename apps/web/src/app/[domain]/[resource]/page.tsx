@@ -5,6 +5,7 @@ import { Plus, ArrowLeft, Download } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SettingsPanel } from '@/core/SettingsPanel'
+import { Forbidden } from '@/components/ui/forbidden'
 import { useMetadata } from '@/core/useMetadata'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -81,7 +82,9 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
 export default function ResourceListPage({ params }: { params: { domain: string; resource: string } }) {
   const { domain, resource } = params
   const searchParams = useSearchParams()
-  const { data: meta } = useMetadata(domain, resource)
+  const { data: meta, error } = useMetadata(domain, resource)
+
+  if ((error as any)?.status === 403 || (meta && !meta.permissions?.read)) return <Forbidden />
 
   const filters: Record<string, string> = {}
   for (const [key, value] of searchParams.entries()) {

@@ -1,15 +1,15 @@
 // Role global do usuário no sistema
 enum UserRole {
   admin    // acesso total, bypass de filtros por filial
-  operator // acesso às filiais associadas
-  viewer   // somente leitura nas filiais associadas
+  operator // deny-all rquer permissao nos recursos
 }
 
-// Role do usuário dentro de uma filial específica
+// Role do usuário dentro de uma filial específica, nao influencia logica de
+// permissoes neste momento, apenas label referencial
 enum BranchUserRole {
-  owner   // responsável pela filial
-  manager // gerencia registros da filial
-  member  // acesso de leitura e operações básicas
+  owner   // responde pela filial
+  manager // tem cargo gerencial na filial
+  member  // funcionario da filial
 }
 
 model User {

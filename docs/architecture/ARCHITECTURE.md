@@ -224,6 +224,20 @@ abstract class BaseService<T, CreateDTO, UpdateDTO> {
 }
 ```
 
+**CASL enforcement in `BaseController`:** every data endpoint checks the user's ability before delegating to the service. `ForbiddenException` (HTTP 403) is thrown if the check fails.
+
+| Endpoint | Required ability |
+|---|---|
+| `GET /` (list) | `read` |
+| `GET /:id` (detail) | `read` |
+| `POST /` (create) | `create` |
+| `PATCH /:id` (update) | `update` |
+| `DELETE /:id` (delete) | `delete` |
+
+`BaseSettingsController` follows the same pattern: `GET /` requires `read`, `PUT /` requires `update`.
+
+The check is implemented as a private `assertAbility(user, action)` method — one CASL ability build (one DB query) per request. The `getMetadata()` endpoint never throws 403; it always returns the permissions object so the frontend can adapt its UI.
+
 **Branch scoping:** when `scopeField` is declared (e.g., `'branchId'`), `BaseService.findAll()` automatically applies `{ [scopeField]: { in: user.branchIds } }` for non-admin roles.
 
 **Auto-registration:** the `BaseService` constructor pushes `{ domain, resource, schema }` into `resourceRegistry`, which feeds the `DiscoveryController` and the `metadata.builder` for child derivation.
@@ -317,10 +331,12 @@ interface DiscoveryResource {
 
 Implemented in `DiscoveryController`, which reads `resourceRegistry` and `domainRegistry`:
 - Filters out resources whose schema has `breadcrumb` (child resources — not shown in sidebar)
+- Filters out resources the requesting user cannot `read` (checked via CASL ability)
+- Filters out domains that have no visible resources after the permission filter
 - Groups remaining resources by `domain`
 - Extracts `label`, `labelPlural`, `icon` from the schema's `_schemaMeta`
 
-The frontend caches this endpoint with `staleTime: Infinity` (production) via `useDiscovery()`.
+The frontend caches this endpoint per user via `useDiscovery()` (`staleTime: Infinity` in production). The cache is scoped to `['discovery', userId]` so different users never share results. On logout, `queryClient.clear()` wipes the cache.
 
 ### 4.8 Children — Automatic Derivation
 
@@ -520,14 +536,15 @@ When adding a new icon: import it in `icons.ts` and add it to the `Icons` map. N
 
 ```typescript
 // apps/web/src/core/useDiscovery.ts
-export function useDiscovery(): DiscoveryDomain[] {
-  const { data } = useQuery<DiscoveryDomain[]>({
-    queryKey:  ['discovery'],
-    queryFn:   async () => { const r = await apiFetch('/discovery'); return r.json() },
-    staleTime: process.env.NODE_ENV === 'production' ? Infinity : 0,
+export function useDiscovery() {
+  const { user } = useAuth()
+  return useQuery<DiscoveryDomain[]>({
+    queryKey:    ['discovery', user?.id],   // scoped per user — different users never share cache
+    queryFn:     async () => { const r = await apiFetch('/discovery'); return r.json() },
+    staleTime:   process.env.NODE_ENV === 'production' ? Infinity : 0,
     initialData: [],
+    enabled:     !!user,                   // never fetches before auth resolves
   })
-  return data
 }
 ```
 
@@ -730,15 +747,18 @@ Register the module in `SettingsModule` (and export the service if other modules
 
 ### Authorization — CASL
 
-Abilities are built per-request by `CaslAbilityFactory` based on the user's `role` and explicit `UserPermission` rows:
+Abilities are built per-request by `CaslAbilityFactory` based on the user's `role` and explicit `UserPermission` rows.
 
-| Role | Default access |
-|------|---------------|
-| `admin` | All actions on all resources; bypasses branch scoping |
-| `operator` | CRUD on resources within assigned branches |
-| `viewer` | Read-only on resources within assigned branches |
+**Model: deny-by-default + explicit grants**
 
-Explicit `UserPermission` rows can grant or extend access beyond the default role.
+| Role | Access |
+|------|--------|
+| `admin` | `can('manage', 'all')` — full access, no restrictions |
+| `operator` | Deny-by-default — only what `UserPermission` rows explicitly grant |
+
+`UserPermission { userId, resource, action }` stores individual grants (e.g. `{ resource: 'user', action: 'read' }`). The `resource` field uses the lowercase resource key; `CaslAbilityFactory` capitalizes it to match the CASL subject convention (`'user'` → `'User'`).
+
+A user with no `UserPermission` rows sees an empty sidebar and receives `403 Forbidden` on any data endpoint. Self-service endpoints (`GET /auth/me`, `PATCH /auth/me/preferences`, `PATCH /core/user/:id/change-password`) are exempt — they require only a valid JWT.
 
 ### Branch Scoping
 

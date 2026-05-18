@@ -1,4 +1,4 @@
-import { Get, Put, Body, Req } from '@nestjs/common'
+import { Get, Put, Body, Req, ForbiddenException } from '@nestjs/common'
 import type { ResourceMetadata, AuthUser } from '@nyx/types'
 import { CaslAbilityFactory } from '../auth/casl.factory'
 import { BaseSettingsService } from './base-settings.service'
@@ -8,6 +8,14 @@ export abstract class BaseSettingsController<T> {
     protected readonly service:      BaseSettingsService<T>,
     protected readonly caslFactory?: CaslAbilityFactory,
   ) {}
+
+  private async assertAbility(user: AuthUser | undefined, action: string): Promise<void> {
+    if (!this.caslFactory || !user) return
+    const meta    = this.service.getMetadata()
+    const subject = meta.resource[0].toUpperCase() + meta.resource.slice(1)
+    const ability = await this.caslFactory.createForUser(user)
+    if (!ability.can(action, subject)) throw new ForbiddenException()
+  }
 
   @Get('metadata')
   async getMetadata(@Req() req: { user?: AuthUser }): Promise<ResourceMetadata> {
@@ -27,12 +35,14 @@ export abstract class BaseSettingsController<T> {
   }
 
   @Get()
-  get(@Req() req: { user?: AuthUser }): Promise<T> {
+  async get(@Req() req: { user?: AuthUser }): Promise<T> {
+    await this.assertAbility(req.user, 'read')
     return this.service.get()
   }
 
   @Put()
-  put(@Body() dto: unknown, @Req() req: { user?: AuthUser }): Promise<T> {
+  async put(@Body() dto: unknown, @Req() req: { user?: AuthUser }): Promise<T> {
+    await this.assertAbility(req.user, 'update')
     return this.service.put(dto)
   }
 }

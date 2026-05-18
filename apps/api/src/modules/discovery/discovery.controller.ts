@@ -1,8 +1,9 @@
-import { Controller, Get, UseGuards } from '@nestjs/common'
+import { Controller, Get, Req, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../../auth/policies.guard'
+import { CaslAbilityFactory } from '../../auth/casl.factory'
 import { resourceRegistry } from '../../core/resource-registry'
 import { getDomainRegistry } from '../../core/domain-registry'
-import type { DiscoveryDomain, DiscoveryResource } from '@nyx/types'
+import type { DiscoveryDomain, DiscoveryResource, AuthUser } from '@nyx/types'
 
 function toTitleCase(str: string): string {
   return str.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()).trim()
@@ -11,14 +12,19 @@ function toTitleCase(str: string): string {
 @Controller('discovery')
 @UseGuards(JwtAuthGuard)
 export class DiscoveryController {
-  @Get()
-  getDiscovery(): DiscoveryDomain[] {
-    const domainRegistry = getDomainRegistry()
+  constructor(private readonly caslFactory: CaslAbilityFactory) {}
 
-    // Apenas recursos top-level: sem breadcrumb declarado no schema
+  @Get()
+  async getDiscovery(@Req() req: { user: AuthUser }): Promise<DiscoveryDomain[]> {
+    const domainRegistry = getDomainRegistry()
+    const ability = await this.caslFactory.createForUser(req.user)
+
+    // Apenas recursos top-level (sem breadcrumb) que o usuário pode ler
     const topLevel = resourceRegistry.filter((entry) => {
       const meta = (entry.schema as any)._schemaMeta
-      return !meta?.breadcrumb || meta.breadcrumb.length === 0
+      if (meta?.breadcrumb?.length) return false
+      const subject = entry.resource[0].toUpperCase() + entry.resource.slice(1)
+      return ability.can('read', subject)
     })
 
     // Agrupa por domain, mantém a ordem de registro dos domínios
@@ -36,11 +42,14 @@ export class DiscoveryController {
       grouped.get(entry.domain)!.push(resource)
     }
 
-    return domainRegistry.map((domain) => ({
-      key:       domain.key,
-      label:     domain.label,
-      icon:      domain.icon,
-      resources: grouped.get(domain.key) ?? [],
-    }))
+    // Filtra domínios sem recursos visíveis para este usuário
+    return domainRegistry
+      .map((domain) => ({
+        key:       domain.key,
+        label:     domain.label,
+        icon:      domain.icon,
+        resources: grouped.get(domain.key) ?? [],
+      }))
+      .filter((domain) => domain.resources.length > 0)
   }
 }
