@@ -10,6 +10,8 @@ import { useMetadata } from '@/core/useMetadata'
 import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useKeywatch } from '@/lib/keywatch'
+import { useToast } from '@/lib/toast-context'
+import { msgs } from '@/lib/messages'
 
 const FORM_ID = 'record-form'
 
@@ -21,6 +23,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
 
   const [isPending,   setIsPending]   = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
+  const { toast } = useToast()
 
   const contextParams:  Record<string, string>  = {}
   const derivedDefaults: Record<string, unknown> = {}
@@ -108,8 +111,10 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
         body:    JSON.stringify(data),
       })
       if (!res.ok) throw new Error('Failed to save')
+      toast.success(isNew ? msgs.created() : msgs.updated())
       router.push(listPath)
     } catch {
+      toast.error(msgs.error.save())
       setIsPending(false)
     }
   }

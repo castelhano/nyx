@@ -7,6 +7,7 @@ import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { useAuth } from '@/lib/auth-context'
+import { useToast } from '@/lib/toast-context'
 import { ThemeCard } from '@/components/ui/theme-card'
 import { Switch } from '@/components/ui/switch'
 import { Select } from '@/components/ui/select'
@@ -59,6 +60,7 @@ function PrefsRow({ label, description, children }: {
 export default function PreferencesPage() {
   const router                       = useRouter()
   const { user, updatePreferences }  = useAuth()
+  const { toast }                    = useToast()
   const [local, setLocal]            = useState<UserPreferences>(defaultPreferences)
   const [isPending, setIsPending]    = useState(false)
   const initialized                  = useRef(false)
@@ -91,6 +93,9 @@ export default function PreferencesPage() {
     setIsPending(true)
     try {
       await updatePreferences(local)
+      toast.success('Preferências salvas com sucesso')
+    } catch {
+      toast.error('Erro ao salvar preferências. Tente novamente.')
     } finally {
       setIsPending(false)
     }

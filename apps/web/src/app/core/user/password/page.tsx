@@ -9,6 +9,7 @@ import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { useAuth } from '@/lib/auth-context'
+import { useToast } from '@/lib/toast-context'
 import { PasswordInput } from '@/components/ui/password-input'
 import { PolicyIndicator } from '@/core/PolicyIndicator'
 import { apiFetch } from '@/lib/auth'
@@ -38,6 +39,7 @@ interface FormValues {
 export default function ChangePasswordPage() {
   const router              = useRouter()
   const { user }            = useAuth()
+  const { toast }           = useToast()
   const [isPending, setIsPending]     = useState(false)
   const [serverError, setServerError] = useState<string | string[]>('')
 
@@ -81,6 +83,7 @@ export default function ChangePasswordPage() {
       setIsPending(false)
       return
     }
+    toast.success('Senha alterada com sucesso')
     router.push('/')
   }
 

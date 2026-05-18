@@ -10,6 +10,8 @@ import { AutoBreadcrumb } from './AutoBreadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
+import { useToast } from '@/lib/toast-context'
+import { msgs } from '@/lib/messages'
 import type { MetadataField } from '@nyx/types'
 import { Switch } from '@/components/ui/switch'
 import { Stepper } from '@/components/ui/stepper'
@@ -100,6 +102,7 @@ export function SettingsPanel({ domain, resource }: Props) {
   })
 
   const [resetSignal, setResetSignal] = useState(0)
+  const { toast } = useToast()
 
   const { handleSubmit, watch, setValue, reset } = useForm<Record<string, unknown>>({
     defaultValues: {},
@@ -111,12 +114,18 @@ export function SettingsPanel({ domain, resource }: Props) {
   }, [serverValues, resetSignal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSave(data: Record<string, unknown>) {
-    await apiFetch(`/${domain}/${resource}`, {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(data),
-    })
-    queryClient.invalidateQueries({ queryKey: [domain, resource] })
+    try {
+      const res = await apiFetch(`/${domain}/${resource}`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to save')
+      queryClient.invalidateQueries({ queryKey: [domain, resource] })
+      toast.success(msgs.saved())
+    } catch {
+      toast.error(msgs.error.save())
+    }
   }
 
   useTopbarActions([

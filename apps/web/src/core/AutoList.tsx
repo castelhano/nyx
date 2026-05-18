@@ -14,6 +14,8 @@ import {
 import { useMetadata } from './useMetadata'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
+import { useToast } from '@/lib/toast-context'
+import { msgs } from '@/lib/messages'
 import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine, X, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -261,6 +263,7 @@ function buildColumns(
 export function AutoList({ domain, resource, onEdit, onAction, filters }: Props) {
   const router      = useRouter()
   const queryClient = useQueryClient()
+  const { toast }   = useToast()
 
   const [page,          setPage]          = useState(1)
   const [sorting,       setSorting]       = useState<SortingState>([])
@@ -295,16 +298,24 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       return
     }
     if (action.method && action.endpointTemplate) {
-      await apiFetch(resolveTemplate(action.endpointTemplate, row), {
-        method:  action.method,
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(action.body ?? {}),
-      })
-      queryClient.invalidateQueries({ queryKey: [domain, resource] })
+      try {
+        const res = await apiFetch(resolveTemplate(action.endpointTemplate, row), {
+          method:  action.method,
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(action.body ?? {}),
+        })
+        if (!res.ok) throw new Error('Failed')
+        queryClient.invalidateQueries({ queryKey: [domain, resource] })
+        const successMsg = action.method === 'DELETE' ? msgs.deleted() : msgs.updated()
+        toast.success(successMsg)
+      } catch {
+        const errorMsg = action.method === 'DELETE' ? msgs.error.delete() : msgs.error.save()
+        toast.error(errorMsg)
+      }
       return
     }
     onAction?.(action.action, row)
-  }, [domain, resource, onAction, router, queryClient])
+  }, [domain, resource, onAction, router, queryClient, toast])
 
   const sortField = sorting[0]?.id   ?? null
   const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'

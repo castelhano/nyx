@@ -15,6 +15,8 @@ import { useDiscovery } from '@/core/useDiscovery'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
+import { useToast } from '@/lib/toast-context'
+import { msgs } from '@/lib/messages'
 import { Tabs } from '@/components/ui/tabs'
 import { AssociationList, type BranchAssoc } from '@/components/ui/association-list'
 import { CheckboxGroup, type CheckboxSection } from '@/components/ui/checkbox-group'
@@ -52,6 +54,7 @@ export default function UserDetailPage({
 
   const [isPending,    setIsPending]    = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
+  const { toast } = useToast()
   const [branches,     setBranches]     = useState<BranchAssoc[]>([])
   const [permissions,  setPermissions]  = useState<Set<string>>(new Set())
 
@@ -343,8 +346,10 @@ export default function UserDetailPage({
         await Promise.all(calls)
       }
 
+      toast.success(isNew ? msgs.created() : msgs.updated())
       router.push('/core/user')
     } catch {
+      toast.error(msgs.error.save())
       setIsPending(false)
     }
   }

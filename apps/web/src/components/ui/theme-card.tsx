@@ -15,7 +15,7 @@ const themes: Record<ThemeName, ThemeMeta> = {
   ocean:      { label: 'Ocean',      accent: '210 30% 38%', ring: '210 65% 55%' },
   sunset:     { label: 'Sunset',     accent: '20 35% 38%',  ring: '20 65% 55%'  },
   lavender:   { label: 'Lavender',   accent: '258 20% 42%', ring: '258 50% 62%' },
-  rose:       { label: 'Rosa',       accent: '340 25% 38%', ring: '340 55% 58%' },
+  rose:       { label: 'Rose',       accent: '340 25% 38%', ring: '340 55% 58%' },
   slate:      { label: 'Slate',      accent: '215 8% 36%',  ring: '215 25% 55%' },
 }
 
