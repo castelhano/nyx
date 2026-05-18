@@ -158,7 +158,7 @@ export function Sidebar() {
                         isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0',
                       )}>
                         <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3">
-                          {mod.resources.map((item) => {
+                          {mod.resources.filter((item) => !item.privatePermissions).map((item) => {
                             const ItemIcon = resolveIcon(item.icon)
                             const href     = `/${mod.key}/${item.key}`
                             const isActive = pathname === href || pathname.startsWith(href + '/')

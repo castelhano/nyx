@@ -97,7 +97,7 @@ nyx/
 │               ├── [domain]/
 │               │   ├── page.tsx
 │               │   └── [resource]/
-│               │       ├── page.tsx         # delega para SettingsPanel quando isSingleton
+│               │       ├── page.tsx         # delegates to SettingsPanel when isSingleton
 │               │       └── [id]/page.tsx    # generic detail page (AutoForm)
 │               ├── core/
 │               │   └── user/
@@ -180,7 +180,6 @@ export default defineConfig({
 |------|------|
 | `prisma/schema/_base.prisma` | Generator config + datasource declaration (underscore ensures it loads first) |
 | `prisma/schema/core.prisma` | User, Company, Branch, UserBranch, UserPermission, UserPasswordHistory models |
-| `prisma/schema/settings.prisma` | PasswordPolicy model |
 | `prisma/migrations/` | Migration history — unaffected by folder structure change |
 | `prisma.config.ts` | Prisma CLI config: schema folder path, LibSQL adapter, seed |
 | `src/prisma/prisma.service.ts` | NestJS service extending `PrismaClient`, injected globally |

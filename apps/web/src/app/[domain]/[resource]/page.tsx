@@ -41,11 +41,11 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
   }
 
   useTopbarActions([
-    { label: 'Novo', icon: Plus, onClick: () => router.push(newPath), primary: true },
+    ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Plus, onClick: () => router.push(newPath), primary: true }] : []),
     ...(meta?.allowCsv ? [{ label: 'CSV', icon: Download, onClick: handleDownloadCsv, variant: 'ghost' as const, primary: false }] : []),
-  ], [meta?.allowCsv, newPath])
+  ], [meta?.allowCsv, meta?.permissions?.create, newPath])
 
-  useShortcut('alt+n', () => router.push(newPath), {
+  useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push(newPath) }, {
     desc:   'Novo registro',
     icon:   Plus,
     origin: 'apps/web/src/app/[domain]/[resource]/page',

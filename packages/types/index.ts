@@ -122,11 +122,12 @@ export interface ResourcePermissions {
 }
 
 export interface ChildResourceDef {
-  resource:     string
-  domain?:      string
-  label:        string
-  contextField: string
-  keybind?:     string
+  resource:            string
+  domain?:             string
+  label:               string
+  contextField:        string
+  keybind?:            string
+  privatePermissions?: boolean
 }
 
 export interface BreadcrumbDef {
@@ -139,11 +140,12 @@ export interface BreadcrumbDef {
 }
 
 export interface DiscoveryResource {
-  key:          string
-  label:        string
-  labelPlural:  string
-  icon:         string
-  isSingleton?: boolean
+  key:                 string
+  label:               string
+  labelPlural:         string
+  icon:                string
+  isSingleton?:        boolean
+  privatePermissions?: boolean  // exige concessão explícita; não aparece no sidebar
 }
 
 export interface DiscoveryDomain {

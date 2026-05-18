@@ -9,7 +9,7 @@ const sizes: Record<Size, string> = {
 }
 
 const base = [
-  'border border-input rounded-sm text-sm bg-input-bg',
+  'w-full border border-input rounded-sm text-sm bg-input-bg',
   'focus:outline-none focus:ring-1 focus:ring-ring',
   'disabled:opacity-60 disabled:cursor-not-allowed',
   'read-only:opacity-60 read-only:cursor-not-allowed',

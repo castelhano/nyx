@@ -19,24 +19,26 @@ export class DiscoveryController {
     const domainRegistry = getDomainRegistry()
     const ability = await this.caslFactory.createForUser(req.user)
 
-    // Apenas recursos top-level (sem breadcrumb) que o usuário pode ler
-    const topLevel = resourceRegistry.filter((entry) => {
-      const meta = (entry.schema as any)._schemaMeta
-      if (meta?.breadcrumb?.length) return false
+    // Recursos visíveis: top-level (sem breadcrumb) OU filhos com privatePermissions
+    const visible = resourceRegistry.filter((entry) => {
+      const meta    = (entry.schema as any)._schemaMeta
+      const isChild = !!meta?.breadcrumb?.length
+      if (isChild && !meta?.privatePermissions) return false
       const subject = entry.resource[0].toUpperCase() + entry.resource.slice(1)
       return ability.can('read', subject)
     })
 
     // Agrupa por domain, mantém a ordem de registro dos domínios
     const grouped = new Map<string, DiscoveryResource[]>()
-    for (const entry of topLevel) {
+    for (const entry of visible) {
       const meta: any = (entry.schema as any)._schemaMeta ?? {}
       const resource: DiscoveryResource = {
         key:         entry.resource,
         label:       meta.label       ?? toTitleCase(entry.resource),
         labelPlural: meta.labelPlural ?? `${meta.label ?? toTitleCase(entry.resource)}s`,
         icon:        meta.icon        ?? '',
-        ...(meta.isSingleton ? { isSingleton: true } : {}),
+        ...(meta.isSingleton        ? { isSingleton: true }        : {}),
+        ...(meta.privatePermissions ? { privatePermissions: true } : {}),
       }
       if (!grouped.has(entry.domain)) grouped.set(entry.domain, [])
       grouped.get(entry.domain)!.push(resource)

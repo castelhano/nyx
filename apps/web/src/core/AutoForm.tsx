@@ -13,12 +13,13 @@ interface Props {
   resource:        string
   defaultValues?:  Record<string, unknown>
   readonlyFields?: string[]
+  readOnly?:       boolean
   onSubmit:        (data: Record<string, unknown>) => Promise<void>
   formId?:         string
   resetSignal?:    number
 }
 
-export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSubmit, formId, resetSignal }: Props) {
+export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, onSubmit, formId, resetSignal }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
     defaultValues,
@@ -112,7 +113,7 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, onSu
     return (
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start">
         {fields.map((field) => {
-          const isReadonly = readonlySet.has(field.name)
+          const isReadonly = readOnly || readonlySet.has(field.name)
           const giveFocus  = autoFocusFirst && !focusGiven && !isReadonly
           if (giveFocus) focusGiven = true
           return (

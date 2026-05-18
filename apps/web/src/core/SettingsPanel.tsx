@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { Save, ArrowLeft } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useMetadata } from './useMetadata'
 import { AutoBreadcrumb } from './AutoBreadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
@@ -88,6 +89,7 @@ export function SettingsPanel({ domain, resource }: Props) {
   const router      = useRouter()
   const queryClient = useQueryClient()
   const { data: meta } = useMetadata(domain, resource)
+  const canUpdate = meta?.permissions?.update !== false
 
   const FORM_ID = `settings-${domain}-${resource}`
 
@@ -129,11 +131,11 @@ export function SettingsPanel({ domain, resource }: Props) {
   }
 
   useTopbarActions([
-    { label: 'Gravar', icon: Save, type: 'submit', form: FORM_ID, primary: true, keybind: 'ALT+G' },
-  ])
+    ...(canUpdate ? [{ label: 'Gravar', icon: Save, type: 'submit' as const, form: FORM_ID, primary: true, keybind: 'ALT+G' }] : []),
+  ], [canUpdate])
 
   useShortcut('alt+g', () => {
-    (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
+    if (canUpdate) (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
   }, { desc: 'Salvar configurações', icon: Save, context: 'all', origin: `SettingsPanel/${domain}/${resource}` })
 
   useShortcut('alt+v', () => router.push(`/${domain}`), {
@@ -152,7 +154,7 @@ export function SettingsPanel({ domain, resource }: Props) {
     <div className="p-6 max-w-3xl flex flex-col gap-8">
       <AutoBreadcrumb domain={domain} resource={resource} />
 
-      <form id={FORM_ID} onSubmit={handleSubmit(onSave)} className="flex flex-col gap-6">
+      <form id={FORM_ID} onSubmit={handleSubmit(onSave)} className={cn('flex flex-col gap-6', !canUpdate && 'pointer-events-none opacity-60')}>
         {groups ? (
           groups.map((group) => (
             <SettingsSection key={group.label} label={group.label}>

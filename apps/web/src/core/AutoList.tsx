@@ -404,8 +404,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }
 
   const columns = useMemo(
-    () => buildColumns(meta?.fields ?? [], sorting, handleSort, onEdit, visibleRowActions, handleRowAction),
-    [meta?.fields, sorting, onEdit, visibleRowActions, handleRowAction],
+    () => buildColumns(meta?.fields ?? [], sorting, handleSort, meta?.permissions?.update !== false ? onEdit : undefined, visibleRowActions, handleRowAction),
+    [meta?.fields, sorting, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
   )
 
   const table = useReactTable({

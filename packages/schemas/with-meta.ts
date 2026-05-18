@@ -1,11 +1,12 @@
 import { z } from 'zod'
 
 export type ChildResourceDef = {
-  resource:     string
-  domain?:      string
-  label:        string
-  contextField: string
-  keybind?:     string
+  resource:            string
+  domain?:             string
+  label:               string
+  contextField:        string
+  keybind?:            string
+  privatePermissions?: boolean
 }
 
 export type BreadcrumbDef = {
@@ -31,15 +32,16 @@ export type RowActionInput = {
 }
 
 export type SchemaMeta<T extends z.ZodRawShape> = {
-  label?:       string
-  labelPlural?: string
-  nameField?:   string
-  allowCsv?:    boolean
-  icon?:        string       // nome do ícone — resolvido pelo frontend via lib/icons.ts
-  isSingleton?: boolean      // singleton sem lista/create/delete; setado automaticamente pelo BaseSettingsService
-  breadcrumb?:  BreadcrumbDef[]
-  groups?:      { [tabLabel: string]: (keyof T & string)[] }
-  rowActions?:  RowActionInput[]
+  label?:              string
+  labelPlural?:        string
+  nameField?:          string
+  allowCsv?:           boolean
+  icon?:               string       // nome do ícone — resolvido pelo frontend via lib/icons.ts
+  isSingleton?:        boolean      // singleton sem lista/create/delete; setado automaticamente pelo BaseSettingsService
+  breadcrumb?:         BreadcrumbDef[]
+  groups?:             { [tabLabel: string]: (keyof T & string)[] }
+  rowActions?:         RowActionInput[]
+  privatePermissions?: boolean      // recurso filho que exige concessão explícita — não herda permissões do pai
   // 'children' não existe mais no schema — é derivado automaticamente pelo backend via resourceRegistry
 }
 

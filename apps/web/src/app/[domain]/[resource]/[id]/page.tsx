@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { Save, ArrowLeft, LayoutList } from 'lucide-react'
+import { Save, ArrowLeft, LayoutList, Trash2 } from 'lucide-react'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
+import { useDiscovery } from '@/core/useDiscovery'
 import { Forbidden } from '@/components/ui/forbidden'
 import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
@@ -41,8 +42,13 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
   const listPath = `/${domain}/${resource}${contextQuery}`
 
   const { data: meta, error } = useMetadata(domain, resource)
+  const { data: domains }     = useDiscovery()
 
   if ((error as any)?.status === 403 || (meta && !meta.permissions?.read)) return <Forbidden />
+
+  const canCreate = meta?.permissions?.create !== false
+  const canUpdate = meta?.permissions?.update !== false
+  const canDelete = meta?.permissions?.delete === true
   const { data: record } = useQuery<Record<string, unknown>>({
     queryKey: [domain, resource, id],
     queryFn:  async () => {
@@ -55,8 +61,17 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
 
   const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
 
-  const childActions = (!isNew && meta?.children && record?.id)
-    ? meta.children.map((child) => {
+  const visibleChildren = useMemo(
+    () => meta?.children?.filter((child) => {
+      if (!child.privatePermissions) return true  // herda do pai — sempre acessível
+      const childDomain = child.domain ?? domain
+      return domains.some((d) => d.key === childDomain && d.resources.some((r) => r.key === child.resource))
+    }) ?? [],
+    [meta?.children, domains, domain],
+  )
+
+  const childActions = (!isNew && record?.id)
+    ? visibleChildren.map((child) => {
         const childDomain = child.domain ?? domain
         const href = `/${childDomain}/${child.resource}?${child.contextField}=${record.id}`
         return {
@@ -70,17 +85,32 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
       })
     : []
 
+  async function handleDelete() {
+    if (!window.confirm(`Excluir este ${meta?.label ?? 'registro'}?`)) return
+    setIsPending(true)
+    try {
+      const res = await apiFetch(`/${domain}/${resource}/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      toast.success(msgs.deleted())
+      router.push(listPath)
+    } catch {
+      toast.error(msgs.error.delete())
+      setIsPending(false)
+    }
+  }
+
   useTopbarActions([
     ...childActions,
-    { label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true },
-  ], [isNew, meta?.children, record?.id, isPending])
+    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
+    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
+  ], [isNew, visibleChildren, record?.id, isPending, canCreate, canUpdate, canDelete])
 
   const { coreRef } = useKeywatch()
   useEffect(() => {
     const core = coreRef.current
-    if (!core || isNew || !meta?.children || !record?.id) return
+    if (!core || isNew || !visibleChildren.length || !record?.id) return
     const group = '_children_kb'
-    for (const child of meta.children) {
+    for (const child of visibleChildren) {
       if (!child.keybind) continue
       const href = `/${child.domain ?? domain}/${child.resource}?${child.contextField}=${record.id}`
       core.bind(child.keybind, () => router.push(href), {
@@ -88,10 +118,11 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
       })
     }
     return () => { core.unbindGroup('_children_kb') }
-  }, [isNew, meta?.children, record?.id])
+  }, [isNew, visibleChildren, record?.id])
 
   useShortcut('alt+g', () => {
-    (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
+    if (isNew ? canCreate : canUpdate)
+      (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
   }, { desc: 'Salvar registro', icon: Save, origin: 'apps/web/src/app/[domain]/[resource]/[id]/page', context: 'all' })
 
   useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
@@ -136,6 +167,7 @@ export default function ResourceDetailPage({ params }: { params: { domain: strin
         resource={resource}
         defaultValues={isNew ? newRecordDefaults : record}
         readonlyFields={readonlyFields}
+        readOnly={!isNew && !canUpdate}
         onSubmit={handleSubmit}
         formId={FORM_ID}
         resetSignal={resetSignal}
