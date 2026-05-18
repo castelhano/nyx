@@ -35,9 +35,10 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
 
   async create(dto: CreateUserDto): Promise<User> {
     const { password, ...rest } = dto
-    await this.passwordPolicy.validate(password)
     const passwordHash = await bcrypt.hash(password, 10)
-    const user = await this.prisma.user.create({ data: { ...rest, passwordHash } }) as User
+    const user = await this.prisma.user.create({
+      data: { ...rest, passwordHash, forcePasswordChange: rest.forcePasswordChange ?? true },
+    }) as User
     await this.passwordPolicy.recordHistory(user.id, passwordHash)
     return this.sanitize(user)
   }
@@ -58,14 +59,14 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
     if (!valid) throw new BadRequestException('Senha atual incorreta')
     await this.passwordPolicy.validate(dto.newPassword, id)
     const passwordHash = await bcrypt.hash(dto.newPassword, 10)
-    await this.prisma.user.update({ where: { id }, data: { passwordHash } })
+    await this.prisma.user.update({ where: { id }, data: { passwordHash, forcePasswordChange: false } })
     await this.passwordPolicy.recordHistory(id, passwordHash)
   }
 
   async resetPassword(id: string, newPassword: string): Promise<void> {
     await this.passwordPolicy.validate(newPassword, id)
     const passwordHash = await bcrypt.hash(newPassword, 10)
-    await this.prisma.user.update({ where: { id }, data: { passwordHash } })
+    await this.prisma.user.update({ where: { id }, data: { passwordHash, forcePasswordChange: true } })
     await this.passwordPolicy.recordHistory(id, passwordHash)
   }
 

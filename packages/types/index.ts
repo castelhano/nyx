@@ -105,12 +105,13 @@ export const defaultPreferences: UserPreferences = {
 }
 
 export interface CurrentUser {
-  id:          string
-  name:        string
-  username:    string
-  role:        string
-  branchIds:   string[]
-  preferences: UserPreferences
+  id:                  string
+  name:                string
+  username:            string
+  role:                string
+  branchIds:           string[]
+  preferences:         UserPreferences
+  forcePasswordChange: boolean
 }
 
 export interface ResourcePermissions {

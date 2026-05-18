@@ -549,6 +549,16 @@ export const navRoute = (domain: string, resource: string, suffix?: string) =>
 
 `apiRoute` and `navRoute` share the same implementation — the distinction is semantic. The `/api` prefix is added by the Next.js proxy, not the helper.
 
+**Proxy setup** — `apps/web/next.config.js` rewrites `/api/:path*` to the NestJS server:
+
+```js
+async rewrites() {
+  return [{ source: '/api/:path*', destination: `${process.env.API_INTERNAL_URL ?? 'http://localhost:3001/api'}/:path*` }]
+}
+```
+
+This means the browser always calls the Next.js host (same origin), and Next.js forwards to NestJS. No hardcoded IP needed for multi-device dev. `API_INTERNAL_URL` can be set in `.env.local` if NestJS runs on a different port or host (e.g., containers). In production, route `/api` directly to NestJS at the infrastructure level (nginx / load balancer) and remove the rewrite.
+
 ---
 
 ### 4.17 Settings Architecture
@@ -696,7 +706,7 @@ Register the module in `SettingsModule` (and export the service if other modules
 
 | Endpoint | Description |
 |---|---|
-| `GET /auth/me` | Returns `{ id, name, username, role, branchIds, preferences }` for the logged-in user |
+| `GET /auth/me` | Returns `{ id, name, username, role, branchIds, preferences, forcePasswordChange }` for the logged-in user |
 | `PATCH /auth/me/preferences` | Merges the request body into `User.preferences` (Json) |
 
 ### Frontend — AuthProvider and useAuth
@@ -705,10 +715,16 @@ Register the module in `SettingsModule` (and export the service if other modules
 
 - Fetches `GET /auth/me` once on mount (when a token exists); `staleTime: 300_000`
 - Applies the user's `theme` preference as a CSS class on `<html>` (e.g. `theme-lavender`) whenever `user.preferences.theme` changes
+- Redirects to `/core/user/password` (via `router.replace`) when `user.forcePasswordChange` is true and the current path is not already that page
 - Exposes `useAuth()` → `{ user: CurrentUser | null, updatePreferences(patch) }`
 - `updatePreferences` does an optimistic cache update first, then `PATCH /auth/me/preferences`
 
-**JWT intentionally stays lean** — it carries only security-relevant claims (`sub`, `role`, `branchIds`). `name` and `preferences` are fetched separately via `/auth/me` to avoid stale data after updates.
+**JWT intentionally stays lean** — it carries only security-relevant claims (`sub`, `role`, `branchIds`). `name`, `preferences` and `forcePasswordChange` are fetched separately via `/auth/me` to avoid stale data after updates.
+
+**Cache invalidation:**
+- Login page — calls `queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })` after `login()` so the incoming user's data is always fetched fresh, regardless of who was logged in before.
+- Logout — calls `queryClient.clear()` to wipe all cached queries before redirecting to `/login`.
+- Password change page — calls `queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })` after a successful change so `forcePasswordChange: false` is reflected immediately.
 
 > **TanStack Query note:** do **not** use `initialData` on the `['auth', 'me']` query. With `staleTime > 0`, `initialData` is treated as fresh for the full `staleTime` window, preventing the initial fetch entirely.
 
@@ -734,11 +750,23 @@ super(prisma, 'order', orderSchema, 'sales', 'branchId')
 // findAll applies: { branchId: { in: user.branchIds } } for non-admin roles
 ```
 
+### forcePasswordChange
+
+`User.forcePasswordChange` (`Boolean @default(false)`) signals that the user must change their password before accessing anything else.
+
+| Operation | Effect on `forcePasswordChange` |
+|---|---|
+| Admin creates user (`POST /core/user`) | Set to `true` by default (overridable via the form checkbox) |
+| Admin resets password (`PATCH /core/user/:id/reset-password`) | Set to `true` |
+| User changes own password (`PATCH /core/user/:id/change-password`) | Cleared to `false` |
+
+Password policy validation is **skipped** on user creation — the admin sets a temporary password without constraints. Policy is enforced when the user changes their own password.
+
 ### Admin Password Reset
 
-`PATCH /core/user/:id/reset-password` — sets a new password without requiring the current one. Intended for admin use only. Validates against `PasswordPolicy` and records history identically to `changePassword`.
+`PATCH /core/user/:id/reset-password` — sets a new password without requiring the current one. Intended for admin use only. Records history identically to `changePassword` and sets `forcePasswordChange: true`.
 
-The self-service flow (`PATCH /core/user/:id/change-password`) requires `currentPassword` and is exposed via the change-password page at `/core/user/password`.
+The self-service flow (`PATCH /core/user/:id/change-password`) requires `currentPassword`, enforces `PasswordPolicy`, and clears `forcePasswordChange`. Exposed via `/core/user/password`.
 
 ### AllExceptionsFilter — Response Shape
 

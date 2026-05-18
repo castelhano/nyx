@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { login } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { PasswordInput } from '@/components/ui/password-input'
 
 export default function LoginPage() {
-  const router = useRouter()
+  const router      = useRouter()
+  const queryClient = useQueryClient()
   const [username,   setUsername]   = useState('')
   const [password,   setPassword]   = useState('')
   const [persistent, setPersistent] = useState(true)
@@ -20,6 +22,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(username, password, persistent)
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
       router.push('/')
     } catch {
       setError('Usuário ou senha inválidos.')

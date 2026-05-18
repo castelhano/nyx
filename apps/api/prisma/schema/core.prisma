@@ -21,8 +21,9 @@ model User {
   role         UserRole  @default(operator)
   preferences  Json?     // { theme, language, sidebar, notifications, ... }
   lastLoginAt  DateTime?
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
+  isActive              Boolean   @default(true)
+  forcePasswordChange   Boolean   @default(false)
+  createdAt             DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   branches        UserBranch[]

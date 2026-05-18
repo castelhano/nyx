@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRouter, usePathname } from 'next/navigation'
 import { apiFetch, getToken } from '@/lib/auth'
 import { type CurrentUser, type UserPreferences, defaultPreferences } from '@nyx/types'
 
@@ -27,6 +28,8 @@ function applyTheme(theme: string) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
+  const router      = useRouter()
+  const pathname    = usePathname()
 
   const { data: user } = useQuery<CurrentUser | null>({
     queryKey: ['auth', 'me'],
@@ -46,6 +49,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     applyTheme(user?.preferences?.theme ?? defaultPreferences.theme)
   }, [user?.preferences?.theme])
+
+  useEffect(() => {
+    if (user?.forcePasswordChange && pathname !== '/core/user/password') {
+      router.replace('/core/user/password')
+    }
+  }, [user?.forcePasswordChange, pathname])
 
   const updatePreferences = useCallback(async (patch: Partial<UserPreferences>) => {
     queryClient.setQueryData<CurrentUser | null>(['auth', 'me'], (prev) =>

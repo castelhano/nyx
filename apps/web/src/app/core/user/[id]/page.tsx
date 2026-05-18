@@ -28,15 +28,16 @@ const labelCls  = 'text-sm font-medium pt-2'
 const gridCls   = 'grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start'
 
 interface FormValues {
-  name:               string
-  username:           string
-  email:              string
-  role:               string
-  isActive:           boolean
-  password:           string
-  confirmPassword:    string
-  newPassword:        string
-  newConfirmPassword: string
+  name:                string
+  username:            string
+  email:               string
+  role:                string
+  isActive:            boolean
+  forcePasswordChange: boolean
+  password:            string
+  confirmPassword:     string
+  newPassword:         string
+  newConfirmPassword:  string
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +165,7 @@ export default function UserDetailPage({
   } = useForm<FormValues>({
     defaultValues: {
       name: '', username: '', email: '', role: 'operator', isActive: true,
+      forcePasswordChange: true,
       password: '', confirmPassword: '',
       newPassword: '', newConfirmPassword: '',
     },
@@ -172,11 +174,12 @@ export default function UserDetailPage({
   useEffect(() => {
     if (!user || formInit.current) return
     reset({
-      name:     String(user.name     ?? ''),
-      username: String(user.username ?? ''),
-      email:    String(user.email    ?? ''),
-      role:     String(user.role     ?? 'operator'),
-      isActive: Boolean(user.isActive ?? true),
+      name:                String(user.name     ?? ''),
+      username:            String(user.username ?? ''),
+      email:               String(user.email    ?? ''),
+      role:                String(user.role     ?? 'operator'),
+      isActive:            Boolean(user.isActive            ?? true),
+      forcePasswordChange: Boolean(user.forcePasswordChange ?? false),
       password: '', confirmPassword: '',
       newPassword: '', newConfirmPassword: '',
     })
@@ -264,11 +267,12 @@ export default function UserDetailPage({
   useShortcut('alt+l', () => {
     if (user) {
       reset({
-        name:     String(user.name     ?? ''),
-        username: String(user.username ?? ''),
-        email:    String(user.email    ?? ''),
-        role:     String(user.role     ?? 'operator'),
-        isActive: Boolean(user.isActive ?? true),
+        name:                String(user.name     ?? ''),
+        username:            String(user.username ?? ''),
+        email:               String(user.email    ?? ''),
+        role:                String(user.role     ?? 'operator'),
+        isActive:            Boolean(user.isActive            ?? true),
+        forcePasswordChange: Boolean(user.forcePasswordChange ?? false),
         password: '', confirmPassword: '',
         newPassword: '', newConfirmPassword: '',
       })
@@ -300,6 +304,7 @@ export default function UserDetailPage({
             name: data.name, username: data.username,
             email: data.email || null, role: data.role,
             isActive: data.isActive, password: data.password,
+            forcePasswordChange: data.forcePasswordChange,
           }),
         })
         if (!res.ok) throw new Error('Failed to create user')
@@ -322,6 +327,7 @@ export default function UserDetailPage({
               name: data.name, username: data.username,
               email: data.email || null, role: data.role,
               isActive: data.isActive,
+              forcePasswordChange: data.forcePasswordChange,
             }),
           }),
           apiFetch(`/core/user-branch/by-user/${id}`, {
@@ -403,6 +409,11 @@ export default function UserDetailPage({
             <input id="isActive" type="checkbox" className="rounded" {...register('isActive')} />
             <label htmlFor="isActive" className="text-sm select-none cursor-pointer">Ativo</label>
           </div>
+
+          <div className="md:col-start-2 flex items-center gap-2">
+            <input id="forcePasswordChange" type="checkbox" className="rounded" {...register('forcePasswordChange')} />
+            <label htmlFor="forcePasswordChange" className="text-sm select-none cursor-pointer">Forçar troca de senha no login</label>
+          </div>
         </div>
 
         {/* password block */}
@@ -417,10 +428,7 @@ export default function UserDetailPage({
                   placeholder="Senha"
                   error={errors.password?.message}
                   className="w-full"
-                  {...register('password', {
-                    required: 'Senha obrigatória',
-                    minLength: { value: 8, message: 'Mínimo 8 caracteres' },
-                  })}
+                  {...register('password', { required: 'Senha obrigatória' })}
                 />
                 <PolicyIndicator password={passwordValue} policy={policy} />
               </div>

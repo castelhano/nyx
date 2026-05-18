@@ -9,6 +9,7 @@ import { cn, getUserFromToken } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
 import { resolveIcon } from '@/lib/icons'
 import { useDiscovery } from '@/core/useDiscovery'
+import { useQueryClient } from '@tanstack/react-query'
 import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown'
 import { useSidebar } from './sidebar-context'
 import { useAuth } from '@/lib/auth-context'
@@ -18,8 +19,9 @@ export function Sidebar() {
   const { data: domains }       = useDiscovery()
   const { user }                = useAuth()
 
-  const router   = useRouter()
-  const pathname = usePathname()
+  const router      = useRouter()
+  const pathname    = usePathname()
+  const queryClient = useQueryClient()
   const [openModules, setOpenModules] = useState<Set<string>>(new Set())
   const prefApplied = useRef(false)
 
@@ -63,6 +65,7 @@ export function Sidebar() {
 
   function handleLogout() {
     clearToken()
+    queryClient.clear()
     router.push('/login')
   }
 

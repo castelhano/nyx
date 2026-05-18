@@ -10,23 +10,24 @@ export const userSchema = withMeta(
     email:        z.string().email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com' }),
     passwordHash: z.string().meta({ listVisibility: 'never', showInForm: false }),
     role:         z.enum(['admin', 'operator', 'viewer']).meta({ label: 'Perfil', listVisibility: 'visible', className: 'w-full md:w-60', filter: true }),
-    isActive:     z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible', filter: true }),
-    createdAt:    z.date().meta({ showInForm: false }),
-    updatedAt:    z.date().meta({ showInForm: false }),
+    isActive:             z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible', filter: true }),
+    forcePasswordChange:  z.boolean().default(false).meta({ label: 'Forçar troca de senha no login', listVisibility: 'never' }),
+    createdAt:            z.date().meta({ showInForm: false }),
+    updatedAt:            z.date().meta({ showInForm: false }),
   }),
   {
     label:       'Usuário',
     labelPlural: 'Usuários',
     icon:        'Users',
     groups: {
-      'Acesso':       ['role', 'isActive'],
+      'Acesso': ['role', 'isActive', 'forcePasswordChange'],
     },
   },
 )
 
 export const createUserSchema = userSchema
   .omit({ id: true, createdAt: true, updatedAt: true, passwordHash: true })
-  .extend({ password: z.string().min(8).meta({ label: 'Senha', widget: 'password' }) })
+  .extend({ password: z.string().min(1).meta({ label: 'Senha', widget: 'password' }) })
 
 export const updateUserSchema = createUserSchema.partial()
 

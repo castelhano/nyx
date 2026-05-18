@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Save, ArrowLeft, KeyRound } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
@@ -38,6 +38,7 @@ interface FormValues {
 
 export default function ChangePasswordPage() {
   const router              = useRouter()
+  const queryClient         = useQueryClient()
   const { user }            = useAuth()
   const { toast }           = useToast()
   const [isPending, setIsPending]     = useState(false)
@@ -83,6 +84,7 @@ export default function ChangePasswordPage() {
       setIsPending(false)
       return
     }
+    await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })
     toast.success('Senha alterada com sucesso')
     router.push('/')
   }

@@ -24,22 +24,8 @@ export class AuthController {
   async login(@Body() body: unknown) {
     const { username, password } = loginSchema.parse(body)
 
-    console.log(`[login] attempt — username: "${username}"`)
-
     const user = await this.userService.findByUsername(username)
-
-    if (!user) {
-      console.log(`[login] FAIL — user not found: "${username}"`)
-      throw new UnauthorizedException('Invalid credentials')
-    }
-
-    console.log(`[login] user found — id: ${user.id}, hasPasswordHash: ${!!user.passwordHash}`)
-
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash)
-    console.log(`[login] bcrypt.compare result: ${passwordMatch}`)
-
-    if (!passwordMatch) {
-      console.log(`[login] FAIL — password mismatch for user: "${username}"`)
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials')
     }
 
@@ -68,7 +54,7 @@ export class AuthController {
   async me(@Req() req: { user: AuthUser }) {
     const user = await this.prisma.user.findUnique({
       where:  { id: req.user.id },
-      select: { id: true, name: true, username: true, role: true, preferences: true },
+      select: { id: true, name: true, username: true, role: true, preferences: true, forcePasswordChange: true },
     })
     return { ...user, branchIds: req.user.branchIds }
   }
