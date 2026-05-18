@@ -814,6 +814,7 @@ All models follow these conventions:
 | `ThemeCard` | `components/ui/theme-card.tsx` | theme selector card with color swatch preview; `selected` state shows checkmark; used in the preferences page |
 | `PasswordInput` | `components/ui/password-input.tsx` | `Input` wrapper with Eye/EyeOff toggle; uses `forwardRef` so `{...register(...)}` from React Hook Form works correctly — any input wrapper that receives RHF spread must use `forwardRef` |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
+| `Toaster` | `components/ui/toast.tsx` | `createPortal` to `document.body`; groups toasts by resolved position; responsive (desktop vs mobile default); enter/exit CSS transition per position direction |
 
 ### Dropdown — Portal Architecture
 
@@ -827,6 +828,67 @@ Key behaviors:
 - Props: `side: 'top'|'bottom'|'left'|'right'`, `align: 'start'|'center'|'end'`, `sideOffset` (px gap from trigger, default 0)
 
 Sub-components: `DropdownItem` (supports `destructive`, `disabled`), `DropdownSeparator`, `DropdownLabel`.
+
+### Toast — Notification System
+
+Centralised feedback for system events. Three files:
+
+| File | Role |
+|------|------|
+| `lib/toast-context.tsx` | `ToastProvider`, `useToast()` hook, types |
+| `lib/messages.ts` | Standard message catalog |
+| `components/ui/toast.tsx` | `Toaster` renderer |
+
+**`ToastProvider`** is mounted once at the root (`providers.tsx`) with two position defaults:
+
+```tsx
+<ToastProvider defaultPosition="bottom-right" defaultPositionMobile="bottom-center">
+```
+
+**`useToast()`** exposes four methods — `toast.success()`, `toast.error()`, `toast.info()`, `toast.warning()`. All accept an optional `ToastOptions` object:
+
+```ts
+interface ToastOptions {
+  autoDismiss?:      boolean   // success/info/warning: true; error: false
+  autoDismissDelay?: number    // success/info: 4000ms; warning: 6000ms
+  position?:         Position  // overrides provider default for this toast
+}
+
+type Position =
+  | 'bottom-right' | 'bottom-left'
+  | 'top-right'    | 'top-left'
+  | 'top-center'   | 'bottom-center'
+```
+
+**`lib/messages.ts`** — single source of truth for standard CRUD messages. All pages default to `'Registro'` as the label:
+
+```ts
+msgs.created()  // → "Registro criado com sucesso"
+msgs.updated()  // → "Registro atualizado com sucesso"
+msgs.deleted()  // → "Registro excluído com sucesso"
+msgs.saved()    // → "Registro salvo com sucesso"
+msgs.error.save()    // → "Erro ao salvar. Tente novamente."
+msgs.error.delete()  // → "Erro ao excluir. Tente novamente."
+msgs.error.load()    // → "Erro ao carregar dados."
+```
+
+Custom pages pass string literals directly to `toast.success()` / `toast.error()`.
+
+**`Toaster`** renders stacks per resolved position via `createPortal`. Uses `useIsMobile()` (`window.matchMedia('(max-width: 768px)')`) to pick between `defaultPosition` and `defaultPositionMobile`. Slide direction of the enter/exit animation matches the position edge (top positions slide down, bottom positions slide up).
+
+**Integration points:**
+
+| Location | Trigger | Message |
+|---|---|---|
+| `[domain]/[resource]/[id]/page.tsx` | save success | `msgs.created()` or `msgs.updated()` |
+| `[domain]/[resource]/[id]/page.tsx` | save error | `msgs.error.save()` |
+| `SettingsPanel.tsx` | save success | `msgs.saved()` |
+| `SettingsPanel.tsx` | save error | `msgs.error.save()` |
+| `core/user/[id]/page.tsx` | save success/error | same pattern |
+| `preferences/page.tsx` | save success/error | custom string |
+| `password/page.tsx` | success only | custom string (errors stay inline — multi-line policy violations) |
+| `AutoList.tsx` — row action `method: DELETE` | success/error | `msgs.deleted()` / `msgs.error.delete()` |
+| `AutoList.tsx` — row action other methods | success/error | `msgs.updated()` / `msgs.error.save()` |
 
 ---
 
