@@ -10,10 +10,10 @@ const sizes: Record<Size, string> = {
 }
 
 const base = [
-  'w-full appearance-none border border-input rounded-sm text-sm bg-input-bg',
+  'appearance-none border border-input rounded-sm text-sm bg-input-bg',
   'focus:outline-none focus:ring-1 focus:ring-ring',
   'disabled:opacity-60 disabled:cursor-not-allowed',
-  'pr-9',
+  'pe-8',
 ].join(' ')
 
 interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
@@ -31,7 +31,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       >
         {children}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
     </div>
   ),
 )

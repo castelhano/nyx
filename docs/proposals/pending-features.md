@@ -98,3 +98,8 @@
 - [ ] **Unique email check in frontend** — debounced `GET /core/user?email=xxx` before submit
 - [ ] **User avatar** — `avatarUrl` field, `POST /core/user/:id/avatar` upload endpoint, shown in topbar and user list
 - [ ] **Active branch context** — branch selector in topbar (persisted in `preferences.defaultBranchId`); passed as `X-Branch-Id` header; `BaseService.findAll()` applies branch scope filter
+
+
+## TODO:
+- [ ] **CSV export** — Ajustar separador para ; UTF-8 + boom (caracteres especiais e separador para excel)
+- [ ] **Controles de filtro** — alt+l deve limpar os filtros (caso filtrado tabela)
