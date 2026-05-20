@@ -4,8 +4,8 @@ import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 
 const ACTIONS = [
-  { key: 'create', label: 'Criar' },
   { key: 'read',   label: 'Ver' },
+  { key: 'create', label: 'Criar' },
   { key: 'update', label: 'Editar' },
   { key: 'delete', label: 'Excluir' },
 ] as const

@@ -366,6 +366,10 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [filterOpen])
 
+  useShortcut('alt+l', () => {
+    if (Object.values(activeFilters).some(Boolean)) handleFilterClear()
+  }, { display: false, origin: 'apps.web.src.core.AutoList' })
+
   useShortcut('ctrl+arrowdown', () => {
     const rows = table.getRowModel().rows
     
