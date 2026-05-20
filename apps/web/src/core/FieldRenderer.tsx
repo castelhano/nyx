@@ -21,6 +21,7 @@ interface Props {
 }
 
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
+const fieldInputCls = `${inputBaseCls} w-full`
 
 type MaskDef = string | { mask: string }[]
 
@@ -181,7 +182,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
               autoFocus={autoFocus}
               disabled={readonly}
               {...register}
-              className={cn(inputBaseCls, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
+              className={cn(fieldInputCls, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
             >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
@@ -206,9 +207,9 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   let controlEl: React.ReactNode
 
   if (field.resource && control) {
-    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={inputBaseCls} readonly={readonly} />
+    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} />
   } else if (field.mask && control) {
-    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={inputBaseCls} readonly={readonly} />
+    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} />
   } else if (field.widget === 'textarea') {
     controlEl = (
       <div className="relative">
@@ -219,7 +220,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           {...register}
           rows={3}
           placeholder={field.placeholder}
-          className={cn(inputBaseCls, field.keybind && 'pr-10', readonly && readonlyCls)}
+          className={cn(fieldInputCls, field.keybind && 'pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} className="top-3 -translate-y-0" />}
       </div>
@@ -234,7 +235,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           readOnly={readonly}
           {...register}
           placeholder={field.placeholder}
-          className={cn(inputBaseCls, field.keybind && 'pr-10', readonly && readonlyCls)}
+          className={cn(fieldInputCls, field.keybind && 'pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} />}
       </div>
