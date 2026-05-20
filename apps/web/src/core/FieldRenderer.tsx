@@ -37,7 +37,7 @@ function KeyHint({ k, className }: { k: string; className?: string }) {
   return (
     <span className={cn(
       'pointer-events-none select-none absolute top-1/2 -translate-y-1/2 right-3',
-      'text-[12px] font-mono text-muted-foreground/80',
+      'hidden md:inline-flex items-center rounded-sm border border-border/70 bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground/80',
       className,
     )}>
       {k.toUpperCase()}
@@ -67,7 +67,7 @@ function MaskedInput({
             autoFocus={autoFocus}
             placeholder={field.placeholder}
             readOnly={readonly}
-            className={cn(className, field.keybind && 'pr-10', readonly && readonlyCls)}
+            className={cn(className, field.keybind && 'md:pr-10', readonly && readonlyCls)}
           />
           {field.keybind && <KeyHint k={field.keybind} />}
         </div>
@@ -109,7 +109,7 @@ function RelationSelect({
             onBlur={ctrl.onBlur}
             ref={ctrl.ref}
             disabled={readonly}
-            className={cn(className, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
+            className={cn(className, 'appearance-none', field.keybind ? 'md:pr-20' : 'pr-9', readonly && readonlyCls)}
           >
             <option value="">{field.placeholder ?? 'Selecione…'}</option>
             {options.map((opt) => (
@@ -182,7 +182,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
               autoFocus={autoFocus}
               disabled={readonly}
               {...register}
-              className={cn(fieldInputCls, 'appearance-none', field.keybind ? 'pr-20' : 'pr-9', readonly && readonlyCls)}
+              className={cn(fieldInputCls, 'appearance-none', field.keybind ? 'md:pr-20' : 'pr-9', readonly && readonlyCls)}
             >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
@@ -220,7 +220,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           {...register}
           rows={3}
           placeholder={field.placeholder}
-          className={cn(fieldInputCls, field.keybind && 'pr-10', readonly && readonlyCls)}
+          className={cn(fieldInputCls, field.keybind && 'md:pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} className="top-3 -translate-y-0" />}
       </div>
@@ -235,7 +235,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           readOnly={readonly}
           {...register}
           placeholder={field.placeholder}
-          className={cn(fieldInputCls, field.keybind && 'pr-10', readonly && readonlyCls)}
+          className={cn(fieldInputCls, field.keybind && 'md:pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} />}
       </div>
