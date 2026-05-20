@@ -132,16 +132,44 @@ Structural navigation shortcuts. Operate on layout primitives (sidebar, table, f
 
 ```typescript
 // company.schema.ts — example
-taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'j' }),
-// registers Ctrl+Shift+J → focus #taxId while the form is active
+taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
+// registers Ctrl+Shift+X → focus #taxId while the form is active
 ```
 
 **Rules:**
 - Keys must be a single lowercase letter (`a–z`). Do not use digits or special characters.
-- Avoid `z` (redo in some browsers) and letters used by browser DevTools shortcuts.
+- **Do not use the reserved letters below** — they are intercepted by the browser before reaching the app.
+- Boolean, switch, checkbox, and radio fields do not receive keybinds (they don't accept focus).
 - Bindings are scoped to the form's Keywatch group and unregistered on unmount — no global pollution.
 - Only one field per form may declare the same key.
 - These shortcuts have `display: false` — they do not appear in the `Alt+K` shortcuts modal.
+- Custom pages (that don't use `AutoForm`) must call `useFieldKeybinds()` from `lib/keywatch` manually.
+
+#### Reserved letters — Ctrl+Shift+[key] (Chrome / Edge on Windows)
+
+| Letter | Browser action |
+|--------|---------------|
+| `A` | Search open tabs (Chrome 87+) |
+| `B` | Toggle bookmarks bar |
+| `C` | Inspect element (DevTools) |
+| `I` | Open DevTools |
+| `J` | Open Downloads panel |
+| `N` | New incognito / private window |
+| `O` | Open bookmarks manager |
+| `R` | Hard reload (bypass cache) |
+| `T` | Reopen last closed tab |
+| `W` | Close window |
+| `Z` | Redo (some OS/browser combinations) |
+
+**Potentially risky (avoid if alternatives exist):**
+
+| Letter | Risk |
+|--------|------|
+| `H` | Opens History in Edge (Ctrl+Shift+H); safe in Chrome |
+| `M` | Guest profile switcher in some Chrome versions |
+| `U` | Unicode input on Linux; safe on Windows |
+
+**Confirmed safe:** `D` `E` `F` `G` `K` `L` `P` `Q` `S` `U` `V` `X` `Y`
 
 ---
 

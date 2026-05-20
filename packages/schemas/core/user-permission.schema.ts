@@ -7,9 +7,9 @@ export const permissionActionEnum = z.enum(['create', 'read', 'update', 'delete'
 export const userPermissionSchema = withMeta(
   z.object({
     id:        z.string().uuid(),
-    userId:    z.string().uuid().meta({ label: 'Usuário', listVisibility: 'hidden' }),
-    resource:  z.string().min(1).meta({ label: 'Recurso', listVisibility: 'visible' }),
-    action:    permissionActionEnum.meta({ label: 'Ação', listVisibility: 'visible', widget: 'select' }),
+    userId:    z.string().uuid().meta({ label: 'Usuário', listVisibility: 'hidden', keybind: 'u' }),
+    resource:  z.string().min(1).meta({ label: 'Recurso', listVisibility: 'visible', keybind: 's' }),
+    action:    permissionActionEnum.meta({ label: 'Ação', listVisibility: 'visible', widget: 'select', keybind: 'k' }),
     createdAt: z.date().meta({ showInForm: false }),
   }),
   {

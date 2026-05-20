@@ -33,7 +33,7 @@ const MASKS: Record<string, MaskDef> = {
   'phone':     [{ mask: '(00) 0000-0000' }, { mask: '(00) 00000-0000' }],
 }
 
-function KeyHint({ k, className }: { k: string; className?: string }) {
+export function KeyHint({ k, className }: { k: string; className?: string }) {
   return (
     <span className={cn(
       'pointer-events-none select-none absolute top-1/2 -translate-y-1/2 right-3',

@@ -10,10 +10,11 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { PasswordInput } from '@/components/ui/password-input'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
+import { KeyHint } from '@/core/FieldRenderer'
 import { PolicyIndicator } from '@/core/PolicyIndicator'
 import { useDiscovery } from '@/core/useDiscovery'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
-import { useShortcut } from '@/lib/keywatch'
+import { useShortcut, useFieldKeybinds } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
@@ -282,6 +283,14 @@ export default function UserDetailPage({
     setPasswordOpen(false)
   }, { display: false, origin: 'apps/web/src/app/core/user/[id]/page' })
 
+  useFieldKeybinds([
+    { key: 'g', fieldId: 'name' },
+    { key: 'u', fieldId: 'username' },
+    { key: 'e', fieldId: 'email' },
+    { key: 'l', fieldId: 'role' },
+    { key: 's', fieldId: 'password' },
+  ], 'core/user/[id]')
+
   useShortcut('alt+v', () => router.push('/core/user'), {
     desc: 'Voltar', icon: ArrowLeft,
     origin: 'apps/web/src/app/core/user/[id]/page', context: 'all',
@@ -368,38 +377,47 @@ export default function UserDetailPage({
         <div className={gridCls}>
           <label htmlFor="name" className={labelCls}>Nome</label>
           <div className="space-y-1">
-            <Input
-              id="name"
-              autoFocus
-              placeholder="Nome completo"
-              className="w-full"
-              {...register('name', { required: 'Nome obrigatório' })}
-            />
+            <div className="relative">
+              <Input
+                id="name"
+                autoFocus
+                placeholder="Nome completo"
+                className="w-full md:pr-10"
+                {...register('name', { required: 'Nome obrigatório' })}
+              />
+              <KeyHint k="g" />
+            </div>
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
           <label htmlFor="username" className={labelCls}>Username</label>
           <div className="space-y-1">
-            <Input
-              id="username"
-              placeholder="Username"
-              className="w-full md:w-96"
-              {...register('username', { required: 'Username obrigatório' })}
-            />
+            <div className="relative w-full md:w-96">
+              <Input
+                id="username"
+                placeholder="Username"
+                className="w-full md:pr-10"
+                {...register('username', { required: 'Username obrigatório' })}
+              />
+              <KeyHint k="u" />
+            </div>
             {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
           </div>
 
           <label htmlFor="email" className={labelCls}>E-mail</label>
-          <Input
-            id="email"
-            type="email"
-            placeholder="email@domain.com"
-            className="w-full md:w-1/2"
-            {...register('email')}
-          />
+          <div className="relative w-full md:w-1/2">
+            <Input
+              id="email"
+              type="email"
+              placeholder="email@domain.com"
+              className="w-full md:pr-10"
+              {...register('email')}
+            />
+            <KeyHint k="e" />
+          </div>
 
           <label htmlFor="role" className={labelCls}>Perfil</label>
-          <Select id="role" wrapperClassName="w-full md:w-96" {...register('role')}>
+          <Select id="role" wrapperClassName="w-full md:w-96" keybind="l" {...register('role')}>
             <option value="admin">Admin</option>
             <option value="operator">Operador</option>
           </Select>
@@ -427,6 +445,7 @@ export default function UserDetailPage({
                   placeholder="Senha"
                   error={errors.password?.message}
                   className="w-full"
+                  keybind="s"
                   {...register('password', { required: 'Senha obrigatória' })}
                 />
                 <PolicyIndicator password={passwordValue} policy={policy} />

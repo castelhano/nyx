@@ -1,3 +1,5 @@
 export { KeywatchProvider, useKeywatch }   from './context'
 export { useShortcut, useShortcutContext } from './use-shortcut'
+export { useFieldKeybinds }               from './use-field-keybinds'
+export type { FieldKeybind }              from './use-field-keybinds'
 export type { HandlerOptions, CoreOptions } from './core'

@@ -87,7 +87,7 @@ nyx/
 │           │   ├── AutoForm.tsx
 │           │   ├── AutoList.tsx
 │           │   ├── AutoBreadcrumb.tsx
-│           │   ├── SettingsPanel.tsx   # Template para recursos singleton (isSingleton: true)
+│           │   ├── SettingsPanel.tsx   # Template for singleton resources (isSingleton: true)
 │           │   ├── FieldRenderer.tsx
 │           │   ├── PolicyIndicator.tsx # Password policy hint strip — reused in user/[id] and password page
 │           │   ├── useMetadata.ts
@@ -662,7 +662,7 @@ No `findAll`, `findOne`, `create`, `update`, `remove` — settings have no list 
 
 - Fetches current values via `GET /<domain>/<resource>`
 - Renders fields grouped by `meta.groups` as labelled card sections
-- Saves via `PUT /<domain>/<resource>` on topbar Gravar / `alt+g`
+- Saves via `PUT /<domain>/<resource>` on topbar Save / `alt+g`
 - Uses `AutoBreadcrumb` (no `id` — trail ends at the resource label)
 - Widget rendering in `SettingsField`:
   - `widget: 'switch'` or `type: 'boolean'` → toggle switch
@@ -903,14 +903,14 @@ All models follow these conventions:
 |-----------|------|-------|
 | `Button` | `components/ui/button.tsx` | variants: default, destructive, outline, ghost, rowAction |
 | `Input` | `components/ui/input.tsx` | size variants: default (`px-3 py-2`), sm (`px-2 py-1.5`); also exports `inputBaseCls` string for elements that can't use the component (IMaskInput, textarea) |
-| `Select` | `components/ui/select.tsx` | wraps native `<select>` with built-in `ChevronDown` overlay; same size variants; `wrapperClassName` for outer div sizing |
+| `Select` | `components/ui/select.tsx` | wraps native `<select>` with built-in `ChevronDown` overlay; same size variants; `wrapperClassName` for outer div sizing; `keybind` prop renders a `KeyHint` badge inside the wrapper to the left of the chevron |
 | `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
 | `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change |
 | `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset`; `DropdownItem` accepts `href` (renders `Link`) or `onClick` |
 | `AssociationList` | `components/ui/association-list.tsx` | many-to-many with a per-row role select; "+ Add" opens a searchable combobox filtered to unassociated items; items grouped by parent entity when `companies` prop is provided; local state — persists only on topbar Save |
-| `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (create/read/update/delete) as columns; section-level "Marcar todos / Desmarcar todos"; global filter input; local state — persists only on topbar Save |
+| `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (read/create/update/delete) as columns; section-level "Marcar todos / Desmarcar todos"; global filter input; local state — persists only on topbar Save |
 | `ThemeCard` | `components/ui/theme-card.tsx` | theme selector card with color swatch preview; `selected` state shows checkmark; used in the preferences page |
-| `PasswordInput` | `components/ui/password-input.tsx` | `Input` wrapper with Eye/EyeOff toggle; uses `forwardRef` so `{...register(...)}` from React Hook Form works correctly — any input wrapper that receives RHF spread must use `forwardRef` |
+| `PasswordInput` | `components/ui/password-input.tsx` | `Input` wrapper with Eye/EyeOff toggle; `keybind` prop renders a `KeyHint` badge to the left of the toggle; uses `forwardRef` so `{...register(...)}` from React Hook Form works correctly — any input wrapper that receives RHF spread must use `forwardRef` |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
 | `Toaster` | `components/ui/toast.tsx` | `createPortal` to `document.body`; groups toasts by resolved position; responsive (desktop vs mobile default); enter/exit CSS transition per position direction |
 
@@ -1044,37 +1044,57 @@ Key concepts:
 
 Dynamic bindings (e.g., child navigation buttons from schema metadata) are managed via `core.bind()` / `core.unbindGroup()` in `useEffect`.
 
+**Field keybinds (`Ctrl+Shift+[key]`)** — declared via `.meta({ keybind: 'x' })` in the Zod schema. `AutoForm` registers them automatically on mount. Custom pages must call `useFieldKeybinds()` manually:
+
+```tsx
+import { useFieldKeybinds } from '@/lib/keywatch'
+
+useFieldKeybinds([
+  { key: 'g', fieldId: 'name' },
+  { key: 'u', fieldId: 'username' },
+], 'core/user/[id]')
+```
+
+`fieldId` must match the `id` attribute of the target `<input>`. The hint badge (`KeyHint`) must be added manually to each control — wrap the input in `div.relative`, set the width constraint on the wrapper (not the input), and render `<KeyHint k="x" />` inside. `Select` and `PasswordInput` accept a `keybind` prop that handles the hint internally. See `docs/architecture/keyboard-shortcuts.md` for the list of reserved browser letters.
+
 ### Global shortcut conventions
 
 Every page that holds editable state **must** implement these three shortcuts:
 
 | Shortcut | Action | `context` | `display` |
 |---|---|---|---|
-| `alt+g` | Salvar / submit do form principal | `'all'` | `true` |
-| `alt+v` | Voltar (lista ou domain) | `'all'` | `true` |
-| `alt+l` | Limpar — restaura o estado original da página | omit (default) | `false` |
+| `alt+g` | Save / submit the main form | `'all'` | `true` |
+| `alt+v` | Navigate back (list or domain) | `'all'` | `true` |
+| `alt+l` | Reset — restore original page state | omit (default) | `false` |
 
-**`alt+l` — reset ao estado original**
+**`alt+l` — reset to original state**
 
-`alt+l` desfaz qualquer edição pendente e retorna o formulário ao último estado confirmado pelo servidor (o que foi salvo, não o que está editado). Nunca navega — apenas limpa.
+The behavior of `alt+l` differs by page type:
 
-Implementação padrão com `resetSignal`:
+| Context | Behavior |
+|---|---|
+| Edit page (`[id]/page.tsx`, custom pages, `SettingsPanel`) | Discards pending edits and restores the last server-fetched values via `resetSignal` |
+| List page (`AutoList`) | Clears all active filters; no-op when no filters are applied |
+
+Both handlers fire simultaneously — the global one (`GlobalShortcuts`) invalidates queries, the local one acts on the component's own state.
+
+Standard implementation with `resetSignal` (edit pages):
 
 ```tsx
 const [resetSignal, setResetSignal] = useState(0)
 
-// reseta quando o sinal muda OU quando os dados do servidor chegam
+// resets when the signal changes OR when server data arrives
 useEffect(() => {
   if (serverValues) reset(serverValues)
 }, [serverValues, resetSignal])
 
 useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
   display: false,
-  origin:  'nome-do-componente',
+  origin:  'component-name',
 })
 ```
 
-**Regra:** toda página que permite edição deve implementar `alt+l` — páginas genéricas (`AutoForm` via `[id]/page.tsx`), páginas custom (ex: `core/user/[id]/page.tsx`) e `SettingsPanel`. Nenhuma exceção.
+**Rule:** every page with editable state must implement `alt+l` — generic pages (`AutoForm` via `[id]/page.tsx`), custom pages (e.g. `core/user/[id]/page.tsx`) and `SettingsPanel`. No exceptions. `AutoList` registers the handler internally.
 
 ---
 

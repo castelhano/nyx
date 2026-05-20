@@ -3,14 +3,16 @@
 import { forwardRef, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { Input } from './input'
+import { KeyHint } from '@/core/FieldRenderer'
 import { cn } from '@/lib/utils'
 
 interface PasswordInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
-  error?: string
+  error?:   string
+  keybind?: string
 }
 
 export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
-  function PasswordInput({ error, className, ...props }, ref) {
+  function PasswordInput({ error, keybind, className, ...props }, ref) {
     const [show, setShow] = useState(false)
 
     return (
@@ -19,9 +21,10 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
           <Input
             ref={ref}
             type={show ? 'text' : 'password'}
-            className={cn('pr-10', className)}
+            className={cn(keybind ? 'pr-20' : 'pr-10', className)}
             {...props}
           />
+          {keybind && <KeyHint k={keybind} className="right-10" />}
           <button
             type="button"
             tabIndex={-1}
