@@ -6,7 +6,7 @@ export const userSchema = withMeta(
   z.object({
     id:           z.string().uuid(),
     name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome completo', filter: true }),
-    username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', searchable: true, placeholder: 'Username' }),
+    username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', placeholder: 'Username' }),
     email:        z.string().email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com' }),
     passwordHash: z.string().meta({ listVisibility: 'never', showInForm: false }),
     role:         z.enum(['admin', 'operator']).meta({ label: 'Perfil', listVisibility: 'visible', className: 'w-full md:w-60', filter: true }),

@@ -54,8 +54,8 @@ The Zod schema is the **single source of truth** for DB types, API validation an
 export const companySchema = withMeta(
   z.object({
     id:        z.string().uuid(),
-    legalName: z.string().min(2).meta({ label: 'Razão Social', showInList: true }),
-    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', showInList: true }),
+    legalName: z.string().min(2).meta({ label: 'Razão Social', listVisibility: 'visible' }),
+    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', listVisibility: 'visible' }),
     taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', mask: 'cnpj-base', listVisibility: 'hidden' }),
     type:      z.enum(['client', 'supplier', 'partner', 'other']).meta({ label: 'Tipo', widget: 'select' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo' }),
@@ -81,11 +81,9 @@ export const companySchema = withMeta(
 | Property | Type | Default | Effect |
 |----------|------|---------|--------|
 | `label` | `string` | `camelCase → Title Case` | Label in forms and list columns |
-| `showInList` | `boolean` | `true` (non-id, non-password, non-timestamp) | Includes field in `AutoList` |
 | `listVisibility` | `'visible' \| 'hidden' \| 'never'` | computed | `visible` = shown by default; `hidden` = hidden by default, user can toggle; `never` = not in picker or table |
 | `showInForm` | `boolean` | `true` | Includes field in `AutoForm` |
 | `sortable` | `boolean` | `true` for string/number/date/enum | Enables server-side column sorting |
-| `searchable` | `boolean` | `false` | Marks field for search filtering |
 | `widget` | `string` | derived from Zod type | Form component: `'textarea'`, `'select'`, `'switch'`, `'datepicker'`, `'password'`, `'combobox'` |
 | `mask` | `string` | none | Input mask: `'cnpj'`, `'cnpj-base'` (8-digit root), `'cpf'`, `'phone'`, `'cep'` |
 | `placeholder` | `string` | none | Input placeholder text |

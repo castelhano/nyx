@@ -7,10 +7,10 @@ export const branchUserRoleEnum = z.enum(['owner', 'manager', 'member'])
 export const userBranchSchema = withMeta(
   z.object({
     id:        z.string().uuid(),
-    userId:    z.string().uuid().meta({ label: 'Usuário', showInList: false }),
-    branchId:  z.string().uuid().meta({ label: 'Filial', showInList: true }),
-    role:      branchUserRoleEnum.meta({ label: 'Papel', showInList: true, widget: 'select' }),
-    createdAt: z.date().meta({ showInForm: false, showInList: false }),
+    userId:    z.string().uuid().meta({ label: 'Usuário', listVisibility: 'hidden' }),
+    branchId:  z.string().uuid().meta({ label: 'Filial', listVisibility: 'visible' }),
+    role:      branchUserRoleEnum.meta({ label: 'Papel', listVisibility: 'visible', widget: 'select' }),
+    createdAt: z.date().meta({ showInForm: false }),
   }),
   {
     label:       'Vínculo de Filial',

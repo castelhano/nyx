@@ -37,7 +37,7 @@ Resultado: resource aparece no sidebar, breadcrumb e discovery automaticamente. 
 
 **Schema**
 - `withMeta(schema, { label, labelPlural, nameField, icon })` — metadados do resource
-- `.meta({ label, widget, filter, showInList, showInForm, ... })` — metadados do campo
+- `.meta({ label, widget, filter, listVisibility, showInForm, ... })` — metadados do campo
 - Recursos filhos declaram `breadcrumb: [{ resource, contextField, nameField, keybind }]` no próprio schema — o pai descobre automaticamente
 - Campo com `breadcrumb` = filho → não aparece no sidebar nem no discovery
 

@@ -6,9 +6,9 @@ export const companySchema = withMeta(
   z.object({
     id:        z.string().uuid(),
     // Geral
-    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', showInList: true, placeholder: 'Nome Fantasia' }),
-    legalName: z.string().min(2).meta({ label: 'Razão Social', className: 'md:w-1/2', showInList: true, placeholder: 'Razão social' }),
-    taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', className: 'md:w-1/2', mask: 'cnpj-base', searchable: true, placeholder: '00.000.000', keybind: 'j', listVisibility: 'hidden' }),
+    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', listVisibility: 'visible', placeholder: 'Nome Fantasia', filter: true }),
+    legalName: z.string().min(2).meta({ label: 'Razão Social', className: 'md:w-1/2', listVisibility: 'visible', placeholder: 'Razão social' }),
+    taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', className: 'md:w-1/2', mask: 'cnpj-base', placeholder: '00.000.000', keybind: 'j', listVisibility: 'hidden' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     // Contato
     phone:     z.string().nullable().optional().meta({ label: 'Telefone', mask: 'phone', className: 'md:w-1/2', placeholder: '(00) 00000-0000', listVisibility: 'hidden' }),

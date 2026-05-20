@@ -251,7 +251,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Resource icon | none (hidden from sidebar) | `withMeta(schema, { icon: 'Building' })` |
 | Field label | `camelCase → Title Case` | `.meta({ label: 'Legal Name' })` |
 | Top-level resource | `true` if schema has no `breadcrumb` | determined automatically |
-| Field shown in list | `true` for non-relation, non-password fields | `.meta({ showInList: false })` |
+| Field shown in list | `visible` for non-id, non-password, non-timestamp fields | `.meta({ listVisibility: 'hidden' })` or `.meta({ listVisibility: 'never' })` |
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
@@ -412,7 +412,7 @@ Next.js App Router resolves static segments before dynamic ones, so no configura
 
 These components consume the `GET /metadata` response to render their UI without any hardcoded field definitions.
 
-- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `showInList: true`. Supports CSV export when `allowCsv` is set. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`). Accepts an `onAction` prop as an escape hatch for row actions that cannot be expressed declaratively in the schema (see §4.13).
+- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `listVisibility: 'visible'` or `'hidden'`. Supports CSV export when `allowCsv` is set. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`). Accepts an `onAction` prop as an escape hatch for row actions that cannot be expressed declaratively in the schema (see §4.13).
 - **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
 
@@ -1112,7 +1112,7 @@ Minimum required. Standard resources need **4 files**. Resources with custom log
 export const productSchema = withMeta(
   z.object({
     id:   z.string().uuid(),
-    name: z.string().min(2).meta({ label: 'Name', showInList: true }),
+    name: z.string().min(2).meta({ label: 'Name', listVisibility: 'visible' }),
     // ...
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

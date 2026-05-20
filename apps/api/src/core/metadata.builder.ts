@@ -100,8 +100,6 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       listVisibility = 'never'
     } else if (isTimestamp) {
       listVisibility = 'hidden'
-    } else if (meta.showInList === false) {
-      listVisibility = 'hidden'
     } else {
       listVisibility = 'visible'
     }
@@ -114,10 +112,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       options:        type === 'enum' ? (inner as ZodEnum<any>)._def.values : undefined,
       ...(defaultValue !== undefined ? { defaultValue } : {}),
       listVisibility,
-      showInList:     listVisibility === 'visible',
-      showInForm:     meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
+      showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),
       sortable:   meta.sortable   ?? (['string', 'number', 'date', 'enum'] as string[]).includes(type),
-      searchable: meta.searchable ?? false,
       ...(meta.placeholder         ? { placeholder: meta.placeholder }         : {}),
       ...(meta.helpText            ? { helpText:    meta.helpText }             : {}),
       ...(meta.mask                ? { mask:        meta.mask }                 : {}),

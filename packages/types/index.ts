@@ -27,10 +27,8 @@ export interface FieldMeta {
   placeholder?: string
   helpText?: string
   listVisibility?: 'visible' | 'hidden' | 'never'
-  showInList?: boolean
   showInForm?: boolean
   sortable?: boolean
-  searchable?: boolean
   widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper'
   min?: number
   max?: number
@@ -55,10 +53,8 @@ export interface MetadataField {
   options?: string[]
   defaultValue?: unknown
   listVisibility: 'visible' | 'hidden' | 'never'
-  showInList: boolean
   showInForm: boolean
   sortable: boolean
-  searchable: boolean
   min?: number
   max?: number
   mask?: string
