@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { Save, ArrowLeft, ChevronDown, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -50,9 +50,10 @@ export default function UserDetailPage({
 }: {
   params: { id: string }
 }) {
-  const { id }   = params
-  const router   = useRouter()
-  const isNew    = id === 'new'
+  const { id }      = params
+  const router      = useRouter()
+  const queryClient = useQueryClient()
+  const isNew       = id === 'new'
 
   const [isPending,    setIsPending]    = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
@@ -361,6 +362,9 @@ export default function UserDetailPage({
         await Promise.all(calls)
       }
 
+      await queryClient.invalidateQueries({ queryKey: ['core', 'user-branch', 'by-user', id] })
+      await queryClient.invalidateQueries({ queryKey: ['core', 'user-permission', 'by-user', id] })
+      await queryClient.invalidateQueries({ queryKey: ['core', 'user', id] })
       toast.success(isNew ? msgs.created() : msgs.updated())
       router.push('/core/user')
     } catch {
