@@ -4,22 +4,20 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Save, ArrowLeft, KeyRound } from 'lucide-react'
+import { Save, ArrowLeft, KeyRound, Check } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { PasswordInput } from '@/components/ui/password-input'
-import { PolicyIndicator } from '@/core/PolicyIndicator'
 import { apiFetch } from '@/lib/auth'
+import { cn } from '@/lib/utils'
 import type { PasswordPolicy } from '@nyx/schemas'
 
 const FORM_ID = 'change-password-form'
 
 function extractError(json: Record<string, unknown>): string | string[] {
-  // AllExceptionsFilter wraps HttpException.getResponse() inside json.message,
-  // so the real payload may be one level deeper.
   const outer = json?.message
   const payload = (outer && typeof outer === 'object' && !Array.isArray(outer))
     ? (outer as Record<string, unknown>)
@@ -49,8 +47,7 @@ export default function ChangePasswordPage() {
     queryFn:  async () => {
       const res = await apiFetch('/core/password-policy')
       if (!res.ok) return null
-      const json = await res.json()
-      return (json.data?.[0] ?? null) as PasswordPolicy | null
+      return res.json() as Promise<PasswordPolicy>
     },
     staleTime: 300_000,
   })
@@ -64,7 +61,16 @@ export default function ChangePasswordPage() {
     defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
   })
 
-  const newPasswordValue = watch('newPassword')
+  const newPasswordValue     = watch('newPassword')
+  const confirmPasswordValue = watch('confirmPassword')
+
+  const policyChecks = policy ? [
+    { ok: newPasswordValue.length >= policy.minLength,              label: `Mín. ${policy.minLength} caracteres` },
+    ...(policy.requireUppercase ? [{ ok: /[A-Z]/.test(newPasswordValue),          label: 'Letra maiúscula' }]  : []),
+    ...(policy.requireNumbers   ? [{ ok: /[0-9]/.test(newPasswordValue),          label: 'Número' }]           : []),
+    ...(policy.requireSpecial   ? [{ ok: /[^A-Za-z0-9]/.test(newPasswordValue),   label: 'Símbolo especial' }] : []),
+    { ok: !!newPasswordValue && newPasswordValue === confirmPasswordValue, label: 'Senhas coincidem' },
+  ] : []
 
   async function onSubmit(values: FormValues) {
     if (!user) return
@@ -103,62 +109,85 @@ export default function ChangePasswordPage() {
   })
 
   return (
-    <div className="p-6 max-w-lg flex flex-col gap-8">
+    <div className="p-6 flex flex-col gap-8">
       <Breadcrumb segments={[{ label: 'Início', href: '/' }, { label: 'Alterar Senha' }]} />
 
-      <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+      <div className="flex gap-6 items-start">
+        <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 w-full max-w-sm">
 
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-muted-foreground" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alterar Senha</p>
-          </div>
-
-          <div className="rounded-lg border border-border bg-card divide-y divide-border">
-
-            <div className="flex flex-col gap-1.5 px-4 py-3">
-              <label className="text-sm font-medium">Senha atual</label>
-              <PasswordInput
-                placeholder="Digite sua senha atual"
-                error={errors.currentPassword?.message}
-                {...register('currentPassword', { required: 'Informe a senha atual' })}
-              />
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alterar Senha</p>
             </div>
 
-            <div className="flex flex-col gap-1.5 px-4 py-3">
-              <label className="text-sm font-medium">Nova senha</label>
-              <PasswordInput
-                placeholder="Nova senha"
-                error={errors.newPassword?.message}
-                {...register('newPassword', { required: 'Informe a nova senha' })}
-              />
-              <PolicyIndicator password={newPasswordValue} policy={policy} />
+            <div className="rounded-lg border border-border bg-card divide-y divide-border">
+
+              <div className="flex flex-col gap-1.5 px-4 py-3">
+                <label className="text-sm font-medium">Senha atual</label>
+                <PasswordInput
+                  placeholder="Digite sua senha atual"
+                  error={errors.currentPassword?.message}
+                  {...register('currentPassword', { required: 'Informe a senha atual' })}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 px-4 py-3">
+                <label className="text-sm font-medium">Nova senha</label>
+                <PasswordInput
+                  placeholder="Nova senha"
+                  error={errors.newPassword?.message}
+                  {...register('newPassword', { required: 'Informe a nova senha' })}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 px-4 py-3">
+                <label className="text-sm font-medium">Confirmar nova senha</label>
+                <PasswordInput
+                  placeholder="Repita a nova senha"
+                  error={errors.confirmPassword?.message}
+                  {...register('confirmPassword', {
+                    required: 'Confirme a nova senha',
+                    validate: (v) => v === newPasswordValue || 'As senhas não coincidem',
+                  })}
+                />
+              </div>
+
             </div>
+          </section>
 
-            <div className="flex flex-col gap-1.5 px-4 py-3">
-              <label className="text-sm font-medium">Confirmar nova senha</label>
-              <PasswordInput
-                placeholder="Repita a nova senha"
-                error={errors.confirmPassword?.message}
-                {...register('confirmPassword', {
-                  required: 'Confirme a nova senha',
-                  validate: (v) => v === newPasswordValue || 'As senhas não coincidem',
-                })}
-              />
+          {serverError && (
+            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2 flex flex-col gap-0.5">
+              {(Array.isArray(serverError) ? serverError : [serverError]).map((msg, i) => (
+                <p key={i}>{msg}</p>
+              ))}
             </div>
+          )}
 
-          </div>
-        </section>
+        </form>
 
-        {serverError && (
-          <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2 flex flex-col gap-0.5">
-            {(Array.isArray(serverError) ? serverError : [serverError]).map((msg, i) => (
-              <p key={i}>{msg}</p>
-            ))}
+        {policyChecks.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Critérios</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card divide-y divide-border">
+              {policyChecks.map((c) => (
+                <div key={c.label} className="flex items-center gap-2.5 px-4 py-2.5">
+                  <Check className={cn(
+                    'w-3.5 h-3.5 shrink-0 transition-colors',
+                    c.ok ? 'text-emerald-500' : 'text-muted-foreground opacity-30',
+                  )} />
+                  <span className={cn('text-sm transition-colors', c.ok ? 'text-foreground' : 'text-muted-foreground')}>
+                    {c.label}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-
-      </form>
+      </div>
     </div>
   )
 }
