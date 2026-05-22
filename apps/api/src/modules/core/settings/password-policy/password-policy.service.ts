@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
-import * as bcrypt from 'bcrypt'
+import * as argon2 from 'argon2'
 import { passwordPolicySchema } from '@nyx/schemas'
 import type { PasswordPolicy } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
@@ -31,7 +31,7 @@ export class PasswordPolicyService extends BaseSettingsService<PasswordPolicy> {
         take:    policy.historyCount,
       })
       for (const entry of history) {
-        if (await bcrypt.compare(password, entry.passwordHash)) {
+        if (await argon2.verify(entry.passwordHash, password)) {
           errors.push(`A senha não pode ser igual às últimas ${policy.historyCount} senhas utilizadas`)
           break
         }

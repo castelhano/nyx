@@ -6,7 +6,7 @@ import { Input } from './input'
 import { KeyHint } from '@/core/FieldRenderer'
 import { cn } from '@/lib/utils'
 
-interface PasswordInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
+interface PasswordInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'size'> {
   error?:   string
   keybind?: string
 }

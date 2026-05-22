@@ -211,7 +211,17 @@ pnpm update next
 
 Após upgrade, rodar `pnpm build` e verificar se há warnings de deprecação ou erros de tipo nas páginas dinâmicas.
 
-### 3.3 @hookform/resolvers
+### 3.3 react-imask
+
+`react-imask` 7.x suporta apenas React 18. Para React 19 é necessário a versão 8.x (mudança de API mínima — o hook `useIMask` e o componente `IMaskInput` mantêm a mesma assinatura, mas os tipos internos foram atualizados).
+
+```bash
+pnpm update react-imask --filter @nyx/web
+```
+
+Após atualizar, verificar os campos que usam `IMaskInput` (busca rápida em `apps/web/src`) e confirmar que `{...register(...)}` ainda propaga corretamente — o comportamento de `forwardRef` em `IMaskInput` muda ligeiramente no 8.x.
+
+### 3.4 @hookform/resolvers
 
 Está em `package.json` mas não é usado no código — `AutoForm` não aplica `zodResolver`, a validação acontece no servidor. Remover a dependência:
 
@@ -570,10 +580,10 @@ Para cada ícone com erro, buscar o novo nome no [lucide.dev](https://lucide.dev
 ## Checklist de PR por onda
 
 ```
-Onda 1 — [ ] pnpm update patches  [ ] app sobe
-Onda 2 — [ ] NestJS 11  [ ] CASL 7 (nomes confirmados)  [ ] argon2 + compat layer  [ ] login/senha funciona
-Onda 3 — [ ] React 19  [ ] Next 16  [ ] useParams nas 4 páginas  [ ] pnpm build sem erros
-Onda 4 — [ ] zod atualizado  [ ] zod-meta.ts migrado  [ ] metadata.builder _def.meta  [ ] GET /metadata retorna correto
-Onda 5 — [ ] @tailwindcss/postcss  [ ] @import tailwindcss  [ ] @theme no globals.css  [ ] dark mode visual ok
-Sweep  — [ ] @types/node@22  [ ] tsc --noEmit ok  [ ] lucide erros corrigidos
+Onda 1 — [x] pnpm update patches  [ ] app sobe
+Onda 2 — [x] NestJS 11  [x] CASL 7 (API compatível sem mudanças)  [x] argon2 (troca limpa, sem compat layer)  [ ] login/senha funciona
+Onda 3 — [x] React 19  [x] Next 16.2.6  [x] react-imask 7.x ok (peer dep >=0.14)  [x] useParams nas 4 páginas  [x] @hookform/resolvers removido  [ ] pnpm build sem erros
+Onda 4 — [x] zod 4.4.3  [x] zod-meta.ts → GlobalMeta augment (proto override removido)  [x] metadata.builder field.meta() + _def.entries  [x] filter.builder field.meta()  [ ] GET /metadata retorna correto
+Onda 5 — [x] @tailwindcss/postcss  [x] @import tailwindcss  [x] @theme no globals.css  [x] @variant dark  [x] tailwind.config.ts removido  [ ] dark mode visual ok
+Sweep  — [x] @types/node@22  [x] TypeScript 6.0.3  [x] module:Node16 na API  [x] lucide 1.16 sem renomes  [x] tsc --noEmit ok em api e web
 ```

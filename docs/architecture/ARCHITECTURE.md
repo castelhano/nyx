@@ -139,11 +139,11 @@ nyx/
 |------------|------|
 | **Next.js (App Router)** | UI framework — Server Components, file-based routing |
 | **TanStack Query** | Server state management — cache, background sync, invalidation |
-| **React Hook Form** | Form management, integrated with Zod via `zodResolver` |
+| **React Hook Form** | Form management — `AutoForm` uses uncontrolled validation; `zodResolver` not applied |
 | **Tailwind CSS** | Utility-first styling — design tokens via CSS custom properties |
 | **Lucide React** | Icon library — resolved via `lib/icons.ts` (no direct imports in components) |
 
-> **Planned upgrades (separate PRs):** Next.js 15, React 19, Tailwind CSS 4, NestJS 11, bcrypt → argon2.
+> **Planned upgrades (separate PRs):** Next.js 16, React 19, Tailwind CSS 4, NestJS 11, bcrypt → argon2.
 
 **No external primitive libraries** (no Radix UI or similar). All UI components are hand-rolled in TypeScript + Tailwind. Accessibility (ARIA, keyboard nav) is implemented manually where needed.
 

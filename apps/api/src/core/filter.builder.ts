@@ -30,7 +30,7 @@ export function buildFilterWhere(schema: ZodObject<any>, query: Record<string, u
 
   for (const [name, rawField] of Object.entries(schema.shape)) {
     const field     = rawField as ZodType
-    const meta      = (field as any)._fieldMeta ?? {}
+    const meta      = (field as any).meta?.() ?? {}
     const filterDef = resolveFilterDef(field, meta.filter)
     if (!filterDef) continue
 

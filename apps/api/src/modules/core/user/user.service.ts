@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
-import * as bcrypt from 'bcrypt'
+import * as argon2 from 'argon2'
 import { userSchema, User, CreateUserDto, UpdateUserDto } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
@@ -35,7 +35,7 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
 
   async create(dto: CreateUserDto): Promise<User> {
     const { password, ...rest } = dto
-    const passwordHash = await bcrypt.hash(password, 10)
+    const passwordHash = await argon2.hash(password)
     const user = await this.prisma.user.create({
       data: { ...rest, passwordHash, forcePasswordChange: rest.forcePasswordChange ?? true },
     }) as User
@@ -55,17 +55,17 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
 
   async changePassword(id: string, dto: { currentPassword: string; newPassword: string }): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id } }) as User
-    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash)
+    const valid = await argon2.verify(user.passwordHash, dto.currentPassword)
     if (!valid) throw new BadRequestException('Senha atual incorreta')
     await this.passwordPolicy.validate(dto.newPassword, id)
-    const passwordHash = await bcrypt.hash(dto.newPassword, 10)
+    const passwordHash = await argon2.hash(dto.newPassword)
     await this.prisma.user.update({ where: { id }, data: { passwordHash, forcePasswordChange: false } })
     await this.passwordPolicy.recordHistory(id, passwordHash)
   }
 
   async resetPassword(id: string, newPassword: string): Promise<void> {
     await this.passwordPolicy.validate(newPassword, id)
-    const passwordHash = await bcrypt.hash(newPassword, 10)
+    const passwordHash = await argon2.hash(newPassword)
     await this.prisma.user.update({ where: { id }, data: { passwordHash, forcePasswordChange: true } })
     await this.passwordPolicy.recordHistory(id, passwordHash)
   }

@@ -65,7 +65,7 @@ interface ToastCardProps {
 
 function ToastCard({ item, slideFrom, onDismiss }: ToastCardProps) {
   const [visible, setVisible]   = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))

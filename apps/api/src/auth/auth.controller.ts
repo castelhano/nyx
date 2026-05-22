@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Patch, Body, Req, UnauthorizedException, UseGuards } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import * as bcrypt from 'bcrypt'
+import * as argon2 from 'argon2'
 import { z } from 'zod'
 import { PrismaService } from '../prisma/prisma.service'
 import { UserService } from '../modules/core/user/user.service'
@@ -25,7 +25,7 @@ export class AuthController {
     const { username, password } = loginSchema.parse(body)
 
     const user = await this.userService.findByUsername(username)
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    if (!user || !(await argon2.verify(user.passwordHash, password))) {
       throw new UnauthorizedException('Invalid credentials')
     }
 

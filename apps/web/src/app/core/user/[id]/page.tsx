@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { Save, ArrowLeft, ChevronDown, Copy } from 'lucide-react'
@@ -45,12 +45,8 @@ interface FormValues {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function UserDetailPage({
-  params,
-}: {
-  params: { id: string }
-}) {
-  const { id }      = params
+export default function UserDetailPage() {
+  const { id }      = useParams<{ id: string }>()
   const router      = useRouter()
   const queryClient = useQueryClient()
   const isNew       = id === 'new'

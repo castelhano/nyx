@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { Plus, ArrowLeft, Download } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
@@ -79,8 +79,8 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
 
 // Ponto de entrada. Só chama useMetadata aqui — os demais hooks ficam nos
 // componentes filhos para evitar conflito de topbar entre lista e singleton.
-export default function ResourceListPage({ params }: { params: { domain: string; resource: string } }) {
-  const { domain, resource } = params
+export default function ResourceListPage() {
+  const { domain, resource } = useParams<{ domain: string; resource: string }>()
   const searchParams = useSearchParams()
   const { data: meta, error } = useMetadata(domain, resource)
 

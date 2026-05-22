@@ -1,6 +1,6 @@
 'use client'
 
-import { notFound, useRouter } from 'next/navigation'
+import { notFound, useRouter, useParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { DomainCard } from '@/components/ui/domain-card'
@@ -8,8 +8,8 @@ import { useCardNavigation } from '@/core/useCardNavigation'
 import { useShortcut } from '@/lib/keywatch'
 import { useDiscovery } from '@/core/useDiscovery'
 
-export default function DomainPage({ params }: { params: { domain: string } }) {
-  const { domain: domainKey } = params
+export default function DomainPage() {
+  const { domain: domainKey } = useParams<{ domain: string }>()
   const router = useRouter()
   const { data: domains } = useDiscovery()
 

@@ -68,7 +68,7 @@ function deriveChildren(resource: string): ChildResourceDef[] | undefined {
 }
 
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
-  const schemaMeta = (schema as any)._schemaMeta ?? (schema as any)._fieldMeta ?? {}
+  const schemaMeta = (schema as any)._schemaMeta ?? {}
 
   const rawGroups = schemaMeta.groups as Record<string, string[]> | undefined
   const fieldGroupMap = new Map<string, string>()
@@ -84,14 +84,14 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
 
   for (const [name, rawField] of Object.entries(schema.shape)) {
     const field = rawField as ZodType
-    const meta  = (field as any)._fieldMeta ?? {}
+    const meta  = (field as any).meta?.() ?? {}
     const type  = getType(field)
     const inner = unwrap(field)
 
     const isPassword  = name === 'passwordHash' || meta.widget === 'password'
     const isTimestamp = name === 'createdAt' || name === 'updatedAt'
     const isId        = name === 'id'
-    const defaultValue = field instanceof ZodDefault ? (field as any)._def.defaultValue() : undefined
+    const defaultValue = field instanceof ZodDefault ? (field as any)._def.defaultValue : undefined
 
     let listVisibility: 'visible' | 'hidden' | 'never'
     if (meta.listVisibility) {
@@ -109,7 +109,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       label:          meta.label      ?? toTitleCase(name),
       type,
       required:       isRequired(field),
-      options:        type === 'enum' ? (inner as ZodEnum<any>)._def.values : undefined,
+      options:        type === 'enum' ? Object.keys((inner as ZodEnum<any>)._def.entries ?? {}) : undefined,
       ...(defaultValue !== undefined ? { defaultValue } : {}),
       listVisibility,
       showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),

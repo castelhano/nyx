@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Save, ArrowLeft, LayoutList, Trash2 } from 'lucide-react'
 import { AutoForm } from '@/core/AutoForm'
@@ -17,8 +17,8 @@ import { msgs } from '@/lib/messages'
 
 const FORM_ID = 'record-form'
 
-export default function ResourceDetailPage({ params }: { params: { domain: string; resource: string; id: string } }) {
-  const { domain, resource, id } = params
+export default function ResourceDetailPage() {
+  const { domain, resource, id } = useParams<{ domain: string; resource: string; id: string }>()
   const router      = useRouter()
   const searchParams = useSearchParams()
   const isNew        = id === 'new'

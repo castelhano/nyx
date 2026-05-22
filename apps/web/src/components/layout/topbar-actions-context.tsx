@@ -9,7 +9,7 @@ export interface TopbarAction {
   type?:     'submit'
   form?:     string
   disabled?: boolean
-  variant?:  'default' | 'outline' | 'ghost'
+  variant?:  'default' | 'outline' | 'ghost' | 'destructive'
   keybind?:  string   // ex: 'Alt+F9' — exibido no title do botão
   // primary: sempre visível no mobile; false: colapsa no menu ⋯
   primary?:  boolean
