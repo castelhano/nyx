@@ -127,23 +127,25 @@ nyx/
 
 | Technology | Role |
 |------------|------|
-| **NestJS** | Main framework — DI container, modules, route orchestration |
+| **NestJS 11** | Main framework — DI container, modules, route orchestration |
 | **Prisma ORM 7** | Database access, migrations, type-safe queries — multi-file schema in `prisma/schema/` |
-| **Zod** | Schema definition and validation (shared with frontend) |
+| **Zod 4** | Schema definition and validation (shared with frontend) — field metadata via native `.meta()` |
 | **Passport.js / @nestjs/jwt** | Authentication — JWT strategy and route guards |
-| **CASL** | Ability-based authorization — `can('update', 'Company')` |
+| **CASL 7** | Ability-based authorization — `can('update', 'Company')` |
+| **argon2** | Password hashing for all user credentials |
 
 ### Frontend
 
 | Technology | Role |
 |------------|------|
-| **Next.js (App Router)** | UI framework — Server Components, file-based routing |
-| **TanStack Query** | Server state management — cache, background sync, invalidation |
-| **React Hook Form** | Form management — `AutoForm` uses uncontrolled validation; `zodResolver` not applied |
-| **Tailwind CSS** | Utility-first styling — design tokens via CSS custom properties |
-| **Lucide React** | Icon library — resolved via `lib/icons.ts` (no direct imports in components) |
+| **Next.js 16 (App Router)** | UI framework — client pages read dynamic route segments via `useParams()` |
+| **React 19** | UI rendering |
+| **TanStack Query 5** | Server state management — cache, background sync, invalidation |
+| **React Hook Form 7** | Form management — `AutoForm` uses uncontrolled validation; `zodResolver` not applied |
+| **Tailwind CSS 4** | Utility-first styling — CSS-first config via `@theme` in `globals.css`; no `tailwind.config.ts` |
+| **Lucide React 1.x** | Icon library — resolved via `lib/icons.ts` (no direct imports in components) |
 
-> **Planned upgrades (separate PRs):** Next.js 16, React 19, Tailwind CSS 4, NestJS 11, bcrypt → argon2.
+**Runtime:** Node.js 22 LTS · TypeScript 6 · pnpm 10 workspaces.
 
 **No external primitive libraries** (no Radix UI or similar). All UI components are hand-rolled in TypeScript + Tailwind. Accessibility (ARIA, keyboard nav) is implemented manually where needed.
 
@@ -251,6 +253,10 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Resource icon | none (hidden from sidebar) | `withMeta(schema, { icon: 'Building' })` |
 | Field label | `camelCase → Title Case` | `.meta({ label: 'Legal Name' })` |
 | Top-level resource | `true` if schema has no `breadcrumb` | determined automatically |
+
+> **Zod 4 — `.meta()` must be the last call in the chain.** It clones the type and stores data in Zod's `globalRegistry`. The `metadata.builder` reads it back via `field.meta()` (zero-arg call). Wrapping with `.optional()` or `.default()` *after* `.meta()` creates a new type with no metadata registered — always chain as `z.string().[validators].meta({...})`.
+>
+> Enum options are in `_def.entries` (object, not array). Default values are in `_def.defaultValue` directly (not a function).
 | Field shown in list | `visible` for non-id, non-password, non-timestamp fields | `.meta({ listVisibility: 'hidden' })` or `.meta({ listVisibility: 'never' })` |
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
@@ -908,7 +914,7 @@ All models follow these conventions:
 | `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change |
 | `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset`; `DropdownItem` accepts `href` (renders `Link`) or `onClick` |
 | `AssociationList` | `components/ui/association-list.tsx` | many-to-many with a per-row role select; "+ Add" opens a searchable combobox filtered to unassociated items; items grouped by parent entity when `companies` prop is provided; local state — persists only on topbar Save |
-| `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (read/create/update/delete) as columns; section-level "Marcar todos / Desmarcar todos"; global filter input; local state — persists only on topbar Save |
+| `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (read/create/update/delete) as columns; section-level select-all / deselect-all toggle; global filter input; local state — persists only on topbar Save |
 | `ThemeCard` | `components/ui/theme-card.tsx` | theme selector card with color swatch preview; `selected` state shows checkmark; used in the preferences page |
 | `PasswordInput` | `components/ui/password-input.tsx` | `Input` wrapper with Eye/EyeOff toggle; `keybind` prop renders a `KeyHint` badge to the left of the toggle; uses `forwardRef` so `{...register(...)}` from React Hook Form works correctly — any input wrapper that receives RHF spread must use `forwardRef` |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
@@ -992,7 +998,7 @@ Custom pages pass string literals directly to `toast.success()` / `toast.error()
 
 ## 8. Design System
 
-Tokens are defined as HSL custom properties in `globals.css` and mapped in `tailwind.config.ts`. This allows full theme switching by changing a single CSS layer.
+Tokens are defined as HSL custom properties in `globals.css` and registered in the `@theme` block in the same file. Tailwind CSS 4 uses a CSS-first approach — there is no `tailwind.config.ts`. This allows full theme switching by changing a single CSS layer.
 
 Token categories: `background`, `foreground`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `sidebar-*`.
 
