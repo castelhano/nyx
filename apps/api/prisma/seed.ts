@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
-import * as bcrypt from 'bcrypt'
+import * as argon2 from 'argon2'
 
 const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
 const prisma  = new PrismaClient({ adapter })
@@ -13,7 +13,7 @@ async function main() {
     return
   }
 
-  const passwordHash = await bcrypt.hash('admin123', 10)
+  const passwordHash = await argon2.hash('admin123')
   await prisma.user.create({
     data: {
       name:         'Admin',

@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@nyx/schemas": ["../../packages/schemas/index.ts"],
+      "@nyx/schemas/*": ["../../packages/schemas/*"],
+      "@nyx/types": ["../../packages/types/index.ts"]
+    }
+  },
+  "include": ["prisma/**/*"]
+}
