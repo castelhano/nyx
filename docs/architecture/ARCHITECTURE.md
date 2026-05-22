@@ -82,7 +82,9 @@ nyx/
 │           │       ├── breadcrumb.tsx
 │           │       ├── dropdown.tsx        # Portal-based, viewport-aware; DropdownItem supports href
 │           │       ├── tabs.tsx
-│           │       └── theme-card.tsx      # Reusable theme selector card with color swatch
+│           │       ├── theme-card.tsx      # Reusable theme selector card with color swatch
+│           │       ├── forbidden.tsx       # Shown on 403 / create permission missing on /new
+│           │       └── not-found.tsx       # Shown on 404 or any other metadata error
 │           ├── core/               # Shared frontend infrastructure
 │           │   ├── AutoForm.tsx
 │           │   ├── AutoList.tsx
@@ -421,6 +423,14 @@ These components consume the `GET /metadata` response to render their UI without
 - **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `listVisibility: 'visible'` or `'hidden'`. Supports CSV export when `allowCsv` is set. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`). Accepts an `onAction` prop as an escape hatch for row actions that cannot be expressed declaratively in the schema (see §4.13).
 - **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
+
+**Error states in generic pages** — both `[domain]/[resource]/page.tsx` and `[domain]/[resource]/[id]/page.tsx` resolve `useMetadata` first and apply guards before rendering any content:
+
+| Condition | Outcome |
+|---|---|
+| Metadata returns 403, or `permissions.read` is false | `<Forbidden />` |
+| `id === 'new'` and `permissions.create` is false | `<Forbidden />` |
+| Any other metadata error (e.g. 404 — resource key does not exist) | `<NotFound />` |
 
 ### 4.12 Filter System
 
@@ -917,6 +927,8 @@ All models follow these conventions:
 | `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (read/create/update/delete) as columns; section-level select-all / deselect-all toggle; global filter input; local state — persists only on topbar Save |
 | `ThemeCard` | `components/ui/theme-card.tsx` | theme selector card with color swatch preview; `selected` state shows checkmark; used in the preferences page |
 | `PasswordInput` | `components/ui/password-input.tsx` | `Input` wrapper with Eye/EyeOff toggle; `keybind` prop renders a `KeyHint` badge to the left of the toggle; uses `forwardRef` so `{...register(...)}` from React Hook Form works correctly — any input wrapper that receives RHF spread must use `forwardRef` |
+| `Forbidden` | `components/ui/forbidden.tsx` | Rendered by generic pages on 403, `permissions.read` false, or `id === 'new'` with `permissions.create` false |
+| `NotFound` | `components/ui/not-found.tsx` | Rendered by generic pages on any non-403 metadata error (e.g. 404 — resource does not exist) |
 | `Collapsible` | — | implemented inline with `useState` + CSS transition — no separate component |
 | `Toaster` | `components/ui/toast.tsx` | `createPortal` to `document.body`; groups toasts by resolved position; responsive (desktop vs mobile default); enter/exit CSS transition per position direction |
 

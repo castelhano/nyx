@@ -6,6 +6,7 @@ import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SettingsPanel } from '@/core/SettingsPanel'
 import { Forbidden } from '@/components/ui/forbidden'
+import { NotFound } from '@/components/ui/not-found'
 import { useMetadata } from '@/core/useMetadata'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -85,6 +86,7 @@ export default function ResourceListPage() {
   const { data: meta, error } = useMetadata(domain, resource)
 
   if ((error as any)?.status === 403 || (meta && !meta.permissions?.read)) return <Forbidden />
+  if (error) return <NotFound />
 
   const filters: Record<string, string> = {}
   for (const [key, value] of searchParams.entries()) {

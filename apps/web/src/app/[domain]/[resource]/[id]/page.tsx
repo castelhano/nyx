@@ -9,6 +9,7 @@ import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { useMetadata } from '@/core/useMetadata'
 import { useDiscovery } from '@/core/useDiscovery'
 import { Forbidden } from '@/components/ui/forbidden'
+import { NotFound } from '@/components/ui/not-found'
 import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useKeywatch } from '@/lib/keywatch'
@@ -51,7 +52,9 @@ export default function ResourceDetailPage() {
   const { data: meta, error } = useMetadata(domain, resource)
   const { data: domains }     = useDiscovery()
 
-  const isForbidden = (error as any)?.status === 403 || (!!meta && !meta.permissions?.read)
+  const isForbidden = (error as any)?.status === 403
+    || (!!meta && !meta.permissions?.read)
+    || (!!meta && isNew && !meta.permissions?.create)
 
   const canCreate = meta?.permissions?.create !== false
   const canUpdate = meta?.permissions?.update !== false
@@ -146,6 +149,7 @@ export default function ResourceDetailPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isForbidden) return <Forbidden />
+  if (error) return <NotFound />
 
   async function handleSubmit(data: Record<string, unknown>) {
     setIsPending(true)
