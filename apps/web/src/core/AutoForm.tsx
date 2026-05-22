@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
@@ -21,13 +21,37 @@ interface Props {
 
 export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, onSubmit, formId, resetSignal }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
-  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
-    defaultValues,
-  })
+  const { coreRef }  = useKeywatch()
+  const keybindGroup = useRef(`autoform-${resource}`)
+  const tabsRef      = useRef<TabsHandle>(null)
+
   const visibleFields = meta?.fields.filter((f) => f.showInForm) ?? []
-  const { coreRef }   = useKeywatch()
-  const keybindGroup  = useRef(`autoform-${resource}`)
-  const tabsRef       = useRef<TabsHandle>(null)
+
+  // Mescla defaults do schema com os valores externos.
+  // Usa meta?.resource como dep para re-calcular quando o resource muda,
+  // e defaultValues para sync com dados do servidor.
+  const mergedValues = useMemo(() => {
+    const schemaDefaults = meta
+      ? Object.fromEntries(
+          meta.fields
+            .filter((f) => f.defaultValue !== undefined && !(f.name in (defaultValues ?? {})))
+            .map((f) => [f.name, f.defaultValue]),
+        )
+      : {}
+    return { ...schemaDefaults, ...(defaultValues ?? {}) }
+  }, [meta?.resource, defaultValues]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // `values` (RHF 7.31+): sincroniza o form com dados externos via deep-equal,
+  // eliminando os useEffects manuais de reset que havia antes.
+  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
+    values: mergedValues,
+  })
+
+  // Reset explícito apenas quando o sinal de reset muda (alt+l)
+  useEffect(() => {
+    if (!resetSignal) return
+    reset(mergedValues)
+  }, [resetSignal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Registra Ctrl+Shift+[keybind] para campos que declaram keybind no schema.
   // Se o campo estiver em outra aba, troca de aba antes de focar.
@@ -37,12 +61,11 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
     if (!core) return
     const group = keybindGroup.current
 
-    // Monta mapa fieldName → tabIndex para campos agrupados
     const tabIndexMap = new Map<string, number>()
     if (meta.groups?.length) {
       const groupedNames = new Set(meta.groups.flatMap((g) => g.fields))
       const hasUngrouped = visibleFields.some((f) => !groupedNames.has(f.name))
-      const offset       = hasUngrouped ? 1 : 0  // "Geral" ocupa index 0 quando existe
+      const offset       = hasUngrouped ? 1 : 0
 
       meta.groups.forEach((g, i) => {
         g.fields.forEach((name) => tabIndexMap.set(name, i + offset))
@@ -75,33 +98,6 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
 
     return () => { core.unbindGroup(group) }
   }, [meta?.resource]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function buildSchemaDefaults(exclude: Record<string, unknown> = {}) {
-    if (!meta) return {}
-    return Object.fromEntries(
-      meta.fields
-        .filter((f) => f.defaultValue !== undefined && !(f.name in exclude))
-        .map((f) => [f.name, f.defaultValue]),
-    )
-  }
-
-  useEffect(() => {
-    if (!meta) return
-    const schemaDefaults = buildSchemaDefaults(defaultValues ?? {})
-    reset({ ...schemaDefaults, ...defaultValues })
-  }, [meta?.resource])
-
-  useEffect(() => {
-    if (!defaultValues) return
-    const schemaDefaults = buildSchemaDefaults(defaultValues)
-    reset({ ...schemaDefaults, ...defaultValues })
-  }, [JSON.stringify(defaultValues)])
-
-  useEffect(() => {
-    if (!resetSignal || !meta) return
-    const schemaDefaults = buildSchemaDefaults(defaultValues ?? {})
-    reset({ ...schemaDefaults, ...defaultValues })
-  }, [resetSignal])
 
   if (isLoading) return <div className="text-sm text-muted-foreground">Carregando…</div>
   if (!meta) return null

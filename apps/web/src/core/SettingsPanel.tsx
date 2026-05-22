@@ -118,9 +118,8 @@ export function SettingsPanel({ domain, resource }: Props) {
   async function onSave(data: Record<string, unknown>) {
     try {
       const res = await apiFetch(`/${domain}/${resource}`, {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(data),
+        method: 'PUT',
+        body:   JSON.stringify(data),
       })
       if (!res.ok) throw new Error('Failed to save')
       queryClient.invalidateQueries({ queryKey: [domain, resource] })

@@ -300,9 +300,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     if (action.method && action.endpointTemplate) {
       try {
         const res = await apiFetch(resolveTemplate(action.endpointTemplate, row), {
-          method:  action.method,
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(action.body ?? {}),
+          method: action.method,
+          body:   JSON.stringify(action.body ?? {}),
         })
         if (!res.ok) throw new Error('Failed')
         queryClient.invalidateQueries({ queryKey: [domain, resource] })
@@ -398,18 +397,18 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     }
   }, { desc: 'Tabela - Editar linha selecionada', icon: SquarePen, origin: 'apps.web.src.core.AutoList' })
 
-  function handleSort(col: MetadataField) {
+  const handleSort = useCallback((col: MetadataField) => {
     setSorting((prev) => {
       if (prev[0]?.id !== col.name) return [{ id: col.name, desc: false }]
       if (!prev[0].desc)            return [{ id: col.name, desc: true }]
       return []
     })
     setPage(1)
-  }
+  }, [])
 
   const columns = useMemo(
     () => buildColumns(meta?.fields ?? [], sorting, handleSort, meta?.permissions?.update !== false ? onEdit : undefined, visibleRowActions, handleRowAction),
-    [meta?.fields, sorting, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
+    [meta?.fields, sorting, handleSort, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
   )
 
   const table = useReactTable({

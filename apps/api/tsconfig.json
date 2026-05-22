@@ -6,6 +6,8 @@
     "ignoreDeprecations": "6.0",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
+    "rootDir": "src",
+    "outDir": "dist",
     "baseUrl": ".",
     "paths": {
       "@nyx/schemas": ["../../packages/schemas/index.ts"],
@@ -13,6 +15,6 @@
       "@nyx/types": ["../../packages/types/index.ts"]
     }
   },
-  "include": ["src/**/*", "../../packages/schemas/**/*", "../../packages/types/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

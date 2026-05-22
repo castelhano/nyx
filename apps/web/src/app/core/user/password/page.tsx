@@ -78,7 +78,6 @@ export default function ChangePasswordPage() {
     setIsPending(true)
     const res = await apiFetch(`/core/user/${user.id}/change-password`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         currentPassword: values.currentPassword,
         newPassword:     values.newPassword,

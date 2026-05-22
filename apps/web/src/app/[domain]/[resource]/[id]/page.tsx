@@ -19,7 +19,7 @@ const FORM_ID = 'record-form'
 
 export default function ResourceDetailPage() {
   const { domain, resource, id } = useParams<{ domain: string; resource: string; id: string }>()
-  const router      = useRouter()
+  const router       = useRouter()
   const searchParams = useSearchParams()
   const isNew        = id === 'new'
 
@@ -27,28 +27,36 @@ export default function ResourceDetailPage() {
   const [resetSignal, setResetSignal] = useState(0)
   const { toast } = useToast()
 
-  const contextParams:  Record<string, string>  = {}
+  const contextParams:   Record<string, string>  = {}
   const derivedDefaults: Record<string, unknown> = {}
   for (const [key, value] of searchParams.entries()) {
     if (key.startsWith('_')) derivedDefaults[key.slice(1)] = value
     else                     contextParams[key]             = value
   }
 
-  const newRecordDefaults = isNew ? { ...contextParams, ...derivedDefaults } : undefined
-  const readonlyFields    = isNew ? Object.keys(contextParams) : []
-  const contextQuery      = Object.keys(contextParams).length
+  const readonlyFields = isNew ? Object.keys(contextParams) : []
+  const contextQuery   = Object.keys(contextParams).length
     ? `?${new URLSearchParams(contextParams)}`
     : ''
   const listPath = `/${domain}/${resource}${contextQuery}`
 
+  // Memoizado para referência estável — evita resets desnecessários no AutoForm (prop values)
+  const newRecordDefaults = useMemo(
+    () => isNew ? { ...contextParams, ...derivedDefaults } : undefined,
+    [isNew, searchParams], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  // ── Todos os hooks chamados incondicionalmente ────────────────────────────
+
   const { data: meta, error } = useMetadata(domain, resource)
   const { data: domains }     = useDiscovery()
 
-  if ((error as any)?.status === 403 || (meta && !meta.permissions?.read)) return <Forbidden />
+  const isForbidden = (error as any)?.status === 403 || (!!meta && !meta.permissions?.read)
 
   const canCreate = meta?.permissions?.create !== false
   const canUpdate = meta?.permissions?.update !== false
   const canDelete = meta?.permissions?.delete === true
+
   const { data: record } = useQuery<Record<string, unknown>>({
     queryKey: [domain, resource, id],
     queryFn:  async () => {
@@ -56,14 +64,14 @@ export default function ResourceDetailPage() {
       if (!res.ok) throw new Error('Failed to fetch record')
       return res.json()
     },
-    enabled: !isNew,
+    enabled: !isNew && !isForbidden,
   })
 
   const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
 
   const visibleChildren = useMemo(
     () => meta?.children?.filter((child) => {
-      if (!child.privatePermissions) return true  // herda do pai — sempre acessível
+      if (!child.privatePermissions) return true
       const childDomain = child.domain ?? domain
       return domains.some((d) => d.key === childDomain && d.resources.some((r) => r.key === child.resource))
     }) ?? [],
@@ -118,7 +126,7 @@ export default function ResourceDetailPage() {
       })
     }
     return () => { core.unbindGroup('_children_kb') }
-  }, [isNew, visibleChildren, record?.id])
+  }, [isNew, visibleChildren, record?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useShortcut('alt+g', () => {
     if (isNew ? canCreate : canUpdate)
@@ -135,14 +143,17 @@ export default function ResourceDetailPage() {
     origin: 'apps/web/src/app/[domain]/[resource]/[id]/page', context: 'all',
   })
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (isForbidden) return <Forbidden />
+
   async function handleSubmit(data: Record<string, unknown>) {
     setIsPending(true)
     try {
       const path = isNew ? `/${domain}/${resource}` : `/${domain}/${resource}/${id}`
       const res  = await apiFetch(path, {
-        method:  isNew ? 'POST' : 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(data),
+        method: isNew ? 'POST' : 'PATCH',
+        body:   JSON.stringify(data),
       })
       if (!res.ok) throw new Error('Failed to save')
       toast.success(isNew ? msgs.created() : msgs.updated())
