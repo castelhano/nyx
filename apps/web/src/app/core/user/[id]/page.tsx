@@ -12,6 +12,8 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { KeyHint } from '@/core/FieldRenderer'
 import { PolicyIndicator } from '@/core/PolicyIndicator'
+import { usePageGuard } from '@/core/usePageGuard'
+import { useRecordQuery } from '@/core/useRecordQuery'
 import { useDiscovery } from '@/core/useDiscovery'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useFieldKeybinds } from '@/lib/keywatch'
@@ -69,20 +71,16 @@ export default function UserDetailPage() {
   const permissionInit = useRef(false)
   const copyComboRef   = useRef<HTMLDivElement>(null)
 
-  const { data: discovery } = useDiscovery()
-
   // ── data fetching ──────────────────────────────────────────────────────────
 
-  const { data: user } = useQuery({
-    queryKey: ['core', 'user', id],
-    queryFn:  async () => {
-      const res = await apiFetch(`/core/user/${id}`)
-      if (!res.ok) throw new Error('Failed to fetch user')
-      return res.json() as Promise<Record<string, unknown>>
-    },
-    enabled:   !isNew,
-    staleTime: 30_000,
-  })
+  const { data: user, error: userError } = useRecordQuery(
+    ['core', 'user', id],
+    `/core/user/${id}`,
+    { enabled: !isNew, staleTime: 30_000 },
+  )
+
+  const { guardNode, canCreate, canUpdate } = usePageGuard('core', 'user', isNew, userError ?? undefined)
+  const { data: discovery } = useDiscovery()
 
   const { data: allBranches } = useQuery({
     queryKey: ['core', 'branch', 'all'],
@@ -254,8 +252,10 @@ export default function UserDetailPage() {
   // ── topbar & shortcuts ─────────────────────────────────────────────────────
 
   useTopbarActions(
-    [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true }],
-    [isPending],
+    (isNew ? canCreate : canUpdate)
+      ? [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true }]
+      : [],
+    [isPending, isNew, canCreate, canUpdate],
   )
 
   useShortcut('alt+g', () => {
@@ -510,6 +510,8 @@ export default function UserDetailPage() {
   }
 
   // ── render ─────────────────────────────────────────────────────────────────
+
+  if (guardNode) return guardNode
 
   return (
     <div className="p-6 space-y-4">

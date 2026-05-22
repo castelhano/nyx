@@ -5,14 +5,13 @@ import { Plus, ArrowLeft, Download } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SettingsPanel } from '@/core/SettingsPanel'
-import { Forbidden } from '@/components/ui/forbidden'
-import { NotFound } from '@/components/ui/not-found'
-import { useMetadata } from '@/core/useMetadata'
+import { usePageGuard } from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { downloadCsv } from '@/lib/csv'
 import type { ResourceMetadata } from '@nyx/types'
+
 
 // Renderiza a lista padrão de um recurso. Componente separado para isolar hooks
 // e permitir que [resource]/page.tsx delegue para SettingsPanel sem conflito.
@@ -78,15 +77,14 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
   )
 }
 
-// Ponto de entrada. Só chama useMetadata aqui — os demais hooks ficam nos
+// Ponto de entrada. Só chama usePageGuard aqui — os demais hooks ficam nos
 // componentes filhos para evitar conflito de topbar entre lista e singleton.
 export default function ResourceListPage() {
   const { domain, resource } = useParams<{ domain: string; resource: string }>()
   const searchParams = useSearchParams()
-  const { data: meta, error } = useMetadata(domain, resource)
+  const { guardNode, meta } = usePageGuard(domain, resource)
 
-  if ((error as any)?.status === 403 || (meta && !meta.permissions?.read)) return <Forbidden />
-  if (error) return <NotFound />
+  if (guardNode) return guardNode
 
   const filters: Record<string, string> = {}
   for (const [key, value] of searchParams.entries()) {

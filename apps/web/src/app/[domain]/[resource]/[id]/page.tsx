@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
 import { Save, ArrowLeft, LayoutList, Trash2 } from 'lucide-react'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
-import { useMetadata } from '@/core/useMetadata'
+import { usePageGuard } from '@/core/usePageGuard'
+import { useRecordQuery } from '@/core/useRecordQuery'
 import { useDiscovery } from '@/core/useDiscovery'
-import { Forbidden } from '@/components/ui/forbidden'
-import { NotFound } from '@/components/ui/not-found'
 import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useKeywatch } from '@/lib/keywatch'
@@ -49,26 +47,15 @@ export default function ResourceDetailPage() {
 
   // ── Todos os hooks chamados incondicionalmente ────────────────────────────
 
-  const { data: meta, error } = useMetadata(domain, resource)
-  const { data: domains }     = useDiscovery()
+  const { data: domains } = useDiscovery()
 
-  const isForbidden = (error as any)?.status === 403
-    || (!!meta && !meta.permissions?.read)
-    || (!!meta && isNew && !meta.permissions?.create)
+  const { data: record, error: recordError } = useRecordQuery(
+    [domain, resource, id],
+    `/${domain}/${resource}/${id}`,
+    { enabled: !isNew },
+  )
 
-  const canCreate = meta?.permissions?.create !== false
-  const canUpdate = meta?.permissions?.update !== false
-  const canDelete = meta?.permissions?.delete === true
-
-  const { data: record } = useQuery<Record<string, unknown>>({
-    queryKey: [domain, resource, id],
-    queryFn:  async () => {
-      const res = await apiFetch(`/${domain}/${resource}/${id}`)
-      if (!res.ok) throw new Error('Failed to fetch record')
-      return res.json()
-    },
-    enabled: !isNew && !isForbidden,
-  })
+  const { guardNode, meta, canCreate, canUpdate, canDelete } = usePageGuard(domain, resource, isNew, recordError ?? undefined)
 
   const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
 
@@ -148,8 +135,7 @@ export default function ResourceDetailPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (isForbidden) return <Forbidden />
-  if (error) return <NotFound />
+  if (guardNode) return guardNode
 
   async function handleSubmit(data: Record<string, unknown>) {
     setIsPending(true)

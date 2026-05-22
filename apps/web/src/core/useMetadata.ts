@@ -3,17 +3,17 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ResourceMetadata } from '@nyx/types'
 import { apiFetch } from '@/lib/auth'
+import { httpError, httpRetry } from '@/lib/query'
 
 export function useMetadata(domain: string, resource: string) {
   return useQuery<ResourceMetadata>({
     queryKey: ['metadata', domain, resource],
     queryFn: async () => {
       const res = await apiFetch(`/${domain}/${resource}/metadata`)
-      if (res.status === 403) throw Object.assign(new Error('Forbidden'), { status: 403 })
-      if (!res.ok) throw new Error('Failed to fetch metadata')
+      if (!res.ok) throw httpError(res.status)
       return res.json()
     },
     staleTime: process.env.NODE_ENV === 'production' ? Infinity : 0,
-    retry: (_, err: unknown) => (err as { status?: number })?.status !== 403,
+    retry:     httpRetry,
   })
 }

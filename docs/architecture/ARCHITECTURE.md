@@ -69,6 +69,7 @@ nyx/
 │           │   ├── auth-context.tsx    # AuthProvider + useAuth() — fetches /auth/me, applies theme
 │           │   ├── utils.ts
 │           │   ├── csv.ts
+│           │   ├── query.ts        # httpError() and httpRetry() — shared fetch error primitives
 │           │   └── keywatch/
 │           ├── components/
 │           │   ├── layout/
@@ -93,7 +94,9 @@ nyx/
 │           │   ├── FieldRenderer.tsx
 │           │   ├── PolicyIndicator.tsx # Password policy hint strip — reused in user/[id] and password page
 │           │   ├── useMetadata.ts
-│           │   └── useDiscovery.ts    # Hook for GET /discovery — replaces static domains.ts
+│           │   ├── useDiscovery.ts    # Hook for GET /discovery — replaces static domains.ts
+│           │   ├── usePageGuard.ts    # Resolves guardNode + permission flags for any page
+│           │   └── useRecordQuery.ts  # Standard useQuery wrapper for single-record fetches by ID
 │           └── app/
 │               ├── page.tsx
 │               ├── [domain]/
@@ -406,6 +409,29 @@ app/[domain]/[resource]/[id]/page.tsx
 Next.js App Router resolves static segments before dynamic ones, so no configuration is needed — the file just takes precedence.
 
 **Conventions for custom pages:**
+
+Every custom detail page follows this hook pattern:
+
+```typescript
+// 1. fetch the primary record — useRecordQuery handles retry and error shape
+const { data: foo, error: fooError } = useRecordQuery(
+  ['domain', 'foo', id],
+  `/domain/foo/${id}`,
+  { enabled: !isNew, staleTime: 30_000 },
+)
+
+// 2. guard — covers metadata errors, permission checks, and record 404
+const { guardNode, canCreate, canUpdate, canDelete } = usePageGuard('domain', 'foo', isNew, fooError ?? undefined)
+
+// ... all remaining hooks (useDiscovery, useQuery for related data, useEffect, useTopbarActions, useShortcut) ...
+
+// 3. single guard exit — no page-level Forbidden/NotFound imports needed
+if (guardNode) return guardNode
+```
+
+- `useRecordQuery` must be called **before** `usePageGuard` so `fooError` is in scope
+- `usePageGuard` returns `guardNode` (`null` | `<Forbidden />` | `<NotFound />`) and the resolved permission flags
+- Related-data queries (collections, associations) use plain `useQuery` — their errors do not trigger `guardNode`
 - Keep the same topbar pattern (`useTopbarActions` + `FORM_ID` + `form.requestSubmit()`)
 - Keep the same shortcuts (`alt+g` save, `alt+v` back)
 - Keep `AutoBreadcrumb` — pass `domain`, `resource`, `id`, `recordName`
@@ -424,13 +450,18 @@ These components consume the `GET /metadata` response to render their UI without
 - **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
 
-**Error states in generic pages** — both `[domain]/[resource]/page.tsx` and `[domain]/[resource]/[id]/page.tsx` resolve `useMetadata` first and apply guards before rendering any content:
+**Error states** — all pages (generic and custom) use `usePageGuard` + `useRecordQuery` to resolve guard state before rendering. `<Forbidden />` and `<NotFound />` are never imported directly by pages — they are returned as `guardNode`.
 
 | Condition | Outcome |
 |---|---|
 | Metadata returns 403, or `permissions.read` is false | `<Forbidden />` |
 | `id === 'new'` and `permissions.create` is false | `<Forbidden />` |
 | Any other metadata error (e.g. 404 — resource key does not exist) | `<NotFound />` |
+| Record fetch returns any non-2xx (e.g. 404 — record ID does not exist) | `<NotFound />` |
+
+**`lib/query.ts` — shared fetch error primitives** used by `useMetadata` and `useRecordQuery`:
+- `httpError(status)` — creates an `Error` with a `status` property, used as the thrown value for non-ok responses
+- `httpRetry(attempt, err)` — TanStack Query `retry` function; retries only on network errors or 5xx; skips all 4xx immediately
 
 ### 4.12 Filter System
 
