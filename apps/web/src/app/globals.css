@@ -37,45 +37,45 @@
 @layer base {
   :root {
     /* ── App ─────────────────────────────────────────────────────────────── */
-    --background:             240 11% 96%;    /* corpo, área principal de conteúdo        */
-    --foreground:             222 47% 11%;    /* texto primário sobre --background        */
+    --background:             220  4% 94%;    /* corpo, área principal de conteúdo        */
+    --foreground:             222 25% 14%;    /* texto primário sobre --background        */
 
     /* ── Superfícies elevadas ────────────────────────────────────────────── */
-    --card:                   0 0% 100%;      /* cards, painéis, seções de formulário     */
-    --card-foreground:        222 47% 11%;    /* texto sobre --card                       */
+    --card:                   220  7% 95%;    /* cards, painéis, seções de formulário     */
+    --card-foreground:        222 25% 14%;    /* texto sobre --card                       */
 
-    --popover:                0 0% 100%;      /* dropdowns, tooltips, modais              */
-    --popover-foreground:     222 47% 11%;    /* texto sobre --popover                    */
+    --popover:                220  6% 97%;    /* dropdowns, tooltips, modais              */
+    --popover-foreground:     222 25% 14%;    /* texto sobre --popover                    */
 
     /* ── Ações ───────────────────────────────────────────────────────────── */
     --primary:                221 83% 53%;    /* botão primário, link de destaque         */
     --primary-foreground:     210 40% 98%;    /* texto/ícone sobre --primary              */
 
-    --accent:                 210 40% 96%;    /* hover de controles ghost/icon; tema do usuário */
-    --accent-foreground:      222 47% 11%;    /* texto/ícone sobre --accent               */
+    --accent:                 220 10% 88%;    /* hover de controles ghost/icon; tema do usuário */
+    --accent-foreground:      222 25% 14%;    /* texto/ícone sobre --accent               */
 
-    --muted:                  210 40% 96%;    /* superfície desabilitada, ghost           */
-    --muted-foreground:       215 16% 47%;    /* texto secundário, placeholder            */
+    --muted:                  220  9% 90%;    /* superfície desabilitada, ghost           */
+    --muted-foreground:       220 10% 44%;    /* texto secundário, placeholder            */
 
-    --destructive:            0 84% 60%;      /* botão/ação destrutiva                    */
+    --destructive:            0 65% 60%;      /* botão/ação destrutiva                    */
     --destructive-foreground: 210 40% 98%;    /* texto/ícone sobre --destructive          */
 
     /* ── Controles de formulário ─────────────────────────────────────────── */
-    --input-bg:               0 0% 100%;      /* fundo de inputs, selects, textareas      */
-    --input:                  214 32% 91%;    /* borda de inputs, selects, textareas      */
+    --input-bg:               220  6% 97%;    /* fundo de inputs, selects, textareas      */
+    --input:                  220 12% 80%;    /* borda de inputs, selects, textareas      */
     --ring:                   221 83% 53%;    /* anel de foco (navegação por teclado)     */
 
     /* ── Estrutura ───────────────────────────────────────────────────────── */
-    --border:                 214 32% 91%;    /* bordas de card, divisores, tabelas       */
-    --row-hover:              214 32% 94%;    /* hover de linha de tabela                 */
-    --radius:                 0.1rem;         /* border-radius global de controles/cards  */
+    --border:                 220 10% 86%;    /* bordas de card, divisores, tabelas       */
+    --row-hover:              220  9% 89%;    /* hover de linha de tabela                 */
+    --radius:                 0.5rem;         /* border-radius global de controles/cards  */
 
     /* ── Sidebar ─────────────────────────────────────────────────────────── */
-    --sidebar-bg:             0 0% 98%;       /* fundo da sidebar                         */
-    --sidebar-fg:             240 5% 26%;     /* texto/ícone padrão na sidebar            */
-    --sidebar-border:         220 13% 91%;    /* divisores internos da sidebar            */
-    --sidebar-accent:         240 5% 94%;     /* fundo de hover/active em itens de nav    */
-    --sidebar-accent-fg:      240 6% 10%;     /* texto/ícone no estado hover/active       */
+    --sidebar-bg:             220 10% 88%;    /* fundo da sidebar — recuado vs background */
+    --sidebar-fg:             220 12% 28%;    /* texto/ícone padrão na sidebar            */
+    --sidebar-border:         220 10% 83%;    /* divisores internos da sidebar            */
+    --sidebar-accent:         220 10% 83%;    /* fundo de hover/active em itens de nav    */
+    --sidebar-accent-fg:      222 25% 12%;    /* texto/ícone no estado hover/active       */
   }
 
   .dark {
@@ -97,10 +97,10 @@
     --accent:                 215  8% 20%;    /* hover ghost/icon — neutro sem tema       */
     --accent-foreground:      215  5% 85%;    /* texto/ícone sobre --accent               */
 
-    --muted:                  210 5% 30%;     /* superfície desabilitada, ghost           */
+    --muted:                  210 5% 22%;     /* superfície desabilitada, ghost           */
     --muted-foreground:       210 0% 70%;     /* texto secundário, placeholder            */
 
-    --destructive:            10 45% 31%;      /* botão ação destrutiva                    */
+    --destructive:            10 38% 28%;      /* botão ação destrutiva                    */
     --destructive-foreground: 10 30% 98%;     /* texto ícone sobre --destructive          */
 
     /* ── Controles de formulário ─────────────────────────────────────────── */
@@ -123,6 +123,43 @@
 }
 
 @layer base {
+  /* ── Light mode themes ──────────────────────────────────────────────────── */
+  .theme-eucalyptus {
+    --accent:             158 15% 86%;
+    --accent-foreground:  158 30% 16%;
+    --ring:               158 38% 40%;
+  }
+
+  .theme-ocean {
+    --accent:             210 25% 86%;
+    --accent-foreground:  210 40% 16%;
+    --ring:               210 60% 43%;
+  }
+
+  .theme-sunset {
+    --accent:             20 30% 86%;
+    --accent-foreground:  20 45% 16%;
+    --ring:               20 60% 43%;
+  }
+
+  .theme-lavender {
+    --accent:             258 18% 86%;
+    --accent-foreground:  258 30% 16%;
+    --ring:               258 45% 48%;
+  }
+
+  .theme-rose {
+    --accent:             340 22% 86%;
+    --accent-foreground:  340 35% 16%;
+    --ring:               340 50% 46%;
+  }
+
+  .theme-slate {
+    --accent:             215  8% 84%;
+    --accent-foreground:  215 12% 16%;
+    --ring:               215 25% 43%;
+  }
+
   /* ── Cold Eucalyptus ──────────────────────────────────────────────────── */
   .dark.theme-eucalyptus {
     --accent:             158 18% 26%;

@@ -499,7 +499,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : (
-        <div className="w-full overflow-x-auto rounded-sm border border-border">
+        <div className="w-full overflow-x-auto rounded-sm border border-border bg-card">
           <table className="w-full min-w-max text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
@@ -528,7 +528,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
                   key={row.id}
                   onClick={() => setFocusedRow(rowIdx)}
                   className={cn(
-                    'hover:bg-accent/20 border-b border-border cursor-default',
+                    'hover:bg-row-hover border-b border-border cursor-default',
                     rowIdx === focusedRow && 'bg-ring/10 shadow-[inset_2px_0_0_hsl(var(--ring)_/_0.5),inset_-2px_0_0_hsl(var(--ring)_/_0.5)]',
                   )}
                 >

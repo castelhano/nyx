@@ -95,7 +95,7 @@ export interface UserPreferences {
 }
 
 export const defaultPreferences: UserPreferences = {
-  theme:            'eucalyptus',
+  theme:            'slate',
   sidebarCollapsed: false,
   dateFormat:       'DD/MM/YYYY',
 }
