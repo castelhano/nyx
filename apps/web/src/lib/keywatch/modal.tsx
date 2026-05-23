@@ -186,6 +186,14 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
           </span>
         </div>
 
+        {/* Hint */}
+        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/50 shrink-0 bg-muted/30">
+          <Info className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+          <span className="text-[11px] text-muted-foreground/50">
+            Use <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Ctrl+Shift+[tecla]</kbd> para mover o foco entre campos do formulário
+          </span>
+        </div>
+
         {/* Lista */}
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (

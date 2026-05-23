@@ -24,7 +24,7 @@ export function useFieldKeybinds(bindings: FieldKeybind[], origin: string) {
     for (const { key, fieldId } of bindings) {
       core.bind(`ctrl+shift+${key}`, () => {
         ;(document.getElementById(fieldId) as HTMLElement | null)?.focus()
-      }, { group: g })
+      }, { group: g, display: false })
     }
     return () => { core.unbindGroup(g) }
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
+import { resolveIcon } from '@/lib/icons'
 
 const ACTIONS = [
   { key: 'read',   label: 'Ver' },
@@ -45,6 +46,15 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
     const next = new Set(value)
     if (next.has(k)) next.delete(k)
     else             next.add(k)
+    onChange(next)
+  }
+
+  function toggleResource(resource: string) {
+    const all   = ACTIONS.map((a) => `${resource}:${a.key}`)
+    const allOn = all.every((k) => value.has(k))
+    const next  = new Set(value)
+    if (allOn) all.forEach((k) => next.delete(k))
+    else       all.forEach((k) => next.add(k))
     onChange(next)
   }
 
@@ -115,7 +125,27 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
                       i < section.resources.length - 1 && 'border-b border-border',
                     )}
                   >
-                    <td className="px-3 py-2.5">{resource.label}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="flex items-center justify-between group/row">
+                        {resource.label}
+                        {(() => {
+                          const allOn = ACTIONS.every((a) => value.has(`${resource.key}:${a.key}`))
+                          const Icon  = resolveIcon('ArrowRightFromLine')
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => toggleResource(resource.key)}
+                              className={cn(
+                                'aspect-square ring-2 ring-muted ring-inset rounded text-xs',
+                                'opacity-50',
+                              )}
+                            >
+                              <Icon className="h-6 w-6" />
+                            </button>
+                          )
+                        })()}
+                      </span>
+                    </td>
                     {ACTIONS.map((action) => (
                       <td key={action.key} className="w-16 py-2.5 text-center">
                         <input
