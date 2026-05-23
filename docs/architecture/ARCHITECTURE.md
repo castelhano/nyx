@@ -1096,15 +1096,26 @@ Dynamic bindings (e.g., child navigation buttons from schema metadata) are manag
 **Field keybinds (`Ctrl+Shift+[key]`)** — declared via `.meta({ keybind: 'x' })` in the Zod schema. `AutoForm` registers them automatically on mount. Custom pages must call `useFieldKeybinds()` manually:
 
 ```tsx
+import { useRef } from 'react'
 import { useFieldKeybinds } from '@/lib/keywatch'
+import { Tabs, type TabsHandle } from '@/components/ui/tabs'
+
+// With tabs: declare tabsRef, pass it to <Tabs ref={tabsRef}> and to the hook.
+// tabIndex is the zero-based index of the tab that contains the field.
+const tabsRef = useRef<TabsHandle>(null)
 
 useFieldKeybinds([
+  { key: 'g', fieldId: 'name',     tabIndex: 0 },
+  { key: 'u', fieldId: 'username', tabIndex: 0 },
+], 'core/user/[id]', tabsRef)
+
+// Without tabs (single-form pages): omit tabsRef and tabIndex.
+useFieldKeybinds([
   { key: 'g', fieldId: 'name' },
-  { key: 'u', fieldId: 'username' },
-], 'core/user/[id]')
+], 'some/page')
 ```
 
-`fieldId` must match the `id` attribute of the target `<input>`. The hint badge (`KeyHint`) must be added manually to each control — wrap the input in `div.relative`, set the width constraint on the wrapper (not the input), and render `<KeyHint k="x" />` inside. `Select` and `PasswordInput` accept a `keybind` prop that handles the hint internally. See `docs/architecture/keyboard-shortcuts.md` for the list of reserved browser letters.
+`fieldId` must match the `id` attribute of the target `<input>`. When `tabIndex` is set and `tabsRef` is provided, the hook switches to the correct tab before focusing — identical to the behaviour `AutoForm` uses internally. The hint badge (`KeyHint`) must be added manually to each control — wrap the input in `div.relative`, set the width constraint on the wrapper (not the input), and render `<KeyHint k="x" />` inside. `Select` and `PasswordInput` accept a `keybind` prop that handles the hint internally. See `docs/architecture/keyboard-shortcuts.md` for the list of reserved browser letters.
 
 ### Global shortcut conventions
 

@@ -20,7 +20,7 @@ import { useShortcut, useFieldKeybinds } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
-import { Tabs } from '@/components/ui/tabs'
+import { Tabs, type TabsHandle } from '@/components/ui/tabs'
 import { AssociationList, type BranchAssoc } from '@/components/ui/association-list'
 import { CheckboxGroup, type CheckboxSection } from '@/components/ui/checkbox-group'
 import { cn } from '@/lib/utils'
@@ -70,6 +70,7 @@ export default function UserDetailPage() {
   const branchInit     = useRef(false)
   const permissionInit = useRef(false)
   const copyComboRef   = useRef<HTMLDivElement>(null)
+  const tabsRef        = useRef<TabsHandle>(null)
 
   // ── data fetching ──────────────────────────────────────────────────────────
 
@@ -284,9 +285,10 @@ export default function UserDetailPage() {
 
   useFieldKeybinds(
     (['name', 'username', 'email', 'role', 'password'] as const)
-      .map(f => ({ key: kb(f), fieldId: f }))
+      .map(f => ({ key: kb(f), fieldId: f, tabIndex: 0 }))
       .filter(b => !!b.key),
     'core/user/[id]',
+    tabsRef,
   )
 
   useShortcut('alt+v', () => router.push('/core/user'), {
@@ -519,6 +521,7 @@ export default function UserDetailPage() {
       <AutoBreadcrumb domain="core" resource="user" id={id} recordName={recordName} />
       <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} autoComplete="off">
         <Tabs
+          ref={tabsRef}
           tabs={[
             { label: 'Dados',      content: renderDados() },
             {
