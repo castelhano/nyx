@@ -4,10 +4,10 @@ import { withMeta } from '../with-meta'
 
 export const userSchema = withMeta(
   z.object({
-    id:           z.string().uuid(),
+    id:           z.uuid(),
     name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome completo', filter: true, keybind: 'g' }),
     username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', placeholder: 'Username', keybind: 'y' }),
-    email:        z.string().email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com', keybind: 'e' }),
+    email:        z.email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com', keybind: 'e' }),
     passwordHash: z.string().meta({ listVisibility: 'never', showInForm: false }),
     role:         z.enum(['admin', 'operator']).meta({ label: 'Perfil', listVisibility: 'visible', className: 'w-full md:w-60', filter: true, keybind: 'l' }),
     isActive:             z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible', filter: true }),

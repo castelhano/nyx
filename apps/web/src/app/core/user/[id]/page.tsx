@@ -79,7 +79,9 @@ export default function UserDetailPage() {
     { enabled: !isNew, staleTime: 30_000 },
   )
 
-  const { guardNode, canCreate, canUpdate } = usePageGuard('core', 'user', isNew, userError ?? undefined)
+  const { guardNode, canCreate, canUpdate, meta } = usePageGuard('core', 'user', isNew, userError ?? undefined)
+
+  const kb = (field: string) => meta?.fields.find(f => f.name === field)?.keybind ?? ''
   const { data: discovery } = useDiscovery()
 
   const { data: allBranches } = useQuery({
@@ -280,13 +282,12 @@ export default function UserDetailPage() {
     setPasswordOpen(false)
   }, { display: false, origin: 'apps/web/src/app/core/user/[id]/page' })
 
-  useFieldKeybinds([
-    { key: 'g', fieldId: 'name' },
-    { key: 'u', fieldId: 'username' },
-    { key: 'e', fieldId: 'email' },
-    { key: 'l', fieldId: 'role' },
-    { key: 's', fieldId: 'password' },
-  ], 'core/user/[id]')
+  useFieldKeybinds(
+    (['name', 'username', 'email', 'role', 'password'] as const)
+      .map(f => ({ key: kb(f), fieldId: f }))
+      .filter(b => !!b.key),
+    'core/user/[id]',
+  )
 
   useShortcut('alt+v', () => router.push('/core/user'), {
     desc: 'Voltar', icon: ArrowLeft,
@@ -385,7 +386,7 @@ export default function UserDetailPage() {
                 className="w-full md:pr-10"
                 {...register('name', { required: 'Nome obrigatório' })}
               />
-              <KeyHint k="g" />
+              {kb('name') && <KeyHint k={kb('name')} />}
             </div>
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
@@ -399,7 +400,7 @@ export default function UserDetailPage() {
                 className="w-full md:pr-10"
                 {...register('username', { required: 'Username obrigatório' })}
               />
-              <KeyHint k="u" />
+              {kb('username') && <KeyHint k={kb('username')} />}
             </div>
             {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
           </div>
@@ -413,11 +414,11 @@ export default function UserDetailPage() {
               className="w-full md:pr-10"
               {...register('email')}
             />
-            <KeyHint k="e" />
+            {kb('email') && <KeyHint k={kb('email')} />}
           </div>
 
           <label htmlFor="role" className={labelCls}>Perfil</label>
-          <Select id="role" wrapperClassName="w-full md:w-96" keybind="l" {...register('role')}>
+          <Select id="role" wrapperClassName="w-full md:w-96" keybind={kb('role')} {...register('role')}>
             <option value="admin">Admin</option>
             <option value="operator">Operador</option>
           </Select>
@@ -445,7 +446,7 @@ export default function UserDetailPage() {
                   placeholder="Senha"
                   error={errors.password?.message}
                   className="w-full"
-                  keybind="s"
+                  keybind={kb('password')}
                   {...register('password', { required: 'Senha obrigatória' })}
                 />
                 <PolicyIndicator password={passwordValue} policy={policy} />

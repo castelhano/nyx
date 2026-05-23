@@ -4,15 +4,15 @@ import { withMeta } from '../with-meta'
 
 export const branchSchema = withMeta(
   z.object({
-    id:        z.string().uuid(),
-    companyId: z.string().uuid().meta({ label: 'Empresa', listVisibility: 'hidden', className: 'md:w-1/2', widget: 'select', resource: 'company', labelField: 'legalName', keybind: 'q' }),
+    id:        z.uuid(),
+    companyId: z.uuid().meta({ label: 'Empresa', listVisibility: 'hidden', className: 'md:w-1/2', widget: 'select', resource: 'company', labelField: 'legalName', keybind: 'q' }),
     // Geral
     name:      z.string().min(2).meta({ label: 'Nome', className: 'md:w-1/2', listVisibility: 'visible', placeholder: 'Nome abreviado', keybind: 'g' }),
     taxId:     z.string().length(14).nullable().optional().meta({ label: 'CNPJ', mask: 'cnpj', className: 'md:w-64', placeholder: '00.000.000/00', listVisibility: 'hidden', keybind: 'x' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     // Contato
     phone:     z.string().nullable().optional().meta({ label: 'Telefone', mask: 'phone', className: 'md:w-64', placeholder: '(00) 00000-0000', listVisibility: 'hidden', keybind: 'f' }),
-    email:     z.string().email().nullable().optional().meta({ label: 'E-mail', className: 'md:w-64', placeholder: 'contato@filial.com.br', listVisibility: 'hidden', keybind: 'e' }),
+    email:     z.email().nullable().optional().meta({ label: 'E-mail', widget: 'email', className: 'md:w-64', placeholder: 'contato@filial.com.br', listVisibility: 'hidden', keybind: 'e' }),
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never', keybind: 'd' }),
     city:      z.string().nullable().optional().meta({ label: 'Cidade', className: 'md:w-1/2', listVisibility: 'visible', keybind: 'v' }),

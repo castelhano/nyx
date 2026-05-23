@@ -64,6 +64,7 @@ function MaskedInput({
             onAccept={(val: string) => ctrl.onChange(val)}
             onBlur={ctrl.onBlur}
             id={field.name}
+            autoComplete="off"
             autoFocus={autoFocus}
             placeholder={field.placeholder}
             readOnly={readonly}
@@ -201,6 +202,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
 
   const inputType =
     field.widget === 'password' ? 'password' :
+    field.widget === 'email'    ? 'email'    :
     field.type   === 'number'   ? 'number'   :
     field.type   === 'date'     ? 'date'     : 'text'
 
@@ -231,6 +233,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
         <input
           id={field.name}
           type={inputType}
+          autoComplete="off"
           autoFocus={autoFocus}
           readOnly={readonly}
           {...register}

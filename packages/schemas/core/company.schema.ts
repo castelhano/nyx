@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const companySchema = withMeta(
   z.object({
-    id:        z.string().uuid(),
+    id:        z.uuid(),
     // Geral
     tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', listVisibility: 'visible', placeholder: 'Nome Fantasia', filter: true, keybind: 'v' }),
     legalName: z.string().min(2).meta({ label: 'Razão Social', className: 'md:w-1/2', listVisibility: 'visible', placeholder: 'Razão social', keybind: 'l' }),
@@ -12,7 +12,7 @@ export const companySchema = withMeta(
     isActive:  z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
     // Contato
     phone:     z.string().nullable().optional().meta({ label: 'Telefone', mask: 'phone', className: 'md:w-1/2', placeholder: '(00) 00000-0000', listVisibility: 'hidden', keybind: 'f' }),
-    email:     z.string().email().nullable().optional().meta({ label: 'E-mail', className: 'md:w-1/2', placeholder: 'contato@empresa.com.br', listVisibility: 'hidden', keybind: 'e' }),
+    email:     z.email().nullable().optional().meta({ label: 'E-mail', widget: 'email', className: 'md:w-1/2', placeholder: 'contato@empresa.com.br', listVisibility: 'hidden', keybind: 'e' }),
     website:   z.string().nullable().optional().meta({ label: 'Website', className: 'md:w-1/2', placeholder: 'https://empresa.com.br', listVisibility: 'never', keybind: 'k' }),
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never', keybind: 'd' }),
