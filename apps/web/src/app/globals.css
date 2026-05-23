@@ -124,40 +124,41 @@
 
 @layer base {
   /* ── Light mode themes ──────────────────────────────────────────────────── */
-  .theme-eucalyptus {
-    --accent:             158 15% 86%;
-    --accent-foreground:  158 30% 16%;
-    --ring:               158 38% 40%;
+  
+.theme-eucalyptus {
+    --accent:             158 25% 45%; 
+    --accent-foreground:  158 30% 97%;
+    --ring:               158 40% 25%;
   }
 
-  .theme-ocean {
-    --accent:             210 25% 86%;
-    --accent-foreground:  210 40% 16%;
-    --ring:               210 60% 43%;
+   .theme-ocean {
+    --accent:             190 35% 44%;
+    --accent-foreground:  190 40% 98%;
+    --ring:               190 45% 30%;
   }
 
   .theme-sunset {
-    --accent:             20 30% 86%;
-    --accent-foreground:  20 45% 16%;
-    --ring:               20 60% 43%;
+    --accent:             20 42% 52%;
+    --accent-foreground:  20 45% 98%;
+    --ring:               20 50% 35%;
   }
 
   .theme-lavender {
-    --accent:             258 18% 86%;
-    --accent-foreground:  258 30% 16%;
-    --ring:               258 45% 48%;
+    --accent:             258 18% 52%; 
+    --accent-foreground:  258 20% 98%;
+    --ring:               258 30% 32%;
   }
 
   .theme-rose {
-    --accent:             340 22% 86%;
-    --accent-foreground:  340 35% 16%;
-    --ring:               340 50% 46%;
+    --accent:             340 20% 50%; 
+    --accent-foreground:  340 25% 97%;
+    --ring:               340 35% 32%;
   }
 
   .theme-slate {
-    --accent:             215  8% 84%;
-    --accent-foreground:  215 12% 16%;
-    --ring:               215 25% 43%;
+    --accent:             215 12% 46%; 
+    --accent-foreground:  215 15% 98%;
+    --ring:               215 20% 30%;
   }
 
   /* ── Cold Eucalyptus ──────────────────────────────────────────────────── */

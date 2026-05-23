@@ -499,11 +499,11 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : (
-        <div className="w-full overflow-x-auto rounded-sm border border-border bg-card">
+        <div className="w-full overflow-x-auto rounded-sm border border-border bg-card/50">
           <table className="w-full min-w-max text-sm">
             <thead>
               {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id} className="bg-muted">
+                <tr key={hg.id} className="bg-accent/15">
                   {hg.headers.map((header) => {
                     const sorted = sorting[0]?.id === header.id
                     return (
@@ -511,8 +511,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
                         key={header.id}
                         className={cn(
                           'text-left px-3 py-2 border-b font-medium',
-                          header.column.getCanSort() && 'cursor-pointer select-none hover:bg-accent/50',
-                          sorted && 'bg-accent/60 border-b-2 border-b-ring text-ring',
+                          header.column.getCanSort() && 'cursor-pointer select-none hover:bg-accent/10',
+                          sorted && 'bg-accent/20 border-b-2 border-b-ring text-ring',
                         )}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}

@@ -94,7 +94,7 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
               <button
                 type="button"
                 onClick={() => toggleSection(section)}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="text-xs text-muted-foreground hover:text-ring transition-colors cursor-pointer"
               >
                 {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
               </button>
@@ -136,11 +136,11 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
                               type="button"
                               onClick={() => toggleResource(resource.key)}
                               className={cn(
-                                'aspect-square ring-2 ring-muted ring-inset rounded text-xs',
-                                'opacity-50',
+                                'h-7 px-2 -mt-2 -mb-2 cursor-pointer',
+                                'text-muted hover:bg-input hover:text-accent-foreground rounded transition-colors',
                               )}
                             >
-                              <Icon className="h-6 w-6" />
+                              <Icon className="h-4 w-4" />
                             </button>
                           )
                         })()}

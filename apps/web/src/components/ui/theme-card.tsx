@@ -5,18 +5,16 @@ import { cn } from '@/lib/utils'
 import type { ThemeName } from '@nyx/types'
 
 interface ThemeMeta {
-  label:   string
-  accent:  string  // HSL values for the accent swatch
-  ring:    string  // HSL values for the ring swatch
+  label: string
 }
 
 const themes: Record<ThemeName, ThemeMeta> = {
-  eucalyptus: { label: 'Eucalyptus', accent: '158 18% 36%', ring: '158 38% 50%' },
-  ocean:      { label: 'Ocean',      accent: '210 30% 38%', ring: '210 65% 55%' },
-  sunset:     { label: 'Sunset',     accent: '20 35% 38%',  ring: '20 65% 55%'  },
-  lavender:   { label: 'Lavender',   accent: '258 20% 42%', ring: '258 50% 62%' },
-  rose:       { label: 'Rose',       accent: '340 25% 38%', ring: '340 55% 58%' },
-  slate:      { label: 'Slate',      accent: '215 8% 36%',  ring: '215 25% 55%' },
+  eucalyptus: { label: 'Eucalyptus' },
+  ocean:      { label: 'Ocean'      },
+  sunset:     { label: 'Sunset'     },
+  lavender:   { label: 'Lavender'   },
+  rose:       { label: 'Rose'       },
+  slate:      { label: 'Slate'      },
 }
 
 interface ThemeCardProps {
@@ -40,15 +38,17 @@ export function ThemeCard({ theme, selected, onSelect }: ThemeCardProps) {
           : 'border-border bg-card hover:border-muted-foreground hover:bg-accent/20',
       )}
     >
-      {/* Swatch */}
-      <div className="flex items-end gap-1.5">
+      {/* Swatch — theme class scopes the CSS variables to this theme's values */}
+      <div className={cn('flex items-end gap-1.5', `theme-${theme}`)}>
         <div
-          className="h-7 w-7 rounded-md shadow-sm"
-          style={{ backgroundColor: `hsl(${meta.accent})` }}
-        />
+          className="h-7 w-7 rounded-md shadow-sm flex items-center justify-center text-xs"
+          style={{ backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))' }}
+        >
+          Aa
+        </div>
         <div
           className="h-4 w-4 rounded-sm shadow-sm"
-          style={{ backgroundColor: `hsl(${meta.ring})` }}
+          style={{ backgroundColor: 'hsl(var(--ring))' }}
         />
       </div>
 

@@ -20,7 +20,7 @@ export function Switch({ checked, onToggle, disabled, className }: SwitchProps) 
         'transition-colors duration-150',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         'disabled:cursor-not-allowed disabled:opacity-60',
-        checked ? 'bg-ring' : 'bg-input',
+        checked ? 'bg-accent' : 'bg-input',
         className,
       )}
     >
