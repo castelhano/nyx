@@ -16,7 +16,7 @@ export const branchSchema = withMeta(
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never', keybind: 'd' }),
     city:      z.string().nullable().optional().meta({ label: 'Cidade', className: 'md:w-1/2', listVisibility: 'visible', keybind: 'v' }),
-    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'w-24', placeholder: 'SP', listVisibility: 'visible', keybind: 'u' }),
+    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'w-24', placeholder: 'SP', listVisibility: 'visible', keybind: 'y' }),
     zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', className: 'md:w-64', placeholder: '00000-000', listVisibility: 'never', keybind: 'p' }),
     // Controle
     createdAt: z.date().meta({ showInForm: false }),

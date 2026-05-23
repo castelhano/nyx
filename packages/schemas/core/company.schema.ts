@@ -17,7 +17,7 @@ export const companySchema = withMeta(
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never', keybind: 'd' }),
     city:      z.string().nullable().optional().meta({ label: 'Cidade', className: 'lg:w-1/2', listVisibility: 'hidden', keybind: 'g' }),
-    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-24', placeholder: 'SP', listVisibility: 'hidden', keybind: 'u' }),
+    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-24', placeholder: 'SP', listVisibility: 'hidden', keybind: 'y' }),
     zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', className: 'md:w-48', placeholder: '00000-000', listVisibility: 'hidden', keybind: 'p' }),
     // Controle
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
