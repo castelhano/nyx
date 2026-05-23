@@ -89,7 +89,7 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
 
         return (
           <div key={section.key} className="border border-border rounded-sm overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border">
+            <div className="flex items-center justify-between px-3 py-2 bg-muted border-b border-border">
               <span className="text-sm font-medium">{section.label}</span>
               <button
                 type="button"
