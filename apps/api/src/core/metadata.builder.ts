@@ -133,6 +133,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.optionLabels        ? { optionLabels: meta.optionLabels }         : {}),
       ...(meta.virtual             ? { virtual:     true }                      : {}),
       ...(meta.dependsOn           ? { dependsOn:   meta.dependsOn }            : {}),
+      ...(meta.lazyEdit            ? { lazyEdit:    true }                      : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
       ...(resolveFilterDef(field, meta.filter) ? { filter: resolveFilterDef(field, meta.filter) } : {}),
     })

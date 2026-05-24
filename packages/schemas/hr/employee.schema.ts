@@ -13,6 +13,7 @@ export const employeeSchema = withMeta(
       domain: 'core',
       labelField: 'legalName',
       virtual: true,
+      lazyEdit: true,
       keybind: 'q',
     }),
 
@@ -26,6 +27,7 @@ export const employeeSchema = withMeta(
       relatedDisplayFields: ['companyId'],
       listVisibility: 'visible',
       filter: { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
+      lazyEdit: true,
       keybind: 'f',
     }),
 

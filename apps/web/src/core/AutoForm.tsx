@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, FormProvider } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
@@ -45,6 +45,26 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
         )
       : {}
     const merged = { ...schemaDefaults, ...(defaultValues ?? {}) }
+
+    // Deriva campos virtuais a partir dos objetos relacionados já incluídos pela API.
+    // Ex: branchId.dependsOn='companyId' + relatedDisplayFields=['companyId']
+    //     → API retorna branch.companyId → preenceh virtual companyId sem fetch extra.
+    if (meta) {
+      const virtualSet = new Set(meta.fields.filter((f) => f.virtual).map((f) => f.name))
+      for (const field of meta.fields) {
+        const parentName = field.dependsOn
+        if (!parentName || !virtualSet.has(parentName)) continue
+        if (!field.relatedDisplayFields?.includes(parentName)) continue
+        if (merged[parentName] !== undefined && merged[parentName] !== '') continue
+        const relationName = field.name.replace(/Id$/, '')
+        const relObj = (defaultValues ?? {})[relationName]
+        if (relObj && typeof relObj === 'object' && !Array.isArray(relObj)) {
+          const val = (relObj as Record<string, unknown>)[parentName]
+          if (val !== undefined) merged[parentName] = val
+        }
+      }
+    }
+
     // Normaliza datas ISO do servidor para YYYY-MM-DD (formato do <input type="date">)
     for (const field of meta?.fields ?? []) {
       if (field.type === 'date' && typeof merged[field.name] === 'string') {
@@ -57,9 +77,8 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
 
   // `values` (RHF 7.31+): sincroniza o form com dados externos via deep-equal,
   // eliminando os useEffects manuais de reset que havia antes.
-  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
-    values: mergedValues,
-  })
+  const methods = useForm({ values: mergedValues })
+  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = methods
 
   // Reset explícito apenas quando o sinal de reset muda (alt+l)
   useEffect(() => {
@@ -123,12 +142,15 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
     return (
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start">
         {fields.map((field) => {
-          const isReadonly = readOnly || readonlySet.has(field.name)
-          const giveFocus  = autoFocusFirst && !focusGiven && !isReadonly
+          const isReadonly  = readOnly || readonlySet.has(field.name)
+          // lazyEdit fields with a value will render as locked (no focusable input) — skip them
+          const willBeLocked = field.lazyEdit && !!mergedValues[field.name]
+          const giveFocus   = autoFocusFirst && !focusGiven && !isReadonly && !willBeLocked
           if (giveFocus) focusGiven = true
           return (
             <FieldRenderer
-              key={field.name}
+              // remount lazyEdit fields on reset so isEditing state reverts to locked
+              key={field.lazyEdit ? `${field.name}-${resetSignal ?? 0}` : field.name}
               field={field}
               register={register(field.name, { required: field.required ? 'Campo obrigatório' : false })}
               control={control}
@@ -166,6 +188,7 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
   }
 
   return (
+    <FormProvider {...methods}>
     <form id={formId} onSubmit={handleSubmit(async (data) => {
       const payload: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(data)) {
@@ -194,5 +217,6 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
         </button>
       )}
     </form>
+    </FormProvider>
   )
 }

@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { Controller, useWatch, type Control } from 'react-hook-form'
+import { useEffect, useRef, useState } from 'react'
+import { Controller, useWatch, useFormContext, type Control } from 'react-hook-form'
+import { useQuery } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
-import { ChevronDown, UserRound } from 'lucide-react'
+import { ChevronDown, UserRound, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import { inputBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { apiFetch } from '@/lib/auth'
 import { useFieldOptions } from './useFieldOptions'
 
 interface Props {
@@ -211,6 +213,105 @@ function RelationSelect({
   )
 }
 
+function LockedDisplay({
+  field, value, onEdit, readonly, containerClassName,
+}: {
+  field: MetadataField
+  value: string
+  onEdit: () => void
+  readonly?: boolean
+  containerClassName?: string
+}) {
+  const { data, isLoading } = useQuery<Record<string, unknown>>({
+    queryKey:  ['relation-single', field.domain ?? 'core', field.resource, value],
+    queryFn:   async () => {
+      const res = await apiFetch(`/${field.domain ?? 'core'}/${field.resource}/${value}`)
+      if (!res.ok) throw new Error('Not found')
+      return res.json()
+    },
+    enabled:   !!value,
+    staleTime: 60_000,
+  })
+
+  const label = isLoading ? '…' : (data ? String(data[field.labelField ?? 'name'] ?? value) : value)
+
+  return (
+    <div className={cn('relative', containerClassName)}>
+      <div className={cn(fieldInputCls, 'flex items-center gap-2', readonlyCls)}>
+        <span className="flex-1 truncate">{label}</span>
+      </div>
+      {!readonly && (
+        <button
+          id={field.name}
+          type="button"
+          title="Edit"
+          onClick={onEdit}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Pencil className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function LockedRelationSelect({
+  field, control, autoFocus, className, readonly, containerClassName,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean; containerClassName?: string
+}) {
+  const [isEditing, setIsEditing] = useState(false)
+  const { setValue } = useFormContext()
+
+  const currentValue = useWatch({ control, name: field.name }) as string
+  const parentValue  = useWatch({ control, name: field.dependsOn ?? '' }) as string
+  const prevParentRef = useRef<string | undefined>(undefined)
+
+  // When the parent field changes to a different value, clear own value and unlock.
+  // This covers the case where the user changes company while branch is still locked.
+  useEffect(() => {
+    if (!field.dependsOn) return
+    const prev = prevParentRef.current
+    prevParentRef.current = parentValue
+    if (prev !== undefined && prev !== parentValue && parentValue) {
+      setValue(field.name, '')
+      setIsEditing(true)
+    }
+  }, [parentValue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const showLocked = !!currentValue && !isEditing
+
+  if (!showLocked) {
+    return (
+      <RelationSelect
+        field={field}
+        control={control}
+        autoFocus={autoFocus}
+        className={className}
+        readonly={readonly}
+        containerClassName={containerClassName}
+      />
+    )
+  }
+
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required && !field.virtual ? 'Campo obrigatório' : false }}
+      render={({ field: ctrl }) => (
+        <LockedDisplay
+          field={field}
+          value={ctrl.value as string}
+          onEdit={() => setIsEditing(true)}
+          readonly={readonly}
+          containerClassName={containerClassName}
+        />
+      )}
+    />
+  )
+}
+
 export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
   if (field.widget === 'switch' && control) {
     return (
@@ -295,7 +396,9 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   if (field.widget === 'avatar' && control) {
     controlEl = <AvatarUpload field={field} control={control} readonly={readonly} />
   } else if (field.resource && control) {
-    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
+    controlEl = field.lazyEdit
+      ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
+      : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {
     controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.widget === 'textarea') {

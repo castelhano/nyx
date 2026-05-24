@@ -286,6 +286,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Filter on include | no filter | `.meta({ relatedWhere: { isActive: true } })` — applied as Prisma `include where`; parent record still appears, `row.relation` returns `null` if not matched |
 | Dependent select | — | `.meta({ dependsOn: 'parentFieldName' })` — re-fetches options with `?f_<dependsOn>=<value>` when the parent field changes; clears own value on parent change; disabled only when both parent and child are empty (enabled unfiltered in edit mode when child already has a value) — see §4.5.2 |
 | Virtual field | — | `.meta({ virtual: true })` — rendered in the form for UX purposes (e.g. a company selector that filters a branch selector) but excluded from API payloads; `listVisibility` forced to `'never'` — see §4.5.2 |
+| Locked relation (lazy edit) | — | `.meta({ lazyEdit: true })` — in edit mode, shows the related record's label as read-only text with an edit button instead of fetching all options up front; fetches only `GET /<domain>/<resource>/:id` (one lightweight call) until the user clicks the edit button, then switches to the full `RelationSelect`; in create mode always renders the full select immediately — see §4.5.3 |
 | Default sort | `createdAt: 'desc'` | `withMeta(schema, { defaultSort: { field: 'name', order: 'asc' } })` — applied by `BaseService` when no `sortField` in query |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
@@ -399,6 +400,57 @@ const { options: branchOptions } = useFieldOptions(
 **Backend contract:** the options endpoint must support `f_<dependsOn>` as a filter. For `BaseService` resources this works automatically via `buildFilterWhere` — the only requirement is that the parent field is declared with `filter: true` (or `filter: { type: 'relation', ... }`) in the child resource's schema.
 
 **Chains:** the pattern composes — a field can depend on another that is itself a child. Each level only needs `dependsOn` pointing to its immediate parent.
+
+### 4.5.3 Locked Relation Fields — `lazyEdit`
+
+Some FK fields rarely change after creation (e.g., which company and branch an employee belongs to). Eagerly fetching all options for these fields on every form load wastes bandwidth and triggers unnecessary render cycles.
+
+**`lazyEdit: true`** defers the options fetch until the user explicitly decides to edit the field.
+
+**Behaviour by mode:**
+
+| Mode | Behaviour |
+|---|---|
+| **Create** (`id === 'new'`, field value empty) | Full `RelationSelect` rendered immediately — options fetched normally |
+| **Edit** (field has a value, user has not clicked edit) | `LockedDisplay` — fetches only `GET /<domain>/<resource>/:id` to show the label; no bulk options fetch |
+| **Edit** (user clicks the edit button) | Switches to full `RelationSelect`; bulk options fetch fires at this point |
+| **Read-only** (no update permission) | `LockedDisplay` without the edit button — options never fetched |
+
+**Parent-change cascade:** when a `lazyEdit` field declares `dependsOn` and its parent field changes to a different value, the child automatically unlocks and clears its value, prompting the user to pick a new option filtered by the new parent.
+
+**Single-record fetch:** `LockedDisplay` uses `queryKey: ['relation-single', domain, resource, id]` with `staleTime: 60_000`. The result is shared across all locked displays pointing to the same record — navigating between employees of the same company costs one fetch total.
+
+**Schema declaration:**
+```typescript
+// Virtual parent — rarely changed after creation
+companyId: z.string().optional().meta({
+  label: 'Company', widget: 'select', resource: 'company', domain: 'core',
+  labelField: 'legalName', virtual: true,
+  lazyEdit: true,
+}),
+
+// Real FK — rarely changed; depends on virtual parent
+branchId: z.uuid().meta({
+  label: 'Branch', widget: 'select', resource: 'branch', domain: 'core',
+  labelField: 'name', dependsOn: 'companyId', relatedDisplayFields: ['companyId'],
+  lazyEdit: true,
+}),
+```
+
+**When to use:** apply `lazyEdit: true` to relation fields where the current value is almost never changed after record creation (e.g., organizational FK fields). Do not apply it to fields that users frequently update in-place (e.g., status, category).
+
+**Custom pages:** `LockedRelationSelect` uses `useFormContext()` internally and therefore requires the form to be wrapped in RHF's `FormProvider`. `AutoForm` provides this automatically. Custom pages must wrap their `<form>` manually:
+
+```typescript
+const methods = useForm({ values: defaultValues })
+return (
+  <FormProvider {...methods}>
+    <form onSubmit={methods.handleSubmit(onSubmit)}>
+      {/* FieldRenderer with lazyEdit fields works here */}
+    </form>
+  </FormProvider>
+)
+```
 
 ### 4.6 Resource Registry and Domain Registry
 

@@ -47,6 +47,8 @@ export interface FieldMeta {
   virtual?: boolean
   /** Re-fetches select options using `?f_<dependsOn>=<value>` when the named sibling field changes. Clears own value when parent changes. */
   dependsOn?: string
+  /** In edit mode, shows the related record label as locked text with an edit button instead of loading all options up front. Fetches only the current record by ID until the user unlocks the field. */
+  lazyEdit?: boolean
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -80,6 +82,7 @@ export interface MetadataField {
   optionLabels?: Record<string, string>
   virtual?: boolean
   dependsOn?: string
+  lazyEdit?: boolean
 }
 
 export interface TabGroup {
