@@ -270,6 +270,8 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Relation include (auto) | all `widget: 'select'` fields with `labelField` | `BaseService` auto-builds Prisma `include`; convention `fooId → foo` (strip `Id`) — see §4.5.1 |
 | Extra relation fields | `labelField` only | `.meta({ relatedDisplayFields: ['code', 'location'] })` — additional fields selected in the `include` |
 | Filter on include | no filter | `.meta({ relatedWhere: { isActive: true } })` — applied as Prisma `include where`; parent record still appears, `row.relation` returns `null` if not matched |
+| Dependent select | — | `.meta({ dependsOn: 'parentFieldName' })` — re-fetches options with `?f_<dependsOn>=<value>` when the parent field changes; clears own value on parent change; disabled only when both parent and child are empty (enabled unfiltered in edit mode when child already has a value) — see §4.5.2 |
+| Virtual field | — | `.meta({ virtual: true })` — rendered in the form for UX purposes (e.g. a company selector that filters a branch selector) but excluded from API payloads; `listVisibility` forced to `'never'` — see §4.5.2 |
 | Default sort | `createdAt: 'desc'` | `withMeta(schema, { defaultSort: { field: 'name', order: 'asc' } })` — applied by `BaseService` when no `sortField` in query |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
@@ -315,6 +317,74 @@ departmentId: z.uuid().meta({
 ```
 
 > **Note:** `relatedWhere` filters the *included* object, not the parent records. To exclude parent records when the related record does not match a condition, use a `contextFilter` in the service's `findAll()` instead.
+
+### 4.5.2 Dependent Selects — `virtual` + `dependsOn`
+
+Two field-level metadata flags enable cascading select fields declaratively.
+
+**`virtual: true`** — the field exists in the form for UX purposes but is never sent to the API. `AutoForm` strips all virtual fields from the payload before calling `onSubmit`. The metadata builder forces `listVisibility: 'never'` automatically.
+
+**`dependsOn: 'fieldName'`** — when the named sibling field changes, `RelationSelect` re-fetches options using `?f_<dependsOn>=<value>`. The child value is cleared whenever the parent changes. Fetch and enable rules:
+
+| Parent value | Child value | Behaviour |
+|---|---|---|
+| empty | empty | disabled — no fetch (blank creation form) |
+| empty | set | enabled — fetch **unfiltered** (edit mode, virtual parent not yet selected) |
+| set | any | enabled — fetch filtered by parent |
+
+**Schema declaration (company → branch example):**
+
+```typescript
+// The company field is virtual — it narrows the branch list but is not stored.
+companyId: z.string().optional().meta({
+  label: 'Company',
+  widget: 'select', resource: 'company', domain: 'core', labelField: 'legalName',
+  virtual: true,
+}),
+
+// branchId is stored; options are filtered by the selected company.
+branchId: z.string().meta({
+  label: 'Branch',
+  widget: 'select', resource: 'branch', domain: 'core', labelField: 'name',
+  dependsOn: 'companyId',   // → re-fetches with ?f_companyId=<value>
+}),
+```
+
+**How it works — `AutoForm` path:**
+- `RelationSelect` calls `useWatch` on both the `dependsOn` field and its own field to observe the parent value and whether the child already has a value.
+- It delegates the fetch to `useFieldOptions` (see §4.15.1), which appends `?f_<dependsOn>=<value>` when the parent is set, or fetches unfiltered when the child already has a value but the parent is empty (edit mode where the virtual parent starts unpopulated).
+- `RelationSelectControl` (inner component) runs a `useEffect` that calls `ctrl.onChange('')` whenever the parent changes to a *different* non-empty value, preventing stale child selections. It does not clear on initial render.
+- On submit, `AutoForm` removes all `virtual` fields from the payload.
+
+**Edit mode — ideal UX via `relatedDisplayFields`:**
+
+When the stored field uses `relatedDisplayFields` to include the parent FK, the page can pre-populate the virtual field from the loaded record at zero extra cost:
+
+```typescript
+// schema: branchId.meta({ relatedDisplayFields: ['companyId'] })
+// API returns: { branchId: 'X', branch: { id: 'X', name: 'Filial SP', companyId: 'ABC' } }
+
+defaultValues = { ...record, companyId: record.branch?.companyId }
+// → virtual companyId pre-populated → branch select opens filtered to company ABC
+```
+
+**Custom pages path — `useFieldOptions`:**
+
+Custom pages call `useFieldOptions` directly, passing the watched parent value and whether the child already has a value:
+
+```typescript
+const companyId    = watch('companyId')
+const branchId     = watch('branchId')
+const { options: branchOptions } = useFieldOptions(
+  branchField,
+  companyId || undefined,
+  { hasCurrentValue: !!branchId },
+)
+```
+
+**Backend contract:** the options endpoint must support `f_<dependsOn>` as a filter. For `BaseService` resources this works automatically via `buildFilterWhere` — the only requirement is that the parent field is declared with `filter: true` (or `filter: { type: 'relation', ... }`) in the child resource's schema.
+
+**Chains:** the pattern composes — a field can depend on another that is itself a child. Each level only needs `dependsOn` pointing to its immediate parent.
 
 ### 4.6 Resource Registry and Domain Registry
 
@@ -624,6 +694,23 @@ export function resolveIcon(name?: string | null): LucideIcon {
 ```
 
 When adding a new icon: import it in `icons.ts` and add it to the `Icons` map. No other file needs to change.
+
+### 4.15.1 Frontend — useFieldOptions
+
+```typescript
+// apps/web/src/core/useFieldOptions.ts
+export function useFieldOptions(
+  field: Pick<MetadataField, 'resource' | 'domain' | 'dependsOn'>,
+  dependsOnValue?: string,
+  { hasCurrentValue }: { hasCurrentValue?: boolean } = {},
+): { options: Record<string, unknown>[]; isLoading: boolean }
+```
+
+Fetches options for a `widget: 'select'` field. Used internally by `RelationSelect` inside `FieldRenderer` — custom pages can import it directly when they need the same data.
+
+- When `dependsOn` is set, the query key includes `dependsOnValue` so TanStack Query caches per parent value.
+- `hasCurrentValue: true` enables the query even when `dependsOnValue` is empty, fetching all options unfiltered — covers edit mode where the virtual parent field starts unpopulated.
+- `staleTime: 30_000` for static relations; `staleTime: 0` for dependent ones.
 
 ### 4.15 Frontend — useDiscovery
 

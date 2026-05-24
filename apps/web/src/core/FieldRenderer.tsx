@@ -1,15 +1,15 @@
 'use client'
 
-import { Controller, type Control } from 'react-hook-form'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { Controller, useWatch, type Control } from 'react-hook-form'
 import { IMaskInput } from 'react-imask'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { MetadataField, PaginatedResult } from '@nyx/types'
+import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
-import { apiFetch } from '@/lib/auth'
 import { inputBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { useFieldOptions } from './useFieldOptions'
 
 interface Props {
   field:       MetadataField
@@ -77,51 +77,83 @@ function MaskedInput({
   )
 }
 
+function RelationSelectControl({
+  field, ctrl, options, dependsOnValue, autoFocus, className, readonly, containerClassName,
+}: {
+  field: MetadataField
+  ctrl: { value: string | undefined; onChange: (v: unknown) => void; onBlur: () => void; ref: React.Ref<any> }
+  options: Record<string, unknown>[]
+  dependsOnValue: string | undefined
+  autoFocus?: boolean
+  className: string
+  readonly?: boolean
+  containerClassName?: string
+}) {
+  const prevRef = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    if (!field.dependsOn) return
+    if (prevRef.current !== undefined && prevRef.current !== dependsOnValue) {
+      ctrl.onChange('')
+    }
+    prevRef.current = dependsOnValue
+  }, [dependsOnValue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isDisabled = readonly || (!!field.dependsOn && !dependsOnValue && !ctrl.value)
+  const labelField = field.labelField ?? 'name'
+
+  return (
+    <div className={cn('relative', containerClassName)}>
+      <select
+        id={field.name}
+        autoFocus={autoFocus}
+        value={ctrl.value ?? ''}
+        onChange={ctrl.onChange}
+        onBlur={ctrl.onBlur}
+        ref={ctrl.ref}
+        disabled={isDisabled}
+        className={cn(className, 'appearance-none', field.keybind ? 'md:pr-20' : 'pr-9', isDisabled && readonlyCls)}
+      >
+        <option value="">{field.placeholder ?? 'Selecione…'}</option>
+        {options.map((opt: Record<string, unknown>) => (
+          <option key={String(opt.id)} value={String(opt.id)}>
+            {String(opt[labelField] ?? opt.id)}
+          </option>
+        ))}
+      </select>
+      {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
+      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+    </div>
+  )
+}
+
 function RelationSelect({
   field, control, autoFocus, className, readonly, containerClassName,
 }: {
   field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean; containerClassName?: string
 }) {
-  const { data } = useQuery<PaginatedResult<Record<string, unknown>>>({
-    queryKey:  ['relation', field.resource],
-    queryFn:   async () => {
-      const res = await apiFetch(`/${field.domain ?? 'core'}/${field.resource}?pageSize=999`)
-      if (!res.ok) throw new Error('Failed to fetch relation')
-      return res.json()
-    },
-    staleTime: 0,
-  })
-
-  const options    = data?.data ?? []
-  const labelField = field.labelField ?? 'name'
+  const rawWatched      = useWatch({ control, name: field.dependsOn ?? '' })
+  const rawChildValue   = useWatch({ control, name: field.name })
+  const dependsOnValue: string | undefined  = field.dependsOn ? ((rawWatched as string) || undefined) : undefined
+  const hasCurrentValue = field.dependsOn ? !!rawChildValue : false
+  const { options }     = useFieldOptions(field, dependsOnValue, { hasCurrentValue })
 
   return (
     <Controller
       name={field.name}
       control={control}
-      rules={{ required: field.required }}
+      rules={{ required: field.required && !field.virtual }}
       render={({ field: ctrl }) => (
-        <div className={cn('relative', containerClassName)}>
-          <select
-            id={field.name}
-            autoFocus={autoFocus}
-            value={ctrl.value ?? ''}
-            onChange={ctrl.onChange}
-            onBlur={ctrl.onBlur}
-            ref={ctrl.ref}
-            disabled={readonly}
-            className={cn(className, 'appearance-none', field.keybind ? 'md:pr-20' : 'pr-9', readonly && readonlyCls)}
-          >
-            <option value="">{field.placeholder ?? 'Selecione…'}</option>
-            {options.map((opt) => (
-              <option key={String(opt.id)} value={String(opt.id)}>
-                {String(opt[labelField] ?? opt.id)}
-              </option>
-            ))}
-          </select>
-          {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
-          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        </div>
+        <RelationSelectControl
+          field={field}
+          ctrl={ctrl}
+          options={options}
+          dependsOnValue={dependsOnValue}
+          autoFocus={autoFocus}
+          className={className}
+          readonly={readonly}
+          containerClassName={containerClassName}
+        />
       )}
     />
   )

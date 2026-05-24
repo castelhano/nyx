@@ -25,7 +25,11 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
   const keybindGroup = useRef(`autoform-${resource}`)
   const tabsRef      = useRef<TabsHandle>(null)
 
-  const visibleFields = meta?.fields.filter((f) => f.showInForm) ?? []
+  const visibleFields  = meta?.fields.filter((f) => f.showInForm) ?? []
+  const virtualNames   = useMemo(
+    () => new Set(meta?.fields.filter((f) => f.virtual).map((f) => f.name) ?? []),
+    [meta],
+  )
 
   // Mescla defaults do schema com os valores externos.
   // Usa meta?.resource como dep para re-calcular quando o resource muda,
@@ -152,7 +156,10 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
   }
 
   return (
-    <form id={formId} onSubmit={handleSubmit(onSubmit as any)} autoComplete="off">
+    <form id={formId} onSubmit={handleSubmit(async (data) => {
+      const payload = Object.fromEntries(Object.entries(data).filter(([k]) => !virtualNames.has(k)))
+      await onSubmit(payload)
+    })} autoComplete="off">
       {buildContent()}
       {!formId && (
         <button
