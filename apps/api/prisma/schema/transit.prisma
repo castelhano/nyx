@@ -1,0 +1,274 @@
+enum LineType {
+  URBAN
+  METROPOLITAN
+  RURAL
+  SPECIAL
+}
+
+enum RouteDirection {
+  OUTBOUND
+  INBOUND
+  CIRCULAR
+}
+
+enum TravelTimeSource {
+  OSRM
+  MANUAL
+}
+
+enum ServicePeriodStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum VehiclePlanStatus {
+  DRAFT
+  PROCESSING
+  READY
+  CONFIRMED
+}
+
+model TransitLocality {
+  id        String   @id @default(uuid())
+  branchId  String
+  code      String?
+  name      String
+  lat       Float
+  lng       Float
+  isDepot   Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch @relation("BranchTransitLocalities", fields: [branchId], references: [id])
+
+  travelTimesFrom TravelTimeMatrix[] @relation("TravelTimeOrigin")
+  travelTimesTo   TravelTimeMatrix[] @relation("TravelTimeDestination")
+  routesAsOrigin      TransitRoute[] @relation("RouteOrigin")
+  routesAsDestination TransitRoute[] @relation("RouteDestination")
+  routeLocalities RouteLocality[]
+  depotFleets     DepotFleet[]
+  vehicleBlocks   VehicleBlock[]
+
+  @@map("transit_localities")
+}
+
+model TransitLine {
+  id        String   @id @default(uuid())
+  branchId  String
+  code      String
+  name      String
+  type      LineType
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch        @relation("BranchTransitLines", fields: [branchId], references: [id])
+  routes TransitRoute[]
+
+  @@unique([branchId, code])
+  @@map("transit_lines")
+}
+
+model TransitRoute {
+  id                    String         @id @default(uuid())
+  lineId                String
+  direction             RouteDirection
+  name                  String
+  originLocalityId      String
+  destinationLocalityId String
+  isActive              Boolean        @default(true)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  line                TransitLine     @relation(fields: [lineId], references: [id])
+  originLocality      TransitLocality @relation("RouteOrigin", fields: [originLocalityId], references: [id])
+  destinationLocality TransitLocality @relation("RouteDestination", fields: [destinationLocalityId], references: [id])
+  localities          RouteLocality[]
+  trips               TransitTrip[]
+
+  @@map("transit_routes")
+}
+
+model RouteLocality {
+  id               String   @id @default(uuid())
+  routeId          String
+  localityId       String
+  sequence         Int
+  // null → runtime falls back to TravelTimeMatrix for this pair
+  deltaMinutes     Int?
+  deltaKm          Float?
+  allowsCrewChange Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  route    TransitRoute    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  locality TransitLocality @relation(fields: [localityId], references: [id])
+
+  @@unique([routeId, sequence])
+  @@unique([routeId, localityId])
+  @@map("transit_route_localities")
+}
+
+model TravelTimeMatrix {
+  id             String           @id @default(uuid())
+  branchId       String
+  originId       String
+  destinationId  String
+  baseMinutes    Float
+  distanceKm     Float
+  // multiplier applied to baseMinutes during peak hours
+  peakMultiplier Float            @default(1.0)
+  source         TravelTimeSource @default(MANUAL)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  branch      Branch          @relation("BranchTravelTimes", fields: [branchId], references: [id])
+  origin      TransitLocality @relation("TravelTimeOrigin", fields: [originId], references: [id])
+  destination TransitLocality @relation("TravelTimeDestination", fields: [destinationId], references: [id])
+
+  @@unique([branchId, originId, destinationId])
+  @@map("transit_travel_times")
+}
+
+model DepotFleet {
+  id          String      @id @default(uuid())
+  branchId    String
+  localityId  String
+  vehicleType VehicleType
+  quantity    Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  branch   Branch          @relation("BranchDepotFleets", fields: [branchId], references: [id])
+  locality TransitLocality @relation(fields: [localityId], references: [id])
+
+  @@unique([branchId, localityId, vehicleType])
+  @@map("transit_depot_fleets")
+}
+
+model DayType {
+  id          String   @id @default(uuid())
+  branchId    String
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch       Branch        @relation("BranchDayTypes", fields: [branchId], references: [id])
+  trips        TransitTrip[]
+  vehiclePlans VehiclePlan[]
+
+  @@unique([branchId, code])
+  @@map("transit_day_types")
+}
+
+model ServicePeriod {
+  id        String              @id @default(uuid())
+  branchId  String
+  name      String
+  validFrom DateTime
+  validTo   DateTime?
+  status    ServicePeriodStatus @default(DRAFT)
+  notes     String?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  branch       Branch        @relation("BranchServicePeriods", fields: [branchId], references: [id])
+  trips        TransitTrip[]
+  vehiclePlans VehiclePlan[]
+
+  @@map("transit_service_periods")
+}
+
+model TransitTrip {
+  id                  String      @id @default(uuid())
+  branchId            String
+  servicePeriodId     String
+  dayTypeId           String
+  routeId             String
+  // minutes from operational day start; values > 1440 indicate overnight trips
+  departureMinutes    Int
+  arrivalMinutes      Int
+  requiredVehicleType VehicleType?
+  // { locked?: string[], pinnedBlock?: string }
+  constraints         Json?
+  notes               String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  branch        Branch        @relation("BranchTransitTrips", fields: [branchId], references: [id])
+  servicePeriod ServicePeriod @relation(fields: [servicePeriodId], references: [id])
+  dayType       DayType       @relation(fields: [dayTypeId], references: [id])
+  route         TransitRoute  @relation(fields: [routeId], references: [id])
+  blockTrips    BlockTrip[]
+
+  @@map("transit_trips")
+}
+
+model VehiclePlan {
+  id              String            @id @default(uuid())
+  branchId        String
+  servicePeriodId String
+  dayTypeId       String
+  status          VehiclePlanStatus @default(DRAFT)
+  fleetCount      Int?
+  score           Float?
+  deadrunKm       Float?
+  generatedAt     DateTime?
+  // { locked?: true }
+  constraints     Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  branch        Branch        @relation("BranchVehiclePlans", fields: [branchId], references: [id])
+  servicePeriod ServicePeriod @relation(fields: [servicePeriodId], references: [id])
+  dayType       DayType       @relation(fields: [dayTypeId], references: [id])
+  blocks        VehicleBlock[]
+
+  // one CONFIRMED plan per (servicePeriod, dayType) enforced at service layer
+  @@map("transit_vehicle_plans")
+}
+
+model VehicleBlock {
+  id            String      @id @default(uuid())
+  vehiclePlanId String
+  blockNumber   Int
+  depotId       String
+  vehicleType   VehicleType
+  totalMinutes  Int?
+  totalKm       Float?
+  // { locked?: true }
+  constraints   Json?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  vehiclePlan VehiclePlan     @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  depot       TransitLocality @relation(fields: [depotId], references: [id])
+  blockTrips  BlockTrip[]
+
+  @@unique([vehiclePlanId, blockNumber])
+  @@map("transit_vehicle_blocks")
+}
+
+model BlockTrip {
+  id              String   @id @default(uuid())
+  vehicleBlockId  String
+  tripId          String
+  sequence        Int
+  isDeadhead      Boolean  @default(false)
+  deadheadMinutes Int?
+  deadheadKm      Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicleBlock VehicleBlock @relation(fields: [vehicleBlockId], references: [id], onDelete: Cascade)
+  trip         TransitTrip  @relation(fields: [tripId], references: [id])
+
+  @@unique([vehicleBlockId, sequence])
+  @@map("transit_block_trips")
+}

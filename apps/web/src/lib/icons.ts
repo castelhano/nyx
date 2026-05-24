@@ -3,6 +3,7 @@ import {
   LayoutGrid, Package, Truck, ShoppingCart, FileText, BarChart2,
   Palette, CalendarDays, SlidersHorizontal, ArrowRightFromLine, Layers, Briefcase,
   UserRound, Bus, Tag,
+  MapPin, Route, Timer, Warehouse, CalendarRange, LayoutList, Settings2,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -28,6 +29,13 @@ export const Icons: Record<string, LucideIcon> = {
   ArrowRightFromLine,
   Layers,
   Briefcase,
+  MapPin,
+  Route,
+  Timer,
+  Warehouse,
+  CalendarRange,
+  LayoutList,
+  Settings2,
   Default: LayoutGrid,
 }
 
