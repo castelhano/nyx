@@ -6,8 +6,9 @@ import { cn } from '@/lib/utils'
 import { useKeywatch } from '@/lib/keywatch/context'
 
 export interface TabItem {
-  label:   string
-  content: ReactNode
+  label:       string
+  content:     ReactNode
+  errorCount?: number
 }
 
 export interface TabsHandle {
@@ -100,6 +101,11 @@ export const Tabs = forwardRef<TabsHandle, TabsProps>(function Tabs({ tabs, clas
             )}
           >
             {tab.label}
+            {!!tab.errorCount && (
+              <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 text-[10px] font-semibold rounded-full bg-destructive text-destructive-foreground">
+                {tab.errorCount}
+              </span>
+            )}
           </button>
         ))}
       </div>

@@ -182,7 +182,11 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
     return (
       <Tabs
         ref={tabsRef}
-        tabs={tabs.map((g) => ({ label: g.label, content: fieldGrid(g.fields, false) }))}
+        tabs={tabs.map((g) => ({
+          label:      g.label,
+          content:    fieldGrid(g.fields, false),
+          errorCount: g.fields.filter((f) => errors[f.name]).length || undefined,
+        }))}
       />
     )
   }

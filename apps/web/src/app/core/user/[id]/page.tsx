@@ -523,7 +523,13 @@ export default function UserDetailPage() {
         <Tabs
           ref={tabsRef}
           tabs={[
-            { label: 'Dados',      content: renderDados() },
+            {
+            label:      'Dados',
+            content:    renderDados(),
+            errorCount: (
+              ['name', 'username', 'email', 'password', 'confirmPassword', 'newPassword', 'newConfirmPassword'] as const
+            ).filter((f) => errors[f]).length || undefined,
+          },
             {
               label: 'Filiais',
               content: (
