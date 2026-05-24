@@ -72,6 +72,7 @@ model Branch {
   company    Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
   users      UserBranch[]
   employees  Employee[]
+  vehicles   Vehicle[]
 
   @@map("branches")
 }

@@ -1,0 +1,84 @@
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+  DECOMMISSIONED
+}
+
+enum FuelType {
+  DIESEL
+  GASOLINE
+  ETHANOL
+  ELECTRIC
+  HYBRID
+  GNV
+}
+
+enum VehicleType {
+  BUS
+  MICRO_BUS
+  MINIBUS
+  VAN
+}
+
+enum TransmissionType {
+  MANUAL
+  AUTOMATIC
+  SEMI_AUTOMATIC
+}
+
+model VehicleBrand {
+  id        String         @id @default(uuid())
+  name      String         @unique
+  models    VehicleModel[]
+  vehicles  Vehicle[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@map("vehicle_brands")
+}
+
+model VehicleModel {
+  id        String       @id @default(uuid())
+  name      String
+  brandId   String
+  brand     VehicleBrand @relation(fields: [brandId], references: [id])
+  vehicles  Vehicle[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([name, brandId])
+  @@map("vehicle_models")
+}
+
+model Vehicle {
+  id               String            @id @default(uuid())
+  branchId         String
+  plate            String            @unique
+  renavam          String?           @unique
+  chassis          String?           @unique
+  brandId          String
+  modelId          String
+  year             Int
+  modelYear        Int
+  vehicleType      VehicleType
+  color            String?
+  fuelType         FuelType
+  transmission     TransmissionType?
+  seatedCapacity   Int?
+  totalCapacity    Int?
+  odometer         Float             @default(0)
+  status           VehicleStatus     @default(ACTIVE)
+  acquisitionDate  DateTime?
+  acquisitionValue Decimal?
+  notes            String?
+
+  branch Branch       @relation(fields: [branchId], references: [id])
+  brand  VehicleBrand @relation(fields: [brandId], references: [id])
+  model  VehicleModel @relation(fields: [modelId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicles")
+}
