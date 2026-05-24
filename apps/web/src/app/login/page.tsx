@@ -43,7 +43,7 @@ export default function LoginPage() {
 
         <div className="w-full max-w-sm">
           <div
-            className="rounded-[--radius] border border-border bg-card p-8 shadow-sm space-y-5"
+            className="rounded-(--radius) border border-border bg-card p-8 shadow-sm space-y-5"
           >
             <div className="space-y-1">
               <h1 className="text-lg font-semibold text-card-foreground">Entrar</h1>
@@ -51,7 +51,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-[--radius] px-3 py-2">
+              <p className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-(--radius) px-3 py-2">
                 {error}
               </p>
             )}
@@ -68,7 +68,7 @@ export default function LoginPage() {
                   required
                   autoFocus
                   placeholder="Username"
-                  className="w-full rounded-[--radius] border border-input bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="w-full rounded-(--radius) border border-input bg-input-bg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
 

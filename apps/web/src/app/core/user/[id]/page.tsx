@@ -581,7 +581,7 @@ export default function UserDetailPage() {
                               className="w-full"
                             />
                             {copyListOpen && copyUserResults.length > 0 && (
-                              <div className="absolute left-0 top-full mt-1 z-50 w-full bg-card border border-border rounded-[--radius] shadow-md py-1">
+                              <div className="absolute left-0 top-full mt-1 z-50 w-full bg-card border border-border rounded-(--radius) shadow-md py-1">
                                 {copyUserResults.map((u) => (
                                   <button
                                     key={u.id}

@@ -479,7 +479,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
               )}
             </Button>
             {filterOpen && (
-              <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-[--radius] shadow-md p-3 min-w-56">
+              <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-(--radius) shadow-md p-3 min-w-56">
                 <FilterBar
                   fields={meta.fields}
                   values={activeFilters}
@@ -500,7 +500,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
             <span className="hidden sm:inline">Colunas</span>
           </Button>
           {pickerOpen && (
-            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-[--radius] shadow-md p-1 min-w-44">
+            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-(--radius) shadow-md p-1 min-w-44">
               {toggleableFields.map((f) => (
                 <label key={f.name} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm select-none">
                   <input

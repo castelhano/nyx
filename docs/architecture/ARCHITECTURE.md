@@ -86,7 +86,9 @@ nyx/
 │           │   │   ├── topbar.tsx
 │           │   │   ├── topbar-actions-context.tsx
 │           │   │   ├── sidebar.tsx
-│           │   │   └── sidebar-context.tsx
+│           │   │   ├── sidebar-context.tsx
+│           │   │   ├── global-shortcuts.tsx    # date field shortcuts + app-wide keybinds
+│           │   │   └── global-search.tsx       # F3 resource search overlay
 │           │   └── ui/
 │           │       ├── button.tsx
 │           │       ├── breadcrumb.tsx
@@ -1168,7 +1170,7 @@ All models follow these conventions:
 | `Input` | `components/ui/input.tsx` | size variants: default (`px-3 py-2`), sm (`px-2 py-1.5`); also exports `inputBaseCls` string for elements that can't use the component (IMaskInput, textarea) |
 | `Select` | `components/ui/select.tsx` | wraps native `<select>` with built-in `ChevronDown` overlay; same size variants; `wrapperClassName` for outer div sizing; `keybind` prop renders a `KeyHint` badge inside the wrapper to the left of the chevron |
 | `Breadcrumb` | `components/ui/breadcrumb.tsx` | segments array, optional dropdown per item |
-| `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change |
+| `Tabs` | `components/ui/tabs.tsx` | all panels mounted (`hidden` attr); focuses first enabled field on tab change; `TabItem.errorCount?: number` renders a badge on the tab label when the tab has invalid fields — `AutoForm` computes this automatically per group; custom pages pass it manually by counting `errors[field]` for fields in that tab |
 | `Dropdown` | `components/ui/dropdown.tsx` | `createPortal` to `document.body` + `getBoundingClientRect()` fixed positioning — escapes `overflow:hidden` containers; configurable `side`, `align`, `sideOffset`; `DropdownItem` accepts `href` (renders `Link`) or `onClick` |
 | `AssociationList` | `components/ui/association-list.tsx` | many-to-many with a per-row role select; "+ Add" opens a searchable combobox filtered to unassociated items; items grouped by parent entity when `companies` prop is provided; local state — persists only on topbar Save |
 | `CheckboxGroup` | `components/ui/checkbox-group.tsx` | permissions matrix: resources as rows, actions (read/create/update/delete) as columns; section-level select-all / deselect-all toggle; global filter input; local state — persists only on topbar Save |
@@ -1262,6 +1264,12 @@ Tokens are defined as HSL custom properties in `globals.css` and registered in t
 Token categories: `background`, `foreground`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `sidebar-*`.
 
 All components reference tokens via Tailwind classes (`bg-primary`, `text-foreground`, etc.) — no hardcoded color values.
+
+**CSS variable syntax in Tailwind v4:** use parentheses, not brackets, to reference CSS variables in arbitrary values:
+- `rounded-(--radius)` → `border-radius: var(--radius)` ✓
+- `rounded-[--radius]` → `border-radius: --radius` (invalid CSS, ignored by browser) ✗
+
+This applies to any property: `bg-(--color)`, `text-(--color)`, etc.
 
 ### Accent Themes
 
@@ -1371,6 +1379,28 @@ useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
 ```
 
 **Rule:** every page with editable state must implement `alt+l` — generic pages (`AutoForm` via `[id]/page.tsx`), custom pages (e.g. `core/user/[id]/page.tsx`) and `SettingsPanel`. No exceptions. `AutoList` registers the handler internally.
+
+### Date field shortcuts
+
+Implemented via a single `keydown` listener on `document` in `GlobalShortcuts` (event delegation — zero per-field setup). Fires on any `input[type="date"]` when no modifier key (`Ctrl`/`Meta`/`Alt`) is held:
+
+| Key | Action |
+|---|---|
+| `t` | Set to today |
+| `-` | Subtract one day (if empty, uses today as base) |
+| `+` | Add one day (if empty, uses today as base) |
+
+Uses the native `HTMLInputElement.prototype` value setter (resolved inside `useEffect`) to trigger React/RHF's `onChange` properly.
+
+### Global search (`F3`)
+
+`GlobalSearch` (`components/layout/global-search.tsx`) is mounted permanently in `AppLayout`. Renders `null` when closed — no overhead when idle.
+
+- `F3` (registered with `context: 'all'`) toggles open/closed
+- Data source: `useDiscovery()` — only resources the user can `read` are shown, no extra fetch
+- No query → input only, no results rendered (scales to any number of resources)
+- Keyboard nav: `↑↓` moves cursor, `Enter` navigates, `Escape`/`F3` closes
+- `pointerDown` on backdrop closes; `stopPropagation` on container prevents accidental close
 
 ---
 

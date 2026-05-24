@@ -7,8 +7,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useShortcut } from '@/lib/keywatch'
 import { useSidebar } from './sidebar-context'
 
-const nativeValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-
 function toYMD(d: Date): string {
   return d.toISOString().split('T')[0]
 }
@@ -39,7 +37,8 @@ export function GlobalShortcuts() {
       if (key === '-') base.setDate(base.getDate() - 1)
       if (key === '+') base.setDate(base.getDate() + 1)
 
-      nativeValueSetter?.call(input, toYMD(key === 't' ? new Date() : base))
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, toYMD(key === 't' ? new Date() : base))
       input.dispatchEvent(new Event('input', { bubbles: true }))
     }
 

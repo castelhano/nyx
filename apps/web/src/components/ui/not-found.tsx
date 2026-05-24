@@ -15,7 +15,7 @@ export function NotFound() {
       </div>
       <Link
         href="/"
-        className="inline-flex h-8 items-center rounded-[--radius] border border-input bg-transparent px-3 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="inline-flex h-8 items-center rounded-(--radius) border border-input bg-transparent px-3 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
       >
         Voltar ao início
       </Link>

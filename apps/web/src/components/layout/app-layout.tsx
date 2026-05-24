@@ -1,6 +1,7 @@
 import { SidebarProvider } from './sidebar-context'
 import { TopbarActionsProvider } from './topbar-actions-context'
 import { GlobalShortcuts } from './global-shortcuts'
+import { GlobalSearch } from './global-search'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
 import { KeywatchProvider } from '@/lib/keywatch'
@@ -11,6 +12,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <TopbarActionsProvider>
     <SidebarProvider>
       <GlobalShortcuts />
+      <GlobalSearch />
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
