@@ -267,11 +267,53 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
 | Relation select (FK field) | — | `.meta({ widget: 'select', resource: 'department', domain: 'hr', labelField: 'name' })` — `domain` obrigatório quando o resource não pertence ao domínio `core` (default) |
+| Relation include (auto) | all `widget: 'select'` fields with `labelField` | `BaseService` auto-builds Prisma `include`; convention `fooId → foo` (strip `Id`) — see §4.5.1 |
+| Extra relation fields | `labelField` only | `.meta({ relatedDisplayFields: ['code', 'location'] })` — additional fields selected in the `include` |
+| Filter on include | no filter | `.meta({ relatedWhere: { isActive: true } })` — applied as Prisma `include where`; parent record still appears, `row.relation` returns `null` if not matched |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |
 
 **Settings resources (singleton):** use `BaseSettingsService` — see §4.17.
+
+### 4.5.1 Relation Includes — FK Display in AutoList
+
+When a field declares `widget: 'select'` + `labelField`, `BaseService` automatically builds a Prisma `include` for that relation in both `findAll()` and `findOne()`. AutoList renders the `labelField` of the related object **in place of the UUID** in the FK field cell.
+
+**Name convention:** `fooId → foo` (strip trailing `Id`). Must match the Prisma relation name.
+
+**Basic case — zero extra config:**
+```typescript
+departmentId: z.uuid().meta({
+  widget: 'select', resource: 'department', domain: 'hr', labelField: 'name',
+})
+// backend → include: { department: { select: { id: true, name: true } } }
+// AutoList → departmentId cell renders department.name (fallback: raw UUID if null)
+```
+
+**Additional relation fields (`relatedDisplayFields`):**
+```typescript
+departmentId: z.uuid().meta({
+  widget: 'select', resource: 'department', domain: 'hr', labelField: 'name',
+  relatedDisplayFields: ['code', 'location'],
+})
+// → include: { department: { select: { id, name, code, location } } }
+// AutoList still renders labelField; extras are available in row.department
+// for use in rowActions or custom pages
+```
+
+**Filter on the include (`relatedWhere`):**
+```typescript
+departmentId: z.uuid().meta({
+  widget: 'select', resource: 'department', domain: 'hr', labelField: 'name',
+  relatedWhere: { isActive: true },
+})
+// → include: { department: { select: { ... }, where: { isActive: true } } }
+// If the related record does not match: row.department = null → AutoList renders empty string
+// The parent record (e.g. jobTitle) still appears in the list
+```
+
+> **Note:** `relatedWhere` filters the *included* object, not the parent records. To exclude parent records when the related record does not match a condition, use a `contextFilter` in the service's `findAll()` instead.
 
 ### 4.6 Resource Registry and Domain Registry
 

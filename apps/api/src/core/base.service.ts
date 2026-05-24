@@ -25,6 +25,24 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     return (this.prisma as any)[this.modelName]
   }
 
+  private buildRelationIncludes(): Record<string, unknown> {
+    const include: Record<string, unknown> = {}
+    for (const [fieldName, rawField] of Object.entries(this.schema.shape)) {
+      const meta = (rawField as any).meta?.() ?? {}
+      if (meta.widget !== 'select' || !meta.labelField) continue
+      const relationName = fieldName.replace(/Id$/, '')
+      const select: Record<string, boolean> = { id: true, [meta.labelField]: true }
+      if (Array.isArray(meta.relatedDisplayFields)) {
+        for (const f of meta.relatedDisplayFields) select[f] = true
+      }
+      include[relationName] = {
+        select,
+        ...(meta.relatedWhere ? { where: meta.relatedWhere } : {}),
+      }
+    }
+    return include
+  }
+
   async findAll(query: PaginationQuery): Promise<PaginatedResult<T>> {
     const page     = Number(query.page)     || 1
     const pageSize = Number(query.pageSize) || 20
@@ -44,8 +62,11 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
       ...buildFilterWhere(this.schema, query as Record<string, unknown>),
     }
 
+    const include    = this.buildRelationIncludes()
+    const includeOpt = Object.keys(include).length ? { include } : {}
+
     const [data, total] = await Promise.all([
-      this.model.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+      this.model.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize, ...includeOpt }),
       this.model.count({ where }),
     ])
 
@@ -53,7 +74,9 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
   }
 
   async findOne(id: string): Promise<T> {
-    const item = await this.model.findUnique({ where: { id } })
+    const include    = this.buildRelationIncludes()
+    const includeOpt = Object.keys(include).length ? { include } : {}
+    const item = await this.model.findUnique({ where: { id }, ...includeOpt })
     if (!item) throw new NotFoundException(`${this.modelName} not found`)
     return item
   }

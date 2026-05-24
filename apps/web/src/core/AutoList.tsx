@@ -217,7 +217,12 @@ function buildColumns(
           </span>
         )
       },
-      cell: ({ getValue }) => {
+      cell: ({ getValue, row: tableRow }) => {
+        if (col.widget === 'select' && col.labelField) {
+          const relationName = col.name.replace(/Id$/, '')
+          const related = (tableRow.original as any)[relationName]
+          if (related && col.labelField in related) return String(related[col.labelField])
+        }
         const val = getValue()
         if (val === null || val === undefined) return ''
         if (typeof val === 'boolean') return val ? 'Sim' : 'Não'

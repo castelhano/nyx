@@ -37,6 +37,8 @@ export interface FieldMeta {
   resource?: string
   domain?: string
   labelField?: string
+  relatedDisplayFields?: string[]
+  relatedWhere?: Record<string, unknown>
   keybind?: string
   filter?: boolean | FilterDef
   // schema-level only
@@ -64,6 +66,8 @@ export interface MetadataField {
   resource?: string
   domain?: string
   labelField?: string
+  relatedDisplayFields?: string[]
+  relatedWhere?: Record<string, unknown>
   keybind?: string
   group?: string
   filter?: FilterDef
