@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { Controller, useWatch, type Control } from 'react-hook-form'
 import { IMaskInput } from 'react-imask'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
@@ -33,6 +33,58 @@ const MASKS: Record<string, MaskDef> = {
   'phone':     [{ mask: '(00) 0000-0000' }, { mask: '(00) 00000-0000' }],
 }
 
+function AvatarUpload({
+  field, control, readonly,
+}: {
+  field: MetadataField; control: Control<any>; readonly?: boolean
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      render={({ field: ctrl }) => {
+        const previewUrl = ctrl.value instanceof File
+          ? URL.createObjectURL(ctrl.value)
+          : (ctrl.value as string) || null
+
+        return (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              disabled={readonly}
+              onClick={() => fileRef.current?.click()}
+              className="w-14 h-14 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border border-border hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
+            >
+              {previewUrl
+                ? <img src={previewUrl} alt="Avatar" className="w-full h-full object-cover" />
+                : <UserRound className="w-7 h-7 text-muted-foreground" />
+              }
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) ctrl.onChange(file)
+                e.target.value = ''
+              }}
+            />
+            {ctrl.value && !readonly && (
+              <button type="button" onClick={() => ctrl.onChange('')} className="text-xs text-muted-foreground hover:text-destructive">
+                Remover
+              </button>
+            )}
+          </div>
+        )
+      }}
+    />
+  )
+}
+
 export function KeyHint({ k, className }: { k: string; className?: string }) {
   return (
     <span className={cn(
@@ -54,7 +106,7 @@ function MaskedInput({
     <Controller
       name={field.name}
       control={control}
-      rules={{ required: field.required }}
+      rules={{ required: field.required ? 'Campo obrigatório' : false }}
       render={({ field: ctrl }) => (
         <div className={cn('relative', containerClassName)}>
           <IMaskInput
@@ -142,7 +194,7 @@ function RelationSelect({
     <Controller
       name={field.name}
       control={control}
-      rules={{ required: field.required && !field.virtual }}
+      rules={{ required: field.required && !field.virtual ? 'Campo obrigatório' : false }}
       render={({ field: ctrl }) => (
         <RelationSelectControl
           field={field}
@@ -240,7 +292,9 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
 
   let controlEl: React.ReactNode
 
-  if (field.resource && control) {
+  if (field.widget === 'avatar' && control) {
+    controlEl = <AvatarUpload field={field} control={control} readonly={readonly} />
+  } else if (field.resource && control) {
     controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {
     controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />

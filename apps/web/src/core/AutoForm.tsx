@@ -6,6 +6,7 @@ import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
 import { useKeywatch } from '@/lib/keywatch/context'
+import { uploadFile } from '@/lib/auth'
 import type { MetadataField } from '@nyx/types'
 
 interface Props {
@@ -35,14 +36,23 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
   // Usa meta?.resource como dep para re-calcular quando o resource muda,
   // e defaultValues para sync com dados do servidor.
   const mergedValues = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0]
     const schemaDefaults = meta
       ? Object.fromEntries(
           meta.fields
             .filter((f) => f.defaultValue !== undefined && !(f.name in (defaultValues ?? {})))
-            .map((f) => [f.name, f.defaultValue]),
+            .map((f) => [f.name, f.defaultValue === '$today' ? today : f.defaultValue]),
         )
       : {}
-    return { ...schemaDefaults, ...(defaultValues ?? {}) }
+    const merged = { ...schemaDefaults, ...(defaultValues ?? {}) }
+    // Normaliza datas ISO do servidor para YYYY-MM-DD (formato do <input type="date">)
+    for (const field of meta?.fields ?? []) {
+      if (field.type === 'date' && typeof merged[field.name] === 'string') {
+        const raw = merged[field.name] as string
+        if (raw.includes('T')) merged[field.name] = raw.split('T')[0]
+      }
+    }
+    return merged
   }, [meta?.resource, defaultValues]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // `values` (RHF 7.31+): sincroniza o form com dados externos via deep-equal,
@@ -120,7 +130,7 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
             <FieldRenderer
               key={field.name}
               field={field}
-              register={register(field.name, { required: field.required })}
+              register={register(field.name, { required: field.required ? 'Campo obrigatório' : false })}
               control={control}
               readonly={isReadonly}
               error={errors[field.name]?.message as string | undefined}
@@ -157,7 +167,20 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
 
   return (
     <form id={formId} onSubmit={handleSubmit(async (data) => {
-      const payload = Object.fromEntries(Object.entries(data).filter(([k]) => !virtualNames.has(k)))
+      const payload: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(data)) {
+        if (virtualNames.has(k)) continue
+        if (v instanceof File) {
+          const form = new FormData()
+          form.append('file', v)
+          const res = await uploadFile('/upload/image', form)
+          if (!res.ok) throw new Error('Falha no upload da imagem')
+          const json = await res.json()
+          payload[k] = json.url
+        } else {
+          payload[k] = v
+        }
+      }
       await onSubmit(payload)
     })} autoComplete="off">
       {buildContent()}

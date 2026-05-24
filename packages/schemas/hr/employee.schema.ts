@@ -57,6 +57,7 @@ export const employeeSchema = withMeta(
     }),
 
     status: z.enum(['ACTIVE', 'INACTIVE', 'ON_LEAVE', 'TERMINATED']).meta({
+      defaultValue: 'ACTIVE',
       label: 'Status',
       listVisibility: 'visible',
       filter: true,
@@ -130,6 +131,7 @@ export const employeeSchema = withMeta(
       listVisibility: 'visible',
       filter: { type: 'date_range' },
       keybind: 'a',
+      defaultValue: '$today',
     }),
 
     terminationDate: z.date().optional().meta({

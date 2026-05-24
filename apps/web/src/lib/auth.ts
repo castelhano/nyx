@@ -21,6 +21,14 @@ export function clearToken() {
   document.cookie = 'token=; path=/; max-age=0'
 }
 
+export async function uploadFile(path: string, body: FormData): Promise<Response> {
+  return fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body,
+  })
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,

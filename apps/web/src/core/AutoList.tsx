@@ -12,6 +12,7 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table'
 import { useMetadata } from './useMetadata'
+import { useAuth } from '@/lib/auth-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
@@ -185,10 +186,21 @@ function SortIcon({ state }: { state: false | 'asc' | 'desc' }) {
   return                      <ChevronDown    className="w-3 h-3 text-ring" />
 }
 
+function formatDate(val: unknown, format: string): string {
+  if (!val) return ''
+  const d = new Date(val as string)
+  if (isNaN(d.getTime())) return String(val)
+  const day   = String(d.getUTCDate()).padStart(2, '0')
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const year  = String(d.getUTCFullYear())
+  return format.replace('DD', day).replace('MM', month).replace('YYYY', year)
+}
+
 function buildColumns(
   fields: MetadataField[],
   sorting: SortingState,
   onSort: (field: MetadataField) => void,
+  dateFormat: string,
   onEdit?: (id: string) => void,
   rowActions?: RowActionDef[],
   onRowAction?: (action: RowActionDef, row: Row) => void,
@@ -227,6 +239,7 @@ function buildColumns(
         if (val === null || val === undefined) return ''
         if (typeof val === 'boolean') return val ? 'Sim' : 'Não'
         if (col.type === 'enum' && col.optionLabels && typeof val === 'string') return col.optionLabels[val] ?? val
+        if (col.type === 'date') return formatDate(val, dateFormat)
         return String(val)
       },
     }))
@@ -270,6 +283,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const router      = useRouter()
   const queryClient = useQueryClient()
   const { toast }   = useToast()
+  const { user }    = useAuth()
+  const dateFormat  = user?.preferences?.dateFormat ?? 'DD/MM/YYYY'
 
   const [page,          setPage]          = useState(1)
   const [sorting,       setSorting]       = useState<SortingState>([])
@@ -413,8 +428,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }, [])
 
   const columns = useMemo(
-    () => buildColumns(meta?.fields ?? [], sorting, handleSort, meta?.permissions?.update !== false ? onEdit : undefined, visibleRowActions, handleRowAction),
-    [meta?.fields, sorting, handleSort, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
+    () => buildColumns(meta?.fields ?? [], sorting, handleSort, dateFormat, meta?.permissions?.update !== false ? onEdit : undefined, visibleRowActions, handleRowAction),
+    [meta?.fields, sorting, handleSort, dateFormat, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
   )
 
   const table = useReactTable({

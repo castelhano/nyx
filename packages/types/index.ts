@@ -29,7 +29,8 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email'
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar'
+  defaultValue?: unknown
   min?: number
   max?: number
   mask?: 'cnpj' | 'cnpj-base' | 'cpf' | 'phone' | 'cep'

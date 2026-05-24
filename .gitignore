@@ -31,3 +31,7 @@ dist
 
 # turborepo cache
 .turbo/
+
+# file uploads (preserve directory via .gitkeep)
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep

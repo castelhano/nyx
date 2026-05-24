@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { ZodObject } from 'zod'
+import { ZodObject, ZodType, ZodDate, ZodOptional, ZodNullable, ZodDefault } from 'zod'
 import type { PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
@@ -84,13 +84,36 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     return item
   }
 
+  private unwrapField(field: ZodType): ZodType {
+    if (field instanceof ZodOptional || field instanceof ZodNullable || field instanceof ZodDefault) {
+      return this.unwrapField((field as any)._def.innerType)
+    }
+    return field
+  }
+
+  private static readonly IMMUTABLE_FIELDS = new Set(['id', 'createdAt', 'updatedAt'])
+
+  private sanitizeDto(dto: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+    for (const [name, rawField] of Object.entries(this.schema.shape)) {
+      if (BaseService.IMMUTABLE_FIELDS.has(name) || !(name in dto)) continue
+      if (this.unwrapField(rawField as ZodType) instanceof ZodDate) {
+        if (!dto[name]) continue
+        result[name] = typeof dto[name] === 'string' ? new Date(dto[name] as string) : dto[name]
+      } else {
+        result[name] = dto[name]
+      }
+    }
+    return result
+  }
+
   async create(dto: CreateDTO): Promise<T> {
-    return this.model.create({ data: dto })
+    return this.model.create({ data: this.sanitizeDto(dto as Record<string, unknown>) })
   }
 
   async update(id: string, dto: UpdateDTO): Promise<T> {
     await this.findOne(id)
-    return this.model.update({ where: { id }, data: dto })
+    return this.model.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) })
   }
 
   async remove(id: string): Promise<void> {

@@ -51,6 +51,9 @@ nyx/
 │   │           ├── discovery/      # Discovery endpoint — no business logic
 │   │           │   ├── discovery.controller.ts
 │   │           │   └── discovery.module.ts
+│   │           ├── upload/         # File upload — POST /upload/image (JWT-protected)
+│   │           │   ├── upload.controller.ts
+│   │           │   └── upload.module.ts
 │   │           ├── core/
 │   │           │   ├── core.module.ts      # @Domain({ label: 'Controle', icon: 'Shield' })
 │   │           │   ├── user/
@@ -61,6 +64,12 @@ nyx/
 │   │           │   └── settings/           # Part of core domain — no separate @Domain
 │   │           │       ├── settings.module.ts
 │   │           │       └── password-policy/    # Extends BaseSettingsService/Controller
+│   │           └── hr/
+│   │               ├── hr.module.ts        # @Domain({ label: 'RH', icon: 'Briefcase' })
+│   │               ├── employee/
+│   │               ├── contract/
+│   │               ├── department/
+│   │               └── job-title/
 │   └── web/                        # Next.js frontend
 │       └── src/
 │           ├── lib/
@@ -113,6 +122,7 @@ nyx/
 ├── packages/
 │   ├── schemas/
 │   │   ├── core/
+│   │   ├── hr/
 │   │   ├── settings/
 │   │   ├── with-meta.ts
 │   │   ├── zod-meta.ts
@@ -230,6 +240,8 @@ abstract class BaseService<T, CreateDTO, UpdateDTO> {
 }
 ```
 
+**`sanitizeDto` — automatic payload cleanup:** `create` and `update` run the DTO through `sanitizeDto` before passing it to Prisma. It rebuilds the object from scratch using only fields declared in the Zod schema, strips immutable fields (`id`, `createdAt`, `updatedAt`), converts date strings (`"YYYY-MM-DD"`) to `Date` objects, and removes empty strings for optional date fields. This means the frontend can safely send back the full record object (including nested relations from `include`) without causing Prisma errors.
+
 **CASL enforcement in `BaseController`:** every data endpoint checks the user's ability before delegating to the service. `ForbiddenException` (HTTP 403) is thrown if the check fails.
 
 | Endpoint | Required ability |
@@ -266,6 +278,8 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
+| Avatar / photo upload | — | `.meta({ widget: 'avatar' })` — renders a circular preview button; on click opens a file picker; on form submit the file is uploaded to `POST /upload/image` and the returned URL replaces the field value before the record is saved |
+| Field default value | none | `.meta({ defaultValue: 'ACTIVE' })` — static default pre-populated in `AutoForm` for new records; also supports the token `'$today'` which resolves to today's date as `YYYY-MM-DD` at render time (use on `z.date()` fields to pre-fill with today's date dynamically) |
 | Relation select (FK field) | — | `.meta({ widget: 'select', resource: 'department', domain: 'hr', labelField: 'name' })` — `domain` obrigatório quando o resource não pertence ao domínio `core` (default) |
 | Relation include (auto) | all `widget: 'select'` fields with `labelField` | `BaseService` auto-builds Prisma `include`; convention `fooId → foo` (strip `Id`) — see §4.5.1 |
 | Extra relation fields | `labelField` only | `.meta({ relatedDisplayFields: ['code', 'location'] })` — additional fields selected in the `include` |
@@ -560,8 +574,8 @@ if (guardNode) return guardNode
 
 These components consume the `GET /metadata` response to render their UI without any hardcoded field definitions.
 
-- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `listVisibility: 'visible'` or `'hidden'`. Supports CSV export when `allowCsv` is set. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`). Accepts an `onAction` prop as an escape hatch for row actions that cannot be expressed declaratively in the schema (see §4.13).
-- **AutoForm** — renders a validated form using React Hook Form + `zodResolver`. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs.
+- **AutoList** — renders a sortable, paginated table with a typed filter system. Columns are derived from fields with `listVisibility: 'visible'` or `'hidden'`. Supports CSV export when `allowCsv` is set. Filter controls are auto-rendered from `filter` definitions in the metadata: inline on desktop, collapsed behind a button with active-count badge on mobile. Accepts a `filters` prop for static context filters injected by parent pages (e.g. `{ companyId: 'abc' }`). Accepts an `onAction` prop as an escape hatch for row actions that cannot be expressed declaratively in the schema (see §4.13). **Date formatting:** `type: 'date'` cells are formatted using the authenticated user's `preferences.dateFormat` (e.g. `DD/MM/YYYY`); falls back to `DD/MM/YYYY` when the preference is unset.
+- **AutoForm** — renders a validated form using React Hook Form. Fields are derived from fields with `showInForm: true`. Groups become tabs when `groups` is set. Read-only fields (from `contextParams`) are rendered as disabled inputs. **Date normalization:** ISO strings from the server (`2026-05-06T00:00:00.000Z`) are converted to `YYYY-MM-DD` for `<input type="date">` fields automatically. **File uploads:** fields with `widget: 'avatar'` store a `File` object in RHF state until submit; on submit, the file is uploaded and the URL replaces the value before `onSubmit` is called — no upload happens on file selection. **Required validation:** RHF rules use the string `'Campo obrigatório'` (not boolean `true`) so errors render visibly next to the field.
 - **AutoBreadcrumb** — renders a navigation trail from the resource's `breadcrumb` declarations. Fetches parent record names via the API using the `nameField` from each breadcrumb entry. Uses `useDiscovery()` to resolve domain labels.
 
 **Error states** — all pages (generic and custom) use `usePageGuard` + `useRecordQuery` to resolve guard state before rendering. `<Forbidden />` and `<NotFound />` are never imported directly by pages — they are returned as `guardNode`.
@@ -890,6 +904,24 @@ Register the module in `SettingsModule` (and export the service if other modules
 
 ---
 
+### 4.18 File Upload
+
+**Endpoint:** `POST /api/upload/image` (JWT-protected)
+
+- Accepts `multipart/form-data` with a single `file` field
+- Validates that the file is an image (`image/*` MIME type); rejects all other types with 400
+- 5 MB size limit
+- Saves the file to `apps/api/uploads/` with a UUID filename (preserving the original extension)
+- Returns `{ url: '/api/uploads/<uuid>.<ext>' }`
+
+**Static file serving:** `main.ts` configures `NestExpressApplication.useStaticAssets()` with `prefix: '/api/uploads'`, so uploaded files are served at `/api/uploads/<filename>`. The Next.js rewrite proxies `/api/*` to NestJS, making images accessible from the browser at `http://localhost:3000/api/uploads/<filename>` without CORS issues.
+
+**Frontend integration:** `lib/auth.ts` exports `uploadFile(path, formData)` — a bare `fetch` that sends only the `Authorization` header (no `Content-Type`), allowing the browser to set the correct `multipart/form-data` boundary automatically. The `avatar` widget in `FieldRenderer` and `AutoForm`'s submit handler use this function.
+
+**Storage note:** `apps/api/uploads/` is tracked in git via `.gitkeep` but its contents are gitignored. For production, replace local disk storage with an object store (S3, R2, etc.) and update `UploadController` accordingly.
+
+---
+
 ## 5. Auth & Permissions
 
 ### Authentication Flow
@@ -1060,6 +1092,7 @@ Models are defined in `apps/api/prisma/schema/` using Prisma 7's multi-file sche
 |------|--------|
 | `schema/core.prisma` | `User`, `Company`, `Branch`, `UserBranch`, `UserPermission`, `UserPasswordHistory` |
 | `schema/settings.prisma` | `PasswordPolicy` |
+| `schema/hr.prisma` | `Employee`, `Contract`, `Department`, `JobTitle` |
 
 **Enums** (`UserRole`, `BranchUserRole`) live in the same file as the models that reference them.
 

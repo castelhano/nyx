@@ -91,7 +91,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     const isPassword  = name === 'passwordHash' || meta.widget === 'password'
     const isTimestamp = name === 'createdAt' || name === 'updatedAt'
     const isId        = name === 'id'
-    const defaultValue = field instanceof ZodDefault ? (field as any)._def.defaultValue : undefined
+    const zodDefault   = field instanceof ZodDefault ? (field as any)._def.defaultValue : undefined
+    const defaultValue = meta.defaultValue ?? (typeof zodDefault === 'function' ? zodDefault() : zodDefault)
 
     let listVisibility: 'visible' | 'hidden' | 'never'
     if (meta.virtual) {
