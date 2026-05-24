@@ -1,3 +1,40 @@
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  DOMESTIC_PARTNERSHIP
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum ContractType {
+  CLT
+  PJ
+  TEMPORARY
+  INTERNSHIP
+  APPRENTICE
+}
+
+enum ContractStatus {
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+  EXPIRED
+}
+
 model Department {
   id        String     @id @default(uuid())
   name      String
@@ -17,6 +54,55 @@ model JobTitle {
   updatedAt    DateTime   @updatedAt
 
   department Department @relation(fields: [departmentId], references: [id])
+  contracts  Contract[]
 
   @@map("job_titles")
+}
+
+model Employee {
+  id              String         @id @default(uuid())
+  branchId        String
+  code            String         @unique
+  fullName        String
+  preferredName   String?
+  taxId           String         @unique
+  dateOfBirth     DateTime?
+  gender          Gender?
+  maritalStatus   MaritalStatus?
+  email           String?
+  phone           String?
+  photoUrl        String?
+  status          EmployeeStatus @default(ACTIVE)
+  hireDate        DateTime
+  terminationDate DateTime?
+  notes           String?
+
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  contracts Contract[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("employees")
+}
+
+model Contract {
+  id          String         @id @default(uuid())
+  employeeId  String
+  jobTitleId  String
+  type        ContractType
+  startDate   DateTime
+  endDate     DateTime?
+  salary      Decimal
+  weeklyHours Int            @default(44)
+  status      ContractStatus @default(ACTIVE)
+  notes       String?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  jobTitle JobTitle @relation(fields: [jobTitleId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("contracts")
 }

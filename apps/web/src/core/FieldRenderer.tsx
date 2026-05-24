@@ -219,7 +219,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
             >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
-                <option key={o} value={o}>{o}</option>
+                <option key={o} value={o}>{field.optionLabels?.[o] ?? o}</option>
               ))}
             </select>
             {field.keybind && <KeyHint k={field.keybind} className="right-8" />}

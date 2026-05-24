@@ -695,23 +695,6 @@ export function resolveIcon(name?: string | null): LucideIcon {
 
 When adding a new icon: import it in `icons.ts` and add it to the `Icons` map. No other file needs to change.
 
-### 4.15.1 Frontend — useFieldOptions
-
-```typescript
-// apps/web/src/core/useFieldOptions.ts
-export function useFieldOptions(
-  field: Pick<MetadataField, 'resource' | 'domain' | 'dependsOn'>,
-  dependsOnValue?: string,
-  { hasCurrentValue }: { hasCurrentValue?: boolean } = {},
-): { options: Record<string, unknown>[]; isLoading: boolean }
-```
-
-Fetches options for a `widget: 'select'` field. Used internally by `RelationSelect` inside `FieldRenderer` — custom pages can import it directly when they need the same data.
-
-- When `dependsOn` is set, the query key includes `dependsOnValue` so TanStack Query caches per parent value.
-- `hasCurrentValue: true` enables the query even when `dependsOnValue` is empty, fetching all options unfiltered — covers edit mode where the virtual parent field starts unpopulated.
-- `staleTime: 30_000` for static relations; `staleTime: 0` for dependent ones.
-
 ### 4.15 Frontend — useDiscovery
 
 ```typescript
@@ -729,6 +712,23 @@ export function useDiscovery() {
 ```
 
 Used by: `Sidebar`, `app/page.tsx`, `app/[domain]/page.tsx`, `AutoBreadcrumb`.
+
+### 4.15.1 Frontend — useFieldOptions
+
+```typescript
+// apps/web/src/core/useFieldOptions.ts
+export function useFieldOptions(
+  field: Pick<MetadataField, 'resource' | 'domain' | 'dependsOn'>,
+  dependsOnValue?: string,
+  { hasCurrentValue }: { hasCurrentValue?: boolean } = {},
+): { options: Record<string, unknown>[]; isLoading: boolean }
+```
+
+Fetches options for a `widget: 'select'` field. Used internally by `RelationSelect` inside `FieldRenderer` — custom pages can import it directly when they need the same data.
+
+- When `dependsOn` is set, the query key includes `dependsOnValue` so TanStack Query caches per parent value.
+- `hasCurrentValue: true` enables the query even when `dependsOnValue` is empty, fetching all options unfiltered — covers edit mode where the virtual parent field starts unpopulated.
+- `staleTime: 30_000` for static relations; `staleTime: 0` for dependent ones.
 
 ### 4.16 Route Helpers
 

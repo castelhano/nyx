@@ -117,7 +117,7 @@ function FilterBar({
           return (
             <Select key={field.name} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined}>
               <option value="">{field.label}</option>
-              {(field.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              {(field.options ?? []).map((o) => <option key={o} value={o}>{field.optionLabels?.[o] ?? o}</option>)}
             </Select>
           )
         }
@@ -226,6 +226,7 @@ function buildColumns(
         const val = getValue()
         if (val === null || val === undefined) return ''
         if (typeof val === 'boolean') return val ? 'Sim' : 'Não'
+        if (col.type === 'enum' && col.optionLabels && typeof val === 'string') return col.optionLabels[val] ?? val
         return String(val)
       },
     }))

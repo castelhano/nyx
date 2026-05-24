@@ -29,7 +29,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const include: Record<string, unknown> = {}
     for (const [fieldName, rawField] of Object.entries(this.schema.shape)) {
       const meta = (rawField as any).meta?.() ?? {}
-      if (meta.widget !== 'select' || !meta.labelField) continue
+      if (meta.widget !== 'select' || !meta.labelField || meta.virtual) continue
       const relationName = fieldName.replace(/Id$/, '')
       const select: Record<string, boolean> = { id: true, [meta.labelField]: true }
       if (Array.isArray(meta.relatedDisplayFields)) {

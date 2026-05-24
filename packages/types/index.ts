@@ -41,6 +41,7 @@ export interface FieldMeta {
   relatedWhere?: Record<string, unknown>
   keybind?: string
   filter?: boolean | FilterDef
+  optionLabels?: Record<string, string>
   /** Field exists in the form for UX purposes but is excluded from API payloads on submit. */
   virtual?: boolean
   /** Re-fetches select options using `?f_<dependsOn>=<value>` when the named sibling field changes. Clears own value when parent changes. */
@@ -75,6 +76,7 @@ export interface MetadataField {
   keybind?: string
   group?: string
   filter?: FilterDef
+  optionLabels?: Record<string, string>
   virtual?: boolean
   dependsOn?: string
 }

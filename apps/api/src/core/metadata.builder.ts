@@ -129,6 +129,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.relatedDisplayFields      ? { relatedDisplayFields: meta.relatedDisplayFields } : {}),
       ...(meta.relatedWhere              ? { relatedWhere:         meta.relatedWhere         } : {}),
       ...(meta.keybind             ? { keybind:     meta.keybind }              : {}),
+      ...(meta.optionLabels        ? { optionLabels: meta.optionLabels }         : {}),
       ...(meta.virtual             ? { virtual:     true }                      : {}),
       ...(meta.dependsOn           ? { dependsOn:   meta.dependsOn }            : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
