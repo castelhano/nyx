@@ -89,7 +89,7 @@ function RelationSelect({
       if (!res.ok) throw new Error('Failed to fetch relation')
       return res.json()
     },
-    staleTime: 30_000,
+    staleTime: 0,
   })
 
   const options    = data?.data ?? []

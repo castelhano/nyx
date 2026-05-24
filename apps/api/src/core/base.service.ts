@@ -46,9 +46,12 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
   async findAll(query: PaginationQuery): Promise<PaginatedResult<T>> {
     const page     = Number(query.page)     || 1
     const pageSize = Number(query.pageSize) || 20
-    const orderBy  = query.sortField
+    const defaultSort = (this.schema as any)._schemaMeta?.defaultSort
+    const orderBy = query.sortField
       ? { [query.sortField]: query.sortOrder ?? 'asc' }
-      : { createdAt: 'desc' as const }
+      : defaultSort
+        ? { [defaultSort.field]: defaultSort.order }
+        : { createdAt: 'desc' as const }
 
     const KNOWN_KEYS = new Set(['page', 'pageSize', 'search', 'sortField', 'sortOrder'])
     const contextFilters: Record<string, unknown> = {}

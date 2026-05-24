@@ -270,6 +270,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Relation include (auto) | all `widget: 'select'` fields with `labelField` | `BaseService` auto-builds Prisma `include`; convention `fooId → foo` (strip `Id`) — see §4.5.1 |
 | Extra relation fields | `labelField` only | `.meta({ relatedDisplayFields: ['code', 'location'] })` — additional fields selected in the `include` |
 | Filter on include | no filter | `.meta({ relatedWhere: { isActive: true } })` — applied as Prisma `include where`; parent record still appears, `row.relation` returns `null` if not matched |
+| Default sort | `createdAt: 'desc'` | `withMeta(schema, { defaultSort: { field: 'name', order: 'asc' } })` — applied by `BaseService` when no `sortField` in query |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |

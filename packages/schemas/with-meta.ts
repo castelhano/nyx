@@ -42,6 +42,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   groups?:             { [tabLabel: string]: (keyof T & string)[] }
   rowActions?:         RowActionInput[]
   privatePermissions?: boolean      // recurso filho que exige concessão explícita — não herda permissões do pai
+  defaultSort?:        { field: string; order: 'asc' | 'desc' }
   // 'children' não existe mais no schema — é derivado automaticamente pelo backend via resourceRegistry
 }
 

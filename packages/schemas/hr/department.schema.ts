@@ -14,6 +14,7 @@ export const departmentSchema = withMeta(
     labelPlural: 'Setores',
     nameField:   'name',
     icon:        'Layers',
+    defaultSort: { field: 'name', order: 'asc' },
   },
 )
 
