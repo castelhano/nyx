@@ -1,0 +1,22 @@
+model Department {
+  id        String     @id @default(uuid())
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  jobTitles JobTitle[]
+
+  @@map("departments")
+}
+
+model JobTitle {
+  id           String     @id @default(uuid())
+  departmentId String
+  name         String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id])
+
+  @@map("job_titles")
+}

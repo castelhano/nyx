@@ -1,7 +1,7 @@
 import {
   Shield, Users, Building, Building2, GitBranch, Lock, Settings,
   LayoutGrid, Package, Truck, ShoppingCart, FileText, BarChart2,
-  Palette, CalendarDays, SlidersHorizontal, ArrowRightFromLine,
+  Palette, CalendarDays, SlidersHorizontal, ArrowRightFromLine, Layers,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -22,6 +22,7 @@ export const Icons: Record<string, LucideIcon> = {
   CalendarDays,
   SlidersHorizontal,
   ArrowRightFromLine,
+  Layers,
   Default: LayoutGrid,
 }
 
