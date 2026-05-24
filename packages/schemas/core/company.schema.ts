@@ -16,9 +16,9 @@ export const companySchema = withMeta(
     website:   z.string().nullable().optional().meta({ label: 'Website', className: 'md:w-1/2', placeholder: 'https://empresa.com.br', listVisibility: 'never', keybind: 'k' }),
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never', keybind: 'd' }),
-    city:      z.string().nullable().optional().meta({ label: 'Cidade', className: 'lg:w-1/2', listVisibility: 'hidden', keybind: 'g' }),
-    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-24', placeholder: 'SP', listVisibility: 'hidden', keybind: 'y' }),
-    zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', className: 'md:w-48', placeholder: '00000-000', listVisibility: 'hidden', keybind: 'p' }),
+    city:      z.string().nullable().optional().meta({ label: 'Cidade', placeholder: 'Cidade', className: 'md:w-1/3', listVisibility: 'hidden', keybind: 'g' }),
+    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-1/4', placeholder: 'SP', listVisibility: 'hidden', keybind: 'y' }),
+    zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', className: 'md:w-1/4', placeholder: '00000-000', listVisibility: 'hidden', keybind: 'p' }),
     // Controle
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

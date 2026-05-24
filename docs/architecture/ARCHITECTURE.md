@@ -266,6 +266,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
 | Form component | derived from Zod type | `.meta({ widget: 'textarea' })` |
+| Relation select (FK field) | — | `.meta({ widget: 'select', resource: 'department', domain: 'hr', labelField: 'name' })` — `domain` obrigatório quando o resource não pertence ao domínio `core` (default) |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |

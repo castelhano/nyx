@@ -35,6 +35,7 @@ export interface FieldMeta {
   mask?: 'cnpj' | 'cnpj-base' | 'cpf' | 'phone' | 'cep'
   className?: string
   resource?: string
+  domain?: string
   labelField?: string
   keybind?: string
   filter?: boolean | FilterDef
@@ -61,6 +62,7 @@ export interface MetadataField {
   widget?: string
   className?: string
   resource?: string
+  domain?: string
   labelField?: string
   keybind?: string
   group?: string

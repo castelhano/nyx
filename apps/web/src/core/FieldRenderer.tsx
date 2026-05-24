@@ -46,9 +46,9 @@ export function KeyHint({ k, className }: { k: string; className?: string }) {
 }
 
 function MaskedInput({
-  field, control, autoFocus, className, readonly,
+  field, control, autoFocus, className, readonly, containerClassName,
 }: {
-  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean; containerClassName?: string
 }) {
   return (
     <Controller
@@ -56,7 +56,7 @@ function MaskedInput({
       control={control}
       rules={{ required: field.required }}
       render={({ field: ctrl }) => (
-        <div className="relative">
+        <div className={cn('relative', containerClassName)}>
           <IMaskInput
             mask={MASKS[field.mask!] as any}
             value={ctrl.value ?? ''}
@@ -78,14 +78,14 @@ function MaskedInput({
 }
 
 function RelationSelect({
-  field, control, autoFocus, className, readonly,
+  field, control, autoFocus, className, readonly, containerClassName,
 }: {
-  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean; containerClassName?: string
 }) {
   const { data } = useQuery<PaginatedResult<Record<string, unknown>>>({
     queryKey:  ['relation', field.resource],
     queryFn:   async () => {
-      const res = await apiFetch(`/core/${field.resource}?pageSize=999`)
+      const res = await apiFetch(`/${field.domain ?? 'core'}/${field.resource}?pageSize=999`)
       if (!res.ok) throw new Error('Failed to fetch relation')
       return res.json()
     },
@@ -101,7 +101,7 @@ function RelationSelect({
       control={control}
       rules={{ required: field.required }}
       render={({ field: ctrl }) => (
-        <div className="relative">
+        <div className={cn('relative', containerClassName)}>
           <select
             id={field.name}
             autoFocus={autoFocus}
@@ -176,8 +176,8 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
     return (
       <>
         <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
-        <div className={`space-y-1 ${field.className ?? ''}`}>
-          <div className="relative">
+        <div className="space-y-1">
+          <div className={cn('relative', field.className)}>
             <select
               id={field.name}
               autoFocus={autoFocus}
@@ -209,12 +209,12 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   let controlEl: React.ReactNode
 
   if (field.resource && control) {
-    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} />
+    controlEl = <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {
-    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} />
+    controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.widget === 'textarea') {
     controlEl = (
-      <div className="relative">
+      <div className={cn('relative', field.className)}>
         <textarea
           id={field.name}
           autoFocus={autoFocus}
@@ -229,7 +229,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
     )
   } else {
     controlEl = (
-      <div className="relative">
+      <div className={cn('relative', field.className)}>
         <input
           id={field.name}
           type={inputType}
@@ -248,7 +248,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   return (
     <>
       <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
-      <div className={`space-y-1 ${field.className ?? ''}`}>
+      <div className="space-y-1">
         {controlEl}
         {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}

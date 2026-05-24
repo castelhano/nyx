@@ -8,14 +8,17 @@ import { resourceRegistry } from './resource-registry'
 
 @Injectable()
 export abstract class BaseService<T, CreateDTO, UpdateDTO> {
+  private readonly resourceKey: string
+
   constructor(
     protected readonly prisma: PrismaService,
     private readonly modelName: string,
     private readonly schema: ZodObject<any>,
-    private readonly domain: string,
+    domain: string,
     private readonly scopeField?: string,
   ) {
-    resourceRegistry.push({ domain, resource: modelName, schema })
+    this.resourceKey = modelName.replace(/([A-Z])/g, (_, c) => `-${c.toLowerCase()}`)
+    resourceRegistry.push({ domain, resource: this.resourceKey, schema })
   }
 
   private get model() {
@@ -70,7 +73,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
   }
 
   getMetadata(): ResourceMetadata {
-    return buildMetadata(this.modelName, this.schema)
+    return buildMetadata(this.resourceKey, this.schema)
   }
 
   protected buildSearchWhere(_search: string): Record<string, unknown> {

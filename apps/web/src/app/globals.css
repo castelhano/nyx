@@ -2,7 +2,7 @@
 
 @variant dark (&:where(.dark, .dark *));
 
-@source "../../packages/**/*.{ts,tsx}";
+@source "../../../../packages/**/*.{ts,tsx}";
 
 @theme {
   --color-background:                  hsl(var(--background));

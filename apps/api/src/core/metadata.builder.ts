@@ -122,6 +122,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.max !== undefined   ? { max:         meta.max }                  : {}),
       ...(meta.className           ? { className:   meta.className }            : {}),
       ...(meta.resource            ? { resource:    meta.resource }             : {}),
+      ...(meta.domain              ? { domain:      meta.domain }               : {}),
       ...(meta.labelField          ? { labelField:  meta.labelField }           : {}),
       ...(meta.keybind             ? { keybind:     meta.keybind }              : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
