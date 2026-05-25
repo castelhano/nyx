@@ -506,60 +506,65 @@ apps/api/src/modules/transit/
 
 ## 7. Checklist de Implementação — Fase 1
 
-### Etapa 1 — Infraestrutura e migração
+### Etapa 1 — Infraestrutura e migração ✅
 
-- [ ] Criar `TransitModule` com `@Domain({ label: 'Trânsito', icon: 'Bus' })`
-- [ ] Registrar `TransitModule` em `AppModule`
-- [ ] Criar `NetworkModule` e `TimetablingModule` como sub-módulos
-- [ ] Executar `pnpm db:migrate` para aplicar `transit.prisma`
+- [x] Criar `TransitModule` com `@Domain({ label: 'Trânsito', icon: 'Bus' })`
+- [x] Registrar `TransitModule` em `AppModule`
+- [x] Criar `NetworkModule` e `TimetablingModule` como sub-módulos
+- [x] Executar `pnpm db:migrate` para aplicar `transit.prisma`
 
-### Etapa 2 — Rede (NetworkModule)
+### Etapa 2 — Rede (NetworkModule) ✅
 
-- [ ] `LocalityService` / `LocalityController` (BaseService, scopeField: `branchId`)
-- [ ] `LineService` / `LineController` (scopeField: `branchId`)
-- [ ] `RouteService` / `RouteController` (child de Line, sem scopeField — acesso via lineId)
-- [ ] `RouteLocalityService` / `RouteLocalityController` (child de Route)
-- [ ] `TravelTimeService` / `TravelTimeController` (scopeField: `branchId`)
-- [ ] `OsrmService` — `generateMatrix(branchId)` dispara OSRM e faz upsert
-- [ ] Hook em `LocalityService.create/update` → enfileira job de regeneração da matriz
-- [ ] `DepotFleetService` / `DepotFleetController` (scopeField: `branchId`)
+- [x] `LocalityService` / `LocalityController` (BaseService, scopeField: `branchId`)
+- [x] `LineService` / `LineController` (scopeField: `branchId`)
+- [x] `RouteService` / `RouteController` (child de Line, sem scopeField — acesso via lineId)
+- [x] `RouteLocalityService` / `RouteLocalityController` (child de Route)
+- [x] `TravelTimeService` / `TravelTimeController` (scopeField: `branchId`)
+- [x] `OsrmService` — `generateMatrix(branchId)` dispara OSRM e faz upsert
+- [x] Hook em `LocalityService.create/update` → enfileira job de regeneração da matriz
+- [x] `DepotFleetService` / `DepotFleetController` (scopeField: `branchId`)
 
-### Etapa 3 — Programação (TimetablingModule)
+### Etapa 3 — Programação (TimetablingModule) ✅
 
-- [ ] `DayTypeService` / `DayTypeController` (scopeField: `branchId`)
-- [ ] `ServicePeriodService` / `ServicePeriodController` (scopeField: `branchId`)
-- [ ] `TripService` / `TripController` (scopeField: `branchId`)
-  - [ ] `buildSearchWhere` por routeId, dayTypeId, horário
-  - [ ] Filtro `f_servicePeriodId` para contexto da lista filha
-- [ ] `PlanningConfigService` extends `BaseSettingsService` (scope: `branchId` | `global`)
-- [ ] `PlanningConfigController` extends `BaseSettingsController`
+- [x] `DayTypeService` / `DayTypeController` (scopeField: `branchId`)
+- [x] `ServicePeriodService` / `ServicePeriodController` (scopeField: `branchId`)
+- [x] `TripService` / `TripController` (scopeField: `branchId`)
+  - [x] `buildSearchWhere` por routeId, dayTypeId, horário
+  - [x] Filtro `f_servicePeriodId` para contexto da lista filha
+- [x] `PlanningConfigService` extends `BaseSettingsService` (scope: `branchId` | `global`)
+- [x] `PlanningConfigController` extends `BaseSettingsController`
 - [ ] Registrar `PlanningConfig` no `SettingsModule`
+---
+`
+Checklist atualizado. Nota: o item "Registrar PlanningConfig no SettingsModule" ficou desmarcado — não existe um SettingsModule separado na arquitetura atual (o PlanningConfigModule foi registrado direto no TimetablingModule), então se quiser fechar esse item basta decidir se há um SettingsModule para integrar ou se o padrão atual é suficiente.
+`
+---
 
-### Etapa 4 — Solver
+### Etapa 4 — Solver ✅
 
-- [ ] Definir tipos em `solver.types.ts`:
+- [x] Definir tipos em `solver.types.ts`:
   - `SolverConfig` — config resolvida (PlanningConfig + trips + matrix)
   - `SolverResult` — candidato gerado (blocks + score + metrics)
   - `SolverMessage` — union dos tipos de mensagem do worker
-- [ ] Implementar `solver.worker.ts`:
-  - [ ] Loop de geração com `setInterval` ou loop síncrono em worker
-  - [ ] Função de avaliação de candidato (`evaluateCandidate`)
-  - [ ] Cálculo de score com penalidades configuráveis
-  - [ ] Aplicação de constraints (locked fields, pinnedBlock)
-  - [ ] Critérios de parada (sem melhora, timeout, stop manual)
-  - [ ] Cleanup via `return () => clearInterval` no Observable
-- [ ] Implementar `VehiclePlanService` (custom, não BaseService):
-  - [ ] `generate(planId)` — inicia Worker, registra job no Map
-  - [ ] `streamProgress(jobId)` — Observable → SSE
-  - [ ] `assumeBest(jobId)` — persiste melhor candidato → status READY
-  - [ ] `stop(jobId)` — envia `{ type: 'stop' }` ao worker
-  - [ ] `confirm(planId)` — status CONFIRMED + valida unicidade por (servicePeriod, dayType)
-- [ ] Implementar `VehiclePlanController` (custom):
-  - [ ] `POST /:id/generate`
-  - [ ] `GET /:id/stream` (`@Sse`)
-  - [ ] `POST /:id/assume`
-  - [ ] `POST /:id/stop`
-  - [ ] `POST /:id/confirm`
+- [x] Implementar `solver.worker.ts`:
+  - [x] Loop de geração com `setImmediate` (yield ao event loop entre iterações)
+  - [x] Função de avaliação de candidato (`evaluateCandidate`) — greedy randomizado com restarts
+  - [x] Cálculo de score com penalidades configuráveis
+  - [x] Aplicação de constraints (requiredVehicleType; pinnedBlock Phase 2)
+  - [x] Critérios de parada (sem melhora, timeout, stop manual)
+  - [x] Cleanup via `stopped` flag no setImmediate loop
+- [x] Implementar `VehiclePlanService` (custom, não BaseService):
+  - [x] `generate(planId, jobId)` — inicia Worker, registra job no Map
+  - [x] `streamProgress(jobId)` — Observable via RxJS Subject → SSE
+  - [x] `assumeBest(planId, jobId)` — persiste melhor candidato → status READY
+  - [x] `stop(jobId)` — envia `{ type: 'stop' }` ao worker
+  - [x] `confirm(planId)` — status CONFIRMED + deconfirma plano anterior
+- [x] Implementar `VehiclePlanController` (custom):
+  - [x] `POST /:id/generate`
+  - [x] `GET /:id/stream` (`@Sse`) com `JwtOrQueryGuard` (token via query param)
+  - [x] `POST /:id/assume`
+  - [x] `POST /:id/stop`
+  - [x] `POST /:id/confirm`
 
 ### Etapa 5 — Relatórios
 
