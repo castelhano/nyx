@@ -31,9 +31,10 @@ TransitLocality ──── TravelTimeMatrix ────┐
 
 #### `TransitLocality` — ponto ou terminal nomeado
 
+Localidade global — não vinculada a uma filial. O mesmo ponto pode ser referenciado por linhas e rotas de qualquer filial.
+
 | Campo | Tipo | Notas |
 |---|---|---|
-| `branchId` | FK Branch | scoping por filial |
 | `code` | String? | código operacional opcional |
 | `name` | String | nome exibido em relatórios |
 | `lat` / `lng` | Float | coordenadas para OSRM |
@@ -515,13 +516,13 @@ apps/api/src/modules/transit/
 
 ### Etapa 2 — Rede (NetworkModule) ✅
 
-- [x] `LocalityService` / `LocalityController` (BaseService, scopeField: `branchId`)
+- [x] `LocalityService` / `LocalityController` (BaseService, sem scopeField — localidades são globais)
 - [x] `LineService` / `LineController` (scopeField: `branchId`)
 - [x] `RouteService` / `RouteController` (child de Line, sem scopeField — acesso via lineId)
 - [x] `RouteLocalityService` / `RouteLocalityController` (child de Route)
 - [x] `TravelTimeService` / `TravelTimeController` (scopeField: `branchId`)
-- [x] `OsrmService` — `generateMatrix(branchId)` dispara OSRM e faz upsert
-- [x] Hook em `LocalityService.create/update` → enfileira job de regeneração da matriz
+- [x] `OsrmService` — `generateMatrix(branchId)` busca todas as localidades e faz upsert na matriz da filial; `generateMatrixForAllBranches()` itera sobre todas as filiais
+- [x] Hook em `LocalityService.create/update` → dispara `generateMatrixForAllBranches()`
 - [x] `DepotFleetService` / `DepotFleetController` (scopeField: `branchId`)
 
 ### Etapa 3 — Programação (TimetablingModule) ✅
@@ -533,12 +534,6 @@ apps/api/src/modules/transit/
   - [x] Filtro `f_servicePeriodId` para contexto da lista filha
 - [x] `PlanningConfigService` extends `BaseSettingsService` (scope: `branchId` | `global`)
 - [x] `PlanningConfigController` extends `BaseSettingsController`
-- [ ] Registrar `PlanningConfig` no `SettingsModule`
----
-`
-Checklist atualizado. Nota: o item "Registrar PlanningConfig no SettingsModule" ficou desmarcado — não existe um SettingsModule separado na arquitetura atual (o PlanningConfigModule foi registrado direto no TimetablingModule), então se quiser fechar esse item basta decidir se há um SettingsModule para integrar ou se o padrão atual é suficiente.
-`
----
 
 ### Etapa 4 — Solver ✅
 
@@ -574,7 +569,7 @@ Checklist atualizado. Nota: o item "Registrar PlanningConfig no SettingsModule" 
 
 ### Etapa 6 — Frontend
 
-- [ ] Páginas genéricas (AutoList + AutoForm) para todos os resources CRUD
+- [x] Páginas genéricas (AutoList + AutoForm) para todos os resources CRUD
   - Criadas automaticamente pelo sistema — sem arquivos extras
 - [ ] Página customizada `app/transit/vehicle-plan/[id]/page.tsx`:
   - [ ] Topbar com botões: Gerar / Parar / Assumir Melhor / Confirmar

@@ -74,7 +74,6 @@ model Branch {
   employees  Employee[]
   vehicles   Vehicle[]
 
-  transitLocalities TransitLocality[]  @relation("BranchTransitLocalities")
   transitLines      TransitLine[]      @relation("BranchTransitLines")
   travelTimes       TravelTimeMatrix[] @relation("BranchTravelTimes")
   depotFleets       DepotFleet[]       @relation("BranchDepotFleets")

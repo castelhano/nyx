@@ -8,9 +8,13 @@ export class OsrmService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async generateMatrixForAllBranches(): Promise<void> {
+    const branches = await this.prisma.branch.findMany({ select: { id: true } })
+    await Promise.all(branches.map((b) => this.generateMatrix(b.id).catch(() => {})))
+  }
+
   async generateMatrix(branchId: string): Promise<void> {
     const localities = await this.prisma.transitLocality.findMany({
-      where:  { branchId },
       select: { id: true, lat: true, lng: true },
     })
 

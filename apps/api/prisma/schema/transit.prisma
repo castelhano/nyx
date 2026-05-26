@@ -31,7 +31,6 @@ enum VehiclePlanStatus {
 
 model TransitLocality {
   id        String   @id @default(uuid())
-  branchId  String
   code      String?
   name      String
   lat       Float
@@ -40,8 +39,6 @@ model TransitLocality {
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  branch Branch @relation("BranchTransitLocalities", fields: [branchId], references: [id])
 
   travelTimesFrom TravelTimeMatrix[] @relation("TravelTimeOrigin")
   travelTimesTo   TravelTimeMatrix[] @relation("TravelTimeDestination")
