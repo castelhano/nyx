@@ -42,6 +42,7 @@ export const dayTypeSchema = withMeta(
       label:     'Ordem',
       className: 'md:w-28',
       keybind:   'o',
+      helpText: 'Ordem de exibição em componentes'
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

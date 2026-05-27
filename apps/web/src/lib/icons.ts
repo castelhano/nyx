@@ -2,8 +2,8 @@ import {
   Shield, Users, Building, Building2, GitBranch, Lock, Settings,
   LayoutGrid, Package, Truck, ShoppingCart, FileText, BarChart2,
   Palette, CalendarDays, SlidersHorizontal, ArrowRightFromLine, Layers, Briefcase,
-  UserRound, Bus, Tag,
-  MapPin, Route, Timer, Warehouse, CalendarRange, LayoutList, Settings2,
+  UserRound, Bus, Tag, MapPin, Route, Timer, Warehouse, CalendarRange, LayoutList, 
+  Settings2,
   type LucideIcon,
 } from 'lucide-react'
 
