@@ -164,6 +164,8 @@ model DayType {
   @@map("transit_day_types")
 }
 
+// ServicePeriod: Reavaliar modelo, consistir forma de amarracao entre projeto / filial / dia tipo
+// avaliar se forma que esta atende, dia tipo ja eh amarrado na trip, necessario aqui?
 model ServicePeriod {
   id        String              @id @default(uuid())
   branchId  String
