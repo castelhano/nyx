@@ -140,10 +140,11 @@ ServicePeriod ─┘
 
 #### `DayType` — tipo de dia operacional
 
+Global — não vinculado a filial. Os mesmos tipos de dia (ex: "Dia Útil", "Sábado") são compartilhados por toda a operação.
+
 | Campo | Tipo | Notas |
 |---|---|---|
-| `branchId` | FK Branch | — |
-| `code` | String | ex: "DU", "SA", "DO" |
+| `code` | String | único globalmente; ex: "DU", "SA", "DO" |
 | `name` | String | ex: "Dia Útil", "Sábado" |
 | `sortOrder` | Int | ordem de exibição em selects |
 
@@ -527,7 +528,7 @@ apps/api/src/modules/transit/
 
 ### Etapa 3 — Programação (TimetablingModule) ✅
 
-- [x] `DayTypeService` / `DayTypeController` (scopeField: `branchId`)
+- [x] `DayTypeService` / `DayTypeController` (sem scopeField — global)
 - [x] `ServicePeriodService` / `ServicePeriodController` (scopeField: `branchId`)
 - [x] `TripService` / `TripController` (scopeField: `branchId`)
   - [x] `buildSearchWhere` por routeId, dayTypeId, horário

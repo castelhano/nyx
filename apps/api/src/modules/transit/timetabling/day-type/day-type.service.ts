@@ -7,7 +7,7 @@ import { stringContains } from '../../../../core/db.utils'
 @Injectable()
 export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, UpdateDayTypeDto> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'dayType', dayTypeSchema, 'transit', 'branchId')
+    super(prisma, 'dayType', dayTypeSchema, 'transit')
   }
 
   protected buildSearchWhere(search: string) {

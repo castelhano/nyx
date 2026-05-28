@@ -148,24 +148,21 @@ model DepotFleet {
 
 model DayType {
   id          String   @id @default(uuid())
-  branchId    String
-  code        String
+  code        String   @unique
   name        String
   description String?
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  branch       Branch        @relation("BranchDayTypes", fields: [branchId], references: [id])
   trips        TransitTrip[]
   vehiclePlans VehiclePlan[]
 
-  @@unique([branchId, code])
   @@map("transit_day_types")
 }
 
-// ServicePeriod: Reavaliar modelo, consistir forma de amarracao entre projeto / filial / dia tipo
-// avaliar se forma que esta atende, dia tipo ja eh amarrado na trip, necessario aqui?
+// ServicePeriod: tabela de excessao, informa periodo onde sistema deve alterar
+// dipo de dia ativo (ex ferias escolares)
 model ServicePeriod {
   id        String              @id @default(uuid())
   branchId  String
