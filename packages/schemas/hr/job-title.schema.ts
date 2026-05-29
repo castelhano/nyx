@@ -5,8 +5,16 @@ import { withMeta } from '../with-meta'
 export const jobTitleSchema = withMeta(
   z.object({
     id:           z.uuid(),
-    departmentId: z.uuid().meta({ label: 'Setor', listVisibility: 'hidden', widget: 'select', resource: 'department', domain: 'hr', labelField: 'name', keybind: 'q' }),
-    name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', keybind: 'g' }),
+    departmentId: z.uuid().meta({ 
+      label: 'Setor', 
+      listVisibility: 'hidden', 
+      widget: 'select', 
+      resource: 'department', 
+      domain: 'hr', 
+      labelField: 'name',
+      className: 'md:w-1/4'
+    }),
+    name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', className: 'md:w-1/4' }),
     createdAt:    z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt:    z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
