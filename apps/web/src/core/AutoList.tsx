@@ -544,6 +544,13 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
               ))}
             </thead>
             <tbody>
+              {table.getRowModel().rows.length === 0 && (
+                <tr>
+                  <td colSpan={table.getAllColumns().length} className="px-3 py-2 text-sm text-muted-foreground">
+                    Nenhum registro a exibir
+                  </td>
+                </tr>
+              )}
               {table.getRowModel().rows.map((row, rowIdx) => (
                 <tr
                   key={row.id}

@@ -199,7 +199,6 @@ CREATE TABLE "contracts" (
 -- CreateTable
 CREATE TABLE "transit_localities" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
     "code" TEXT,
     "name" TEXT NOT NULL,
     "lat" REAL NOT NULL,
@@ -207,22 +206,19 @@ CREATE TABLE "transit_localities" (
     "isDepot" BOOLEAN NOT NULL DEFAULT false,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_localities_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "transit_lines" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_lines_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
@@ -259,7 +255,6 @@ CREATE TABLE "transit_route_localities" (
 -- CreateTable
 CREATE TABLE "transit_travel_times" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
     "originId" TEXT NOT NULL,
     "destinationId" TEXT NOT NULL,
     "baseMinutes" REAL NOT NULL,
@@ -268,56 +263,47 @@ CREATE TABLE "transit_travel_times" (
     "source" TEXT NOT NULL DEFAULT 'MANUAL',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_travel_times_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_travel_times_originId_fkey" FOREIGN KEY ("originId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_travel_times_destinationId_fkey" FOREIGN KEY ("destinationId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
-CREATE TABLE "transit_depot_fleets" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
-    "localityId" TEXT NOT NULL,
-    "vehicleType" TEXT NOT NULL,
-    "quantity" INTEGER NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_depot_fleets_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "transit_depot_fleets_localityId_fkey" FOREIGN KEY ("localityId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-);
-
--- CreateTable
 CREATE TABLE "transit_day_types" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
+    "pattern" JSONB,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_day_types_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
-CREATE TABLE "transit_service_periods" (
+CREATE TABLE "transit_line_calendar_exceptions" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
     "validFrom" DATETIME NOT NULL,
     "validTo" DATETIME,
-    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "overrideDayTypeId" TEXT NOT NULL,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_service_periods_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_line_calendar_exceptions_overrideDayTypeId_fkey" FOREIGN KEY ("overrideDayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_line_calendar_exception_lines" (
+    "exceptionId" TEXT NOT NULL,
+    "lineId" TEXT NOT NULL,
+
+    PRIMARY KEY ("exceptionId", "lineId"),
+    CONSTRAINT "transit_line_calendar_exception_lines_exceptionId_fkey" FOREIGN KEY ("exceptionId") REFERENCES "transit_line_calendar_exceptions" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_line_calendar_exception_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
-    "servicePeriodId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
     "routeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
@@ -327,8 +313,6 @@ CREATE TABLE "transit_trips" (
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_trips_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "transit_trips_servicePeriodId_fkey" FOREIGN KEY ("servicePeriodId") REFERENCES "transit_service_periods" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -336,8 +320,6 @@ CREATE TABLE "transit_trips" (
 -- CreateTable
 CREATE TABLE "transit_vehicle_plans" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "branchId" TEXT NOT NULL,
-    "servicePeriodId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "fleetCount" INTEGER,
@@ -345,17 +327,27 @@ CREATE TABLE "transit_vehicle_plans" (
     "deadrunKm" REAL,
     "generatedAt" DATETIME,
     "constraints" JSONB,
+    "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_vehicle_plans_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "transit_vehicle_plans_servicePeriodId_fkey" FOREIGN KEY ("servicePeriodId") REFERENCES "transit_service_periods" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_vehicle_plans_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_vehicle_plan_lines" (
+    "vehiclePlanId" TEXT NOT NULL,
+    "lineId" TEXT NOT NULL,
+
+    PRIMARY KEY ("vehiclePlanId", "lineId"),
+    CONSTRAINT "transit_vehicle_plan_lines_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_vehicle_plan_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
 CREATE TABLE "transit_vehicle_blocks" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "vehiclePlanId" TEXT NOT NULL,
+    "branchId" TEXT,
     "blockNumber" INTEGER NOT NULL,
     "depotId" TEXT NOT NULL,
     "vehicleType" TEXT NOT NULL,
@@ -365,6 +357,7 @@ CREATE TABLE "transit_vehicle_blocks" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_vehicle_blocks_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_vehicle_blocks_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "transit_vehicle_blocks_depotId_fkey" FOREIGN KEY ("depotId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -423,22 +416,16 @@ CREATE UNIQUE INDEX "employees_code_key" ON "employees"("code");
 CREATE UNIQUE INDEX "employees_taxId_key" ON "employees"("taxId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "transit_lines_branchId_code_key" ON "transit_lines"("branchId", "code");
-
--- CreateIndex
 CREATE UNIQUE INDEX "transit_route_localities_routeId_sequence_key" ON "transit_route_localities"("routeId", "sequence");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_route_localities_routeId_localityId_key" ON "transit_route_localities"("routeId", "localityId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "transit_travel_times_branchId_originId_destinationId_key" ON "transit_travel_times"("branchId", "originId", "destinationId");
+CREATE UNIQUE INDEX "transit_travel_times_originId_destinationId_key" ON "transit_travel_times"("originId", "destinationId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "transit_depot_fleets_branchId_localityId_vehicleType_key" ON "transit_depot_fleets"("branchId", "localityId", "vehicleType");
-
--- CreateIndex
-CREATE UNIQUE INDEX "transit_day_types_branchId_code_key" ON "transit_day_types"("branchId", "code");
+CREATE UNIQUE INDEX "transit_day_types_code_key" ON "transit_day_types"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_vehicle_blocks_vehiclePlanId_blockNumber_key" ON "transit_vehicle_blocks"("vehiclePlanId", "blockNumber");

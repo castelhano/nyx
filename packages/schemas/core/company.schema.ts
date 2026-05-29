@@ -6,7 +6,7 @@ export const companySchema = withMeta(
   z.object({
     id:        z.uuid(),
     // Geral
-    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', listVisibility: 'visible', placeholder: 'Nome Fantasia', filter: true, keybind: 'v' }),
+    tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', listVisibility: 'visible', placeholder: 'Nome Fantasia', filter: true, keybind: 'v', className: 'md:w-1/4' }),
     legalName: z.string().min(2).meta({ label: 'Razão Social', className: 'md:w-1/2', listVisibility: 'visible', placeholder: 'Razão social', keybind: 'l' }),
     taxId:     z.string().length(8).meta({ label: 'CNPJ Raiz', className: 'md:w-1/2', mask: 'cnpj-base', placeholder: '00.000.000', keybind: 'x', listVisibility: 'hidden' }),
     isActive:  z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible' }),
@@ -17,8 +17,8 @@ export const companySchema = withMeta(
     // Endereço
     address:   z.string().nullable().optional().meta({ label: 'Endereço', placeholder: 'Rua, número, complemento', listVisibility: 'never', keybind: 'd' }),
     city:      z.string().nullable().optional().meta({ label: 'Cidade', placeholder: 'Cidade', className: 'md:w-1/3', listVisibility: 'hidden', keybind: 'g' }),
-    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-1/4', placeholder: 'SP', listVisibility: 'hidden', keybind: 'y' }),
-    zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', className: 'md:w-1/4', placeholder: '00000-000', listVisibility: 'hidden', keybind: 'p' }),
+    state:     z.string().max(2).nullable().optional().meta({ label: 'UF', className: 'md:w-40', placeholder: 'SP', listVisibility: 'hidden', keybind: 'y' }),
+    zipCode:   z.string().nullable().optional().meta({ label: 'CEP', mask: 'cep', className: 'md:w-1/3', placeholder: '00000-000', listVisibility: 'hidden', keybind: 'p' }),
     // Controle
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

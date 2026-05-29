@@ -545,17 +545,11 @@ export default function UserDetailPage() {
               label: 'Permissões',
               content: (
                 <div>
-                  <CheckboxGroup
-                    sections={sections}
-                    value={permissions}
-                    onChange={setPermissions}
-                  />
-
-                  <div className="border-t border-border pt-5 mt-2">
+                  <div className="p-3 mb-4 bg-muted rounded">
                     <button
                       type="button"
                       onClick={() => setCopyOpen((v) => !v)}
-                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      className="flex items-center gap-2 text-sm w-full py-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     >
                       <ChevronDown className={cn('w-4 h-4 transition-transform', copyOpen && 'rotate-180')} />
                       Copiar permissões
@@ -646,6 +640,13 @@ export default function UserDetailPage() {
                       </div>
                     )}
                   </div>
+
+                  <CheckboxGroup
+                    sections={sections}
+                    value={permissions}
+                    onChange={setPermissions}
+                  />
+
                 </div>
               ),
             },
