@@ -15,7 +15,6 @@ export const employeeSchema = withMeta(
       virtual: true,
       lazyEdit: true,
       className: 'md:w-1/2',
-      keybind: 'q',
     }),
 
     branchId: z.uuid().meta({
@@ -30,32 +29,31 @@ export const employeeSchema = withMeta(
       filter: { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
       lazyEdit: true,
       className: 'md:w-1/2',
-      keybind: 'f',
     }),
 
     code: z.string().min(1).meta({
       label: 'Matrícula',
       listVisibility: 'visible',
-      className: 'md:w-40',
+      className: 'md:w-1/3',
       keybind: 'm',
     }),
 
     fullName: z.string().min(2).meta({
       label: 'Nome Completo',
       listVisibility: 'visible',
-      keybind: 'g',
     }),
 
     preferredName: z.string().optional().meta({
       label: 'Nome Preferido',
       listVisibility: 'hidden',
+      className: 'md:w-1/3',
       keybind: 'p',
     }),
 
     taxId: z.string().meta({
       label: 'CPF',
       mask: 'cpf',
-      className: 'md:w-44',
+      className: 'md:w-1/3',
       listVisibility: 'hidden',
       keybind: 'x',
     }),
@@ -65,7 +63,7 @@ export const employeeSchema = withMeta(
       label: 'Status',
       listVisibility: 'visible',
       filter: true,
-      className: 'md:w-48',
+      className: 'md:w-1/3',
       keybind: 's',
       optionLabels: {
         ACTIVE:     'Ativo',
@@ -84,27 +82,25 @@ export const employeeSchema = withMeta(
     dateOfBirth: z.date().optional().meta({
       label: 'Data de Nascimento',
       listVisibility: 'never',
-      keybind: 'd',
+      className: 'md:w-1/4'
     }),
 
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional().meta({
       label: 'Gênero',
       listVisibility: 'never',
-      className: 'md:w-64',
-      keybind: 'e',
+      className: 'md:w-1/3',
       optionLabels: {
         MALE:              'Masculino',
         FEMALE:            'Feminino',
         OTHER:             'Outro',
-        PREFER_NOT_TO_SAY: 'Prefiro não informar',
+        PREFER_NOT_TO_SAY: 'Não informar',
       },
     }),
 
     maritalStatus: z.enum(['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED', 'DOMESTIC_PARTNERSHIP']).optional().meta({
       label: 'Estado Civil',
       listVisibility: 'never',
-      className: 'md:w-48',
-      keybind: 'v',
+      className: 'md:w-1/3',
       optionLabels: {
         SINGLE:               'Solteiro(a)',
         MARRIED:              'Casado(a)',
@@ -118,30 +114,31 @@ export const employeeSchema = withMeta(
       label: 'E-mail',
       widget: 'email',
       listVisibility: 'hidden',
-      className: 'md:w-72',
-      keybind: 'k',
+      className: 'md:w-1/2',
+      placeholder: 'email@domain.com',
     }),
 
     phone: z.string().optional().meta({
       label: 'Telefone',
       mask: 'phone',
-      className: 'md:w-48',
+      className: 'md:w-1/4',
+      placeholder: '(00) 00000 0000',
       listVisibility: 'hidden',
-      keybind: 't',
+      keybind: 'f',
     }),
 
     hireDate: z.date().meta({
       label: 'Admissão',
-      listVisibility: 'visible',
+      listVisibility: 'hidden',
       filter: { type: 'date_range' },
-      keybind: 'a',
+      className: 'md:w-1/4',
       defaultValue: '$today',
     }),
 
     terminationDate: z.date().optional().meta({
       label: 'Demissão',
       listVisibility: 'hidden',
-      keybind: 'r',
+      className: 'md:w-1/4',
     }),
 
     notes: z.string().optional().meta({
