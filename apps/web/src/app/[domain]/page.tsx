@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { notFound, useRouter, useParams } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
@@ -10,7 +11,8 @@ import { useDiscovery } from '@/core/useDiscovery'
 
 export default function DomainPage() {
   const { domain: domainKey } = useParams<{ domain: string }>()
-  const router = useRouter()
+  const router  = useRouter()
+  const gridRef = useRef<HTMLDivElement>(null)
   const { data: domains } = useDiscovery()
 
   const config = domains.find((d) => d.key === domainKey)
@@ -21,6 +23,7 @@ export default function DomainPage() {
   const { active } = useCardNavigation(
     resources.length,
     (i) => router.push(`/${domainKey}/${resources[i].key}`),
+    gridRef,
   )
 
   useShortcut('alt+v', () => router.push('/'), {
@@ -38,7 +41,7 @@ export default function DomainPage() {
         { label: config.label },
       ]} />
       <h1 className="text-xl font-semibold">{config.label}</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {resources.map((res, i) => (
           <DomainCard
             key={res.key}
