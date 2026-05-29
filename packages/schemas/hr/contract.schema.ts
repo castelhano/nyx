@@ -54,7 +54,7 @@ export const contractSchema = withMeta(
     startDate: z.date().meta({
       label: 'Início',
       listVisibility: 'visible',
-      keybind: 'i',
+      keybind: 'd',
       className: 'md:w-1/3',
       defaultValue: '$today',
     }),
@@ -63,7 +63,6 @@ export const contractSchema = withMeta(
       label: 'Término',
       listVisibility: 'visible',
       className: 'md:w-1/3',
-      keybind: 'r',
     }),
 
     salary: z.number().positive().meta({
@@ -78,8 +77,7 @@ export const contractSchema = withMeta(
     weeklyHours: z.number().int().min(1).max(44).default(44).meta({
       label: 'Horas Semanais',
       listVisibility: 'hidden',
-      className: 'md:w-32',
-      keybind: 'h',
+      className: 'md:w-1/4',
     }),
 
     notes: z.string().optional().meta({
