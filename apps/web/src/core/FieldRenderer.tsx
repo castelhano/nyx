@@ -131,6 +131,45 @@ function MaskedInput({
   )
 }
 
+function CurrencyInput({
+  field, control, autoFocus, className, readonly, containerClassName,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean; containerClassName?: string
+}) {
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required ? 'Campo obrigatório' : false }}
+      render={({ field: ctrl }) => (
+        <div className={cn('relative', containerClassName)}>
+          <IMaskInput
+            mask={Number as any}
+            unmask="typed"
+            scale={2}
+            radix=","
+            mapToRadix={['.']}
+            thousandsSeparator="."
+            normalizeZeros
+            padFractionalZeros={false}
+            value={ctrl.value ?? ''}
+            inputRef={ctrl.ref}
+            onAccept={(val: any) => ctrl.onChange(val)}
+            onBlur={ctrl.onBlur}
+            id={field.name}
+            autoComplete="off"
+            autoFocus={autoFocus}
+            placeholder={field.placeholder}
+            readOnly={readonly}
+            className={cn(className, field.keybind && 'md:pr-10', readonly && readonlyCls)}
+          />
+          {field.keybind && <KeyHint k={field.keybind} />}
+        </div>
+      )}
+    />
+  )
+}
+
 function RelationSelectControl({
   field, ctrl, options, dependsOnValue, autoFocus, className, readonly, containerClassName,
 }: {
@@ -421,6 +460,8 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
     controlEl = field.lazyEdit
       ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
       : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
+  } else if (field.widget === 'currency' && control) {
+    controlEl = <CurrencyInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {
     controlEl = <MaskedInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.widget === 'textarea') {

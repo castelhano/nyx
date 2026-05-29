@@ -19,15 +19,14 @@ export const contractSchema = withMeta(
       labelField: 'name',
       listVisibility: 'visible',
       filter: { type: 'relation', endpoint: 'hr/job-title', labelField: 'name' },
-      keybind: 'c',
+      className: 'md:w-1/2 xl:w-1/3'
     }),
 
     type: z.enum(['CLT', 'PJ', 'TEMPORARY', 'INTERNSHIP', 'APPRENTICE']).meta({
       label: 'Tipo',
       listVisibility: 'visible',
       filter: true,
-      className: 'md:w-48',
-      keybind: 't',
+      className: 'md:w-1/3',
       optionLabels: {
         CLT:        'CLT',
         PJ:         'PJ',
@@ -39,9 +38,10 @@ export const contractSchema = withMeta(
 
     status: z.enum(['ACTIVE', 'SUSPENDED', 'TERMINATED', 'EXPIRED']).meta({
       label: 'Status',
+      defaultValue: 'ACTIVE',
       listVisibility: 'visible',
       filter: true,
-      className: 'md:w-44',
+      className: 'md:w-1/3',
       keybind: 's',
       optionLabels: {
         ACTIVE:     'Ativo',
@@ -55,11 +55,14 @@ export const contractSchema = withMeta(
       label: 'Início',
       listVisibility: 'visible',
       keybind: 'i',
+      className: 'md:w-1/3',
+      defaultValue: '$today',
     }),
 
     endDate: z.date().optional().meta({
       label: 'Término',
       listVisibility: 'visible',
+      className: 'md:w-1/3',
       keybind: 'r',
     }),
 
@@ -67,7 +70,8 @@ export const contractSchema = withMeta(
       label: 'Salário',
       listVisibility: 'visible',
       widget: 'currency',
-      className: 'md:w-44',
+      placeholder: '0.000,00',
+      className: 'md:w-1/3',
       keybind: 'l',
     }),
 

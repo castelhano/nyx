@@ -29,7 +29,7 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar'
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency'
   defaultValue?: unknown
   min?: number
   max?: number

@@ -156,6 +156,7 @@ export const employeeSchema = withMeta(
     nameField:   'fullName',
     icon:        'UserRound',
     defaultSort: { field: 'fullName', order: 'asc' },
+    afterCreate: '/hr/contract?employeeId={id}',
     groups: {
       'Pessoal':   ['dateOfBirth', 'gender', 'maritalStatus', 'photoUrl'],
       'Contato':   ['email', 'phone'],
