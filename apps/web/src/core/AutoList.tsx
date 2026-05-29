@@ -86,27 +86,29 @@ function RelationFilter({
 function FilterBar({
   fields,
   values,
+  defaultFilters,
   onChange,
   onClear,
   layout = 'inline',
   className,
 }: {
-  fields:     MetadataField[]
-  values:     Record<string, string>
-  onChange:   (key: string, value: string) => void
-  onClear:    () => void
-  layout?:    'inline' | 'stacked'
-  className?: string
+  fields:          MetadataField[]
+  values:          Record<string, string>
+  defaultFilters?: Record<string, string>
+  onChange:        (key: string, value: string) => void
+  onClear:         () => void
+  layout?:         'inline' | 'stacked'
+  className?:      string
 }) {
   const filterable = fields.filter((f) => f.filter)
   if (!filterable.length) return null
 
   const stacked = layout === 'stacked'
 
-  const hasActive = filterable.some((f) => {
-    const key = `f_${f.name}`
-    return values[key] || values[`${key}_min`] || values[`${key}_max`] || values[`${key}_from`] || values[`${key}_to`]
-  })
+  const defaultPrefixed = defaultFilters
+    ? Object.fromEntries(Object.entries(defaultFilters).map(([k, v]) => [`f_${k}`, v]))
+    : {}
+  const hasActive = JSON.stringify(values) !== JSON.stringify(defaultPrefixed)
 
   return (
     <div className={className}>
@@ -307,7 +309,10 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }
 
   function handleFilterClear() {
-    setActiveFilters({})
+    const prefixed = meta?.defaultFilters
+      ? Object.fromEntries(Object.entries(meta.defaultFilters).map(([k, v]) => [`f_${k}`, v]))
+      : {}
+    setActiveFilters(prefixed)
     setPage(1)
   }
 
@@ -401,7 +406,11 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }, [filterOpen])
 
   useShortcut('alt+l', () => {
-    if (Object.values(activeFilters).some(Boolean)) handleFilterClear()
+    const defaultPrefixed = meta?.defaultFilters
+      ? Object.fromEntries(Object.entries(meta.defaultFilters).map(([k, v]) => [`f_${k}`, v]))
+      : {}
+    const isDirty = JSON.stringify(activeFilters) !== JSON.stringify(defaultPrefixed)
+    if (isDirty) handleFilterClear()
   }, { display: false, origin: 'apps.web.src.core.AutoList' })
 
   useShortcut('ctrl+arrowdown', () => {
@@ -474,6 +483,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
         <FilterBar
           fields={meta.fields}
           values={activeFilters}
+          defaultFilters={meta.defaultFilters}
           onChange={handleFilterChange}
           onClear={handleFilterClear}
           layout="inline"
@@ -497,6 +507,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
                 <FilterBar
                   fields={meta.fields}
                   values={activeFilters}
+                  defaultFilters={meta.defaultFilters}
                   onChange={handleFilterChange}
                   onClear={handleFilterClear}
                   layout="stacked"
