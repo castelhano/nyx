@@ -965,8 +965,8 @@ Register the module in `SettingsModule` (and export the service if other modules
 - Accepts `multipart/form-data` with a single `file` field
 - Validates that the file is an image (`image/*` MIME type); rejects all other types with 400
 - 5 MB size limit
-- Saves the file to `apps/api/uploads/` with a UUID filename (preserving the original extension)
-- Returns `{ url: '/api/uploads/<uuid>.<ext>' }`
+- Saves the file to `apps/api/uploads/<folder>/` where `folder` comes from the optional `?folder=` query param (e.g. `hr/employees`); falls back to the root `uploads/` when omitted — **convention: always pass `?folder=<domain>/<resource>s`**
+- Returns `{ url: '/api/uploads/<folder>/<uuid>.<ext>' }`
 
 **Static file serving:** `main.ts` configures `NestExpressApplication.useStaticAssets()` with `prefix: '/api/uploads'`, so uploaded files are served at `/api/uploads/<filename>`. The Next.js rewrite proxies `/api/*` to NestJS, making images accessible from the browser at `http://localhost:3000/api/uploads/<filename>` without CORS issues.
 

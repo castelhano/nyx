@@ -97,9 +97,13 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const result: Record<string, unknown> = {}
     for (const [name, rawField] of Object.entries(this.schema.shape)) {
       if (BaseService.IMMUTABLE_FIELDS.has(name) || !(name in dto)) continue
-      if (this.unwrapField(rawField as ZodType) instanceof ZodDate) {
+      const unwrapped = this.unwrapField(rawField as ZodType)
+      const isOptional = (rawField as ZodType) instanceof ZodOptional || (rawField as ZodType) instanceof ZodNullable
+      if (unwrapped instanceof ZodDate) {
         if (!dto[name]) continue
         result[name] = typeof dto[name] === 'string' ? new Date(dto[name] as string) : dto[name]
+      } else if (isOptional && dto[name] === '') {
+        // skip — don't send empty string for optional fields (e.g. enums)
       } else {
         result[name] = dto[name]
       }

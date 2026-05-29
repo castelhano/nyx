@@ -200,7 +200,7 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
         if (v instanceof File) {
           const form = new FormData()
           form.append('file', v)
-          const res = await uploadFile('/upload/image', form)
+          const res = await uploadFile(`/upload/image?folder=${domain}/${resource}s`, form)
           if (!res.ok) throw new Error('Falha no upload da imagem')
           const json = await res.json()
           payload[k] = json.url
