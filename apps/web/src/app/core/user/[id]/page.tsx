@@ -281,6 +281,10 @@ export default function UserDetailPage() {
     if (userBranches) setBranches(userBranches.map((b) => ({ branchId: b.branchId, role: b.role })))
     if (userPerms)    setPermissions(new Set(userPerms.map((p) => `${p.resource}:${p.action}`)))
     setPasswordOpen(false)
+    setCopyOpen(false)
+    setCopyUser(null)
+    setCopySearch('')
+    setCopyDomains(new Set())
   }, { display: false, origin: 'apps/web/src/app/core/user/[id]/page' })
 
   useFieldKeybinds(
