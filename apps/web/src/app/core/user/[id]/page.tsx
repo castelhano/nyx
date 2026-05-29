@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import { Save, ArrowLeft, ChevronDown, Copy } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -19,6 +19,7 @@ import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useFieldKeybinds } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
+import { useConfirm } from '@/lib/confirm-context'
 import { msgs } from '@/lib/messages'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
 import { AssociationList, type BranchAssoc } from '@/components/ui/association-list'
@@ -56,6 +57,7 @@ export default function UserDetailPage() {
   const [isPending,    setIsPending]    = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const { toast } = useToast()
+  const confirm   = useConfirm()
   const [branches,     setBranches]     = useState<BranchAssoc[]>([])
   const [permissions,  setPermissions]  = useState<Set<string>>(new Set())
 
@@ -80,7 +82,7 @@ export default function UserDetailPage() {
     { enabled: !isNew, staleTime: 30_000 },
   )
 
-  const { guardNode, canCreate, canUpdate, meta } = usePageGuard('core', 'user', isNew, userError ?? undefined)
+  const { guardNode, canCreate, canUpdate, canDelete, meta } = usePageGuard('core', 'user', isNew, userError ?? undefined)
 
   const kb = (field: string) => meta?.fields.find(f => f.name === field)?.keybind ?? ''
   const { data: discovery } = useDiscovery()
@@ -254,16 +256,29 @@ export default function UserDetailPage() {
 
   // ── topbar & shortcuts ─────────────────────────────────────────────────────
 
-  useTopbarActions(
-    (isNew ? canCreate : canUpdate)
-      ? [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true }]
-      : [],
-    [isPending, isNew, canCreate, canUpdate],
-  )
+  async function handleDelete() {
+    const ok = await confirm({ title: 'Excluir usuário?' })
+    if (!ok) return
+    setIsPending(true)
+    try {
+      const res = await apiFetch(`/core/user/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      toast.success(msgs.deleted())
+      router.push('/core/user')
+    } catch {
+      toast.error(msgs.error.delete())
+      setIsPending(false)
+    }
+  }
+
+  useTopbarActions([
+    ...((isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : []),
+    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
+  ], [isPending, isNew, canCreate, canUpdate, canDelete])
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar registro', icon: Save, origin: 'apps/web/src/app/core/user/[id]/page', context: 'all' })
+  }, { desc: 'Salvar registro', icon: Icons.Save, origin: 'apps/web/src/app/core/user/[id]/page', context: 'all' })
 
   useShortcut('alt+l', () => {
     if (user) {
@@ -296,7 +311,7 @@ export default function UserDetailPage() {
   )
 
   useShortcut('alt+v', () => router.push('/core/user'), {
-    desc: 'Voltar', icon: ArrowLeft,
+    desc: 'Voltar', icon: Icons.ArrowLeft,
     origin: 'apps/web/src/app/core/user/[id]/page', context: 'all',
   })
 
@@ -478,7 +493,7 @@ export default function UserDetailPage() {
               onClick={() => setPasswordOpen((v) => !v)}
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <ChevronDown className={cn('w-4 h-4 transition-transform', passwordOpen && 'rotate-180')} />
+              <Icons.ChevronDown className={cn('w-4 h-4 transition-transform', passwordOpen && 'rotate-180')} />
               Redefinir senha
             </button>
 
@@ -555,7 +570,7 @@ export default function UserDetailPage() {
                       onClick={() => setCopyOpen((v) => !v)}
                       className="flex items-center gap-2 text-sm w-full py-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                     >
-                      <ChevronDown className={cn('w-4 h-4 transition-transform', copyOpen && 'rotate-180')} />
+                      <Icons.ChevronDown className={cn('w-4 h-4 transition-transform', copyOpen && 'rotate-180')} />
                       Copiar permissões
                     </button>
 
@@ -636,7 +651,7 @@ export default function UserDetailPage() {
                             onClick={handleCopy}
                             disabled={copyPending}
                           >
-                            <Copy className="w-3.5 h-3.5" />
+                            <Icons.Copy className="w-3.5 h-3.5" />
                             {copyPending ? 'Copiando…' : 'Copiar permissões'}
                           </Button>
                         )}
