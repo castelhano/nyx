@@ -162,7 +162,23 @@ function RelationSelectControl({
         id={field.name}
         autoFocus={autoFocus}
         value={ctrl.value ?? ''}
-        onChange={ctrl.onChange}
+        onChange={(e) => {
+          const val = e.currentTarget.value
+          // Capture next field id before ctrl.onChange may unmount this element
+          const form = e.currentTarget.closest('form')
+          const all = form ? Array.from(form.querySelectorAll<HTMLElement>('input, select, textarea')) : []
+          const idx = all.indexOf(e.currentTarget)
+          const nextId = all[idx + 1]?.id ?? null
+
+          ctrl.onChange(e)
+
+          if (val && nextId) {
+            setTimeout(() => {
+              const next = document.getElementById(nextId)
+              if (next && !(next as HTMLInputElement).disabled) next.focus()
+            }, 0)
+          }
+        }}
         onBlur={ctrl.onBlur}
         ref={ctrl.ref}
         disabled={isDisabled}
@@ -245,6 +261,7 @@ function LockedDisplay({
           id={field.name}
           type="button"
           title="Edit"
+          tabIndex={-1}
           onClick={onEdit}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
         >
@@ -267,6 +284,11 @@ function LockedRelationSelect({
   const parentValue  = useWatch({ control, name: field.dependsOn ?? '' }) as string
   const prevParentRef = useRef<string | undefined>(undefined)
 
+  const unlock = () => {
+    setIsEditing(true)
+    setTimeout(() => document.getElementById(field.name)?.focus(), 0)
+  }
+
   // When the parent field changes to a different value, clear own value and unlock.
   // This covers the case where the user changes company while branch is still locked.
   useEffect(() => {
@@ -275,7 +297,7 @@ function LockedRelationSelect({
     prevParentRef.current = parentValue
     if (prev !== undefined && prev !== parentValue && parentValue) {
       setValue(field.name, '')
-      setIsEditing(true)
+      unlock()
     }
   }, [parentValue]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -303,7 +325,7 @@ function LockedRelationSelect({
         <LockedDisplay
           field={field}
           value={ctrl.value as string}
-          onEdit={() => setIsEditing(true)}
+          onEdit={unlock}
           readonly={readonly}
           containerClassName={containerClassName}
         />
