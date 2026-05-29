@@ -16,17 +16,9 @@ enum TravelTimeSource {
   MANUAL
 }
 
-enum ServicePeriodStatus {
-  DRAFT
-  ACTIVE
-  ARCHIVED
-}
-
 enum VehiclePlanStatus {
   DRAFT
-  PROCESSING
-  READY
-  CONFIRMED
+  ACTIVE
 }
 
 model TransitLocality {
@@ -40,20 +32,18 @@ model TransitLocality {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  travelTimesFrom TravelTimeMatrix[] @relation("TravelTimeOrigin")
-  travelTimesTo   TravelTimeMatrix[] @relation("TravelTimeDestination")
-  routesAsOrigin      TransitRoute[] @relation("RouteOrigin")
-  routesAsDestination TransitRoute[] @relation("RouteDestination")
-  routeLocalities RouteLocality[]
-  depotFleets     DepotFleet[]
-  vehicleBlocks   VehicleBlock[]
+  travelTimesFrom     TravelTimeMatrix[] @relation("TravelTimeOrigin")
+  travelTimesTo       TravelTimeMatrix[] @relation("TravelTimeDestination")
+  routesAsOrigin      TransitRoute[]     @relation("RouteOrigin")
+  routesAsDestination TransitRoute[]     @relation("RouteDestination")
+  routeLocalities     RouteLocality[]
+  vehicleBlocks       VehicleBlock[]
 
   @@map("transit_localities")
 }
 
 model TransitLine {
   id        String   @id @default(uuid())
-  branchId  String
   code      String
   name      String
   type      LineType
@@ -62,10 +52,10 @@ model TransitLine {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch Branch        @relation("BranchTransitLines", fields: [branchId], references: [id])
-  routes TransitRoute[]
+  routes     TransitRoute[]
+  planLines  VehiclePlanLine[]
+  exceptions LineCalendarExceptionLine[]
 
-  @@unique([branchId, code])
   @@map("transit_lines")
 }
 
@@ -111,7 +101,6 @@ model RouteLocality {
 
 model TravelTimeMatrix {
   id             String           @id @default(uuid())
-  branchId       String
   originId       String
   destinationId  String
   baseMinutes    Float
@@ -122,28 +111,11 @@ model TravelTimeMatrix {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  branch      Branch          @relation("BranchTravelTimes", fields: [branchId], references: [id])
   origin      TransitLocality @relation("TravelTimeOrigin", fields: [originId], references: [id])
   destination TransitLocality @relation("TravelTimeDestination", fields: [destinationId], references: [id])
 
-  @@unique([branchId, originId, destinationId])
+  @@unique([originId, destinationId])
   @@map("transit_travel_times")
-}
-
-model DepotFleet {
-  id          String      @id @default(uuid())
-  branchId    String
-  localityId  String
-  vehicleType VehicleType
-  quantity    Int
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  branch   Branch          @relation("BranchDepotFleets", fields: [branchId], references: [id])
-  locality TransitLocality @relation(fields: [localityId], references: [id])
-
-  @@unique([branchId, localityId, vehicleType])
-  @@map("transit_depot_fleets")
 }
 
 model DayType {
@@ -151,40 +123,46 @@ model DayType {
   code        String   @unique
   name        String
   description String?
+  pattern     Json?
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  trips        TransitTrip[]
-  vehiclePlans VehiclePlan[]
+  trips              TransitTrip[]
+  vehiclePlans       VehiclePlan[]
+  calendarExceptions LineCalendarException[]
 
   @@map("transit_day_types")
 }
 
-// ServicePeriod: tabela de excessao, informa periodo onde sistema deve alterar
-// dipo de dia ativo (ex ferias escolares)
-model ServicePeriod {
-  id        String              @id @default(uuid())
-  branchId  String
-  name      String
-  validFrom DateTime
-  validTo   DateTime?
-  status    ServicePeriodStatus @default(DRAFT)
-  notes     String?
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+model LineCalendarException {
+  id                String    @id @default(uuid())
+  validFrom         DateTime
+  validTo           DateTime?
+  overrideDayTypeId String
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  branch       Branch        @relation("BranchServicePeriods", fields: [branchId], references: [id])
-  trips        TransitTrip[]
-  vehiclePlans VehiclePlan[]
+  overrideDayType DayType                    @relation(fields: [overrideDayTypeId], references: [id])
+  lines           LineCalendarExceptionLine[]
 
-  @@map("transit_service_periods")
+  @@map("transit_line_calendar_exceptions")
+}
+
+model LineCalendarExceptionLine {
+  exceptionId String
+  lineId      String
+
+  exception LineCalendarException @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+  line      TransitLine           @relation(fields: [lineId], references: [id])
+
+  @@id([exceptionId, lineId])
+  @@map("transit_line_calendar_exception_lines")
 }
 
 model TransitTrip {
-  id                  String      @id @default(uuid())
-  branchId            String
-  servicePeriodId     String
+  id                  String       @id @default(uuid())
   dayTypeId           String
   routeId             String
   // minutes from operational day start; values > 1440 indicate overnight trips
@@ -194,45 +172,52 @@ model TransitTrip {
   // { locked?: string[], pinnedBlock?: string }
   constraints         Json?
   notes               String?
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  branch        Branch        @relation("BranchTransitTrips", fields: [branchId], references: [id])
-  servicePeriod ServicePeriod @relation(fields: [servicePeriodId], references: [id])
-  dayType       DayType       @relation(fields: [dayTypeId], references: [id])
-  route         TransitRoute  @relation(fields: [routeId], references: [id])
-  blockTrips    BlockTrip[]
+  dayType    DayType      @relation(fields: [dayTypeId], references: [id])
+  route      TransitRoute @relation(fields: [routeId], references: [id])
+  blockTrips BlockTrip[]
 
   @@map("transit_trips")
 }
 
 model VehiclePlan {
-  id              String            @id @default(uuid())
-  branchId        String
-  servicePeriodId String
-  dayTypeId       String
-  status          VehiclePlanStatus @default(DRAFT)
-  fleetCount      Int?
-  score           Float?
-  deadrunKm       Float?
-  generatedAt     DateTime?
+  id          String            @id @default(uuid())
+  dayTypeId   String
+  status      VehiclePlanStatus @default(DRAFT)
+  fleetCount  Int?
+  score       Float?
+  deadrunKm   Float?
+  generatedAt DateTime?
   // { locked?: true }
-  constraints     Json?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  constraints Json?
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
-  branch        Branch        @relation("BranchVehiclePlans", fields: [branchId], references: [id])
-  servicePeriod ServicePeriod @relation(fields: [servicePeriodId], references: [id])
-  dayType       DayType       @relation(fields: [dayTypeId], references: [id])
-  blocks        VehicleBlock[]
+  dayType DayType           @relation(fields: [dayTypeId], references: [id])
+  lines   VehiclePlanLine[]
+  blocks  VehicleBlock[]
 
-  // one CONFIRMED plan per (servicePeriod, dayType) enforced at service layer
   @@map("transit_vehicle_plans")
+}
+
+model VehiclePlanLine {
+  vehiclePlanId String
+  lineId        String
+
+  vehiclePlan VehiclePlan @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  line        TransitLine @relation(fields: [lineId], references: [id])
+
+  @@id([vehiclePlanId, lineId])
+  @@map("transit_vehicle_plan_lines")
 }
 
 model VehicleBlock {
   id            String      @id @default(uuid())
   vehiclePlanId String
+  branchId      String?
   blockNumber   Int
   depotId       String
   vehicleType   VehicleType
@@ -244,6 +229,7 @@ model VehicleBlock {
   updatedAt     DateTime    @updatedAt
 
   vehiclePlan VehiclePlan     @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  branch      Branch?         @relation("BranchVehicleBlocks", fields: [branchId], references: [id])
   depot       TransitLocality @relation(fields: [depotId], references: [id])
   blockTrips  BlockTrip[]
 

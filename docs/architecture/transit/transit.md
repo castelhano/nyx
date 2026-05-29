@@ -6,15 +6,26 @@
 
 ## 1. Visão Geral
 
-O domínio `transit` implementa um sistema de planejamento e escala para empresas de transporte urbano. O objetivo central é partir de um cadastro de linhas e viagens avulsas e gerar automaticamente um **planejamento de veículos otimizado** — atribuindo viagens a blocos de veículo buscando a melhor combinação possível dentro de restrições configuráveis.
+O domínio `transit` implementa um sistema de planejamento e escala para operadoras de transporte. O objetivo central é partir de um cadastro de linhas e viagens e gerar automaticamente um **planejamento de veículos otimizado** — atribuindo viagens a blocos de veículo buscando o menor número possível de veículos dentro de restrições configuráveis.
+
+### Princípio de separação de responsabilidades
+
+| Camada | O que representa | Vínculo com empresa |
+|---|---|---|
+| Rede (locality, line, route) | Infraestrutura física e linhas | Nenhum — dados neutros |
+| Timetable (trip, dayType) | Horários por tipo de dia | Nenhum — templates reutilizáveis |
+| Planejamento (vehiclePlan, block) | Alocação de veículos às trips | Branch entra no `VehicleBlock` |
+| Operacional (escala diária) | Snapshot para execução real | Fase futura |
+
+A empresa (branch) não é proprietária de linhas ou horários. Ela opera **blocos** de veículos. Isso permite operação compartilhada de linhas entre empresas sem duplicação de dados.
 
 ### Fases planejadas
 
 | Fase | Escopo | Status |
 |---|---|---|
 | **1 — Rede e Timetabling** | Cadastro de rede, viagens, geração de blocos de veículo | 🔄 Em andamento |
-| **2 — Escala de Motoristas** | Criação de turnos, atricuição de condutores e veiculos (planejados) sobre os blocos gerados | ⏳ Futuro |
-| **3 — Plantão / Duty Roster** | Gestão de quem está de serviço em cada dia real | ⏳ Futuro |
+| **2 — Escala de Motoristas** | Criação de turnos, atribuição de condutores sobre os blocos gerados | ⏳ Futuro |
+| **3 — Escala Diária** | Snapshot diário para execução real; atribuição nominal de condutores e veículos | ⏳ Futuro |
 
 ---
 
@@ -26,12 +37,11 @@ O domínio `transit` implementa um sistema de planejamento e escala para empresa
 TransitLocality ──── TravelTimeMatrix ────┐
        │                                  │
        └── RouteLocality ◄── TransitRoute ◄── TransitLine
-       └── DepotFleet
 ```
 
 #### `TransitLocality` — ponto ou terminal nomeado
 
-Localidade global — não vinculada a uma filial. O mesmo ponto pode ser referenciado por linhas e rotas de qualquer filial.
+Global — não vinculada a nenhuma empresa. O mesmo ponto pode ser referenciado por linhas de qualquer operadora.
 
 | Campo | Tipo | Notas |
 |---|---|---|
@@ -42,10 +52,11 @@ Localidade global — não vinculada a uma filial. O mesmo ponto pode ser refere
 
 #### `TransitLine` — linha de transporte
 
+Global — não vinculada a filial. A empresa que opera os veículos nessa linha é definida no `VehicleBlock`, não aqui.
+
 | Campo | Tipo | Notas |
 |---|---|---|
-| `branchId` | FK Branch | scoping |
-| `code` | String | único por filial |
+| `code` | String | código operacional (sem restrição de unicidade — mesmos códigos podem existir em redes distintas) |
 | `name` | String | — |
 | `type` | Enum | URBAN / METROPOLITAN / RURAL / SPECIAL |
 | `isActive` | Boolean | — |
@@ -73,25 +84,22 @@ Join table entre `TransitRoute` e `TransitLocality`. Representa os pontos percor
 | `sequence` | Int | ordem no percurso |
 | `deltaMinutes` | Int? | tempo desde o ponto anterior; `null` → fallback TravelTimeMatrix |
 | `deltaKm` | Float? | distância desde o ponto anterior; `null` → fallback TravelTimeMatrix |
-| `allowsCrewChange` | Boolean | troca de turno permitida **nesta linha** neste ponto |
+| `allowsCrewChange` | Boolean | troca de turno permitida neste ponto |
 
 **Regra do fallback:**
 ```
 deltaMinutes resolvido =
   RouteLocality.deltaMinutes        // específico da linha (manual)
-  ?? TravelTimeMatrix(prev, curr).baseMinutes  // matriz OSRM
+  ?? TravelTimeMatrix(prev, curr).baseMinutes  // matriz global OSRM
   ?? erro — par sem dados
 ```
 
-O mesmo vale para `deltaKm`. Isso separa o tempo de percurso *comercial* (para relatórios de passagem) do tempo de deslocamento *entre quaisquer dois locais* (para o solver VSP).
-
 #### `TravelTimeMatrix` — matriz de tempos entre localidades
 
-Cobre todos os pares de localidades, incluindo pares entre linhas diferentes (fundamental para o solver calcular dead runs). Gerada automaticamente via OSRM, com override manual por par.
+Global — não vinculada a filial. Cobre todos os pares de localidades, incluindo pares entre linhas diferentes (fundamental para o solver calcular dead runs).
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `branchId` | FK Branch | scoping |
 | `originId` | FK TransitLocality | — |
 | `destinationId` | FK TransitLocality | — |
 | `baseMinutes` | Float | tempo base (OSRM ou manual) |
@@ -99,16 +107,7 @@ Cobre todos os pares de localidades, incluindo pares entre linhas diferentes (fu
 | `peakMultiplier` | Float | multiplicador para horário de pico (default 1.0) |
 | `source` | Enum | OSRM / MANUAL |
 
-**Geração da matriz via OSRM:**
-
-```
-GET /table/v1/driving/{coordinates}?annotations=duration,distance
-```
-
-- Endpoint `/table` do OSRM recebe N coordenadas e retorna matriz N×N
-- Uma chamada preenche todos os pares
-- Chamada disparada automaticamente quando localidades são criadas/atualizadas
-- Resultado persistido na tabela — override manual por par é possível
+**Constraint:** `@@unique([originId, destinationId])` — um registro por par de pontos, compartilhado por todas as operadoras.
 
 **Dois usos distintos da matriz:**
 
@@ -117,75 +116,92 @@ GET /table/v1/driving/{coordinates}?annotations=duration,distance
 | Relatório de passagem | `RouteLocality.deltaMinutes` (ou fallback) | Horário em cada ponto do itinerário |
 | Dead run do solver | `TravelTimeMatrix.baseMinutes` | Veículo pode ir do fim da viagem A ao início da B? |
 
-#### `DepotFleet` — contingente de veículos por garagem
-
-| Campo | Tipo | Notas |
-|---|---|---|
-| `branchId` | FK Branch | scoping |
-| `localityId` | FK TransitLocality | deve ser uma locality com `isDepot: true` |
-| `vehicleType` | Enum | BUS / MICRO_BUS / MINIBUS / VAN |
-| `quantity` | Int | veículos disponíveis deste tipo nesta garagem |
-
-O solver usa esta tabela para saber quantos veículos de cada tipo estão disponíveis por garagem.
-
 ---
 
-### 2.2 Camada de Programação (viagens e configuração)
+### 2.2 Camada de Programação (viagens e calendário)
 
 ```
-DayType ◄── TransitTrip ──► TransitRoute
-               │
-ServicePeriod ─┘
+DayType ◄────────── TransitTrip ──► TransitRoute
+   │
+   └── LineCalendarException ──► TransitLine (N-N)
 ```
 
 #### `DayType` — tipo de dia operacional
 
-Global — não vinculado a filial. Os mesmos tipos de dia (ex: "Dia Útil", "Sábado") são compartilhados por toda a operação.
+Global. Os mesmos tipos de dia são compartilhados por toda a operação.
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `code` | String | único globalmente; ex: "DU", "SA", "DO" |
+| `code` | String | único globalmente; ex: `UTIL`, `SAB`, `DOM` |
 | `name` | String | ex: "Dia Útil", "Sábado" |
+| `description` | String? | — |
+| `pattern` | Json? | `DayTypePattern` — define quais dias do calendário este tipo cobre; `null` = sem resolução automática (ex: FERIAS) |
 | `sortOrder` | Int | ordem de exibição em selects |
 
-#### `ServicePeriod` — período de vigência do quadro
+**`DayTypePattern` — shape do campo `pattern`:**
+
+```typescript
+type DayTypePattern =
+  | { type: 'weekdays'; days: number[] }
+  // days usa ISO weekday: 1=seg … 7=dom
+  // ex: UTIL → { type: 'weekdays', days: [1,2,3,4,5] }
+
+  | { type: 'month_window'; anchor: 'start' | 'end'; days: number; baseWeekdays?: number[] }
+  // ex: primeiros 15 dias úteis → { type: 'month_window', anchor: 'start', days: 15, baseWeekdays: [1,2,3,4,5] }
+```
+
+`pattern: null` — tipo sem resolução automática. Entra em cena apenas via `LineCalendarException` (ex: FERIAS, ESPECIAL).
+
+**Resolução de DayType para uma data real:**
+1. Existe `LineCalendarException` ativa para essa data cobrindo a linha? → usa `overrideDayTypeId`
+2. Avalia os `DayType` com `pattern` não-nulo; primeiro match por `sortOrder` ganha
+3. Fallback: tipos base por dia da semana (UTIL / SAB / DOM)
+
+#### `LineCalendarException` — exceção de calendário por linha
+
+Define períodos em que um conjunto de linhas opera com um tipo de dia diferente do padrão (ex: férias escolares).
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `branchId` | FK Branch | — |
-| `name` | String | ex: "Jan–Mar 2026" |
-| `validFrom` | DateTime | — |
-| `validTo` | DateTime? | — |
-| `status` | Enum | DRAFT / ACTIVE / ARCHIVED |
+| `validFrom` | DateTime | início do período de exceção |
+| `validTo` | DateTime? | fim do período; `null` = sem data de término |
+| `overrideDayTypeId` | FK DayType | tipo de dia a usar neste período |
+| `notes` | String? | — |
+
+#### `LineCalendarExceptionLine` — escopo de linhas da exceção
+
+Join table M-N entre `LineCalendarException` e `TransitLine`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `exceptionId` | FK LineCalendarException | cascade delete |
+| `lineId` | FK TransitLine | — |
 
 #### `TransitTrip` — viagem avulsa (átomo do planejamento)
 
-As viagens são cadastradas sem atribuição de veículo. O solver as distribui entre blocos.
+Template permanente por `Route + DayType`. Não possui vínculo com empresa nem com vigência — é um dado técnico da linha. O solver consome trips filtradas pelo escopo do `VehiclePlan`.
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `branchId` | FK Branch | scoping |
-| `servicePeriodId` | FK ServicePeriod | — |
 | `dayTypeId` | FK DayType | — |
 | `routeId` | FK TransitRoute | — |
 | `departureMinutes` | Int | minutos desde o início do dia operacional |
 | `arrivalMinutes` | Int | pode ser > 1440 para viagens que cruzam a meia-noite |
-| `requiredVehicleType` | Enum? | solver tenta consolidar viagens com mesmo tipo |
+| `requiredVehicleType` | Enum? | solver consolida viagens com mesmo tipo |
 | `constraints` | Json? | ver §2.4 |
 
-**Dia operacional:** o dia operacional começa no horário configurado em `PlanningConfig.operationalDayStartHour` (padrão: 04h00). Viagens entre 00:00 e 03:59 pertencem ao dia operacional anterior e têm `departureMinutes` > 1440.
+**Dia operacional:** começa no horário configurado em `PlanningConfig.operationalDayStartHour` (padrão: 04h00).
 
 ```
 // Exemplos com operationalDayStartHour = 4 (04h00)
 23:00 → departureMinutes = (23 - 4) * 60 = 1140
 00:10 → departureMinutes = (24 - 4) * 60 + 10 = 1210
-01:50 → departureMinutes = (24 - 4) * 60 + 110 = 1310
 04:00 → departureMinutes = 0  (início do próximo dia operacional)
 ```
 
 #### `PlanningConfig` — configuração de geração (BaseSettingsService)
 
-Settings singleton por filial com fallback global. Define os parâmetros do solver e os critérios de parada.
+Settings singleton por filial com fallback global.
 
 | Grupo | Campos |
 |---|---|
@@ -196,47 +212,60 @@ Settings singleton por filial com fallback global. Define os parâmetros do solv
 | Pesos de Otimização | `weightMinimizeFleet`, `weightMinimizeDeadrun`, `weightBlockDuration` |
 | Critério de Parada | `stopNoImprovementMinutes`, `stopMaxTotalMinutes` |
 
-**Hierarquia de configuração:**
-- `scope: branchId` → config específica da filial
-- `scope: 'global'` → fallback padrão do sistema
-- Service tenta a config da filial primeiro, cai no global se não existir
-
 ---
 
 ### 2.3 Camada de Output (planejamento gerado)
 
 ```
-VehiclePlan
-    └── VehicleBlock (1 por veículo)
-            └── BlockTrip (viagens + dead runs na sequência)
+VehiclePlan ──── VehiclePlanLine ──► TransitLine
+    └── VehicleBlock (branchId nullable — empresa que opera)
+            └── BlockTrip
 ```
 
 #### `VehiclePlan` — resultado de uma execução do solver
 
 | Campo | Tipo | Notas |
 |---|---|---|
-| `servicePeriodId` | FK ServicePeriod | — |
-| `dayTypeId` | FK DayType | — |
-| `status` | Enum | DRAFT / PROCESSING / READY / CONFIRMED |
+| `dayTypeId` | FK DayType | tipo de dia que este plano cobre |
+| `status` | Enum | DRAFT / ACTIVE |
 | `fleetCount` | Int? | total de veículos no plano |
 | `score` | Float? | pontuação do melhor candidato encontrado |
 | `deadrunKm` | Float? | total de km em vazio no plano |
 | `generatedAt` | DateTime? | momento em que a geração completou |
 | `constraints` | Json? | ver §2.4 |
+| `notes` | String? | — |
 
-**Regra de negócio:** apenas um plano `CONFIRMED` por `(servicePeriodId, dayTypeId)`. Múltiplos `DRAFT`/`READY` são permitidos para comparação. Enforcement no service layer.
+**Regra de negócio — ACTIVE:**
+- Múltiplos `DRAFT` são permitidos por `dayTypeId` (comparação de cenários)
+- Uma linha não pode estar em dois `VehiclePlan ACTIVE` do mesmo `dayTypeId`
+- Enforcement no service layer ao ativar
+
+#### `VehiclePlanLine` — escopo de linhas do plano
+
+Define quais linhas o solver considera ao gerar este plano. Determina o nível de abrangência: uma linha, múltiplas linhas de uma empresa, ou toda a rede.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `vehiclePlanId` | FK VehiclePlan | cascade delete |
+| `lineId` | FK TransitLine | — |
 
 #### `VehicleBlock` — sequência de trabalho de um veículo
 
 | Campo | Tipo | Notas |
 |---|---|---|
 | `vehiclePlanId` | FK VehiclePlan | cascade delete |
+| `branchId` | FK Branch? | empresa que opera este bloco; `null` = ainda não atribuído |
 | `blockNumber` | Int | identificador dentro do plano |
 | `depotId` | FK TransitLocality | garagem de origem e retorno |
 | `vehicleType` | Enum | tipo de veículo alocado |
 | `totalMinutes` | Int? | duração total do bloco |
 | `totalKm` | Float? | km total (comercial + vazio) |
 | `constraints` | Json? | ver §2.4 |
+
+**Atribuição de empresa:**
+- O solver gera os blocos sem empresa definida (`branchId: null`)
+- O usuário atribui uma empresa a todos os blocos de uma vez, ou individualmente por bloco
+- Blocos sem `branchId` são ignorados na geração da escala diária (Fase 3)
 
 #### `BlockTrip` — viagem (comercial ou em vazio) dentro de um bloco
 
@@ -292,17 +321,21 @@ interface VehiclePlanConstraints {
 
 ## 3. Solver VSP — Arquitetura
 
-O solver resolve o **Vehicle Scheduling Problem (VSP)**: dada uma lista de viagens, distribui-as entre o menor número possível de veículos respeitando restrições de tempo e frota, pontuando cada distribuição candidata.
+O solver resolve o **Vehicle Scheduling Problem (VSP)**: dada uma lista de viagens (filtradas pelo escopo do `VehiclePlan`), distribui-as entre o menor número possível de veículos respeitando restrições de tempo e frota.
 
 ### 3.1 Fluxo geral
 
 ```
+Usuario seleciona linhas e dayType → cria VehiclePlan com VehiclePlanLines
+        │
+        ▼
 Usuario clica "Gerar"
         │
         ▼
 POST /transit/vehicle-plan/:id/generate
         │
-        ├── cria VehiclePlan com status PROCESSING
+        ├── busca trips via VehiclePlanLine → TransitLine → TransitRoute → TransitTrip
+        ├── status → PROCESSING
         ├── gera jobId
         └── inicia Worker Thread com config + trips + matrix
                 │
@@ -321,7 +354,16 @@ Usuario clica "Assumir Melhor"
         │
         ▼
 POST /transit/vehicle-plan/:id/assume
-        └── persiste o best atual → status READY
+        └── persiste o best atual → VehicleBlocks criados (branchId: null) → status READY
+
+Usuario atribui empresa(s) aos blocos → status permanece READY até ativar
+
+Usuario clica "Ativar"
+        │
+        ▼
+POST /transit/vehicle-plan/:id/activate
+        └── valida que nenhuma linha do escopo já está em outro ACTIVE do mesmo dayType
+            → status ACTIVE
 ```
 
 ### 3.2 Worker Thread
@@ -341,9 +383,7 @@ import { workerData, parentPort } from 'worker_threads'
 // { type: 'done',        stopReason: 'no_improvement' | 'max_time' | 'user_stopped' }
 ```
 
-O main thread recebe mensagens `improvement` e armazena o melhor resultado em `jobs.get(jobId).best`. O endpoint `/assume` retorna esse valor instantaneamente — sem precisar consultar o worker.
-
-### 3.3 Critérios de parada (configurados em `PlanningConfig`)
+### 3.3 Critérios de parada
 
 | Critério | Campo | Comportamento |
 |---|---|---|
@@ -353,8 +393,6 @@ O main thread recebe mensagens `improvement` e armazena o melhor resultado em `j
 
 ### 3.4 Função de pontuação
 
-Cada candidato recebe uma pontuação calculada a partir de penalidades e pesos configurados:
-
 ```
 score = 100
       - Σ penalidade_bloco_fora_da_faixa_ideal × weightBlockDuration
@@ -362,31 +400,27 @@ score = 100
       - frota_utilizada × weightMinimizeFleet
 ```
 
-**Violações duras** (descartam o candidato imediatamente):
-- Bloco abaixo de `blockDurationMinMinutes`
-- Bloco acima de `blockDurationMaxMinutes`
+**Violações duras** (descartam o candidato):
+- Bloco fora de `[blockDurationMinMinutes, blockDurationMaxMinutes]`
 - Dead run acima de `maxDeadrunHardMinutes`
 - Intervalo entre viagens abaixo de `minLayoverMinutes`
-- Violação de `requiredVehicleType` (viagem requer tipo X, bloco tem tipo Y)
-- Violação de `constraints.pinnedBlock` (trip alocada em bloco diferente do travado)
+- Violação de `requiredVehicleType`
+- Violação de `constraints.pinnedBlock`
 
 **Violações suaves** (penalizam a pontuação):
 - Dead run acima de `maxDeadrunSoftMinutes`
-- Intervalo entre viagens acima de `maxLayoverMinutes`
-- Bloco fora da faixa `[idealMin, idealMax]`
+- Intervalo acima de `maxLayoverMinutes`
+- Bloco fora da faixa ideal `[idealMin, idealMax]`
 
 ### 3.5 Autenticação SSE
 
-`EventSource` nativo não suporta headers customizados. Abordagem para o MVP:
-
-- Token JWT passado como query param: `GET /stream?token=<jwt>`
-- Endpoint `/assume` usa `apiFetch` normalmente (header `Authorization`)
-
-Antes de produção: migrar para `httpOnly` cookie-based auth para o SSE.
+`EventSource` nativo não suporta headers customizados:
+- Token JWT passado como query param: `GET /stream?token=<jwt>` (MVP)
+- Antes de produção: migrar para `httpOnly` cookie-based auth
 
 ### 3.6 Isolamento por job
 
-Múltiplas gerações simultâneas são suportadas via `Map<jobId, { worker, best }>`. O `jobId` é gerado no frontend (UUID) e enviado como query param no SSE e no `/assume`.
+Múltiplas gerações simultâneas suportadas via `Map<jobId, { worker, best }>`.
 
 ---
 
@@ -401,26 +435,23 @@ horário_ponto[0] = Trip.departureMinutes
 horário_ponto[n] = horário_ponto[n-1] + delta_resolvido(n-1, n)
 ```
 
-Onde `delta_resolvido` aplica a regra de fallback do §2.1 (RouteLocality.deltaMinutes ?? TravelTimeMatrix).
-
 ### 4.2 Relatório de fiscal (por localidade)
 
 Para uma `TransitLocality`, lista todas as viagens que passam por ela em ordem de horário:
 
-```
+```sql
 SELECT rl.*, tt.*
 FROM transit_route_localities rl
 JOIN transit_trips tt ON tt.routeId = rl.routeId
 WHERE rl.localityId = :localityId
-  AND tt.dayTypeId = :dayTypeId
+  AND tt.dayTypeId  = :dayTypeId
 ORDER BY tt.departureMinutes + Σ(deltas até rl.sequence)
 ```
 
 ### 4.3 Km prevista do projeto
 
 ```
-km_linha = Σ RouteLocality.deltaKm (ou TravelTimeMatrix.distanceKm como fallback)
-km_vazio_plano = Σ BlockTrip.deadheadKm WHERE isDeadhead = true
+km_vazio_plano    = Σ BlockTrip.deadheadKm WHERE isDeadhead = true
 km_comercial_plano = Σ TravelTimeMatrix.distanceKm para cada trip no plano
 ```
 
@@ -435,12 +466,10 @@ GET http://osrm-server/table/v1/driving/{lon1,lat1;lon2,lat2;...}
     ?annotations=duration,distance
 ```
 
-Retorna matrizes N×N de duração (segundos) e distância (metros).
-
 ### Fluxo de atualização da matriz
 
 1. `TransitLocality` criada ou lat/lng atualizado
-2. Job assíncrono busca todas as localidades ativas da filial
+2. Job assíncrono busca **todas** as localidades ativas (matriz é global)
 3. Dispara chamada OSRM `/table` com todas as coordenadas
 4. Converte: segundos → minutos, metros → km
 5. `upsert` em `TravelTimeMatrix` com `source: 'OSRM'`
@@ -448,9 +477,9 @@ Retorna matrizes N×N de duração (segundos) e distância (metros).
 
 ### Configuração
 
-```typescript
-// apps/api/.env
-OSRM_URL=http://localhost:5000   // instância local self-hosted
+```
+# apps/api/.env
+OSRM_URL=http://localhost:5000
 ```
 
 ---
@@ -463,11 +492,11 @@ apps/api/src/modules/transit/
   network/
     network.module.ts
     locality/
-      locality.service.ts        extends BaseService
+      locality.service.ts        extends BaseService (sem scopeField — global)
       locality.controller.ts     extends BaseController
     line/
-      line.service.ts
-      line.controller.ts
+      line.service.ts            extends BaseService (sem scopeField — global)
+      line.controller.ts         extends BaseController
     route/
       route.service.ts
       route.controller.ts
@@ -475,26 +504,23 @@ apps/api/src/modules/transit/
       route-locality.service.ts
       route-locality.controller.ts
     travel-time/
-      travel-time.service.ts
-      travel-time.controller.ts
-      osrm.service.ts            integração OSRM (chamadas HTTP + upsert)
-    depot-fleet/
-      depot-fleet.service.ts
-      depot-fleet.controller.ts
+      travel-time.service.ts     extends BaseService (sem scopeField — matriz global)
+      travel-time.controller.ts  extends BaseController
+      osrm.service.ts            generateMatrix() — busca todas as localidades, upsert global
   timetabling/
     timetabling.module.ts
     day-type/
-      day-type.service.ts
+      day-type.service.ts        extends BaseService (sem scopeField — global)
       day-type.controller.ts
-    service-period/
-      service-period.service.ts
-      service-period.controller.ts
+    line-calendar-exception/
+      line-calendar-exception.service.ts
+      line-calendar-exception.controller.ts
     trip/
-      trip.service.ts
+      trip.service.ts            extends BaseService (sem scopeField — trips são globais)
       trip.controller.ts
     vehicle-plan/
       vehicle-plan.service.ts    NÃO extends BaseService — lógica custom
-      vehicle-plan.controller.ts NÃO extends BaseController — endpoints SSE
+      vehicle-plan.controller.ts NÃO extends BaseController — endpoints SSE + ativação
       solver/
         solver.worker.ts         worker_threads — loop de otimização
         solver.types.ts          SolverResult, SolverConfig, SolverMessage
@@ -515,71 +541,49 @@ apps/api/src/modules/transit/
 - [x] Criar `NetworkModule` e `TimetablingModule` como sub-módulos
 - [x] Executar `pnpm db:migrate` para aplicar `transit.prisma`
 
-### Etapa 2 — Rede (NetworkModule) ✅
+### Etapa 2 — Rede (NetworkModule) ⚠️ requer ajuste
 
-- [x] `LocalityService` / `LocalityController` (BaseService, sem scopeField — localidades são globais)
-- [x] `LineService` / `LineController` (scopeField: `branchId`)
-- [x] `RouteService` / `RouteController` (child de Line, sem scopeField — acesso via lineId)
-- [x] `RouteLocalityService` / `RouteLocalityController` (child de Route)
-- [x] `TravelTimeService` / `TravelTimeController` (scopeField: `branchId`)
-- [x] `OsrmService` — `generateMatrix(branchId)` busca todas as localidades e faz upsert na matriz da filial; `generateMatrixForAllBranches()` itera sobre todas as filiais
-- [x] Hook em `LocalityService.create/update` → dispara `generateMatrixForAllBranches()`
-- [x] `DepotFleetService` / `DepotFleetController` (scopeField: `branchId`)
+- [x] `LocalityService` / `LocalityController`
+- [ ] `LineService` / `LineController` — remover `scopeField: 'branchId'`; linha é global
+- [x] `RouteService` / `RouteController`
+- [x] `RouteLocalityService` / `RouteLocalityController`
+- [ ] `TravelTimeService` / `TravelTimeController` — remover `scopeField: 'branchId'`; matriz é global
+- [ ] `OsrmService` — remover parâmetro `branchId`; `generateMatrix()` opera sobre todas as localidades
+- [ ] Remover `DepotFleetService` / `DepotFleetController` (model removido)
 
-### Etapa 3 — Programação (TimetablingModule) ✅
+### Etapa 3 — Programação (TimetablingModule) ⚠️ requer ajuste
 
-- [x] `DayTypeService` / `DayTypeController` (sem scopeField — global)
-- [x] `ServicePeriodService` / `ServicePeriodController` (scopeField: `branchId`)
-- [x] `TripService` / `TripController` (scopeField: `branchId`)
-  - [x] `buildSearchWhere` por routeId, dayTypeId, horário
-  - [x] Filtro `f_servicePeriodId` para contexto da lista filha
-- [x] `PlanningConfigService` extends `BaseSettingsService` (scope: `branchId` | `global`)
+- [x] `DayTypeService` / `DayTypeController`
+- [ ] Adicionar campo `pattern` ao schema Zod de `DayType`
+- [ ] Remover `ServicePeriodService` / `ServicePeriodController` (model removido)
+- [ ] Criar `LineCalendarExceptionService` / `LineCalendarExceptionController`
+- [ ] `TripService` / `TripController` — remover `scopeField: 'branchId'` e `servicePeriodId`; trips são globais
+- [x] `PlanningConfigService` extends `BaseSettingsService`
 - [x] `PlanningConfigController` extends `BaseSettingsController`
 
-### Etapa 4 — Solver ✅
+### Etapa 4 — Solver ✅ (lógica core válida; adaptar input)
 
-- [x] Definir tipos em `solver.types.ts`:
-  - `SolverConfig` — config resolvida (PlanningConfig + trips + matrix)
-  - `SolverResult` — candidato gerado (blocks + score + metrics)
-  - `SolverMessage` — union dos tipos de mensagem do worker
-- [x] Implementar `solver.worker.ts`:
-  - [x] Loop de geração com `setImmediate` (yield ao event loop entre iterações)
-  - [x] Função de avaliação de candidato (`evaluateCandidate`) — greedy randomizado com restarts
-  - [x] Cálculo de score com penalidades configuráveis
-  - [x] Aplicação de constraints (requiredVehicleType; pinnedBlock Phase 2)
-  - [x] Critérios de parada (sem melhora, timeout, stop manual)
-  - [x] Cleanup via `stopped` flag no setImmediate loop
-- [x] Implementar `VehiclePlanService` (custom, não BaseService):
-  - [x] `generate(planId, jobId)` — inicia Worker, registra job no Map
-  - [x] `streamProgress(jobId)` — Observable via RxJS Subject → SSE
-  - [x] `assumeBest(planId, jobId)` — persiste melhor candidato → status READY
-  - [x] `stop(jobId)` — envia `{ type: 'stop' }` ao worker
-  - [x] `confirm(planId)` — status CONFIRMED + deconfirma plano anterior
-- [x] Implementar `VehiclePlanController` (custom):
-  - [x] `POST /:id/generate`
-  - [x] `GET /:id/stream` (`@Sse`) com `JwtOrQueryGuard` (token via query param)
-  - [x] `POST /:id/assume`
-  - [x] `POST /:id/stop`
-  - [x] `POST /:id/confirm`
+- [x] Tipos em `solver.types.ts`
+- [x] `solver.worker.ts` com loop, score, constraints, critérios de parada
+- [ ] `VehiclePlanService` — adaptar `generate()`: buscar trips via `VehiclePlanLine → TransitLine → TransitRoute → TransitTrip`
+- [ ] `VehiclePlanService` — substituir `confirm()` por `activate()` com validação de sobreposição de linhas
+- [ ] `VehiclePlanController` — adaptar endpoints: `POST /:id/activate` substitui `POST /:id/confirm`
 
 ### Etapa 5 — Relatórios
 
-- [ ] `GET /transit/report/passage?tripId=` — horários de passagem por viagem
-- [ ] `GET /transit/report/inspector?localityId=&dayTypeId=` — todas as viagens por ponto
-- [ ] `GET /transit/report/plan-km?vehiclePlanId=` — km comercial + vazio + total
+- [ ] `GET /transit/report/passage?tripId=`
+- [ ] `GET /transit/report/inspector?localityId=&dayTypeId=`
+- [ ] `GET /transit/report/plan-km?vehiclePlanId=`
 
 ### Etapa 6 — Frontend
 
 - [x] Páginas genéricas (AutoList + AutoForm) para todos os resources CRUD
-  - Criadas automaticamente pelo sistema — sem arquivos extras
 - [ ] Página customizada `app/transit/vehicle-plan/[id]/page.tsx`:
-  - [ ] Topbar com botões: Gerar / Parar / Assumir Melhor / Confirmar
-  - [ ] Hook `useVehiclePlanStream` (baseado no dispatch-timetabling.md)
-  - [ ] Painel de progresso em tempo real (SSE)
-  - [ ] Lista de blocos gerados com detalhamento de viagens
+  - [ ] Seleção de linhas (escopo) e dayType ao criar o plano
+  - [ ] Topbar: Gerar / Parar / Assumir Melhor / Ativar
+  - [ ] Painel de progresso SSE
+  - [ ] Lista de blocos com atribuição de empresa por bloco (ou em lote)
   - [ ] Indicadores visuais de constraints (lock icons)
-  - [ ] UI de lock/unlock de campos e blocos
-- [ ] Integrar `alt+g` → Assumir Melhor (quando há resultado disponível)
 
 ---
 
@@ -587,22 +591,25 @@ apps/api/src/modules/transit/
 
 | Decisão | Escolha | Razão |
 |---|---|---|
+| Branch em linhas e trips | Não — dados neutros | Linhas podem ser operadas por múltiplas empresas; duplicar por branch seria redundante |
+| Branch no planejamento | `VehicleBlock.branchId` (nullable) | A empresa opera blocos, não linhas; atribuição feita após geração pelo solver |
+| Escopo do solver | `VehiclePlanLine` M-N com `TransitLine` | Permite gerar plano para 1 linha, N linhas ou toda a rede sem modelos separados |
+| Constraint de plano único | Uma linha não pode estar em dois ACTIVE do mesmo dayType | Enforcement no service layer; permite múltiplos DRAFTs para comparação |
+| Histórico de planejamentos | Não mantido | Planejamento ACTIVE substitui o anterior; a escala diária (Fase 3) é o snapshot permanente |
+| Versão de trips | Não versionada no plano | Trip é um template permanente; a escala diária é o snapshot com dados copiados |
+| Exceção de calendário | `LineCalendarException` com intervalo + linhas | Substitui `ServicePeriod`; responsabilidade única: override de dayType por linha e período |
+| `DayType.pattern` | `Json?` com shape documentado | Permite resolução automática de dayType para datas reais sem depender de convenção de código |
 | Tempo das viagens | Minutos desde início do dia operacional (Int) | Evita ambiguidade de timezone e virada de dia |
-| Tempo base de percurso | OSRM self-hosted | Gratuito, usa OSM, endpoint `/table` cobre matriz N×N em uma chamada |
-| Override de tempo | `deltaMinutes` nullable com fallback | Manualidade só onde necessário; OSRM cobre o resto |
-| Km na matriz | `distanceKm` em `TravelTimeMatrix` | OSRM retorna distância junto com duração — zero custo extra |
+| Matriz de tempos | Global (sem branchId) | Tempos entre pontos são geográficos, independentes de quem opera |
 | Worker do solver | `worker_threads` Node.js | Não bloqueia event loop; NestJS continua respondendo |
 | SSE auth | Query param `?token=jwt` (MVP) | EventSource não suporta headers; migrar para cookie em produção |
-| Constraints | `Json` field com shape documentado | Evita proliferação de booleans; extensível sem migration |
-| PlanningConfig | BaseSettingsService com scope | Reutiliza infraestrutura existente; fallback global automático |
-| Unicidade de plano confirmado | Service layer (não DB unique) | Suporta múltiplos DRAFTs para comparação; `CONFIRMED` único por (período, tipo de dia) |
-| Nome do domain | `transit` | Neutro, engloba timetabling + escala + plantão sem forçar semântica |
+| PlanningConfig | BaseSettingsService com scope branch + global | Reutiliza infraestrutura existente; fallback global automático |
 
 ---
 
 ## 9. Referências
 
 - `docs/architecture/ARCHITECTURE.md` — arquitetura geral do sistema
-- `docs/proposals/dispatch-timetabling.md` — arquitetura SSE do solver (referência de implementação)
-- `packages/schemas/transit/` — schemas Zod de todos os resources
+- `docs/architecture/transit/proposal-day-type-pattern.md` — detalhamento do campo `pattern` no DayType
 - `apps/api/prisma/schema/transit.prisma` — modelos Prisma
+- `packages/schemas/transit/` — schemas Zod de todos os resources

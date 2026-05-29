@@ -16,6 +16,8 @@ enum FuelType {
 
 enum VehicleType {
   BUS
+  ARTICULATED
+  BI_ARTICULATED
   MICRO_BUS
   MINIBUS
   VAN

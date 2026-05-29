@@ -74,12 +74,7 @@ model Branch {
   employees  Employee[]
   vehicles   Vehicle[]
 
-  transitLines      TransitLine[]      @relation("BranchTransitLines")
-  travelTimes       TravelTimeMatrix[] @relation("BranchTravelTimes")
-  depotFleets       DepotFleet[]       @relation("BranchDepotFleets")
-servicePeriods    ServicePeriod[]    @relation("BranchServicePeriods")
-  transitTrips      TransitTrip[]      @relation("BranchTransitTrips")
-  vehiclePlans      VehiclePlan[]      @relation("BranchVehiclePlans")
+  vehicleBlocks     VehicleBlock[]     @relation("BranchVehicleBlocks")
 
   @@map("branches")
 }
