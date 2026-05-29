@@ -149,8 +149,9 @@ export interface BreadcrumbDef {
   domain?:      string
   contextField: string
   listLabel?:   string
-  nameField?:   string
-  keybind?:     string   // atalho do botão que o PAI renderiza para navegar até este filho
+  nameField?:    string
+  nameFirstWord?: boolean  // show only the first word of the name in the breadcrumb; default true
+  keybind?:      string   // atalho do botão que o PAI renderiza para navegar até este filho
 }
 
 export interface DiscoveryResource {

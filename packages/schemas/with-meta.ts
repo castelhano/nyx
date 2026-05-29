@@ -14,8 +14,9 @@ export type BreadcrumbDef = {
   domain?:      string
   contextField: string
   listLabel?:   string
-  nameField?:   string
-  keybind?:     string   // shortcut to the button that the parent renders to navigate to this child
+  nameField?:    string
+  nameFirstWord?: boolean  // show only the first word of the name in the breadcrumb; default true
+  keybind?:      string   // shortcut to the button that the parent renders to navigate to this child
 }
 
 export type RowActionInput = {

@@ -62,8 +62,10 @@ export function AutoBreadcrumb({ domain, resource, id, recordName, contextParams
     segments.push({ label: listLabel, href: `/${parentDomain}/${bc.resource}` })
 
     if (parentId) {
+      const rawName  = parentRecord ? String(parentRecord[nameField] ?? '…') : '…'
+      const showFirst = bc.nameFirstWord !== false
       segments.push({
-        label: parentRecord ? String(parentRecord[nameField] ?? '…') : '…',
+        label: showFirst ? rawName.split(' ')[0] : rawName,
         href:  `/${parentDomain}/${bc.resource}/${parentId}`,
       })
     }
@@ -72,7 +74,8 @@ export function AutoBreadcrumb({ domain, resource, id, recordName, contextParams
   segments.push({ label: resourceLabel, href: `/${domain}/${resource}` })
 
   if (id) {
-    const label = id === 'new' ? 'Novo' : (recordName ?? meta?.label ?? '…')
+    const rawLabel = id === 'new' ? 'Novo' : (recordName ?? meta?.label ?? '…')
+    const label    = id === 'new' ? rawLabel : rawLabel.split(' ')[0]
     segments.push({ label })
   }
 
