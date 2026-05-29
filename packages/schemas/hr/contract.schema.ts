@@ -93,6 +93,7 @@ export const contractSchema = withMeta(
     label:       'Contrato',
     labelPlural: 'Contratos',
     nameField:   'type',
+    defaultSort: { field: 'startDate', order: 'desc' },
     breadcrumb: [
       {
         resource:     'employee',

@@ -29,6 +29,7 @@ export class ContractService extends BaseService<Contract, CreateContractDto, Up
 
     await this.assertNoConflict(dto.employeeId, start, end)
     await this.closeOpenContract(dto.employeeId, start)
+    await this.assertSingleActive(dto.employeeId, dto.status)
 
     return super.create(dto)
   }
@@ -101,7 +102,11 @@ export class ContractService extends BaseService<Contract, CreateContractDto, Up
         employeeId,
         ...base,
         OR: [
+          // open contract that starts AT or AFTER newStart — can't be auto-closed, real overlap
           { endDate: null, startDate: { gte: start } },
+          // open contract that starts BEFORE newStart but newEnd exists — overlaps if openStart <= newEnd
+          ...(end ? [{ endDate: null as null, startDate: { lt: start, lte: end } }] : []),
+          // closed contract: existingStart <= newEnd AND existingEnd >= newStart
           {
             endDate:   { not: null, gte: start },
             startDate: end ? { lte: end } : undefined,
