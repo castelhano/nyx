@@ -45,6 +45,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   privatePermissions?: boolean      // child resource that requires explicit permission — does not inherit permissions from its parent
   defaultSort?:        { field: string; order: 'asc' | 'desc' }
   afterCreate?:        string       // template with placeholders {fieldName} — redirects after creation instead of going to the list
+  defaultFilters?:     Record<string, string>  // pre-applied filters on list load; user can clear/modify them
 }
 
 export function withMeta<T extends z.ZodRawShape>(

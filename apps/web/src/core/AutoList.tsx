@@ -297,6 +297,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const [filterOpen,    setFilterOpen]    = useState(false)
   const [focusedRow,    setFocusedRow]    = useState<number | null>(null)
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
+  const defaultFiltersApplied = useRef(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -311,6 +312,15 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }
 
   const { data: meta } = useMetadata(domain, resource)
+
+  useEffect(() => {
+    if (defaultFiltersApplied.current || !meta?.defaultFilters) return
+    defaultFiltersApplied.current = true
+    const prefixed = Object.fromEntries(
+      Object.entries(meta.defaultFilters).map(([k, v]) => [`f_${k}`, v])
+    )
+    setActiveFilters(prefixed)
+  }, [meta?.defaultFilters])
 
   const visibleRowActions = useMemo(
     () => (meta?.rowActions ?? []).filter((a) => meta!.permissions[a.permission]),

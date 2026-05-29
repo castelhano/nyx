@@ -291,6 +291,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Locked relation (lazy edit) | — | `.meta({ lazyEdit: true })` — in edit mode, shows the related record's label as read-only text with an edit button instead of fetching all options up front; fetches only `GET /<domain>/<resource>/:id` (one lightweight call) until the user clicks the edit button, then switches to the full `RelationSelect`; in create mode always renders the full select immediately — see §4.5.3 |
 | Default sort | `createdAt: 'desc'` | `withMeta(schema, { defaultSort: { field: 'name', order: 'asc' } })` — applied by `BaseService` when no `sortField` in query |
 | Post-create redirect | resource list | `withMeta(schema, { afterCreate: '/core/branch?companyId={id}' })` — template string with `{fieldName}` placeholders interpolated from the created record; the generic `[id]/page.tsx` redirects there instead of the list after a successful `POST` |
+| Default list filters | none | `withMeta(schema, { defaultFilters: { status: 'ACTIVE' } })` — pre-applies filters when the list loads; user can change or clear them normally; keys use field names (no `f_` prefix — `AutoList` adds it); propagated via the metadata endpoint at no extra cost |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |

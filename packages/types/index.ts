@@ -205,5 +205,6 @@ export interface ResourceMetadata {
   breadcrumb?:   BreadcrumbDef[]
   children?:     ChildResourceDef[]   // derivado automaticamente pelo backend via registry
   rowActions?:   RowActionDef[]
-  afterCreate?:  string               // template {fieldName} — redireciona após criação em vez de ir para a lista
+  afterCreate?:      string               // template {fieldName} — redireciona após criação em vez de ir para a lista
+  defaultFilters?:   Record<string, string>  // filtros pré-aplicados na lista; o usuário pode modificar/limpar
 }
