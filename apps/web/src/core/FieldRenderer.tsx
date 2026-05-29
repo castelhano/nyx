@@ -76,7 +76,7 @@ function AvatarUpload({
               }}
             />
             {ctrl.value && !readonly && (
-              <button type="button" onClick={() => ctrl.onChange('')} className="text-xs text-muted-foreground hover:text-destructive">
+              <button type="button" onClick={() => ctrl.onChange(null)} className="text-xs text-muted-foreground hover:text-destructive">
                 Remover
               </button>
             )}
