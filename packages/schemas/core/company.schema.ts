@@ -24,10 +24,11 @@ export const companySchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Empresa',
-    labelPlural: 'Empresas',
-    nameField:   'legalName',
-    icon:        'Building',
+    label:        'Empresa',
+    labelPlural:  'Empresas',
+    nameField:    'legalName',
+    icon:         'Building',
+    afterCreate:  '/core/branch?companyId={id}',
     groups: {
       'Contato':       ['phone', 'email', 'website'],
       'Endereço':      ['address', 'city', 'state', 'zipCode'],

@@ -15,7 +15,7 @@ export type BreadcrumbDef = {
   contextField: string
   listLabel?:   string
   nameField?:   string
-  keybind?:     string   // atalho do botão que o PAI renderiza para navegar até este filho
+  keybind?:     string   // shortcut to the button that the parent renders to navigate to this child
 }
 
 export type RowActionInput = {
@@ -36,14 +36,14 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   labelPlural?:        string
   nameField?:          string
   allowCsv?:           boolean
-  icon?:               string       // nome do ícone — resolvido pelo frontend via lib/icons.ts
-  isSingleton?:        boolean      // singleton sem lista/create/delete; setado automaticamente pelo BaseSettingsService
+  icon?:               string       // con name — resolved by the frontend via lib/icons.ts
+  isSingleton?:        boolean      // singleton without list/create/delete; automatically set by BaseSettingsService
   breadcrumb?:         BreadcrumbDef[]
   groups?:             { [tabLabel: string]: (keyof T & string)[] }
   rowActions?:         RowActionInput[]
-  privatePermissions?: boolean      // recurso filho que exige concessão explícita — não herda permissões do pai
+  privatePermissions?: boolean      // child resource that requires explicit permission — does not inherit permissions from its parent
   defaultSort?:        { field: string; order: 'asc' | 'desc' }
-  // 'children' não existe mais no schema — é derivado automaticamente pelo backend via resourceRegistry
+  afterCreate?:        string       // template with placeholders {fieldName} — redirects after creation instead of going to the list
 }
 
 export function withMeta<T extends z.ZodRawShape>(

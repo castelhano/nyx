@@ -149,8 +149,14 @@ export default function ResourceDetailPage() {
         body:   JSON.stringify(data),
       })
       if (!res.ok) throw new Error('Failed to save')
+      const created = await res.json()
       toast.success(isNew ? msgs.created() : msgs.updated())
-      router.push(listPath)
+      if (isNew && meta?.afterCreate) {
+        const redirect = meta.afterCreate.replace(/\{(\w+)\}/g, (_, key) => String(created[key] ?? ''))
+        router.push(redirect)
+      } else {
+        router.push(listPath)
+      }
     } catch {
       toast.error(msgs.error.save())
       setIsPending(false)

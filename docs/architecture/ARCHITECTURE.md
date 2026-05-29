@@ -290,6 +290,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Virtual field | — | `.meta({ virtual: true })` — rendered in the form for UX purposes (e.g. a company selector that filters a branch selector) but excluded from API payloads; `listVisibility` forced to `'never'` — see §4.5.2 |
 | Locked relation (lazy edit) | — | `.meta({ lazyEdit: true })` — in edit mode, shows the related record's label as read-only text with an edit button instead of fetching all options up front; fetches only `GET /<domain>/<resource>/:id` (one lightweight call) until the user clicks the edit button, then switches to the full `RelationSelect`; in create mode always renders the full select immediately — see §4.5.3 |
 | Default sort | `createdAt: 'desc'` | `withMeta(schema, { defaultSort: { field: 'name', order: 'asc' } })` — applied by `BaseService` when no `sortField` in query |
+| Post-create redirect | resource list | `withMeta(schema, { afterCreate: '/core/branch?companyId={id}' })` — template string with `{fieldName}` placeholders interpolated from the created record; the generic `[id]/page.tsx` redirects there instead of the list after a successful `POST` |
 | Search mode | `insensitive` (PostgreSQL-safe) | fixed — no override |
 | List filter | none | `.meta({ filter: true })` (auto-derived) or `.meta({ filter: { type: 'date_range' } })` (explicit) |
 | Row actions | none | `withMeta(schema, { rowActions: [...] })` — see §4.13 |
@@ -564,16 +565,17 @@ The `GET /<domain>/<resource>/metadata` endpoint returns:
 
 ```typescript
 interface ResourceMetadata {
-  resource:    string
-  label:       string
-  labelPlural: string
-  nameField:   string
-  allowCsv?:   boolean
-  permissions: { create: boolean; read: boolean; update: boolean; delete: boolean }
-  fields:      MetadataField[]
-  groups?:     TabGroup[]
-  children?:   ChildResourceDef[]   // computed automatically via resourceRegistry
-  breadcrumb?: BreadcrumbDef[]      // declared in the child schema, passed through as-is
+  resource:     string
+  label:        string
+  labelPlural:  string
+  nameField:    string
+  allowCsv?:    boolean
+  permissions:  { create: boolean; read: boolean; update: boolean; delete: boolean }
+  fields:       MetadataField[]
+  groups?:      TabGroup[]
+  children?:    ChildResourceDef[]   // computed automatically via resourceRegistry
+  breadcrumb?:  BreadcrumbDef[]      // declared in the child schema, passed through as-is
+  afterCreate?: string               // {fieldName} template — redirect target after POST; omit to fall back to list
 }
 ```
 
@@ -1448,6 +1450,8 @@ export const productSchema = withMeta(
     labelPlural: 'Products',
     nameField:   'name',
     icon:        'Package',   // string — resolved by the frontend via icons.ts
+    // optional — redirect to a related resource after creation instead of the list
+    // afterCreate: '/sales/order-item?orderId={id}',
   },
 )
 ```

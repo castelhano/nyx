@@ -191,17 +191,18 @@ export interface RowActionDef {
 }
 
 export interface ResourceMetadata {
-  resource:     string
-  label:        string
-  labelPlural:  string
-  nameField:    string
-  allowCsv:     boolean
-  isSingleton?: boolean
-  permissions:  ResourcePermissions
-  fields:       MetadataField[]
-  actions:      ResourceAction[]
-  groups?:      TabGroup[]
-  breadcrumb?:  BreadcrumbDef[]
-  children?:    ChildResourceDef[]   // derivado automaticamente pelo backend via registry
-  rowActions?:  RowActionDef[]
+  resource:      string
+  label:         string
+  labelPlural:   string
+  nameField:     string
+  allowCsv:      boolean
+  isSingleton?:  boolean
+  permissions:   ResourcePermissions
+  fields:        MetadataField[]
+  actions:       ResourceAction[]
+  groups?:       TabGroup[]
+  breadcrumb?:   BreadcrumbDef[]
+  children?:     ChildResourceDef[]   // derivado automaticamente pelo backend via registry
+  rowActions?:   RowActionDef[]
+  afterCreate?:  string               // template {fieldName} — redireciona após criação em vez de ir para a lista
 }

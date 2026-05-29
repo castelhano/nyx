@@ -146,6 +146,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const allowCsv     = schemaMeta.allowCsv    ?? true
   const isSingleton  = schemaMeta.isSingleton === true
   const breadcrumb   = schemaMeta.breadcrumb  as import('@nyx/types').BreadcrumbDef[]      | undefined
+  const afterCreate  = schemaMeta.afterCreate as string | undefined
   const children     = deriveChildren(resource)
   const rowActions   = serializeRowActions(schemaMeta.rowActions)
 
@@ -163,9 +164,10 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     permissions: { create: true, read: true, update: true, delete: true },
     fields,
     actions: [],
-    ...(groups      ? { groups }      : {}),
-    ...(breadcrumb  ? { breadcrumb }  : {}),
-    ...(children    ? { children }    : {}),
-    ...(rowActions  ? { rowActions }  : {}),
+    ...(groups       ? { groups }       : {}),
+    ...(breadcrumb   ? { breadcrumb }   : {}),
+    ...(children     ? { children }     : {}),
+    ...(rowActions   ? { rowActions }   : {}),
+    ...(afterCreate  ? { afterCreate }  : {}),
   }
 }
