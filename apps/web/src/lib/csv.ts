@@ -22,6 +22,10 @@ export function downloadCsv(
       const obj = row[rel]
       if (obj && typeof obj === 'object') return escapeCell((obj as Record<string, unknown>)[f.labelField])
     }
+    if (f.widget === 'currency') {
+      const num = parseFloat(String(row[f.name]))
+      if (!isNaN(num)) return escapeCell(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    }
     return escapeCell(row[f.name])
   }).join(';'))
   const csv     = [headers, ...lines].join('\n')

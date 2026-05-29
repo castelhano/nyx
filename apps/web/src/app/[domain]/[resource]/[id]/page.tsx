@@ -14,6 +14,7 @@ import { useShortcut, useKeywatch } from '@/lib/keywatch'
 import { useToast } from '@/lib/toast-context'
 import { useConfirm } from '@/lib/confirm-context'
 import { msgs } from '@/lib/messages'
+import { extractError } from '@/lib/utils'
 
 const FORM_ID = 'record-form'
 
@@ -148,7 +149,10 @@ export default function ResourceDetailPage() {
         method: isNew ? 'POST' : 'PATCH',
         body:   JSON.stringify(data),
       })
-      if (!res.ok) throw new Error('Failed to save')
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
       const created = await res.json()
       toast.success(isNew ? msgs.created() : msgs.updated())
       if (isNew && meta?.afterCreate) {
@@ -157,8 +161,8 @@ export default function ResourceDetailPage() {
       } else {
         router.push(listPath)
       }
-    } catch {
-      toast.error(msgs.error.save())
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : msgs.error.save())
       setIsPending(false)
     }
   }

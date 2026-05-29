@@ -240,6 +240,10 @@ function buildColumns(
         if (typeof val === 'boolean') return val ? 'Sim' : 'Não'
         if (col.type === 'enum' && col.optionLabels && typeof val === 'string') return col.optionLabels[val] ?? val
         if (col.type === 'date') return formatDate(val, dateFormat)
+        if (col.widget === 'currency') {
+          const num = parseFloat(String(val))
+          if (!isNaN(num)) return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        }
         return String(val)
       },
     }))

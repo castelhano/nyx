@@ -151,7 +151,7 @@ function CurrencyInput({
             mapToRadix={['.']}
             thousandsSeparator="."
             normalizeZeros
-            padFractionalZeros={false}
+            padFractionalZeros
             value={ctrl.value ?? ''}
             inputRef={ctrl.ref}
             onAccept={(val: any) => ctrl.onChange(val)}
