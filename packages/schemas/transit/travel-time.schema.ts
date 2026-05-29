@@ -6,18 +6,6 @@ export const travelTimeSchema = withMeta(
   z.object({
     id: z.uuid(),
 
-    branchId: z.uuid().meta({
-      label:          'Filial',
-      widget:         'select',
-      resource:       'branch',
-      domain:         'core',
-      labelField:     'name',
-      listVisibility: 'hidden',
-      filter:         { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
-      lazyEdit:       true,
-      keybind:        'f',
-    }),
-
     originId: z.uuid().meta({
       label:          'Origem',
       widget:         'select',
@@ -25,7 +13,7 @@ export const travelTimeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      filter:         { type: 'relation', endpoint: 'transit/locality', labelField: 'name' },
+      filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       keybind:        'o',
     }),
 
@@ -36,7 +24,7 @@ export const travelTimeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      filter:         { type: 'relation', endpoint: 'transit/locality', labelField: 'name' },
+      filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       keybind:        'e',
     }),
 

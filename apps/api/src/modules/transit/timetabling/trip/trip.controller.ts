@@ -5,7 +5,7 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { TripService } from './trip.service'
 
-@Controller('transit/trip')
+@Controller('transit/transit-trip')
 @UseGuards(JwtAuthGuard)
 export class TripController extends BaseController<Trip, CreateTripDto, UpdateTripDto> {
   constructor(

@@ -5,11 +5,11 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { RouteService } from './route.service'
 
-@Controller('transit/route')
+@Controller('transit/transit-route')
 @UseGuards(JwtAuthGuard)
 export class RouteController extends BaseController<Route, CreateRouteDto, UpdateRouteDto> {
   constructor(
-    private readonly routeService: RouteService,
+    routeService: RouteService,
     caslFactory: CaslAbilityFactory,
   ) {
     super(routeService, caslFactory)

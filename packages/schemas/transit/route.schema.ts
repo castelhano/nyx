@@ -67,7 +67,7 @@ export const routeSchema = withMeta(
     labelPlural: 'Sentidos',
     nameField:   'name',
     breadcrumb:  [
-      { resource: 'line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'name', keybind: 'f9' },
+      { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'name', keybind: 'f9' },
     ],
     defaultSort: { field: 'direction', order: 'asc' },
   },

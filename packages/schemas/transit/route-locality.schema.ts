@@ -61,7 +61,7 @@ export const routeLocalitySchema = withMeta(
     labelPlural: 'Pontos de Referência',
     nameField:   'sequence',
     breadcrumb:  [
-      { resource: 'route', contextField: 'routeId', listLabel: 'Sentidos', nameField: 'name', keybind: 'f8' },
+      { resource: 'transit-route', contextField: 'routeId', listLabel: 'Sentidos', nameField: 'name', keybind: 'f8' },
     ],
     defaultSort: { field: 'sequence', order: 'asc' },
   },

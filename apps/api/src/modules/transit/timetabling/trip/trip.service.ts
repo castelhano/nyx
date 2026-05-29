@@ -6,7 +6,7 @@ import { BaseService } from '../../../../core/base.service'
 @Injectable()
 export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'transitTrip', tripSchema, 'transit', 'branchId')
+    super(prisma, 'transitTrip', tripSchema, 'transit')
   }
 
   protected buildSearchWhere(search: string) {

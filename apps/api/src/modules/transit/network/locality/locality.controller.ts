@@ -5,7 +5,7 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { LocalityService } from './locality.service'
 
-@Controller('transit/locality')
+@Controller('transit/transit-locality')
 @UseGuards(JwtAuthGuard)
 export class LocalityController extends BaseController<Locality, CreateLocalityDto, UpdateLocalityDto> {
   constructor(

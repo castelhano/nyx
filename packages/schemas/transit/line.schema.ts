@@ -6,18 +6,6 @@ export const lineSchema = withMeta(
   z.object({
     id: z.uuid(),
 
-    branchId: z.uuid().meta({
-      label:          'Filial',
-      widget:         'select',
-      resource:       'branch',
-      domain:         'core',
-      labelField:     'name',
-      listVisibility: 'hidden',
-      filter:         { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
-      lazyEdit:       true,
-      keybind:        'f',
-    }),
-
     code: z.string().min(1).max(20).meta({
       label:          'Código',
       listVisibility: 'visible',

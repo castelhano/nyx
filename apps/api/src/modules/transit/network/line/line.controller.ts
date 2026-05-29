@@ -5,7 +5,7 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { LineService } from './line.service'
 
-@Controller('transit/line')
+@Controller('transit/transit-line')
 @UseGuards(JwtAuthGuard)
 export class LineController extends BaseController<Line, CreateLineDto, UpdateLineDto> {
   constructor(

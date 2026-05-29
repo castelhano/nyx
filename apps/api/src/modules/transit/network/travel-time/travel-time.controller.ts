@@ -5,7 +5,7 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { TravelTimeService } from './travel-time.service'
 
-@Controller('transit/travel-time')
+@Controller('transit/travel-time-matrix')
 @UseGuards(JwtAuthGuard)
 export class TravelTimeController extends BaseController<TravelTime, CreateTravelTimeDto, UpdateTravelTimeDto> {
   constructor(

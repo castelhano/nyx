@@ -10,19 +10,7 @@ export interface TripConstraints {
 
 export const tripSchema = withMeta(
   z.object({
-    id: z.uuid(),
-
-    branchId: z.uuid().meta({
-      label:          'Filial',
-      showInForm:     false,
-      listVisibility: 'never',
-    }),
-
-    servicePeriodId: z.uuid().meta({
-      label:          'Período',
-      showInForm:     false,
-      listVisibility: 'hidden',
-    }),
+    id: z.uuid(),
 
     dayTypeId: z.uuid().meta({
       label:          'Tipo de Dia',
@@ -38,11 +26,11 @@ export const tripSchema = withMeta(
     routeId: z.uuid().meta({
       label:          'Sentido',
       widget:         'select',
-      resource:       'route',
+      resource:       'transit-route',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      filter:         { type: 'relation', endpoint: 'transit/route', labelField: 'name' },
+      filter:         { type: 'relation', endpoint: 'transit/transit-route', labelField: 'name' },
       keybind:        'r',
     }),
 
