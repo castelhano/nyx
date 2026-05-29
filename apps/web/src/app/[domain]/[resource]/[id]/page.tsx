@@ -12,6 +12,7 @@ import { apiFetch } from '@/lib/auth'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useKeywatch } from '@/lib/keywatch'
 import { useToast } from '@/lib/toast-context'
+import { useConfirm } from '@/lib/confirm-context'
 import { msgs } from '@/lib/messages'
 
 const FORM_ID = 'record-form'
@@ -25,6 +26,7 @@ export default function ResourceDetailPage() {
   const [isPending,   setIsPending]   = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const { toast } = useToast()
+  const confirm   = useConfirm()
 
   const contextParams:   Record<string, string>  = {}
   const derivedDefaults: Record<string, unknown> = {}
@@ -84,7 +86,8 @@ export default function ResourceDetailPage() {
     : []
 
   async function handleDelete() {
-    if (!window.confirm(`Excluir este ${meta?.label ?? 'registro'}?`)) return
+    const ok = await confirm({ title: `Excluir ${meta?.label ?? 'registro'}?` })
+    if (!ok) return
     setIsPending(true)
     try {
       const res = await apiFetch(`/${domain}/${resource}/${id}`, { method: 'DELETE' })

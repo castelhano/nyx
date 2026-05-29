@@ -32,6 +32,12 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-confirm-in: confirm-in 0.25s ease-out;
+  @keyframes confirm-in {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  }
 }
 
 @layer base {

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { AuthProvider } from '@/lib/auth-context'
 import { ToastProvider } from '@/lib/toast-context'
 import { Toaster } from '@/components/ui/toast'
+import { ConfirmProvider } from '@/lib/confirm-context'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
@@ -13,9 +14,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
       <QueryClientProvider client={queryClient}>
         <ToastProvider defaultPosition="bottom-right" defaultPositionMobile="bottom-center">
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          <ConfirmProvider>
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+          </ConfirmProvider>
           <Toaster />
         </ToastProvider>
       </QueryClientProvider>
