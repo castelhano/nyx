@@ -21,7 +21,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, Be
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn, extractError } from '@/lib/utils'
 import type { FilterDef, MetadataField, PaginatedResult, RowActionDef } from '@nyx/types'
 import { RowActionsCell } from './RowActionsCell'
 
@@ -343,13 +343,19 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
           method: action.method,
           body:   JSON.stringify(action.body ?? {}),
         })
-        if (!res.ok) throw new Error('Failed')
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw json
+        }
         queryClient.invalidateQueries({ queryKey: [domain, resource] })
         const successMsg = action.method === 'DELETE' ? msgs.deleted() : msgs.updated()
         toast.success(successMsg)
-      } catch {
-        const errorMsg = action.method === 'DELETE' ? msgs.error.delete() : msgs.error.save()
-        toast.error(errorMsg)
+      } catch (err) {
+        const fallback = action.method === 'DELETE' ? msgs.error.delete() : msgs.error.save()
+        const msg = err && typeof err === 'object'
+          ? extractError(err as Record<string, unknown>, fallback)
+          : fallback
+        toast.error(msg)
       }
       return
     }

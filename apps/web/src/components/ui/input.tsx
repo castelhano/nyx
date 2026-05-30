@@ -8,15 +8,19 @@ const sizes: Record<Size, string> = {
   sm:      'px-2 py-1.5',
 }
 
-const base = [
+const baseShared = [
   'border border-input rounded-sm text-sm bg-input-bg',
   'focus:outline-none focus:ring-1 focus:ring-ring',
   'disabled:opacity-60 disabled:cursor-not-allowed',
-  'read-only:opacity-60 read-only:cursor-not-allowed',
 ].join(' ')
+
+const base = `${baseShared} read-only:opacity-60 read-only:cursor-not-allowed`
 
 // Exported for elements that can't use the component directly (IMaskInput, textarea)
 export const inputBaseCls = `${base} ${sizes.default}`
+
+// For <select> elements — omits read-only: variants (<select> always matches :read-only in CSS)
+export const selectBaseCls = `${baseShared} ${sizes.default}`
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   size?: Size

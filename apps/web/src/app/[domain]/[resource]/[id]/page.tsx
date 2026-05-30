@@ -92,11 +92,14 @@ export default function ResourceDetailPage() {
     setIsPending(true)
     try {
       const res = await apiFetch(`/${domain}/${resource}/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete')
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw json
+      }
       toast.success(msgs.deleted())
       router.push(listPath)
-    } catch {
-      toast.error(msgs.error.delete())
+    } catch (err) {
+      toast.error(extractError(err as Record<string, unknown>, msgs.error.delete()))
       setIsPending(false)
     }
   }

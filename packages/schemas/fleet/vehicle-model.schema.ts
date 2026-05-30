@@ -13,11 +13,16 @@ export const vehicleModelSchema = withMeta(
       domain:         'fleet',
       labelField:     'name',
       listVisibility: 'visible',
+      className:      'md:w-1/3',
       filter:         { type: 'relation', endpoint: 'fleet/vehicle-brand', labelField: 'name' },
-      keybind:        'q',
     }),
 
-    name: z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', keybind: 'g' }),
+    name: z.string().min(2).meta({ 
+      label: 'Nome', 
+      listVisibility: 'visible', 
+      className: 'md:w-1/3',
+      placeholder: 'Marca'
+    }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

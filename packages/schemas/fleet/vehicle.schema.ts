@@ -59,7 +59,7 @@ export const vehicleSchema = withMeta(
       placeholder:    '00000000000000000',
     }),
 
-    brandId: z.uuid().meta({
+    brandId: z.uuid().optional().meta({
       label:          'Marca',
       widget:         'select',
       resource:       'vehicle-brand',
@@ -70,7 +70,7 @@ export const vehicleSchema = withMeta(
       className:      'md:w-80',
     }),
 
-    modelId: z.uuid().meta({
+    modelId: z.uuid().optional().meta({
       label:          'Modelo',
       widget:         'select',
       resource:       'vehicle-model',
@@ -82,13 +82,13 @@ export const vehicleSchema = withMeta(
       className:      'md:w-80',
     }),
 
-    year: z.number().int().min(1900).max(2100).meta({
+    year: z.number().int().min(1900).max(2100).optional().meta({
       label:     'Ano Fabricação',
       listVisibility: 'hidden',
       className:      'md:w-36',
     }),
 
-    modelYear: z.number().int().min(1900).max(2100).meta({
+    modelYear: z.number().int().min(1900).max(2100).optional().meta({
       label:     'Ano Modelo',
       listVisibility: 'hidden',
       className:      'md:w-36',
@@ -98,6 +98,7 @@ export const vehicleSchema = withMeta(
       label:          'Tipo',
       listVisibility: 'visible',
       filter:         true,
+      defaultValue:   'BUS',
       className:      'md:w-48',
       keybind:        'p',
       optionLabels: {
@@ -116,10 +117,11 @@ export const vehicleSchema = withMeta(
     }),
 
     fuelType: z.enum(['DIESEL', 'GASOLINE', 'ETHANOL', 'ELECTRIC', 'HYBRID', 'GNV']).meta({
-      label:     'Combustível',
+      label:        'Combustível',
       listVisibility: 'hidden',
-      filter:    true,
-      className:      'md:w-48',
+      filter:       true,
+      defaultValue: 'DIESEL',
+      className:    'md:w-48',
       optionLabels: {
         DIESEL:   'Diesel',
         GASOLINE: 'Gasolina',

@@ -8,7 +8,7 @@ import { ChevronDown, UserRound, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
-import { inputBaseCls } from '@/components/ui/input'
+import { inputBaseCls, selectBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { apiFetch } from '@/lib/auth'
 import { useFieldOptions } from './useFieldOptions'
@@ -24,6 +24,7 @@ interface Props {
 
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 const fieldInputCls = `${inputBaseCls} w-full`
+const fieldSelectCls = `${selectBaseCls} w-full`
 
 type MaskDef = string | { mask: string }[]
 
@@ -429,7 +430,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
               autoFocus={autoFocus}
               disabled={readonly}
               {...register}
-              className={cn(fieldInputCls, 'appearance-none', field.keybind ? 'md:pr-20' : 'pr-9', readonly && readonlyCls)}
+              className={cn(fieldSelectCls, 'appearance-none', field.keybind ? 'md:pr-20' : 'pr-9', readonly && readonlyCls)}
             >
               <option value="">{field.placeholder ?? 'Selecione…'}</option>
               {field.options.map((o) => (
@@ -458,8 +459,8 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
     controlEl = <AvatarUpload field={field} control={control} readonly={readonly} />
   } else if (field.resource && control) {
     controlEl = field.lazyEdit
-      ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
-      : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
+      ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
+      : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.widget === 'currency' && control) {
     controlEl = <CurrencyInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {

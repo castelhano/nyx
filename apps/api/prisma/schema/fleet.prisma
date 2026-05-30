@@ -62,11 +62,11 @@ model Vehicle {
   chassis          String?           @unique
   brandId          String?
   modelId          String?
-  year             Int
-  modelYear        Int
-  vehicleType      VehicleType?
+  year             Int?
+  modelYear        Int?
+  vehicleType      VehicleType       @default(BUS)
   color            String?
-  fuelType         FuelType?
+  fuelType         FuelType          @default(DIESEL)
   transmission     TransmissionType?
   seatedCapacity   Int?
   totalCapacity    Int?
