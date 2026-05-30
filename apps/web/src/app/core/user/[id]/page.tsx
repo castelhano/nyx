@@ -24,7 +24,7 @@ import { msgs } from '@/lib/messages'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
 import { AssociationList, type BranchAssoc } from '@/components/ui/association-list'
 import { CheckboxGroup, type CheckboxSection } from '@/components/ui/checkbox-group'
-import { cn } from '@/lib/utils'
+import { cn, extractError } from '@/lib/utils'
 import type { PasswordPolicy } from '@nyx/schemas'
 
 const FORM_ID  = 'user-form'
@@ -335,7 +335,10 @@ export default function UserDetailPage() {
             forcePasswordChange: data.forcePasswordChange,
           }),
         })
-        if (!res.ok) throw new Error('Failed to create user')
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(extractError(json))
+        }
         const newUser = await res.json() as { id: string }
         await Promise.all([
           apiFetch(`/core/user-branch/by-user/${newUser.id}`, {
@@ -348,16 +351,21 @@ export default function UserDetailPage() {
           }),
         ])
       } else {
-        const calls: Promise<Response>[] = [
-          apiFetch(`/core/user/${id}`, {
-            method: 'PATCH',
-            body:   JSON.stringify({
-              name: data.name, username: data.username,
-              email: data.email || null, role: data.role,
-              isActive: data.isActive,
-              forcePasswordChange: data.forcePasswordChange,
-            }),
+        const userRes = await apiFetch(`/core/user/${id}`, {
+          method: 'PATCH',
+          body:   JSON.stringify({
+            name: data.name, username: data.username,
+            email: data.email || null, role: data.role,
+            isActive: data.isActive,
+            forcePasswordChange: data.forcePasswordChange,
           }),
+        })
+        if (!userRes.ok) {
+          const json = await userRes.json().catch(() => ({}))
+          throw new Error(extractError(json))
+        }
+
+        const sideCalls: Promise<Response>[] = [
           apiFetch(`/core/user-branch/by-user/${id}`, {
             method: 'PUT',
             body:   JSON.stringify({ branches }),
@@ -369,7 +377,7 @@ export default function UserDetailPage() {
         ]
 
         if (passwordOpen && data.newPassword) {
-          calls.push(
+          sideCalls.push(
             apiFetch(`/core/user/${id}/reset-password`, {
               method: 'PATCH',
               body:   JSON.stringify({ newPassword: data.newPassword }),
@@ -377,7 +385,7 @@ export default function UserDetailPage() {
           )
         }
 
-        await Promise.all(calls)
+        await Promise.all(sideCalls)
       }
 
       await queryClient.invalidateQueries({ queryKey: ['core', 'user-branch', 'by-user', id] })
@@ -385,8 +393,8 @@ export default function UserDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ['core', 'user', id] })
       toast.success(isNew ? msgs.created() : msgs.updated())
       router.push('/core/user')
-    } catch {
-      toast.error(msgs.error.save())
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : msgs.error.save())
       setIsPending(false)
     }
   }

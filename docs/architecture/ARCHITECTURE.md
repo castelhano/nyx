@@ -1107,8 +1107,9 @@ The self-service flow (`PATCH /core/user/:id/change-password`) requires `current
 
 ### AllExceptionsFilter — Response Shape
 
-`exception.filter.ts` wraps the full `HttpException.getResponse()` object inside the `message` field of the JSON response:
+`exception.filter.ts` wraps all responses inside a consistent envelope. There are two shapes:
 
+**NestJS `HttpException` (e.g. validation, 403, custom throws):**
 ```json
 {
   "statusCode": 400,
@@ -1118,22 +1119,45 @@ The self-service flow (`PATCH /core/user/:id/change-password`) requires `current
 }
 ```
 
-When `BadRequestException` is called with an array (e.g., from `PasswordPolicyService.validate`), `message.message` will be an array of strings.
-
-**Frontend pattern:** never read `json.message` directly as a string. Use an extractor that handles the nesting and the string/array variants:
-
-```typescript
-function extractError(json: Record<string, unknown>): string | string[] {
-  const outer = json?.message
-  const payload = (outer && typeof outer === 'object' && !Array.isArray(outer))
-    ? (outer as Record<string, unknown>)
-    : json
-  const msg = payload?.message ?? payload
-  if (typeof msg === 'string') return msg
-  if (Array.isArray(msg))      return msg as string[]
-  return 'Erro desconhecido.'
+**Prisma known errors (e.g. unique constraint, foreign key, not found):**
+```json
+{
+  "statusCode": 409,
+  "timestamp": "...",
+  "path": "/api/core/vehicle-brand",
+  "message": { "statusCode": 409, "code": "UNIQUE_VIOLATION", "fields": ["name"], "message": "Unique constraint violation" }
 }
 ```
+
+The filter maps Prisma error codes to HTTP status and a structured `code`:
+
+| Prisma code | HTTP | `code` |
+|---|---|---|
+| `P2002` | 409 | `UNIQUE_VIOLATION` |
+| `P2003` | 409 | `FOREIGN_KEY_VIOLATION` |
+| `P2014` | 409 | `RELATION_VIOLATION` |
+| `P2025` | 404 | `NOT_FOUND` |
+
+`fields` is extracted from `meta.driverAdapterError.cause.constraint.fields` (LibSQL/SQLite) or `meta.target` (PostgreSQL).
+
+**Frontend — `extractError` + `apiErrorMessages`:**
+
+Never read `json.message` directly. `extractError(json)` in `lib/utils.ts` handles the nesting, detects the `code` field, and resolves it against `apiErrorMessages` in `lib/messages.ts`:
+
+```typescript
+// lib/messages.ts — add or override any code here
+export const apiErrorMessages: Record<string, string | ((fields: string[]) => string)> = {
+  UNIQUE_VIOLATION: (fields) => fields.length
+    ? `Unique value required: ${fields.join(', ')}.`
+    : 'Unique value required.',
+  FOREIGN_KEY_VIOLATION: 'This record is linked to other data and cannot be removed.',
+  // ...
+}
+```
+
+`extractError` falls back to `message.message` (string or joined array) when no `code` match is found.
+
+**Convention:** all pages must call `extractError(await res.json())` on non-ok responses instead of hardcoding error strings — this ensures structured API errors surface correctly everywhere.
 
 ### Password Policy
 
