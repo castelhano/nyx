@@ -23,10 +23,10 @@ enum VehiclePlanStatus {
 
 model TransitLocality {
   id        String   @id @default(uuid())
-  code      String?
+  code      String   @unique
   name      String
-  lat       Float
-  lng       Float
+  lat       Float?
+  lng       Float?
   isDepot   Boolean  @default(false)
   notes     String?
   createdAt DateTime @default(now())

@@ -5,7 +5,7 @@ import { withMeta } from '../with-meta'
 export const planningConfigSchema = withMeta(
   z.object({
     // trips that depart between 00:00 and this hour belong to the previous operational day
-    operationalDayStartHour: z.number().int().min(0).max(6).default(4).meta({
+    operationalDayStartHour: z.number().int().min(0).max(6).default(3).meta({
       label:    'Início do Dia Operacional (h)',
       helpText: 'Viagens entre 00:00 e este horário pertencem ao dia operacional anterior',
       widget:   'stepper',
@@ -109,17 +109,17 @@ export const planningConfigSchema = withMeta(
       max:      60,
     }),
 
-    stopMaxTotalMinutes: z.number().int().min(1).max(240).default(60).meta({
+    stopMaxTotalMinutes: z.number().int().min(1).max(1440).default(240).meta({
       label:    'Tempo Máximo de Geração (min)',
       helpText: 'Encerra a geração independentemente do resultado após este tempo',
       widget:   'stepper',
       min:      1,
-      max:      240,
+      max:      1440,
     }),
   }),
   {
-    label:       'Config. de Planejamento',
-    labelPlural: 'Config. de Planejamento',
+    label:       'Configurações',
+    labelPlural: 'Configurações',
     nameField:   'operationalDayStartHour',
     icon:        'Settings2',
     groups: {

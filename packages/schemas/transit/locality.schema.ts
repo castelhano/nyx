@@ -6,29 +6,33 @@ export const localitySchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
 
-    code: z.string().min(1).max(20).optional().meta({
+    code: z.string().min(1).max(20).meta({
       label:          'Código',
       listVisibility: 'visible',
-      className:      'md:w-32',
+      className:      'md:w-36',
       keybind:        'c',
     }),
 
     name: z.string().min(2).meta({
       label:          'Nome',
       listVisibility: 'visible',
-      keybind:        'n',
+      filter:         true,
+      className:      'md:w-1/2',
+      keybind:        'd',
     }),
 
-    lat: z.number().meta({
-      label:     'Latitude',
-      className: 'md:w-52',
-      keybind:   'a',
+    lat: z.number().optional().meta({
+      label:          'Latitude',
+      listVisibility: 'hidden',
+      className:      'md:w-52',
+      keybind:        'a',
     }),
 
-    lng: z.number().meta({
-      label:     'Longitude',
-      className: 'md:w-52',
-      keybind:   'o',
+    lng: z.number().optional().meta({
+      label:          'Longitude',
+      listVisibility: 'hidden',
+      className:      'md:w-52',
+      keybind:        'o',
     }),
 
     isDepot: z.boolean().default(false).meta({
@@ -36,7 +40,6 @@ export const localitySchema = withMeta(
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
-      keybind:        'g',
     }),
 
     notes: z.string().optional().meta({

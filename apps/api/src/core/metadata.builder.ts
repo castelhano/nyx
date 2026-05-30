@@ -24,7 +24,7 @@ function getType(field: ZodType): MetadataField['type'] {
 }
 
 function isRequired(field: ZodType): boolean {
-  return !(field instanceof ZodOptional) && !(field instanceof ZodNullable)
+  return !(field instanceof ZodOptional) && !(field instanceof ZodNullable) && !(field instanceof ZodDefault)
 }
 
 function toTitleCase(str: string): string {
