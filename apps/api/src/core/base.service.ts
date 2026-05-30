@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { ZodObject, ZodType, ZodDate, ZodNumber, ZodOptional, ZodNullable, ZodDefault } from 'zod'
+import { ZodObject, ZodType, ZodDate, ZodNumber, ZodBoolean, ZodOptional, ZodNullable, ZodDefault } from 'zod'
 import type { PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
@@ -106,6 +106,8 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
         if (dto[name] === '') continue
         const isInt = (unwrapped._def.checks as unknown as { kind: string }[])?.some((c) => c.kind === 'int') ?? false
         result[name] = isInt ? parseInt(dto[name] as string, 10) : parseFloat(dto[name] as string)
+      } else if (unwrapped instanceof ZodBoolean && typeof dto[name] === 'string') {
+        result[name] = dto[name] === 'true'
       } else if (isOptional && dto[name] === '') {
         // skip — don't send empty string for optional fields (e.g. enums)
       } else {
