@@ -29,18 +29,12 @@ export interface SolverMatrixEntry {
   km: number
 }
 
-export interface SolverDepot {
-  localityId: string
-  vehicleType: string
-  quantity: number
-}
-
 export interface SolverConfig {
   planId: string
   config: SolverPlanningConfig
   trips: SolverTrip[]
   matrix: Record<string, SolverMatrixEntry>
-  depots: SolverDepot[]
+  depots: string[]
 }
 
 export interface SolverBlockTrip {

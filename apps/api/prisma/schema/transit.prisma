@@ -44,7 +44,7 @@ model TransitLocality {
 
 model TransitLine {
   id        String   @id @default(uuid())
-  code      String
+  code      String   @unique
   name      String
   type      LineType
   isActive  Boolean  @default(true)

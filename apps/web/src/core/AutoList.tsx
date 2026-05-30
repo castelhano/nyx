@@ -246,6 +246,7 @@ function buildColumns(
           const num = parseFloat(String(val))
           if (!isNaN(num)) return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         }
+        if (typeof val === 'object') return JSON.stringify(val)
         return String(val)
       },
     }))

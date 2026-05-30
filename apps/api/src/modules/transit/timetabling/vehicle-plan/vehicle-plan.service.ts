@@ -29,13 +29,13 @@ export class VehiclePlanService {
     if ((plan.constraints as any)?.locked) throw new BadRequestException('Plan is locked')
     if (plan.status === 'CONFIRMED') throw new BadRequestException('Confirmed plan cannot be regenerated')
 
-    const [trips, matrix, depotFleets, config] = await Promise.all([
+    const [trips, matrix, depotLocalities, config] = await Promise.all([
       this.prisma.transitTrip.findMany({
         where: { branchId: plan.branchId, servicePeriodId: plan.servicePeriodId, dayTypeId: plan.dayTypeId },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true } } },
       }),
       this.prisma.travelTimeMatrix.findMany({ where: { branchId: plan.branchId } }),
-      this.prisma.depotFleet.findMany({ where: { branchId: plan.branchId } }),
+      this.prisma.transitLocality.findMany({ where: { isDepot: true }, select: { id: true } }),
       this.planningConfig.get(),
     ])
 
@@ -62,11 +62,7 @@ export class VehiclePlanService {
         constraints: t.constraints as any ?? null,
       })),
       matrix: matrixMap,
-      depots: depotFleets.map(d => ({
-        localityId: d.localityId,
-        vehicleType: d.vehicleType,
-        quantity: d.quantity,
-      })),
+      depots: depotLocalities.map(d => d.id),
     }
 
     await this.prisma.vehiclePlan.update({

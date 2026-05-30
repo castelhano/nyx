@@ -4,8 +4,6 @@ import type {
   SolverPlanningConfig,
   SolverTrip,
   SolverMatrixEntry,
-  SolverDepot,
-  SolverBlock,
   SolverBlockTrip,
   SolverResult,
   SolverMessage,
@@ -88,27 +86,22 @@ function findBestBlock(
 }
 
 function findBestDepot(
-  depotUsage: Map<string, Map<string, number>>,
+  depotIds: string[],
   trip: SolverTrip,
   matrix: Record<string, SolverMatrixEntry>,
   config: SolverPlanningConfig,
-): { localityId: string; vehicleType: string; edge: SolverMatrixEntry } | null {
-  let best: { localityId: string; vehicleType: string; edge: SolverMatrixEntry } | null = null
+): { localityId: string; edge: SolverMatrixEntry } | null {
+  let best: { localityId: string; edge: SolverMatrixEntry } | null = null
   let bestMinutes = Infinity
 
-  for (const [localityId, typeMap] of depotUsage) {
-    for (const [vehicleType, remaining] of typeMap) {
-      if (remaining <= 0) continue
-      if (trip.requiredVehicleType && vehicleType !== trip.requiredVehicleType) continue
+  for (const localityId of depotIds) {
+    const edge = getEdge(matrix, localityId, trip.originLocalityId)
+    if (!edge) continue
+    if (edge.minutes > config.maxDeadrunHardMinutes) continue
 
-      const edge = getEdge(matrix, localityId, trip.originLocalityId)
-      if (!edge) continue
-      if (edge.minutes > config.maxDeadrunHardMinutes) continue
-
-      if (edge.minutes < bestMinutes) {
-        bestMinutes = edge.minutes
-        best = { localityId, vehicleType, edge }
-      }
+    if (edge.minutes < bestMinutes) {
+      bestMinutes = edge.minutes
+      best = { localityId, edge }
     }
   }
 
@@ -171,14 +164,6 @@ function evaluateCandidate(cfg: SolverConfig): SolverResult | null {
   const sorted = shuffle([...trips])
   sorted.sort((a, b) => a.departureMinutes - b.departureMinutes)
 
-  // Clone depot availability
-  const depotUsage = new Map<string, Map<string, number>>()
-  for (const d of depots) {
-    if (!depotUsage.has(d.localityId)) depotUsage.set(d.localityId, new Map())
-    const existing = depotUsage.get(d.localityId)!.get(d.vehicleType) ?? 0
-    depotUsage.get(d.localityId)!.set(d.vehicleType, existing + d.quantity)
-  }
-
   const blocks: ActiveBlock[] = []
 
   for (const trip of sorted) {
@@ -197,16 +182,13 @@ function evaluateCandidate(cfg: SolverConfig): SolverResult | null {
       block.lastLocalityId = trip.destinationLocalityId
       block.lastArrivalMinutes = trip.arrivalMinutes
     } else {
-      const depot = findBestDepot(depotUsage, trip, matrix, config)
+      const depot = findBestDepot(depots, trip, matrix, config)
       if (!depot) return null
-
-      const typeMap = depotUsage.get(depot.localityId)!
-      typeMap.set(depot.vehicleType, typeMap.get(depot.vehicleType)! - 1)
 
       const block: ActiveBlock = {
         number: blocks.length + 1,
         depotId: depot.localityId,
-        vehicleType: depot.vehicleType,
+        vehicleType: trip.requiredVehicleType ?? 'BUS',
         entries: [{
           tripId: trip.id,
           sequence: 1,
