@@ -56,16 +56,17 @@ model VehicleModel {
 model Vehicle {
   id               String            @id @default(uuid())
   branchId         String
+  code             String            @unique
   plate            String            @unique
   renavam          String?           @unique
   chassis          String?           @unique
-  brandId          String
-  modelId          String
+  brandId          String?
+  modelId          String?
   year             Int
   modelYear        Int
-  vehicleType      VehicleType
+  vehicleType      VehicleType?
   color            String?
-  fuelType         FuelType
+  fuelType         FuelType?
   transmission     TransmissionType?
   seatedCapacity   Int?
   totalCapacity    Int?
@@ -76,8 +77,8 @@ model Vehicle {
   notes            String?
 
   branch Branch       @relation(fields: [branchId], references: [id])
-  brand  VehicleBrand @relation(fields: [brandId], references: [id])
-  model  VehicleModel @relation(fields: [modelId], references: [id])
+  brand  VehicleBrand? @relation(fields: [brandId], references: [id])
+  model  VehicleModel? @relation(fields: [modelId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -14,7 +14,7 @@ export const vehicleSchema = withMeta(
       labelField: 'legalName',
       virtual:    true,
       lazyEdit:   true,
-      keybind:    'q',
+      className:  'md:w-1/2',
     }),
 
     branchId: z.uuid().meta({
@@ -28,28 +28,35 @@ export const vehicleSchema = withMeta(
       listVisibility:      'visible',
       filter:              { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
       lazyEdit:            true,
-      keybind:             'f',
+      className:           'md:w-1/2',
+    }),
+
+    code: z.string().min(1).max(20).meta({
+      label:          'Prefixo',
+      listVisibility: 'visible',
+      className:      'md:w-36',
+      keybind:        'c',
     }),
 
     plate: z.string().min(7).max(8).meta({
       label:          'Placa',
-      listVisibility: 'visible',
+      listVisibility: 'hidden',
       className:      'md:w-36',
-      keybind:        'p',
+      placeholder:    'AAA-0A00'
     }),
 
     renavam: z.string().optional().meta({
-      label:          'RENAVAM',
+      label:          'Renavam',
       listVisibility: 'hidden',
-      className:      'md:w-48',
-      keybind:        'r',
+      className:      'md:w-80',
+      placeholder:    '00000000000'
     }),
 
     chassis: z.string().optional().meta({
       label:          'Chassi',
       listVisibility: 'hidden',
-      className:      'md:w-72',
-      keybind:        'h',
+      className:      'md:w-80',
+      placeholder:    '00000000000000000',
     }),
 
     brandId: z.uuid().meta({
@@ -58,9 +65,9 @@ export const vehicleSchema = withMeta(
       resource:       'vehicle-brand',
       domain:         'fleet',
       labelField:     'name',
-      listVisibility: 'visible',
+      listVisibility: 'hidden',
       filter:         { type: 'relation', endpoint: 'fleet/vehicle-brand', labelField: 'name' },
-      keybind:        'm',
+      className:      'md:w-80',
     }),
 
     modelId: z.uuid().meta({
@@ -70,21 +77,21 @@ export const vehicleSchema = withMeta(
       domain:         'fleet',
       labelField:     'name',
       dependsOn:      'brandId',
-      listVisibility: 'visible',
+      listVisibility: 'hidden',
       filter:         { type: 'relation', endpoint: 'fleet/vehicle-model', labelField: 'name', dependsOn: 'brandId' },
-      keybind:        'o',
+      className:      'md:w-80',
     }),
 
     year: z.number().int().min(1900).max(2100).meta({
       label:     'Ano Fabricação',
-      className: 'md:w-40',
-      keybind:   'n',
+      listVisibility: 'hidden',
+      className:      'md:w-36',
     }),
 
     modelYear: z.number().int().min(1900).max(2100).meta({
       label:     'Ano Modelo',
-      className: 'md:w-40',
-      keybind:   'e',
+      listVisibility: 'hidden',
+      className:      'md:w-36',
     }),
 
     vehicleType: z.enum(['BUS', 'MICRO_BUS', 'MINIBUS', 'VAN']).meta({
@@ -92,7 +99,7 @@ export const vehicleSchema = withMeta(
       listVisibility: 'visible',
       filter:         true,
       className:      'md:w-48',
-      keybind:        't',
+      keybind:        'p',
       optionLabels: {
         BUS:       'Ônibus',
         MICRO_BUS: 'Micro-ônibus',
@@ -103,15 +110,16 @@ export const vehicleSchema = withMeta(
 
     color: z.string().optional().meta({
       label:     'Cor',
-      className: 'md:w-40',
-      keybind:   'c',
+      listVisibility: 'hidden',
+      className:      'md:w-48',
+      placeholder:    'Cor'
     }),
 
     fuelType: z.enum(['DIESEL', 'GASOLINE', 'ETHANOL', 'ELECTRIC', 'HYBRID', 'GNV']).meta({
       label:     'Combustível',
+      listVisibility: 'hidden',
       filter:    true,
-      className: 'md:w-44',
-      keybind:   'u',
+      className:      'md:w-48',
       optionLabels: {
         DIESEL:   'Diesel',
         GASOLINE: 'Gasolina',
@@ -124,8 +132,8 @@ export const vehicleSchema = withMeta(
 
     transmission: z.enum(['MANUAL', 'AUTOMATIC', 'SEMI_AUTOMATIC']).optional().meta({
       label:     'Câmbio',
-      className: 'md:w-48',
-      keybind:   'x',
+      listVisibility: 'hidden',
+      className:      'md:w-48',
       optionLabels: {
         MANUAL:        'Manual',
         AUTOMATIC:     'Automático',
@@ -135,20 +143,21 @@ export const vehicleSchema = withMeta(
 
     seatedCapacity: z.number().int().positive().optional().meta({
       label:     'Cap. Sentados',
-      className: 'md:w-40',
-      keybind:   's',
+      listVisibility: 'hidden',
+      className:      'md:w-48',
     }),
 
     totalCapacity: z.number().int().positive().optional().meta({
       label:     'Cap. Total',
-      className: 'md:w-40',
-      keybind:   'z',
+      listVisibility: 'hidden',
+      className:      'md:w-48',
     }),
 
     odometer: z.number().min(0).default(0).meta({
       label:     'Quilometragem',
-      className: 'md:w-44',
-      keybind:   'd',
+      listVisibility: 'hidden',
+      keybind:        'd',
+      className:      'md:w-48',
     }),
 
     status: z.enum(['ACTIVE', 'MAINTENANCE', 'INACTIVE', 'DECOMMISSIONED']).meta({
@@ -156,8 +165,8 @@ export const vehicleSchema = withMeta(
       listVisibility: 'visible',
       filter:         true,
       defaultValue:   'ACTIVE',
-      className:      'md:w-52',
-      keybind:        'w',
+      className:      'md:w-48',
+      keybind:        's',
       optionLabels: {
         ACTIVE:         'Ativo',
         MAINTENANCE:    'Manutenção',
@@ -167,15 +176,16 @@ export const vehicleSchema = withMeta(
     }),
 
     acquisitionDate: z.date().optional().meta({
-      label:   'Data de Aquisição',
-      keybind: 'i',
+      label:   'Aquisição',
+      listVisibility: 'hidden',
+      className:      'md:w-48',
     }),
 
     acquisitionValue: z.number().positive().optional().meta({
       label:     'Valor de Aquisição',
       widget:    'currency',
-      className: 'md:w-44',
-      keybind:   'v',
+      listVisibility: 'hidden',
+      className:      'md:w-48',
     }),
 
     notes: z.string().optional().meta({
@@ -188,11 +198,11 @@ export const vehicleSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Veículo',
-    labelPlural: 'Veículos',
-    nameField:   'plate',
+    label:       'Veiculo',
+    labelPlural: 'Veiculos',
+    nameField:   'code',
     icon:        'Bus',
-    defaultSort: { field: 'plate', order: 'asc' },
+    defaultSort: { field: 'code', order: 'asc' },
     groups: {
       'Características': ['vehicleType', 'color', 'fuelType', 'transmission', 'seatedCapacity', 'totalCapacity'],
       'Operacional':     ['odometer', 'status', 'acquisitionDate', 'acquisitionValue', 'notes'],
