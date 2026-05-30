@@ -16,14 +16,14 @@ export const lineSchema = withMeta(
     name: z.string().min(2).meta({
       label:          'Nome',
       listVisibility: 'visible',
-      keybind:        'n',
+      className: 'md:w-1/2'
     }),
 
     type: z.enum(['URBAN', 'METROPOLITAN', 'RURAL', 'SPECIAL']).meta({
       label:          'Tipo',
       listVisibility: 'visible',
       filter:         true,
-      className:      'md:w-48',
+      className:      'md:w-1/4',
       keybind:        't',
       optionLabels: {
         URBAN:        'Urbano',

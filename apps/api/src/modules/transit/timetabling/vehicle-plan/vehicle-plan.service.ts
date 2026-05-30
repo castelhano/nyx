@@ -31,7 +31,7 @@ export class VehiclePlanService {
 
     const [trips, matrix, depotLocalities, config] = await Promise.all([
       this.prisma.transitTrip.findMany({
-        where: { branchId: plan.branchId, servicePeriodId: plan.servicePeriodId, dayTypeId: plan.dayTypeId },
+        where: { branchId: plan.branchId, dayTypeId: plan.dayTypeId },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true } } },
       }),
       this.prisma.travelTimeMatrix.findMany({ where: { branchId: plan.branchId } }),
@@ -173,12 +173,11 @@ export class VehiclePlanService {
     if (plan.status !== 'READY') throw new BadRequestException('Only READY plans can be confirmed')
 
     await this.prisma.$transaction(async tx => {
-      // Deconfirm any existing confirmed plan for the same (servicePeriod, dayType, branch)
+      // Deconfirm any existing confirmed plan for the same (dayType, branch)
       await tx.vehiclePlan.updateMany({
         where: {
-          branchId:       plan.branchId,
-          servicePeriodId: plan.servicePeriodId,
-          dayTypeId:      plan.dayTypeId,
+          branchId:  plan.branchId,
+          dayTypeId: plan.dayTypeId,
           status:         'CONFIRMED',
           NOT: { id: planId },
         },

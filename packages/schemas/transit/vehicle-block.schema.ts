@@ -64,7 +64,7 @@ export const vehicleBlockSchema = withMeta(
       className:      'md:w-36',
     }),
 
-    constraints: z.record(z.unknown()).optional().meta({
+    constraints: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Restrições',
       listVisibility: 'never',
       showInForm:     false,

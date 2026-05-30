@@ -128,9 +128,10 @@ model DayType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  trips              TransitTrip[]
-  vehiclePlans       VehiclePlan[]
-  calendarExceptions LineCalendarException[]
+  trips                        TransitTrip[]
+  vehiclePlans                 VehiclePlan[]
+  calendarExceptionsAsOverride LineCalendarException[] @relation("ExceptionOverrideDayType")
+  calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
 
   @@map("transit_day_types")
 }
@@ -139,12 +140,14 @@ model LineCalendarException {
   id                String    @id @default(uuid())
   validFrom         DateTime
   validTo           DateTime?
+  sourceDayTypeId   String?
   overrideDayTypeId String
   notes             String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  overrideDayType DayType                    @relation(fields: [overrideDayTypeId], references: [id])
+  sourceDayType   DayType?                   @relation("ExceptionSourceDayType", fields: [sourceDayTypeId], references: [id])
+  overrideDayType DayType                    @relation("ExceptionOverrideDayType", fields: [overrideDayTypeId], references: [id])
   lines           LineCalendarExceptionLine[]
 
   @@map("transit_line_calendar_exceptions")

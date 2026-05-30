@@ -43,6 +43,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   groups?:             { [tabLabel: string]: (keyof T & string)[] }
   rowActions?:         RowActionInput[]
   privatePermissions?: boolean      // child resource that requires explicit permission — does not inherit permissions from its parent
+  hidden?:             boolean      // exclude from sidebar and discovery entirely (e.g. engine-managed resources)
   defaultSort?:        { field: string; order: 'asc' | 'desc' }
   afterCreate?:        string       // template with placeholders {fieldName} — redirects after creation instead of going to the list
   defaultFilters?:     Record<string, string>  // pre-applied filters on list load; user can clear/modify them

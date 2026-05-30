@@ -23,18 +23,6 @@ export const vehiclePlanSchema = withMeta(
       keybind:        'f',
     }),
 
-    servicePeriodId: z.uuid().meta({
-      label:          'Período',
-      widget:         'select',
-      resource:       'service-period',
-      domain:         'transit',
-      labelField:     'name',
-      listVisibility: 'visible',
-      filter:         { type: 'relation', endpoint: 'transit/service-period', labelField: 'name' },
-      lazyEdit:       true,
-      keybind:        'e',
-    }),
-
     dayTypeId: z.uuid().meta({
       label:          'Tipo de Dia',
       widget:         'select',
@@ -89,7 +77,7 @@ export const vehiclePlanSchema = withMeta(
       showInForm:     false,
     }),
 
-    constraints: z.record(z.unknown()).optional().meta({
+    constraints: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Restrições',
       listVisibility: 'never',
       showInForm:     false,

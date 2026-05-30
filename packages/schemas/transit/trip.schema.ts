@@ -66,7 +66,7 @@ export const tripSchema = withMeta(
     }),
 
     // managed via dedicated lock UI — not rendered as a raw JSON field
-    constraints: z.record(z.unknown()).optional().meta({
+    constraints: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Restrições',
       listVisibility: 'never',
       showInForm:     false,
@@ -85,9 +85,7 @@ export const tripSchema = withMeta(
     label:       'Viagem',
     labelPlural: 'Viagens',
     nameField:   'departureMinutes',
-    breadcrumb:  [
-      { resource: 'service-period', contextField: 'servicePeriodId', listLabel: 'Períodos', nameField: 'name', keybind: 'f9' },
-    ],
+    hidden:      true,
     defaultSort: { field: 'departureMinutes', order: 'asc' },
   },
 )

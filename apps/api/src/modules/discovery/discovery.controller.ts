@@ -22,6 +22,7 @@ export class DiscoveryController {
     // Recursos visíveis: top-level (sem breadcrumb) OU filhos com privatePermissions
     const visible = resourceRegistry.filter((entry) => {
       const meta    = (entry.schema as any)._schemaMeta
+      if (meta?.hidden) return false
       const isChild = !!meta?.breadcrumb?.length
       if (isChild && !meta?.privatePermissions) return false
       const subject = entry.resource[0].toUpperCase() + entry.resource.slice(1)
