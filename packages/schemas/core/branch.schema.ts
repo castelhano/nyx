@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const branchSchema = withMeta(
   z.object({
-    id:        z.uuid(),
+    id:        z.uuid().meta({listVisibility: 'hidden'}),
     companyId: z.uuid().meta({ label: 'Empresa', listVisibility: 'hidden', className: 'md:w-1/2', widget: 'select', resource: 'company', labelField: 'legalName', keybind: 'q', filter: { type: 'relation', endpoint: 'core/company', labelField: 'legalName' } }),
     // Geral
     name:      z.string().min(2).meta({ label: 'Nome', className: 'md:w-1/2', listVisibility: 'visible', placeholder: 'Nome abreviado', keybind: 'g' }),

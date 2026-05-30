@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const travelTimeSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     originId: z.uuid().meta({
       label:          'Origem',

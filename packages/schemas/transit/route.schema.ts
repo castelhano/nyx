@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const routeSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     lineId: z.uuid().meta({
       label:          'Linha',

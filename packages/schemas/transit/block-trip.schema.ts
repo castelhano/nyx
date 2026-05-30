@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const blockTripSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     vehicleBlockId: z.uuid().meta({
       label:          'Bloco',

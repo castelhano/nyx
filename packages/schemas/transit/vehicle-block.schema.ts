@@ -9,7 +9,7 @@ export interface VehicleBlockConstraints {
 
 export const vehicleBlockSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     vehiclePlanId: z.uuid().meta({
       label:          'Planejamento',

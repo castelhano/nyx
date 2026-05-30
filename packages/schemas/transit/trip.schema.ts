@@ -10,7 +10,9 @@ export interface TripConstraints {
 
 export const tripSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
+
+
 
     dayTypeId: z.uuid().meta({
       label:          'Tipo de Dia',

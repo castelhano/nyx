@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const userSchema = withMeta(
   z.object({
-    id:           z.uuid(),
+    id:           z.uuid().meta({listVisibility: 'hidden'}),
     name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome completo', filter: true, keybind: 'g' }),
     username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', placeholder: 'Username', keybind: 'y' }),
     email:        z.email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com', keybind: 'e' }),

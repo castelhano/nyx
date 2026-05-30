@@ -50,7 +50,8 @@ export function GlobalSearch() {
     desc:    'Busca global',
     icon:    Search,
     origin:  'apps/web/src/components/layout/global-search',
-    context: 'all',
+    context: 'default',
+    order: 1
   })
 
   useEffect(() => { setCursor(0) }, [results])

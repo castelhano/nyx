@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const departmentSchema = withMeta(
   z.object({
-    id:        z.uuid(),
+    id:        z.uuid().meta({listVisibility: 'hidden'}),
     name:      z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', keybind: 'g', className: 'md:w-64' }),
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

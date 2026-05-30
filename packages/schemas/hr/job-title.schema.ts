@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const jobTitleSchema = withMeta(
   z.object({
-    id:           z.uuid(),
+    id:           z.uuid().meta({listVisibility: 'hidden'}),
     departmentId: z.uuid().meta({ 
       label: 'Setor', 
       listVisibility: 'hidden', 

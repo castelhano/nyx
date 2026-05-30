@@ -9,7 +9,7 @@ export interface VehiclePlanConstraints {
 
 export const vehiclePlanSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     branchId: z.uuid().meta({
       label:          'Filial',

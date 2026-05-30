@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const dayTypeSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     code: z.string().min(1).max(10).meta({
       label:          'Código',

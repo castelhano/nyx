@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const contractSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     employeeId: z.uuid().meta({
       showInForm: false,

@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const companySchema = withMeta(
   z.object({
-    id:        z.uuid(),
+    id:        z.uuid().meta({listVisibility: 'hidden'}),
     // Geral
     tradeName: z.string().nullable().optional().meta({ label: 'Nome Fantasia', listVisibility: 'visible', placeholder: 'Nome Fantasia', filter: true, keybind: 'v', className: 'md:w-1/4' }),
     legalName: z.string().min(2).meta({ label: 'Razão Social', className: 'md:w-1/2', listVisibility: 'hidden', placeholder: 'Razão social', keybind: 'l' }),

@@ -4,8 +4,13 @@ import { withMeta } from '../with-meta'
 
 export const vehicleBrandSchema = withMeta(
   z.object({
-    id:        z.uuid(),
-    name:      z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', keybind: 'g' }),
+    id:        z.uuid().meta({listVisibility: 'hidden'}),
+    name:      z.string().min(2).meta({ 
+      label: 'Nome', 
+      listVisibility: 'visible', 
+      className: 'md:w-1/3',
+      placeholder: 'Marca'
+    }),
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

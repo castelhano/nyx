@@ -4,7 +4,7 @@ import { withMeta } from '../with-meta'
 
 export const vehicleSchema = withMeta(
   z.object({
-    id: z.uuid(),
+    id: z.uuid().meta({listVisibility: 'hidden'}),
 
     companyId: z.string().optional().meta({
       label:      'Empresa',
