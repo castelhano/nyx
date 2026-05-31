@@ -605,19 +605,22 @@ apps/api/src/modules/transit/
 ### Etapa 6 — Frontend
 
 - [x] Páginas genéricas (AutoList + AutoForm) para todos os resources CRUD
-- [ ] Gantt engine (`app/transit/vehicle-plan/[id]/engine/`) — ver §9:
-  - [ ] `viewport.ts` — conversão tempo↔pixel, zoom, scroll
-  - [ ] `layout/sequential.layout.ts` — posicionamento de blocos
-  - [ ] `renderer.ts` — draw calls canvas
-  - [ ] `hit-tester.ts` — índice espacial para interação
-  - [ ] `interaction.ts` — eventos DOM → engine
-  - [ ] `gantt-engine.ts` — coordenador
-- [ ] Página customizada `app/transit/vehicle-plan/[id]/page.tsx`:
-  - [ ] `GanttBoard` + `TimeRuler` + `RowList` + `SegmentTooltip`
+- [x] Gantt engine (`app/transit/vehicle-plan/[id]/engine/`) — ver §9:
+  - [x] `gantt.types.ts` — tipos compartilhados (`GanttRow`, `GanttSegment`, `GanttView`, `ViewportSnapshot`)
+  - [x] `layout/layout.types.ts` — interfaces `LayoutRow`, `LayoutSegment`, `LayoutStrategy`
+  - [x] `layout/sequential.layout.ts` — posicionamento sequencial de blocos
+  - [x] `viewport.ts` — conversão tempo↔pixel, zoom (ctrl+wheel), scroll, range visível
+  - [x] `renderer.ts` — draw calls: bandas, grid de tempo, segmentos com `roundRect`, hover outline
+  - [x] `hit-tester.ts` — índice espacial, O(visible)
+  - [x] `interaction.ts` — wheel scroll/zoom, drag (middle button), hover, click
+  - [x] `gantt-engine.ts` — coordenador; expõe `setView`, `getSegmentRect`, `requestDraw`; notifica React via `onStateChangeCallback`
+- [x] `views/vehicles.view.ts` — 1 linha por bloco, viagens por cor de linha, dead runs em cinza
+- [x] Página customizada `app/transit/vehicle-plan/[id]/page.tsx`:
+  - [x] `GanttBoard` + `TimeRuler` + `RowList` + `SegmentTooltip`
+  - [x] Topbar: Gerar / Parar / Assumir Melhor / Ativar
+  - [x] Painel de progresso SSE (inline na summary bar)
   - [ ] `ViewSwitcher` — visão veículos / linhas / garagens
   - [ ] Seleção de linhas (escopo) via `POST/DELETE .../lines`
-  - [ ] Topbar: Gerar / Parar / Assumir Melhor / Ativar
-  - [ ] Painel de progresso SSE
   - [ ] Atribuição de `branchId` por bloco inline no Gantt
 
 ---
@@ -642,6 +645,9 @@ apps/api/src/modules/transit/
 | Worker do solver | `worker_threads` Node.js | Não bloqueia event loop; NestJS continua respondendo |
 | SSE auth | Query param `?token=jwt` (MVP) | EventSource não suporta headers; migrar para cookie em produção |
 | PlanningConfig | BaseSettingsService com scope branch + global | Reutiliza infraestrutura existente; fallback global automático |
+| `VehiclePlanService` herança | Estende `BaseService` + métodos custom | Necessário para registro no `resourceRegistry` (discovery) e endpoints CRUD via `BaseController` |
+| Relation `blockTrips` | Nome Prisma correto em `VehicleBlock` | Campo se chama `blockTrips`, não `trips`; `trips` é nome usado apenas no `SolverBlock` (solver interno) |
+| Gantt canvas + DOM | Canvas para segmentos, DOM para TimeRuler/RowList/tooltip | Motor opera em CSS pixels; DPR tratado 1× no init via `ctx.setTransform(dpr,…)`; overlays DOM usam `engine.getSegmentRect()` diretamente |
 
 ---
 

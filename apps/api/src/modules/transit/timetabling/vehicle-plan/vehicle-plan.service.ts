@@ -4,6 +4,8 @@ import { Worker } from 'worker_threads'
 import path from 'path'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { PlanningConfigService } from '../settings/planning-config/planning-config.service'
+import { BaseService } from '../../../../core/base.service'
+import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import type { SolverConfig, SolverMessage, SolverResult } from './solver/solver.types'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
@@ -16,14 +18,16 @@ interface Job {
 }
 
 @Injectable()
-export class VehiclePlanService {
+export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
   private readonly logger = new Logger(VehiclePlanService.name)
   private readonly jobs = new Map<string, Job>()
 
   constructor(
-    private readonly prisma: PrismaService,
+    prisma: PrismaService,
     private readonly planningConfig: PlanningConfigService,
-  ) {}
+  ) {
+    super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
+  }
 
   async generate(planId: string, jobId: string): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({
@@ -204,7 +208,7 @@ export class VehiclePlanService {
       where:   { vehiclePlanId: planId },
       orderBy: { blockNumber: 'asc' },
       include: {
-        trips: {
+        blockTrips: {
           orderBy: { sequence: 'asc' },
           include: {
             trip: {

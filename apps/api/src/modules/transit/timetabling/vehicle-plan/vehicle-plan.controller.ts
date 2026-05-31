@@ -1,17 +1,25 @@
-import { Controller, Post, Get, Delete, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Post, Get, Delete, Patch, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
 import { Observable } from 'rxjs'
-import { VehiclePlanService } from './vehicle-plan.service'
+import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
+import { BaseController } from '../../../../core/base.controller'
+import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard, JwtOrQueryGuard } from '../../../../auth/policies.guard'
+import { VehiclePlanService } from './vehicle-plan.service'
 
 @Controller('transit/vehicle-plan')
-export class VehiclePlanController {
-  constructor(private readonly service: VehiclePlanService) {}
+@UseGuards(JwtAuthGuard)
+export class VehiclePlanController extends BaseController<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
+  constructor(
+    private readonly vehiclePlanService: VehiclePlanService,
+    caslFactory: CaslAbilityFactory,
+  ) {
+    super(vehiclePlanService, caslFactory)
+  }
 
   @Post(':id/generate')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   generate(@Param('id') id: string, @Body('jobId') jobId: string) {
-    return this.service.generate(id, jobId)
+    return this.vehiclePlanService.generate(id, jobId)
   }
 
   @Sse(':id/stream')
@@ -20,46 +28,40 @@ export class VehiclePlanController {
     @Param('id') _id: string,
     @Query('jobId') jobId: string,
   ): Observable<{ data: string }> {
-    return this.service.streamProgress(jobId)
+    return this.vehiclePlanService.streamProgress(jobId)
   }
 
   @Post(':id/assume')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   assume(@Param('id') id: string, @Body('jobId') jobId: string) {
-    return this.service.assumeBest(id, jobId)
+    return this.vehiclePlanService.assumeBest(id, jobId)
   }
 
   @Post(':id/stop')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   stop(@Param('id') _id: string, @Body('jobId') jobId: string) {
-    return this.service.stop(jobId)
+    return this.vehiclePlanService.stop(jobId)
   }
 
   @Post(':id/activate')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   activate(@Param('id') id: string) {
-    return this.service.activate(id)
+    return this.vehiclePlanService.activate(id)
   }
 
   @Post(':id/lines')
-  @UseGuards(JwtAuthGuard)
   @HttpCode(200)
   addLine(@Param('id') id: string, @Body('lineId') lineId: string) {
-    return this.service.addLine(id, lineId)
+    return this.vehiclePlanService.addLine(id, lineId)
   }
 
   @Delete(':id/lines/:lineId')
-  @UseGuards(JwtAuthGuard)
   removeLine(@Param('id') id: string, @Param('lineId') lineId: string) {
-    return this.service.removeLine(id, lineId)
+    return this.vehiclePlanService.removeLine(id, lineId)
   }
 
   @Get(':id/gantt-data')
-  @UseGuards(JwtAuthGuard)
   getGanttData(@Param('id') id: string) {
-    return this.service.getGanttData(id)
+    return this.vehiclePlanService.getGanttData(id)
   }
 }
