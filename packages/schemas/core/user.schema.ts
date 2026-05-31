@@ -5,11 +5,11 @@ import { withMeta } from '../with-meta'
 export const userSchema = withMeta(
   z.object({
     id:           z.uuid().meta({listVisibility: 'hidden'}),
-    name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome completo', filter: true, keybind: 'g' }),
-    username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', placeholder: 'Username', keybind: 'y' }),
-    email:        z.email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com', keybind: 'e' }),
+    name:         z.string().min(2).meta({ label: 'Nome', listVisibility: 'visible', placeholder: 'Nome completo', filter: true, keybind: 'g', className: 'md:w-1/2' }),
+    username:     z.string().min(3).meta({ label: 'Username', listVisibility: 'visible', placeholder: 'Username', keybind: 'y', className: 'w-full md:w-96' }),
+    email:        z.email().nullable().optional().meta({ label: 'E-mail', listVisibility: 'hidden', placeholder: 'email@domain.com', keybind: 'e', className: 'w-full md:w-1/2' }),
     passwordHash: z.string().meta({ listVisibility: 'never', showInForm: false }),
-    role:         z.enum(['admin', 'operator']).meta({ label: 'Perfil', listVisibility: 'visible', className: 'w-full md:w-60', filter: true, keybind: 'l' }),
+    role:         z.enum(['admin', 'operator']).meta({ label: 'Perfil', listVisibility: 'visible', className: 'w-full md:w-96', filter: true, keybind: 'l' }),
     isActive:             z.boolean().default(true).meta({ label: 'Ativo', listVisibility: 'visible', filter: true }),
     forcePasswordChange:  z.boolean().default(false).meta({ label: 'Forçar troca de senha no login', listVisibility: 'never' }),
     createdAt:            z.date().meta({ showInForm: false }),

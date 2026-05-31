@@ -84,7 +84,12 @@ export default function UserDetailPage() {
 
   const { guardNode, canCreate, canUpdate, canDelete, meta } = usePageGuard('core', 'user', isNew, userError ?? undefined)
 
-  const kb = (field: string) => meta?.fields.find(f => f.name === field)?.keybind ?? ''
+  const f   = (name: string) => meta?.fields.find((f) => f.name === name)
+  const kb  = (name: string) => f(name)?.keybind     ?? ''
+  const lbl = (name: string) => f(name)?.label       ?? name
+  const ph  = (name: string) => f(name)?.placeholder ?? ''
+  const cls = (name: string) => f(name)?.className   ?? ''
+  const hlp = (name: string) => f(name)?.helpText    ?? ''
   const { data: discovery } = useDiscovery()
 
   const { data: allBranches } = useQuery({
@@ -405,69 +410,69 @@ export default function UserDetailPage() {
     return (
       <div className="space-y-6">
         <div className={gridCls}>
-          <label htmlFor="name" className={labelCls}>Nome</label>
+          <label htmlFor="name" className={labelCls}>{lbl('name')}</label>
           <div className="space-y-1">
             <div className="relative">
               <Input
                 id="name"
                 autoFocus
-                placeholder="Nome completo"
+                placeholder={ph('name')}
                 className="w-full md:pr-10"
-                {...register('name', { required: 'Nome obrigatório' })}
+                {...register('name', { required: `${lbl('name')} obrigatório` })}
               />
               {kb('name') && <KeyHint k={kb('name')} />}
             </div>
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
-          <label htmlFor="username" className={labelCls}>Username</label>
+          <label htmlFor="username" className={labelCls}>{lbl('username')}</label>
           <div className="space-y-1">
-            <div className="relative w-full md:w-96">
+            <div className={cn('relative', cls('username'))}>
               <Input
                 id="username"
-                placeholder="Username"
+                placeholder={ph('username')}
                 className="w-full md:pr-10"
-                {...register('username', { required: 'Username obrigatório' })}
+                {...register('username', { required: `${lbl('username')} obrigatório` })}
               />
               {kb('username') && <KeyHint k={kb('username')} />}
             </div>
             {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
           </div>
 
-          <label htmlFor="email" className={labelCls}>E-mail</label>
-          <div className="relative w-full md:w-1/2">
+          <label htmlFor="email" className={labelCls}>{lbl('email')}</label>
+          <div className={cn('relative', cls('email'))}>
             <Input
               id="email"
               type="email"
-              placeholder="email@domain.com"
+              placeholder={ph('email')}
               className="w-full md:pr-10"
               {...register('email')}
             />
             {kb('email') && <KeyHint k={kb('email')} />}
           </div>
 
-          <label htmlFor="role" className={labelCls}>Perfil</label>
-          <Select id="role" wrapperClassName="w-full md:w-96" keybind={kb('role')} {...register('role')}>
-            <option value="admin">Admin</option>
-            <option value="operator">Operador</option>
+          <label htmlFor="role" className={labelCls}>{lbl('role')}</label>
+          <Select id="role" wrapperClassName={cls('role')} keybind={kb('role')} {...register('role')}>
+            <option value="admin">{lbl('role')} - Admin</option>
+            <option value="operator">{lbl('role')} - Operador</option>
           </Select>
 
           <div className="md:col-start-2 flex items-center gap-2 pt-1">
             <input id="isActive" type="checkbox" className="rounded" {...register('isActive')} />
-            <label htmlFor="isActive" className="text-sm select-none cursor-pointer">Ativo</label>
+            <label htmlFor="isActive" className="text-sm select-none cursor-pointer">{lbl('isActive')}</label>
           </div>
 
           <div className="md:col-start-2 flex items-center gap-2">
             <input id="forcePasswordChange" type="checkbox" className="rounded" {...register('forcePasswordChange')} />
-            <label htmlFor="forcePasswordChange" className="text-sm select-none cursor-pointer">Forçar troca de senha no login</label>
+            <label htmlFor="forcePasswordChange" className="text-sm select-none cursor-pointer">{lbl('forcePasswordChange')}</label>
           </div>
         </div>
 
         {/* password block */}
         {isNew ? (
           <div className="border-t border-border pt-5 space-y-4">
-            <p className="text-sm font-medium text-foreground">Senha</p>
-            <div className={gridCls}>
+            <p className="text-sm font-medium text-foreground">Dados de acesso</p>
+            <div className={cn(gridCls, 'md:w-1/3')}>
               <label htmlFor="password" className={labelCls}>Senha</label>
               <div className="space-y-1">
                 <PasswordInput
@@ -476,7 +481,7 @@ export default function UserDetailPage() {
                   error={errors.password?.message}
                   className="w-full"
                   keybind={kb('password')}
-                  {...register('password', { required: 'Senha obrigatória' })}
+                  {...register('password', { required: `${lbl('password')} obrigatória` })}
                 />
                 <PolicyIndicator password={passwordValue} policy={policy} />
               </div>
@@ -506,7 +511,7 @@ export default function UserDetailPage() {
             </button>
 
             {passwordOpen && (
-              <div className={cn(gridCls, 'mt-4')}>
+              <div className={cn(gridCls, 'mt-4 md:w-1/3')}>
                 <label htmlFor="newPassword" className={labelCls}>Nova senha</label>
                 <div className="space-y-1">
                   <PasswordInput

@@ -566,7 +566,7 @@ apps/api/src/modules/transit/
 - [x] `TravelTimeService` / `TravelTimeController` — sem `scopeField`; matriz é global
 - [x] `OsrmService.generateMatrix()` — opera sobre subconjunto relevante de localidades
 
-### Etapa 3 — Programação (TimetablingModule) ⚠️ parcialmente pendente
+### Etapa 3 — Programação (TimetablingModule) ✅
 
 - [x] `DayTypeService` / `DayTypeController`
 - [x] Campo `pattern` no schema Zod de `DayType`

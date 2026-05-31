@@ -55,10 +55,10 @@ export const calendarExceptionSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Exceção de Calendário',
-    labelPlural: 'Exceções de Calendário',
+    label:       'Troca tipo dia',
+    labelPlural: 'Troca tipos dia',
     nameField:   'notes',
-    icon:        'CalendarX2',
+    icon:        'CalendarSync',
     defaultSort: { field: 'validFrom', order: 'desc' },
   },
 )

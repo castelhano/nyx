@@ -2,7 +2,7 @@ import {
   Shield, Users, Building, Building2, GitBranch, Lock, Settings,
   LayoutGrid, Package, Truck, ShoppingCart, FileText, BarChart2,
   Palette, CalendarDays, SlidersHorizontal, ArrowRightFromLine, Layers, Briefcase,
-  UserRound, Bus, Tag, MapPin, Route, Timer, Warehouse, CalendarRange, LayoutList,
+  UserRound, Bus, Tag, MapPin, Route, Timer, Warehouse, CalendarRange, CalendarSync, LayoutList,
   Settings2, Save, ArrowLeft, ChevronDown, Copy, Trash2,
   type LucideIcon,
 } from 'lucide-react'
@@ -34,6 +34,7 @@ export const Icons: Record<string, LucideIcon> = {
   Timer,
   Warehouse,
   CalendarRange,
+  CalendarSync,
   LayoutList,
   Settings2,
   Save,
