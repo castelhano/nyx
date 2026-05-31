@@ -76,9 +76,6 @@ function findBestBlock(
     const layover = trip.departureMinutes - (block.lastArrivalMinutes + edge.minutes)
     if (layover < config.minLayoverMinutes) continue
 
-    const projectedDuration = trip.arrivalMinutes - block.startMinutes
-    if (projectedDuration > config.blockDurationMaxMinutes) continue
-
     if (edge.minutes < bestDeadrun) {
       bestDeadrun = edge.minutes
       best = { block, edge }
@@ -124,17 +121,6 @@ function scoreBlocks(
 
   for (const block of blocks) {
     const duration = block.lastArrivalMinutes - block.startMinutes
-
-    if (duration < config.blockDurationMinMinutes) return null
-    if (duration > config.blockDurationMaxMinutes) return null
-
-    if (duration < config.blockDurationIdealMinMinutes || duration > config.blockDurationIdealMaxMinutes) {
-      const deviation = Math.min(
-        Math.abs(duration - config.blockDurationIdealMinMinutes),
-        Math.abs(duration - config.blockDurationIdealMaxMinutes),
-      )
-      score -= (deviation / 60) * config.weightBlockDuration
-    }
 
     for (const entry of block.entries) {
       if (entry.deadheadMinutes > config.maxDeadrunSoftMinutes) {

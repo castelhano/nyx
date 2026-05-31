@@ -88,7 +88,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       messages$.next(msg)
       if (msg.type === 'done') {
         messages$.complete()
-        this.jobs.delete(jobId)
+        // keep job in map so assumeBest can still access job.best after the stream closes;
+        // schedule cleanup to avoid indefinite memory retention
+        setTimeout(() => this.jobs.delete(jobId), 30 * 60 * 1000)
       }
     })
 
@@ -116,6 +118,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   async assumeBest(planId: string, jobId: string): Promise<void> {
     const job = this.jobs.get(jobId)
     if (!job?.best) throw new NotFoundException('No result available yet')
+
+    // stop the worker if it's still running, then clean up the job
+    try { job.worker.postMessage({ type: 'stop' }) } catch { /* already terminated */ }
+    this.jobs.delete(jobId)
 
     const best = job.best
 

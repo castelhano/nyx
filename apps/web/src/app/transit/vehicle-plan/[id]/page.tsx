@@ -172,8 +172,9 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  const [isPending,    setIsPending]    = useState(false)
-  const [activeJobId,  setActiveJobId]  = useState<string | null>(null)
+  const [isPending,      setIsPending]      = useState(false)
+  const [activeJobId,    setActiveJobId]    = useState<string | null>(null)
+  const [isSolverDone,   setIsSolverDone]   = useState(false)
   const [linesPanelOpen, setLinesPanelOpen] = useState(false)
 
   // ── data ────────────────────────────────────────────────────────────────────
@@ -201,12 +202,11 @@ export default function VehiclePlanPage() {
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
-  const onSolverDone = useCallback(async () => {
-    setActiveJobId(null)
+  const onSolverDone = useCallback(() => {
+    setIsSolverDone(true)
     setIsPending(false)
-    await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
-    await refetchGantt()
-  }, [id, queryClient, refetchGantt])
+    // data refresh happens only after the user clicks "Assumir Melhor"
+  }, [])
 
   const solverProgress = useSolverStream(id, activeJobId, onSolverDone)
 
@@ -224,7 +224,8 @@ export default function VehiclePlanPage() {
         throw new Error(extractError(json))
       }
       setActiveJobId(jobId)
-      setIsPending(false)  // solver is now running; pending was only for the POST
+      setIsSolverDone(false)
+      setIsPending(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao iniciar geração')
       setIsPending(false)
@@ -253,6 +254,8 @@ export default function VehiclePlanPage() {
         const json = await res.json().catch(() => ({}))
         throw new Error(extractError(json))
       }
+      setActiveJobId(null)
+      setIsSolverDone(false)
       toast.success('Melhor solução assumida')
       await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
       await refetchGantt()
@@ -292,21 +295,20 @@ export default function VehiclePlanPage() {
       icon:    Icons.List,
       onClick: () => setLinesPanelOpen(v => !v),
     }] : []),
-    // stop + assume visible only while solver is running
-    ...(activeJobId ? [
-      {
-        label:    'Parar',
-        icon:     Icons.Square,
-        onClick:  handleStop,
-        disabled: isPending,
-      },
-      {
-        label:    'Assumir Melhor',
-        icon:     Icons.Download,
-        onClick:  handleAssumeBest,
-        disabled: isPending,
-      },
-    ] : []),
+    // parar: only while stream is open
+    ...(activeJobId && !isSolverDone ? [{
+      label:    'Parar',
+      icon:     Icons.Square,
+      onClick:  handleStop,
+      disabled: isPending,
+    }] : []),
+    // assumir: while job exists (running or stopped, until user assumes)
+    ...(activeJobId ? [{
+      label:    'Assumir Melhor',
+      icon:     Icons.Download,
+      onClick:  handleAssumeBest,
+      disabled: isPending,
+    }] : []),
     // generate visible when not running and can update
     ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
       {
@@ -326,7 +328,7 @@ export default function VehiclePlanPage() {
         disabled: isPending,
       },
     ] : []),
-  ], [isPending, activeJobId, canUpdate, status, isNew, linesPanelOpen])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen])
 
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
