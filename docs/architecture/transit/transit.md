@@ -206,14 +206,16 @@ Template permanente por `Route + DayType`. Não possui vínculo com empresa nem 
 
 Settings singleton por filial com fallback global.
 
-| Grupo | Campos |
-|---|---|
-| Dia Operacional | `operationalDayStartHour` |
-| Intervalos | `minLayoverMinutes`, `maxLayoverMinutes` |
-| Deslocamento em Vazio | `maxDeadrunSoftMinutes`, `maxDeadrunHardMinutes` |
-| Duração do Bloco | `blockDurationMinMinutes`, `blockDurationIdealMinMinutes`, `blockDurationIdealMaxMinutes`, `blockDurationMaxMinutes` |
-| Pesos de Otimização | `weightMinimizeFleet`, `weightMinimizeDeadrun`, `weightBlockDuration` |
-| Critério de Parada | `stopNoImprovementMinutes`, `stopMaxTotalMinutes` |
+| Grupo | Campos | Solver atual |
+|---|---|---|
+| Dia Operacional | `operationalDayStartHour` | ✓ usado |
+| Intervalos | `minLayoverMinutes`, `maxLayoverMinutes` | `min` é hard constraint; `max` reservado para Fase 2 |
+| Deslocamento em Vazio | `maxDeadrunSoftMinutes`, `maxDeadrunHardMinutes` | ✓ ambos usados |
+| Duração do Bloco | `blockDurationMinMinutes`, `blockDurationIdealMinMinutes`, `blockDurationIdealMaxMinutes`, `blockDurationMaxMinutes` | **Reservado para Fase 2 (crew scheduling)** — campos existem no schema mas o VSP atual os ignora |
+| Pesos de Otimização | `weightMinimizeFleet`, `weightMinimizeDeadrun`, `weightBlockDuration` | `fleet` e `deadrun` usados; `blockDuration` reservado para Fase 2 |
+| Critério de Parada | `stopNoImprovementMinutes`, `stopMaxTotalMinutes` | ✓ usados |
+
+> **Por que `blockDuration*` não é usado no VSP:** um bloco representa um **veículo**, não um condutor. Veículos não têm limite de jornada. Os limites de duração do bloco são restrições de **jornada do condutor** e serão aplicados na Fase 2 (crew scheduling), quando blocos longos serão particionados em turnos respeitando a legislação.
 
 ---
 
@@ -389,40 +391,90 @@ import { workerData, parentPort } from 'worker_threads'
 // { type: 'done',        stopReason: 'no_improvement' | 'max_time' | 'user_stopped' }
 ```
 
-### 3.3 Critérios de parada
+### 3.3 Critérios de parada e ciclo de vida do job
 
 | Critério | Campo | Comportamento |
 |---|---|---|
 | Sem melhora | `stopNoImprovementMinutes` | Encerra se nenhum candidato melhor for encontrado neste intervalo |
 | Tempo total | `stopMaxTotalMinutes` | Encerra independentemente do progresso |
 | Manual | — | Usuário clica "Parar" → `POST .../stop` → worker recebe `{ type: 'stop' }` |
+| Assumir Melhor | — | `assumeBest` envia `{ type: 'stop' }` ao worker antes de persistir |
 
-### 3.4 Função de pontuação
+**Ciclo de vida do job (`Map<jobId, Job>`):**
+
+```
+generate()  → job criado; worker inicia
+    │
+    ▼
+worker envia 'improvement' → job.best = result
+worker envia 'progress'    → SSE forwarded ao cliente
+    │
+    ▼
+worker envia 'done' (qualquer motivo)
+    │   messages$.complete() — SSE fecha
+    │   job PERMANECE no map (job.best acessível)
+    │   TTL de 30 min agenda limpeza automática (jobs abandonados)
+    ▼
+assumeBest()
+    │   job.worker.postMessage({ type: 'stop' }) — para se ainda rodando
+    │   persiste VehicleBlocks no banco
+    │   this.jobs.delete(jobId) — job removido
+    ▼
+  fim
+```
+
+**Por que o job não é deletado ao receber `done`:** o usuário pode querer "Parar" o solver e só depois clicar "Assumir Melhor". Se o job fosse deletado ao encerrar, `job.best` seria perdido e o botão ficaria sem efeito.
+
+### 3.4 Função de pontuação (VSP — Fase 1)
+
+O solver foca exclusivamente em minimizar frota. Restrições de jornada de condutor são Fase 2.
 
 ```
 score = 100
-      - Σ penalidade_bloco_fora_da_faixa_ideal × weightBlockDuration
       - Σ dead_run_acima_do_soft × weightMinimizeDeadrun
       - frota_utilizada × weightMinimizeFleet
 ```
 
 **Violações duras** (descartam o candidato):
-- Bloco fora de `[blockDurationMinMinutes, blockDurationMaxMinutes]`
-- Dead run acima de `maxDeadrunHardMinutes`
+- Dead run acima de `maxDeadrunHardMinutes` (restrição física real do veículo)
 - Intervalo entre viagens abaixo de `minLayoverMinutes`
 - Violação de `requiredVehicleType`
 - Violação de `constraints.pinnedBlock`
 
 **Violações suaves** (penalizam a pontuação):
 - Dead run acima de `maxDeadrunSoftMinutes`
-- Intervalo acima de `maxLayoverMinutes`
-- Bloco fora da faixa ideal `[idealMin, idealMax]`
+
+**Reservado para Fase 2 (crew scheduling) — não aplicado ao VSP:**
+- Restrições de `blockDurationMin/Max/Ideal`
+- Penalidade por bloco fora da faixa ideal
+- `maxLayoverMinutes` como penalidade suave
 
 ### 3.5 Autenticação SSE
 
-`EventSource` nativo não suporta headers customizados:
-- Token JWT passado como query param: `GET /stream?token=<jwt>` (MVP)
-- Antes de produção: migrar para `httpOnly` cookie-based auth
+`EventSource` nativo não suporta headers customizados. Solução: `JwtOrQueryGuard` que injeta `?token=<jwt>` como `Authorization: Bearer` antes do Passport processar.
+
+```typescript
+@Injectable()
+export class JwtOrQueryGuard extends AuthGuard('jwt') {
+  override getRequest(context: ExecutionContext) {
+    const req = context.switchToHttp().getRequest()
+    if (req.query?.token && !req.headers.authorization) {
+      req.headers.authorization = `Bearer ${req.query.token}`
+    }
+    return req
+  }
+}
+```
+
+**Regra crítica:** `JwtOrQueryGuard` deve estar no **decorator de classe** do `VehiclePlanController`, nunca apenas no método `stream`. Guards de classe executam antes de guards de método — se a classe usar `JwtAuthGuard` e o método usar `JwtOrQueryGuard`, o guard da classe rejeita o SSE antes que o de método possa injetar o token.
+
+```typescript
+@Controller('transit/vehicle-plan')
+@UseGuards(JwtOrQueryGuard)   // ← cobre todos os endpoints, inclusive SSE
+export class VehiclePlanController { ... }
+```
+
+Antes de produção: migrar para `httpOnly` cookie-based auth e remover suporte a `?token=`.
 
 ### 3.6 Isolamento por job
 
@@ -618,9 +670,12 @@ apps/api/src/modules/transit/
 - [x] Página customizada `app/transit/vehicle-plan/[id]/page.tsx`:
   - [x] `GanttBoard` + `TimeRuler` + `RowList` + `SegmentTooltip`
   - [x] Topbar: Gerar / Parar / Assumir Melhor / Ativar
-  - [x] Painel de progresso SSE (inline na summary bar)
+  - [x] "Parar" visível apenas enquanto SSE está aberto; "Assumir Melhor" persiste até assumir (mesmo após parar)
+  - [x] Painel de progresso SSE inline na summary bar (tentativa, blocos, score)
+  - [x] Summary bar: Status, Tipo (dayType.code), x linhas, x blocos, x viagens
+  - [x] Seleção de linhas via `LinesPanel` (`POST/DELETE .../lines`)
+  - [x] Distinção visual IDA/VOLTA no Gantt (cor cheia vs clareada) + tooltip com direção
   - [ ] `ViewSwitcher` — visão veículos / linhas / garagens
-  - [ ] Seleção de linhas (escopo) via `POST/DELETE .../lines`
   - [ ] Atribuição de `branchId` por bloco inline no Gantt
 
 ---
@@ -648,6 +703,11 @@ apps/api/src/modules/transit/
 | `VehiclePlanService` herança | Estende `BaseService` + métodos custom | Necessário para registro no `resourceRegistry` (discovery) e endpoints CRUD via `BaseController` |
 | Relation `blockTrips` | Nome Prisma correto em `VehicleBlock` | Campo se chama `blockTrips`, não `trips`; `trips` é nome usado apenas no `SolverBlock` (solver interno) |
 | Gantt canvas + DOM | Canvas para segmentos, DOM para TimeRuler/RowList/tooltip | Motor opera em CSS pixels; DPR tratado 1× no init via `ctx.setTransform(dpr,…)`; overlays DOM usam `engine.getSegmentRect()` diretamente |
+| Bloco ≠ jornada de condutor | `blockDuration*` ignorado no VSP | Um bloco representa um veículo; veículo não tem limite de jornada. Limites de duração são restrições de condutor — aplicados no crew scheduling (Fase 2) |
+| Job persiste após `done` | `jobs.delete()` não ocorre no handler `done` | Permite "Assumir Melhor" após "Parar"; job limpo em `assumeBest()` ou TTL de 30 min |
+| `assumeBest` para o worker | `assumeBest` envia `stop` antes de persistir | Evita estado inconsistente: worker pode estar rodando quando o usuário clicar "Assumir Melhor" sem clicar "Parar" antes |
+| Gantt IDA/VOLTA | OUTBOUND = cor cheia; INBOUND = cor clareada 45% (blend branco) | Mesma cor de linha, hue igual, distinção clara de direção sem exigir legenda separada |
+| `dayType` no ganttData | `getGanttData` inclui relação `dayType` | Summary bar precisa do `code` do tipo de dia; evita query extra no frontend |
 
 ---
 
