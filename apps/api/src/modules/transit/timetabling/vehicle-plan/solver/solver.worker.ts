@@ -42,14 +42,17 @@ function shuffle<T>(arr: T[]): T[] {
 // ─── active block shape (internal to this module) ───────────────────────────
 
 interface ActiveBlock {
-  number: number
-  depotId: string
-  vehicleType: string
-  entries: SolverBlockTrip[]
-  lastLocalityId: string
-  lastArrivalMinutes: number
-  startMinutes: number
-  totalDeadrunKm: number
+  number:                number
+  depotId:               string
+  vehicleType:           string
+  entries:               SolverBlockTrip[]
+  lastLocalityId:        string
+  lastArrivalMinutes:    number
+  startMinutes:          number
+  totalDeadrunKm:        number
+  totalDeadrunMinutes:   number
+  totalProductiveKm:     number
+  totalProductiveMinutes: number
 }
 
 // ─── greedy helpers ──────────────────────────────────────────────────────────
@@ -113,7 +116,11 @@ function scoreBlocks(
   config: SolverPlanningConfig,
 ): SolverResult | null {
   let score = 100
-  let totalDeadrunKm = 0
+  let totalDeadrunKm        = 0
+  let totalDeadrunMinutes   = 0
+  let totalProductiveKm     = 0
+  let totalProductiveMinutes = 0
+  let totalBlockMinutes      = 0
 
   for (const block of blocks) {
     const duration = block.lastArrivalMinutes - block.startMinutes
@@ -130,28 +137,42 @@ function scoreBlocks(
     }
 
     for (const entry of block.entries) {
-      totalDeadrunKm += entry.deadheadKm
       if (entry.deadheadMinutes > config.maxDeadrunSoftMinutes) {
         const excess = entry.deadheadMinutes - config.maxDeadrunSoftMinutes
         score -= (excess / 10) * config.weightMinimizeDeadrun
       }
     }
+
+    totalDeadrunKm         += block.totalDeadrunKm
+    totalDeadrunMinutes    += block.totalDeadrunMinutes
+    totalProductiveKm      += block.totalProductiveKm
+    totalProductiveMinutes += block.totalProductiveMinutes
+    totalBlockMinutes      += duration
   }
 
   score -= blocks.length * config.weightMinimizeFleet
 
   return {
     blocks: blocks.map(b => ({
-      blockNumber: b.number,
-      depotId: b.depotId,
-      vehicleType: b.vehicleType,
-      trips: b.entries,
-      totalMinutes: b.lastArrivalMinutes - b.startMinutes,
-      totalKm: b.totalDeadrunKm,
+      blockNumber:       b.number,
+      depotId:           b.depotId,
+      vehicleType:       b.vehicleType,
+      trips:             b.entries,
+      totalMinutes:      b.lastArrivalMinutes - b.startMinutes,
+      productiveMinutes: b.totalProductiveMinutes,
+      deadrunMinutes:    b.totalDeadrunMinutes,
+      totalKm:           b.totalDeadrunKm + b.totalProductiveKm,
+      productiveKm:      b.totalProductiveKm,
+      deadrunKm:         b.totalDeadrunKm,
     })),
     score,
-    fleetCount: blocks.length,
-    deadrunKm: totalDeadrunKm,
+    fleetCount:        blocks.length,
+    deadrunKm:         totalDeadrunKm,
+    productiveKm:      totalProductiveKm,
+    totalKm:           totalDeadrunKm + totalProductiveKm,
+    deadrunMinutes:    totalDeadrunMinutes,
+    productiveMinutes: totalProductiveMinutes,
+    totalMinutes:      totalBlockMinutes,
   }
 }
 
@@ -167,39 +188,47 @@ function evaluateCandidate(cfg: SolverConfig): SolverResult | null {
   const blocks: ActiveBlock[] = []
 
   for (const trip of sorted) {
-    const best = findBestBlock(blocks, trip, matrix, config)
+    const tripKm      = getEdge(matrix, trip.originLocalityId, trip.destinationLocalityId)?.km ?? 0
+    const tripMinutes = trip.arrivalMinutes - trip.departureMinutes
+    const best        = findBestBlock(blocks, trip, matrix, config)
 
     if (best) {
       const { block, edge } = best
       block.entries.push({
-        tripId: trip.id,
-        sequence: block.entries.length + 1,
-        isDeadhead: false,
+        tripId:          trip.id,
+        sequence:        block.entries.length + 1,
+        isDeadhead:      false,
         deadheadMinutes: edge.minutes,
-        deadheadKm: edge.km,
+        deadheadKm:      edge.km,
       })
-      block.totalDeadrunKm += edge.km
-      block.lastLocalityId = trip.destinationLocalityId
-      block.lastArrivalMinutes = trip.arrivalMinutes
+      block.totalDeadrunKm         += edge.km
+      block.totalDeadrunMinutes    += edge.minutes
+      block.totalProductiveKm      += tripKm
+      block.totalProductiveMinutes += tripMinutes
+      block.lastLocalityId         = trip.destinationLocalityId
+      block.lastArrivalMinutes     = trip.arrivalMinutes
     } else {
       const depot = findBestDepot(depots, trip, matrix, config)
       if (!depot) return null
 
       const block: ActiveBlock = {
-        number: blocks.length + 1,
-        depotId: depot.localityId,
-        vehicleType: trip.requiredVehicleType ?? 'BUS',
+        number:                 blocks.length + 1,
+        depotId:                depot.localityId,
+        vehicleType:            trip.requiredVehicleType ?? 'BUS',
         entries: [{
-          tripId: trip.id,
-          sequence: 1,
-          isDeadhead: false,
+          tripId:          trip.id,
+          sequence:        1,
+          isDeadhead:      false,
           deadheadMinutes: depot.edge.minutes,
-          deadheadKm: depot.edge.km,
+          deadheadKm:      depot.edge.km,
         }],
-        lastLocalityId: trip.destinationLocalityId,
-        lastArrivalMinutes: trip.arrivalMinutes,
-        startMinutes: trip.departureMinutes - depot.edge.minutes,
-        totalDeadrunKm: depot.edge.km,
+        lastLocalityId:         trip.destinationLocalityId,
+        lastArrivalMinutes:     trip.arrivalMinutes,
+        startMinutes:           trip.departureMinutes - depot.edge.minutes,
+        totalDeadrunKm:         depot.edge.km,
+        totalDeadrunMinutes:    depot.edge.minutes,
+        totalProductiveKm:      tripKm,
+        totalProductiveMinutes: tripMinutes,
       }
       blocks.push(block)
     }

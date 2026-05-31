@@ -575,7 +575,7 @@ apps/api/src/modules/transit/
 - [x] `TripService` / `TripController` — sem `scopeField`; trips são globais
 - [x] `PlanningConfigService` extends `BaseSettingsService`
 - [x] `PlanningConfigController` extends `BaseSettingsController`
-- [ ] Implementar lógica de resolução de `DayType` para data real (usar `priority` + `pattern`)
+- [x] Implementar lógica de resolução de `DayType` para data real (usar `priority` + `pattern`)
 
 ### Etapa 4 — Solver ⚠️ parcialmente pendente
 

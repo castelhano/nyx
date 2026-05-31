@@ -7,6 +7,18 @@ export interface VehiclePlanConstraints {
   locked?: true    // entire plan is frozen — solver will not touch it in future runs
 }
 
+export const vehiclePlanSummarySchema = z.object({
+  fleetCount:        z.number(),
+  score:             z.number(),
+  deadrunKm:         z.number(),
+  productiveKm:      z.number(),
+  totalKm:           z.number(),
+  deadrunMinutes:    z.number(),
+  productiveMinutes: z.number(),
+  totalMinutes:      z.number(),
+})
+export type VehiclePlanSummary = z.infer<typeof vehiclePlanSummarySchema>
+
 export const vehiclePlanSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),

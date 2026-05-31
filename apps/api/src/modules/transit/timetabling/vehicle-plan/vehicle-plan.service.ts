@@ -5,6 +5,8 @@ import path from 'path'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { PlanningConfigService } from '../settings/planning-config/planning-config.service'
 import type { SolverConfig, SolverMessage, SolverResult } from './solver/solver.types'
+import type { VehiclePlanSummary } from '@nyx/schemas'
+import type { VehicleBlockSummary } from '@nyx/schemas'
 
 interface Job {
   worker: Worker
@@ -117,13 +119,22 @@ export class VehiclePlanService {
       await tx.vehicleBlock.deleteMany({ where: { vehiclePlanId: planId } })
 
       for (const block of best.blocks) {
+        const blockSummary: VehicleBlockSummary = {
+          totalMinutes:      block.totalMinutes,
+          productiveMinutes: block.productiveMinutes,
+          deadrunMinutes:    block.deadrunMinutes,
+          totalKm:           block.totalKm,
+          productiveKm:      block.productiveKm,
+          deadrunKm:         block.deadrunKm,
+        }
+
         const created = await tx.vehicleBlock.create({
           data: {
             vehiclePlanId: planId,
             blockNumber:   block.blockNumber,
             depotId:       block.depotId,
             vehicleType:   block.vehicleType as any,
-            summary:       { totalMinutes: block.totalMinutes, totalKm: block.totalKm },
+            summary:       blockSummary,
           },
         })
 
@@ -139,10 +150,21 @@ export class VehiclePlanService {
         })
       }
 
+      const planSummary: VehiclePlanSummary = {
+        fleetCount:        best.fleetCount,
+        score:             best.score,
+        deadrunKm:         best.deadrunKm,
+        productiveKm:      best.productiveKm,
+        totalKm:           best.totalKm,
+        deadrunMinutes:    best.deadrunMinutes,
+        productiveMinutes: best.productiveMinutes,
+        totalMinutes:      best.totalMinutes,
+      }
+
       await tx.vehiclePlan.update({
         where: { id: planId },
         data: {
-          summary:     { fleetCount: best.fleetCount, score: best.score, deadrunKm: best.deadrunKm },
+          summary:     planSummary,
           generatedAt: new Date(),
         },
       })

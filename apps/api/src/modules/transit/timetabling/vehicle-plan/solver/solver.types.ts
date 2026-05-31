@@ -46,19 +46,28 @@ export interface SolverBlockTrip {
 }
 
 export interface SolverBlock {
-  blockNumber: number
-  depotId: string
-  vehicleType: string
-  trips: SolverBlockTrip[]
-  totalMinutes: number
-  totalKm: number | null
+  blockNumber:       number
+  depotId:           string
+  vehicleType:       string
+  trips:             SolverBlockTrip[]
+  totalMinutes:      number
+  productiveMinutes: number
+  deadrunMinutes:    number
+  totalKm:           number
+  productiveKm:      number
+  deadrunKm:         number
 }
 
 export interface SolverResult {
-  blocks: SolverBlock[]
-  score: number
-  fleetCount: number
-  deadrunKm: number
+  blocks:            SolverBlock[]
+  score:             number
+  fleetCount:        number
+  deadrunKm:         number
+  productiveKm:      number
+  totalKm:           number
+  deadrunMinutes:    number
+  productiveMinutes: number
+  totalMinutes:      number
 }
 
 export type SolverMessage =

@@ -7,6 +7,16 @@ export interface VehicleBlockConstraints {
   locked?: true   // entire block is frozen — trips cannot be reassigned in future runs
 }
 
+export const vehicleBlockSummarySchema = z.object({
+  totalMinutes:      z.number(),
+  productiveMinutes: z.number(),
+  deadrunMinutes:    z.number(),
+  totalKm:           z.number(),
+  productiveKm:      z.number(),
+  deadrunKm:         z.number(),
+})
+export type VehicleBlockSummary = z.infer<typeof vehicleBlockSummarySchema>
+
 export const vehicleBlockSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
