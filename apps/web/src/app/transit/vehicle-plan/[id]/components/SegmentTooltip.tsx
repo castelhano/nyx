@@ -32,7 +32,10 @@ export function SegmentTooltip({ segment, rect }: Props) {
           <>
             <p className="font-semibold">{trip.route.line.code} — {trip.route.line.name}</p>
             <p className="text-muted-foreground text-xs mt-0.5">
-              {trip.route.originLocality.name} → {trip.route.destinationLocality.name}
+              <span className="font-medium text-foreground">
+                {trip.route.direction === 'OUTBOUND' ? 'IDA' : 'VOLTA'}
+              </span>
+              {' '}{trip.route.originLocality.name} → {trip.route.destinationLocality.name}
             </p>
           </>
         )}

@@ -197,6 +197,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
+        dayType: { select: { id: true, name: true, code: true } },
         lines: {
           include: { line: { select: { id: true, name: true, code: true } } },
         },

@@ -371,11 +371,19 @@ export default function VehiclePlanPage() {
                 {status === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
               </span>
             </span>
-            {ganttData?.blocks && (
-              <span>{ganttData.blocks.length} blocos</span>
+            {ganttData?.plan?.dayType && (
+              <span>Tipo: <span className="font-medium">{ganttData.plan.dayType.code}</span></span>
             )}
-            {ganttData?.plan?.lines && (
-              <span>{ganttData.plan.lines.length} linhas</span>
+            {ganttData?.plan?.lines != null && (
+              <span>{ganttData.plan.lines.length} {ganttData.plan.lines.length === 1 ? 'linha' : 'linhas'}</span>
+            )}
+            {ganttData?.blocks != null && (
+              <span>{ganttData.blocks.length} {ganttData.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
+            )}
+            {ganttData?.blocks != null && (
+              <span>
+                {ganttData.blocks.reduce((sum, b) => sum + b.blockTrips.length, 0)} viagens
+              </span>
             )}
             {activeJobId && (
               <span className="text-blue-600 animate-pulse">

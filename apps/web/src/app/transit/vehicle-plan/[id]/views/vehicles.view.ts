@@ -12,6 +12,7 @@ export interface GanttBlockTrip {
     departureMinutes: number
     arrivalMinutes:   number
     route: {
+      direction:           string
       line:                { id: string; code: string; name: string }
       originLocality:      { id: string; name: string }
       destinationLocality: { id: string; name: string }
@@ -32,6 +33,7 @@ export interface VehiclePlanGanttData {
     id:      string
     status:  string
     summary: unknown
+    dayType: { id: string; name: string; code: string } | null
     lines:   Array<{ lineId: string; line: { id: string; code: string; name: string } }>
   }
   blocks: GanttBlock[]
@@ -45,6 +47,17 @@ const PALETTE = [
   '#14b8a6', '#a855f7', '#f43f5e', '#0ea5e9', '#22c55e',
 ]
 const DEADHEAD_COLOR = '#d1d5db'
+
+// Blend hex color with white to produce a lighter variant for INBOUND trips
+function lightenHex(hex: string, amount = 0.45): string {
+  const r  = parseInt(hex.slice(1, 3), 16)
+  const g  = parseInt(hex.slice(3, 5), 16)
+  const b  = parseInt(hex.slice(5, 7), 16)
+  const lr = Math.round(r + (255 - r) * amount)
+  const lg = Math.round(g + (255 - g) * amount)
+  const lb = Math.round(b + (255 - b) * amount)
+  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
+}
 
 function lineColorMap(blocks: GanttBlock[]): Map<string, string> {
   const lineIds = [...new Set(blocks.flatMap((b) =>
@@ -90,6 +103,9 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         })
       }
 
+      const baseColor = colors.get(trip.route.line.id) ?? PALETTE[0]
+      const segColor  = trip.route.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
+
       segs.push({
         id:          bt.id,
         rowId:       row.id,
@@ -97,7 +113,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         endMinute:   trip.arrivalMinutes,
         isDeadhead:  false,
         label:       trip.route.line.code,
-        color:       colors.get(trip.route.line.id) ?? PALETTE[0],
+        color:       segColor,
         data:        bt,
       })
     }
