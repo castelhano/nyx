@@ -177,6 +177,55 @@ export class VehiclePlanService {
     job.worker.postMessage({ type: 'stop' })
   }
 
+  async addLine(planId: string, lineId: string): Promise<void> {
+    await this.prisma.vehiclePlanLine.create({
+      data: { vehiclePlanId: planId, lineId },
+    })
+  }
+
+  async removeLine(planId: string, lineId: string): Promise<void> {
+    await this.prisma.vehiclePlanLine.delete({
+      where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+    })
+  }
+
+  async getGanttData(planId: string) {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:   { id: planId },
+      include: {
+        lines: {
+          include: { line: { select: { id: true, name: true, code: true } } },
+        },
+      },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    const blocks = await this.prisma.vehicleBlock.findMany({
+      where:   { vehiclePlanId: planId },
+      orderBy: { blockNumber: 'asc' },
+      include: {
+        trips: {
+          orderBy: { sequence: 'asc' },
+          include: {
+            trip: {
+              include: {
+                route: {
+                  include: {
+                    line:                { select: { id: true, name: true, code: true } },
+                    originLocality:      { select: { id: true, name: true } },
+                    destinationLocality: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+
+    return { plan, blocks }
+  }
+
   async activate(planId: string): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:   { id: planId },

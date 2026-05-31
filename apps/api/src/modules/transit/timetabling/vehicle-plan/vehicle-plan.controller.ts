@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Post, Get, Delete, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { VehiclePlanService } from './vehicle-plan.service'
 import { JwtAuthGuard, JwtOrQueryGuard } from '../../../../auth/policies.guard'
@@ -42,5 +42,24 @@ export class VehiclePlanController {
   @HttpCode(200)
   activate(@Param('id') id: string) {
     return this.service.activate(id)
+  }
+
+  @Post(':id/lines')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  addLine(@Param('id') id: string, @Body('lineId') lineId: string) {
+    return this.service.addLine(id, lineId)
+  }
+
+  @Delete(':id/lines/:lineId')
+  @UseGuards(JwtAuthGuard)
+  removeLine(@Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.service.removeLine(id, lineId)
+  }
+
+  @Get(':id/gantt-data')
+  @UseGuards(JwtAuthGuard)
+  getGanttData(@Param('id') id: string) {
+    return this.service.getGanttData(id)
   }
 }

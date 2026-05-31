@@ -412,7 +412,7 @@ export default function UserDetailPage() {
         <div className={gridCls}>
           <label htmlFor="name" className={labelCls}>{lbl('name')}</label>
           <div className="space-y-1">
-            <div className="relative">
+            <div className={cn('relative', cls('name'))}>
               <Input
                 id="name"
                 autoFocus
@@ -453,8 +453,8 @@ export default function UserDetailPage() {
 
           <label htmlFor="role" className={labelCls}>{lbl('role')}</label>
           <Select id="role" wrapperClassName={cls('role')} keybind={kb('role')} {...register('role')}>
-            <option value="admin">{lbl('role')} - Admin</option>
-            <option value="operator">{lbl('role')} - Operador</option>
+            <option value="admin">Admin</option>
+            <option value="operator">Operador</option>
           </Select>
 
           <div className="md:col-start-2 flex items-center gap-2 pt-1">

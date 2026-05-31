@@ -231,7 +231,7 @@ VehiclePlan ──── VehiclePlanLine ──► TransitLine
 |---|---|---|
 | `dayTypeId` | FK DayType | tipo de dia que este plano cobre |
 | `status` | Enum | DRAFT / ACTIVE |
-| `summary` | Json? | preenchido pelo solver ao assumir: `{ fleetCount, score, deadrunKm, ... }` — extensível sem migrations |
+| `summary` | Json? | preenchido pelo solver ao assumir — shape `VehiclePlanSummary`: `{ fleetCount, score, deadrunKm, productiveKm, totalKm, deadrunMinutes, productiveMinutes, totalMinutes }` |
 | `generatedAt` | DateTime? | momento em que o melhor resultado foi assumido |
 | `constraints` | Json? | ver §2.4 |
 | `notes` | String? | — |
@@ -250,6 +250,10 @@ Define quais linhas o solver considera ao gerar este plano. Necessário também 
 | `vehiclePlanId` | FK VehiclePlan | cascade delete |
 | `lineId` | FK TransitLine | — |
 
+Gerenciado via endpoints no `VehiclePlanController` (sem controller próprio — join table simples):
+- `POST /transit/vehicle-plan/:id/lines` `{ lineId }` — adiciona linha ao escopo
+- `DELETE /transit/vehicle-plan/:id/lines/:lineId` — remove linha do escopo
+
 #### `VehicleBlock` — sequência de trabalho de um veículo
 
 | Campo | Tipo | Notas |
@@ -259,7 +263,7 @@ Define quais linhas o solver considera ao gerar este plano. Necessário também 
 | `blockNumber` | Int | identificador dentro do plano |
 | `depotId` | FK TransitLocality | garagem de origem e retorno |
 | `vehicleType` | Enum | tipo de veículo alocado |
-| `summary` | Json? | preenchido pelo solver: `{ totalMinutes, totalKm, deadrunKm, ... }` |
+| `summary` | Json? | preenchido pelo solver — shape `VehicleBlockSummary`: `{ totalMinutes, productiveMinutes, deadrunMinutes, totalKm, productiveKm, deadrunKm }` |
 | `constraints` | Json? | ver §2.4 |
 
 **Atribuição de empresa:**
@@ -355,8 +359,8 @@ Usuario clica "Assumir Melhor"
         ▼
 POST /transit/vehicle-plan/:id/assume
         └── persiste o best atual → VehicleBlocks criados (branchId: null)
-            plan.summary = { fleetCount, score, deadrunKm }
-            block.summary = { totalMinutes, totalKm } por bloco
+            plan.summary  = { fleetCount, score, deadrunKm, productiveKm, totalKm, deadrunMinutes, productiveMinutes, totalMinutes }
+            block.summary = { totalMinutes, productiveMinutes, deadrunMinutes, totalKm, productiveKm, deadrunKm } por bloco
 
 Usuario atribui empresa(s) aos blocos → status permanece DRAFT até ativar
 
@@ -535,11 +539,13 @@ apps/api/src/modules/transit/
       trip.service.ts            extends BaseService (sem scopeField — trips são globais)
       trip.controller.ts
     vehicle-plan/
-      vehicle-plan.service.ts    NÃO extends BaseService — lógica custom
-      vehicle-plan.controller.ts NÃO extends BaseController — endpoints SSE + ativação
+      vehicle-plan.service.ts    NÃO extends BaseService — generate, assume, activate, addLine, removeLine, getGanttData
+      vehicle-plan.controller.ts NÃO extends BaseController — SSE + ativação + gestão de linhas + gantt-data
+      vehicle-block.service.ts   extends BaseService — CRUD padrão; hidden: true (gerido pela UI do plano)
+      vehicle-block.controller.ts extends BaseController
       solver/
         solver.worker.ts         worker_threads — loop de otimização
-        solver.types.ts          SolverResult, SolverConfig, SolverMessage
+        solver.types.ts          SolverResult, SolverConfig, SolverMessage, VehiclePlanSummary, VehicleBlockSummary
     settings/
       planning-config/
         planning-config.service.ts    extends BaseSettingsService
@@ -577,15 +583,18 @@ apps/api/src/modules/transit/
 - [x] `PlanningConfigController` extends `BaseSettingsController`
 - [x] Implementar lógica de resolução de `DayType` para data real (usar `priority` + `pattern`)
 
-### Etapa 4 — Solver ⚠️ parcialmente pendente
+### Etapa 4 — Solver ✅
 
-- [x] Tipos em `solver.types.ts`
-- [x] `solver.worker.ts` com loop, score, constraints, critérios de parada
+- [x] Tipos em `solver.types.ts` — `SolverBlock` e `SolverResult` com métricas completas
+- [x] `VehiclePlanSummary` e `VehicleBlockSummary` como schemas Zod tipados em `packages/schemas`
+- [x] `solver.worker.ts` com loop, score, constraints, critérios de parada, métricas completas por bloco
 - [x] `VehiclePlanService.generate()` — busca trips via `VehiclePlanLine → lineId → route → trip`
-- [x] `VehiclePlanService.assumeBest()` — persiste blocos com `summary` JSON
+- [x] `VehiclePlanService.assumeBest()` — persiste blocos com `summary` tipado (8 campos)
 - [x] `VehiclePlanService.activate()` — valida sobreposição de linhas; status `ACTIVE`
-- [x] `VehiclePlanController` — endpoints: `generate`, `stream` (SSE), `assume`, `stop`, `activate`
-- [ ] `VehicleBlock.branchId` — preencher automaticamente no `assumeBest()` quando o escopo do plano tiver empresa única
+- [x] `VehiclePlanService.addLine()` / `removeLine()` — gestão do escopo de linhas
+- [x] `VehiclePlanService.getGanttData()` — retorna plano + blocos + viagens aninhadas para o Gantt
+- [x] `VehiclePlanController` — endpoints: `generate`, `stream` (SSE), `assume`, `stop`, `activate`, `lines`, `gantt-data`
+- [x] `VehicleBlockService` / `VehicleBlockController` — CRUD padrão; schema com `hidden: true`
 
 ### Etapa 5 — Relatórios
 
@@ -596,12 +605,20 @@ apps/api/src/modules/transit/
 ### Etapa 6 — Frontend
 
 - [x] Páginas genéricas (AutoList + AutoForm) para todos os resources CRUD
+- [ ] Gantt engine (`app/transit/vehicle-plan/[id]/engine/`) — ver §9:
+  - [ ] `viewport.ts` — conversão tempo↔pixel, zoom, scroll
+  - [ ] `layout/sequential.layout.ts` — posicionamento de blocos
+  - [ ] `renderer.ts` — draw calls canvas
+  - [ ] `hit-tester.ts` — índice espacial para interação
+  - [ ] `interaction.ts` — eventos DOM → engine
+  - [ ] `gantt-engine.ts` — coordenador
 - [ ] Página customizada `app/transit/vehicle-plan/[id]/page.tsx`:
-  - [ ] Seleção de linhas (escopo) e dayType ao criar o plano
+  - [ ] `GanttBoard` + `TimeRuler` + `RowList` + `SegmentTooltip`
+  - [ ] `ViewSwitcher` — visão veículos / linhas / garagens
+  - [ ] Seleção de linhas (escopo) via `POST/DELETE .../lines`
   - [ ] Topbar: Gerar / Parar / Assumir Melhor / Ativar
   - [ ] Painel de progresso SSE
-  - [ ] Lista de blocos com atribuição de empresa por bloco (ou em lote)
-  - [ ] Indicadores visuais de constraints (lock icons)
+  - [ ] Atribuição de `branchId` por bloco inline no Gantt
 
 ---
 
@@ -628,7 +645,185 @@ apps/api/src/modules/transit/
 
 ---
 
-## 9. Referências
+## 9. Arquitetura de UI — Gantt Views
+
+As páginas de planejamento do domínio transit são **todas custom pages**. A visualização central é um diagrama de Gantt com régua de tempo horizontal e linhas verticais representando veículos, motoristas, escalas, etc. Múltiplas "visões" do mesmo conjunto de dados serão suportadas.
+
+### 9.1 Estratégia de renderização
+
+Renderizar cada viagem/bloco como elemento DOM individual é inviável: 50 veículos × 200 viagens = 10 000 nós, com reconciliação React a cada troca de visão.
+
+**Solução:** `<canvas>` para a área de dados (segmentos, blocos, cores), DOM apenas para elementos pontuais (régua, labels, tooltips, painéis de edição).
+
+```
+┌─ wrapper  (position: relative; overflow: hidden) ──────────────┐
+│  canvas   (position: absolute; top:0; left:0; 100%×100%)       │  ← todos os segmentos
+│  overlays (position: absolute; top:0; left:0; 100%×100%;       │  ← tooltips, painéis
+│            pointer-events: none)                               │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Canvas e overlays DOM compartilham o mesmo pai posicionado → mesmo sistema de coordenadas → alinhamento garantido.
+
+### 9.2 Sistema de coordenadas e DPR
+
+O engine opera exclusivamente em **CSS pixels**. O DPR (device pixel ratio) é tratado **uma única vez**, na inicialização do buffer:
+
+```typescript
+const dpr = window.devicePixelRatio ?? 1
+canvas.width  = canvas.clientWidth  * dpr
+canvas.height = canvas.clientHeight * dpr
+ctx.scale(dpr, dpr)
+// a partir daqui: ctx.fillRect(x, y, w, h) usa CSS pixels
+// overlays DOM: style.left = x + 'px' usa o mesmo valor
+```
+
+Após esse setup, `engine.getSegmentRect(id)` retorna CSS pixels que o overlay DOM aplica diretamente como `left`/`top`.
+
+### 9.3 Sincronização de scroll
+
+O canvas não scrolleia — ele redesenha com offset. `RowList` (DOM virtualizado) e canvas leem da mesma fonte:
+
+```
+┌─ board ──────────────────────────────────────────────┐
+│  TimeRuler  (DOM, sticky topo)                       │
+│  ┌─ RowList (overflow-y: hidden) ─┐                  │
+│  │  scrollTop ← viewport.scrollY  │  (DOM)           │
+│  └──────────────────────────────  ┘                  │
+│  canvas  →  desenha com translateY = -viewport.scrollY│
+└──────────────────────────────────────────────────────┘
+```
+
+`viewport.scrollY` é a única fonte de verdade. Nunca dessincronizam.
+
+### 9.4 Visões como configuração
+
+Trocar de visão não desmonta componentes — apenas substitui a configuração de renderização e redesenha o canvas.
+
+```typescript
+interface GanttView<TData> {
+  getRows:      (data: TData) => GanttRow[]
+  getSegments:  (row: GanttRow, data: TData) => GanttSegment[]
+  getRowLabel:  (row: GanttRow) => string
+  segmentColor: (seg: GanttSegment) => string
+  onSegmentClick?: (seg: GanttSegment, pos: Point) => void
+  editable?:    boolean
+}
+
+// trocar de visão = ~milliseconds
+engine.setView(vehiclesView, planData)
+```
+
+Visões previstas (Fase 1/2/3):
+
+| Visão | Linhas verticais | Segmentos |
+|---|---|---|
+| Veículos | Um veículo (bloco) por linha | Viagens produtivas + dead runs |
+| Motoristas | Um motorista por linha | Turnos + intervalos |
+| Linhas | Uma linha de ônibus por linha | Viagens por horário |
+| Garagens | Uma garagem por linha | Blocos que partem/chegam |
+
+### 9.5 Arquitetura do engine — especialistas
+
+O engine é um **coordenador**: mantém estado central e delega toda lógica a módulos especializados. Nenhuma lógica de negócio vive no arquivo principal.
+
+```
+app/transit/vehicle-plan/[id]/
+  engine/
+    gantt-engine.ts          ← coordenador: estado + API pública
+    viewport.ts              ← tempo↔pixel, zoom, scroll, range visível
+    renderer.ts              ← primitivas canvas (drawBlock, drawLabel, drawRuler…)
+    hit-tester.ts            ← índice espacial, pointInRect, hover/click resolution
+    interaction.ts           ← eventos DOM → comandos para o engine
+    layout/
+      layout.types.ts        ← interfaces: LayoutRow, LayoutSegment, LayoutStrategy
+      sequential.layout.ts   ← blocos lado a lado sem sobreposição (padrão)
+      overlap.layout.ts      ← faixas com sobreposição (ex: motoristas com folga)
+      compact.layout.ts      ← empilha blocos, minimiza altura de linha
+```
+
+**Responsabilidade de cada especialista:**
+
+| Módulo | O que faz | O que NÃO sabe |
+|---|---|---|
+| `viewport.ts` | Converte tempo↔pixel, gerencia zoom/scroll/pan, calcula range visível | Canvas, dados de viagem |
+| `renderer.ts` | Recebe rows já posicionadas + viewport, executa draw calls | Dados de domínio, eventos |
+| `hit-tester.ts` | Indexa rects dos segmentos visíveis, responde `hitTest(point)` | Canvas, visões |
+| `interaction.ts` | Traduz mouse/touch/keyboard em chamadas ao engine | Canvas, dados |
+| `layout/*.ts` | Recebe rows brutas, devolve rows com `y`, `height`, `lanes` calculados | Canvas, eventos |
+
+**Coordenador — contrato mínimo:**
+
+```typescript
+class GanttEngine {
+  readonly viewport:    Viewport
+  readonly renderer:    Renderer
+  readonly hitTester:   HitTester
+  readonly interaction: Interaction
+  private  layout:      LayoutStrategy
+
+  // troca de layout sem desmontar nada
+  setLayout(strategy: LayoutStrategy): void
+
+  // troca de visão sem desmontar nada
+  setView<T>(view: GanttView<T>, data: T): void
+
+  // expõe posição de um segmento em CSS pixels para overlays DOM
+  getSegmentRect(segId: string): DOMRect | null
+
+  // agenda requestAnimationFrame se ainda não agendado
+  private invalidate(): void
+}
+```
+
+### 9.6 Hit testing e edição
+
+O canvas não dispara eventos por segmento — o container captura e o engine resolve:
+
+```typescript
+canvas.addEventListener('click', (e) => {
+  const seg = engine.hitTest({ x: e.offsetX, y: e.offsetY })
+  if (seg) openEditPanel(seg)   // monta DOM sob demanda
+})
+```
+
+`hitTester.index()` é chamado após cada `setView()` ou redraw. Itera apenas os segmentos no viewport atual — O(visible) não O(total).
+
+### 9.7 Estrutura de componentes React
+
+```
+app/transit/vehicle-plan/[id]/
+  page.tsx                      ← custom page: topbar actions, AutoBreadcrumb
+  components/
+    GanttBoard.tsx              ← orquestra canvas + overlays + engine lifecycle
+    TimeRuler.tsx               ← DOM sticky, régua de tempo
+    RowList.tsx                 ← DOM virtualizado (só linhas visíveis)
+    SegmentTooltip.tsx          ← overlay DOM posicionado via engine.getSegmentRect()
+    EditPanel.tsx               ← painel lateral/modal para edições inline
+    ViewSwitcher.tsx            ← botões de troca de visão → engine.setView()
+  engine/
+    …                           ← (ver §9.5)
+  views/
+    vehicles.view.ts
+    drivers.view.ts             ← Fase 2
+    lines.view.ts
+```
+
+### 9.8 Ordem de implementação sugerida
+
+1. **`viewport.ts`** — fundação matemática; todos os outros dependem dele
+2. **`layout/layout.types.ts` + `sequential.layout.ts`** — layout padrão para veículos
+3. **`renderer.ts`** — desenha rows já posicionadas; resultado visível imediato
+4. **`hit-tester.ts`** — habilita interação
+5. **`interaction.ts`** — scroll, zoom, click
+6. **`gantt-engine.ts`** — conecta tudo
+7. **`vehicles.view.ts`** — primeira visão concreta
+8. **Componentes React** (`GanttBoard`, `TimeRuler`, `RowList`) — integra ao Next.js
+9. **`EditPanel`** + ações de topbar — edição inline de blocos
+
+---
+
+## 10. Referências
 
 - `docs/architecture/ARCHITECTURE.md` — arquitetura geral do sistema
 - `apps/api/prisma/schema/transit.prisma` — modelos Prisma

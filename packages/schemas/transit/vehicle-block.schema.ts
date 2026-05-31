@@ -79,9 +79,7 @@ export const vehicleBlockSchema = withMeta(
     label:       'Bloco de Veículo',
     labelPlural: 'Blocos de Veículo',
     nameField:   'blockNumber',
-    breadcrumb:  [
-      { resource: 'vehicle-plan', contextField: 'vehiclePlanId', listLabel: 'Planejamentos', nameField: 'status', keybind: 'f9' },
-    ],
+    hidden:      true,
     defaultSort: { field: 'blockNumber', order: 'asc' },
   },
 )
