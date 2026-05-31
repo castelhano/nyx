@@ -9,7 +9,7 @@ export const travelTimeSchema = withMeta(
     originId: z.uuid().meta({
       label:          'Origem',
       widget:         'select',
-      resource:       'locality',
+      resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
@@ -20,7 +20,7 @@ export const travelTimeSchema = withMeta(
     destinationId: z.uuid().meta({
       label:          'Destino',
       widget:         'select',
-      resource:       'locality',
+      resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',

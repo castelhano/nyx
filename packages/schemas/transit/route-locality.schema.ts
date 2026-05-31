@@ -15,7 +15,7 @@ export const routeLocalitySchema = withMeta(
     localityId: z.uuid().meta({
       label:          'Localidade',
       widget:         'select',
-      resource:       'locality',
+      resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',

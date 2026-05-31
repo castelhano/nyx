@@ -45,7 +45,7 @@ export const planningConfigSchema = withMeta(
       max:      180,
     }),
 
-    blockDurationMinMinutes: z.number().int().min(0).max(720).default(360).meta({
+    blockDurationMinMinutes: z.number().int().min(0).max(720).default(0).meta({
       label:    'Duração Mínima do Bloco (min)',
       helpText: 'Blocos abaixo deste valor são descartados',
       widget:   'stepper',

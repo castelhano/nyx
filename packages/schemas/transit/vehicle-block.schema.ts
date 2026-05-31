@@ -37,11 +37,11 @@ export const vehicleBlockSchema = withMeta(
     depotId: z.uuid().meta({
       label:          'Garagem',
       widget:         'select',
-      resource:       'locality',
+      resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      filter:         { type: 'relation', endpoint: 'transit/locality', labelField: 'name' },
+      filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       keybind:        'g',
     }),
 

@@ -33,7 +33,7 @@ export const routeSchema = withMeta(
     originLocalityId: z.uuid().meta({
       label:          'Origem',
       widget:         'select',
-      resource:       'locality',
+      resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
@@ -43,7 +43,7 @@ export const routeSchema = withMeta(
     destinationLocalityId: z.uuid().meta({
       label:          'Destino',
       widget:         'select',
-      resource:       'locality',
+      resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',

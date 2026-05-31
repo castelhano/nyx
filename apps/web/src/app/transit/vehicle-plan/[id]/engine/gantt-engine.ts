@@ -23,6 +23,7 @@ export class GanttEngine {
   private canvas!:     HTMLCanvasElement
   private ctx!:        CanvasRenderingContext2D
   private rafPending   = false
+  private ready        = false
 
   private layoutRows:  LayoutRow[]     = []
   private segments:    LayoutSegment[] = []
@@ -37,12 +38,14 @@ export class GanttEngine {
     this.canvas = canvas
     const ctx   = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas 2D context not available')
-    this.ctx = ctx
+    this.ctx   = ctx
+    this.ready = true
 
     this.applyDpr()
     this.renderer.init(this.ctx)
     this.interaction.init(this, canvas)
-    this.requestDraw()
+    this.notify()       // propagate correct width/height to React
+    this.requestDraw()  // draw any view set before init
   }
 
   dispose(): void {
@@ -52,6 +55,7 @@ export class GanttEngine {
   resize(width: number, height: number): void {
     this.viewport.resize(width, height)
     this.applyDpr()
+    this.notify()
     this.requestDraw()
   }
 
@@ -109,7 +113,7 @@ export class GanttEngine {
   }
 
   requestDraw(): void {
-    if (this.rafPending) return
+    if (!this.ready || this.rafPending) return
     this.rafPending = true
     requestAnimationFrame(() => {
       this.rafPending = false

@@ -15,7 +15,7 @@ export const blockTripSchema = withMeta(
     tripId: z.uuid().meta({
       label:          'Viagem',
       widget:         'select',
-      resource:       'trip',
+      resource:       'transit-trip',
       domain:         'transit',
       labelField:     'departureMinutes',
       listVisibility: 'visible',

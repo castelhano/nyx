@@ -9,19 +9,23 @@ import { usePageGuard }      from '@/core/usePageGuard'
 import { useRecordQuery }    from '@/core/useRecordQuery'
 import { useTopbarActions }  from '@/components/layout/topbar-actions-context'
 import { useShortcut }       from '@/lib/keywatch'
-import { apiFetch }          from '@/lib/auth'
+import { apiFetch, getToken } from '@/lib/auth'
 import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
 import { GanttBoard }        from './components/GanttBoard'
+import { LinesPanel }        from './components/LinesPanel'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
 
 interface SolverProgress {
-  type:       'progress' | 'best' | 'done' | 'error'
-  score?:     number
-  iteration?: number
-  message?:   string
+  type:        'progress' | 'improvement' | 'done'
+  attempt?:    number
+  bestScore?:  number
+  bestFleet?:  number
+  deadrunKm?:  number
+  elapsed?:    number
+  stopReason?: string
 }
 
 function useSolverStream(planId: string, jobId: string | null, onDone: () => void) {
@@ -36,15 +40,16 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
       return
     }
 
-    const token = document.cookie.match(/token=([^;]+)/)?.[1] ?? ''
+    const token = getToken()
     const url   = `/api/transit/vehicle-plan/${planId}/stream?jobId=${jobId}&token=${encodeURIComponent(token)}`
     const es    = new EventSource(url)
 
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data) as SolverProgress
-        setProgress(data)
-        if (data.type === 'done' || data.type === 'error') {
+        // only update display for progress messages; improvement/done don't carry attempt stats
+        if (data.type === 'progress') setProgress(data)
+        if (data.type === 'done') {
           es.close()
           onDone()
         }
@@ -63,6 +68,100 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
   return progress
 }
 
+// ── creation form (shown when id === 'new') ───────────────────────────────────
+
+interface DayType { id: string; name: string; code: string }
+
+function NewPlanForm() {
+  const router    = useRouter()
+  const { toast } = useToast()
+
+  const [dayTypeId, setDayTypeId] = useState('')
+  const [isPending, setIsPending] = useState(false)
+
+  const { data: dayTypes = [] } = useQuery<DayType[]>({
+    queryKey: ['transit', 'day-type', 'list'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/day-type')
+      if (!res.ok) throw new Error('Erro ao carregar tipos de dia')
+      const json = await res.json()
+      return json.data ?? json
+    },
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    if (!dayTypeId && dayTypes.length > 0) setDayTypeId(dayTypes[0].id)
+  }, [dayTypes, dayTypeId])
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!dayTypeId) return
+    setIsPending(true)
+    try {
+      const res = await apiFetch('/transit/vehicle-plan', {
+        method: 'POST',
+        body:   JSON.stringify({ dayTypeId }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      const created = await res.json()
+      router.push(`/transit/vehicle-plan/${created.id}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar planejamento')
+      setIsPending(false)
+    }
+  }
+
+  return (
+    <div className="flex-1 flex items-center justify-center p-8">
+      <form
+        onSubmit={handleCreate}
+        className="w-full max-w-sm space-y-6 border border-border rounded-md p-6 bg-card"
+      >
+        <div>
+          <h2 className="text-base font-semibold">Novo Planejamento</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Selecione o tipo de dia para iniciar. As linhas podem ser adicionadas em seguida.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="dayTypeId" className="text-sm font-medium">
+            Tipo de Dia <span className="text-destructive">*</span>
+          </label>
+          <div className="relative">
+            <select
+              id="dayTypeId"
+              value={dayTypeId}
+              onChange={e => setDayTypeId(e.target.value)}
+              required
+              className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+            >
+              {dayTypes.map(dt => (
+                <option key={dt.id} value={dt.id}>{dt.name}</option>
+              ))}
+            </select>
+            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={isPending || !dayTypeId}
+            className="px-4 py-2 text-sm font-medium rounded-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isPending ? 'Criando…' : 'Criar Planejamento'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 // ── page ──────────────────────────────────────────────────────────────────────
 
 export default function VehiclePlanPage() {
@@ -73,8 +172,9 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  const [isPending,   setIsPending]   = useState(false)
-  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [isPending,    setIsPending]    = useState(false)
+  const [activeJobId,  setActiveJobId]  = useState<string | null>(null)
+  const [linesPanelOpen, setLinesPanelOpen] = useState(false)
 
   // ── data ────────────────────────────────────────────────────────────────────
 
@@ -124,6 +224,7 @@ export default function VehiclePlanPage() {
         throw new Error(extractError(json))
       }
       setActiveJobId(jobId)
+      setIsPending(false)  // solver is now running; pending was only for the POST
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao iniciar geração')
       setIsPending(false)
@@ -185,53 +286,74 @@ export default function VehiclePlanPage() {
   const status = record?.status as string | undefined
 
   useTopbarActions([
+    // lines panel toggle — always visible for existing plans
+    ...(!isNew ? [{
+      label:   'Linhas',
+      icon:    Icons.List,
+      onClick: () => setLinesPanelOpen(v => !v),
+    }] : []),
     // stop + assume visible only while solver is running
     ...(activeJobId ? [
       {
-        label:   'Parar',
-        icon:    Icons.Square,
-        onClick: handleStop,
+        label:    'Parar',
+        icon:     Icons.Square,
+        onClick:  handleStop,
         disabled: isPending,
       },
       {
-        label:   'Assumir Melhor',
-        icon:    Icons.Download,
-        onClick: handleAssumeBest,
+        label:    'Assumir Melhor',
+        icon:     Icons.Download,
+        onClick:  handleAssumeBest,
         disabled: isPending,
       },
     ] : []),
     // generate visible when not running and can update
     ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
       {
-        label:   isPending ? 'Gerando…' : 'Gerar',
-        icon:    Icons.Play,
-        onClick: handleGenerate,
+        label:    isPending ? 'Gerando…' : 'Gerar',
+        icon:     Icons.Play,
+        onClick:  handleGenerate,
         disabled: isPending,
-        primary: true,
+        primary:  true,
       },
     ] : []),
     // activate only for DRAFT plans not currently solving
     ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
       {
-        label:   isPending ? 'Ativando…' : 'Ativar',
-        icon:    Icons.CheckCircle,
-        onClick: handleActivate,
+        label:    isPending ? 'Ativando…' : 'Ativar',
+        icon:     Icons.CheckCircle,
+        onClick:  handleActivate,
         disabled: isPending,
       },
     ] : []),
-  ], [isPending, activeJobId, canUpdate, status])
+  ], [isPending, activeJobId, canUpdate, status, isNew, linesPanelOpen])
 
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
   useShortcut('alt+v', () => router.push('/transit/vehicle-plan'), {
-    desc: 'Voltar', icon: Icons.ArrowLeft,
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    desc:    'Voltar',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     context: 'all',
   })
 
   // ── render ─────────────────────────────────────────────────────────────────
 
   if (guardNode) return guardNode
+
+  // ── new plan: show creation form ───────────────────────────────────────────
+  if (isNew) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <div className="px-6 pt-4 pb-2 shrink-0">
+          <AutoBreadcrumb domain="transit" resource="vehicle-plan" id={id} />
+        </div>
+        <NewPlanForm />
+      </div>
+    )
+  }
+
+  // ── existing plan ──────────────────────────────────────────────────────────
 
   const recordName = record ? String(record.status ?? '') : undefined
 
@@ -255,28 +377,41 @@ export default function VehiclePlanPage() {
             {ganttData?.plan?.lines && (
               <span>{ganttData.plan.lines.length} linhas</span>
             )}
-            {activeJobId && solverProgress && (
+            {activeJobId && (
               <span className="text-blue-600 animate-pulse">
-                {solverProgress.type === 'progress' && solverProgress.iteration
-                  ? `Iteração ${solverProgress.iteration}`
+                {solverProgress?.attempt != null
+                  ? `Tentativa ${solverProgress.attempt}`
                   : 'Calculando…'}
-                {solverProgress.score != null && ` — score ${solverProgress.score.toFixed(2)}`}
+                {solverProgress?.bestFleet != null && ` — ${solverProgress.bestFleet} blocos`}
+                {solverProgress?.bestScore != null && `, score ${solverProgress.bestScore.toFixed(1)}`}
               </span>
             )}
           </div>
         )}
       </div>
 
-      {/* gantt board takes remaining height */}
-      <div className="flex-1 min-h-0 border-t">
-        {ganttData ? (
-          <GanttBoard data={ganttData} />
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            {isNew
-              ? 'Salve o planejamento antes de visualizar o Gantt.'
-              : 'Carregando…'}
-          </div>
+      {/* gantt + lines panel */}
+      <div className="flex flex-1 min-h-0 border-t overflow-hidden">
+        <div className="flex-1 min-w-0">
+          {ganttData ? (
+            <GanttBoard data={ganttData} />
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+              Carregando…
+            </div>
+          )}
+        </div>
+
+        {linesPanelOpen && (
+          <LinesPanel
+            planId={id}
+            currentLines={ganttData?.plan?.lines ?? []}
+            onClose={() => setLinesPanelOpen(false)}
+            onChanged={async () => {
+              await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+              await refetchGantt()
+            }}
+          />
         )}
       </div>
     </div>

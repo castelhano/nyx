@@ -1,13 +1,15 @@
-import { Controller, Post, Get, Delete, Patch, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Post, Get, Delete, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
-import { JwtAuthGuard, JwtOrQueryGuard } from '../../../../auth/policies.guard'
+import { JwtOrQueryGuard } from '../../../../auth/policies.guard'
 import { VehiclePlanService } from './vehicle-plan.service'
 
+// JwtOrQueryGuard at class level covers both normal Bearer-header auth and the SSE
+// stream endpoint, which passes the JWT as ?token= because EventSource cannot set headers.
 @Controller('transit/vehicle-plan')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtOrQueryGuard)
 export class VehiclePlanController extends BaseController<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
   constructor(
     private readonly vehiclePlanService: VehiclePlanService,
@@ -23,7 +25,6 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
   }
 
   @Sse(':id/stream')
-  @UseGuards(JwtOrQueryGuard)
   stream(
     @Param('id') _id: string,
     @Query('jobId') jobId: string,
