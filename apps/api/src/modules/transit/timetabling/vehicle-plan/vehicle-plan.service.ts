@@ -24,17 +24,23 @@ export class VehiclePlanService {
   ) {}
 
   async generate(planId: string, jobId: string): Promise<void> {
-    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:   { id: planId },
+      include: { lines: { select: { lineId: true } } },
+    })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if ((plan.constraints as any)?.locked) throw new BadRequestException('Plan is locked')
-    if (plan.status === 'CONFIRMED') throw new BadRequestException('Confirmed plan cannot be regenerated')
+    if (plan.status === 'ACTIVE') throw new BadRequestException('Active plan cannot be regenerated')
+
+    const lineIds = plan.lines.map(l => l.lineId)
+    if (lineIds.length === 0) throw new BadRequestException('Plan has no lines defined')
 
     const [trips, matrix, depotLocalities, config] = await Promise.all([
       this.prisma.transitTrip.findMany({
-        where: { branchId: plan.branchId, dayTypeId: plan.dayTypeId },
+        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } } },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true } } },
       }),
-      this.prisma.travelTimeMatrix.findMany({ where: { branchId: plan.branchId } }),
+      this.prisma.travelTimeMatrix.findMany(),
       this.prisma.transitLocality.findMany({ where: { isDepot: true }, select: { id: true } }),
       this.planningConfig.get(),
     ])
@@ -43,32 +49,24 @@ export class VehiclePlanService {
 
     const matrixMap: Record<string, { minutes: number; km: number }> = {}
     for (const m of matrix) {
-      matrixMap[`${m.originId}:${m.destinationId}`] = {
-        minutes: m.baseMinutes,
-        km: m.distanceKm,
-      }
+      matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes, km: m.distanceKm }
     }
 
     const solverConfig: SolverConfig = {
       planId,
       config,
       trips: trips.map(t => ({
-        id: t.id,
-        originLocalityId: t.route.originLocalityId,
+        id:                   t.id,
+        originLocalityId:     t.route.originLocalityId,
         destinationLocalityId: t.route.destinationLocalityId,
-        departureMinutes: t.departureMinutes,
-        arrivalMinutes: t.arrivalMinutes,
-        requiredVehicleType: t.requiredVehicleType ?? null,
-        constraints: t.constraints as any ?? null,
+        departureMinutes:     t.departureMinutes,
+        arrivalMinutes:       t.arrivalMinutes,
+        requiredVehicleType:  t.requiredVehicleType ?? null,
+        constraints:          t.constraints as any ?? null,
       })),
       matrix: matrixMap,
       depots: depotLocalities.map(d => d.id),
     }
-
-    await this.prisma.vehiclePlan.update({
-      where: { id: planId },
-      data: { status: 'PROCESSING' },
-    })
 
     const isTs = __filename.endsWith('.ts')
     const workerFile = path.join(__dirname, 'solver', `solver.worker${isTs ? '.ts' : '.js'}`)
@@ -85,9 +83,6 @@ export class VehiclePlanService {
       if (msg.type === 'done') {
         messages$.complete()
         this.jobs.delete(jobId)
-        this.prisma.vehiclePlan
-          .update({ where: { id: planId }, data: { status: job.best ? 'READY' : 'DRAFT' } })
-          .catch(err => this.logger.error('Failed to update plan status after done', err))
       }
     })
 
@@ -95,9 +90,6 @@ export class VehiclePlanService {
       this.logger.error(`Solver worker error for job ${jobId}`, err)
       messages$.error(err)
       this.jobs.delete(jobId)
-      this.prisma.vehiclePlan
-        .update({ where: { id: planId }, data: { status: 'DRAFT' } })
-        .catch(() => {})
     })
   }
 
@@ -107,8 +99,8 @@ export class VehiclePlanService {
 
     return new Observable(subscriber => {
       const sub = job.messages$.subscribe({
-        next: msg => subscriber.next({ data: JSON.stringify(msg) }),
-        error: err => subscriber.error(err),
+        next:     msg => subscriber.next({ data: JSON.stringify(msg) }),
+        error:    err => subscriber.error(err),
         complete: () => subscriber.complete(),
       })
       return () => sub.unsubscribe()
@@ -131,8 +123,7 @@ export class VehiclePlanService {
             blockNumber:   block.blockNumber,
             depotId:       block.depotId,
             vehicleType:   block.vehicleType as any,
-            totalMinutes:  block.totalMinutes,
-            totalKm:       block.totalKm,
+            summary:       { totalMinutes: block.totalMinutes, totalKm: block.totalKm },
           },
         })
 
@@ -151,10 +142,7 @@ export class VehiclePlanService {
       await tx.vehiclePlan.update({
         where: { id: planId },
         data: {
-          status:      'READY',
-          fleetCount:  best.fleetCount,
-          score:       best.score,
-          deadrunKm:   best.deadrunKm,
+          summary:     { fleetCount: best.fleetCount, score: best.score, deadrunKm: best.deadrunKm },
           generatedAt: new Date(),
         },
       })
@@ -167,27 +155,29 @@ export class VehiclePlanService {
     job.worker.postMessage({ type: 'stop' })
   }
 
-  async confirm(planId: string): Promise<void> {
-    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
+  async activate(planId: string): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:   { id: planId },
+      include: { lines: { select: { lineId: true } } },
+    })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (plan.status !== 'READY') throw new BadRequestException('Only READY plans can be confirmed')
+    if (plan.status === 'ACTIVE') throw new BadRequestException('Plan is already active')
 
-    await this.prisma.$transaction(async tx => {
-      // Deconfirm any existing confirmed plan for the same (dayType, branch)
-      await tx.vehiclePlan.updateMany({
-        where: {
-          branchId:  plan.branchId,
-          dayTypeId: plan.dayTypeId,
-          status:         'CONFIRMED',
-          NOT: { id: planId },
-        },
-        data: { status: 'READY' },
-      })
+    const lineIds = plan.lines.map(l => l.lineId)
 
-      await tx.vehiclePlan.update({
-        where: { id: planId },
-        data:  { status: 'CONFIRMED' },
-      })
+    const conflict = await this.prisma.vehiclePlan.findFirst({
+      where: {
+        id:        { not: planId },
+        dayTypeId: plan.dayTypeId,
+        status:    'ACTIVE',
+        lines:     { some: { lineId: { in: lineIds } } },
+      },
+    })
+    if (conflict) throw new ConflictException('One or more lines are already covered by an active plan for this day type')
+
+    await this.prisma.vehiclePlan.update({
+      where: { id: planId },
+      data:  { status: 'ACTIVE' },
     })
   }
 }

@@ -11,18 +11,6 @@ export const vehiclePlanSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
 
-    branchId: z.uuid().meta({
-      label:          'Filial',
-      widget:         'select',
-      resource:       'branch',
-      domain:         'core',
-      labelField:     'name',
-      listVisibility: 'hidden',
-      filter:         { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
-      lazyEdit:       true,
-      keybind:        'f',
-    }),
-
     dayTypeId: z.uuid().meta({
       label:          'Tipo de Dia',
       widget:         'select',
@@ -34,7 +22,7 @@ export const vehiclePlanSchema = withMeta(
       keybind:        'd',
     }),
 
-    status: z.enum(['DRAFT', 'PROCESSING', 'READY', 'CONFIRMED']).default('DRAFT').meta({
+    status: z.enum(['DRAFT', 'ACTIVE']).default('DRAFT').meta({
       label:          'Status',
       listVisibility: 'visible',
       filter:         true,
@@ -42,33 +30,16 @@ export const vehiclePlanSchema = withMeta(
       defaultValue:   'DRAFT',
       keybind:        's',
       optionLabels: {
-        DRAFT:      'Rascunho',
-        PROCESSING: 'Processando',
-        READY:      'Gerado',
-        CONFIRMED:  'Confirmado',
+        DRAFT:  'Rascunho',
+        ACTIVE: 'Ativo',
       },
     }),
 
-    // populated after generation completes
-    fleetCount: z.number().int().optional().meta({
-      label:          'Veículos',
-      listVisibility: 'visible',
+    // populated by solver; shape: { fleetCount, score, deadrunKm, productiveKm, totalHours, ... }
+    summary: z.record(z.string(), z.unknown()).optional().meta({
+      label:          'Resumo',
+      listVisibility: 'never',
       showInForm:     false,
-      className:      'md:w-32',
-    }),
-
-    score: z.number().optional().meta({
-      label:          'Pontuação',
-      listVisibility: 'visible',
-      showInForm:     false,
-      className:      'md:w-36',
-    }),
-
-    deadrunKm: z.number().optional().meta({
-      label:          'Km em Vazio',
-      listVisibility: 'visible',
-      showInForm:     false,
-      className:      'md:w-36',
     }),
 
     generatedAt: z.date().optional().meta({

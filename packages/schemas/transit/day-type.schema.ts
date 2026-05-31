@@ -52,13 +52,20 @@ export const dayTypeSchema = withMeta(
       listVisibility: 'visible',
     }),
 
-    // lower number renders first in selects and reports
+    priority: z.number().int().default(0).meta({
+      label:       'Prioridade',
+      placeholder: '0',
+      className:   'md:w-28',
+      keybind:     'p',
+      helpText:    'Número menor = maior prioridade na resolução automática quando mais de um padrão é ativo para a mesma data',
+    }),
+
     sortOrder: z.number().int().default(0).meta({
-      label:       'Ordem',
+      label:       'Ordem de Exibição',
       placeholder: '0',
       className:   'md:w-28',
       keybind:     'o',
-      helpText:    'Número menor = maior prioridade na resolução automática de padrões sobrepostos',
+      helpText:    'Ordem de exibição em selects e relatórios',
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

@@ -124,6 +124,7 @@ model DayType {
   name        String
   description String?
   pattern     Json?
+  priority    Int      @default(0)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -189,9 +190,8 @@ model VehiclePlan {
   id          String            @id @default(uuid())
   dayTypeId   String
   status      VehiclePlanStatus @default(DRAFT)
-  fleetCount  Int?
-  score       Float?
-  deadrunKm   Float?
+  // populated by solver; shape: { fleetCount, score, deadrunKm, productiveKm, totalHours, ... }
+  summary     Json?
   generatedAt DateTime?
   // { locked?: true }
   constraints Json?
@@ -223,11 +223,11 @@ model VehicleBlock {
   branchId      String?
   blockNumber   Int
   depotId       String
-  vehicleType   VehicleType
-  totalMinutes  Int?
-  totalKm       Float?
+  vehicleType VehicleType
+  // populated by solver; shape: { totalMinutes, totalKm, deadrunKm, productiveKm, ... }
+  summary     Json?
   // { locked?: true }
-  constraints   Json?
+  constraints Json?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 

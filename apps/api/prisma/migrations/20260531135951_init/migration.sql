@@ -112,16 +112,17 @@ CREATE TABLE "vehicle_models" (
 CREATE TABLE "vehicles" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "branchId" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
     "plate" TEXT NOT NULL,
     "renavam" TEXT,
     "chassis" TEXT,
-    "brandId" TEXT NOT NULL,
-    "modelId" TEXT NOT NULL,
-    "year" INTEGER NOT NULL,
-    "modelYear" INTEGER NOT NULL,
-    "vehicleType" TEXT NOT NULL,
+    "brandId" TEXT,
+    "modelId" TEXT,
+    "year" INTEGER,
+    "modelYear" INTEGER,
+    "vehicleType" TEXT NOT NULL DEFAULT 'BUS',
     "color" TEXT,
-    "fuelType" TEXT NOT NULL,
+    "fuelType" TEXT NOT NULL DEFAULT 'DIESEL',
     "transmission" TEXT,
     "seatedCapacity" INTEGER,
     "totalCapacity" INTEGER,
@@ -133,8 +134,8 @@ CREATE TABLE "vehicles" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "vehicles_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "vehicles_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "vehicle_brands" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "vehicles_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "vehicle_models" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "vehicles_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "vehicle_brands" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "vehicles_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "vehicle_models" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -199,10 +200,10 @@ CREATE TABLE "contracts" (
 -- CreateTable
 CREATE TABLE "transit_localities" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "code" TEXT,
+    "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "lat" REAL NOT NULL,
-    "lng" REAL NOT NULL,
+    "lat" REAL,
+    "lng" REAL,
     "isDepot" BOOLEAN NOT NULL DEFAULT false,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -274,6 +275,7 @@ CREATE TABLE "transit_day_types" (
     "name" TEXT NOT NULL,
     "description" TEXT,
     "pattern" JSONB,
+    "priority" INTEGER NOT NULL DEFAULT 0,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
@@ -284,10 +286,12 @@ CREATE TABLE "transit_line_calendar_exceptions" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "validFrom" DATETIME NOT NULL,
     "validTo" DATETIME,
+    "sourceDayTypeId" TEXT,
     "overrideDayTypeId" TEXT NOT NULL,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_line_calendar_exceptions_sourceDayTypeId_fkey" FOREIGN KEY ("sourceDayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "transit_line_calendar_exceptions_overrideDayTypeId_fkey" FOREIGN KEY ("overrideDayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -322,9 +326,7 @@ CREATE TABLE "transit_vehicle_plans" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "dayTypeId" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
-    "fleetCount" INTEGER,
-    "score" REAL,
-    "deadrunKm" REAL,
+    "summary" JSONB,
     "generatedAt" DATETIME,
     "constraints" JSONB,
     "notes" TEXT,
@@ -351,8 +353,7 @@ CREATE TABLE "transit_vehicle_blocks" (
     "blockNumber" INTEGER NOT NULL,
     "depotId" TEXT NOT NULL,
     "vehicleType" TEXT NOT NULL,
-    "totalMinutes" INTEGER,
-    "totalKm" REAL,
+    "summary" JSONB,
     "constraints" JSONB,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
@@ -401,6 +402,9 @@ CREATE UNIQUE INDEX "vehicle_brands_name_key" ON "vehicle_brands"("name");
 CREATE UNIQUE INDEX "vehicle_models_name_brandId_key" ON "vehicle_models"("name", "brandId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "vehicles_code_key" ON "vehicles"("code");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "vehicles_plate_key" ON "vehicles"("plate");
 
 -- CreateIndex
@@ -414,6 +418,12 @@ CREATE UNIQUE INDEX "employees_code_key" ON "employees"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "employees_taxId_key" ON "employees"("taxId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_localities_code_key" ON "transit_localities"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_lines_code_key" ON "transit_lines"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_route_localities_routeId_sequence_key" ON "transit_route_localities"("routeId", "sequence");

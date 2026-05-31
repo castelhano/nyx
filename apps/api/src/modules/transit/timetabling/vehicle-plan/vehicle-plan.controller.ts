@@ -37,10 +37,10 @@ export class VehiclePlanController {
     return this.service.stop(jobId)
   }
 
-  @Post(':id/confirm')
+  @Post(':id/activate')
   @UseGuards(JwtAuthGuard)
   @HttpCode(200)
-  confirm(@Param('id') id: string) {
-    return this.service.confirm(id)
+  activate(@Param('id') id: string) {
+    return this.service.activate(id)
   }
 }

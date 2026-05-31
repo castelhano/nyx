@@ -49,19 +49,11 @@ export const vehicleBlockSchema = withMeta(
       },
     }),
 
-    // populated by solver
-    totalMinutes: z.number().int().optional().meta({
-      label:          'Duração (min)',
-      listVisibility: 'visible',
+    // populated by solver; shape: { totalMinutes, totalKm, deadrunKm, productiveKm, ... }
+    summary: z.record(z.string(), z.unknown()).optional().meta({
+      label:          'Resumo',
+      listVisibility: 'never',
       showInForm:     false,
-      className:      'md:w-40',
-    }),
-
-    totalKm: z.number().optional().meta({
-      label:          'Km Total',
-      listVisibility: 'visible',
-      showInForm:     false,
-      className:      'md:w-36',
     }),
 
     constraints: z.record(z.string(), z.unknown()).optional().meta({
