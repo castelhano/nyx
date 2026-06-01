@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Plus, ArrowLeft, Download, RefreshCw } from 'lucide-react'
 import { AutoList }        from '@/core/AutoList'
 import { AutoBreadcrumb }  from '@/core/AutoBreadcrumb'
@@ -17,8 +18,9 @@ const DOMAIN   = 'transit'
 const RESOURCE = 'travel-time-matrix'
 
 export default function TravelTimeMatrixPage() {
-  const router    = useRouter()
-  const { toast } = useToast()
+  const router       = useRouter()
+  const { toast }    = useToast()
+  const queryClient  = useQueryClient()
   const { guardNode, meta } = usePageGuard(DOMAIN, RESOURCE)
 
   const [generating, setGenerating] = useState(false)
@@ -37,6 +39,7 @@ export default function TravelTimeMatrixPage() {
         ? `${generated} pares gerados — ${skipped} pontos ignorados (sem coordenadas)`
         : `${generated} pares gerados`
       toast.success(msg)
+      queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE] })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar matriz')
     } finally {

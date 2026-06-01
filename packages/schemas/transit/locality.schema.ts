@@ -24,14 +24,14 @@ export const localitySchema = withMeta(
     lat: z.number().optional().meta({
       label:          'Latitude',
       listVisibility: 'hidden',
-      className:      'md:w-52',
+      className:      'md:w-70',
       keybind:        'a',
     }),
 
     lng: z.number().optional().meta({
       label:          'Longitude',
       listVisibility: 'hidden',
-      className:      'md:w-52',
+      className:      'md:w-70',
       keybind:        'o',
     }),
 

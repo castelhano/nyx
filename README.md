@@ -143,10 +143,10 @@ When running, OSRM must be reachable at the URL defined by `OSRM_URL` in `apps/a
 **1. Download the OSM map for your region** (from [Geofabrik](https://download.geofabrik.de/)):
 
 ```bash
-# Example: São Paulo state (~130 MB, fast to process)
-wget https://download.geofabrik.de/south-america/brazil/sudeste/sao-paulo-latest.osm.pbf
+# Example: Centro-Oeste region (~185 MB, covers Mato Grosso/Cuiabá)
+wget https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf
 
-# Full Brazil (~1.2 GB, slow to process — use only if needed)
+# Full Brazil (~1.9 GB, slow to process — use only if needed)
 # wget https://download.geofabrik.de/south-america/brazil-latest.osm.pbf
 ```
 
@@ -154,13 +154,13 @@ wget https://download.geofabrik.de/south-america/brazil/sudeste/sao-paulo-latest
 
 ```bash
 docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-extract -p /opt/car.lua /data/sao-paulo-latest.osm.pbf
+  osrm-extract -p /opt/car.lua /data/centro-oeste-latest.osm.pbf
 
 docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-partition /data/sao-paulo-latest.osrm
+  osrm-partition /data/centro-oeste-latest.osrm
 
 docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-customize /data/sao-paulo-latest.osrm
+  osrm-customize /data/centro-oeste-latest.osrm
 ```
 
 > Pre-processing only needs to run once. The resulting `.osrm.*` files can be reused across restarts.
@@ -169,13 +169,13 @@ docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
 
 ```bash
 docker run -d -p 5000:5000 -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-routed --algorithm mld /data/sao-paulo-latest.osrm
+  osrm-routed --algorithm mld /data/centro-oeste-latest.osrm
 ```
 
 **Quick test:**
 
 ```bash
-curl "http://localhost:5000/table/v1/driving/-46.633,-23.550;-46.638,-23.545?annotations=duration,distance"
+curl "http://localhost:5000/table/v1/driving/-56.097,-15.601;-56.090,-15.595?annotations=duration,distance"
 ```
 
 ### Generating the matrix

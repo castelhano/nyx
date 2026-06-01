@@ -490,6 +490,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           autoFocus={autoFocus}
           readOnly={readonly}
           {...register}
+          step={inputType === 'number' ? 'any' : undefined}
           placeholder={field.placeholder}
           className={cn(fieldInputCls, field.keybind && 'md:pr-10', readonly && readonlyCls)}
         />

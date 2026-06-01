@@ -258,7 +258,7 @@ function buildColumns(
       header:       () => null,
       cell:         ({ row }) => (
         <div className="flex items-center justify-end gap-1">
-          {rowActions?.length && onRowAction && (
+          {!!rowActions?.length && onRowAction && (
             <RowActionsCell
               row={row.original}
               actions={rowActions}

@@ -89,8 +89,8 @@ export class OsrmService {
         const destination = localities[j]
         if (manualSet.has(`${origin.id}:${destination.id}`)) continue
 
-        const baseMinutes = data.durations[i][j] / 60
-        const distanceKm  = data.distances[i][j] / 1000
+        const baseMinutes = Math.ceil(data.durations[i][j] / 60)
+        const distanceKm  = Math.round(data.distances[i][j] / 10) / 100
 
         upserts.push(
           this.prisma.travelTimeMatrix.upsert({
