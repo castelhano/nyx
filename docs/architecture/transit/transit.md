@@ -242,6 +242,7 @@ VehiclePlan ──── VehiclePlanLine ──► TransitLine
 - Múltiplos `DRAFT` são permitidos por `dayTypeId` (comparação de cenários)
 - Uma linha não pode estar em dois `VehiclePlan ACTIVE` do mesmo `dayTypeId`
 - Enforcement no service layer ao ativar (`POST /:id/activate`)
+- `DELETE /:id` só é permitido para planos com `status = 'DRAFT'` — planos ACTIVE não podem ser excluídos
 
 #### `VehiclePlanLine` — escopo de linhas do plano
 
@@ -675,6 +676,10 @@ apps/api/src/modules/transit/
   - [x] Summary bar: Status, Tipo (dayType.code), x linhas, x blocos, x viagens
   - [x] Seleção de linhas via `LinesPanel` (`POST/DELETE .../lines`)
   - [x] Distinção visual IDA/VOLTA no Gantt (cor cheia vs clareada) + tooltip com direção
+  - [x] Botão "Excluir" na topbar (apenas DRAFT, com modal de confirmação `variant: 'destructive'`)
+  - [x] Pesquisa por código/nome no `LinesPanel`
+  - [x] `RowList` — layout de duas linhas: label + resumo (`Xv · Yh`) dentro do height existente (44px); largura 112→160px
+  - [x] `BlockDetailPopover` — popover posicionado à direita da coluna de labels ao clicar [ⓘ]; exibe tipo, viagens, jornada, km produtivo/garagem
   - [ ] `ViewSwitcher` — visão veículos / linhas / garagens
   - [ ] Atribuição de `branchId` por bloco inline no Gantt
 
@@ -708,6 +713,10 @@ apps/api/src/modules/transit/
 | `assumeBest` para o worker | `assumeBest` envia `stop` antes de persistir | Evita estado inconsistente: worker pode estar rodando quando o usuário clicar "Assumir Melhor" sem clicar "Parar" antes |
 | Gantt IDA/VOLTA | OUTBOUND = cor cheia; INBOUND = cor clareada 45% (blend branco) | Mesma cor de linha, hue igual, distinção clara de direção sem exigir legenda separada |
 | `dayType` no ganttData | `getGanttData` inclui relação `dayType` | Summary bar precisa do `code` do tipo de dia; evita query extra no frontend |
+| DELETE restrito a DRAFT | `VehiclePlanService.remove()` override verifica `status === 'DRAFT'` | Plano ACTIVE não pode ser apagado — representa a programação vigente; exclusão acidental quebraria a escala diária (Fase 3) |
+| `RowList` duas linhas | Label + resumo `Xv · Yh` em 44px (ROW_HEIGHT inalterado); largura 160px | Mantém alinhamento pixel-perfeito com o canvas sem alterar o engine; info mínima visível sem abrir popover |
+| `BlockDetailPopover` posicionado pelo board | `screenY = RULER_HEIGHT + row.y - vp.scrollY`; `left = LABEL_WIDTH + 8` | O `GanttBoard` tem `position: relative`; popover calculado no mesmo sistema de coordenadas do canvas — sem `portal` necessário |
+| `variant: 'destructive' as const` | Ações de topbar destrutivas usam `as const` no literal | TypeScript infere literais de string em spreads ternários como `string` sem contexto explícito; `as const` preserva o tipo literal para satisfazer `TopbarAction.variant` |
 
 ---
 
@@ -861,10 +870,12 @@ canvas.addEventListener('click', (e) => {
 app/transit/vehicle-plan/[id]/
   page.tsx                      ← custom page: topbar actions, AutoBreadcrumb
   components/
-    GanttBoard.tsx              ← orquestra canvas + overlays + engine lifecycle
+    GanttBoard.tsx              ← orquestra canvas + overlays + engine lifecycle; gerencia BlockDetailPopover
     TimeRuler.tsx               ← DOM sticky, régua de tempo
-    RowList.tsx                 ← DOM virtualizado (só linhas visíveis)
+    RowList.tsx                 ← DOM virtualizado; 2 linhas por row (label + Xv·Yh) + botão [ⓘ]
     SegmentTooltip.tsx          ← overlay DOM posicionado via engine.getSegmentRect()
+    BlockDetailPopover.tsx      ← popover de detalhes do bloco (tipo, viagens, km, jornada)
+    LinesPanel.tsx              ← painel lateral com pesquisa + toggle de linhas do plano
     EditPanel.tsx               ← painel lateral/modal para edições inline
     ViewSwitcher.tsx            ← botões de troca de visão → engine.setView()
   engine/

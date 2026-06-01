@@ -1,4 +1,5 @@
 import type { GanttView, GanttRow, GanttSegment } from '../engine/gantt.types'
+import type { VehicleBlockSummary } from '@nyx/schemas'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ export interface GanttBlock {
   id:          string
   blockNumber: number
   vehicleType: string
-  summary:     unknown
+  summary:     VehicleBlockSummary | null
   blockTrips:  GanttBlockTrip[]
 }
 

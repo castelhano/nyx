@@ -181,6 +181,79 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
   }
 
+  async duplicate(planId: string): Promise<VehiclePlan> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:   { id: planId },
+      include: {
+        lines:  { select: { lineId: true } },
+        blocks: {
+          include: {
+            blockTrips: {
+              select: {
+                tripId:          true,
+                sequence:        true,
+                isDeadhead:      true,
+                deadheadMinutes: true,
+                deadheadKm:      true,
+              },
+            },
+          },
+        },
+      },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    return this.prisma.$transaction(async tx => {
+      const newPlan = await tx.vehiclePlan.create({
+        data: {
+          dayTypeId:   plan.dayTypeId,
+          status:      'DRAFT',
+          constraints: plan.constraints ?? undefined,
+        },
+      })
+
+      if (plan.lines.length > 0) {
+        await tx.vehiclePlanLine.createMany({
+          data: plan.lines.map(l => ({ vehiclePlanId: newPlan.id, lineId: l.lineId })),
+        })
+      }
+
+      for (const block of plan.blocks) {
+        const newBlock = await tx.vehicleBlock.create({
+          data: {
+            vehiclePlanId: newPlan.id,
+            blockNumber:   block.blockNumber,
+            depotId:       block.depotId,
+            vehicleType:   block.vehicleType,
+            summary:       block.summary ?? undefined,
+          },
+        })
+
+        if (block.blockTrips.length > 0) {
+          await tx.blockTrip.createMany({
+            data: block.blockTrips.map(bt => ({
+              vehicleBlockId:  newBlock.id,
+              tripId:          bt.tripId,
+              sequence:        bt.sequence,
+              isDeadhead:      bt.isDeadhead,
+              deadheadMinutes: bt.deadheadMinutes,
+              deadheadKm:      bt.deadheadKm,
+            })),
+          })
+        }
+      }
+
+      return newPlan as unknown as VehiclePlan
+    })
+  }
+
+  async remove(id: string): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id } })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be deleted')
+    await this.prisma.vehiclePlan.delete({ where: { id } })
+  }
+
   async stop(jobId: string): Promise<void> {
     const job = this.jobs.get(jobId)
     if (!job) return

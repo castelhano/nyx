@@ -11,7 +11,8 @@ export function useMetadata(domain: string, resource: string) {
     queryFn: async () => {
       const res = await apiFetch(`/${domain}/${resource}/metadata`)
       if (!res.ok) throw httpError(res.status)
-      return res.json()
+      const json = await res.json()
+      return json
     },
     staleTime: process.env.NODE_ENV === 'production' ? Infinity : 0,
     retry:     httpRetry,

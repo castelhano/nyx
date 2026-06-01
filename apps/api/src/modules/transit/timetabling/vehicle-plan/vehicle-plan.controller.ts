@@ -44,6 +44,12 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.stop(jobId)
   }
 
+  @Post(':id/duplicate')
+  @HttpCode(201)
+  duplicate(@Param('id') id: string) {
+    return this.vehiclePlanService.duplicate(id)
+  }
+
   @Post(':id/activate')
   @HttpCode(200)
   activate(@Param('id') id: string) {

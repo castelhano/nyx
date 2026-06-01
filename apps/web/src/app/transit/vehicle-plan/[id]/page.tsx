@@ -10,10 +10,12 @@ import { useRecordQuery }    from '@/core/useRecordQuery'
 import { useTopbarActions }  from '@/components/layout/topbar-actions-context'
 import { useShortcut }       from '@/lib/keywatch'
 import { apiFetch, getToken } from '@/lib/auth'
+import { useConfirm }         from '@/lib/confirm-context'
 import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
 import { GanttBoard }        from './components/GanttBoard'
 import { LinesPanel }        from './components/LinesPanel'
+import { Button } from '@/components/ui/button'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
@@ -116,28 +118,29 @@ function NewPlanForm() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8">
+    <div className="flex flex justify-center p-8">
       <form
         onSubmit={handleCreate}
-        className="w-full max-w-sm space-y-6 border border-border rounded-md p-6 bg-card"
+        className="w-full max-w-sm space-y-4 border border-border rounded-md p-6 bg-card"
       >
         <div>
-          <h2 className="text-base font-semibold">Novo Planejamento</h2>
+          <h2 className="text-base font-semibold mb-2">Novo Planejamento</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Selecione o tipo de dia para iniciar. As linhas podem ser adicionadas em seguida.
+            Selecione o tipo de dia para iniciar.
           </p>
         </div>
 
-        <div className="space-y-1.5">
+        <div>
           <label htmlFor="dayTypeId" className="text-sm font-medium">
-            Tipo de Dia <span className="text-destructive">*</span>
+            Tipo de Dia <span className="ps-1">*</span>
           </label>
-          <div className="relative">
+          <div className="relative mt-2">
             <select
               id="dayTypeId"
               value={dayTypeId}
               onChange={e => setDayTypeId(e.target.value)}
               required
+              autoFocus
               className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
             >
               {dayTypes.map(dt => (
@@ -147,15 +150,10 @@ function NewPlanForm() {
             <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           </div>
         </div>
-
         <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isPending || !dayTypeId}
-            className="px-4 py-2 text-sm font-medium rounded-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isPending ? 'Criando…' : 'Criar Planejamento'}
-          </button>
+          <Button type="submit" disabled={isPending || !dayTypeId} className="w-full" size="default">
+          {isPending ? 'Criando…' : 'Criar Planejamento'}
+          </Button>
         </div>
       </form>
     </div>
@@ -169,6 +167,7 @@ export default function VehiclePlanPage() {
   const router      = useRouter()
   const queryClient = useQueryClient()
   const { toast }   = useToast()
+  const confirm     = useConfirm()
 
   const isNew = id === 'new'
 
@@ -266,6 +265,29 @@ export default function VehiclePlanPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!canUpdate) return
+    const ok = await confirm({
+      title:       'Excluir planejamento',
+      description: 'Esta ação não pode ser desfeita. Todos os blocos gerados serão removidos.',
+      confirmLabel: 'Excluir',
+      variant:     'destructive',
+    })
+    if (!ok) return
+    setIsPending(true)
+    try {
+      const res = await apiFetch(`/transit/vehicle-plan/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      router.push('/transit/vehicle-plan')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir')
+      setIsPending(false)
+    }
+  }
+
   async function handleActivate() {
     if (!canUpdate) return
     setIsPending(true)
@@ -326,6 +348,16 @@ export default function VehiclePlanPage() {
         icon:     Icons.CheckCircle,
         onClick:  handleActivate,
         disabled: isPending,
+      },
+    ] : []),
+    // delete only for DRAFT plans not currently solving
+    ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
+      {
+        label:    'Excluir',
+        icon:     Icons.Trash2,
+        onClick:  handleDelete,
+        disabled: isPending,
+        variant:  'destructive' as const,
       },
     ] : []),
   ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen])

@@ -1,5 +1,5 @@
 {
-  "watch": ["src"],
+  "watch": ["src", "../../packages/schemas", "../../packages/types"],
   "ext": "ts,json",
   "ignore": ["src/**/*.spec.ts"],
   "exec": "ts-node --transpile-only -r tsconfig-paths/register src/main.ts"

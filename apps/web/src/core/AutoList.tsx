@@ -251,34 +251,30 @@ function buildColumns(
       },
     }))
 
-  if (rowActions?.length && onRowAction) {
-    cols.push({
-      id:           '_rowActions',
-      enableHiding: false,
-      header:       () => null,
-      cell:         ({ row }) => (
-        <RowActionsCell
-          row={row.original}
-          actions={rowActions}
-          onExecute={onRowAction}
-        />
-      ),
-    })
-  }
-
-  if (onEdit) {
+  if ((rowActions?.length && onRowAction) || onEdit) {
     cols.push({
       id:           '_actions',
       enableHiding: false,
       header:       () => null,
       cell:         ({ row }) => (
-        <Button
-          onClick={() => onEdit(String(row.original.id))}
-          size="icon"
-          variant="rowAction"
-        >
-          <SquarePen className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center justify-end gap-1">
+          {rowActions?.length && onRowAction && (
+            <RowActionsCell
+              row={row.original}
+              actions={rowActions}
+              onExecute={onRowAction}
+            />
+          )}
+          {onEdit && (
+            <Button
+              onClick={() => onEdit(String(row.original.id))}
+              size="icon"
+              variant="rowAction"
+            >
+              <SquarePen className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
       ),
     })
   }
@@ -332,7 +328,6 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     () => (meta?.rowActions ?? []).filter((a) => meta!.permissions[a.permission]),
     [meta?.rowActions, meta?.permissions],
   )
-
   const handleRowAction = useCallback(async (action: RowActionDef, row: Row) => {
     if (action.hrefTemplate) {
       router.push(resolveTemplate(action.hrefTemplate, row))
@@ -597,7 +592,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
                       key={cell.id}
                       className={cn(
                         'px-3 py-2',
-                        (cell.column.id === '_actions' || cell.column.id === '_rowActions') && 'text-end px-1 py-1',
+                        cell.column.id === '_actions' && 'text-end px-1 py-1',
                       )}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

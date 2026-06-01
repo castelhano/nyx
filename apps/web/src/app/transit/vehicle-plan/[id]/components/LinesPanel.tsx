@@ -25,6 +25,7 @@ interface Props {
 
 export function LinesPanel({ planId, currentLines, onClose, onChanged }: Props) {
   const [pending, setPending] = useState<string | null>(null)
+  const [search,  setSearch]  = useState('')
 
   const { data: allLines = [] } = useQuery<AvailableLine[]>({
     queryKey: ['transit', 'transit-line', 'list'],
@@ -37,7 +38,11 @@ export function LinesPanel({ planId, currentLines, onClose, onChanged }: Props) 
     staleTime: 60_000,
   })
 
-  const currentIds = new Set(currentLines.map(l => l.lineId))
+  const currentIds   = new Set(currentLines.map(l => l.lineId))
+  const q            = search.toLowerCase()
+  const visibleLines = q
+    ? allLines.filter(l => l.code.toLowerCase().includes(q) || l.name.toLowerCase().includes(q))
+    : allLines
 
   async function handleAdd(lineId: string) {
     setPending(lineId)
@@ -75,13 +80,24 @@ export function LinesPanel({ planId, currentLines, onClose, onChanged }: Props) 
         </button>
       </div>
 
+      {/* search */}
+      <div className="px-2 py-2 border-b border-border">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar linha…"
+          className="w-full text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {allLines.length === 0 && (
+        {visibleLines.length === 0 && (
           <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-            Nenhuma linha cadastrada
+            {allLines.length === 0 ? 'Nenhuma linha cadastrada' : 'Nenhum resultado'}
           </p>
         )}
-        {allLines.map(line => {
+        {visibleLines.map(line => {
           const active = currentIds.has(line.id)
           const busy   = pending === line.id
           return (

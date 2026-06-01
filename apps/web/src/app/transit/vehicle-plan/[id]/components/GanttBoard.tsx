@@ -2,15 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
-import { vehiclesView, type VehiclePlanGanttData } from '../views/vehicles.view'
-import { TimeRuler }      from './TimeRuler'
-import { RowList }        from './RowList'
-import { SegmentTooltip } from './SegmentTooltip'
+import { vehiclesView, type VehiclePlanGanttData, type GanttBlock } from '../views/vehicles.view'
+import { TimeRuler }          from './TimeRuler'
+import { RowList }            from './RowList'
+import { SegmentTooltip }     from './SegmentTooltip'
+import { BlockDetailPopover } from './BlockDetailPopover'
 import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
 import type { ViewportSnapshot }         from '../engine/gantt.types'
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
-const LABEL_WIDTH  = 112  // px — matches RowList width
+const LABEL_WIDTH  = 160  // px — matches RowList width
 
 interface Props {
   data: VehiclePlanGanttData
@@ -19,6 +20,12 @@ interface Props {
 interface TooltipState {
   segment: LayoutSegment
   rect:    DOMRect
+}
+
+interface BlockDetailState {
+  block:   GanttBlock
+  screenY: number
+  screenX: number
 }
 
 const INITIAL_VP: ViewportSnapshot = {
@@ -31,10 +38,11 @@ export function GanttBoard({ data }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const engineRef    = useRef<GanttEngine | null>(null)
 
-  const [vp,         setVp]         = useState<ViewportSnapshot>(INITIAL_VP)
-  const [layoutRows, setLayoutRows] = useState<LayoutRow[]>([])
-  const [canvasH,    setCanvasH]    = useState(0)
-  const [tooltip,    setTooltip]    = useState<TooltipState | null>(null)
+  const [vp,           setVp]           = useState<ViewportSnapshot>(INITIAL_VP)
+  const [layoutRows,   setLayoutRows]   = useState<LayoutRow[]>([])
+  const [canvasH,      setCanvasH]      = useState(0)
+  const [tooltip,      setTooltip]      = useState<TooltipState | null>(null)
+  const [blockDetail,  setBlockDetail]  = useState<BlockDetailState | null>(null)
 
   // ── engine lifecycle ────────────────────────────────────────────────────────
 
@@ -94,10 +102,19 @@ export function GanttBoard({ data }: Props) {
     engine.setView(vehiclesView, data)
   }, [data])
 
+  // ── block detail popover ────────────────────────────────────────────────────
+
+  function handleRowInfo(row: LayoutRow) {
+    const block   = row.data as GanttBlock
+    const screenY = RULER_HEIGHT + row.y - vp.scrollY
+    const screenX = LABEL_WIDTH + 8
+    setBlockDetail({ block, screenY, screenX })
+  }
+
   // ── render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex flex-col h-full overflow-hidden bg-background relative">
       {/* header: corner + time ruler */}
       <div className="flex shrink-0" style={{ height: RULER_HEIGHT }}>
         <div
@@ -114,7 +131,12 @@ export function GanttBoard({ data }: Props) {
       {/* content: row labels + canvas */}
       <div className="flex flex-1 overflow-hidden">
         <div className="border-r bg-muted/10 shrink-0" style={{ width: LABEL_WIDTH }}>
-          <RowList rows={layoutRows} scrollY={vp.scrollY} height={canvasH} />
+          <RowList
+            rows={layoutRows}
+            scrollY={vp.scrollY}
+            height={canvasH}
+            onInfoClick={handleRowInfo}
+          />
         </div>
 
         <div ref={containerRef} className="relative flex-1 overflow-hidden">
@@ -128,6 +150,16 @@ export function GanttBoard({ data }: Props) {
           )}
         </div>
       </div>
+
+      {/* block detail popover — positioned relative to the full board */}
+      {blockDetail && (
+        <BlockDetailPopover
+          block={blockDetail.block}
+          screenY={blockDetail.screenY}
+          screenX={blockDetail.screenX}
+          onClose={() => setBlockDetail(null)}
+        />
+      )}
     </div>
   )
 }

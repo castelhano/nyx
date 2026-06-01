@@ -75,6 +75,16 @@ export const vehiclePlanSchema = withMeta(
     nameField:   'status',
     icon:        'LayoutList',
     defaultSort: { field: 'generatedAt', order: 'desc' },
+    rowActions: [
+      {
+        action:     'duplicate',
+        label:      'Duplicar',
+        icon:       'Copy',
+        permission: 'create',
+        method:     'POST',
+        endpoint:   (row) => `/transit/vehicle-plan/${row.id}/duplicate`,
+      },
+    ],
   },
 )
 
