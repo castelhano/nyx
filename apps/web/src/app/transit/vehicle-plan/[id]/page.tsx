@@ -15,8 +15,12 @@ import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
 import { GanttBoard }        from './components/GanttBoard'
 import { LinesPanel }        from './components/LinesPanel'
+import { FrequencyPanel }    from './components/FrequencyPanel'
 import { Button } from '@/components/ui/button'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
+import type { ViewportSnapshot }     from './engine/gantt.types'
+
+const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
 
@@ -171,10 +175,12 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  const [isPending,      setIsPending]      = useState(false)
-  const [activeJobId,    setActiveJobId]    = useState<string | null>(null)
-  const [isSolverDone,   setIsSolverDone]   = useState(false)
-  const [linesPanelOpen, setLinesPanelOpen] = useState(false)
+  const [isPending,       setIsPending]       = useState(false)
+  const [activeJobId,     setActiveJobId]     = useState<string | null>(null)
+  const [isSolverDone,    setIsSolverDone]    = useState(false)
+  const [linesPanelOpen,  setLinesPanelOpen]  = useState(false)
+  const [freqPanelOpen,   setFreqPanelOpen]   = useState(false)
+  const [ganttVp,         setGanttVp]         = useState<ViewportSnapshot>(INITIAL_VP)
 
   // ── data ────────────────────────────────────────────────────────────────────
 
@@ -371,6 +377,12 @@ export default function VehiclePlanPage() {
     context: 'all',
   })
 
+  useShortcut('ctrl+;', () => setFreqPanelOpen(v => !v), {
+    desc:   'Frequência de atendimento',
+    icon:   Icons.BarChart2,
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+  })
+
   // ── render ─────────────────────────────────────────────────────────────────
 
   if (guardNode) return guardNode
@@ -434,13 +446,19 @@ export default function VehiclePlanPage() {
 
       {/* gantt + lines panel */}
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
-        <div className="flex-1 min-w-0">
-          {ganttData ? (
-            <GanttBoard data={ganttData} />
-          ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-              Carregando…
-            </div>
+        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+          <div className="flex-1 min-h-0">
+            {ganttData ? (
+              <GanttBoard data={ganttData} onViewportChange={setGanttVp} />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                Carregando…
+              </div>
+            )}
+          </div>
+
+          {freqPanelOpen && ganttData && (
+            <FrequencyPanel data={ganttData} vp={ganttVp} />
           )}
         </div>
 

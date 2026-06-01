@@ -11,10 +11,11 @@ import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
 import type { ViewportSnapshot }         from '../engine/gantt.types'
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
-const LABEL_WIDTH  = 160  // px — matches RowList width
+export const LABEL_WIDTH  = 160  // px — matches RowList width
 
 interface Props {
-  data: VehiclePlanGanttData
+  data:              VehiclePlanGanttData
+  onViewportChange?: (vp: ViewportSnapshot) => void
 }
 
 interface TooltipState {
@@ -33,10 +34,12 @@ const INITIAL_VP: ViewportSnapshot = {
   width: 0, dayStartMinute: 0,
 }
 
-export function GanttBoard({ data }: Props) {
-  const canvasRef    = useRef<HTMLCanvasElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const engineRef    = useRef<GanttEngine | null>(null)
+export function GanttBoard({ data, onViewportChange }: Props) {
+  const canvasRef            = useRef<HTMLCanvasElement>(null)
+  const containerRef         = useRef<HTMLDivElement>(null)
+  const engineRef            = useRef<GanttEngine | null>(null)
+  const onViewportChangeRef  = useRef(onViewportChange)
+  useEffect(() => { onViewportChangeRef.current = onViewportChange }, [onViewportChange])
 
   const [vp,           setVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [layoutRows,   setLayoutRows]   = useState<LayoutRow[]>([])
@@ -71,6 +74,7 @@ export function GanttBoard({ data }: Props) {
     engine.onStateChangeCallback((state: EngineState) => {
       setVp(state.viewport)
       setLayoutRows(state.layoutRows)
+      onViewportChangeRef.current?.(state.viewport)
 
       if (state.hoveredSegment) {
         const rect = engine.getSegmentRect(state.hoveredSegment.id)
