@@ -1,6 +1,6 @@
 import {
   ZodType, ZodObject, ZodString, ZodNumber, ZodBoolean,
-  ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault,
+  ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault, ZodArray,
 } from 'zod'
 import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef, RowActionDef } from '@nyx/types'
 import { resourceRegistry } from './resource-registry'
@@ -65,6 +65,58 @@ function deriveChildren(resource: string): ChildResourceDef[] | undefined {
   }
 
   return children.length > 0 ? children : undefined
+}
+
+function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
+  return Object.entries(shape).map(([name, rawField]) => {
+    const field = rawField as ZodType
+    const meta  = (field as any).meta?.() ?? {}
+    const inner = unwrap(field)
+
+    if (inner instanceof ZodObject) {
+      return {
+        name,
+        label:          meta.label ?? toTitleCase(name),
+        type:           'object' as const,
+        required:       isRequired(field),
+        listVisibility: 'never'  as const,
+        showInForm:     true,
+        sortable:       false,
+        fields:         buildNestedFields((inner as ZodObject<any>).shape),
+        ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
+      }
+    }
+
+    if (inner instanceof ZodArray) {
+      const elementInner = unwrap((inner as any)._def.element)
+      return {
+        name,
+        label:          meta.label ?? toTitleCase(name),
+        type:           'array' as const,
+        required:       isRequired(field),
+        listVisibility: 'never'  as const,
+        showInForm:     true,
+        sortable:       false,
+        ...(elementInner instanceof ZodObject
+          ? { itemFields: buildNestedFields((elementInner as ZodObject<any>).shape) }
+          : {}),
+        ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
+      }
+    }
+
+    return {
+      name,
+      label:          meta.label ?? toTitleCase(name),
+      type:           getType(field),
+      required:       isRequired(field),
+      listVisibility: 'never'  as const,
+      showInForm:     true,
+      sortable:       false,
+      ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
+      ...(meta.min !== undefined ? { min: meta.min } : {}),
+      ...(meta.max !== undefined ? { max: meta.max } : {}),
+    }
+  })
 }
 
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
@@ -136,6 +188,9 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.lazyEdit            ? { lazyEdit:    true }                      : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
       ...(resolveFilterDef(field, meta.filter) ? { filter: resolveFilterDef(field, meta.filter) } : {}),
+      ...(meta.widget === 'object-editor' && inner instanceof ZodObject
+        ? { fields: buildNestedFields(inner.shape), type: 'object' as const }
+        : {}),
     })
   }
 

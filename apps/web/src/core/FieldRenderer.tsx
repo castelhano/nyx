@@ -12,6 +12,7 @@ import { inputBaseCls, selectBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { apiFetch } from '@/lib/auth'
 import { useFieldOptions } from './useFieldOptions'
+import { ObjectEditorWidget } from './ObjectEditorWidget'
 
 interface Props {
   field:       MetadataField
@@ -375,6 +376,20 @@ function LockedRelationSelect({
 }
 
 export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
+  if (field.widget === 'object-editor' && control) {
+    return (
+      <div className="md:col-span-2 space-y-2">
+        <p className="text-sm font-medium">{field.label}</p>
+        <div className="rounded-lg border border-border p-4">
+          <ObjectEditorWidget field={field} control={control} readonly={readonly} />
+        </div>
+        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    )
+  }
+
+
   if (field.widget === 'switch' && control) {
     return (
       <div className="md:col-start-2 flex items-center gap-2 pt-1">

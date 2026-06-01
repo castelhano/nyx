@@ -49,6 +49,8 @@ model TransitLine {
   type      LineType
   isActive  Boolean  @default(true)
   notes     String?
+  // { extensionKm?: { OUTBOUND?: number, INBOUND?: number, CIRCULAR?: number }, cycleWindows?: { from: string, to: string, cycleMinutes: number }[] }
+  metrics   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

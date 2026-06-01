@@ -29,7 +29,7 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency'
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor'
   defaultValue?: unknown
   min?: number
   max?: number
@@ -59,7 +59,7 @@ export interface MetadataField {
   label: string
   placeholder?: string
   helpText?: string
-  type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation'
+  type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation' | 'object' | 'array'
   required: boolean
   options?: string[]
   defaultValue?: unknown
@@ -83,6 +83,8 @@ export interface MetadataField {
   virtual?: boolean
   dependsOn?: string
   lazyEdit?: boolean
+  fields?: MetadataField[]
+  itemFields?: MetadataField[]
 }
 
 export interface TabGroup {

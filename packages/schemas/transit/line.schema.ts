@@ -42,6 +42,24 @@ export const lineSchema = withMeta(
       keybind:        'a',
     }),
 
+    metrics: z.object({
+      extensionKm: z.object({
+        OUTBOUND:  z.number().positive().optional().meta({ label: 'Ida (km)' }),
+        INBOUND:   z.number().positive().optional().meta({ label: 'Volta (km)' }),
+        CIRCULAR:  z.number().positive().optional().meta({ label: 'Circular (km)' }),
+      }).optional().meta({ label: 'Extensão por Sentido' }),
+      cycleWindows: z.array(z.object({
+        from:         z.number().positive().min(0).max(23).default(0).meta({ label: 'De',  placeholder: '04', min: 0, max: 23 }),
+        to:           z.number().positive().min(0).max(23).default(23).meta({ label: 'Até', placeholder: '12', min: 0, max: 23 }),
+        cycleMinutes: z.number().positive().min(1).meta({ label: 'Ciclo (min)', min: 1 }),
+      })).optional().meta({ label: 'Tempo de Ciclo por Faixa' }),
+    }).optional().meta({
+      label:          'Métricas',
+      widget:         'object-editor',
+      showInForm:     true,
+      listVisibility: 'never',
+    }),
+
     notes: z.string().optional().meta({
       label:          'Observações',
       widget:         'textarea',
@@ -57,6 +75,9 @@ export const lineSchema = withMeta(
     nameField:   'name',
     icon:        'Route',
     defaultSort: { field: 'code', order: 'asc' },
+    groups: {
+      'Metricas':   ['metrics'],
+    },
   },
 )
 

@@ -103,6 +103,7 @@ nyx/
 │           │   ├── AutoBreadcrumb.tsx
 │           │   ├── SettingsPanel.tsx   # Template for singleton resources (isSingleton: true)
 │           │   ├── FieldRenderer.tsx
+│           │   ├── ObjectEditorWidget.tsx  # SubObjectEditor, SubArrayEditor, ObjectEditorWidget — importable by custom pages
 │           │   ├── PolicyIndicator.tsx # Password policy hint strip — reused in user/[id] and password page
 │           │   ├── useMetadata.ts
 │           │   ├── useDiscovery.ts    # Hook for GET /discovery — replaces static domains.ts
@@ -275,7 +276,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 
 > **Zod 4 — `.meta()` must be the last call in the chain.** It clones the type and stores data in Zod's `globalRegistry`. The `metadata.builder` reads it back via `field.meta()` (zero-arg call). Wrapping with `.optional()` or `.default()` *after* `.meta()` creates a new type with no metadata registered — always chain as `z.string().[validators].meta({...})`.
 >
-> Enum options are in `_def.entries` (object, not array). Default values are in `_def.defaultValue` directly (not a function).
+> Enum options are in `_def.entries` (object, not array). Default values are in `_def.defaultValue` directly (not a function). Array element schema is in `_def.element` (not `_def.type` as in Zod v3 — `_def.type` is a string tag in v4).
 | Field shown in list | `visible` for non-id, non-password, non-timestamp fields | `.meta({ listVisibility: 'hidden' })` or `.meta({ listVisibility: 'never' })` |
 | Field shown in form | `true` | `.meta({ showInForm: false })` |
 | Sortable field | `true` for string/number/date/enum | `.meta({ sortable: false })` |
@@ -288,6 +289,7 @@ The check is implemented as a private `assertAbility(user, action)` method — o
 | Filter on include | no filter | `.meta({ relatedWhere: { isActive: true } })` — applied as Prisma `include where`; parent record still appears, `row.relation` returns `null` if not matched |
 | Dependent select | — | `.meta({ dependsOn: 'parentFieldName' })` — re-fetches options with `?f_<dependsOn>=<value>` when the parent field changes; clears own value on parent change; disabled only when both parent and child are empty (enabled unfiltered in edit mode when child already has a value) — see §4.5.2 |
 | Virtual field | — | `.meta({ virtual: true })` — rendered in the form for UX purposes (e.g. a company selector that filters a branch selector) but excluded from API payloads; `listVisibility` forced to `'never'` — see §4.5.2 |
+| Nested JSON editor | — | `.meta({ widget: 'object-editor', showInForm: true, listVisibility: 'never' })` on an optional `ZodObject` — `metadata.builder` recursively serializes the shape into `MetadataField.fields` (objects) and `MetadataField.itemFields` (array items); `FieldRenderer` renders `ObjectEditorWidget` spanning both AutoForm columns; custom pages can import `ObjectEditorWidget` from `core/ObjectEditorWidget.tsx` directly |
 | Locked relation (lazy edit) | — | `.meta({ lazyEdit: true })` — in edit mode, shows the related record's label as read-only text with an edit button instead of fetching all options up front; fetches only `GET /<domain>/<resource>/:id` (one lightweight call) until the user clicks the edit button, then switches to the full `RelationSelect`; in create mode always renders the full select immediately — see §4.5.3 |
 | Default sort | `createdAt: 'desc'` | `withMeta(schema, { defaultSort: { field: 'name', order: 'asc' } })` — applied by `BaseService` when no `sortField` in query |
 | Post-create redirect | resource list | `withMeta(schema, { afterCreate: '/core/branch?companyId={id}' })` — template string with `{fieldName}` placeholders interpolated from the created record; the generic `[id]/page.tsx` redirects there instead of the list after a successful `POST` |
