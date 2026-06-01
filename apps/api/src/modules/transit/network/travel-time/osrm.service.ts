@@ -22,7 +22,7 @@ export class OsrmService {
    *
    * Entries with source = MANUAL are never overwritten.
    */
-  async generateMatrix(): Promise<void> {
+  async generateMatrix(): Promise<{ generated: number; skipped: number }> {
     const [routes, routeLocalityIds] = await Promise.all([
       this.prisma.transitRoute.findMany({
         select: { originLocalityId: true, destinationLocalityId: true },
@@ -41,19 +41,25 @@ export class OsrmService {
       relevantIds.add(rl.localityId)
     }
 
-    // depots are fetched last so we can reuse the id list
     const depots = await this.prisma.transitLocality.findMany({
       where:  { isDepot: true },
       select: { id: true },
     })
     for (const d of depots) relevantIds.add(d.id)
 
-    if (relevantIds.size < 2) return
-
-    const localities = await this.prisma.transitLocality.findMany({
+    const allLocalities = await this.prisma.transitLocality.findMany({
       where:  { id: { in: [...relevantIds] } },
       select: { id: true, lat: true, lng: true },
     })
+
+    // only localities with both coordinates can be sent to OSRM
+    const localities = allLocalities.filter((l) => l.lat != null && l.lng != null)
+    const skipped    = allLocalities.length - localities.length
+
+    if (localities.length < 2) {
+      this.logger.warn(`OSRM matrix skipped: not enough localities with coordinates (${localities.length}/${allLocalities.length})`)
+      return { generated: 0, skipped }
+    }
 
     const coords = localities.map((l) => `${l.lng},${l.lat}`).join(';')
     const url    = `${this.osrmUrl}/table/v1/driving/${coords}?annotations=duration,distance`
@@ -65,7 +71,7 @@ export class OsrmService {
       data = await res.json() as { durations: number[][], distances: number[][] }
     } catch (err) {
       this.logger.warn(`OSRM matrix failed: ${(err as Error).message}`)
-      return
+      throw err
     }
 
     const manualEntries = await this.prisma.travelTimeMatrix.findMany({
@@ -97,6 +103,7 @@ export class OsrmService {
     }
 
     await Promise.all(upserts)
-    this.logger.log(`OSRM matrix updated: relevant=${localities.length} pairs=${upserts.length}`)
+    this.logger.log(`OSRM matrix updated: localities=${localities.length} skipped=${skipped} pairs=${upserts.length}`)
+    return { generated: upserts.length, skipped }
   }
 }

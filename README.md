@@ -132,6 +132,60 @@ pnpm db:migrate       # applies any new migrations and regenerates the client
 
 ---
 
+## OSRM — travel time matrix
+
+The transit planning module uses [OSRM](https://project-osrm.org/) to automatically generate the travel-time/distance matrix between localities. It is an **optional** dependency — without it, the matrix can be filled manually through the UI.
+
+When running, OSRM must be reachable at the URL defined by `OSRM_URL` in `apps/api/.env` (default: `http://localhost:5000`).
+
+### Setup (Docker)
+
+**1. Download the OSM map for your region** (from [Geofabrik](https://download.geofabrik.de/)):
+
+```bash
+# Example: São Paulo state (~130 MB, fast to process)
+wget https://download.geofabrik.de/south-america/brazil/sudeste/sao-paulo-latest.osm.pbf
+
+# Full Brazil (~1.2 GB, slow to process — use only if needed)
+# wget https://download.geofabrik.de/south-america/brazil-latest.osm.pbf
+```
+
+**2. Pre-process the map** (run from the folder containing the `.pbf` file):
+
+```bash
+docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-extract -p /opt/car.lua /data/sao-paulo-latest.osm.pbf
+
+docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-partition /data/sao-paulo-latest.osrm
+
+docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-customize /data/sao-paulo-latest.osrm
+```
+
+> Pre-processing only needs to run once. The resulting `.osrm.*` files can be reused across restarts.
+
+**3. Start the routing server:**
+
+```bash
+docker run -d -p 5000:5000 -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-routed --algorithm mld /data/sao-paulo-latest.osrm
+```
+
+**Quick test:**
+
+```bash
+curl "http://localhost:5000/table/v1/driving/-46.633,-23.550;-46.638,-23.545?annotations=duration,distance"
+```
+
+### Generating the matrix
+
+Once OSRM is running, open the **Matriz de Tempos** list in the app and click **Gerar Matriz** in the topbar. Only localities that have both `lat` and `lng` coordinates set are included. Entries with source `MANUAL` are never overwritten.
+
+> The `car.lua` profile (car speeds) is a good approximation for urban bus planning. The matrix generation also triggers automatically whenever a locality is created or updated.
+
+---
+
 ## Available scripts
 
 ### Root (monorepo)

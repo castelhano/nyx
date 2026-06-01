@@ -25,13 +25,13 @@ export class LocalityService extends BaseService<Locality, CreateLocalityDto, Up
 
   override async create(dto: CreateLocalityDto): Promise<Locality> {
     const result = await super.create(dto)
-    this.osrm.generateMatrixForAllBranches().catch(() => {})
+    this.osrm.generateMatrix().catch(() => {})
     return result
   }
 
   override async update(id: string, dto: UpdateLocalityDto): Promise<Locality> {
     const result = await super.update(id, dto)
-    this.osrm.generateMatrixForAllBranches().catch(() => {})
+    this.osrm.generateMatrix().catch(() => {})
     return result
   }
 }
