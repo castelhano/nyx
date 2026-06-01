@@ -218,6 +218,7 @@ CREATE TABLE "transit_lines" (
     "type" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "notes" TEXT,
+    "metrics" JSONB,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
