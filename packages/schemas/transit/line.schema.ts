@@ -19,7 +19,7 @@ export const lineSchema = withMeta(
       className: 'md:w-1/2'
     }),
 
-    type: z.enum(['URBAN', 'METROPOLITAN', 'RURAL', 'SPECIAL']).meta({
+    type: z.enum(['URBAN', 'METROPOLITAN', 'RURAL', 'SPECIAL']).default('URBAN').meta({
       label:          'Tipo',
       listVisibility: 'visible',
       filter:         true,
