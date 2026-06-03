@@ -6,11 +6,18 @@ export const localitySchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
 
-    code: z.string().min(1).max(20).meta({
+    code: z.string().min(1).max(10).meta({
       label:          'Código',
       listVisibility: 'visible',
       className:      'md:w-36',
       keybind:        'c',
+    }),
+
+    abbr: z.string().max(10).optional().meta({
+      label:          'Abreviação',
+      listVisibility: 'hidden',
+      className:      'md:w-36',
+      keybind:        'f',
     }),
 
     name: z.string().min(2).meta({

@@ -24,6 +24,7 @@ enum VehiclePlanStatus {
 model TransitLocality {
   id        String   @id @default(uuid())
   code      String   @unique
+  abbr      String?
   name      String
   lat       Float?
   lng       Float?

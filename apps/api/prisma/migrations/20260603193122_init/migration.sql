@@ -201,6 +201,7 @@ CREATE TABLE "contracts" (
 CREATE TABLE "transit_localities" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "code" TEXT NOT NULL,
+    "abbr" TEXT,
     "name" TEXT NOT NULL,
     "lat" REAL,
     "lng" REAL,

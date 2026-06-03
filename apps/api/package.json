@@ -10,6 +10,7 @@
     "db:push": "prisma db push && prisma generate",
     "db:generate": "prisma generate",
     "db:seed": "ts-node -P tsconfig.seed.json -r tsconfig-paths/register prisma/seed.ts",
+    "db:seed-core": "ts-node -P tsconfig.seed.json -r tsconfig-paths/register prisma/seed-core.ts",
     "db:seed-transit": "ts-node -P tsconfig.seed.json -r tsconfig-paths/register prisma/seed-transit.ts"
   },
   "prisma": {
