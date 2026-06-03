@@ -20,6 +20,7 @@ function getType(field: ZodType): MetadataField['type'] {
   if (inner instanceof ZodBoolean) return 'boolean'
   if (inner instanceof ZodDate)    return 'date'
   if (inner instanceof ZodEnum)    return 'enum'
+  if (inner instanceof ZodArray)   return 'array'
   return 'string'
 }
 

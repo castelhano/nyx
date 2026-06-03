@@ -375,7 +375,71 @@ function LockedRelationSelect({
   )
 }
 
+function RelationMultiSelect({
+  field, control, readonly,
+}: {
+  field: MetadataField; control: Control<any>; readonly?: boolean
+}) {
+  const { options } = useFieldOptions(field)
+  const labelField  = field.labelField ?? 'name'
+
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required ? 'Selecione pelo menos uma opção' : false }}
+      render={({ field: ctrl }) => {
+        const selected: string[] = Array.isArray(ctrl.value) ? ctrl.value : []
+        const toggle = (id: string) => {
+          if (readonly) return
+          ctrl.onChange(
+            selected.includes(id) ? selected.filter(v => v !== id) : [...selected, id],
+          )
+        }
+        return (
+          <div className="flex flex-wrap gap-2">
+            {options.map((opt: Record<string, unknown>) => {
+              const id      = String(opt.id)
+              const checked = selected.includes(id)
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggle(id)}
+                  disabled={readonly}
+                  className={cn(
+                    'px-3 py-1 rounded-md border text-sm transition-colors',
+                    checked
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background border-border text-muted-foreground hover:border-foreground',
+                    readonly && readonlyCls,
+                  )}
+                >
+                  {String(opt[labelField] ?? id)}
+                </button>
+              )
+            })}
+          </div>
+        )
+      }}
+    />
+  )
+}
+
 export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
+  if (field.widget === 'multi-select' && field.resource && control) {
+    return (
+      <>
+        <label className="text-sm font-medium pt-2">{field.label}</label>
+        <div className="space-y-1">
+          <RelationMultiSelect field={field} control={control} readonly={readonly} />
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      </>
+    )
+  }
+
   if (field.widget === 'object-editor' && control) {
     return (
       <div className="md:col-span-2 space-y-2">

@@ -122,7 +122,7 @@ Global — não vinculada a filial. Cobre os pares de localidades **efetivamente
 ### 2.2 Camada de Programação (viagens e calendário)
 
 ```
-DayType ◄────────── TransitTrip ──► TransitRoute
+DayType ◄── TripDayType ──► TransitTrip ──► TransitRoute
    │
    └── LineCalendarException ──► TransitLine (N-N)
 ```
@@ -180,13 +180,23 @@ Join table M-N entre `LineCalendarException` e `TransitLine`.
 | `exceptionId` | FK LineCalendarException | cascade delete |
 | `lineId` | FK TransitLine | — |
 
-#### `TransitTrip` — viagem avulsa (átomo do planejamento)
+#### `TripDayType` — associação M-N entre viagem e tipo de dia
 
-Template permanente por `Route + DayType`. Não possui vínculo com empresa nem com vigência — é um dado técnico da linha. O solver consome trips filtradas pelo escopo do `VehiclePlan`.
+Join table entre `TransitTrip` e `DayType`. Uma mesma viagem pode ser válida para múltiplos tipos de dia (ex: `UTIL` e `FERIAS`). Isso elimina duplicação de trips quando o horário é idêntico em dois períodos.
 
 | Campo | Tipo | Notas |
 |---|---|---|
+| `tripId` | FK TransitTrip | cascade delete |
 | `dayTypeId` | FK DayType | — |
+
+`@@id([tripId, dayTypeId])` — chave composta; não existe duplicate.
+
+#### `TransitTrip` — viagem avulsa (átomo do planejamento)
+
+Template permanente por `Route`. Não possui vínculo com empresa nem com vigência — é um dado técnico da linha. Os tipos de dia que a viagem cobre são definidos via `TripDayType`. O solver consome trips filtradas pelo escopo do `VehiclePlan` usando `dayTypes: { some: { dayTypeId } }`.
+
+| Campo | Tipo | Notas |
+|---|---|---|
 | `routeId` | FK TransitRoute | — |
 | `departureMinutes` | Int | minutos desde o início do dia operacional |
 | `arrivalMinutes` | Int | pode ser > 1440 para viagens que cruzam a meia-noite |
@@ -502,8 +512,8 @@ Para uma `TransitLocality`, lista todas as viagens que passam por ela em ordem d
 SELECT rl.*, tt.*
 FROM transit_route_localities rl
 JOIN transit_trips tt ON tt.routeId = rl.routeId
+JOIN transit_trip_day_types tdt ON tdt.tripId = tt.id AND tdt.dayTypeId = :dayTypeId
 WHERE rl.localityId = :localityId
-  AND tt.dayTypeId  = :dayTypeId
 ORDER BY tt.departureMinutes + Σ(deltas até rl.sequence)
 ```
 
@@ -711,6 +721,7 @@ apps/api/src/modules/transit/
 | Bloco ≠ jornada de condutor | `blockDuration*` ignorado no VSP | Um bloco representa um veículo; veículo não tem limite de jornada. Limites de duração são restrições de condutor — aplicados no crew scheduling (Fase 2) |
 | Job persiste após `done` | `jobs.delete()` não ocorre no handler `done` | Permite "Assumir Melhor" após "Parar"; job limpo em `assumeBest()` ou TTL de 30 min |
 | `assumeBest` para o worker | `assumeBest` envia `stop` antes de persistir | Evita estado inconsistente: worker pode estar rodando quando o usuário clicar "Assumir Melhor" sem clicar "Parar" antes |
+| `TransitTrip` sem `dayTypeId` direto | Join table `TripDayType` (M-N) | Uma trip com mesmo horário vale para UTIL e FERIAS; com FK direto seria obrigatório duplicar a trip — ajuste de horário em um registro não propagaria para o outro |
 | Gantt IDA/VOLTA | OUTBOUND = cor cheia; INBOUND = cor clareada 45% (blend branco) | Mesma cor de linha, hue igual, distinção clara de direção sem exigir legenda separada |
 | `dayType` no ganttData | `getGanttData` inclui relação `dayType` | Summary bar precisa do `code` do tipo de dia; evita query extra no frontend |
 | DELETE restrito a DRAFT | `VehiclePlanService.remove()` override verifica `status === 'DRAFT'` | Plano ACTIVE não pode ser apagado — representa a programação vigente; exclusão acidental quebraria a escala diária (Fase 3) |

@@ -132,7 +132,7 @@ model DayType {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  trips                        TransitTrip[]
+  trips                        TripDayType[]
   vehiclePlans                 VehiclePlan[]
   calendarExceptionsAsOverride LineCalendarException[] @relation("ExceptionOverrideDayType")
   calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
@@ -170,7 +170,6 @@ model LineCalendarExceptionLine {
 
 model TransitTrip {
   id                  String       @id @default(uuid())
-  dayTypeId           String
   routeId             String
   // minutes from operational day start; values > 1440 indicate overnight trips
   departureMinutes    Int
@@ -182,11 +181,22 @@ model TransitTrip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  dayType    DayType      @relation(fields: [dayTypeId], references: [id])
   route      TransitRoute @relation(fields: [routeId], references: [id])
+  dayTypes   TripDayType[]
   blockTrips BlockTrip[]
 
   @@map("transit_trips")
+}
+
+model TripDayType {
+  tripId    String
+  dayTypeId String
+
+  trip    TransitTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  dayType DayType     @relation(fields: [dayTypeId], references: [id])
+
+  @@id([tripId, dayTypeId])
+  @@map("transit_trip_day_types")
 }
 
 model VehiclePlan {

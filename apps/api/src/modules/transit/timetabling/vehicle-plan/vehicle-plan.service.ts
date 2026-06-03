@@ -43,7 +43,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const [trips, matrix, depotLocalities, config] = await Promise.all([
       this.prisma.transitTrip.findMany({
-        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } } },
+        where:   { dayTypes: { some: { dayTypeId: plan.dayTypeId } }, route: { lineId: { in: lineIds } } },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true } } },
       }),
       this.prisma.travelTimeMatrix.findMany(),
