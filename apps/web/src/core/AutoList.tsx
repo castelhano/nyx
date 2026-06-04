@@ -345,7 +345,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       ))
     }
     setFiltersReady(true)
-  }, [meta?.defaultFilters])
+  }, [meta?.resource])
 
   const visibleRowActions = useMemo(
     () => (meta?.rowActions ?? []).filter((a) => meta!.permissions[a.permission]),

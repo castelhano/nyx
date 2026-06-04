@@ -26,7 +26,7 @@ export const lineSchema = withMeta(
       listVisibility: 'visible',
       filter:         true,
       className:      'md:w-1/4',
-      keybind:        't',
+      keybind:        'p',
       optionLabels: {
         URBAN:        'Urbano',
         METROPOLITAN: 'Metropolitano',
