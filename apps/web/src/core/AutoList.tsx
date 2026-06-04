@@ -74,7 +74,14 @@ function RelationFilter({
     staleTime: 60_000,
   })
 
-  useEffect(() => { onChange('') }, [parentValue])
+  const prevParentRef = useRef(parentValue)
+  useEffect(() => {
+    const prev = prevParentRef.current
+    prevParentRef.current = parentValue
+    if (prev === parentValue) return
+    onChange('')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentValue])
 
   return (
     <Select id={id} size="sm" value={value} onChange={(e) => onChange(e.target.value)} wrapperClassName={wrapperClassName} keybind={field.keybind}>
@@ -309,6 +316,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const [filterOpen,    setFilterOpen]    = useState(false)
   const [focusedRow,    setFocusedRow]    = useState<number | null>(null)
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
+  const [filtersReady,  setFiltersReady]  = useState(false)
   const defaultFiltersApplied = useRef(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -329,12 +337,14 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const { data: meta } = useMetadata(domain, resource)
 
   useEffect(() => {
-    if (defaultFiltersApplied.current || !meta?.defaultFilters) return
+    if (defaultFiltersApplied.current || !meta) return
     defaultFiltersApplied.current = true
-    const prefixed = Object.fromEntries(
-      Object.entries(meta.defaultFilters).map(([k, v]) => [`f_${k}`, v])
-    )
-    setActiveFilters(prefixed)
+    if (meta.defaultFilters) {
+      setActiveFilters(Object.fromEntries(
+        Object.entries(meta.defaultFilters).map(([k, v]) => [`f_${k}`, v])
+      ))
+    }
+    setFiltersReady(true)
   }, [meta?.defaultFilters])
 
   const visibleRowActions = useMemo(
@@ -388,7 +398,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       if (!res.ok) throw new Error('Failed to fetch list')
       return res.json()
     },
-    enabled: !!meta,
+    enabled: !!meta && filtersReady,
   })
 
   useEffect(() => {
