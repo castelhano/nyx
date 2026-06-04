@@ -4,7 +4,7 @@ import {
   Palette, CalendarDays, SlidersHorizontal, ArrowRightFromLine, Layers, Briefcase,
   UserRound, Bus, Tag, MapPin, Route, Timer, Warehouse, CalendarRange, CalendarSync, LayoutList,
   Settings2, Save, ArrowLeft, ChevronDown, Copy, Trash2,
-  Play, Square, Check, CheckCircle, Download, Plus, X, List, Info,
+  Play, Square, Check, CheckCircle, Download, Plus, X, List, Info, ClipboardList,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -52,6 +52,7 @@ export const Icons: Record<string, LucideIcon> = {
   X,
   List,
   Info,
+  ClipboardList,
   Default: LayoutGrid,
 }
 

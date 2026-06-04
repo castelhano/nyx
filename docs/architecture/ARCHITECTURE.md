@@ -61,6 +61,7 @@ nyx/
 │   │           │   ├── branch/
 │   │           │   ├── user-permission/
 │   │           │   ├── user-branch/
+│   │           │   ├── job/                # Background jobs — JobService.run() + fire-and-forget
 │   │           │   └── settings/           # Part of core domain — no separate @Domain
 │   │           │       ├── settings.module.ts
 │   │           │       └── password-policy/    # Extends BaseSettingsService/Controller
@@ -963,7 +964,105 @@ Register the module in `SettingsModule` (and export the service if other modules
 
 ---
 
-### 4.18 File Upload
+### 4.18 Job Queue — Background Processing
+
+Long-running operations (ERP sync, PDF generation, etc.) run as background jobs tracked in the database. No Redis or external queue — all state lives in the `Job` table.
+
+#### Model
+
+```prisma
+// apps/api/prisma/schema/core.prisma
+model Job {
+  id          String    @id @default(uuid())
+  type        String    // e.g. 'employee-sync', 'pdf-report'
+  domain      String
+  resource    String
+  status      JobStatus @default(PENDING)
+  createdById String
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+  input       Json?     // parameters passed to the job
+  output      Json?     // structured result: { created, updated, errors, ... }
+  outputFile  String?   // path to a generated file (PDF, CSV, etc.)
+  errors      Json?     // per-record errors — do not abort the job
+  error       String?   // catastrophic error that aborted the process
+  createdAt   DateTime  @default(now())
+}
+enum JobStatus { PENDING RUNNING COMPLETED FAILED }
+```
+
+**`errors` vs `error`:** `errors: Json?` collects per-line/per-record failures that don't abort the process (e.g. invalid CPF on line 14). `error: String?` holds the message of a catastrophic exception that stopped execution. A job can finish with `status: COMPLETED` and still have entries in `errors`.
+
+#### JobService — generic infrastructure
+
+`apps/api/src/modules/core/job/job.service.ts` extends `BaseService`. It adds:
+
+```typescript
+// Creates a job record and returns it immediately (caller gets the jobId)
+createJob(data: { type, domain, resource, createdById, input? }): Promise<Job>
+
+// Fires handler in the background — does NOT await; returns void immediately
+run(jobId: string, handler: () => Promise<unknown>): Promise<void>
+```
+
+`run` calls `executeAsync` (private) which: marks RUNNING → awaits handler → marks COMPLETED with output, or marks FAILED with error message. Duration is computed automatically.
+
+#### JobController — custom (does not extend BaseController)
+
+`GET /core/job/metadata` — always returns `permissions.create/update/delete: false`; jobs are never created or edited via the API.
+`GET /core/job` — delegates to `findAllForUser`: admin sees all, operator sees only their own jobs (`createdById = user.id`).
+`GET /core/job/:id` — returns the job if admin or owner; 403 otherwise.
+
+#### Implementing a sync handler
+
+Each domain implements its own handler. The handler owns all business logic — parsing, upsert strategy, and what to do with records absent from the file.
+
+```typescript
+// apps/api/src/modules/hr/employee/employee-sync.service.ts
+async sync(file: Buffer, userId: string): Promise<{ jobId: string }> {
+  const job = await this.jobService.createJob({
+    type: 'employee-sync', domain: 'hr', resource: 'employee', createdById: userId,
+  })
+  // intentional fire-and-forget
+  this.jobService.run(job.id, () => this.execute(file))
+  return { jobId: job.id }
+}
+
+private async execute(file: Buffer) {
+  const rows   = parseEmployeeTxt(file)   // format-specific parser
+  const errors = []
+  // upsert present records; soft-delete absent ones
+  return { created, updated, deactivated, errors }
+}
+```
+
+**ERP sync rule:** the ERP is always the source of truth for synced models. All fields are overwritten on upsert. Records absent from the file receive domain-specific treatment (e.g. `status: INACTIVE` for employees) — this logic is hardcoded per model, not abstracted.
+
+**Identifier field:** each synced model has a natural unique identifier that serves as the upsert key (e.g. `Employee.code` for matricula, `Vehicle.plate` for plate number). No generic `erpCode` field is added — the existing field is used directly.
+
+#### Frontend
+
+The `POST /:domain/:resource/sync` endpoint returns `{ jobId }` with 202 immediately. The caller polls with TanStack Query:
+
+```typescript
+useQuery({
+  queryKey: ['job', jobId],
+  queryFn:  () => apiFetch(`/core/job/${jobId}`).then(r => r.json()),
+  refetchInterval: (data) =>
+    data?.status === 'PENDING' || data?.status === 'RUNNING' ? 2000 : false,
+})
+```
+
+The list page at `/core/job` renders via `AutoList`. The detail page at `/core/job/:id` is a custom read-only page that displays the status badge, timing info, `output` and `errors` as formatted JSON, and a download link when `outputFile` is set.
+
+#### When to consider BullMQ / Redis
+
+The Job Table covers the current needs with zero extra infrastructure. Migrate only if the system requires: exponential backoff retries, cron-scheduled jobs, controlled concurrency (max N parallel), or priority queues. The `Job` table and per-handler pattern remain unchanged in that scenario — only the execution layer changes.
+
+---
+
+### 4.19 File Upload
 
 **Endpoint:** `POST /api/upload/image` (JWT-protected)
 

@@ -29,6 +29,7 @@ model User {
   branches        UserBranch[]
   permissions     UserPermission[]
   passwordHistory UserPasswordHistory[]
+  jobs            Job[]
 
   @@map("users")
 }
@@ -119,6 +120,35 @@ model UserPasswordHistory {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_password_history")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Job {
+  id          String    @id @default(uuid())
+  type        String
+  domain      String
+  resource    String
+  status      JobStatus @default(PENDING)
+  createdById String
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+  input       Json?
+  output      Json?
+  outputFile  String?
+  errors      Json?
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  @@map("jobs")
 }
 
 // Configurações do app

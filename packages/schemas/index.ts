@@ -1,6 +1,7 @@
 import './zod-meta'
 export * from './zod-meta'
 export * from './with-meta'
+export * from './core/job.schema'
 export * from './core/user.schema'
 export * from './core/user-permission.schema'
 export * from './core/user-branch.schema'

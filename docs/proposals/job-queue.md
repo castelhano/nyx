@@ -174,17 +174,27 @@ a semântica varia (funcionário ausente = inativar; veículo ausente = pode ser
 
 ---
 
-## Identificador ERP (`erpCode`)
+## Identificador ERP
 
-Cada model sincronizável precisa de um campo que armazene o identificador único do ERP:
+Cada model sincronizável tem um campo natural que serve como chave de identificação no ERP.
+Não é criado um campo genérico `erpCode` — usa-se o campo que já existe e faz esse papel:
 
-```prisma
-// campo adicionado a cada model sincronizável
-erpCode String? @unique
+| Model | Campo identificador | Valor no arquivo TXT |
+|-------|--------------------|-----------------------|
+| `Employee` | `code` (matrícula) | coluna `matricula` |
+| `Vehicle` | `plate` (placa) | coluna `placa` |
+
+O campo deve ser `@unique` no Prisma. O upsert usa esse campo como chave — nunca o UUID
+interno. Isso garante que o UUID interno (referenciado por outras tabelas) nunca muda entre syncs.
+
+```typescript
+// Employee — usa code (matrícula) como chave
+await this.prisma.employee.upsert({
+  where:  { code: row.matricula },
+  create: { ...row },
+  update: { ...row },
+})
 ```
-
-O upsert usa `erpCode` como chave de identificação — nunca o UUID interno. Isso garante
-que o UUID interno (referenciado por outras tabelas) nunca muda entre syncs.
 
 ---
 
