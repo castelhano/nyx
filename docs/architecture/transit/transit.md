@@ -37,7 +37,7 @@ A empresa (branch) não é proprietária de linhas ou horários. Ela opera **blo
 ```
 TransitLocality ──── TravelTimeMatrix ────┐
        │                                  │
-       └── RouteLocality ◄── TransitRoute ◄── TransitLine
+       └── RouteLocality ◄── TransitRoute ◄── TransitLine ◄── LineGroupLine ──► LineGroup
 ```
 
 #### `TransitLocality` — ponto ou terminal nomeado
@@ -61,6 +61,24 @@ Global — não vinculada a filial. A empresa que opera os veículos nessa linha
 | `name` | String | — |
 | `type` | Enum | URBAN / METROPOLITAN / RURAL / SPECIAL |
 | `isActive` | Boolean | — |
+
+#### `LineGroup` — agrupamento de linhas para escopo de edição
+
+Agrupa linhas para uso na tela de edição de horários. Um grupo pode representar as linhas operadas por uma filial ou qualquer conjunto ad-hoc.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `name` | String | nome do grupo |
+| `branchId` | FK Branch? | filial proprietária; `null` = grupo genérico |
+
+#### `LineGroupLine` — join table M-N entre `LineGroup` e `TransitLine`
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `lineGroupId` | FK LineGroup | cascade delete |
+| `lineId` | FK TransitLine | — |
+
+Uma mesma linha pode pertencer a múltiplos grupos (ex: Branch A e Branch B operam a mesma linha — sem duplicação de dados).
 
 #### `TransitRoute` — sentido de uma linha
 
@@ -276,6 +294,7 @@ Gerenciado via endpoints no `VehiclePlanController` (sem controller próprio —
 | `blockNumber` | Int | identificador dentro do plano |
 | `depotId` | FK TransitLocality | garagem de origem e retorno |
 | `vehicleType` | Enum | tipo de veículo alocado |
+| `isStale` | Boolean | `true` quando qualquer trip do bloco foi alterada após a geração; resetado ao criar novos blocos via `assumeBest()` |
 | `summary` | Json? | preenchido pelo solver — shape `VehicleBlockSummary`: `{ totalMinutes, productiveMinutes, deadrunMinutes, totalKm, productiveKm, deadrunKm }` |
 | `constraints` | Json? | ver §2.4 |
 
@@ -578,8 +597,12 @@ apps/api/src/modules/transit/
       locality.service.ts        extends BaseService (sem scopeField — global)
       locality.controller.ts     extends BaseController
     line/
-      line.service.ts            extends BaseService (sem scopeField — global)
+      line.service.ts            extends BaseService (sem scopeField — global); natural sort por code em findAll
       line.controller.ts         extends BaseController
+    line-group/
+      line-group.service.ts      extends BaseService (sem scopeField — global); gerencia lineIds M-N
+      line-group.controller.ts   extends BaseController
+      line-group.module.ts
     route/
       route.service.ts
       route.controller.ts
@@ -629,7 +652,8 @@ apps/api/src/modules/transit/
 ### Etapa 2 — Rede (NetworkModule) ✅
 
 - [x] `LocalityService` / `LocalityController`
-- [x] `LineService` / `LineController` — sem `scopeField`; linha é global
+- [x] `LineService` / `LineController` — sem `scopeField`; linha é global; natural sort por `code`
+- [x] `LineGroupService` / `LineGroupController` — sem `scopeField`; gerencia `lineIds` M-N via override
 - [x] `RouteService` / `RouteController`
 - [x] `RouteLocalityService` / `RouteLocalityController`
 - [x] `TravelTimeService` / `TravelTimeController` — sem `scopeField`; matriz é global
@@ -728,6 +752,9 @@ apps/api/src/modules/transit/
 | `RowList` duas linhas | Label + resumo `Xv · Yh` em 44px (ROW_HEIGHT inalterado); largura 160px | Mantém alinhamento pixel-perfeito com o canvas sem alterar o engine; info mínima visível sem abrir popover |
 | `BlockDetailPopover` posicionado pelo board | `screenY = RULER_HEIGHT + row.y - vp.scrollY`; `left = LABEL_WIDTH + 8` | O `GanttBoard` tem `position: relative`; popover calculado no mesmo sistema de coordenadas do canvas — sem `portal` necessário |
 | `variant: 'destructive' as const` | Ações de topbar destrutivas usam `as const` no literal | TypeScript infere literais de string em spreads ternários como `string` sem contexto explícito; `as const` preserva o tipo literal para satisfazer `TopbarAction.variant` |
+| `VehicleBlock.isStale` | Boolean flag no bloco | Marcado `true` em `TripService.update()` via `updateMany` nos blocos que contêm a trip; resetado ao criar novos blocos em `assumeBest()`; permite visualização de blocos desatualizados no Gantt sem recalcular |
+| `LineGroup` escopo de edição | Modelo separado com `branchId?` + M-N com `TransitLine` | Unifica os três casos de escopo (linhas avulsas, por filial, grupo ad-hoc) em um único modelo; linha pode pertencer a múltiplos grupos sem duplicação |
+| Natural sort de linhas | `LineService.findAll()` override com sort JS pós-query | DB não suporta natural sort (numérico + alfanumérico) de forma portável; com ~200 linhas o custo é negligenciável; `sortField` explícito bypassa o override |
 
 ---
 
