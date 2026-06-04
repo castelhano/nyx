@@ -58,6 +58,7 @@ model TransitLine {
   routes     TransitRoute[]
   planLines  VehiclePlanLine[]
   exceptions LineCalendarExceptionLine[]
+  lineGroups LineGroupLine[]
 
   @@map("transit_lines")
 }
@@ -237,6 +238,8 @@ model VehicleBlock {
   blockNumber   Int
   depotId       String
   vehicleType VehicleType
+  // true when any trip in the block was modified after generation
+  isStale     Boolean     @default(false)
   // populated by solver; shape: { totalMinutes, totalKm, deadrunKm, productiveKm, ... }
   summary     Json?
   // { locked?: true }
@@ -251,6 +254,31 @@ model VehicleBlock {
 
   @@unique([vehiclePlanId, blockNumber])
   @@map("transit_vehicle_blocks")
+}
+
+model LineGroup {
+  id        String   @id @default(uuid())
+  name      String
+  branchId  String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch?         @relation("BranchLineGroups", fields: [branchId], references: [id])
+  lines  LineGroupLine[]
+
+  @@map("transit_line_groups")
+}
+
+model LineGroupLine {
+  lineGroupId String
+  lineId      String
+
+  lineGroup LineGroup   @relation(fields: [lineGroupId], references: [id], onDelete: Cascade)
+  line      TransitLine @relation(fields: [lineId], references: [id])
+
+  @@id([lineGroupId, lineId])
+  @@map("transit_line_group_lines")
 }
 
 model BlockTrip {

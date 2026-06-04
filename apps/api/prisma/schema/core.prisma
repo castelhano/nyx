@@ -74,7 +74,8 @@ model Branch {
   employees  Employee[]
   vehicles   Vehicle[]
 
-  vehicleBlocks     VehicleBlock[]     @relation("BranchVehicleBlocks")
+  vehicleBlocks VehicleBlock[] @relation("BranchVehicleBlocks")
+  lineGroups    LineGroup[]    @relation("BranchLineGroups")
 
   @@map("branches")
 }

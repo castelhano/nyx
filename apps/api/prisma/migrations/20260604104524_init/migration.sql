@@ -310,7 +310,6 @@ CREATE TABLE "transit_line_calendar_exception_lines" (
 -- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "dayTypeId" TEXT NOT NULL,
     "routeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
@@ -319,8 +318,17 @@ CREATE TABLE "transit_trips" (
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_trip_day_types" (
+    "tripId" TEXT NOT NULL,
+    "dayTypeId" TEXT NOT NULL,
+
+    PRIMARY KEY ("tripId", "dayTypeId"),
+    CONSTRAINT "transit_trip_day_types_tripId_fkey" FOREIGN KEY ("tripId") REFERENCES "transit_trips" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_trip_day_types_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -355,6 +363,7 @@ CREATE TABLE "transit_vehicle_blocks" (
     "blockNumber" INTEGER NOT NULL,
     "depotId" TEXT NOT NULL,
     "vehicleType" TEXT NOT NULL,
+    "isStale" BOOLEAN NOT NULL DEFAULT false,
     "summary" JSONB,
     "constraints" JSONB,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -362,6 +371,27 @@ CREATE TABLE "transit_vehicle_blocks" (
     CONSTRAINT "transit_vehicle_blocks_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "transit_vehicle_blocks_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "transit_vehicle_blocks_depotId_fkey" FOREIGN KEY ("depotId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_line_groups" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "branchId" TEXT,
+    "notes" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_line_groups_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_line_group_lines" (
+    "lineGroupId" TEXT NOT NULL,
+    "lineId" TEXT NOT NULL,
+
+    PRIMARY KEY ("lineGroupId", "lineId"),
+    CONSTRAINT "transit_line_group_lines_lineGroupId_fkey" FOREIGN KEY ("lineGroupId") REFERENCES "transit_line_groups" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_line_group_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable

@@ -77,6 +77,10 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
       }
     }
     await this.prisma.transitTrip.update({ where: { id }, data })
+    await this.prisma.vehicleBlock.updateMany({
+      where: { blockTrips: { some: { tripId: id } } },
+      data:  { isStale: true },
+    })
     const map = await this.fetchDayTypeMap([id])
     const updated = await super.findOne(id) as any
     return { ...updated, dayTypeIds: map.get(id) ?? [] } as any

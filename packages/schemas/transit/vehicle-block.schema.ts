@@ -59,6 +59,12 @@ export const vehicleBlockSchema = withMeta(
       },
     }),
 
+    isStale: z.boolean().default(false).meta({
+      label:          'Desatualizado',
+      listVisibility: 'hidden',
+      showInForm:     false,
+    }),
+
     // populated by solver; shape: { totalMinutes, totalKm, deadrunKm, productiveKm, ... }
     summary: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Resumo',
