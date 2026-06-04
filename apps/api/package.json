@@ -9,9 +9,9 @@
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:push": "prisma db push && prisma generate",
     "db:generate": "prisma generate",
-    "db:seed": "ts-node -P tsconfig.seed.json -r tsconfig-paths/register prisma/seed.ts",
-    "db:seed-core": "ts-node -P tsconfig.seed.json -r tsconfig-paths/register prisma/seed-core.ts",
-    "db:seed-transit": "ts-node -P tsconfig.seed.json -r tsconfig-paths/register prisma/seed-transit.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed-core": "tsx prisma/seed-core.ts",
+    "db:seed-transit": "tsx prisma/seed-transit.ts"
   },
   "prisma": {
     "seed": "pnpm db:seed"
@@ -38,6 +38,8 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.21",
     "@nestjs/schematics": "^11.1.0",
+    "@swc-node/register": "^1.11.1",
+    "@swc/core": "^1.15.40",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.19.19",
@@ -45,7 +47,6 @@
     "dotenv": "^17.4.2",
     "nodemon": "^3.1.4",
     "prisma": "^7",
-    "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3"

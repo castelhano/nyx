@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { dayTypeSchema, DayType, CreateDayTypeDto, UpdateDayTypeDto, DayTypePattern } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
@@ -66,7 +67,7 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
 
   private async resolveByPattern(date: Date): Promise<DayType> {
     const dayTypes = await this.prisma.dayType.findMany({
-      where:   { pattern: { not: null } },
+      where:   { pattern: { not: Prisma.DbNull } },
       orderBy: { priority: 'asc' },
     })
 

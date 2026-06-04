@@ -3,12 +3,9 @@
   "compilerOptions": {
     "module": "Node16",
     "moduleResolution": "node16",
-    "ignoreDeprecations": "6.0",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "rootDir": "src",
-    "outDir": "dist",
-    "baseUrl": ".",
+    "noEmit": true,
     "paths": {
       "@nyx/schemas": ["../../packages/schemas/index.ts"],
       "@nyx/schemas/*": ["../../packages/schemas/*"],
