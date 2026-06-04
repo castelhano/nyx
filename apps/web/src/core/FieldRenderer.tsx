@@ -408,10 +408,10 @@ function RelationMultiSelect({
                   onClick={() => toggle(id)}
                   disabled={readonly}
                   className={cn(
-                    'px-3 py-1 rounded-md border text-sm transition-colors',
+                    'px-3 py-1 rounded-sm border text-sm transition-colors cursor-pointer',
                     checked
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background border-border text-muted-foreground hover:border-foreground',
+                      ? 'bg-accent text-accent-foreground border-accent'
+                      : 'bg-background text-muted-foreground hover:bg-muted',
                     readonly && readonlyCls,
                   )}
                 >

@@ -9,6 +9,7 @@ export const lineGroupSchema = withMeta(
     name: z.string().min(1).meta({
       label:          'Nome',
       listVisibility: 'visible',
+      className: 'md:w-1/2',
       keybind:        'n',
     }),
 
@@ -18,9 +19,9 @@ export const lineGroupSchema = withMeta(
       resource:       'branch',
       domain:         'core',
       labelField:     'name',
+      className:      'md:w-1/2',
       listVisibility: 'visible',
       filter:         { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
-      keybind:        'f',
     }),
 
     lineIds: z.array(z.uuid()).default([]).meta({
@@ -30,7 +31,6 @@ export const lineGroupSchema = withMeta(
       domain:         'transit',
       labelField:     'code',
       listVisibility: 'hidden',
-      keybind:        'l',
     }),
 
     notes: z.string().optional().meta({

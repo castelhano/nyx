@@ -13,7 +13,7 @@ export const travelTimeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      keybind:        'o',
+      className:      'md:w-1/2'
     }),
 
     destinationId: z.uuid().meta({
@@ -23,36 +23,32 @@ export const travelTimeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      keybind:        'e',
+      className:      'md:w-1/2'
     }),
 
     baseMinutes: z.number().min(0).meta({
       label:          'Tempo Base (min)',
       listVisibility: 'visible',
-      className:      'md:w-44',
-      keybind:        'm',
+      className:      'md:w-40'
     }),
 
     distanceKm: z.number().min(0).meta({
       label:          'Distância (km)',
       listVisibility: 'visible',
-      className:      'md:w-40',
-      keybind:        'k',
+      className:      'md:w-40'
     }),
 
     // multiplier applied to baseMinutes during peak hours (configured in PlanningConfig)
     peakMultiplier: z.number().min(1).max(5).default(1.0).meta({
       label:     'Multiplicador Pico',
-      className: 'md:w-44',
-      keybind:   'p',
+      className: 'md:w-40'
     }),
 
     source: z.enum(['OSRM', 'MANUAL']).default('MANUAL').meta({
       label:          'Origem do Dado',
       listVisibility: 'visible',
       filter:         true,
-      className:      'md:w-40',
-      keybind:        's',
+      className:      'md:w-65',
       defaultValue:   'MANUAL',
       optionLabels: {
         OSRM:   'OSRM (automático)',
