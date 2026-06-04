@@ -13,7 +13,8 @@ import {
 } from '@tanstack/react-table'
 import { useMetadata } from './useMetadata'
 import { useAuth } from '@/lib/auth-context'
-import { useShortcut } from '@/lib/keywatch'
+import { useShortcut, useKeywatch } from '@/lib/keywatch'
+import { KeyHint } from './FieldRenderer'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
@@ -50,6 +51,7 @@ function RelationFilter({
   parentValue,
   onChange,
   wrapperClassName,
+  id,
 }: {
   field:             MetadataField
   filterDef:         Extract<FilterDef, { type: 'relation' }>
@@ -57,6 +59,7 @@ function RelationFilter({
   parentValue:       string | undefined
   onChange:          (v: string) => void
   wrapperClassName?: string
+  id?:               string
 }) {
   const { data: options = [] } = useQuery<{ id: string; [k: string]: unknown }[]>({
     queryKey: ['filter-options', filterDef.endpoint, parentValue],
@@ -74,7 +77,7 @@ function RelationFilter({
   useEffect(() => { onChange('') }, [parentValue])
 
   return (
-    <Select size="sm" value={value} onChange={(e) => onChange(e.target.value)} wrapperClassName={wrapperClassName}>
+    <Select id={id} size="sm" value={value} onChange={(e) => onChange(e.target.value)} wrapperClassName={wrapperClassName} keybind={field.keybind}>
       <option value="">{field.label}</option>
       {options.map((o) => (
         <option key={o.id} value={o.id}>{String(o[filterDef.labelField] ?? o.id)}</option>
@@ -118,7 +121,7 @@ function FilterBar({
 
         if (filter.type === 'select') {
           return (
-            <Select key={field.name} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined}>
+            <Select key={field.name} id={`filter-${field.name}`} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined} keybind={field.keybind}>
               <option value="">{field.label}</option>
               {(field.options ?? []).map((o) => <option key={o} value={o}>{field.optionLabels?.[o] ?? o}</option>)}
             </Select>
@@ -127,7 +130,7 @@ function FilterBar({
 
         if (filter.type === 'boolean') {
           return (
-            <Select key={field.name} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined}>
+            <Select key={field.name} id={`filter-${field.name}`} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined} keybind={field.keybind}>
               <option value="">{field.label}</option>
               <option value="true">Sim</option>
               <option value="false">Não</option>
@@ -137,14 +140,20 @@ function FilterBar({
 
         if (filter.type === 'text') {
           return (
-            <Input key={field.name} size="sm" type="text" placeholder={field.label} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={stacked ? 'w-full' : 'min-w-32'} />
+            <span key={field.name} className="relative inline-flex">
+              <Input id={`filter-${field.name}`} size="sm" type="text" placeholder={field.label} value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} className={cn(stacked ? 'w-full' : 'min-w-32', field.keybind && 'md:pr-12')} />
+              {field.keybind && <KeyHint k={field.keybind} />}
+            </span>
           )
         }
 
         if (filter.type === 'number_range') {
           return (
             <span key={field.name} className={cn('flex items-center gap-1', stacked && 'w-full')}>
-              <Input size="sm" type="number" placeholder={`${field.label} mín`} value={values[`${key}_min`] ?? ''} onChange={(e) => onChange(`${key}_min`, e.target.value)} className={stacked ? 'flex-1' : 'w-28'} />
+              <span className="relative inline-flex">
+                <Input id={`filter-${field.name}`} size="sm" type="number" placeholder={`${field.label} mín`} value={values[`${key}_min`] ?? ''} onChange={(e) => onChange(`${key}_min`, e.target.value)} className={cn(stacked ? 'flex-1' : 'w-28', field.keybind && 'md:pr-12')} />
+                {field.keybind && <KeyHint k={field.keybind} />}
+              </span>
               <span className="text-muted-foreground text-xs">–</span>
               <Input size="sm" type="number" placeholder={`${field.label} máx`} value={values[`${key}_max`] ?? ''} onChange={(e) => onChange(`${key}_max`, e.target.value)} className={stacked ? 'flex-1' : 'w-28'} />
             </span>
@@ -154,7 +163,10 @@ function FilterBar({
         if (filter.type === 'date_range') {
           return (
             <span key={field.name} className={cn('flex items-center gap-1', stacked && 'w-full')}>
-              <Input size="sm" type="date" title={`${field.label} de`} value={values[`${key}_from`] ?? ''} onChange={(e) => onChange(`${key}_from`, e.target.value)} className={stacked ? 'flex-1' : undefined} />
+              <span className="relative inline-flex">
+                <Input id={`filter-${field.name}`} size="sm" type="date" title={`${field.label} de`} value={values[`${key}_from`] ?? ''} onChange={(e) => onChange(`${key}_from`, e.target.value)} className={cn(stacked ? 'flex-1' : undefined, field.keybind && 'md:pr-12')} />
+                {field.keybind && <KeyHint k={field.keybind} />}
+              </span>
               <span className="text-muted-foreground text-xs">–</span>
               <Input size="sm" type="date" title={`${field.label} até`} value={values[`${key}_to`] ?? ''} onChange={(e) => onChange(`${key}_to`, e.target.value)} className={stacked ? 'flex-1' : undefined} />
             </span>
@@ -165,7 +177,7 @@ function FilterBar({
           const parentKey   = filter.dependsOn ? `f_${filter.dependsOn}` : undefined
           const parentValue = parentKey ? (values[parentKey] ?? undefined) : undefined
           return (
-            <RelationFilter key={field.name} field={field} filterDef={filter} value={values[key] ?? ''} parentValue={parentValue} onChange={(v) => onChange(key, v)} wrapperClassName={stacked ? 'w-full' : undefined} />
+            <RelationFilter key={field.name} id={`filter-${field.name}`} field={field} filterDef={filter} value={values[key] ?? ''} parentValue={parentValue} onChange={(v) => onChange(key, v)} wrapperClassName={stacked ? 'w-full' : undefined} />
           )
         }
 
@@ -287,6 +299,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const queryClient = useQueryClient()
   const { toast }   = useToast()
   const { user }    = useAuth()
+  const { coreRef } = useKeywatch()
   const dateFormat  = user?.preferences?.dateFormat ?? 'DD/MM/YYYY'
 
   const [page,          setPage]          = useState(1)
@@ -406,6 +419,20 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     document.addEventListener('mousedown', onOutside)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [filterOpen])
+
+  useEffect(() => {
+    const core = coreRef.current
+    if (!core || !filterableFields.length) return
+    const group = 'filter-keybinds-autolist'
+    for (const field of filterableFields) {
+      if (!field.keybind) continue
+      core.bind(`ctrl+shift+${field.keybind}`, () => {
+        document.getElementById(`filter-${field.name}`)?.focus()
+      }, { group, display: false })
+    }
+    return () => { core.unbindGroup(group) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta?.resource])
 
   useShortcut('alt+l', () => {
     const defaultPrefixed = meta?.defaultFilters
