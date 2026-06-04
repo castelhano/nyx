@@ -46,6 +46,29 @@ export function GlobalShortcuts() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  useEffect(() => {
+    let lastEsc = 0
+
+    function onEscBlur(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      const target = e.target
+      if (!(target instanceof HTMLElement)) return
+      const tag = target.nodeName.toLowerCase()
+      if (!['input', 'textarea', 'select'].includes(tag)) return
+
+      const now = Date.now()
+      if (now - lastEsc < 300) {
+        target.blur()
+        lastEsc = 0
+      } else {
+        lastEsc = now
+      }
+    }
+
+    document.addEventListener('keydown', onEscBlur)
+    return () => document.removeEventListener('keydown', onEscBlur)
+  }, [])
+
   useShortcut('alt+i', () => router.push('/'), {
     desc:   'Ir para Início',
     icon:   Home,

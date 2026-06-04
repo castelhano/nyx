@@ -11,6 +11,7 @@ export const localitySchema = withMeta(
       listVisibility: 'visible',
       className:      'md:w-36',
       keybind:        'c',
+      filter: true
     }),
 
     abbr: z.string().max(10).optional().meta({
