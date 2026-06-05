@@ -109,7 +109,7 @@ export default function UserDetailPage() {
       const res = await apiFetch('/core/company?pageSize=999')
       if (!res.ok) throw new Error('Failed to fetch companies')
       const json = await res.json()
-      return (json.data ?? []) as { id: string; legalName: string }[]
+      return (json.data ?? []) as { id: string; tradeName: string }[]
     },
     staleTime: 60_000,
   })
@@ -569,7 +569,7 @@ export default function UserDetailPage() {
                   items={branches}
                   onChange={setBranches}
                   branches={allBranches ?? []}
-                  companies={(allCompanies ?? []).map((c) => ({ id: c.id, name: c.legalName }))}
+                  companies={(allCompanies ?? []).map((c) => ({ id: c.id, name: c.tradeName }))}
                 />
               ),
             },

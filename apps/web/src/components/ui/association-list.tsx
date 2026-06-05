@@ -181,7 +181,7 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
                   availableGroups.map(({ company, items: gBranches }) => (
                     <div key={company?.id ?? '__none'}>
                       {company && (
-                        <p className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        <p className="px-2 py-2 mt-2 mb-1 text-xs font-medium rounded-sm bg-muted text-muted-foreground uppercase tracking-wide">
                           {company.name}
                         </p>
                       )}
@@ -190,7 +190,7 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
                           key={b.id}
                           type="button"
                           onClick={() => handleAdd(b)}
-                          className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                          className="w-full text-left px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
                         >
                           {b.name}
                         </button>
