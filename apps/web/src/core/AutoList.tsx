@@ -641,6 +641,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
                         'px-3 py-2',
                         cell.column.id === '_actions' && 'text-end px-1 py-1',
                       )}
+                      onClick={cell.column.id === '_actions' ? (e) => e.stopPropagation() : undefined}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>

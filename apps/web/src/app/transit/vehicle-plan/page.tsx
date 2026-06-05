@@ -21,8 +21,10 @@ export default function VehiclePlanListPage() {
   const confirm      = useConfirm()
   const { toast }    = useToast()
 
-  const [importOpen,   setImportOpen]   = useState(false)
-  const [importPlanId, setImportPlanId] = useState<string | null>(null)
+  const [importOpen,      setImportOpen]      = useState(false)
+  const [importPlanId,    setImportPlanId]    = useState<string | null>(null)
+  const [importDayTypeId, setImportDayTypeId] = useState<string | null>(null)
+  const [importDayTypeName, setImportDayTypeName] = useState<string | null>(null)
 
   const { guardNode, meta } = usePageGuard('transit', 'vehicle-plan')
   if (guardNode) return guardNode
@@ -50,6 +52,8 @@ export default function VehiclePlanListPage() {
   const handleAction = useCallback(async (action: string, row: Record<string, unknown>) => {
     if (action === 'import') {
       setImportPlanId(row.id as string)
+      setImportDayTypeId(row.dayTypeId as string | null)
+      setImportDayTypeName((row as any).dayType?.name ?? null)
       setImportOpen(true)
       return
     }
@@ -94,7 +98,15 @@ export default function VehiclePlanListPage() {
           submitLabel="Importar"
           outputLabels={{ created: 'Blocos', updated: 'Viagens', deactivated: 'Linhas' }}
           extraBody={importPlanId ? { planId: importPlanId } : undefined}
-          onClose={() => { setImportOpen(false); setImportPlanId(null) }}
+          readonlyFields={importPlanId && importDayTypeId ? {
+            dayTypeId: { value: importDayTypeId, displayLabel: importDayTypeName ?? importDayTypeId },
+          } : undefined}
+          onClose={() => {
+            setImportOpen(false)
+            setImportPlanId(null)
+            setImportDayTypeId(null)
+            setImportDayTypeName(null)
+          }}
         />
       )}
     </div>

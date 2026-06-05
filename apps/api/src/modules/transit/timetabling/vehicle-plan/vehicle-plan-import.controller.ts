@@ -98,10 +98,10 @@ export class VehiclePlanImportController {
     @Body('planId')        planId:           string | undefined,
     @Request() req: any,
   ) {
-    if (!file)      throw new BadRequestException('Arquivo não enviado')
-    if (!branchId)  throw new BadRequestException('Filial obrigatória')
-    if (!dayTypeId) throw new BadRequestException('Tipo de dia obrigatório')
-    if (!depotId)   throw new BadRequestException('Garagem obrigatória')
+    if (!file)                  throw new BadRequestException('Arquivo não enviado')
+    if (!branchId)              throw new BadRequestException('Filial obrigatória')
+    if (!planId && !dayTypeId)  throw new BadRequestException('Tipo de dia obrigatório')
+    if (!depotId)               throw new BadRequestException('Garagem obrigatória')
 
     const setupMinutes = parseInt(setupMinutesRaw ?? '0', 10) || 0
 

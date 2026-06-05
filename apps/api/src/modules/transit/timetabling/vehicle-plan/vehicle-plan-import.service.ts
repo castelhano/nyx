@@ -50,6 +50,16 @@ export class VehiclePlanImportService {
     setupMinutes: number = 0,
     planId?:      string,
   ): Promise<ImportOutput> {
+    // In update mode the dayType comes from the existing plan, ignoring what was posted
+    if (planId) {
+      const existing = await (this.prisma as any).vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: { dayTypeId: true },
+      })
+      if (!existing) throw new Error('Planejamento não encontrado')
+      dayTypeId = existing.dayTypeId
+    }
+
     const { rows, skipped } = parseVehiclePlanFile(buffer)
     if (rows.length === 0) throw new Error('Nenhum registro encontrado no arquivo')
 

@@ -34,13 +34,15 @@ interface JobResult {
 }
 
 interface Props {
-  domain:        string
-  resource:      string
-  label:         string
-  submitLabel?:  string
-  outputLabels?: { created: string; updated: string; deactivated: string }
-  extraBody?:    Record<string, string>
-  onClose:       () => void
+  domain:         string
+  resource:       string
+  label:          string
+  submitLabel?:   string
+  outputLabels?:  { created: string; updated: string; deactivated: string }
+  extraBody?:     Record<string, string>
+  /** Fields rendered as static read-only text instead of interactive widgets. Value is still sent in the form. */
+  readonlyFields?: Record<string, { value: string; displayLabel?: string }>
+  onClose:        () => void
 }
 
 function downloadCsv(errors: ImportError[]) {
@@ -55,7 +57,7 @@ function downloadCsv(errors: ImportError[]) {
   URL.revokeObjectURL(url)
 }
 
-export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar', outputLabels, extraBody, onClose }: Props) {
+export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar', outputLabels, extraBody, readonlyFields, onClose }: Props) {
   const ol = { created: 'Criados', updated: 'Atualizados', deactivated: 'Desligados', ...outputLabels }
   const [file,       setFile]       = useState<File | null>(null)
   const [jobId,      setJobId]      = useState<string | null>(null)
@@ -64,7 +66,11 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
   const fileRef    = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
 
-  const methods = useForm<Record<string, string>>({ defaultValues: {} })
+  const methods = useForm<Record<string, string>>({
+    defaultValues: readonlyFields
+      ? Object.fromEntries(Object.entries(readonlyFields).map(([k, v]) => [k, v.value]))
+      : {},
+  })
   const { handleSubmit, register, control, formState: { errors } } = methods
 
   const { data: fieldsData } = useQuery<{ fields: SyncField[] }>({
@@ -260,15 +266,30 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
               <form id="sync-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 {fields.length > 0 && (
                   <div className="grid grid-cols-1 gap-x-4 gap-y-1">
-                    {fields.map((f) => (
-                      <FieldRenderer
-                        key={f.name}
-                        field={f}
-                        register={register(f.name, { required: f.required && !f.virtual ? 'Campo obrigatório' : false })}
-                        control={control}
-                        error={errors[f.name]?.message as string | undefined}
-                      />
-                    ))}
+                    {fields.map((f) => {
+                      const locked = readonlyFields?.[f.name]
+                      if (locked) {
+                        // Register hidden so value is included in form submission
+                        register(f.name)
+                        return (
+                          <div key={f.name} className="space-y-1">
+                            <label className="text-sm font-medium">{f.label}</label>
+                            <div className="text-sm px-3 py-2 rounded-sm border border-input bg-muted text-muted-foreground">
+                              {locked.displayLabel ?? locked.value}
+                            </div>
+                          </div>
+                        )
+                      }
+                      return (
+                        <FieldRenderer
+                          key={f.name}
+                          field={f}
+                          register={register(f.name, { required: f.required && !f.virtual ? 'Campo obrigatório' : false })}
+                          control={control}
+                          error={errors[f.name]?.message as string | undefined}
+                        />
+                      )
+                    })}
                   </div>
                 )}
 
