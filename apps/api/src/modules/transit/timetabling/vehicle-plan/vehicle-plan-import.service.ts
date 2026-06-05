@@ -51,16 +51,17 @@ export class VehiclePlanImportService {
 
     const errors: ImportOutput['errors'] = []
 
-    // Group rows by (lineCode, tabNumber) → each pair = one VehicleBlock
-    const blockMap = new Map<string, Map<number, typeof rows>>()
+    // Group rows by (vehicleNumber|lineCode, tabId) → each unique pair = one VehicleBlock.
+    // Using vehicleNumber as primary key merges trips from different line codes (e.g. 308 + 308B)
+    // that share the same vehicle and tab. Falls back to lineCode when vehicleNumber is absent.
+    const blockMap = new Map<string, typeof rows>()
     for (const row of rows) {
-      if (!blockMap.has(row.lineCode)) blockMap.set(row.lineCode, new Map())
-      const byTab = blockMap.get(row.lineCode)!
-      if (!byTab.has(row.tabNumber)) byTab.set(row.tabNumber, [])
-      byTab.get(row.tabNumber)!.push(row)
+      const key = `${row.vehicleNumber || row.lineCode}:${row.tabId}`
+      if (!blockMap.has(key)) blockMap.set(key, [])
+      blockMap.get(key)!.push(row)
     }
 
-    const lineCodes = Array.from(blockMap.keys())
+    const lineCodes = [...new Set(rows.map(r => r.lineCode))]
 
     // Resolve TransitLine records
     const transitLines = await (this.prisma as any).transitLine.findMany({
@@ -111,48 +112,48 @@ export class VehiclePlanImportService {
 
     let blockNumber = 1
 
-    for (const [lineCode, byTab] of blockMap.entries()) {
-      const line = lineByCode.get(lineCode)
-      if (!line) continue
+    for (const [, tabRows] of blockMap.entries()) {
+      // Sort trips chronologically within the block
+      tabRows.sort((a, b) => {
+        const aMin = parseHHMM(a.departureHHMM) + (a.depDay - 1) * 1440
+        const bMin = parseHHMM(b.departureHHMM) + (b.depDay - 1) * 1440
+        return aMin - bMin
+      })
 
-      for (const [, tabRows] of byTab.entries()) {
-        tabRows.sort((a, b) =>
-          a.tabId !== b.tabId
-            ? a.tabId.localeCompare(b.tabId)
-            : a.sequence - b.sequence,
-        )
+      const blockId    = randomUUID()
+      let   seqInBlock = 1
+      let   hasTrips   = false
 
-        const blockId   = randomUUID()
-        let   seqInBlock = 1
-        let   hasTrips   = false
+      for (const row of tabRows) {
+        const line = lineByCode.get(row.lineCode)
+        if (!line) continue
 
-        for (const row of tabRows) {
-          const direction = row.direction === 'I' ? 'INBOUND' : 'OUTBOUND'
-          const route     = routeByKey.get(`${line.id}:${direction}`)
+        // I = IDA = OUTBOUND, V = VOLTA = INBOUND
+        const direction = row.direction === 'I' ? 'OUTBOUND' : 'INBOUND'
+        const route     = routeByKey.get(`${line.id}:${direction}`)
 
-          if (!route) {
-            errors.push({
-              line:    row._lineNum,
-              record:  `${lineCode} tab ${row.tabId}`,
-              message: `Rota ${direction} não encontrada para linha ${lineCode}`,
-            })
-            continue
-          }
-
-          const tripId           = randomUUID()
-          const departureMinutes = parseHHMM(row.departureHHMM) + (row.depDay - 1) * 1440
-          const arrivalMinutes   = parseHHMM(row.arrivalHHMM)   + (row.arrDay - 1) * 1440
-
-          tripRows.push({ id: tripId, routeId: route.id, departureMinutes, arrivalMinutes })
-          tripDayTypes.push({ tripId, dayTypeId })
-          blockTripRows.push({ vehicleBlockId: blockId, tripId, sequence: seqInBlock++, isDeadhead: !row.isProductive })
-          hasTrips = true
+        if (!route) {
+          errors.push({
+            line:    row._lineNum,
+            record:  `${row.lineCode} tab ${row.tabId}`,
+            message: `Rota ${direction} não encontrada para linha ${row.lineCode}`,
+          })
+          continue
         }
 
-        if (!hasTrips) continue
+        const tripId           = randomUUID()
+        const departureMinutes = parseHHMM(row.departureHHMM) + (row.depDay - 1) * 1440
+        const arrivalMinutes   = parseHHMM(row.arrivalHHMM)   + (row.arrDay - 1) * 1440
 
-        blockRows.push({ id: blockId, vehiclePlanId: plan.id, branchId, blockNumber: blockNumber++, depotId, vehicleType: 'BUS' })
+        tripRows.push({ id: tripId, routeId: route.id, departureMinutes, arrivalMinutes })
+        tripDayTypes.push({ tripId, dayTypeId })
+        blockTripRows.push({ vehicleBlockId: blockId, tripId, sequence: seqInBlock++, isDeadhead: !row.isProductive })
+        hasTrips = true
       }
+
+      if (!hasTrips) continue
+
+      blockRows.push({ id: blockId, vehiclePlanId: plan.id, branchId, blockNumber: blockNumber++, depotId, vehicleType: 'BUS' })
     }
 
     // 4 bulk inserts instead of O(n_trips) individual creates

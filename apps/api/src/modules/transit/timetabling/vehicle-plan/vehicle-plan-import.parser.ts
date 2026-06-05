@@ -1,5 +1,6 @@
 export interface ImportRow {
   lineCode:      string
+  vehicleNumber: string  // c[22] — used as primary grouping key for blocks
   tabId:         string  // e.g. "01A", "02B"
   tabNumber:     number  // numeric part: "01A" → 1
   sequence:      number  // col[7] — ordering within tab
@@ -44,6 +45,7 @@ export function parseVehiclePlanFile(buffer: Buffer): ImportRow[] {
 
     rows.push({
       lineCode,
+      vehicleNumber: c[22]?.trim() ?? '',
       tabId,
       tabNumber,
       sequence:      parseInt(c[7] ?? '0', 10) || 0,
