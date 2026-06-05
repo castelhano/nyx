@@ -11,6 +11,8 @@ const LOCALITIES: Array<{
   code: string; name: string; abbr?: string
   lat?: number; lng?: number; isDepot?: boolean
 }> = [
+  { code: '10',   name: 'Gar Vpar',         abbr: 'GARVP',  lat: -15.579617761609514, lng: -56.09140093254656, isDepot: true },
+  { code: '11',   name: 'Gar Rapido',       abbr: 'GARRC',  lat: -15.541249517283074, lng: -56.06398339021854, isDepot: true },
   { code: '1000', name: 'Term Antartica',   abbr: 'AMBEV',  lat: -15.56637,           lng: -56.12806            },
   { code: '1001', name: 'Est Alencastro',   abbr: 'ALENC',  lat: -15.597321,          lng: -56.096074           },
   { code: '1002', name: 'Sta Amalia',       abbr: 'AMALIA', lat: -15.591231,          lng: -56.130917           },

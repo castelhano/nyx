@@ -28,13 +28,16 @@ interface JobResult {
 }
 
 interface Props {
-  domain:   string
-  resource: string
-  label:    string
-  onClose:  () => void
+  domain:        string
+  resource:      string
+  label:         string
+  submitLabel?:  string
+  outputLabels?: { created: string; updated: string; deactivated: string }
+  onClose:       () => void
 }
 
-export function SyncModal({ domain, resource, label, onClose }: Props) {
+export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar', outputLabels, onClose }: Props) {
+  const ol = { created: 'Criados', updated: 'Atualizados', deactivated: 'Desligados', ...outputLabels }
   const [file,      setFile]      = useState<File | null>(null)
   const [jobId,     setJobId]     = useState<string | null>(null)
   const [submitErr, setSubmitErr] = useState<string | null>(null)
@@ -112,8 +115,8 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
     }
   }
 
-  const isRunning = job?.status === 'PENDING' || job?.status === 'RUNNING'
   const isDone    = job?.status === 'COMPLETED' || job?.status === 'FAILED'
+  const isRunning = !!jobId && !isDone
 
   const modal = (
     <div
@@ -158,7 +161,7 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
                 ) : (
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Loader2 className="w-5 h-5 animate-spin shrink-0" />
-                    <span>Aguardando início…</span>
+                    <span>Iniciando, aguarde…</span>
                   </div>
                 )
               })()}
@@ -172,9 +175,9 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
                   {job.output && (
                     <div className="grid grid-cols-3 gap-2 text-center">
                       {[
-                        { label: 'Criados',     value: job.output.created },
-                        { label: 'Atualizados', value: job.output.updated },
-                        { label: 'Desligados',  value: job.output.deactivated },
+                        { label: ol.created,     value: job.output.created },
+                        { label: ol.updated,     value: job.output.updated },
+                        { label: ol.deactivated, value: job.output.deactivated },
                       ].map(({ label: l, value }) => (
                         <div key={l} className="bg-muted rounded-sm p-2">
                           <div className="text-xl font-bold">{value}</div>
@@ -271,7 +274,7 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
               <Button variant="outline" type="button" onClick={onClose}>Cancelar</Button>
               <Button type="submit" form="sync-form" disabled={submitting}>
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Sincronizar
+                {submitLabel}
               </Button>
             </>
           )}
