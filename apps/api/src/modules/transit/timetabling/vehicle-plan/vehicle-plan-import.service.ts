@@ -114,15 +114,33 @@ export class VehiclePlanImportService {
 
     let plan: { id: string }
     if (planId) {
-      // Update mode: clear all existing blocks for the plan, then reuse it
-      const existingBlocks = await (this.prisma as any).vehicleBlock.findMany({
-        where:  { vehiclePlanId: planId },
+      // Update mode: replace only blocks that contain trips for the imported lines.
+      // Blocks for other lines in the plan are preserved.
+      const blocksForLines = await (this.prisma as any).vehicleBlock.findMany({
+        where: {
+          vehiclePlanId: planId,
+          blockTrips: {
+            some: { trip: { route: { lineId: { in: validLineIds } } } },
+          },
+        },
         select: { id: true },
       })
-      const blockIds = existingBlocks.map((b: any) => b.id)
-      if (blockIds.length > 0) {
+      const blockIdsToRemove = blocksForLines.map((b: any) => b.id)
+      console.log(`[VehiclePlanImport] UPDATE planId=${planId} blocksToReplace=${blockIdsToRemove.length} for ${validLineIds.length} lines`)
+      if (blockIdsToRemove.length > 0) {
+        const oldBlockTrips = await (this.prisma as any).blockTrip.findMany({
+          where:  { vehicleBlockId: { in: blockIdsToRemove } },
+          select: { tripId: true },
+        })
+        const oldTripIds = [...new Set<string>(oldBlockTrips.map((bt: any) => bt.tripId))]
         // BlockTrips cascade-deleted via Prisma relation
-        await (this.prisma as any).vehicleBlock.deleteMany({ where: { id: { in: blockIds } } })
+        await (this.prisma as any).vehicleBlock.deleteMany({ where: { id: { in: blockIdsToRemove } } })
+        if (oldTripIds.length > 0) {
+          await (this.prisma as any).tripDayType.deleteMany({ where: { tripId: { in: oldTripIds } } })
+          await (this.prisma as any).transitTrip.deleteMany({
+            where: { id: { in: oldTripIds }, blockTrips: { none: {} } },
+          })
+        }
       }
       // Ensure all imported lines are linked to the plan
       for (const line of transitLines) {
@@ -152,7 +170,15 @@ export class VehiclePlanImportService {
     const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number; isDeadhead: boolean }> = []
 
+    // In update mode, continue blockNumber after the highest existing block in the plan
     let blockNumber = 1
+    if (planId) {
+      const maxBlock = await (this.prisma as any).vehicleBlock.aggregate({
+        where: { vehiclePlanId: planId },
+        _max:  { blockNumber: true },
+      })
+      blockNumber = (maxBlock._max.blockNumber ?? 0) + 1
+    }
 
     for (const [, tabRows] of blockMap.entries()) {
       // Sort trips chronologically within the block
@@ -266,6 +292,13 @@ export class VehiclePlanImportService {
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
 
+    // Debug: verify DB state after insert
+    const dbBlocks = await (this.prisma as any).vehicleBlock.count({ where: { vehiclePlanId: plan.id } })
+    const dbBlockTrips = await (this.prisma as any).blockTrip.count({
+      where: { vehicleBlock: { vehiclePlanId: plan.id } },
+    })
+    console.log(`[VehiclePlanImport] DONE planId=${plan.id} blocksInDB=${dbBlocks} blockTripsInDB=${dbBlockTrips} inserted_blocks=${blockRows.length} inserted_trips=${tripRows.length}`)
+
     return { created: blockRows.length, updated: tripRows.length, deactivated: linesCleared, errors }
   }
 
@@ -279,6 +312,7 @@ export class VehiclePlanImportService {
       select: { id: true },
     })
     const tripIds: string[] = trips.map((t: any) => t.id)
+    console.log(`[clearLineForDayType] lineId=${lineId} dayTypeId=${dayTypeId} trips=${tripIds.length}`)
     if (tripIds.length === 0) return
 
     // Find BlockTrips that reference these trips
@@ -287,6 +321,16 @@ export class VehiclePlanImportService {
       select: { vehicleBlockId: true },
     })
     const blockIds = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
+    console.log(`[clearLineForDayType] lineId=${lineId} affectedBlocks=${blockIds.length} blockIds=${JSON.stringify(blockIds)}`)
+
+    // For each affected block, find which plan it belongs to
+    if (blockIds.length > 0) {
+      const affectedBlocks = await (this.prisma as any).vehicleBlock.findMany({
+        where:  { id: { in: blockIds } },
+        select: { id: true, vehiclePlanId: true },
+      })
+      console.log(`[clearLineForDayType] lineId=${lineId} affectedBlocksWithPlan=${JSON.stringify(affectedBlocks)}`)
+    }
 
     // Remove the BlockTrips
     await (this.prisma as any).blockTrip.deleteMany({ where: { tripId: { in: tripIds } } })
@@ -320,6 +364,7 @@ export class VehiclePlanImportService {
       where:  { dayTypeId },
       select: { id: true },
     })
+    console.log(`[clearLineForDayType] lineId=${lineId} plansWithDaytype=${plans.length} planIds=${JSON.stringify(plans.map((p: any) => p.id))}`)
     if (plans.length > 0) {
       await (this.prisma as any).vehiclePlanLine.deleteMany({
         where: { vehiclePlanId: { in: plans.map((p: any) => p.id) }, lineId },
