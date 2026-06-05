@@ -51,12 +51,12 @@ export class VehiclePlanImportService {
 
     const errors: ImportOutput['errors'] = []
 
-    // Group rows by (vehicleNumber|lineCode, tabId) → each unique pair = one VehicleBlock.
-    // Using vehicleNumber as primary key merges trips from different line codes (e.g. 308 + 308B)
-    // that share the same vehicle and tab. Falls back to lineCode when vehicleNumber is absent.
+    // Group rows by vehicleNumber → each unique vehicle = one VehicleBlock.
+    // tabId identifies driver shifts within the same vehicle, not separate blocks.
+    // Falls back to lineCode when vehicleNumber is absent.
     const blockMap = new Map<string, typeof rows>()
     for (const row of rows) {
-      const key = `${row.vehicleNumber || row.lineCode}:${row.tabId}`
+      const key = row.vehicleNumber || row.lineCode
       if (!blockMap.has(key)) blockMap.set(key, [])
       blockMap.get(key)!.push(row)
     }

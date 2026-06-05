@@ -112,9 +112,9 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         rowId:       row.id,
         startMinute: trip.departureMinutes,
         endMinute:   trip.arrivalMinutes,
-        isDeadhead:  false,
+        isDeadhead:  bt.isDeadhead,
         label:       trip.route.line.code,
-        color:       segColor,
+        color:       bt.isDeadhead ? DEADHEAD_COLOR : segColor,
         data:        bt,
       })
     }
