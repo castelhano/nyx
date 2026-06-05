@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Upload } from 'lucide-react'
+import { Plus, Upload, ArrowLeft } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SyncModal } from '@/core/SyncModal'
@@ -23,10 +23,20 @@ export default function EmployeeListPage() {
     if (!key.startsWith('_')) filters[key] = value
   }
 
+  const bc       = meta?.breadcrumb?.[meta.breadcrumb.length - 1]
+  const parentId = bc ? filters[bc.contextField] : undefined
+  const backPath = bc && parentId ? `/${bc.domain ?? 'hr'}/${bc.resource}/${parentId}` : '/hr'
+
   useTopbarActions([
     ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Plus, onClick: () => router.push('/hr/employee/new'), primary: true }] : []),
     ...(meta?.permissions?.create !== false ? [{ label: 'Sincronizar', icon: Upload, onClick: () => setSyncOpen(true), variant: 'ghost' as const }] : []),
   ], [meta?.permissions?.create])
+
+  useShortcut('alt+v', () => router.push(backPath), {
+    desc:   'Voltar',
+    icon:   ArrowLeft,
+    origin: 'app/hr/employee/page',
+  })
 
   useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push('/hr/employee/new') }, {
     desc:   'Novo funcionário',

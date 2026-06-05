@@ -13,10 +13,16 @@ import type { MetadataField } from '@nyx/types'
 
 interface SyncField extends MetadataField {}
 
+interface JobProgress {
+  processed: number
+  total:     number
+  current:   string
+}
+
 interface JobResult {
   id:          string
   status:      'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
-  output?:     { created: number; updated: number; deactivated: number; errors?: unknown[] } | null
+  output?:     { created?: number; updated?: number; deactivated?: number; errors?: unknown[]; progress?: JobProgress } | null
   error?:      string | null
   durationMs?: number | null
 }
@@ -54,10 +60,9 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
     enabled:         !!jobId,
     refetchInterval: (q) => {
       const s = q.state.data?.status
-      return s === 'PENDING' || s === 'RUNNING' ? 500 : false
+      return s === 'PENDING' || s === 'RUNNING' ? 2000 : false
     },
   })
-
 
   // On terminal status, invalidate the resource list
   useEffect(() => {
@@ -107,8 +112,7 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
     }
   }
 
-  // treat as running while job hasn't loaded yet (before first poll returns)
-  const isRunning = !job || job.status === 'PENDING' || job.status === 'RUNNING'
+  const isRunning = job?.status === 'PENDING' || job?.status === 'RUNNING'
   const isDone    = job?.status === 'COMPLETED' || job?.status === 'FAILED'
 
   const modal = (
@@ -131,12 +135,33 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
           {/* Job polling view */}
           {jobId ? (
             <div className="space-y-4">
-              {isRunning && (
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin shrink-0" />
-                  <span>{job?.status === 'RUNNING' ? 'Processando…' : 'Aguardando início…'}</span>
-                </div>
-              )}
+              {isRunning && (() => {
+                const p = job?.output?.progress
+                return p ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {p.processed} / {p.total}
+                      </span>
+                      <span className="text-muted-foreground font-medium">
+                        {Math.round((p.processed / p.total) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${(p.processed / p.total) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{p.current}</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+                    <span>Aguardando início…</span>
+                  </div>
+                )
+              })()}
 
               {job?.status === 'COMPLETED' && (
                 <div className="space-y-3">
@@ -209,10 +234,10 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 rounded-sm border text-sm transition-colors',
+                      'w-full flex items-center gap-2 px-3 py-2 rounded-sm text-sm transition-colors mt-1 cursor-pointer',
                       file
-                        ? 'border-border bg-muted text-foreground'
-                        : 'border-dashed border-border text-muted-foreground hover:border-accent hover:text-accent',
+                        ? 'border-border bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-muted-foreground',
                     )}
                   >
                     <Upload className="w-4 h-4 shrink-0" />

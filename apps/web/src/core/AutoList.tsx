@@ -28,6 +28,15 @@ import { RowActionsCell } from './RowActionsCell'
 
 type Row = Record<string, unknown>
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(id)
+  }, [value, delay])
+  return debounced
+}
+
 function resolveTemplate(template: string, row: Row): string {
   return template.replace(/\{(\w+)\}/g, (_, key) => String(row[key] ?? ''))
 }
@@ -317,6 +326,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const [focusedRow,    setFocusedRow]    = useState<number | null>(null)
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({})
   const [filtersReady,  setFiltersReady]  = useState(false)
+  const debouncedActiveFilters = useDebounce(activeFilters, 350)
   const defaultFiltersApplied = useRef(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -385,7 +395,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
 
   const { data, isLoading } = useQuery<PaginatedResult<Row>>({
-    queryKey: [domain, resource, page, sortField, sortOrder, filters, activeFilters],
+    queryKey: [domain, resource, page, sortField, sortOrder, filters, debouncedActiveFilters],
     queryFn:  async () => {
       const params = new URLSearchParams({
         page:     String(page),
@@ -410,7 +420,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     setVisibility(initial)
   }, [meta?.resource])
 
-  useEffect(() => { setFocusedRow(null) }, [page, sorting, filters, activeFilters])
+  useEffect(() => { setFocusedRow(null) }, [page, sorting, filters, debouncedActiveFilters])
 
   useEffect(() => {
     if (!pickerOpen) return
