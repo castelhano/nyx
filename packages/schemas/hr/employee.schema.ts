@@ -35,12 +35,14 @@ export const employeeSchema = withMeta(
       label: 'Matrícula',
       listVisibility: 'visible',
       className: 'md:w-1/3',
+      filter: true,
       keybind: 'm',
     }),
 
     fullName: z.string().min(2).meta({
       label: 'Nome Completo',
       listVisibility: 'visible',
+      filter: true,
     }),
 
     preferredName: z.string().optional().meta({
