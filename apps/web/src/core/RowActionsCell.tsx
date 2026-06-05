@@ -28,10 +28,14 @@ interface Props {
 }
 
 export function RowActionsCell({ row, actions, onExecute }: Props) {
-  if (!actions.length) return null
+  const visible = actions.filter(a =>
+    !a.visibleWhen || row[a.visibleWhen.field] === a.visibleWhen.value
+  )
 
-  if (actions.length === 1) {
-    const action = actions[0]
+  if (!visible.length) return null
+
+  if (visible.length === 1) {
+    const action = visible[0]
     const Icon   = resolveIcon(action.icon)
     return (
       <Button
@@ -46,7 +50,7 @@ export function RowActionsCell({ row, actions, onExecute }: Props) {
     )
   }
 
-  const items = withGroupSeparators(actions)
+  const items = withGroupSeparators(visible)
 
   return (
     <Dropdown

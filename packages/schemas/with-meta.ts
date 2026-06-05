@@ -20,16 +20,17 @@ export type BreadcrumbDef = {
 }
 
 export type RowActionInput = {
-  action:      string
-  label:       string
-  icon:        string
-  variant?:    'default' | 'destructive'
-  group?:      string
-  permission:  'create' | 'read' | 'update' | 'delete'
-  href?:       (row: Record<string, unknown>) => string
-  method?:     'POST' | 'PATCH' | 'DELETE'
-  endpoint?:   (row: Record<string, unknown>) => string
-  body?:       Record<string, unknown>
+  action:       string
+  label:        string
+  icon:         string
+  variant?:     'default' | 'destructive'
+  group?:       string
+  permission:   'create' | 'read' | 'update' | 'delete'
+  href?:        (row: Record<string, unknown>) => string
+  method?:      'POST' | 'PATCH' | 'DELETE'
+  endpoint?:    (row: Record<string, unknown>) => string
+  body?:        Record<string, unknown>
+  visibleWhen?: { field: string; value: unknown }
 }
 
 export type SchemaMeta<T extends z.ZodRawShape> = {

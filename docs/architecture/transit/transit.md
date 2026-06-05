@@ -61,6 +61,7 @@ Global — não vinculada a filial. A empresa que opera os veículos nessa linha
 | `name` | String | — |
 | `type` | Enum | URBAN / METROPOLITAN / RURAL / SPECIAL |
 | `isActive` | Boolean | — |
+| `metrics` | Json? | `{ extensionKm?: { OUTBOUND?: number, INBOUND?: number, CIRCULAR?: number }, cycleWindows?: { from: string, to: string, cycleMinutes: number }[] }` — extensão da linha por sentido; usado para calcular km no import |
 
 #### `LineGroup` — agrupamento de linhas para escopo de edição
 
@@ -295,7 +296,7 @@ Gerenciado via endpoints no `VehiclePlanController` (sem controller próprio —
 | `depotId` | FK TransitLocality | garagem de origem e retorno |
 | `vehicleType` | Enum | tipo de veículo alocado |
 | `isStale` | Boolean | `true` quando qualquer trip do bloco foi alterada após a geração; resetado ao criar novos blocos via `assumeBest()` |
-| `summary` | Json? | preenchido pelo solver — shape `VehicleBlockSummary`: `{ totalMinutes, productiveMinutes, deadrunMinutes, totalKm, productiveKm, deadrunKm }` |
+| `summary` | Json? | shape `VehicleBlockSummary`: `{ totalMinutes, productiveMinutes, deadrunMinutes, totalKm, productiveKm, deadrunKm }` — preenchido pelo solver (`assumeBest`) e pelo import (`VehiclePlanImportService`) |
 | `constraints` | Json? | ver §2.4 |
 
 **Atribuição de empresa:**
@@ -625,10 +626,13 @@ apps/api/src/modules/transit/
       trip.service.ts            extends BaseService (sem scopeField — trips são globais)
       trip.controller.ts
     vehicle-plan/
-      vehicle-plan.service.ts    NÃO extends BaseService — generate, assume, activate, addLine, removeLine, getGanttData
-      vehicle-plan.controller.ts NÃO extends BaseController — SSE + ativação + gestão de linhas + gantt-data
-      vehicle-block.service.ts   extends BaseService — CRUD padrão; hidden: true (gerido pela UI do plano)
-      vehicle-block.controller.ts extends BaseController
+      vehicle-plan.service.ts         NÃO extends BaseService — generate, assume, activate, addLine, removeLine, getGanttData
+      vehicle-plan.controller.ts      NÃO extends BaseController — SSE + ativação + gestão de linhas + gantt-data
+      vehicle-plan-import.service.ts  importa arquivo .txt de escala; cria VehiclePlan DRAFT + blocos + trips em bulk
+      vehicle-plan-import.controller.ts  POST /transit/vehicle-plan/sync — FileInterceptor + campos dinâmicos via GET /fields
+      vehicle-plan-import.parser.ts   parseVehiclePlanFile() — lê formato CSV-like; extrai vehicleNumber, depotDepartureHHMM, etc.
+      vehicle-block.service.ts        extends BaseService — CRUD padrão; hidden: true (gerido pela UI do plano)
+      vehicle-block.controller.ts     extends BaseController
       solver/
         solver.worker.ts         worker_threads — loop de otimização
         solver.types.ts          SolverResult, SolverConfig, SolverMessage, VehiclePlanSummary, VehicleBlockSummary
@@ -753,6 +757,9 @@ apps/api/src/modules/transit/
 | `BlockDetailPopover` posicionado pelo board | `screenY = RULER_HEIGHT + row.y - vp.scrollY`; `left = LABEL_WIDTH + 8` | O `GanttBoard` tem `position: relative`; popover calculado no mesmo sistema de coordenadas do canvas — sem `portal` necessário |
 | `variant: 'destructive' as const` | Ações de topbar destrutivas usam `as const` no literal | TypeScript infere literais de string em spreads ternários como `string` sem contexto explícito; `as const` preserva o tipo literal para satisfazer `TopbarAction.variant` |
 | `VehicleBlock.isStale` | Boolean flag no bloco | Marcado `true` em `TripService.update()` via `updateMany` nos blocos que contêm a trip; resetado ao criar novos blocos em `assumeBest()`; permite visualização de blocos desatualizados no Gantt sem recalcular |
+| Agrupamento de blocos no import | `vehicleNumber` (c[22] do arquivo) | `tabId` identifica turno de motorista dentro do veículo, não blocos distintos; o mesmo veículo tem tabs `01A/01B/01C` para diferentes condutores no dia — todos formam um único `VehicleBlock` |
+| Import: trip de saída de garagem | Sintética, deadhead, routeId da primeira viagem | `c[17]` do arquivo = horário de saída da garagem; trip criada de `(depotTime - setupMinutes)` até a primeira viagem do bloco; `setupMinutes` é parâmetro do modal |
+| Import: recolhida (`entryType=3`) | Incluída como `BlockTrip` com `isDeadhead=true` | `entryType=2` (zero-duration, marcador de tab) é ignorado; `entryType=3` (retorno à garagem, duração real) é viagem produtiva=0 e entra no bloco normalmente |
 | `LineGroup` escopo de edição | Modelo separado com `branchId?` + M-N com `TransitLine` | Unifica os três casos de escopo (linhas avulsas, por filial, grupo ad-hoc) em um único modelo; linha pode pertencer a múltiplos grupos sem duplicação |
 | Natural sort de linhas | `LineService.findAll()` override com sort JS pós-query | DB não suporta natural sort (numérico + alfanumérico) de forma portável; com ~200 linhas o custo é negligenciável; `sortField` explícito bypassa o override |
 
@@ -795,19 +802,21 @@ Após esse setup, `engine.getSegmentRect(id)` retorna CSS pixels que o overlay D
 
 ### 9.3 Sincronização de scroll
 
-O canvas não scrolleia — ele redesenha com offset. `RowList` (DOM virtualizado) e canvas leem da mesma fonte:
+O canvas não scrolleia — ele redesenha com offset. `RowList` (DOM) e canvas leem da mesma fonte:
 
 ```
 ┌─ board ──────────────────────────────────────────────┐
 │  TimeRuler  (DOM, sticky topo)                       │
-│  ┌─ RowList (overflow-y: hidden) ─┐                  │
-│  │  scrollTop ← viewport.scrollY  │  (DOM)           │
+│  ┌─ RowList (overflow: hidden) ───┐                  │
+│  │  inner div: translateY(-scrollY)│  (DOM)          │
 │  └──────────────────────────────  ┘                  │
-│  canvas  →  desenha com translateY = -viewport.scrollY│
+│  canvas  →  desenha com offset = -viewport.scrollY   │
 └──────────────────────────────────────────────────────┘
 ```
 
-`viewport.scrollY` é a única fonte de verdade. Nunca dessincronizam.
+`viewport.scrollY` é a única fonte de verdade. `RowList` aplica o offset via `transform: translateY(-${scrollY}px)` no container interno — sem `useEffect` nem `scrollTop`, o que garante que labels e canvas se movam no mesmo frame.
+
+`interaction.ts` chama `engine.notify()` a cada evento de scroll (`wheel`, drag) além de `requestDraw()`, propagando `viewport.scrollY` atualizado para o estado React imediatamente.
 
 ### 9.4 Visões como configuração
 

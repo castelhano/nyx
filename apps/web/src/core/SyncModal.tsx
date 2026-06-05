@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useForm, FormProvider } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { X, Upload, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { X, Upload, Loader2, CheckCircle, AlertCircle, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch, getToken } from '@/lib/auth'
 import { FieldRenderer } from './FieldRenderer'
@@ -19,10 +19,16 @@ interface JobProgress {
   current:   string
 }
 
+interface ImportError {
+  line:    number
+  record:  string
+  message: string
+}
+
 interface JobResult {
   id:          string
   status:      'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
-  output?:     { created?: number; updated?: number; deactivated?: number; errors?: unknown[]; progress?: JobProgress } | null
+  output?:     { created?: number; updated?: number; deactivated?: number; errors?: ImportError[]; progress?: JobProgress } | null
   error?:      string | null
   durationMs?: number | null
 }
@@ -33,14 +39,27 @@ interface Props {
   label:         string
   submitLabel?:  string
   outputLabels?: { created: string; updated: string; deactivated: string }
+  extraBody?:    Record<string, string>
   onClose:       () => void
 }
 
-export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar', outputLabels, onClose }: Props) {
+function downloadCsv(errors: ImportError[]) {
+  const header = 'Linha;Registro;Mensagem\n'
+  const rows   = errors.map(e => `${e.line};"${e.record.replace(/"/g, '""')}";"${e.message.replace(/"/g, '""')}"`).join('\n')
+  const blob   = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' })
+  const url    = URL.createObjectURL(blob)
+  const a      = document.createElement('a')
+  a.href       = url
+  a.download   = 'erros.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar', outputLabels, extraBody, onClose }: Props) {
   const ol = { created: 'Criados', updated: 'Atualizados', deactivated: 'Desligados', ...outputLabels }
-  const [file,      setFile]      = useState<File | null>(null)
-  const [jobId,     setJobId]     = useState<string | null>(null)
-  const [submitErr, setSubmitErr] = useState<string | null>(null)
+  const [file,       setFile]       = useState<File | null>(null)
+  const [jobId,      setJobId]      = useState<string | null>(null)
+  const [submitErr,  setSubmitErr]  = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const fileRef    = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
@@ -48,7 +67,6 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
   const methods = useForm<Record<string, string>>({ defaultValues: {} })
   const { handleSubmit, register, control, formState: { errors } } = methods
 
-  // Fetch sync fields from backend
   const { data: fieldsData } = useQuery<{ fields: SyncField[] }>({
     queryKey: ['sync-fields', domain, resource],
     queryFn:  () => apiFetch(`/${domain}/${resource}/sync/fields`).then(r => r.json()),
@@ -56,7 +74,6 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
   })
   const fields = fieldsData?.fields ?? []
 
-  // Poll job status after submission
   const { data: job } = useQuery<JobResult>({
     queryKey:        ['job', jobId],
     queryFn:         () => apiFetch(`/core/job/${jobId}`).then(r => r.json()),
@@ -67,14 +84,12 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
     },
   })
 
-  // On terminal status, invalidate the resource list
   useEffect(() => {
     if (job?.status === 'COMPLETED' || job?.status === 'FAILED') {
       queryClient.invalidateQueries({ queryKey: [domain, resource] })
     }
   }, [job?.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
@@ -89,10 +104,15 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
     const form = new FormData()
     form.append('file', file)
 
-    // Append only non-virtual real fields
     for (const f of fields) {
       if (!f.virtual && values[f.name]) {
         form.append(f.name, values[f.name])
+      }
+    }
+
+    if (extraBody) {
+      for (const [k, v] of Object.entries(extraBody)) {
+        form.append(k, v)
       }
     }
 
@@ -117,6 +137,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
 
   const isDone    = job?.status === 'COMPLETED' || job?.status === 'FAILED'
   const isRunning = !!jobId && !isDone
+  const importErrors: ImportError[] = (job?.output?.errors ?? []) as ImportError[]
 
   const modal = (
     <div
@@ -124,9 +145,9 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="absolute inset-0 bg-black/50" />
-      <div className="relative bg-background border border-border rounded-lg shadow-xl w-full max-w-md flex flex-col">
+      <div className="relative bg-background border border-border rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <h2 className="font-semibold text-base">Sincronizar {label}</h2>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-4 h-4" />
@@ -134,8 +155,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
         </div>
 
         {/* Body */}
-        <div className="px-5 py-4 space-y-4">
-          {/* Job polling view */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
           {jobId ? (
             <div className="space-y-4">
               {isRunning && (() => {
@@ -143,18 +163,11 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                 return p ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {p.processed} / {p.total}
-                      </span>
-                      <span className="text-muted-foreground font-medium">
-                        {Math.round((p.processed / p.total) * 100)}%
-                      </span>
+                      <span className="text-muted-foreground">{p.processed} / {p.total}</span>
+                      <span className="text-muted-foreground font-medium">{Math.round((p.processed / p.total) * 100)}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary transition-all duration-300"
-                        style={{ width: `${(p.processed / p.total) * 100}%` }}
-                      />
+                      <div className="h-full bg-primary transition-all duration-300" style={{ width: `${(p.processed / p.total) * 100}%` }} />
                     </div>
                     <p className="text-xs text-muted-foreground truncate">{p.current}</p>
                   </div>
@@ -173,22 +186,53 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                     Sincronização concluída
                   </div>
                   {job.output && (
-                    <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="grid grid-cols-4 gap-2 text-center">
                       {[
-                        { label: ol.created,     value: job.output.created },
-                        { label: ol.updated,     value: job.output.updated },
-                        { label: ol.deactivated, value: job.output.deactivated },
-                      ].map(({ label: l, value }) => (
-                        <div key={l} className="bg-muted rounded-sm p-2">
-                          <div className="text-xl font-bold">{value}</div>
+                        { label: ol.deactivated, value: job.output.deactivated ?? 0 },
+                        { label: ol.created,     value: job.output.created     ?? 0 },
+                        { label: ol.updated,     value: job.output.updated     ?? 0 },
+                        { label: 'Erros',        value: importErrors.length, error: importErrors.length > 0 },
+                      ].map(({ label: l, value, error }) => (
+                        <div key={l} className={cn('rounded-sm p-2', error ? 'bg-destructive/10' : 'bg-muted')}>
+                          <div className={cn('text-xl font-bold', error && 'text-destructive')}>{value}</div>
                           <div className="text-xs text-muted-foreground">{l}</div>
                         </div>
                       ))}
                     </div>
                   )}
-                  {job.output?.errors && (job.output.errors as any[]).length > 0 && (
-                    <div className="text-xs text-destructive">
-                      {(job.output.errors as any[]).length} linha(s) com erro — veja detalhes em /core/job
+                  {importErrors.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-destructive">{importErrors.length} erro{importErrors.length !== 1 ? 's' : ''}</span>
+                        <button
+                          type="button"
+                          onClick={() => downloadCsv(importErrors)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <Download className="w-3 h-3" />
+                          Baixar CSV
+                        </button>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto rounded-sm border border-border text-xs">
+                        <table className="w-full">
+                          <thead className="sticky top-0 bg-muted">
+                            <tr>
+                              <th className="text-left px-2 py-1 font-medium text-muted-foreground w-12">Linha</th>
+                              <th className="text-left px-2 py-1 font-medium text-muted-foreground w-24">Registro</th>
+                              <th className="text-left px-2 py-1 font-medium text-muted-foreground">Mensagem</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importErrors.map((e, i) => (
+                              <tr key={i} className="border-t border-border">
+                                <td className="px-2 py-1 text-muted-foreground">{e.line}</td>
+                                <td className="px-2 py-1 font-mono truncate max-w-0 w-24">{e.record}</td>
+                                <td className="px-2 py-1 text-destructive">{e.message}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                   {job.durationMs && (
@@ -212,10 +256,8 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
               )}
             </div>
           ) : (
-            /* Form view */
             <FormProvider {...methods}>
               <form id="sync-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                {/* Dynamic fields */}
                 {fields.length > 0 && (
                   <div className="grid grid-cols-1 gap-x-4 gap-y-1">
                     {fields.map((f) => (
@@ -230,7 +272,6 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                   </div>
                 )}
 
-                {/* File upload */}
                 <div className="space-y-1">
                   <label className="text-sm font-medium">Arquivo</label>
                   <button
@@ -264,7 +305,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">
           {isDone ? (
             <Button onClick={onClose}>Fechar</Button>
           ) : jobId ? (

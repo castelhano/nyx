@@ -84,6 +84,21 @@ export const vehiclePlanSchema = withMeta(
         method:     'POST',
         endpoint:   (row) => `/transit/vehicle-plan/${row.id}/duplicate`,
       },
+      {
+        action:      'import',
+        label:       'Importar',
+        icon:        'Upload',
+        permission:  'update',
+        visibleWhen: { field: 'status', value: 'DRAFT' },
+      },
+      {
+        action:      'delete',
+        label:       'Excluir',
+        icon:        'Trash2',
+        variant:     'destructive',
+        permission:  'delete',
+        visibleWhen: { field: 'status', value: 'DRAFT' },
+      },
     ],
   },
 )

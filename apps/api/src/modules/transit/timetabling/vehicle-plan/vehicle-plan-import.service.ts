@@ -19,11 +19,13 @@ export class VehiclePlanImportService {
   ) {}
 
   async import(
-    file:      Express.Multer.File,
-    branchId:  string,
-    dayTypeId: string,
-    depotId:   string,
-    userId:    string,
+    file:         Express.Multer.File,
+    branchId:     string,
+    dayTypeId:    string,
+    depotId:      string,
+    userId:       string,
+    setupMinutes: number = 0,
+    planId?:      string,
   ): Promise<{ jobId: string }> {
     if (!file.buffer?.length) throw new BadRequestException('Arquivo vazio')
 
@@ -32,24 +34,30 @@ export class VehiclePlanImportService {
       domain:      'transit',
       resource:    'vehicle-plan',
       createdById: userId,
-      input:       { filename: file.originalname, branchId, dayTypeId, depotId },
+      input:       { filename: file.originalname, branchId, dayTypeId, depotId, setupMinutes, planId },
     })
 
-    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, dayTypeId, depotId))
+    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, dayTypeId, depotId, setupMinutes, planId))
 
     return { jobId: job.id }
   }
 
   private async execute(
-    buffer:    Buffer,
-    branchId:  string,
-    dayTypeId: string,
-    depotId:   string,
+    buffer:       Buffer,
+    branchId:     string,
+    dayTypeId:    string,
+    depotId:      string,
+    setupMinutes: number = 0,
+    planId?:      string,
   ): Promise<ImportOutput> {
-    const rows = parseVehiclePlanFile(buffer)
+    const { rows, skipped } = parseVehiclePlanFile(buffer)
     if (rows.length === 0) throw new Error('Nenhum registro encontrado no arquivo')
 
-    const errors: ImportOutput['errors'] = []
+    const errors: ImportOutput['errors'] = skipped.map(s => ({
+      line:    s.line,
+      record:  s.record,
+      message: `Linha ignorada: ${s.reason}`,
+    }))
 
     // Group rows by vehicleNumber → each unique vehicle = one VehicleBlock.
     // tabId identifies driver shifts within the same vehicle, not separate blocks.
@@ -94,16 +102,39 @@ export class VehiclePlanImportService {
       linesCleared++
     }
 
-    // Create a new DRAFT VehiclePlan for the daytype
-    const plan = await (this.prisma as any).vehiclePlan.create({
-      data: {
-        dayTypeId,
-        status: 'DRAFT',
-        lines: {
-          create: transitLines.map((l: any) => ({ lineId: l.id })),
+    let plan: { id: string }
+    if (planId) {
+      // Update mode: clear all existing blocks for the plan, then reuse it
+      const existingBlocks = await (this.prisma as any).vehicleBlock.findMany({
+        where:  { vehiclePlanId: planId },
+        select: { id: true },
+      })
+      const blockIds = existingBlocks.map((b: any) => b.id)
+      if (blockIds.length > 0) {
+        // BlockTrips cascade-deleted via Prisma relation
+        await (this.prisma as any).vehicleBlock.deleteMany({ where: { id: { in: blockIds } } })
+      }
+      // Ensure all imported lines are linked to the plan
+      for (const line of transitLines) {
+        await (this.prisma as any).vehiclePlanLine.upsert({
+          where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: line.id } },
+          create: { vehiclePlanId: planId, lineId: line.id },
+          update: {},
+        })
+      }
+      plan = { id: planId }
+    } else {
+      // Create mode: new DRAFT VehiclePlan
+      plan = await (this.prisma as any).vehiclePlan.create({
+        data: {
+          dayTypeId,
+          status: 'DRAFT',
+          lines: {
+            create: transitLines.map((l: any) => ({ lineId: l.id })),
+          },
         },
-      },
-    })
+      })
+    }
 
     // Collect all records to insert — no DB calls in this loop
     const tripRows:      Array<{ id: string; routeId: string; departureMinutes: number; arrivalMinutes: number }> = []
@@ -129,12 +160,46 @@ export class VehiclePlanImportService {
       let productiveMinutes = 0, deadrunMinutes = 0
       let productiveKm = 0,      deadrunKm = 0
 
+      // Synthetic depot-departure trip (saída de garagem)
+      // c[17] carries the depot departure time on the first trip of the vehicle's day.
+      // We create a deadhead trip from (depotTime - setupMinutes) to the first trip's departure.
+      const depotRow = tabRows.find(r => r.depotDepartureHHMM !== '')
+      if (depotRow && tabRows.length > 0) {
+        // Find first row that resolves to a valid route
+        let firstRouteId: string | null = null
+        for (const row of tabRows) {
+          const line = lineByCode.get(row.lineCode)
+          if (!line) continue
+          const dir   = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
+          const route = routeByKey.get(`${line.id}:${dir}`)
+          if (route) { firstRouteId = route.id; break }
+        }
+
+        if (firstRouteId) {
+          const firstTripRow    = tabRows[0]
+          const firstTripDep    = parseHHMM(firstTripRow.departureHHMM) + (firstTripRow.depDay - 1) * 1440
+          const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM) + (depotRow.depDay - 1) * 1440
+          const startMinutes    = depotDepMinutes - setupMinutes
+
+          if (startMinutes < firstTripDep) {
+            const depotTripId = randomUUID()
+            if (startMinutes < firstDep) firstDep = startMinutes
+            deadrunMinutes += firstTripDep - startMinutes
+
+            tripRows.push({ id: depotTripId, routeId: firstRouteId, departureMinutes: startMinutes, arrivalMinutes: firstTripDep })
+            tripDayTypes.push({ tripId: depotTripId, dayTypeId })
+            blockTripRows.push({ vehicleBlockId: blockId, tripId: depotTripId, sequence: seqInBlock++, isDeadhead: true })
+            hasTrips = true
+          }
+        }
+      }
+
       for (const row of tabRows) {
         const line = lineByCode.get(row.lineCode)
         if (!line) continue
 
-        // I = IDA = OUTBOUND, V = VOLTA = INBOUND
-        const direction = row.direction === 'I' ? 'OUTBOUND' : 'INBOUND'
+        // I = IDA = OUTBOUND, V = VOLTA = INBOUND, C = CIRCULAR
+        const direction = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
         const route     = routeByKey.get(`${line.id}:${direction}`)
 
         if (!route) {

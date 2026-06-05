@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Icons }             from '@/lib/icons'
@@ -53,7 +53,6 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
     es.onmessage = (ev) => {
       try {
         const data = JSON.parse(ev.data) as SolverProgress
-        // only update display for progress messages; improvement/done don't carry attempt stats
         if (data.type === 'progress') setProgress(data)
         if (data.type === 'done') {
           es.close()
@@ -182,6 +181,10 @@ export default function VehiclePlanPage() {
   const [freqPanelOpen,   setFreqPanelOpen]   = useState(false)
   const [ganttVp,         setGanttVp]         = useState<ViewportSnapshot>(INITIAL_VP)
 
+  // Lines selection for display — all unchecked initially, nothing plotted
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
+  const [plottedLineIds,  setPlottedLineIds]  = useState<Set<string> | null>(null)
+
   // ── data ────────────────────────────────────────────────────────────────────
 
   const { data: record, error: recordError } = useRecordQuery(
@@ -205,12 +208,23 @@ export default function VehiclePlanPage() {
     staleTime: 10_000,
   })
 
+  // Filtered data: only blocks that have at least one productive trip from a plotted line
+  const plottedData = useMemo<VehiclePlanGanttData | null>(() => {
+    if (!ganttData || plottedLineIds === null) return null
+    if (plottedLineIds.size === 0) return { ...ganttData, blocks: [] }
+    return {
+      ...ganttData,
+      blocks: ganttData.blocks.filter(b =>
+        b.blockTrips.some(bt => !bt.isDeadhead && plottedLineIds.has(bt.trip.route.line.id))
+      ),
+    }
+  }, [ganttData, plottedLineIds])
+
   // ── solver ──────────────────────────────────────────────────────────────────
 
   const onSolverDone = useCallback(() => {
     setIsSolverDone(true)
     setIsPending(false)
-    // data refresh happens only after the user clicks "Assumir Melhor"
   }, [])
 
   const solverProgress = useSolverStream(id, activeJobId, onSolverDone)
@@ -312,16 +326,29 @@ export default function VehiclePlanPage() {
     }
   }
 
+  function handlePlot() {
+    setPlottedLineIds(new Set(selectedLineIds))
+  }
+
   // ── topbar ───────────────────────────────────────────────────────────────────
 
-  const status = record?.status as string | undefined
+  const status    = record?.status as string | undefined
+  const planLines = ganttData?.plan?.lines ?? []
 
   useTopbarActions([
-    // lines panel toggle — always visible for existing plans
+    // lines panel toggle
     ...(!isNew ? [{
       label:   'Linhas',
       icon:    Icons.List,
       onClick: () => setLinesPanelOpen(v => !v),
+    }] : []),
+    // plot button — visible when plan has lines
+    ...(!isNew && planLines.length > 0 ? [{
+      label:    'Plotar',
+      icon:     Icons.BarChart2,
+      onClick:  handlePlot,
+      disabled: selectedLineIds.size === 0,
+      primary:  true,
     }] : []),
     // parar: only while stream is open
     ...(activeJobId && !isSolverDone ? [{
@@ -330,24 +357,23 @@ export default function VehiclePlanPage() {
       onClick:  handleStop,
       disabled: isPending,
     }] : []),
-    // assumir: while job exists (running or stopped, until user assumes)
+    // assumir
     ...(activeJobId ? [{
       label:    'Assumir Melhor',
       icon:     Icons.Download,
       onClick:  handleAssumeBest,
       disabled: isPending,
     }] : []),
-    // generate visible when not running and can update
+    // generate
     ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
       {
         label:    isPending ? 'Gerando…' : 'Gerar',
         icon:     Icons.Play,
         onClick:  handleGenerate,
         disabled: isPending,
-        primary:  true,
       },
     ] : []),
-    // activate only for DRAFT plans not currently solving
+    // activate
     ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
       {
         label:    isPending ? 'Ativando…' : 'Ativar',
@@ -356,7 +382,7 @@ export default function VehiclePlanPage() {
         disabled: isPending,
       },
     ] : []),
-    // delete only for DRAFT plans not currently solving
+    // delete
     ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
       {
         label:    'Excluir',
@@ -366,7 +392,7 @@ export default function VehiclePlanPage() {
         variant:  'destructive' as const,
       },
     ] : []),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size])
 
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
@@ -387,7 +413,6 @@ export default function VehiclePlanPage() {
 
   if (guardNode) return guardNode
 
-  // ── new plan: show creation form ───────────────────────────────────────────
   if (isNew) {
     return (
       <div className="flex flex-col h-full overflow-hidden">
@@ -398,8 +423,6 @@ export default function VehiclePlanPage() {
       </div>
     )
   }
-
-  // ── existing plan ──────────────────────────────────────────────────────────
 
   const recordName = record ? String(record.status ?? '') : undefined
 
@@ -448,11 +471,19 @@ export default function VehiclePlanPage() {
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           <div className="flex-1 min-h-0">
-            {ganttData ? (
-              <GanttBoard data={ganttData} onViewportChange={setGanttVp} />
+            {plottedData ? (
+              plottedData.blocks.length > 0 ? (
+                <GanttBoard data={plottedData} onViewportChange={setGanttVp} />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                  Nenhum bloco para as linhas selecionadas
+                </div>
+              )
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                Carregando…
+                {ganttData
+                  ? 'Selecione linhas no painel e clique em Plotar'
+                  : 'Carregando…'}
               </div>
             )}
           </div>
@@ -464,13 +495,10 @@ export default function VehiclePlanPage() {
 
         {linesPanelOpen && (
           <LinesPanel
-            planId={id}
-            currentLines={ganttData?.plan?.lines ?? []}
+            planLines={ganttData?.plan?.lines ?? []}
+            selectedLineIds={selectedLineIds}
+            onSelectionChange={setSelectedLineIds}
             onClose={() => setLinesPanelOpen(false)}
-            onChanged={async () => {
-              await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
-              await refetchGantt()
-            }}
           />
         )}
       </div>

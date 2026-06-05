@@ -191,6 +191,7 @@ export interface RowActionDef {
   method?:           'POST' | 'PATCH' | 'DELETE'
   endpointTemplate?: string
   body?:             Record<string, unknown>
+  visibleWhen?:      { field: string; value: unknown }
 }
 
 export interface ResourceMetadata {
