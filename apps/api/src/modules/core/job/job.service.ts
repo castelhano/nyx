@@ -29,6 +29,13 @@ export class JobService extends BaseService<Job, never, never> {
     void this.executeAsync(jobId, handler)
   }
 
+  async updateProgress(jobId: string, progress: unknown): Promise<void> {
+    await (this.prismaService as any).job.update({
+      where: { id: jobId },
+      data:  { output: { progress } },
+    })
+  }
+
   private async executeAsync(jobId: string, handler: () => Promise<unknown>): Promise<void> {
     const start = Date.now()
     await (this.prismaService as any).job.update({

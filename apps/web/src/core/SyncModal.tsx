@@ -54,9 +54,10 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
     enabled:         !!jobId,
     refetchInterval: (q) => {
       const s = q.state.data?.status
-      return s === 'PENDING' || s === 'RUNNING' ? 2000 : false
+      return s === 'PENDING' || s === 'RUNNING' ? 500 : false
     },
   })
+
 
   // On terminal status, invalidate the resource list
   useEffect(() => {
@@ -106,7 +107,8 @@ export function SyncModal({ domain, resource, label, onClose }: Props) {
     }
   }
 
-  const isRunning = job?.status === 'PENDING' || job?.status === 'RUNNING'
+  // treat as running while job hasn't loaded yet (before first poll returns)
+  const isRunning = !job || job.status === 'PENDING' || job.status === 'RUNNING'
   const isDone    = job?.status === 'COMPLETED' || job?.status === 'FAILED'
 
   const modal = (

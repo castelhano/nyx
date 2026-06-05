@@ -18,26 +18,29 @@ export class EmployeeSyncService {
   ) {}
 
   async sync(file: Express.Multer.File, branchId: string, userId: string): Promise<{ jobId: string }> {
-    const rows = parseEmployeeSyncFile(file.buffer)
-    if (rows.length === 0) throw new BadRequestException('Nenhum registro encontrado no arquivo')
+    if (!file.buffer?.length) throw new BadRequestException('Arquivo vazio')
 
     const job = await this.jobService.createJob({
       type:        'employee-sync',
       domain:      'hr',
       resource:    'employee',
       createdById: userId,
-      input:       { filename: file.originalname, branchId, totalRows: rows.length },
+      input:       { filename: file.originalname, branchId },
     })
 
-    this.jobService.run(job.id, () => this.execute(rows, branchId))
+    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, job.id))
 
     return { jobId: job.id }
   }
 
   private async execute(
-    rows:     ReturnType<typeof parseEmployeeSyncFile>,
+    buffer:   Buffer,
     branchId: string,
+    jobId:    string,
   ): Promise<SyncOutput> {
+    const rows = parseEmployeeSyncFile(buffer)
+    if (rows.length === 0) throw new Error('Nenhum registro encontrado no arquivo')
+
     const errors:   SyncOutput['errors'] = []
     let created  = 0
     let updated  = 0
@@ -73,6 +76,7 @@ export class EmployeeSyncService {
       } catch (err: any) {
         errors.push({ line: _line, record: data.code, message: err?.message ?? 'Erro desconhecido' })
       }
+
     }
 
     // Funcionários desta filial ausentes do arquivo → TERMINATED
