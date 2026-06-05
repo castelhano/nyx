@@ -45,6 +45,7 @@ export class Interaction {
     } else {
       this.engine.viewport.scrollTo(this.engine.viewport.scrollY + we.deltaY)
     }
+    this.engine.notify()
     this.engine.requestDraw()
   }
 
@@ -62,6 +63,7 @@ export class Interaction {
       const dy = this.lastDragY - me.clientY
       this.engine.viewport.scrollTo(this.engine.viewport.scrollY + dy)
       this.lastDragY = me.clientY
+      this.engine.notify()
       this.engine.requestDraw()
     } else {
       const seg = this.engine.hitTester.hitTest({ x: me.offsetX, y: me.offsetY })

@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
 import { Icons } from '@/lib/icons'
 import type { LayoutRow } from '../engine/layout/layout.types'
 import type { GanttBlock } from '../views/vehicles.view'
@@ -19,19 +18,12 @@ function fmtMinutes(m: number): string {
 }
 
 export function RowList({ rows, scrollY, height, onInfoClick }: Props) {
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (ref.current) ref.current.scrollTop = scrollY
-  }, [scrollY])
-
   return (
     <div
-      ref={ref}
       className="overflow-hidden select-none shrink-0"
       style={{ height, width: 160 }}
     >
-      <div style={{ position: 'relative', height: rows.length > 0 ? rows[rows.length - 1].y + rows[rows.length - 1].height : 0 }}>
+      <div style={{ position: 'relative', transform: `translateY(-${scrollY}px)`, height: rows.length > 0 ? rows[rows.length - 1].y + rows[rows.length - 1].height : 0 }}>
         {rows.map((row) => {
           const block   = row.data as GanttBlock
           const summary = block?.summary ?? null

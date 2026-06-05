@@ -67,7 +67,7 @@ export class VehiclePlanImportService {
     const transitLines = await (this.prisma as any).transitLine.findMany({
       where: { code: { in: lineCodes } },
     })
-    const lineByCode = new Map<string, { id: string; code: string }>(
+    const lineByCode = new Map<string, { id: string; code: string; metrics: any }>(
       transitLines.map((l: any) => [l.code, l]),
     )
     for (const code of lineCodes) {
@@ -81,6 +81,7 @@ export class VehiclePlanImportService {
     // Resolve TransitRoute records for all valid lines
     const routes = await (this.prisma as any).transitRoute.findMany({
       where: { lineId: { in: validLineIds } },
+      select: { id: true, lineId: true, direction: true },
     })
     const routeByKey = new Map<string, { id: string }>(
       routes.map((r: any) => [`${r.lineId}:${r.direction}`, r]),
@@ -107,7 +108,7 @@ export class VehiclePlanImportService {
     // Collect all records to insert — no DB calls in this loop
     const tripRows:      Array<{ id: string; routeId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const tripDayTypes:  Array<{ tripId: string; dayTypeId: string }> = []
-    const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string }> = []
+    const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number; isDeadhead: boolean }> = []
 
     let blockNumber = 1
@@ -123,6 +124,10 @@ export class VehiclePlanImportService {
       const blockId    = randomUUID()
       let   seqInBlock = 1
       let   hasTrips   = false
+
+      let firstDep = Infinity, lastArr = -Infinity
+      let productiveMinutes = 0, deadrunMinutes = 0
+      let productiveKm = 0,      deadrunKm = 0
 
       for (const row of tabRows) {
         const line = lineByCode.get(row.lineCode)
@@ -144,6 +149,19 @@ export class VehiclePlanImportService {
         const tripId           = randomUUID()
         const departureMinutes = parseHHMM(row.departureHHMM) + (row.depDay - 1) * 1440
         const arrivalMinutes   = parseHHMM(row.arrivalHHMM)   + (row.arrDay - 1) * 1440
+        const tripMinutes = arrivalMinutes - departureMinutes
+        const km          = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
+
+        if (departureMinutes < firstDep) firstDep = departureMinutes
+        if (arrivalMinutes   > lastArr)  lastArr  = arrivalMinutes
+
+        if (row.isProductive) {
+          productiveMinutes += tripMinutes
+          productiveKm      += km
+        } else {
+          deadrunMinutes += tripMinutes
+          deadrunKm      += km
+        }
 
         tripRows.push({ id: tripId, routeId: route.id, departureMinutes, arrivalMinutes })
         tripDayTypes.push({ tripId, dayTypeId })
@@ -153,7 +171,16 @@ export class VehiclePlanImportService {
 
       if (!hasTrips) continue
 
-      blockRows.push({ id: blockId, vehiclePlanId: plan.id, branchId, blockNumber: blockNumber++, depotId, vehicleType: 'BUS' })
+      const summary = {
+        totalMinutes: lastArr - firstDep,
+        productiveMinutes,
+        deadrunMinutes,
+        totalKm:      productiveKm + deadrunKm,
+        productiveKm,
+        deadrunKm,
+      }
+
+      blockRows.push({ id: blockId, vehiclePlanId: plan.id, branchId, blockNumber: blockNumber++, depotId, vehicleType: 'BUS', summary })
     }
 
     // 4 bulk inserts instead of O(n_trips) individual creates

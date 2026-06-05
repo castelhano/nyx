@@ -128,7 +128,7 @@ export class GanttEngine {
     this.hitTester.build(this.segments, this.viewport, this.layoutRows)
   }
 
-  private notify(): void {
+  notify(): void {
     this.onStateChange?.({
       viewport:       this.viewport.snapshot(),
       layoutRows:     this.layoutRows,
