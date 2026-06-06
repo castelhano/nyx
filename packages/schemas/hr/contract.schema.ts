@@ -99,7 +99,7 @@ export const contractSchema = withMeta(
         resource:     'employee',
         contextField: 'employeeId',
         listLabel:    'Funcionários',
-        nameField:    'fullName',
+        nameField:    'code',
         keybind:      'f9',
       },
     ],

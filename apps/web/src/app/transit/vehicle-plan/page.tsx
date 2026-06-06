@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Upload, ArrowLeft } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
@@ -36,16 +36,22 @@ export default function VehiclePlanListPage() {
 
   useTopbarActions([
     ...(meta?.permissions?.create !== false
-      ? [{ label: 'Novo', icon: Plus, onClick: () => router.push('/transit/vehicle-plan/new'), primary: true }]
+      ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push('/transit/vehicle-plan/new'), primary: true }]
       : []),
     ...(meta?.permissions?.create !== false
-      ? [{ label: 'Importar', icon: Upload, onClick: () => { setImportPlanId(null); setImportOpen(true) }, variant: 'ghost' as const }]
+      ? [{ label: 'Importar', icon: Icons.Upload, onClick: () => { setImportPlanId(null); setImportOpen(true) }, variant: 'ghost' as const }]
       : []),
   ], [meta?.permissions?.create])
 
   useShortcut('alt+v', () => router.push('/transit'), {
     desc:   'Voltar',
-    icon:   ArrowLeft,
+    icon:   Icons.ArrowLeft,
+    origin: 'app/transit/vehicle-plan/page',
+  })
+  
+  useShortcut('alt+n', () => router.push('/transit/vehicle-plan/new'), {
+    desc:   'Novo',
+    icon:   Icons.Plus,
     origin: 'app/transit/vehicle-plan/page',
   })
 

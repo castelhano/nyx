@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Save, ArrowLeft, Palette, SlidersHorizontal, CalendarDays } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -102,16 +102,16 @@ export default function PreferencesPage() {
   }
 
   useTopbarActions(
-    [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true, keybind: 'ALT+G' }],
+    [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Icons.Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true, keybind: 'ALT+G' }],
     [isPending],
   )
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar preferências', icon: Save, context: 'all', origin: 'preferences/page' })
+  }, { desc: 'Salvar preferências', icon: Icons.Save, context: 'all', origin: 'preferences/page' })
 
   useShortcut('alt+v', () => router.push('/'), {
-    desc: 'Voltar', icon: ArrowLeft, context: 'all', origin: 'preferences/page',
+    desc: 'Voltar', icon: Icons.ArrowLeft, context: 'all', origin: 'preferences/page',
   })
 
   useShortcut('alt+l', reset, {
@@ -125,7 +125,7 @@ export default function PreferencesPage() {
       <form id={FORM_ID} onSubmit={onSubmit} className="flex flex-col gap-8">
 
         {/* Aparência */}
-        <PrefsSection icon={Palette} label="Aparência">
+        <PrefsSection icon={Icons.Palette} label="Aparência">
           <div className={cn('px-4 py-4')}>
             <p className="text-sm font-medium mb-3">Tema</p>
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -142,7 +142,7 @@ export default function PreferencesPage() {
         </PrefsSection>
 
         {/* Interface */}
-        <PrefsSection icon={SlidersHorizontal} label="Interface">
+        <PrefsSection icon={Icons.SlidersHorizontal} label="Interface">
           <PrefsRow
             label="Sidebar recolhida"
             description="Iniciar com a barra lateral em modo compacto"
@@ -155,7 +155,7 @@ export default function PreferencesPage() {
         </PrefsSection>
 
         {/* Formato */}
-        <PrefsSection icon={CalendarDays} label="Formato">
+        <PrefsSection icon={Icons.CalendarDays} label="Formato">
           <PrefsRow label="Data" description="Formato de exibição de datas em todo o sistema">
             <Select
               value={local.dateFormat}

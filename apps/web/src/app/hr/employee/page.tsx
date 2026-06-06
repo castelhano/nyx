@@ -2,13 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Plus, Upload, ArrowLeft } from 'lucide-react'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SyncModal } from '@/core/SyncModal'
 import { usePageGuard } from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
+import { Icons } from '@/lib/icons'
+import { apiFetch } from '@/lib/auth'
+import { downloadCsv } from '@/lib/csv'
 
 export default function EmployeeListPage() {
   const router      = useRouter()
@@ -27,20 +29,39 @@ export default function EmployeeListPage() {
   const parentId = bc ? filters[bc.contextField] : undefined
   const backPath = bc && parentId ? `/${bc.domain ?? 'hr'}/${bc.resource}/${parentId}` : '/hr'
 
+  async function handleDownloadCsv() {
+    if (!meta) return
+    const params = new URLSearchParams({ page: '1', pageSize: '9999' })
+    if (Object.keys(filters).length) {
+      for (const [k, v] of Object.entries(filters)) params.set(k, v)
+    }
+    const res = await apiFetch(`/hr/employee?${params}`)
+    if (!res.ok) return
+    const { data } = await res.json()
+    downloadCsv(data, meta.fields, meta.labelPlural)
+  }
+
   useTopbarActions([
-    ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Plus, onClick: () => router.push('/hr/employee/new'), primary: true }] : []),
-    ...(meta?.permissions?.create !== false ? [{ label: 'Sincronizar', icon: Upload, onClick: () => setSyncOpen(true), variant: 'ghost' as const }] : []),
-  ], [meta?.permissions?.create])
+    ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push('/hr/employee/new'), primary: true }] : []),
+    ...(meta?.permissions?.create !== false ? [{ label: 'Sincronizar', icon: Icons.Upload, onClick: () => setSyncOpen(true), variant: 'ghost' as const }] : []),
+    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: handleDownloadCsv, variant: 'ghost' as const }] : []),
+  ], [meta?.permissions?.create, meta?.allowCsv])
 
   useShortcut('alt+v', () => router.push(backPath), {
     desc:   'Voltar',
-    icon:   ArrowLeft,
+    icon:   Icons.ArrowLeft,
     origin: 'app/hr/employee/page',
   })
 
   useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push('/hr/employee/new') }, {
     desc:   'Novo funcionário',
-    icon:   Plus,
+    icon:   Icons.Plus,
+    origin: 'app/hr/employee/page',
+  })
+
+  useShortcut('alt+d', handleDownloadCsv, {
+    desc:   'Baixar dados em CSV',
+    icon:   Icons.Download,
     origin: 'app/hr/employee/page',
   })
 

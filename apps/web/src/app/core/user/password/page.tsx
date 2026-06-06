@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Save, ArrowLeft, KeyRound, Check } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -95,16 +95,16 @@ export default function ChangePasswordPage() {
   }
 
   useTopbarActions(
-    [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true, keybind: 'ALT+G' }],
+    [{ label: isPending ? 'Gravando…' : 'Gravar', icon: Icons.Save, type: 'submit', form: FORM_ID, disabled: isPending, primary: true, keybind: 'ALT+G' }],
     [isPending],
   )
 
   useShortcut('alt+g', () => {
     (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar senha', icon: Save, context: 'all', origin: 'user/password/page' })
+  }, { desc: 'Salvar senha', icon: Icons.Save, context: 'all', origin: 'user/password/page' })
 
   useShortcut('alt+v', () => router.push('/'), {
-    desc: 'Voltar', icon: ArrowLeft, context: 'all', origin: 'user/password/page',
+    desc: 'Voltar', icon: Icons.ArrowLeft, context: 'all', origin: 'user/password/page',
   })
 
   return (
@@ -116,7 +116,7 @@ export default function ChangePasswordPage() {
 
           <section className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <Icons.KeyRound className="h-4 w-4 text-muted-foreground" />
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Alterar Senha</p>
             </div>
 
@@ -168,13 +168,13 @@ export default function ChangePasswordPage() {
         {policyChecks.length > 0 && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <Icons.KeyRound className="h-4 w-4 text-muted-foreground" />
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Critérios</p>
             </div>
             <div className="rounded-lg border border-border bg-card divide-y divide-border">
               {policyChecks.map((c) => (
                 <div key={c.label} className="flex items-center gap-2.5 px-4 py-2.5">
-                  <Check className={cn(
+                  <Icons.Check className={cn(
                     'w-3.5 h-3.5 shrink-0 transition-colors',
                     c.ok ? 'text-emerald-500' : 'text-muted-foreground opacity-30',
                   )} />

@@ -5,7 +5,7 @@ import {
   UserRound, Bus, Tag, MapPin, Route, Timer, Warehouse, CalendarRange, CalendarSync, LayoutList,
   Settings2, Save, ArrowLeft, ChevronDown, Copy, Trash2,
   Play, Square, Check, CheckCircle, CheckSquare, MinusSquare, Download, Plus, X, List, Info, ClipboardList,
-  Upload, Loader2, AlertCircle,
+  Upload, Loader2, AlertCircle, KeyRound, RefreshCw,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -59,6 +59,8 @@ export const Icons: Record<string, LucideIcon> = {
   Upload,
   Loader2,
   AlertCircle,
+  KeyRound,
+  RefreshCw,
   Default: LayoutGrid,
 }
 

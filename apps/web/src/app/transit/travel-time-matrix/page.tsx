@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus, ArrowLeft, Download, RefreshCw } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { AutoList }        from '@/core/AutoList'
 import { AutoBreadcrumb }  from '@/core/AutoBreadcrumb'
 import { usePageGuard }    from '@/core/usePageGuard'
@@ -71,19 +71,19 @@ export default function TravelTimeMatrixPage() {
   useTopbarActions([
     {
       label:    isRunning ? 'Gerando…' : 'Gerar Matriz',
-      icon:     RefreshCw,
+      icon:     Icons.RefreshCw,
       onClick:  handleGenerate,
       disabled: isRunning,
     },
     ...(meta?.permissions?.create !== false ? [{
       label:   'Novo',
-      icon:    Plus,
+      icon:    Icons.Plus,
       onClick: () => router.push(`/${DOMAIN}/${RESOURCE}/new`),
       primary: true,
     }] : []),
     ...(meta?.allowCsv ? [{
       label:   'CSV',
-      icon:    Download,
+      icon:    Icons.Download,
       onClick: handleDownloadCsv,
       variant: 'ghost' as const,
     }] : []),
@@ -91,19 +91,19 @@ export default function TravelTimeMatrixPage() {
 
   useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push(`/${DOMAIN}/${RESOURCE}/new`) }, {
     desc:   'Novo registro',
-    icon:   Plus,
+    icon:   Icons.Plus,
     origin: 'apps/web/src/app/transit/travel-time-matrix/page',
   })
 
   useShortcut('alt+v', () => router.push(`/${DOMAIN}`), {
     desc:   'Voltar',
-    icon:   ArrowLeft,
+    icon:   Icons.ArrowLeft,
     origin: 'apps/web/src/app/transit/travel-time-matrix/page',
   })
 
   useShortcut('alt+d', handleDownloadCsv, {
     desc:   'Baixar dados em CSV',
-    icon:   Download,
+    icon:   Icons.Download,
     origin: 'apps/web/src/app/transit/travel-time-matrix/page',
   })
 

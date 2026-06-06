@@ -153,9 +153,12 @@ function NewPlanForm() {
             <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           </div>
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end space-x-4">
           <Button type="submit" disabled={isPending || !dayTypeId} className="w-full" size="default">
           {isPending ? 'Criando…' : 'Criar Planejamento'}
+          </Button>
+          <Button type="button" className="w-full" size="default" variant='cancel' onClick={ () => router.push('/transit/vehicle-plan') }>
+            Voltar
           </Button>
         </div>
       </form>

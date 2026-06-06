@@ -34,6 +34,13 @@ export const vehiclePlanSchema = withMeta(
       keybind:        'd',
     }),
 
+    description: z.string().optional().meta({
+      label:          'Descrição',
+      listVisibility: 'visible',
+      className:      'md:w-1/3',
+      keybind:        'e',
+    }),
+
     status: z.enum(['DRAFT', 'ACTIVE']).default('DRAFT').meta({
       label:          'Status',
       listVisibility: 'visible',

@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Download } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { usePageGuard } from '@/core/usePageGuard'
 import { useRecordQuery } from '@/core/useRecordQuery'
@@ -81,12 +81,12 @@ export default function JobDetailPage() {
   const { guardNode } = usePageGuard('core', 'job', false, jobError ?? undefined)
 
   useTopbarActions([
-    { label: 'Voltar', icon: ArrowLeft, onClick: () => router.push('/core/job'), variant: 'ghost' },
+    { label: 'Voltar', icon: Icons.ArrowLeft, onClick: () => router.push('/core/job'), variant: 'ghost' },
   ], [])
 
   useShortcut('alt+v', () => router.push('/core/job'), {
     desc:   'Voltar',
-    icon:   ArrowLeft,
+    icon:   Icons.ArrowLeft,
     origin: 'apps/web/src/app/core/job/[id]/page',
   })
 
@@ -140,7 +140,7 @@ export default function JobDetailPage() {
               download
               className="flex items-center gap-1 text-sm text-accent hover:underline"
             >
-              <Download size={13} /> Download
+              <Icons.Download size={13} /> Download
             </a>
           </div>
         )}

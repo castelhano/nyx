@@ -203,6 +203,7 @@ model TripDayType {
 model VehiclePlan {
   id          String            @id @default(uuid())
   dayTypeId   String
+  description String?
   status      VehiclePlanStatus @default(DRAFT)
   // populated by solver; shape: { fleetCount, score, deadrunKm, productiveKm, totalHours, ... }
   summary     Json?
