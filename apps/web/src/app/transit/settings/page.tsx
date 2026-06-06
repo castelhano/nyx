@@ -562,7 +562,7 @@ export default function TransitSettingsPage() {
               label="Critérios Globais"
               sub="Calculados sobre o plano. Peso × quantidade = custo no score final."
             />
-            <div className='flex items-center gap-x-2 rounded-sm p-3 text-sm text-slate-50 bg-slate-500 dark:bg-slate-800/50'>
+            <div className='flex items-center gap-x-2 rounded-sm p-3 text-sm text-slate-50 bg-slate-500 dark:text-slate-300 dark:bg-slate-800/50'>
               <Icons.Info className="w-4 h-4 shrink-0" />
               <span className='tracking-wide'>Critérios globais definem a prioridade do algoritmo. Quanto maior o peso de um item <b>em relação aos demais</b>, mais o <dfn className='text-amber-200 cursor-help' title='Motor de otimização do sistema'>solver</dfn> focará em otimizá-lo</span>
             </div>
