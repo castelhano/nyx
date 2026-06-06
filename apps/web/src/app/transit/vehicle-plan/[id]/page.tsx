@@ -224,7 +224,7 @@ function InlineDescription({
       className={disabled ? undefined : 'cursor-text'}
     >
       {value
-        ? <span className="text-foreground">{value}</span>
+        ? <span className="text-foreground tracking-wide uppercase">{value}</span>
         : <span className="italic text-muted-foreground/60">Descrição</span>
       }
     </span>
