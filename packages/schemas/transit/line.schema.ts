@@ -74,8 +74,9 @@ export const lineSchema = withMeta(
   {
     label:       'Linha',
     labelPlural: 'Linhas',
-    nameField:   'name',
+    nameField:   'code',
     icon:        'Route',
+    afterCreate: '/transit/transit-route?lineId={id}',
     defaultSort: { field: 'code', order: 'asc' },
     groups: {
       'Metricas':   ['metrics'],

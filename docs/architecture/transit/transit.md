@@ -570,13 +570,15 @@ A matriz **não** é gerada para todas as localidades cadastradas. Apenas os par
 
 ### Fluxo de atualização da matriz
 
-1. `TransitLocality` criada ou lat/lng atualizado
-2. Job assíncrono chama `OsrmService.generateMatrix()`
-3. Coleta o subconjunto relevante de localidades (depots + route endpoints + waypoints)
-4. Dispara chamada OSRM `/table` com essas coordenadas
-5. Converte: segundos → minutos, metros → km
-6. `upsert` em `TravelTimeMatrix` com `source: 'OSRM'`
-7. Entradas com `source: 'MANUAL'` **não são sobrescritas**
+Acionado pelo botão "Gerar Matriz" em `transit/travel-time-matrix`. O controller cria um `Job` via `JobService` e retorna `{ jobId }` imediatamente; o frontend usa `useJobProgress` para exibir progresso inline.
+
+1. `POST /transit/travel-time-matrix/generate` — cria job (`type: 'osrm-matrix'`) e dispara `OsrmService.generateMatrix()` em background via `JobService.run()`
+2. Coleta o subconjunto relevante de localidades (depots + route endpoints + waypoints) — localidades sem `lat`/`lng` são ignoradas e contadas em `skipped`
+3. Dispara chamada OSRM `/table/v1/driving` com coordenadas no formato `lng,lat`
+4. Converte: segundos → `Math.ceil(s / 60)` minutos; metros → `Math.round(m / 10) / 100` km
+5. Pares onde OSRM retorna `null` (rota inexistente) são silenciosamente ignorados
+6. **Atomic replace:** `$transaction([deleteMany({ source: 'OSRM', originId: in [...], destinationId: in [...] }), createMany({ data: [...] })])` — todas as entradas OSRM anteriores do subconjunto são removidas e recriadas em uma única transação
+7. Entradas com `source: 'MANUAL'` **nunca são tocadas** — filtradas antes do `createMany` via `Set` de pares manuais
 
 ### Configuração
 

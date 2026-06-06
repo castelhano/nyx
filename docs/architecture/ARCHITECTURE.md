@@ -557,11 +557,15 @@ Children are **never** declared in the parent schema. Instead, `metadata.builder
 
 **`keybind` in the child's `BreadcrumbDef`:** declares the shortcut for the button the **parent** renders to navigate to this child. Semantically: "when my parent references me, use this key."
 
+**`nameFirstWord`** — by default, `AutoBreadcrumb` shows only the first word of the parent's name (splitting on space) to keep the trail short. Set `nameFirstWord: false` in the `BreadcrumbDef` to display the full name:
+
 ```typescript
 breadcrumb: [
-  { resource: 'company', contextField: 'companyId', listLabel: 'Companies', nameField: 'legalName', keybind: 'f9' }
+  { resource: 'transit-route', contextField: 'routeId', listLabel: 'Sentidos', nameField: 'name', nameFirstWord: false, keybind: 'f9' }
 ]
 ```
+
+The same flag can be set at the `withMeta` top level (`nameFirstWord: false`) to control the **current record's** label in the breadcrumb trail. This is read from `ResourceMetadata.nameFirstWord` by `AutoBreadcrumb` — no prop needed on the component.
 
 ### 4.9 Metadata API
 
@@ -1043,16 +1047,26 @@ private async execute(file: Buffer) {
 
 #### Frontend
 
-The `POST /:domain/:resource/sync` endpoint returns `{ jobId }` with 202 immediately. The caller polls with TanStack Query:
+The `POST /:domain/:resource/sync` endpoint returns `{ jobId }` with 202 immediately. The caller polls using the `useJobProgress` hook (`apps/web/src/lib/use-job-progress.ts`):
 
 ```typescript
-useQuery({
-  queryKey: ['job', jobId],
-  queryFn:  () => apiFetch(`/core/job/${jobId}`).then(r => r.json()),
-  refetchInterval: (data) =>
-    data?.status === 'PENDING' || data?.status === 'RUNNING' ? 2000 : false,
+const { job, isRunning, isCompleted, isFailed } = useJobProgress(jobId, (j) => {
+  // called once when status transitions to COMPLETED or FAILED
+  if (j.status === 'COMPLETED') queryClient.invalidateQueries({ queryKey: [domain, resource] })
 })
 ```
+
+`useJobProgress` wraps `useQuery` with `refetchInterval: 2000` while the job is active, stops polling on terminal status, and fires the `onDone` callback exactly once. It accepts `jobId: string | null` — passing `null` disables polling entirely.
+
+**`JobProgressBar`** (`apps/web/src/components/ui/job-progress-bar.tsx`) renders the job state inline on a list page. It shows a spinner while running (or a progress bar when `job.output.progress` is set), a green check on completion, and a red error message on failure. Pass the values returned by `useJobProgress` directly:
+
+```tsx
+{(isRunning || isCompleted || isFailed) && (
+  <JobProgressBar job={job} isRunning={isRunning} isCompleted={isCompleted} isFailed={isFailed} />
+)}
+```
+
+Both `useJobProgress` and `JobProgressBar` are also used by `SyncModal` — `SyncModal` calls `useJobProgress(jobId, onDone)` and renders its own progress UI from the same `job` object.
 
 The list page at `/core/job` renders via `AutoList`. The detail page at `/core/job/:id` is a custom read-only page that displays the status badge, timing info, `output` and `errors` as formatted JSON, and a download link when `outputFile` is set.
 

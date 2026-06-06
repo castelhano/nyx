@@ -15,7 +15,7 @@ export const routeSchema = withMeta(
     direction: z.enum(['OUTBOUND', 'INBOUND', 'CIRCULAR']).meta({
       label:          'Sentido',
       listVisibility: 'visible',
-      className:      'md:w-40',
+      className:      'md:w-50',
       keybind:        'd',
       optionLabels: {
         OUTBOUND: 'Ida',
@@ -27,7 +27,8 @@ export const routeSchema = withMeta(
     name: z.string().min(2).meta({
       label:          'Descrição',
       listVisibility: 'visible',
-      keybind:        'n',
+      className:      'md:w-1/2',
+      keybind:        's',
     }),
 
     originLocalityId: z.uuid().meta({
@@ -37,7 +38,8 @@ export const routeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
-      keybind:        'o',
+      className:      'md:w-1/3',
+      keybind:        'g',
     }),
 
     destinationLocalityId: z.uuid().meta({
@@ -47,6 +49,7 @@ export const routeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
+      className:      'md:w-1/3',
       keybind:        'e',
     }),
 
@@ -56,7 +59,6 @@ export const routeSchema = withMeta(
       listVisibility: 'visible',
       filter:         true,
       defaultValue:   'true',
-      keybind:        'a',
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
@@ -68,7 +70,7 @@ export const routeSchema = withMeta(
     nameField:   'name',
     nameFirstWord: false,
     breadcrumb:  [
-      { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'name', keybind: 'f9' },
+      { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'code', keybind: 'f9' },
     ],
     defaultSort: { field: 'direction', order: 'asc' },
   },
