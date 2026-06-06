@@ -76,7 +76,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const isTs = __filename.endsWith('.ts')
     const workerFile = path.join(__dirname, 'solver', `solver.worker${isTs ? '.ts' : '.js'}`)
-    const execArgv = isTs ? ['-r', 'ts-node/register/transpile-only'] : []
+    const execArgv = isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : []
 
     const worker = new Worker(workerFile, { workerData: solverConfig, execArgv })
     const messages$ = new Subject<SolverMessage>()
