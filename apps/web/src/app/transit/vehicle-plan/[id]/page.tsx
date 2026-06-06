@@ -166,6 +166,71 @@ function NewPlanForm() {
   )
 }
 
+// ── inline description editor ─────────────────────────────────────────────────
+
+function InlineDescription({
+  value,
+  disabled,
+  onSave,
+}: {
+  value?:   string
+  disabled?: boolean
+  onSave:   (val: string) => Promise<void>
+}) {
+  const { toast }            = useToast()
+  const [editing, setEditing] = useState(false)
+  const [draft,   setDraft]   = useState('')
+  const inputRef              = useRef<HTMLInputElement>(null)
+
+  function startEdit() {
+    if (disabled) return
+    setDraft(value ?? '')
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  async function commit() {
+    setEditing(false)
+    const trimmed = draft.trim()
+    if (trimmed === (value ?? '').trim()) return
+    try {
+      await onSave(trimmed)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar descrição')
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); inputRef.current?.blur() }
+          if (e.key === 'Escape') { setEditing(false) }
+        }}
+        className="text-sm border-b border-border bg-transparent focus:outline-none focus:border-ring min-w-32 max-w-64"
+      />
+    )
+  }
+
+  return (
+    <span
+      onDoubleClick={startEdit}
+      title={disabled ? undefined : 'Duplo clique para editar'}
+      className={disabled ? undefined : 'cursor-text'}
+    >
+      {value
+        ? <span className="text-foreground">{value}</span>
+        : <span className="italic text-muted-foreground/60">Descrição</span>
+      }
+    </span>
+  )
+}
+
 // ── page ──────────────────────────────────────────────────────────────────────
 
 export default function VehiclePlanPage() {
@@ -437,6 +502,21 @@ export default function VehiclePlanPage() {
         {/* summary bar */}
         {record && (
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <InlineDescription
+              value={(record as Record<string, unknown>).description as string | undefined}
+              disabled={!canUpdate}
+              onSave={async (val) => {
+                const res = await apiFetch(`/transit/vehicle-plan/${id}`, {
+                  method: 'PATCH',
+                  body:   JSON.stringify({ description: val }),
+                })
+                if (!res.ok) {
+                  const json = await res.json().catch(() => ({}))
+                  throw new Error(extractError(json))
+                }
+                await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+              }}
+            />
             <span>
               Status:{' '}
               <span className={status === 'ACTIVE' ? 'text-green-600 font-medium' : 'font-medium'}>
