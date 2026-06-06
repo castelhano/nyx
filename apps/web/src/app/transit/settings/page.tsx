@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Save, ArrowLeft, Info } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -19,9 +19,9 @@ import type { GeneralSettings, PlanningSettings, ScheduleSettings, FlatCriterion
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
 const FLAT_META: Record<keyof PlanningSettings['flat'], { label: string; unit: string; hint: string; phase: 1 | 2 }> = {
-  fleetUsage:           { label: 'Uso de Frota',              unit: 'por veículo',   hint: 'Custo por veículo utilizado no plano.',                                          phase: 1 },
-  deadrunKm:            { label: 'Km em Vazio',               unit: 'por km',        hint: 'Custo por km de deslocamento em vazio no plano.',                                phase: 1 },
-  totalKm:              { label: 'Km Total',                  unit: 'por km',        hint: 'Custo por km total percorrido no plano.',                                        phase: 1 },
+  fleetUsage:           { label: 'Uso de Frota',              unit: 'por veículo',   hint: 'Peso por veículo utilizado no plano.',                                          phase: 1 },
+  deadrunKm:            { label: 'Km em Vazio',               unit: 'por km',        hint: 'Peso por km de deslocamento em vazio no plano.',                                phase: 1 },
+  totalKm:              { label: 'Km Total',                  unit: 'por km',        hint: 'Peso por km total percorrido no plano.',                                        phase: 1 },
   distributionVariance: { label: 'Variância de Distribuição', unit: 'por coef.',     hint: 'Penaliza planos desbalanceados. Quantity = desvio padrão / média de km por bloco.', phase: 1 },
   specialFleetUsage:    { label: 'Frota Especial',            unit: 'por bloco',     hint: 'Custo por bloco que requer tipo de veículo especial (requiredVehicleType).',     phase: 1 },
   driverUsage:          { label: 'Uso de Condutores',         unit: 'por condutor',  hint: '[Fase 2] Custo por condutor utilizado no plano.',                                phase: 2 },
@@ -63,7 +63,7 @@ function HintPopover({ hint }: { hint: string }) {
         onClick={() => setOpen((o) => !o)}
         className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
       >
-        <Info className="w-3.5 h-3.5" />
+        <Icons.Info className="w-3.5 h-3.5" />
       </button>
       {open && (
         <>
@@ -87,7 +87,7 @@ function PhaseBadge() {
 
 function DiffDot({ show }: { show: boolean }) {
   if (!show) return <span className="w-1.5" />
-  return <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" title="Difere do global" />
+  return <span className="w-1.5 h-1.5 rounded-full bg-amber-700 flex-shrink-0" title="Difere do global" />
 }
 
 function NumberInput({ value, onChange, min = 0, max, step = 1, disabled }: {
@@ -421,11 +421,11 @@ export default function TransitSettingsPage() {
   // ── shortcuts & topbar ─────────────────────────────────────────────────────
 
   useTopbarActions([
-    { label: 'Salvar', icon: Save, onClick: handleSave, primary: true, disabled: saving, keybind: 'ALT+G' },
+    { label: 'Salvar', icon: Icons.Save, onClick: handleSave, primary: true, disabled: saving, keybind: 'ALT+G' },
   ], [general, planning, schedule, saving, scope])
 
-  useShortcut('alt+g', handleSave, { desc: 'Salvar configurações', icon: Save, origin: 'TransitSettingsPage' })
-  useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: ArrowLeft, origin: 'TransitSettingsPage' })
+  useShortcut('alt+g', handleSave, { desc: 'Salvar configurações', icon: Icons.Save, origin: 'TransitSettingsPage' })
+  useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: 'TransitSettingsPage' })
   useShortcut('alt+l', () => setResetSignal((s) => s + 1), { display: false, origin: 'TransitSettingsPage' })
 
   // ── update helpers ─────────────────────────────────────────────────────────
@@ -466,7 +466,7 @@ export default function TransitSettingsPage() {
 
       {/* Branch selector */}
       <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">Filial</span>
+        <span className="text-sm text-muted-foreground">Escopo</span>
         <Select
           value={scope}
           onChange={(e) => setScope(e.target.value)}
@@ -479,11 +479,13 @@ export default function TransitSettingsPage() {
           ))}
         </Select>
         {isBranch && (
-          <span className="text-xs text-muted-foreground">
-            • Pontos laranjas indicam valores que diferem do global
+          <span className="flex items-center gap-x-2 text-xs text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
+            <span>Diferentes do Global</span>
           </span>
         )}
       </div>
+      <hr />
 
       {/* ── Geral ── */}
       <section className="flex flex-col gap-3">
@@ -512,7 +514,7 @@ export default function TransitSettingsPage() {
 
       {/* ── Planejamento ── */}
       <section className="flex flex-col gap-6">
-        <SectionHeader label="Planejamento" />
+        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 01 - Planejamento</h1>
 
         {/* Stop criteria */}
         <div className="flex flex-col gap-3">
@@ -558,8 +560,12 @@ export default function TransitSettingsPage() {
           <div className="flex flex-col gap-3">
             <SectionHeader
               label="Critérios Globais"
-              sub="Calculados sobre o plano inteiro. Peso × quantidade = custo no score final."
+              sub="Calculados sobre o plano. Peso × quantidade = custo no score final."
             />
+            <div className='flex items-center gap-x-2 rounded-sm p-3 text-sm text-slate-50 bg-slate-500 dark:bg-slate-800/50'>
+              <Icons.Info className="w-4 h-4 shrink-0" />
+              <span className='tracking-wide'>Critérios globais definem a prioridade do algoritmo. Quanto maior o peso de um item <b>em relação aos demais</b>, mais o <dfn className='text-amber-200 cursor-help' title='Motor de otimização do sistema'>solver</dfn> focará em otimizá-lo</span>
+            </div>
             <FlatTable
               data={planning.flat}
               globalData={isBranch ? gPlanning.flat : planning.flat}
@@ -570,11 +576,17 @@ export default function TransitSettingsPage() {
 
         {/* Range criteria */}
         {planning && gPlanning && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 mt-4">
             <SectionHeader
               label="Critérios por Bloco"
               sub="Calculados em isolamento por bloco e somados ao score. Modifier = peso do critério no score do bloco."
             />
+            <div className='flex items-center gap-x-2 rounded-sm py-3 px-4 text-sm text-slate-50 bg-slate-500 dark:text-slate-300 dark:bg-slate-800/50'>
+              <Icons.Info className="w-4 h-4 shrink-0" />
+              <span className='tracking-wide'>
+                Modifier define o peso do item. Um valor '0.5' indica metade da importância de um item '1'. Como o modifier altera a pontuação em escala exponencial, pequenas variações causam forte impacto no direcionamento do <dfn className='text-amber-200 cursor-help' title='Motor de otimização do sistema'>solver</dfn>. Altere com cuidado.
+              </span>              
+            </div>
             <RangeTable
               data={planning.range}
               globalData={isBranch ? gPlanning.range : planning.range}
@@ -583,14 +595,12 @@ export default function TransitSettingsPage() {
             />
           </div>
         )}
-      </section>
+      </section>      
+      <hr className='mt-2' />
 
       {/* ── Escala ── */}
-      <section className="flex flex-col gap-3">
-        <SectionHeader
-          label="Escala de Motoristas"
-          sub="Fase 2 — Critérios por turno de condutor. Disponível quando o módulo de escala for ativado."
-        />
+      <section className="flex flex-col gap-3 mb-20">
+        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 02 - Escala de operadores</h1>
         {schedule && gSchedule && (
           <RangeTable
             data={schedule.range}
