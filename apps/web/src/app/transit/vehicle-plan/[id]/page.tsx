@@ -218,16 +218,19 @@ function InlineDescription({
   }
 
   return (
-    <span
+    <span>
+      <Icons.Option className="inline w-4 h-4 me-1 text-cyan-700" />
+      <span
       onDoubleClick={startEdit}
       title={disabled ? undefined : 'Duplo clique para editar'}
       className={disabled ? undefined : 'cursor-text'}
-    >
+      >
       {value
-        ? <span className="text-foreground tracking-wide uppercase">{value}</span>
+        ? <span className="text-foreground  uppercase">{value}</span>
         : <span className="italic text-muted-foreground/60">Descrição</span>
       }
-    </span>
+      </span>
+    </span>    
   )
 }
 
