@@ -222,7 +222,7 @@ Template permanente por `Route`. Não possui vínculo com empresa nem com vigên
 | `requiredVehicleType` | Enum? | solver consolida viagens com mesmo tipo |
 | `constraints` | Json? | ver §2.4 |
 
-**Dia operacional:** começa no horário configurado em `PlanningConfig.operationalDayStartHour` (padrão: 04h00).
+**Dia operacional:** começa no horário configurado em `GeneralSettings.operationalDayStartHour` (padrão: 03h00).
 
 ```
 // Exemplos com operationalDayStartHour = 4 (04h00)
@@ -231,20 +231,27 @@ Template permanente por `Route`. Não possui vínculo com empresa nem com vigên
 04:00 → departureMinutes = 0  (início do próximo dia operacional)
 ```
 
-#### `PlanningConfig` — configuração de geração (BaseSettingsService)
+#### Configurações de geração — Transit Settings
 
-Settings singleton por filial com fallback global.
+As configurações do solver são gerenciadas por três serviços no módulo `TransitSettingsModule`, todos armazenados como JSON no modelo `Settings` (`key_scope` único), sem registrar resources individuais no `resourceRegistry`. Um único card "Configurações" é exposto no discovery de `transit` → página customizada `/transit/settings`.
 
-| Grupo | Campos | Solver atual |
+**`transit.general` — `TransitGeneralConfigService`** (scope `global`)
+
+| Campo | Tipo | Notas |
 |---|---|---|
-| Dia Operacional | `operationalDayStartHour` | ✓ usado |
-| Intervalos | `minLayoverMinutes`, `maxLayoverMinutes` | `min` é hard constraint; `max` reservado para Fase 2 |
-| Deslocamento em Vazio | `maxDeadrunSoftMinutes`, `maxDeadrunHardMinutes` | ✓ ambos usados |
-| Duração do Bloco | `blockDurationMinMinutes`, `blockDurationIdealMinMinutes`, `blockDurationIdealMaxMinutes`, `blockDurationMaxMinutes` | **Reservado para Fase 2 (crew scheduling)** — campos existem no schema mas o VSP atual os ignora |
-| Pesos de Otimização | `weightMinimizeFleet`, `weightMinimizeDeadrun`, `weightBlockDuration` | `fleet` e `deadrun` usados; `blockDuration` reservado para Fase 2 |
-| Critério de Parada | `stopNoImprovementMinutes`, `stopMaxTotalMinutes` | ✓ usados |
+| `operationalDayStartHour` | Int (0-6) | Viagens entre 00:00 e esta hora pertencem ao dia operacional anterior |
 
-> **Por que `blockDuration*` não é usado no VSP:** um bloco representa um **veículo**, não um condutor. Veículos não têm limite de jornada. Os limites de duração do bloco são restrições de **jornada do condutor** e serão aplicados na Fase 2 (crew scheduling), quando blocos longos serão particionados em turnos respeitando a legislação.
+**`transit.planning` — `TransitPlanningConfigService`** (scope branch com fallback global)
+
+| Grupo | Campos |
+|---|---|
+| Critério de Parada | `stopNoImprovementMinutes`, `stopMaxTotalMinutes` |
+| Critérios Flat | `flat.fleetUsage`, `flat.deadrunKm`, `flat.totalKm`, `flat.distributionVariance`, `flat.specialFleetUsage`, `flat.driverUsage`, `flat.overtime` — cada um com `{ active, direction, weight }` |
+| Critérios Range | `range.lineTransfer`, `range.tripInterval`, `range.deadrunRatio` — cada um com `{ active, modifier, floor, idealMin, idealMax, ceiling }` |
+
+**`transit.schedule` — `TransitScheduleConfigService`** (scope branch com fallback global)
+
+Reservado para configurações de escala de motoristas (Fase 2).
 
 ---
 
@@ -458,27 +465,40 @@ assumeBest()
 
 ### 3.4 Função de pontuação (VSP — Fase 1)
 
-O solver foca exclusivamente em minimizar frota. Restrições de jornada de condutor são Fase 2.
+O solver combina **critérios range por bloco** e **critérios flat por candidato**.
 
 ```
-score = 100
-      - Σ dead_run_acima_do_soft × weightMinimizeDeadrun
-      - frota_utilizada × weightMinimizeFleet
+score = rangeScore + flatScore
+
+rangeScore = Σ_bloco Σ_critério_ativo  modifier × V(valor_bloco, critério)
+flatScore  = Σ_critério_ativo  ±(quantidade × weight)   [+ maximize / − minimize]
 ```
 
-**Violações duras** (descartam o candidato):
-- Dead run acima de `maxDeadrunHardMinutes` (restrição física real do veículo)
-- Intervalo entre viagens abaixo de `minLayoverMinutes`
-- Violação de `requiredVehicleType`
-- Violação de `constraints.pinnedBlock`
+**Critérios range** — `V` é uma função triangular 0→1→0 definida por `{ floor, idealMin, idealMax, ceiling }`:
 
-**Violações suaves** (penalizam a pontuação):
-- Dead run acima de `maxDeadrunSoftMinutes`
+| Critério | Valor por bloco | Defaults (modifier / floor / idealMin / idealMax / ceiling) |
+|---|---|---|
+| `lineTransfer` | contagem de mudanças de linha no bloco | 1.0 / 0 / 0 / 0 / 4 |
+| `tripInterval` | layover médio entre viagens consecutivas (min) | 0.3 / 3 / 5 / 10 / 15 |
+| `deadrunRatio` | `deadrunKm / totalKm × 100` | 1.0 / 0 / 0 / 10 / 25 |
 
-**Reservado para Fase 2 (crew scheduling) — não aplicado ao VSP:**
-- Restrições de `blockDurationMin/Max/Ideal`
-- Penalidade por bloco fora da faixa ideal
-- `maxLayoverMinutes` como penalidade suave
+**Critérios flat** — aplicados ao candidato inteiro:
+
+| Critério | Quantidade | Default direction / weight |
+|---|---|---|
+| `fleetUsage` | nº de blocos | minimize / 300 |
+| `deadrunKm` | km em vazio total | minimize / 50 |
+| `totalKm` | km total | minimize / 2 |
+| `distributionVariance` | variância das durações dos blocos | minimize / 200 |
+| `specialFleetUsage` | nº de blocos com tipo ≠ BUS | minimize / 150 |
+| `driverUsage` | — (Fase 2) | minimize / 150 |
+| `overtime` | — (Fase 2) | minimize / 6 |
+
+**Hard constraint único:** `layover >= 0` — o veículo deve poder fisicamente chegar ao início da próxima viagem. Tudo mais é tratado pelos critérios acima.
+
+**Reservado para Fase 2 (crew scheduling):**
+- `driverUsage` e `overtime` (requerem dados de condutor)
+- Critérios de duração de bloco (restrições de jornada do condutor, não do veículo)
 
 ### 3.5 Autenticação SSE
 
@@ -636,12 +656,14 @@ apps/api/src/modules/transit/
       vehicle-block.service.ts        extends BaseService — CRUD padrão; hidden: true (gerido pela UI do plano)
       vehicle-block.controller.ts     extends BaseController
       solver/
-        solver.worker.ts         worker_threads — loop de otimização
-        solver.types.ts          SolverResult, SolverConfig, SolverMessage, VehiclePlanSummary, VehicleBlockSummary
-    settings/
-      planning-config/
-        planning-config.service.ts    extends BaseSettingsService
-        planning-config.controller.ts extends BaseSettingsController
+        solver.worker.ts         worker_threads — loop de otimização; scoring flat/range
+        solver.types.ts          SolverPlanningConfig, SolverResult, SolverConfig, SolverMessage
+  settings/
+    transit-settings.module.ts        OnModuleInit — registra 1 entry no resourceRegistry (card "Configurações")
+    transit-settings.controller.ts    GET/PUT /transit/settings/{general,planning,schedule}
+    transit-general-config.service.ts  key: transit.general / scope: global
+    transit-planning-config.service.ts key: transit.planning / scope: branch + fallback global
+    transit-schedule-config.service.ts key: transit.schedule / scope: branch + fallback global
 ```
 
 ---
@@ -672,22 +694,24 @@ apps/api/src/modules/transit/
 - [x] Campo `priority` no schema Zod e Prisma de `DayType`
 - [x] `CalendarExceptionService` / `CalendarExceptionController`
 - [x] `TripService` / `TripController` — sem `scopeField`; trips são globais
-- [x] `PlanningConfigService` extends `BaseSettingsService`
-- [x] `PlanningConfigController` extends `BaseSettingsController`
 - [x] Implementar lógica de resolução de `DayType` para data real (usar `priority` + `pattern`)
 
-### Etapa 4 — Solver ✅
+### Etapa 4 — Solver + Transit Settings ✅
 
 - [x] Tipos em `solver.types.ts` — `SolverBlock` e `SolverResult` com métricas completas
 - [x] `VehiclePlanSummary` e `VehicleBlockSummary` como schemas Zod tipados em `packages/schemas`
-- [x] `solver.worker.ts` com loop, score, constraints, critérios de parada, métricas completas por bloco
-- [x] `VehiclePlanService.generate()` — busca trips via `VehiclePlanLine → lineId → route → trip`
-- [x] `VehiclePlanService.assumeBest()` — persiste blocos com `summary` tipado (8 campos)
+- [x] `solver.worker.ts` — scoring flat/range; critérios de parada; métricas completas por bloco; único hard constraint: `layover >= 0`
+- [x] `SolverTrip` inclui `lineId` para cálculo de `lineTransfer` por bloco
+- [x] `VehiclePlanService.generate()` — injects `TransitGeneralConfigService` + `TransitPlanningConfigService`; monta `SolverPlanningConfig` com `operationalDayStartHour` + `flat` + `range`
+- [x] `VehiclePlanService.assumeBest()` — persiste blocos com `summary` tipado
 - [x] `VehiclePlanService.activate()` — valida sobreposição de linhas; status `ACTIVE`
 - [x] `VehiclePlanService.addLine()` / `removeLine()` — gestão do escopo de linhas
 - [x] `VehiclePlanService.getGanttData()` — retorna plano + blocos + viagens aninhadas para o Gantt
 - [x] `VehiclePlanController` — endpoints: `generate`, `stream` (SSE), `assume`, `stop`, `activate`, `lines`, `gantt-data`
 - [x] `VehicleBlockService` / `VehicleBlockController` — CRUD padrão; schema com `hidden: true`
+- [x] `TransitSettingsModule` — `OnModuleInit` registra 1 entry no `resourceRegistry` (card "Configurações"); sem `BaseSettingsService`
+- [x] `TransitGeneralConfigService`, `TransitPlanningConfigService`, `TransitScheduleConfigService` — serviços simples com chave `transit.{general,planning,schedule}`; sem auto-registro no registry
+- [x] `TransitSettingsController` — GET/PUT por seção (`/transit/settings/general`, `planning`, `schedule`)
 
 ### Etapa 5 — Relatórios
 
@@ -744,7 +768,8 @@ apps/api/src/modules/transit/
 | Matriz de tempos | Global, subconjunto relevante | Depots + endpoints de rota + waypoints — não gera pares desnecessários para centenas de localidades |
 | Worker do solver | `worker_threads` Node.js | Não bloqueia event loop; NestJS continua respondendo |
 | SSE auth | Query param `?token=jwt` (MVP) | EventSource não suporta headers; migrar para cookie em produção |
-| PlanningConfig | BaseSettingsService com scope branch + global | Reutiliza infraestrutura existente; fallback global automático |
+| Transit Settings | Três serviços simples (sem `BaseSettingsService`) + `OnModuleInit` para 1 entry no registry | Três sub-schemas (general/planning/schedule) mapeiam para uma única página custom `/transit/settings`; `BaseSettingsService` criaria 3 cards quebrados no discovery |
+| `SolverPlanningConfig` | Flat/range criteria em vez de pesos escalares | Permite ao usuário configurar faixas ideais e pesos por critério sem recompilar; critérios inativos não afetam o score |
 | `VehiclePlanService` herança | Estende `BaseService` + métodos custom | Necessário para registro no `resourceRegistry` (discovery) e endpoints CRUD via `BaseController` |
 | Relation `blockTrips` | Nome Prisma correto em `VehicleBlock` | Campo se chama `blockTrips`, não `trips`; `trips` é nome usado apenas no `SolverBlock` (solver interno) |
 | Gantt canvas + DOM | Canvas para segmentos, DOM para TimeRuler/RowList/tooltip | Motor opera em CSS pixels; DPR tratado 1× no init via `ctx.setTransform(dpr,…)`; overlays DOM usam `engine.getSegmentRect()` diretamente |
