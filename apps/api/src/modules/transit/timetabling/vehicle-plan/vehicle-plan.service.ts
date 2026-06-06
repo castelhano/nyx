@@ -3,7 +3,8 @@ import { Observable, Subject } from 'rxjs'
 import { Worker } from 'worker_threads'
 import path from 'path'
 import { PrismaService } from '../../../../prisma/prisma.service'
-import { PlanningConfigService } from '../settings/planning-config/planning-config.service'
+import { TransitGeneralConfigService }  from '../../settings/transit-general-config.service'
+import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import type { SolverConfig, SolverMessage, SolverResult } from './solver/solver.types'
@@ -24,7 +25,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
   constructor(
     prisma: PrismaService,
-    private readonly planningConfig: PlanningConfigService,
+    private readonly generalConfig:  TransitGeneralConfigService,
+    private readonly planningConfig: TransitPlanningConfigService,
   ) {
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
   }
@@ -41,13 +43,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const lineIds = plan.lines.map(l => l.lineId)
     if (lineIds.length === 0) throw new BadRequestException('Plan has no lines defined')
 
-    const [trips, matrix, depotLocalities, config] = await Promise.all([
+    const [trips, matrix, depotLocalities, generalCfg, planningCfg] = await Promise.all([
       this.prisma.transitTrip.findMany({
         where:   { dayTypes: { some: { dayTypeId: plan.dayTypeId } }, route: { lineId: { in: lineIds } } },
-        include: { route: { select: { originLocalityId: true, destinationLocalityId: true } } },
+        include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true } } },
       }),
       this.prisma.travelTimeMatrix.findMany(),
       this.prisma.transitLocality.findMany({ where: { isDepot: true }, select: { id: true } }),
+      this.generalConfig.get(),
       this.planningConfig.get(),
     ])
 
@@ -60,15 +63,22 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const solverConfig: SolverConfig = {
       planId,
-      config,
+      config: {
+        operationalDayStartHour:  generalCfg.operationalDayStartHour,
+        stopNoImprovementMinutes: planningCfg.stopNoImprovementMinutes,
+        stopMaxTotalMinutes:      planningCfg.stopMaxTotalMinutes,
+        flat:                     planningCfg.flat,
+        range:                    planningCfg.range,
+      },
       trips: trips.map(t => ({
-        id:                   t.id,
-        originLocalityId:     t.route.originLocalityId,
+        id:                    t.id,
+        lineId:                t.route.lineId,
+        originLocalityId:      t.route.originLocalityId,
         destinationLocalityId: t.route.destinationLocalityId,
-        departureMinutes:     t.departureMinutes,
-        arrivalMinutes:       t.arrivalMinutes,
-        requiredVehicleType:  t.requiredVehicleType ?? null,
-        constraints:          t.constraints as any ?? null,
+        departureMinutes:      t.departureMinutes,
+        arrivalMinutes:        t.arrivalMinutes,
+        requiredVehicleType:   t.requiredVehicleType ?? null,
+        constraints:           t.constraints as any ?? null,
       })),
       matrix: matrixMap,
       depots: depotLocalities.map(d => d.id),

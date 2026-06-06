@@ -40,7 +40,6 @@ export const travelTimeSchema = withMeta(
       className:      'md:w-40'
     }),
 
-    // multiplier applied to baseMinutes during peak hours (configured in PlanningConfig)
     peakMultiplier: z.number().min(1).max(5).default(1.0).meta({
       label:     'Multiplicador Pico',
       className: 'md:w-40'

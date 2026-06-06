@@ -1,48 +1,68 @@
+export interface FlatCriterionConfig {
+  active:    boolean
+  direction: 'minimize' | 'maximize'
+  weight:    number
+}
+
+export interface RangeCriterionConfig {
+  active:   boolean
+  modifier: number
+  floor:    number
+  idealMin: number
+  idealMax: number
+  ceiling:  number
+}
+
 export interface SolverPlanningConfig {
-  minLayoverMinutes: number
-  maxLayoverMinutes: number
-  maxDeadrunSoftMinutes: number
-  maxDeadrunHardMinutes: number
-  blockDurationMinMinutes: number
-  blockDurationIdealMinMinutes: number
-  blockDurationIdealMaxMinutes: number
-  blockDurationMaxMinutes: number
-  weightMinimizeFleet: number
-  weightMinimizeDeadrun: number
-  weightBlockDuration: number
+  operationalDayStartHour:  number
   stopNoImprovementMinutes: number
-  stopMaxTotalMinutes: number
+  stopMaxTotalMinutes:      number
+  flat: {
+    fleetUsage:           FlatCriterionConfig
+    deadrunKm:            FlatCriterionConfig
+    totalKm:              FlatCriterionConfig
+    distributionVariance: FlatCriterionConfig
+    specialFleetUsage:    FlatCriterionConfig
+    driverUsage:          FlatCriterionConfig
+    overtime:             FlatCriterionConfig
+  }
+  range: {
+    lineTransfer: RangeCriterionConfig
+    tripInterval: RangeCriterionConfig
+    deadrunRatio: RangeCriterionConfig
+  }
 }
 
 export interface SolverTrip {
-  id: string
-  originLocalityId: string
+  id:                    string
+  lineId:                string
+  originLocalityId:      string
   destinationLocalityId: string
-  departureMinutes: number
-  arrivalMinutes: number
-  requiredVehicleType: string | null
-  constraints: { locked?: string[]; pinnedBlock?: string } | null
+  departureMinutes:      number
+  arrivalMinutes:        number
+  requiredVehicleType:   string | null
+  constraints:           { locked?: string[]; pinnedBlock?: string } | null
 }
 
 export interface SolverMatrixEntry {
   minutes: number
-  km: number
+  km:      number
 }
 
 export interface SolverConfig {
-  planId: string
-  config: SolverPlanningConfig
-  trips: SolverTrip[]
-  matrix: Record<string, SolverMatrixEntry>
-  depots: string[]
+  planId:  string
+  config:  SolverPlanningConfig
+  trips:   SolverTrip[]
+  matrix:  Record<string, SolverMatrixEntry>
+  depots:  string[]
 }
 
 export interface SolverBlockTrip {
-  tripId: string
-  sequence: number
-  isDeadhead: boolean
+  tripId:          string
+  sequence:        number
+  isDeadhead:      boolean
   deadheadMinutes: number
-  deadheadKm: number
+  deadheadKm:      number
 }
 
 export interface SolverBlock {
