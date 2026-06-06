@@ -66,6 +66,7 @@ export const routeSchema = withMeta(
     label:       'Sentido',
     labelPlural: 'Sentidos',
     nameField:   'name',
+    nameFirstWord: false,
     breadcrumb:  [
       { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'name', keybind: 'f9' },
     ],

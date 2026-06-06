@@ -13,6 +13,7 @@ export const travelTimeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
+      filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       className:      'md:w-1/2'
     }),
 
@@ -23,6 +24,7 @@ export const travelTimeSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
+      filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       className:      'md:w-1/2'
     }),
 

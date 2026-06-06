@@ -18,6 +18,7 @@ export const routeLocalitySchema = withMeta(
       resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
+      className:      'md:w-1/3',
       listVisibility: 'visible',
       keybind:        'l',
     }),
@@ -25,7 +26,7 @@ export const routeLocalitySchema = withMeta(
     sequence: z.number().int().min(1).meta({
       label:          'Ordem',
       listVisibility: 'visible',
-      className:      'md:w-28',
+      className:      'md:w-42',
       keybind:        's',
     }),
 
@@ -33,15 +34,15 @@ export const routeLocalitySchema = withMeta(
     deltaMinutes: z.number().int().min(0).optional().meta({
       label:          'Δ Tempo (min)',
       listVisibility: 'visible',
-      className:      'md:w-36',
-      keybind:        'm',
+      className:      'md:w-42',
+      keybind:        'd',
     }),
 
     // null → fallback to TravelTime matrix
     deltaKm: z.number().min(0).optional().meta({
       label:          'Δ Distância (km)',
       listVisibility: 'visible',
-      className:      'md:w-40',
+      className:      'md:w-42',
       keybind:        'k',
     }),
 
@@ -57,11 +58,11 @@ export const routeLocalitySchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Ponto de Referência',
-    labelPlural: 'Pontos de Referência',
+    label:       'Referência',
+    labelPlural: 'Referências',
     nameField:   'sequence',
     breadcrumb:  [
-      { resource: 'transit-route', contextField: 'routeId', listLabel: 'Sentidos', nameField: 'name', keybind: 'f8' },
+      { resource: 'transit-route', contextField: 'routeId', listLabel: 'Sentidos', nameField: 'name', nameFirstWord: false, keybind: 'f9' },
     ],
     defaultSort: { field: 'sequence', order: 'asc' },
   },

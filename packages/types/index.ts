@@ -205,6 +205,7 @@ export interface ResourceMetadata {
   fields:        MetadataField[]
   actions:       ResourceAction[]
   groups?:       TabGroup[]
+  nameFirstWord?: boolean
   breadcrumb?:   BreadcrumbDef[]
   children?:     ChildResourceDef[]   // derivado automaticamente pelo backend via registry
   rowActions?:   RowActionDef[]

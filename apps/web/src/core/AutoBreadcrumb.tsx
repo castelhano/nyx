@@ -75,7 +75,7 @@ export function AutoBreadcrumb({ domain, resource, id, recordName, contextParams
 
   if (id) {
     const rawLabel = id === 'new' ? 'Novo' : (recordName ?? meta?.label ?? '…')
-    const label    = id === 'new' ? rawLabel : rawLabel.split(' ')[0]
+    const label    = id === 'new' ? rawLabel : (meta?.nameFirstWord !== false ? rawLabel.split(' ')[0] : rawLabel)
     segments.push({ label })
   }
 
