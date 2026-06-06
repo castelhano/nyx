@@ -16,10 +16,6 @@ export class OsrmService {
    *   • route endpoints   — TransitRoute.originLocalityId / destinationLocalityId
    *   • route waypoints   — RouteLocality points (deltaMinutes fallback)
    *
-   * Fase 2 addition: RouteLocality where allowsCrewChange = true will also
-   * be relevant for crew scheduling, but they are already covered by the
-   * waypoints set above.
-   *
    * Entries with source = MANUAL are never overwritten.
    */
   async generateMatrix(): Promise<{ generated: number; skipped: number }> {
@@ -61,17 +57,29 @@ export class OsrmService {
       return { generated: 0, skipped }
     }
 
+    // OSRM expects longitude,latitude
     const coords = localities.map((l) => `${l.lng},${l.lat}`).join(';')
     const url    = `${this.osrmUrl}/table/v1/driving/${coords}?annotations=duration,distance`
 
-    let data: { durations: number[][], distances: number[][] }
+    this.logger.debug(`OSRM request: ${localities.length} localities, URL length=${url.length}`)
+    this.logger.debug(`OSRM URL: ${url}`)
+
+    let data: { durations: (number | null)[][], distances: (number | null)[][] }
     try {
       const res = await fetch(url)
       if (!res.ok) throw new Error(`OSRM returned ${res.status}`)
-      data = await res.json() as { durations: number[][], distances: number[][] }
+      data = await res.json() as { durations: (number | null)[][], distances: (number | null)[][] }
     } catch (err) {
       this.logger.warn(`OSRM matrix failed: ${(err as Error).message}`)
       throw err
+    }
+
+    // Debug: log raw sample (first 3×3 block) to verify coordinates and response format
+    this.logger.debug(`OSRM durations[0..2][0..2]: ${JSON.stringify(data.durations.slice(0, 3).map(r => r?.slice(0, 3)))}`)
+    this.logger.debug(`OSRM distances[0..2][0..2]: ${JSON.stringify(data.distances.slice(0, 3).map(r => r?.slice(0, 3)))}`)
+    this.logger.debug(`OSRM locality[0]: id=${localities[0].id} lat=${localities[0].lat} lng=${localities[0].lng}`)
+    if (localities[1]) {
+      this.logger.debug(`OSRM locality[1]: id=${localities[1].id} lat=${localities[1].lat} lng=${localities[1].lng}`)
     }
 
     const manualEntries = await this.prisma.travelTimeMatrix.findMany({
@@ -80,7 +88,12 @@ export class OsrmService {
     })
     const manualSet = new Set(manualEntries.map((r) => `${r.originId}:${r.destinationId}`))
 
-    const upserts: Promise<unknown>[] = []
+    const localityIds = localities.map((l) => l.id)
+
+    // Build all new entries — skip manual pairs and OSRM null responses
+    type MatrixRow = { originId: string; destinationId: string; baseMinutes: number; distanceKm: number; source: 'OSRM' }
+    const insertData: MatrixRow[] = []
+    let nullPairs = 0
 
     for (let i = 0; i < localities.length; i++) {
       for (let j = 0; j < localities.length; j++) {
@@ -89,21 +102,40 @@ export class OsrmService {
         const destination = localities[j]
         if (manualSet.has(`${origin.id}:${destination.id}`)) continue
 
-        const baseMinutes = Math.ceil(data.durations[i][j] / 60)
-        const distanceKm  = Math.round(data.distances[i][j] / 10) / 100
+        const rawDuration = data.durations[i]?.[j] ?? null
+        const rawDistance = data.distances[i]?.[j] ?? null
 
-        upserts.push(
-          this.prisma.travelTimeMatrix.upsert({
-            where:  { originId_destinationId: { originId: origin.id, destinationId: destination.id } },
-            update: { baseMinutes, distanceKm, source: 'OSRM' },
-            create: { originId: origin.id, destinationId: destination.id, baseMinutes, distanceKm, source: 'OSRM' },
-          }),
-        )
+        if (rawDuration == null || rawDistance == null) {
+          nullPairs++
+          this.logger.debug(`OSRM null pair: ${origin.id} → ${destination.id}`)
+          continue
+        }
+
+        insertData.push({
+          originId:      origin.id,
+          destinationId: destination.id,
+          baseMinutes:   Math.ceil(rawDuration / 60),
+          distanceKm:    Math.round(rawDistance / 10) / 100,
+          source:        'OSRM',
+        })
       }
     }
 
-    await Promise.all(upserts)
-    this.logger.log(`OSRM matrix updated: localities=${localities.length} skipped=${skipped} pairs=${upserts.length}`)
-    return { generated: upserts.length, skipped }
+    // Atomic replace: delete stale OSRM entries, then bulk-insert the fresh ones
+    await this.prisma.$transaction([
+      this.prisma.travelTimeMatrix.deleteMany({
+        where: {
+          source:        'OSRM',
+          originId:      { in: localityIds },
+          destinationId: { in: localityIds },
+        },
+      }),
+      this.prisma.travelTimeMatrix.createMany({ data: insertData }),
+    ])
+
+    this.logger.log(
+      `OSRM matrix updated: localities=${localities.length} skipped=${skipped} generated=${insertData.length} nullPairs=${nullPairs}`,
+    )
+    return { generated: insertData.length, skipped }
   }
 }

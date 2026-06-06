@@ -13,6 +13,8 @@ import { apiFetch }        from '@/lib/auth'
 import { downloadCsv }     from '@/lib/csv'
 import { useToast }        from '@/lib/toast-context'
 import { extractError }    from '@/lib/utils'
+import { useJobProgress }  from '@/lib/use-job-progress'
+import { JobProgressBar }  from '@/components/ui/job-progress-bar'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'travel-time-matrix'
@@ -23,27 +25,37 @@ export default function TravelTimeMatrixPage() {
   const queryClient  = useQueryClient()
   const { guardNode, meta } = usePageGuard(DOMAIN, RESOURCE)
 
-  const [generating, setGenerating] = useState(false)
+  const [jobId, setJobId] = useState<string | null>(null)
+
+  const { job, isRunning, isCompleted, isFailed } = useJobProgress(jobId, (j) => {
+    if (j.status === 'COMPLETED') {
+      const out       = j.output as { generated?: number; skipped?: number } | null
+      const generated = out?.generated ?? 0
+      const skipped   = out?.skipped   ?? 0
+      toast.success(
+        skipped > 0
+          ? `${generated} pares gerados — ${skipped} pontos ignorados (sem coordenadas)`
+          : `${generated} pares gerados`,
+      )
+      queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE] })
+    } else {
+      toast.error(j.error ?? 'Erro ao gerar matriz')
+    }
+  })
 
   async function handleGenerate() {
-    if (generating) return
-    setGenerating(true)
+    if (isRunning) return
+    setJobId(null)
     try {
       const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/generate`, { method: 'POST' })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         throw new Error(extractError(json))
       }
-      const { generated, skipped } = await res.json() as { generated: number; skipped: number }
-      const msg = skipped > 0
-        ? `${generated} pares gerados — ${skipped} pontos ignorados (sem coordenadas)`
-        : `${generated} pares gerados`
-      toast.success(msg)
-      queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE] })
+      const { jobId: id } = await res.json() as { jobId: string }
+      setJobId(id)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar matriz')
-    } finally {
-      setGenerating(false)
     }
   }
 
@@ -58,10 +70,10 @@ export default function TravelTimeMatrixPage() {
 
   useTopbarActions([
     {
-      label:    generating ? 'Gerando…' : 'Gerar Matriz',
+      label:    isRunning ? 'Gerando…' : 'Gerar Matriz',
       icon:     RefreshCw,
       onClick:  handleGenerate,
-      disabled: generating,
+      disabled: isRunning,
     },
     ...(meta?.permissions?.create !== false ? [{
       label:   'Novo',
@@ -75,7 +87,7 @@ export default function TravelTimeMatrixPage() {
       onClick: handleDownloadCsv,
       variant: 'ghost' as const,
     }] : []),
-  ], [meta?.permissions?.create, meta?.allowCsv, generating])
+  ], [meta?.permissions?.create, meta?.allowCsv, isRunning])
 
   useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push(`/${DOMAIN}/${RESOURCE}/new`) }, {
     desc:   'Novo registro',
@@ -101,6 +113,14 @@ export default function TravelTimeMatrixPage() {
     <div className="p-6 space-y-4">
       <AutoBreadcrumb domain={DOMAIN} resource={RESOURCE} />
       <h1 className="text-xl font-semibold">{meta?.labelPlural ?? 'Matriz de Tempos'}</h1>
+      {(isRunning || isCompleted || isFailed) && (
+        <JobProgressBar
+          job={job}
+          isRunning={isRunning}
+          isCompleted={isCompleted}
+          isFailed={isFailed}
+        />
+      )}
       <AutoList
         domain={DOMAIN}
         resource={RESOURCE}

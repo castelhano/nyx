@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, Upload, Loader2, CheckCircle, AlertCircle, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch, getToken } from '@/lib/auth'
+import { useJobProgress } from '@/lib/use-job-progress'
 import { FieldRenderer } from './FieldRenderer'
 import { Button } from '@/components/ui/button'
 import type { MetadataField } from '@nyx/types'
@@ -80,21 +81,10 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
   })
   const fields = fieldsData?.fields ?? []
 
-  const { data: job } = useQuery<JobResult>({
-    queryKey:        ['job', jobId],
-    queryFn:         () => apiFetch(`/core/job/${jobId}`).then(r => r.json()),
-    enabled:         !!jobId,
-    refetchInterval: (q) => {
-      const s = q.state.data?.status
-      return s === 'PENDING' || s === 'RUNNING' ? 2000 : false
-    },
+  const { job: jobData } = useJobProgress(jobId, () => {
+    queryClient.invalidateQueries({ queryKey: [domain, resource] })
   })
-
-  useEffect(() => {
-    if (job?.status === 'COMPLETED' || job?.status === 'FAILED') {
-      queryClient.invalidateQueries({ queryKey: [domain, resource] })
-    }
-  }, [job?.status]) // eslint-disable-line react-hooks/exhaustive-deps
+  const job = jobData as JobResult | undefined
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
