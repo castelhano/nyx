@@ -355,6 +355,7 @@ CREATE TABLE "transit_trip_day_types" (
 CREATE TABLE "transit_vehicle_plans" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "dayTypeId" TEXT NOT NULL,
+    "description" TEXT,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "summary" JSONB,
     "generatedAt" DATETIME,

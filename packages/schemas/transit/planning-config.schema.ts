@@ -122,6 +122,7 @@ export const planningConfigSchema = withMeta(
     labelPlural: 'Configurações',
     nameField:   'operationalDayStartHour',
     icon:        'Settings2',
+    hidden:      true,
     groups: {
       'Dia Operacional':      ['operationalDayStartHour'],
       'Intervalos':           ['minLayoverMinutes', 'maxLayoverMinutes'],

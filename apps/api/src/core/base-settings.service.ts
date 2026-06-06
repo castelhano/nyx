@@ -29,6 +29,12 @@ export abstract class BaseSettingsService<T> {
     const row = await this.prisma.settings.findUnique({
       where: { key_scope: { key: this.key, scope: scopeValue } },
     })
+    if (!row && this.scope === 'branch' && branchId) {
+      const globalRow = await this.prisma.settings.findUnique({
+        where: { key_scope: { key: this.key, scope: 'global' } },
+      })
+      return this.schema.parse(globalRow?.value ?? {}) as T
+    }
     // schema.parse preenche defaults para campos ausentes — consistência lazy sem migration
     return this.schema.parse(row?.value ?? {}) as T
   }
