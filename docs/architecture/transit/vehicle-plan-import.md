@@ -185,6 +185,23 @@ blockTrip.createMany
 
 ---
 
+## Post-Import Scoring
+
+After the four `createMany` calls complete, `execute()` calls `VehiclePlanService.scorePlan(planId)`. This computes the plan's initial score and populates `vehiclePlan.summary` and `generatedAt` without running the SA solver:
+
+```
+scorePlan(planId):
+  load blocks + trips (with route.direction + line.metrics) + matrix from DB
+  compute tripKm per trip: line.metrics.extensionKm[direction] ?? matrix[o:d].km ?? 0
+  call scoreBlocks() → write summary + generatedAt to vehiclePlan
+```
+
+The resulting `summary` includes `fleetCount`, `score`, `deadrunKm`, `productiveKm`, `totalKm`, and duration totals — all km values rounded to 2 decimal places. This gives the plan an immediately visible baseline score without requiring a full solver run.
+
+See [solver.md](./solver.md) for scoring internals.
+
+---
+
 ## Known Format Quirks
 
 ### `depDay` / `arrDay` dual semantics
