@@ -9,7 +9,9 @@
 
 The solver assigns transit trips to vehicle blocks, minimizing fleet size and deadrun cost subject to configurable criteria. It runs as a Node.js **worker thread** so the main NestJS process is never blocked. The host service (`VehiclePlanService`) streams progress back to the frontend via SSE while the worker iterates independently.
 
-The algorithm is a **randomized constructive heuristic**: each iteration builds a complete block assignment from scratch by shuffling the trip order, then greedy-assigning trips to existing blocks or opening new ones. Many random orderings are evaluated in rapid succession; the best-scoring result across all iterations is retained.
+The current algorithm is a **Simulated Annealing (SA)** local search. It starts from the existing plan state (imported or previously solved), then explores neighboring solutions via three move types — relocate, swap, and merge — accepting worse solutions probabilistically to escape local optima.
+
+> **Known limitation**: the current SA implementation does not yet produce meaningfully better results than the imported plan. The move design and scoring calibration need further work. This document reflects the current state as a baseline for redesign.
 
 ---
 
@@ -19,15 +21,12 @@ The algorithm is a **randomized constructive heuristic**: each iteration builds 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `planId` | `string` | The plan being solved (used for logging/assume) |
+| `planId` | `string` | The plan being solved |
 | `config` | `SolverPlanningConfig` | Stop conditions and scoring criteria |
 | `trips` | `SolverTrip[]` | All trips to be covered — every trip must appear in exactly one block |
 | `matrix` | `Record<string, SolverMatrixEntry>` | Pre-computed travel times/km between localities |
 | `depots` | `string[]` | Locality IDs eligible as block starting points |
-
-### Trip constraints (future)
-
-`SolverTrip.constraints` is typed as `{ locked?: string[]; pinnedBlock?: string } | null` but is **not yet read by the solver**. The field is reserved for future constraint propagation (locking a trip to a specific block, or preventing a trip from being reassigned).
+| `initialBlocks` | `SolverInitialBlock[]` | Existing block arrangement from the DB; empty array triggers full greedy construction |
 
 ### Matrix lookup
 
@@ -36,129 +35,154 @@ key: `${originId}:${destinationId}`
 value: { minutes: number; km: number }
 ```
 
-Same-locality moves (`from === to`) return `{ minutes: 0, km: 0 }` without a map lookup. If no edge exists between two localities, the block cannot serve that trip.
+Same-locality moves (`from === to`) return `{ minutes: 0, km: 0 }` without a map lookup. If no matrix entry exists for a depot → trip origin pair, the solver logs a warning and falls back to that depot with zero deadrun cost (data quality issue — the locality is missing from the travel-time matrix).
+
+### Trip constraints
+
+`SolverTrip.constraints` carries `{ locked?: string[]; pinnedBlock?: string } | null` but is **not yet read by the solver**. Reserved for future constraint propagation.
 
 ---
 
-## Algorithm: Randomized Greedy Construction
+## Initial Solution
 
-Each call to `evaluateCandidate()` produces one complete vehicle schedule:
-
-```
-1. Copy and shuffle the trip array  (Fisher-Yates)
-2. Sort by departureMinutes         (stable chronological order within shuffle)
-3. For each trip in order:
-   a. findBestBlock → assign to existing block with minimum deadrun
-   b. If no block can reach the trip in time → findBestDepot → open new block
-   c. If no depot has a path to the trip → return null (invalid candidate, discarded)
-4. Score the resulting block set
-```
-
-The shuffle in step 1 is the source of randomness. Sorting after shuffling preserves chronological trip order but breaks ties between trips at the same minute using the shuffle — this changes which block "wins" a contested trip across iterations.
-
-### `findBestBlock`
-
-Scans all open blocks and selects the one with the **shortest deadrun** (in minutes) to reach the trip's origin:
+`buildInitial()` constructs the starting point for the SA search:
 
 ```
-layover = trip.departureMinutes − (block.lastArrivalMinutes + edge.minutes)
+if initialBlocks is non-empty:
+  1. Reconstruct Block[] from the existing plan's block/trip arrangement
+  2. Identify trips in cfg.trips not covered by any initial block
+  3. Greedy-assign those uncovered trips into the existing blocks (or open new ones)
+else:
+  Full greedy construction from scratch (assignTrips over all trips)
 ```
 
-A block is eligible only when:
-- `layover ≥ 0` — the block arrives in time with no overlap
-- `edge` exists in the matrix (path between localities is known)
-- `block.vehicleType` matches `trip.requiredVehicleType` (when constrained)
+This means the solver always starts from the best known state — the imported or previously optimized plan. A net-new plan with no blocks falls back to a greedy baseline.
 
-Among all eligible blocks, the one with the smallest `edge.minutes` is chosen. This is a greedy local criterion — it does not consider how the choice affects future trips.
+### Greedy assignment (`assignTrips`)
 
-### `findBestDepot`
+Trips are sorted by `departureMinutes` and assigned one by one:
 
-When no existing block can serve a trip, a new block is opened. The depot closest (in minutes) to the trip's origin is selected. `block.startMinutes` is set to `trip.departureMinutes − depot.edge.minutes`.
+1. **Append to existing block**: find the block whose last trip's destination can reach this trip's origin with `layover ≥ 0`. Among eligible blocks, pick the one with the shortest deadrun in minutes.
+2. **Open new block**: if no block is eligible, find the nearest depot that can reach the trip's origin. If no depot has a matrix entry, fall back to the first depot with zero cost and log a warning.
 
 ---
 
 ## Scoring
 
-`scoreBlocks()` computes a single scalar score for a candidate. Higher is always better. The score has two additive components:
+`scoreBlocks()` computes a single scalar score for a solution. Higher is always better. Two additive components:
 
 ```
 score = flatScore + rangeScore
 ```
 
-### Flat criteria
+### Flat criteria (candidate level)
 
-Applied at the **candidate level** (aggregate values across all blocks). Each criterion is independently active/inactive:
-
-| Key | Quantity measured | Typical direction |
-|-----|-------------------|-------------------|
+| Key | Quantity | Typical direction |
+|-----|----------|-------------------|
 | `fleetUsage` | Number of blocks | minimize |
 | `deadrunKm` | Total deadrun km | minimize |
 | `totalKm` | Total km (productive + deadrun) | minimize |
-| `distributionVariance` | Variance of block durations (minutes²) | minimize |
+| `distributionVariance` | Variance of block durations (min²) | minimize |
 | `specialFleetUsage` | Number of non-BUS blocks | minimize |
 | `driverUsage` | *(reserved — not yet computed)* | — |
 | `overtime` | *(reserved — not yet computed)* | — |
 
 `score contribution = quantity × weight × (direction === 'minimize' ? −1 : +1)`
 
-`driverUsage` and `overtime` are present in `SolverPlanningConfig` but are not wired into `scoreBlocks`. They exist for future crew-scheduling integration.
+### Range criteria (per block, summed)
 
-### Range criteria
-
-Applied **per block**, then summed. Each criterion maps a measured value to a 0–1 quality score using a trapezoid function, then multiplies by a `modifier` weight:
-
-```
-rangeScore += modifier × rangeV(value, criterion)
-```
-
-| Key | Value measured per block |
-|-----|--------------------------|
+| Key | Value measured |
+|-----|----------------|
 | `lineTransfer` | Number of line changes within the block |
-| `tripInterval` | Average layover between trips (minutes) |
+| `tripInterval` | Average layover between consecutive trips (minutes) |
 | `deadrunRatio` | `deadrunKm / totalKm × 100` (%) |
 
-### Trapezoid function `rangeV(value, c)`
+Each maps to a 0–1 quality score via a trapezoid function `rangeV(value, criterion)` then multiplies by `modifier`.
+
+### "Best" comparison
+
+Fleet count is the primary improvement criterion; score breaks ties:
 
 ```
-value ≤ floor:               0   (or 1 if floor ≥ idealMin — degenerate config)
-floor < value < idealMin:    linear ramp from 0 → 1
-idealMin ≤ value ≤ idealMax: 1   (ideal zone)
-idealMax < value < ceiling:  linear ramp from 1 → 0
-value ≥ ceiling:             0
+candidate is better if:
+  candidate.blockCount < best.blockCount
+  OR (candidate.blockCount === best.blockCount AND candidate.score > best.score)
 ```
 
-This lets the operator express preferences like "a block should have between 8 and 12 trips between line changes" without hard constraints — values outside the ideal zone are penalised proportionally.
+This ensures the SA never records a solution with more vehicles as the all-time best, even if its score is higher on secondary criteria.
 
 ---
 
-## Iteration Loop
+## Neighborhood Moves
 
-The main loop runs via `setImmediate` chains, yielding control between iterations so the worker thread can receive `stop` commands from the parent port without blocking:
+At each SA iteration, one of three move types is attempted (randomly selected):
+
+### Relocate (35%)
+
+Remove one random trip from one block and insert it into another block at the correct chronological position. Tries other blocks in random order; accepts the first feasible insertion. If the source block becomes empty it is removed from the solution.
 
 ```
-setImmediate(runIteration)
+feasibility: ∀ consecutive pair (prev, cur) in modified block:
+  cur.departureMinutes ≥ prev.arrivalMinutes + edge(prev.dest → cur.origin).minutes
+```
 
-runIteration():
-  if stopped → post 'done' (user_stopped) → return
-  result = evaluateCandidate()
+### Swap (20%)
+
+Exchange one trip from each of two randomly chosen blocks. Both blocks are re-sorted by departure time after the swap and both must remain feasible.
+
+### Merge (45%)
+
+Combine all trips from two randomly chosen blocks into one by sorting them by departure time and checking feasibility. Both depots are tried (block A's then block B's); accepts the first that yields a feasible sequence. A successful merge reduces fleet count by one.
+
+Merge is weighted highest because fleet reduction is the primary optimization goal.
+
+---
+
+## SA Main Loop
+
+```
+buildInitial() → initial solution
+score initial → bestBlocks, bestResult
+post 'improvement'
+
+loop via setImmediate:
+  temp = initialTemp × 0.01^(elapsed / stopMaxTotalMinutes)
+  pick random move
+  apply move → neighbor (or null if infeasible)
+  if neighbor:
+    score neighbor
+    delta = neighbor.score − current.score
+    if delta > 0 OR random() < exp(delta / temp):
+      current ← neighbor
+    if isBetter(current, best):
+      best ← current
+      post 'improvement'
   attempt++
-  if result > bestResult → bestResult = result; post 'improvement'
-  post 'progress'
-  check termination conditions
-  setImmediate(runIteration)   ← schedules next iteration
+  every 250ms: post 'progress'
+  check termination
 ```
+
+### Temperature schedule
+
+Time-based exponential cooling:
+
+```
+temp(t) = 5.0 × 0.01^(t / T_max)
+```
+
+- At `t = 0`: `temp = 5.0` (exploratory — accepts many worse solutions)
+- At `t = T_max / 2`: `temp ≈ 0.22`
+- At `t = T_max`: `temp = 0.05` (nearly greedy)
+
+`T_max = stopMaxTotalMinutes × 60 000` ms.
 
 ### Termination conditions
 
-Checked at the end of each iteration, in priority order:
-
 | Condition | `stopReason` |
 |-----------|-------------|
-| `stopped` flag set (parent port command) | `user_stopped` |
-| `elapsed ≥ stopMaxTotalMinutes × 60 000` | `max_time` |
-| `Date.now() − lastImprovementTime ≥ stopNoImprovementMinutes × 60 000` | `no_improvement` |
-
-`no_improvement` resets on every score improvement, so a solver that keeps finding better solutions will run indefinitely until one of the other conditions fires.
+| `stopped` flag set via parent port | `user_stopped` |
+| `elapsed ≥ stopMaxTotalMinutes × 60 000` ms | `max_time` |
+| No improvement for `stopNoImprovementMinutes × 60 000` ms | `no_improvement` |
 
 ---
 
@@ -168,51 +192,47 @@ Checked at the end of each iteration, in priority order:
 
 | Command | Effect |
 |---------|--------|
-| `{ type: 'stop' }` | Sets `stopped = true`; next iteration posts `done` and exits |
+| `{ type: 'stop' }` | Sets `stopped = true`; next iteration posts `done` |
 
 ### Worker → Parent
 
 | Message | When |
 |---------|------|
-| `{ type: 'progress', attempt, bestScore, bestFleet, deadrunKm, elapsed }` | Every iteration |
+| `{ type: 'progress', attempt, bestScore, bestFleet, deadrunKm, elapsed }` | Every ~250 ms |
 | `{ type: 'improvement', scenario: SolverResult }` | When a new best is found |
 | `{ type: 'done', stopReason }` | Once, on termination |
-
-`progress` is posted even when no improvement occurred, so the frontend always receives a heartbeat. `improvement` carries the full `SolverResult` (all blocks and their trips), which the host service stores as `job.best` for eventual `assumeBest`.
 
 ### Host service lifecycle
 
 ```
 generate(planId, jobId):
-  spawn Worker(workerFile, { workerData: solverConfig })
+  load trips, matrix, depots, existing blocks from DB
+  filter initialBlocks to only trips present in solver's trip set
+  spawn Worker({ workerData: solverConfig })
   jobs.set(jobId, { worker, best: null, planId, messages$ })
-  worker.on('message') → store best; forward to messages$ Subject
 
-streamProgress(jobId):
-  return Observable wrapping messages$ (SSE source)
+streamProgress(jobId) → Observable wrapping messages$ (SSE)
 
-stop(jobId):
-  job.worker.postMessage({ type: 'stop' })
+stop(jobId) → worker.postMessage({ type: 'stop' })
 
 assumeBest(planId, jobId):
-  stop worker
-  delete job from map
-  write job.best to DB inside a transaction
-  (deleteMany existing blocks for plan, then createMany new blocks + blockTrips)
+  stop worker; delete job
+  in transaction: deleteMany existing blocks → createMany new blocks + blockTrips
+  update plan summary (fleetCount, score, km totals, generatedAt)
 ```
 
-After `done` is received, the job remains in the map for 30 minutes so `assumeBest` can still be called. The worker thread exits on its own once it posts `done`.
+After `done`, the job stays in memory for 30 minutes so `assumeBest` remains callable.
 
 ---
 
-## Design Notes
+## Known Issues & Design Notes
 
-**No local search.** The solver is purely constructive — it never modifies an existing candidate. Each iteration is independent. Adding neighborhood search (2-opt swap, trip re-insertion) could dramatically improve solution quality for large plans but would increase iteration time.
+**SA does not consistently beat the import.** The imported plan is built by a domain expert or an external tool and typically has better fleet utilization than what the current SA produces. The SA starts from that baseline but the move design and scoring weights are not yet calibrated to reliably improve it.
 
-**Selection criterion is local, not global.** `findBestBlock` picks the block with the smallest deadrun to the next trip. This greedy choice is fast but may not minimize the global deadrun: a longer deadrun now might enable better assignments for future trips. A look-ahead or cost-matrix approach would improve quality at the cost of O(n²) per-trip work.
+**Scoring scale is unknown at runtime.** Flat and range weights come from user configuration. If `fleetUsage.weight` is too low relative to other criteria, the SA may accept fleet-increasing moves freely. The temperature schedule is calibrated assuming score deltas in the 1–10 range; misconfigured weights break this assumption.
 
-**Shuffle breaks symmetry, not deadlocks.** The randomness comes entirely from trip ordering. Two trips at the same minute will be assigned in different order across iterations, potentially routing them to different blocks. This is the main lever for exploring the solution space.
+**Feasibility is only checked for inter-trip layover.** Depot → first trip reachability is not validated during moves (it's assumed correct from the initial construction). A move that changes the first trip of a block could produce an unreachable start if the matrix is sparse.
 
-**Invalid candidates are silently discarded.** If `findBestDepot` returns null (no depot has a path to the trip's origin), `evaluateCandidate` returns null and the iteration is counted but not compared. This can happen if the travel-time matrix is incomplete.
+**No constraint propagation.** `pinnedBlock` and `locked` constraints in `SolverTrip.constraints` are ignored. All trips are freely movable.
 
-**Score is not normalized.** Flat and range components use raw weights and quantities, so the absolute score value is meaningless across different plan configurations. Only relative comparison within a single solver run matters.
+**No look-ahead.** `findBestBlock` uses a greedy local criterion (minimum deadrun to the next trip) without considering how the choice affects future assignments.

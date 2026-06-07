@@ -43,7 +43,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const lineIds = plan.lines.map(l => l.lineId)
     if (lineIds.length === 0) throw new BadRequestException('Plan has no lines defined')
 
-    const [trips, matrix, depotLocalities, generalCfg, planningCfg] = await Promise.all([
+    const [trips, matrix, depotLocalities, generalCfg, planningCfg, existingBlocks] = await Promise.all([
       this.prisma.transitTrip.findMany({
         where:   { dayTypes: { some: { dayTypeId: plan.dayTypeId } }, route: { lineId: { in: lineIds } } },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true } } },
@@ -52,6 +52,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       this.prisma.transitLocality.findMany({ where: { isDepot: true }, select: { id: true } }),
       this.generalConfig.get(),
       this.planningConfig.get(),
+      this.prisma.vehicleBlock.findMany({
+        where:   { vehiclePlanId: planId },
+        orderBy: { blockNumber: 'asc' },
+        include: { blockTrips: { orderBy: { sequence: 'asc' }, select: { tripId: true } } },
+      }),
     ])
 
     if (trips.length === 0) throw new BadRequestException('No trips found for this plan')
@@ -61,8 +66,18 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
     }
 
+    const tripSet = new Set(trips.map(t => t.id))
+    const initialBlocks = existingBlocks
+      .map(b => ({
+        depotId:     b.depotId,
+        vehicleType: b.vehicleType as string,
+        tripIds:     b.blockTrips.map(bt => bt.tripId).filter(id => tripSet.has(id)),
+      }))
+      .filter(b => b.tripIds.length > 0)
+
     const solverConfig: SolverConfig = {
       planId,
+      initialBlocks,
       config: {
         operationalDayStartHour:  generalCfg.operationalDayStartHour,
         demandModifier:           generalCfg.demandModifier,

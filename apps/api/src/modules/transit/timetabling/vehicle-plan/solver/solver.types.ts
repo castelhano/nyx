@@ -50,12 +50,19 @@ export interface SolverMatrixEntry {
   km:      number
 }
 
+export interface SolverInitialBlock {
+  depotId:     string
+  vehicleType: string
+  tripIds:     string[]  // ordered by sequence
+}
+
 export interface SolverConfig {
-  planId:  string
-  config:  SolverPlanningConfig
-  trips:   SolverTrip[]
-  matrix:  Record<string, SolverMatrixEntry>
-  depots:  string[]
+  planId:        string
+  config:        SolverPlanningConfig
+  trips:         SolverTrip[]
+  matrix:        Record<string, SolverMatrixEntry>
+  depots:        string[]
+  initialBlocks: SolverInitialBlock[]  // existing arrangement; empty = use greedy from scratch
 }
 
 export interface SolverBlockTrip {
