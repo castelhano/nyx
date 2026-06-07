@@ -35,7 +35,19 @@ key: `${originId}:${destinationId}`
 value: { minutes: number; km: number }
 ```
 
-Same-locality moves (`from === to`) return `{ minutes: 0, km: 0 }` without a map lookup. If no matrix entry exists for a depot → trip origin pair, the solver logs a warning and falls back to that depot with zero deadrun cost (data quality issue — the locality is missing from the travel-time matrix).
+The matrix is used primarily for **deadrun** legs (depot → first trip, and between consecutive trips). Same-locality moves (`from === to`) return `{ minutes: 0, km: 0 }` without a map lookup. If no matrix entry exists for a depot → trip origin pair, the solver logs a warning and falls back to that depot with zero deadrun cost (data quality issue — the locality is missing from the travel-time matrix).
+
+### Productive km per trip (`tripKm`)
+
+`SolverTrip.tripKm` carries the pre-computed productive distance for that trip:
+
+```
+tripKm = line.metrics.extensionKm[route.direction]   // primary
+      ?? matrix[origin:destination].km                // fallback
+      ?? 0
+```
+
+This value is resolved by `VehiclePlanService` before passing trips to the worker (or to `scoreBlocks`). The matrix is **not** consulted for productive km inside the scoring functions.
 
 ### Trip constraints
 
@@ -82,7 +94,7 @@ score = flatScore + rangeScore
 | `fleetUsage` | Number of blocks | minimize |
 | `deadrunKm` | Total deadrun km | minimize |
 | `totalKm` | Total km (productive + deadrun) | minimize |
-| `distributionVariance` | Variance of block durations (min²) | minimize |
+| `distributionVariance` | Std deviation of block durations (min) | minimize |
 | `specialFleetUsage` | Number of non-BUS blocks | minimize |
 | `driverUsage` | *(reserved — not yet computed)* | — |
 | `overtime` | *(reserved — not yet computed)* | — |
@@ -206,7 +218,8 @@ temp(t) = 5.0 × 0.01^(t / T_max)
 
 ```
 generate(planId, jobId):
-  load trips, matrix, depots, existing blocks from DB
+  load trips (with route.direction + line.metrics), matrix, depots, existing blocks from DB
+  compute tripKm per trip: line.metrics.extensionKm[direction] ?? matrix[o:d].km ?? 0
   filter initialBlocks to only trips present in solver's trip set
   spawn Worker({ workerData: solverConfig })
   jobs.set(jobId, { worker, best: null, planId, messages$ })
@@ -218,7 +231,13 @@ stop(jobId) → worker.postMessage({ type: 'stop' })
 assumeBest(planId, jobId):
   stop worker; delete job
   in transaction: deleteMany existing blocks → createMany new blocks + blockTrips
-  update plan summary (fleetCount, score, km totals, generatedAt)
+  update plan summary (fleetCount, score, km totals rounded to 2dp, generatedAt)
+
+scorePlan(planId):
+  load blocks + trips (with route.direction + line.metrics) + matrix from DB
+  compute tripKm per trip (same rule as generate)
+  call scoreBlocks() → write summary + generatedAt to vehiclePlan
+  called automatically by VehiclePlanImportService after each import
 ```
 
 After `done`, the job stays in memory for 30 minutes so `assumeBest` remains callable.
@@ -228,6 +247,10 @@ After `done`, the job stays in memory for 30 minutes so `assumeBest` remains cal
 ## Known Issues & Design Notes
 
 **SA does not consistently beat the import.** The imported plan is built by a domain expert or an external tool and typically has better fleet utilization than what the current SA produces. The SA starts from that baseline but the move design and scoring weights are not yet calibrated to reliably improve it.
+
+**Score is always negative with minimize-only criteria.** All flat criteria currently in use have `direction: minimize`, which subtracts from the score. The score is a relative metric for SA comparison (higher = better), not an absolute quality indicator. Range criteria add positive values but rarely compensate for the flat penalties at realistic weights.
+
+**`distributionVariance` weight calibration changed.** The quantity passed to this criterion is now **standard deviation** (minutes), not variance (min²). Weights configured for the old scale will produce much smaller penalties — recalibrate accordingly.
 
 **Scoring scale is unknown at runtime.** Flat and range weights come from user configuration. If `fleetUsage.weight` is too low relative to other criteria, the SA may accept fleet-increasing moves freely. The temperature schedule is calibrated assuming score deltas in the 1–10 range; misconfigured weights break this assumption.
 
