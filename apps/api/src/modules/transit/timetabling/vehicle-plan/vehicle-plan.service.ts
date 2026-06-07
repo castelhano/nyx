@@ -47,7 +47,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const [trips, matrix, depotLocalities, generalCfg, planningCfg, existingBlocks] = await Promise.all([
       this.prisma.transitTrip.findMany({
         where:   { dayTypes: { some: { dayTypeId: plan.dayTypeId } }, route: { lineId: { in: lineIds } } },
-        include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true } } },
+        include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } } },
       }),
       this.prisma.travelTimeMatrix.findMany(),
       this.prisma.transitLocality.findMany({ where: { isDepot: true }, select: { id: true } }),
@@ -87,16 +87,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         flat:                     planningCfg.flat,
         range:                    planningCfg.range,
       },
-      trips: trips.map(t => ({
-        id:                    t.id,
-        lineId:                t.route.lineId,
-        originLocalityId:      t.route.originLocalityId,
-        destinationLocalityId: t.route.destinationLocalityId,
-        departureMinutes:      t.departureMinutes,
-        arrivalMinutes:        t.arrivalMinutes,
-        requiredVehicleType:   t.requiredVehicleType ?? null,
-        constraints:           t.constraints as any ?? null,
-      })),
+      trips: trips.map(t => {
+        const metrics = t.route.line.metrics as { extensionKm?: Record<string, number> } | null
+        const tripKm  = metrics?.extensionKm?.[t.route.direction]
+          ?? matrixMap[`${t.route.originLocalityId}:${t.route.destinationLocalityId}`]?.km
+          ?? 0
+        return {
+          id:                    t.id,
+          lineId:                t.route.lineId,
+          originLocalityId:      t.route.originLocalityId,
+          destinationLocalityId: t.route.destinationLocalityId,
+          departureMinutes:      t.departureMinutes,
+          arrivalMinutes:        t.arrivalMinutes,
+          tripKm,
+          requiredVehicleType:   t.requiredVehicleType ?? null,
+          constraints:           t.constraints as any ?? null,
+        }
+      }),
       matrix: matrixMap,
       depots: depotLocalities.map(d => d.id),
     }
@@ -187,12 +194,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         })
       }
 
+      const r2 = (n: number) => Math.round(n * 100) / 100
       const planSummary: VehiclePlanSummary = {
         fleetCount:        best.fleetCount,
         score:             best.score,
-        deadrunKm:         best.deadrunKm,
-        productiveKm:      best.productiveKm,
-        totalKm:           best.totalKm,
+        deadrunKm:         r2(best.deadrunKm),
+        productiveKm:      r2(best.productiveKm),
+        totalKm:           r2(best.totalKm),
         deadrunMinutes:    best.deadrunMinutes,
         productiveMinutes: best.productiveMinutes,
         totalMinutes:      best.totalMinutes,
@@ -220,7 +228,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 select: {
                   departureMinutes: true,
                   arrivalMinutes:   true,
-                  route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true } },
+                  route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } },
                 },
               },
             },
@@ -242,26 +250,34 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       id:          idx,
       depotId:     b.depotId,
       vehicleType: b.vehicleType,
-      trips:       b.blockTrips.map(bt => ({
-        id:                    bt.tripId,
-        lineId:                bt.trip.route.lineId,
-        originLocalityId:      bt.trip.route.originLocalityId,
-        destinationLocalityId: bt.trip.route.destinationLocalityId,
-        departureMinutes:      bt.trip.departureMinutes,
-        arrivalMinutes:        bt.trip.arrivalMinutes,
-        requiredVehicleType:   null,
-        constraints:           null,
-      })),
+      trips:       b.blockTrips.map(bt => {
+        const metrics = bt.trip.route.line.metrics as { extensionKm?: Record<string, number> } | null
+        const tripKm  = metrics?.extensionKm?.[bt.trip.route.direction]
+          ?? matrixMap[`${bt.trip.route.originLocalityId}:${bt.trip.route.destinationLocalityId}`]?.km
+          ?? 0
+        return {
+          id:                    bt.tripId,
+          lineId:                bt.trip.route.lineId,
+          originLocalityId:      bt.trip.route.originLocalityId,
+          destinationLocalityId: bt.trip.route.destinationLocalityId,
+          departureMinutes:      bt.trip.departureMinutes,
+          arrivalMinutes:        bt.trip.arrivalMinutes,
+          tripKm,
+          requiredVehicleType:   null,
+          constraints:           null,
+        }
+      }),
     }))
 
     const result = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
 
+    const r2 = (n: number) => Math.round(n * 100) / 100
     const summary: VehiclePlanSummary = {
       fleetCount:        result.fleetCount,
       score:             result.score,
-      deadrunKm:         result.deadrunKm,
-      productiveKm:      result.productiveKm,
-      totalKm:           result.totalKm,
+      deadrunKm:         r2(result.deadrunKm),
+      productiveKm:      r2(result.productiveKm),
+      totalKm:           r2(result.totalKm),
       deadrunMinutes:    result.deadrunMinutes,
       productiveMinutes: result.productiveMinutes,
       totalMinutes:      result.totalMinutes,
@@ -343,20 +359,34 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await this.prisma.vehiclePlan.findUnique({ where: { id } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be deleted')
+
     const blockTrips = await this.prisma.blockTrip.findMany({
       where:  { vehicleBlock: { vehiclePlanId: id } },
       select: { tripId: true },
     })
     const tripIds = [...new Set(blockTrips.map(bt => bt.tripId))]
 
-    await this.prisma.$transaction([
-      // cascade: vehicleBlock → blockTrip (clears FK references to the trips below)
-      this.prisma.vehiclePlan.delete({ where: { id } }),
-      // now safe to delete trips that have no remaining references in any other plan
-      ...(tripIds.length ? [this.prisma.transitTrip.deleteMany({
-        where: { id: { in: tripIds }, blockTrips: { none: {} } },
-      })] : []),
-    ])
+    await this.prisma.$transaction(async tx => {
+      // Explicit deletes — do not rely on SQLite FK cascades (disabled by default)
+      await tx.blockTrip.deleteMany({ where: { vehicleBlock: { vehiclePlanId: id } } })
+      await tx.vehicleBlock.deleteMany({ where: { vehiclePlanId: id } })
+      await tx.vehiclePlanLine.deleteMany({ where: { vehiclePlanId: id } })
+      await tx.vehiclePlan.delete({ where: { id } })
+
+      if (tripIds.length) {
+        // Re-check: only delete trips truly orphaned across all plans
+        const still = await tx.blockTrip.findMany({
+          where:  { tripId: { in: tripIds } },
+          select: { tripId: true },
+        })
+        const referenced = new Set(still.map(bt => bt.tripId))
+        const toDelete   = tripIds.filter(tid => !referenced.has(tid))
+        if (toDelete.length) {
+          await tx.tripDayType.deleteMany({ where: { tripId: { in: toDelete } } })
+          await tx.transitTrip.deleteMany({ where: { id: { in: toDelete } } })
+        }
+      }
+    })
   }
 
   async stop(jobId: string): Promise<void> {

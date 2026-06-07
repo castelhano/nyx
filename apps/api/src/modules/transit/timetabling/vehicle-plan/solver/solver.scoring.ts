@@ -57,7 +57,7 @@ function toActiveBlock(block: ScoringBlock, matrix: Record<string, SolverMatrixE
 
   let totalDeadrunKm         = depotEdge.km
   let totalDeadrunMinutes    = depotEdge.minutes
-  let totalProductiveKm      = getEdge(matrix, first.originLocalityId, first.destinationLocalityId)?.km ?? 0
+  let totalProductiveKm      = first.tripKm
   let totalProductiveMinutes = first.arrivalMinutes - first.departureMinutes
   let lineTransfers          = 0
   let totalLayoverMinutes    = 0
@@ -81,7 +81,7 @@ function toActiveBlock(block: ScoringBlock, matrix: Record<string, SolverMatrixE
 
     totalDeadrunKm         += edge.km
     totalDeadrunMinutes    += edge.minutes
-    totalProductiveKm      += getEdge(matrix, trip.originLocalityId, trip.destinationLocalityId)?.km ?? 0
+    totalProductiveKm      += trip.tripKm
     totalProductiveMinutes += trip.arrivalMinutes - trip.departureMinutes
     lineTransfers          += lastLineId !== trip.lineId ? 1 : 0
     totalLayoverMinutes    += layover

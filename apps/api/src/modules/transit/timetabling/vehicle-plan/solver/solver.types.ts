@@ -41,6 +41,7 @@ export interface SolverTrip {
   destinationLocalityId: string
   departureMinutes:      number
   arrivalMinutes:        number
+  tripKm:                number   // from line metrics (extensionKm) or matrix fallback
   requiredVehicleType:   string | null
   constraints:           { locked?: string[]; pinnedBlock?: string } | null
 }
