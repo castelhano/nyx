@@ -194,7 +194,13 @@ export class VehiclePlanImportService {
       }
       tabRows.sort((a, b) => {
         const tabDiff = tabSortKey(a.tabId) - tabSortKey(b.tabId)
-        return tabDiff !== 0 ? tabDiff : a.sequence - b.sequence
+        if (tabDiff !== 0) return tabDiff
+        if (a.sequence !== b.sequence) return a.sequence - b.sequence
+        // tiebreaker: same tabId + same sequence (different lineCodes sharing a tab letter)
+        const da = parseHHMM(a.departureHHMM), db = parseHHMM(b.departureHHMM)
+        const adjA = da < 240 ? da + 1440 : da
+        const adjB = db < 240 ? db + 1440 : db
+        return adjA - adjB
       })
 
       const blockId    = randomUUID()
