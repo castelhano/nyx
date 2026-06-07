@@ -145,7 +145,9 @@ If `startMinutes < firstTripDep`, a synthetic deadhead `BlockTrip` is created sp
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | Create | No `planId` provided | Creates a new `VehiclePlan` in `DRAFT` status with all imported lines linked |
-| Update | `planId` provided | Replaces only the blocks containing trips for the imported lines; blocks for other lines in the plan are preserved |
+| Update | `planId` provided | Replaces data for the imported lines within the existing plan; other lines are preserved |
+
+**Typical workflow:** a plan starts empty (or is created by the first import) and receives successive imports — one per operator/file — each adding or replacing its lines. Because plans can coexist with the same lines and `dayTypeId`, multiple DRAFTs are valid (e.g. to compare scheduling alternatives).
 
 In Update mode:
 - `dayTypeId` is taken from the existing plan (the posted value is ignored)
@@ -153,19 +155,20 @@ In Update mode:
 
 ---
 
-## Clearing Existing Data
+## Clearing Existing Data (Update mode only)
 
-Before inserting new records, `clearLineForDayType` removes all existing trips for each imported line + dayType combination:
+Before inserting, `clearLinesFromPlan(planId, lineIds, dayTypeId)` removes the imported lines' data **scoped to this plan only**. Other plans with the same lines are never touched.
 
-1. Find all `TransitTrip` IDs for `(lineId, dayTypeId)`
-2. Find affected `VehicleBlock` IDs via `BlockTrip`
-3. Delete `BlockTrip` records for these trips
-4. For each affected block: delete if now empty, otherwise mark `isStale = true`
-5. Delete `TripDayType` entries for this dayType
-6. Delete orphan `TransitTrip` records (no remaining dayType associations)
-7. Remove `VehiclePlanLine` entries for this line in plans sharing the dayType
+1. Find all `BlockTrip` records in this plan whose trips belong to the imported lines
+2. Delete those `BlockTrip` records
+3. For each affected `VehicleBlock`:
+   - Empty (no remaining trips) → **delete**
+   - Has trips from other lines → mark `isStale = true`
+4. Delete `TripDayType` entries for those trips + this dayType
+5. Delete `TransitTrip` records that are now fully orphaned (`dayTypes: none`)
+6. Upsert `VehiclePlanLine` for each imported line into this plan
 
-This runs sequentially per line before any inserts. On a re-import this is the dominant cost (N+1 query pattern in step 4), and it scales with the number of affected blocks.
+Step 3 is an N+1 pattern (one `count` + one `delete`/`update` per block). It scales with the number of affected blocks and is the dominant cost on a re-import.
 
 ---
 

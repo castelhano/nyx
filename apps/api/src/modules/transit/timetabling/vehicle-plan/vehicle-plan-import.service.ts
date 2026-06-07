@@ -5,17 +5,16 @@ import { JobService } from '../../../core/job/job.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
 
 interface ImportOutput {
-  created:     number  // VehicleBlock records created
-  updated:     number  // BlockTrip records created
-  deactivated: number  // lines cleared
-  errors:      Array<{ line: number; record: string; message: string }>
+  created: number  // VehicleBlock records created
+  trips:   number  // TransitTrip records created
+  errors:  Array<{ line: number; record: string; message: string }>
 }
 
 @Injectable()
 export class VehiclePlanImportService {
   constructor(
-    private readonly prisma:      PrismaService,
-    private readonly jobService:  JobService,
+    private readonly prisma:     PrismaService,
+    private readonly jobService: JobService,
   ) {}
 
   async import(
@@ -50,7 +49,7 @@ export class VehiclePlanImportService {
     setupMinutes: number = 0,
     planId?:      string,
   ): Promise<ImportOutput> {
-    // In update mode the dayType comes from the existing plan, ignoring what was posted
+    // In update mode the dayType comes from the existing plan
     if (planId) {
       const existing = await (this.prisma as any).vehiclePlan.findUnique({
         where:  { id: planId },
@@ -70,7 +69,6 @@ export class VehiclePlanImportService {
     }))
 
     // Group rows by vehicleNumber (c[22]) — the physical bus.
-    // The same bus can serve multiple lines on the same day (different tabIds/lineCodes).
     // Falls back to lineCode when vehicleNumber is absent.
     const blockMap = new Map<string, typeof rows>()
     for (const row of rows) {
@@ -81,7 +79,6 @@ export class VehiclePlanImportService {
 
     const lineCodes = [...new Set(rows.map(r => r.lineCode))]
 
-    // Resolve TransitLine records
     const transitLines = await (this.prisma as any).transitLine.findMany({
       where: { code: { in: lineCodes } },
     })
@@ -96,52 +93,22 @@ export class VehiclePlanImportService {
 
     const validLineIds = transitLines.map((l: any) => l.id)
 
-    // Resolve TransitRoute records for all valid lines
     const routes = await (this.prisma as any).transitRoute.findMany({
-      where: { lineId: { in: validLineIds } },
+      where:  { lineId: { in: validLineIds } },
       select: { id: true, lineId: true, direction: true },
     })
     const routeByKey = new Map<string, { id: string }>(
       routes.map((r: any) => [`${r.lineId}:${r.direction}`, r]),
     )
 
-    // Clear existing data for each found line in this daytype
-    let linesCleared = 0
-    for (const line of transitLines) {
-      await this.clearLineForDayType(line.id, dayTypeId)
-      linesCleared++
-    }
-
     let plan: { id: string }
+    let blockNumber = 1
+
     if (planId) {
-      // Update mode: replace only blocks that contain trips for the imported lines.
-      // Blocks for other lines in the plan are preserved.
-      const blocksForLines = await (this.prisma as any).vehicleBlock.findMany({
-        where: {
-          vehiclePlanId: planId,
-          blockTrips: {
-            some: { trip: { route: { lineId: { in: validLineIds } } } },
-          },
-        },
-        select: { id: true },
-      })
-      const blockIdsToRemove = blocksForLines.map((b: any) => b.id)
-      if (blockIdsToRemove.length > 0) {
-        const oldBlockTrips = await (this.prisma as any).blockTrip.findMany({
-          where:  { vehicleBlockId: { in: blockIdsToRemove } },
-          select: { tripId: true },
-        })
-        const oldTripIds = [...new Set<string>(oldBlockTrips.map((bt: any) => bt.tripId))]
-        // BlockTrips cascade-deleted via Prisma relation
-        await (this.prisma as any).vehicleBlock.deleteMany({ where: { id: { in: blockIdsToRemove } } })
-        if (oldTripIds.length > 0) {
-          await (this.prisma as any).tripDayType.deleteMany({ where: { tripId: { in: oldTripIds } } })
-          await (this.prisma as any).transitTrip.deleteMany({
-            where: { id: { in: oldTripIds }, blockTrips: { none: {} } },
-          })
-        }
-      }
-      // Ensure all imported lines are linked to the plan
+      // Update mode: clear existing data for the imported lines within this plan,
+      // then add new blocks/trips. Lines not in this import are untouched.
+      await this.clearLinesFromPlan(planId, validLineIds, dayTypeId)
+
       for (const line of transitLines) {
         await (this.prisma as any).vehiclePlanLine.upsert({
           where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: line.id } },
@@ -149,9 +116,16 @@ export class VehiclePlanImportService {
           update: {},
         })
       }
+
+      // Continue blockNumber after the highest existing block in the plan
+      const maxBlock = await (this.prisma as any).vehicleBlock.aggregate({
+        where: { vehiclePlanId: planId },
+        _max:  { blockNumber: true },
+      })
+      blockNumber = (maxBlock._max.blockNumber ?? 0) + 1
       plan = { id: planId }
     } else {
-      // Create mode: new DRAFT VehiclePlan
+      // Create mode: brand-new DRAFT plan — no cleanup needed
       plan = await (this.prisma as any).vehiclePlan.create({
         data: {
           dayTypeId,
@@ -163,27 +137,16 @@ export class VehiclePlanImportService {
       })
     }
 
-    // Collect all records to insert — no DB calls in this loop
+    // Collect all records in memory — no DB calls inside the loop
     const tripRows:      Array<{ id: string; routeId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const tripDayTypes:  Array<{ tripId: string; dayTypeId: string }> = []
     const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number; isDeadhead: boolean }> = []
 
-    // In update mode, continue blockNumber after the highest existing block in the plan
-    let blockNumber = 1
-    if (planId) {
-      const maxBlock = await (this.prisma as any).vehicleBlock.aggregate({
-        where: { vehiclePlanId: planId },
-        _max:  { blockNumber: true },
-      })
-      blockNumber = (maxBlock._max.blockNumber ?? 0) + 1
-    }
-
     for (const [, tabRows] of blockMap.entries()) {
       // Sort purely chronologically by departure time.
       // tabId and sequence are scoped to a single line and unreliable for cross-line ordering.
-      // Trips before 03:00 are end-of-operational-day — shifted +1440 so they sort after pre-03:00 trips.
-      // Actual minute values are computed by sequential inference below, not by this offset.
+      // Trips before 03:00 are end-of-operational-day — shifted +1440 so they sort after later trips.
       tabRows.sort((a, b) => {
         const da = parseHHMM(a.departureHHMM)
         const db = parseHHMM(b.departureHHMM)
@@ -200,15 +163,13 @@ export class VehiclePlanImportService {
       let productiveMinutes = 0, deadrunMinutes = 0
       let productiveKm = 0,      deadrunKm = 0
 
-      // Synthetic depot-departure trip (saída de garagem)
-      // c[17] carries the depot departure time on the first trip of the vehicle's day.
-      // We create a deadhead trip from (depotTime - setupMinutes) to the first trip's departure.
+      // Synthetic depot-departure deadhead (saída de garagem)
+      // c[17] carries the depot departure time on the vehicle's first trip row.
       const depotRow = tabRows.find(r => r.depotDepartureHHMM !== '')
-      if (depotRow && tabRows.length > 0) {
-        // Find first row that resolves to a valid route
+      if (depotRow) {
         let firstRouteId: string | null = null
         for (const row of tabRows) {
-          const line = lineByCode.get(row.lineCode)
+          const line  = lineByCode.get(row.lineCode)
           if (!line) continue
           const dir   = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
           const route = routeByKey.get(`${line.id}:${dir}`)
@@ -216,9 +177,8 @@ export class VehiclePlanImportService {
         }
 
         if (firstRouteId) {
-          const firstTripRow    = tabRows[0]
-          const firstTripDep    = parseHHMM(firstTripRow.departureHHMM)   // dayOffset=0 for first trip
-          const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM)  // depot always precedes first trip
+          const firstTripDep    = parseHHMM(tabRows[0].departureHHMM)
+          const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM)
           const startMinutes    = depotDepMinutes - setupMinutes
 
           if (startMinutes < firstTripDep) {
@@ -241,7 +201,6 @@ export class VehiclePlanImportService {
         const line = lineByCode.get(row.lineCode)
         if (!line) continue
 
-        // I = IDA = OUTBOUND, V = VOLTA = INBOUND, C = CIRCULAR
         const direction = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
         const route     = routeByKey.get(`${line.id}:${direction}`)
 
@@ -268,8 +227,8 @@ export class VehiclePlanImportService {
         if (arrivalMinutes < departureMinutes) arrivalMinutes += 1440  // safety guard
 
         prevArrivalMinutes = arrivalMinutes
-        const tripMinutes = arrivalMinutes - departureMinutes
-        const km          = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
+        const tripMinutes  = arrivalMinutes - departureMinutes
+        const km           = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 
         if (departureMinutes < firstDep) firstDep = departureMinutes
         if (arrivalMinutes   > lastArr)  lastArr  = arrivalMinutes
@@ -290,16 +249,22 @@ export class VehiclePlanImportService {
 
       if (!hasTrips) continue
 
-      const summary = {
-        totalMinutes: lastArr - firstDep,
-        productiveMinutes,
-        deadrunMinutes,
-        totalKm:      productiveKm + deadrunKm,
-        productiveKm,
-        deadrunKm,
-      }
-
-      blockRows.push({ id: blockId, vehiclePlanId: plan.id, branchId, blockNumber: blockNumber++, depotId, vehicleType: 'BUS', summary })
+      blockRows.push({
+        id:            blockId,
+        vehiclePlanId: plan.id,
+        branchId,
+        blockNumber:   blockNumber++,
+        depotId,
+        vehicleType:   'BUS',
+        summary: {
+          totalMinutes: lastArr - firstDep,
+          productiveMinutes,
+          deadrunMinutes,
+          totalKm:      productiveKm + deadrunKm,
+          productiveKm,
+          deadrunKm,
+        },
+      })
     }
 
     // 4 bulk inserts instead of O(n_trips) individual creates
@@ -310,31 +275,39 @@ export class VehiclePlanImportService {
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
 
-    return { created: blockRows.length, updated: tripRows.length, deactivated: linesCleared, errors }
+    return { created: blockRows.length, trips: tripRows.length, errors }
   }
 
-  private async clearLineForDayType(lineId: string, dayTypeId: string): Promise<void> {
-    // All TransitTrip IDs for this line + daytype
-    const trips = await (this.prisma as any).transitTrip.findMany({
-      where: {
-        route:    { lineId },
-        dayTypes: { some: { dayTypeId } },
-      },
-      select: { id: true },
-    })
-    const tripIds: string[] = trips.map((t: any) => t.id)
-    if (tripIds.length === 0) return
-
-    // Find BlockTrips that reference these trips
+  // Removes all trips for the given lines from this specific plan.
+  // Blocks that served only these lines are deleted; blocks that also serve
+  // other lines have their remaining trips preserved and are marked isStale.
+  private async clearLinesFromPlan(
+    planId:    string,
+    lineIds:   string[],
+    dayTypeId: string,
+  ): Promise<void> {
+    // Find BlockTrips in this plan whose trips belong to the imported lines
     const affected = await (this.prisma as any).blockTrip.findMany({
-      where:  { tripId: { in: tripIds } },
-      select: { vehicleBlockId: true },
+      where: {
+        vehicleBlock: { vehiclePlanId: planId },
+        trip: {
+          route:    { lineId: { in: lineIds } },
+          dayTypes: { some: { dayTypeId } },
+        },
+      },
+      select: { id: true, vehicleBlockId: true, tripId: true },
     })
-    const blockIds = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
-    // Remove the BlockTrips
-    await (this.prisma as any).blockTrip.deleteMany({ where: { tripId: { in: tripIds } } })
 
-    // Handle each affected VehicleBlock
+    if (affected.length === 0) return
+
+    const blockTripIds = affected.map((bt: any) => bt.id)
+    const tripIds      = [...new Set<string>(affected.map((bt: any) => bt.tripId))]
+    const blockIds     = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
+
+    // Remove BlockTrips for the imported lines
+    await (this.prisma as any).blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
+
+    // Delete empty blocks; mark blocks with remaining trips as stale
     for (const blockId of blockIds) {
       const remaining = await (this.prisma as any).blockTrip.count({ where: { vehicleBlockId: blockId } })
       if (remaining === 0) {
@@ -344,29 +317,14 @@ export class VehiclePlanImportService {
       }
     }
 
-    // Remove TripDayType entries for this daytype
-    await (this.prisma as any).tripDayType.deleteMany({ where: { tripId: { in: tripIds }, dayTypeId } })
-
-    // Delete TransitTrip records with no remaining daytype associations
-    const orphans = await (this.prisma as any).transitTrip.findMany({
-      where:  { id: { in: tripIds }, dayTypes: { none: {} } },
-      select: { id: true },
+    // Remove TripDayType entries for this dayType
+    await (this.prisma as any).tripDayType.deleteMany({
+      where: { tripId: { in: tripIds }, dayTypeId },
     })
-    if (orphans.length > 0) {
-      await (this.prisma as any).transitTrip.deleteMany({
-        where: { id: { in: orphans.map((t: any) => t.id) } },
-      })
-    }
 
-    // Remove VehiclePlanLine entries for this line in plans with this daytype
-    const plans = await (this.prisma as any).vehiclePlan.findMany({
-      where:  { dayTypeId },
-      select: { id: true },
+    // Delete trips that are now fully orphaned (no remaining blockTrip or dayType references)
+    await (this.prisma as any).transitTrip.deleteMany({
+      where: { id: { in: tripIds }, dayTypes: { none: {} } },
     })
-    if (plans.length > 0) {
-      await (this.prisma as any).vehiclePlanLine.deleteMany({
-        where: { vehiclePlanId: { in: plans.map((p: any) => p.id) }, lineId },
-      })
-    }
   }
 }
