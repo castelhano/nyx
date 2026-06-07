@@ -180,26 +180,15 @@ export class VehiclePlanImportService {
     }
 
     for (const [, tabRows] of blockMap.entries()) {
-      // Sort by chronological tab order, then by sequence within each tab.
-      // Tab order is determined by the first departure seen for each tabId (file order ≈ chronological).
-      // Tabs starting before 04:00 are post-midnight and sorted to end-of-day (sort only — sequential
-      // inference below handles the actual minute computation).
-      const tabFirstDep = new Map<string, number>()
-      for (const row of tabRows) {
-        if (!tabFirstDep.has(row.tabId)) tabFirstDep.set(row.tabId, parseHHMM(row.departureHHMM))
-      }
-      const tabSortKey = (tabId: string): number => {
-        const d = tabFirstDep.get(tabId) ?? 0
-        return d < 240 ? d + 1440 : d  // before 04:00 → treat as post-midnight
-      }
+      // Sort purely chronologically by departure time.
+      // tabId and sequence are scoped to a single line and unreliable for cross-line ordering.
+      // Trips before 03:00 are end-of-operational-day — shifted +1440 so they sort after pre-03:00 trips.
+      // Actual minute values are computed by sequential inference below, not by this offset.
       tabRows.sort((a, b) => {
-        const tabDiff = tabSortKey(a.tabId) - tabSortKey(b.tabId)
-        if (tabDiff !== 0) return tabDiff
-        if (a.sequence !== b.sequence) return a.sequence - b.sequence
-        // tiebreaker: same tabId + same sequence (different lineCodes sharing a tab letter)
-        const da = parseHHMM(a.departureHHMM), db = parseHHMM(b.departureHHMM)
-        const adjA = da < 240 ? da + 1440 : da
-        const adjB = db < 240 ? db + 1440 : db
+        const da = parseHHMM(a.departureHHMM)
+        const db = parseHHMM(b.departureHHMM)
+        const adjA = da < 180 ? da + 1440 : da  // 180 = 03:00 operational day boundary
+        const adjB = db < 180 ? db + 1440 : db
         return adjA - adjB
       })
 
