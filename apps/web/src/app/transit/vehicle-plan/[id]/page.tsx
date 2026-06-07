@@ -302,6 +302,16 @@ export default function VehiclePlanPage() {
 
   async function handleGenerate() {
     if (!canUpdate) return
+    if (activeJobId) {
+      try {
+        await apiFetch(`/transit/vehicle-plan/${id}/stop`, {
+          method: 'POST',
+          body:   JSON.stringify({ jobId: activeJobId }),
+        })
+      } catch { /* ignore */ }
+      setActiveJobId(null)
+    }
+    setIsSolverDone(false)
     setIsPending(true)
     const jobId = crypto.randomUUID()
     try {
@@ -314,7 +324,6 @@ export default function VehiclePlanPage() {
         throw new Error(extractError(json))
       }
       setActiveJobId(jobId)
-      setIsSolverDone(false)
       setIsPending(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao iniciar geração')
@@ -399,6 +408,8 @@ export default function VehiclePlanPage() {
 
   function handlePlot() {
     setPlottedLineIds(new Set(selectedLineIds))
+    setActiveJobId(null)
+    setIsSolverDone(false)
   }
 
   // ── topbar ───────────────────────────────────────────────────────────────────
@@ -435,8 +446,8 @@ export default function VehiclePlanPage() {
       onClick:  handleAssumeBest,
       disabled: isPending,
     }] : []),
-    // generate
-    ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
+    // generate: show when idle or after solver stopped (done state)
+    ...((!activeJobId || isSolverDone) && canUpdate && status === 'DRAFT' ? [
       {
         label:    isPending ? 'Gerando…' : 'Gerar',
         icon:     Icons.Play,
@@ -541,9 +552,9 @@ export default function VehiclePlanPage() {
               </span>
             )}
             {activeJobId && (
-              <span className="text-blue-600 animate-pulse">
+              <span className={isSolverDone ? 'text-muted-foreground' : 'text-blue-600 animate-pulse'}>
                 {solverProgress?.attempt != null
-                  ? `Tentativa ${solverProgress.attempt}`
+                  ? `Tentativa ${solverProgress.attempt.toLocaleString('pt-BR')}`
                   : 'Calculando…'}
                 {solverProgress?.bestFleet != null && ` — ${solverProgress.bestFleet} blocos`}
                 {solverProgress?.bestScore != null && `, score ${solverProgress.bestScore.toFixed(1)}`}
