@@ -56,6 +56,11 @@ export class Viewport {
     this.scrollY    = Math.max(0, Math.min(maxScroll, y))
   }
 
+  scrollXTo(x: number): void {
+    const maxScroll = Math.max(0, (this.dayEndMinute - this.dayStartMinute) * this.pixelsPerMinute - this.width)
+    this.scrollX    = Math.max(0, Math.min(maxScroll, x))
+  }
+
   snapshot(): ViewportSnapshot {
     return {
       scrollX:         this.scrollX,
