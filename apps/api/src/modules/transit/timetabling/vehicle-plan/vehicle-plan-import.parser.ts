@@ -1,6 +1,7 @@
 export interface ImportRow {
   lineCode:            string
-  vehicleNumber:       string  // c[22] — used as primary grouping key for blocks
+  blockCode:           string  // c[2]  — vehicle block identifier (e.g. "204U01"), primary grouping key
+  vehicleNumber:       string  // c[22] — physical vehicle registration number (can change between tabs)
   tabId:               string  // e.g. "01A", "02B"
   tabNumber:           number  // numeric part: "01A" → 1
   sequence:            number  // col[7] — ordering within tab
@@ -71,6 +72,7 @@ export function parseVehiclePlanFile(buffer: Buffer): ParseResult {
 
     rows.push({
       lineCode,
+      blockCode:          c[2]?.trim()  ?? '',
       vehicleNumber:      c[22]?.trim() ?? '',
       tabId,
       tabNumber,

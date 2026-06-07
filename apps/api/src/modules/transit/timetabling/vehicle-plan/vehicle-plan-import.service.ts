@@ -69,8 +69,8 @@ export class VehiclePlanImportService {
       message: `Linha ignorada: ${s.reason}`,
     }))
 
-    // Group rows by vehicleNumber → each unique vehicle = one VehicleBlock.
-    // tabId identifies driver shifts within the same vehicle, not separate blocks.
+    // Group rows by vehicleNumber (c[22]) — the physical bus.
+    // The same bus can serve multiple lines on the same day (different tabIds/lineCodes).
     // Falls back to lineCode when vehicleNumber is absent.
     const blockMap = new Map<string, typeof rows>()
     for (const row of rows) {
@@ -180,12 +180,21 @@ export class VehiclePlanImportService {
     }
 
     for (const [, tabRows] of blockMap.entries()) {
-      // Sort by tab order then sequence. depDay absolute values are unreliable —
-      // day inference is done sequentially below using prevArrivalMinutes.
+      // Sort by chronological tab order, then by sequence within each tab.
+      // Tab order is determined by the first departure seen for each tabId (file order ≈ chronological).
+      // Tabs starting before 04:00 are post-midnight and sorted to end-of-day (sort only — sequential
+      // inference below handles the actual minute computation).
+      const tabFirstDep = new Map<string, number>()
+      for (const row of tabRows) {
+        if (!tabFirstDep.has(row.tabId)) tabFirstDep.set(row.tabId, parseHHMM(row.departureHHMM))
+      }
+      const tabSortKey = (tabId: string): number => {
+        const d = tabFirstDep.get(tabId) ?? 0
+        return d < 240 ? d + 1440 : d  // before 04:00 → treat as post-midnight
+      }
       tabRows.sort((a, b) => {
-        if (a.tabNumber !== b.tabNumber) return a.tabNumber - b.tabNumber
-        if (a.tabId     !== b.tabId)    return a.tabId < b.tabId ? -1 : 1
-        return a.sequence - b.sequence
+        const tabDiff = tabSortKey(a.tabId) - tabSortKey(b.tabId)
+        return tabDiff !== 0 ? tabDiff : a.sequence - b.sequence
       })
 
       const blockId    = randomUUID()
