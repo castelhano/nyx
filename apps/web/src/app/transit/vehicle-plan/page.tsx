@@ -11,6 +11,7 @@ import { usePageGuard } from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
+import { extractError } from '@/lib/utils'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
 
@@ -75,7 +76,7 @@ export default function VehiclePlanListPage() {
         const res = await apiFetch(`/transit/vehicle-plan/${row.id}`, { method: 'DELETE' })
         if (!res.ok) {
           const json = await res.json().catch(() => ({}))
-          throw new Error(json?.message?.message ?? json?.message ?? 'Erro ao excluir')
+          throw new Error(extractError(json, 'Erro ao excluir'))
         }
         queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan'] })
         toast.success('Planejamento excluído')

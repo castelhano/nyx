@@ -262,7 +262,20 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await this.prisma.vehiclePlan.findUnique({ where: { id } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be deleted')
-    await this.prisma.vehiclePlan.delete({ where: { id } })
+    const blockTrips = await this.prisma.blockTrip.findMany({
+      where:  { vehicleBlock: { vehiclePlanId: id } },
+      select: { tripId: true },
+    })
+    const tripIds = [...new Set(blockTrips.map(bt => bt.tripId))]
+
+    await this.prisma.$transaction([
+      // cascade: vehicleBlock → blockTrip (clears FK references to the trips below)
+      this.prisma.vehiclePlan.delete({ where: { id } }),
+      // now safe to delete trips that have no remaining references in any other plan
+      ...(tripIds.length ? [this.prisma.transitTrip.deleteMany({
+        where: { id: { in: tripIds }, blockTrips: { none: {} } },
+      })] : []),
+    ])
   }
 
   async stop(jobId: string): Promise<void> {

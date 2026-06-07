@@ -56,7 +56,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ? exception.getResponse()
       : 'Internal server error'
 
-    if (status >= 500) this.logger.error(exception)
+    this.logger.error(exception)
 
     res.status(status).json({
       statusCode: status,

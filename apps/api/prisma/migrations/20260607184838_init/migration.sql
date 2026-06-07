@@ -282,7 +282,7 @@ CREATE TABLE "transit_travel_times" (
     "destinationId" TEXT NOT NULL,
     "baseMinutes" REAL NOT NULL,
     "distanceKm" REAL NOT NULL,
-    "peakMultiplier" REAL NOT NULL DEFAULT 1.0,
+    "speedRatio" REAL NOT NULL DEFAULT 1.0,
     "source" TEXT NOT NULL DEFAULT 'MANUAL',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
