@@ -70,9 +70,13 @@ export class GanttEngine {
     const rawSegments = rawRows.flatMap((row) => view.getSegments(row, data))
     const result      = this.layout.compute(rawRows, rawSegments)
 
-    this.layoutRows              = result.rows
-    this.segments                = result.segments
-    this.viewport.totalHeight    = result.totalHeight
+    this.layoutRows           = result.rows
+    this.segments             = result.segments
+    this.viewport.totalHeight = result.totalHeight
+
+    // extend end boundary to cover any segments that cross midnight
+    const maxEnd = result.segments.reduce((max, s) => Math.max(max, s.endMinute), 1440)
+    this.viewport.dayEndMinute = maxEnd
 
     this.hitTester.build(this.segments, this.viewport, this.layoutRows)
     this.notify()

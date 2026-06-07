@@ -181,11 +181,12 @@ export class VehiclePlanImportService {
     }
 
     for (const [, tabRows] of blockMap.entries()) {
-      // Sort trips chronologically within the block
+      // Sort by tab order then sequence. depDay absolute values are unreliable —
+      // day inference is done sequentially below using prevArrivalMinutes.
       tabRows.sort((a, b) => {
-        const aMin = parseHHMM(a.departureHHMM) + (a.depDay - 1) * 1440
-        const bMin = parseHHMM(b.departureHHMM) + (b.depDay - 1) * 1440
-        return aMin - bMin
+        if (a.tabNumber !== b.tabNumber) return a.tabNumber - b.tabNumber
+        if (a.tabId     !== b.tabId)    return a.tabId < b.tabId ? -1 : 1
+        return a.sequence - b.sequence
       })
 
       const blockId    = randomUUID()
@@ -213,8 +214,8 @@ export class VehiclePlanImportService {
 
         if (firstRouteId) {
           const firstTripRow    = tabRows[0]
-          const firstTripDep    = parseHHMM(firstTripRow.departureHHMM) + (firstTripRow.depDay - 1) * 1440
-          const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM) + (depotRow.depDay - 1) * 1440
+          const firstTripDep    = parseHHMM(firstTripRow.departureHHMM)   // dayOffset=0 for first trip
+          const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM)  // depot always precedes first trip
           const startMinutes    = depotDepMinutes - setupMinutes
 
           if (startMinutes < firstTripDep) {
@@ -229,6 +230,9 @@ export class VehiclePlanImportService {
           }
         }
       }
+
+      let dayOffset          = 0
+      let prevArrivalMinutes = -Infinity
 
       for (const row of tabRows) {
         const line = lineByCode.get(row.lineCode)
@@ -247,9 +251,20 @@ export class VehiclePlanImportService {
           continue
         }
 
-        const tripId           = randomUUID()
-        const departureMinutes = parseHHMM(row.departureHHMM) + (row.depDay - 1) * 1440
-        const arrivalMinutes   = parseHHMM(row.arrivalHHMM)   + (row.arrDay - 1) * 1440
+        const tripId = randomUUID()
+        const rawDep = parseHHMM(row.departureHHMM)
+        const rawArr = parseHHMM(row.arrivalHHMM)
+
+        // Sequential day inference: departure wraps before previous arrival → new calendar day
+        if (rawDep + dayOffset < prevArrivalMinutes) dayOffset += 1440
+        const departureMinutes = rawDep + dayOffset
+
+        // arrDay > depDay signals this specific trip's arrival crosses midnight
+        const arrivalDayOffset = row.arrDay > row.depDay ? dayOffset + 1440 : dayOffset
+        let arrivalMinutes = rawArr + arrivalDayOffset
+        if (arrivalMinutes < departureMinutes) arrivalMinutes += 1440  // safety guard
+
+        prevArrivalMinutes = arrivalMinutes
         const tripMinutes = arrivalMinutes - departureMinutes
         const km          = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 

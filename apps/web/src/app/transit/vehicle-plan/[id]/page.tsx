@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
 import type { ViewportSnapshot }     from './engine/gantt.types'
 
-const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
+const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0, clockOffsetMinutes: 0 }
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
 

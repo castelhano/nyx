@@ -12,6 +12,7 @@ export interface ImportRow {
   depDay:              number  // col[13]: 1 = same day, 2 = past midnight
   arrDay:              number  // col[14]
   depotDepartureHHMM:  string  // col[17] — depot departure time (saída de garagem), empty on most rows
+  driverCode:          string  // col[23]
   _lineNum:            number
 }
 
@@ -47,7 +48,7 @@ export function parseVehiclePlanFile(buffer: Buffer): ParseResult {
 
     const entryType = c[8]?.trim() ?? ''
 
-    // Skip tab-boundary markers (zero-duration end-of-tab rows) — expected, no log
+    // Skip driver shift-change markers (troca de turno) — skipped now, reserved for crew scheduling
     if (entryType === '2') continue
 
     const tabId = c[4]?.trim() ?? ''
@@ -82,6 +83,7 @@ export function parseVehiclePlanFile(buffer: Buffer): ParseResult {
       depDay:             parseInt(c[13] ?? '1', 10) || 1,
       arrDay:             parseInt(c[14] ?? '1', 10) || 1,
       depotDepartureHHMM: c[17]?.trim() ?? '',
+      driverCode:         c[23]?.trim() ?? '',
       _lineNum:           i + 1,
     })
   }
@@ -93,3 +95,4 @@ export function parseHHMM(hhmm: string): number {
   const s = hhmm.padStart(4, '0')
   return parseInt(s.substring(0, 2), 10) * 60 + parseInt(s.substring(2, 4), 10)
 }
+

@@ -1,14 +1,15 @@
 import type { ViewportSnapshot } from './gantt.types'
 
 export class Viewport {
-  width           = 0
-  height          = 0
-  pixelsPerMinute = 1.2
-  scrollY         = 0
-  scrollX         = 0
-  totalHeight     = 0
-  dayStartMinute  = 0
-  dayEndMinute    = 1440
+  width                = 0
+  height               = 0
+  pixelsPerMinute      = 1.2
+  scrollY              = 0
+  scrollX              = 0
+  totalHeight          = 0
+  dayStartMinute       = 0
+  dayEndMinute         = 1440
+  clockOffsetMinutes   = 0
 
   resize(width: number, height: number): void {
     this.width  = width
@@ -63,11 +64,12 @@ export class Viewport {
 
   snapshot(): ViewportSnapshot {
     return {
-      scrollX:         this.scrollX,
-      scrollY:         this.scrollY,
-      pixelsPerMinute: this.pixelsPerMinute,
-      width:           this.width,
-      dayStartMinute:  this.dayStartMinute,
+      scrollX:            this.scrollX,
+      scrollY:            this.scrollY,
+      pixelsPerMinute:    this.pixelsPerMinute,
+      width:              this.width,
+      dayStartMinute:     this.dayStartMinute,
+      clockOffsetMinutes: this.clockOffsetMinutes,
     }
   }
 }

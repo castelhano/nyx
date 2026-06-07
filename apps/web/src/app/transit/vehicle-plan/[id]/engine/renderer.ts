@@ -23,7 +23,29 @@ export class Renderer {
     ctx.clearRect(0, 0, viewport.width, viewport.height)
     this.drawRowBands(viewport, rows)
     this.drawTimeGrid(viewport)
+    this.drawDayBoundaries(viewport)
     this.drawSegments(viewport, rows, segments, hoveredSegId)
+  }
+
+  private drawDayBoundaries(viewport: Viewport): void {
+    const { ctx } = this
+    const start = Math.ceil(viewport.visibleStartMinute / 1440) * 1440
+    if (start > viewport.visibleEndMinute) return
+
+    ctx.save()
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.4)'
+    ctx.lineWidth   = 1
+    ctx.setLineDash([4, 4])
+
+    for (let m = start; m <= viewport.visibleEndMinute; m += 1440) {
+      const x = Math.round(viewport.minuteToX(m)) + 0.5
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x, viewport.height)
+      ctx.stroke()
+    }
+
+    ctx.restore()
   }
 
   private drawRowBands(viewport: Viewport, rows: LayoutRow[]): void {

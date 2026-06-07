@@ -12,9 +12,10 @@ function gridInterval(ppm: number): number {
   return 120
 }
 
-function formatMinute(m: number): string {
-  const h   = Math.floor(m / 60) % 24
-  const min = m % 60
+function formatMinute(m: number, clockOffset: number): string {
+  const total = m + clockOffset
+  const h     = Math.floor(total / 60)   // no % 24: transit extended-hour notation (25:30, 32:56…)
+  const min   = total % 60
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
@@ -49,7 +50,7 @@ export function TimeRuler({ viewport, className }: Props) {
         >
           <div className="w-px h-2 bg-border mt-2" />
           <span className="text-[10px] text-muted-foreground leading-none mt-0.5 whitespace-nowrap">
-            {formatMinute(m)}
+            {formatMinute(m, viewport.clockOffsetMinutes)}
           </span>
         </div>
       ))}
