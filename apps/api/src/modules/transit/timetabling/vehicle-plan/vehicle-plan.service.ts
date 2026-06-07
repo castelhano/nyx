@@ -8,6 +8,7 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import type { SolverConfig, SolverMessage, SolverResult } from './solver/solver.types'
+import { scoreBlocks, type ScoringBlock } from './solver/solver.scoring'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 
@@ -204,6 +205,71 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           generatedAt: new Date(),
         },
       })
+    })
+  }
+
+  async scorePlan(planId: string): Promise<void> {
+    const [blocks, matrix, planningCfg] = await Promise.all([
+      this.prisma.vehicleBlock.findMany({
+        where:   { vehiclePlanId: planId },
+        include: {
+          blockTrips: {
+            orderBy: { sequence: 'asc' },
+            include: {
+              trip: {
+                select: {
+                  departureMinutes: true,
+                  arrivalMinutes:   true,
+                  route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.travelTimeMatrix.findMany(),
+      this.planningConfig.get(),
+    ])
+
+    if (blocks.length === 0) return
+
+    const matrixMap: Record<string, { minutes: number; km: number }> = {}
+    for (const m of matrix) {
+      matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
+    }
+
+    const scoringBlocks: ScoringBlock[] = blocks.map((b, idx) => ({
+      id:          idx,
+      depotId:     b.depotId,
+      vehicleType: b.vehicleType,
+      trips:       b.blockTrips.map(bt => ({
+        id:                    bt.tripId,
+        lineId:                bt.trip.route.lineId,
+        originLocalityId:      bt.trip.route.originLocalityId,
+        destinationLocalityId: bt.trip.route.destinationLocalityId,
+        departureMinutes:      bt.trip.departureMinutes,
+        arrivalMinutes:        bt.trip.arrivalMinutes,
+        requiredVehicleType:   null,
+        constraints:           null,
+      })),
+    }))
+
+    const result = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
+
+    const summary: VehiclePlanSummary = {
+      fleetCount:        result.fleetCount,
+      score:             result.score,
+      deadrunKm:         result.deadrunKm,
+      productiveKm:      result.productiveKm,
+      totalKm:           result.totalKm,
+      deadrunMinutes:    result.deadrunMinutes,
+      productiveMinutes: result.productiveMinutes,
+      totalMinutes:      result.totalMinutes,
+    }
+
+    await this.prisma.vehiclePlan.update({
+      where: { id: planId },
+      data:  { summary, generatedAt: new Date() },
     })
   }
 

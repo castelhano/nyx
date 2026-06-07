@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { Injectable, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { JobService } from '../../../core/job/job.service'
+import { VehiclePlanService } from './vehicle-plan.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
 
 interface ImportOutput {
@@ -13,8 +14,9 @@ interface ImportOutput {
 @Injectable()
 export class VehiclePlanImportService {
   constructor(
-    private readonly prisma:     PrismaService,
-    private readonly jobService: JobService,
+    private readonly prisma:           PrismaService,
+    private readonly jobService:       JobService,
+    private readonly vehiclePlanSvc:   VehiclePlanService,
   ) {}
 
   async import(
@@ -274,6 +276,8 @@ export class VehiclePlanImportService {
     await (this.prisma as any).tripDayType.createMany({ data: tripDayTypes })
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
+
+    await this.vehiclePlanSvc.scorePlan(plan.id)
 
     return { created: blockRows.length, trips: tripRows.length, errors }
   }
