@@ -30,10 +30,9 @@ export interface Point {
 }
 
 export interface ViewportSnapshot {
-  scrollX:             number
-  scrollY:             number
-  pixelsPerMinute:     number
-  width:               number
-  dayStartMinute:      number
-  clockOffsetMinutes:  number  // minutes to add to operational minute to get clock time
+  scrollX:         number
+  scrollY:         number
+  pixelsPerMinute: number
+  width:           number
+  dayStartMinute:  number
 }

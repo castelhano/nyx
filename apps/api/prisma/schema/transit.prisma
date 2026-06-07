@@ -109,8 +109,8 @@ model TravelTimeMatrix {
   destinationId  String
   baseMinutes    Float
   distanceKm     Float
-  // multiplier applied to baseMinutes during peak hours
-  peakMultiplier Float            @default(1.0)
+  // multiplier applied to baseMinutes by the solver (e.g. > 1 for bottlenecks/construction)
+  speedRatio     Float            @default(1.0)
   source         TravelTimeSource @default(MANUAL)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -205,7 +205,7 @@ model VehiclePlan {
   dayTypeId   String
   description String?
   status      VehiclePlanStatus @default(DRAFT)
-  // populated by solver; shape: { fleetCount, score, deadrunKm, productiveKm, totalHours, ... }
+  // populated by solver;
   summary     Json?
   generatedAt DateTime?
   // { locked?: true }

@@ -9,7 +9,6 @@ export class Viewport {
   totalHeight          = 0
   dayStartMinute       = 0
   dayEndMinute         = 1440
-  clockOffsetMinutes   = 0
 
   resize(width: number, height: number): void {
     this.width  = width
@@ -69,7 +68,6 @@ export class Viewport {
       pixelsPerMinute:    this.pixelsPerMinute,
       width:              this.width,
       dayStartMinute:     this.dayStartMinute,
-      clockOffsetMinutes: this.clockOffsetMinutes,
     }
   }
 }

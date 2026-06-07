@@ -15,6 +15,7 @@ export interface RangeCriterionConfig {
 
 export interface SolverPlanningConfig {
   operationalDayStartHour:  number
+  demandModifier:           number
   stopNoImprovementMinutes: number
   stopMaxTotalMinutes:      number
   flat: {

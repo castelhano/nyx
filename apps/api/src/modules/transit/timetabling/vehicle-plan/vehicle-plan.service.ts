@@ -58,13 +58,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const matrixMap: Record<string, { minutes: number; km: number }> = {}
     for (const m of matrix) {
-      matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes, km: m.distanceKm }
+      matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
     }
 
     const solverConfig: SolverConfig = {
       planId,
       config: {
         operationalDayStartHour:  generalCfg.operationalDayStartHour,
+        demandModifier:           generalCfg.demandModifier,
         stopNoImprovementMinutes: planningCfg.stopNoImprovementMinutes,
         stopMaxTotalMinutes:      planningCfg.stopMaxTotalMinutes,
         flat:                     planningCfg.flat,

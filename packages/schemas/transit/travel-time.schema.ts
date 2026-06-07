@@ -40,8 +40,8 @@ export const travelTimeSchema = withMeta(
       className:      'md:w-40'
     }),
 
-    peakMultiplier: z.number().min(1).max(5).default(1.0).meta({
-      label:     'Multiplicador Pico',
+    speedRatio: z.number().min(0.5).max(3.0).default(1.0).meta({
+      label:     'Fator de Ajuste',
       className: 'md:w-40'
     }),
 

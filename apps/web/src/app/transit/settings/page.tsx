@@ -509,6 +509,24 @@ export default function TransitSettingsPage() {
               <span className="text-sm text-muted-foreground w-4">h</span>
             </div>
           </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Modificador de Demanda</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Fator aplicado pelo solver em viagens produtivas com tempos provenientes do OSRM. Tempos cadastrados manualmente na linha não são afetados.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <NumberInput
+                value={general?.demandModifier ?? 1.0}
+                onChange={(v) => setGeneral((prev) => prev ? { ...prev, demandModifier: v } : null)}
+                min={0.5}
+                max={3.0}
+                step={0.1}
+                disabled={!general}
+              />
+            </div>
+          </div>
         </div>
       </section>
 
