@@ -80,6 +80,16 @@ export class VehiclePlanImportController {
         showInForm:     true,
         sortable:       false,
       },
+      {
+        name:           'normalize',
+        label:          'Normalizar viagens',
+        type:           'boolean',
+        widget:         'switch',
+        required:       false,
+        listVisibility: 'never',
+        showInForm:     true,
+        sortable:       false,
+      },
     ]
     return { fields }
   }
@@ -95,6 +105,7 @@ export class VehiclePlanImportController {
     @Body('dayTypeId')     dayTypeId:       string,
     @Body('depotId')       depotId:         string,
     @Body('setupMinutes')  setupMinutesRaw: string | undefined,
+    @Body('normalize')     normalizeRaw:    string | undefined,
     @Body('planId')        planId:          string | undefined,
     @Request() req: any,
   ) {
@@ -104,7 +115,8 @@ export class VehiclePlanImportController {
     if (!depotId)                throw new BadRequestException('Garagem obrigatória')
 
     const setupMinutes = parseInt(setupMinutesRaw ?? '0', 10) || 0
+    const normalize    = normalizeRaw === 'true'
 
-    return this.importService.import(file, branchId, dayTypeId, depotId, req.user.id, setupMinutes, planId || undefined)
+    return this.importService.import(file, branchId, dayTypeId, depotId, req.user.id, setupMinutes, normalize, planId || undefined)
   }
 }

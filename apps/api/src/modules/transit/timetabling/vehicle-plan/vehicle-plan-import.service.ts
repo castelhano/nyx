@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto'
-import { Injectable, BadRequestException } from '@nestjs/common'
+import { Injectable, BadRequestException, Logger } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { JobService } from '../../../core/job/job.service'
 import { VehiclePlanService } from './vehicle-plan.service'
+import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
 
 interface ImportOutput {
@@ -11,12 +12,20 @@ interface ImportOutput {
   errors:  Array<{ line: number; record: string; message: string }>
 }
 
+function minutesToHHMM(minutes: number): string {
+  const m = ((minutes % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
 @Injectable()
 export class VehiclePlanImportService {
+  private readonly logger = new Logger(VehiclePlanImportService.name)
+
   constructor(
-    private readonly prisma:           PrismaService,
-    private readonly jobService:       JobService,
-    private readonly vehiclePlanSvc:   VehiclePlanService,
+    private readonly prisma:          PrismaService,
+    private readonly jobService:      JobService,
+    private readonly vehiclePlanSvc:  VehiclePlanService,
+    private readonly planningConfig:  TransitPlanningConfigService,
   ) {}
 
   async import(
@@ -26,6 +35,7 @@ export class VehiclePlanImportService {
     depotId:      string,
     userId:       string,
     setupMinutes: number = 0,
+    normalize:    boolean = false,
     planId?:      string,
   ): Promise<{ jobId: string }> {
     if (!file.buffer?.length) throw new BadRequestException('Arquivo vazio')
@@ -35,10 +45,10 @@ export class VehiclePlanImportService {
       domain:      'transit',
       resource:    'vehicle-plan',
       createdById: userId,
-      input:       { filename: file.originalname, branchId, dayTypeId, depotId, setupMinutes, planId },
+      input:       { filename: file.originalname, branchId, dayTypeId, depotId, setupMinutes, normalize, planId },
     })
 
-    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, dayTypeId, depotId, setupMinutes, planId))
+    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, dayTypeId, depotId, setupMinutes, normalize, planId))
 
     return { jobId: job.id }
   }
@@ -49,6 +59,7 @@ export class VehiclePlanImportService {
     dayTypeId:    string,
     depotId:      string,
     setupMinutes: number = 0,
+    normalize:    boolean = false,
     planId?:      string,
   ): Promise<ImportOutput> {
     // In update mode the dayType comes from the existing plan
@@ -97,11 +108,26 @@ export class VehiclePlanImportService {
 
     const routes = await (this.prisma as any).transitRoute.findMany({
       where:  { lineId: { in: validLineIds } },
-      select: { id: true, lineId: true, direction: true },
+      select: { id: true, lineId: true, direction: true, originLocalityId: true, destinationLocalityId: true },
     })
-    const routeByKey = new Map<string, { id: string }>(
+    const routeByKey = new Map<string, { id: string; originLocalityId: string; destinationLocalityId: string }>(
       routes.map((r: any) => [`${r.lineId}:${r.direction}`, r]),
     )
+
+    // Load matrix + idealMin only when normalize is requested
+    let matrixMap: Record<string, { minutes: number; km: number }> = {}
+    let idealIntervalMin = 5
+
+    if (normalize) {
+      const [matrix, planningCfg] = await Promise.all([
+        (this.prisma as any).travelTimeMatrix.findMany(),
+        this.planningConfig.get(),
+      ])
+      for (const m of matrix) {
+        matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
+      }
+      idealIntervalMin = planningCfg.range.tripInterval.idealMin
+    }
 
     let plan: { id: string }
     let blockNumber = 1
@@ -145,25 +171,31 @@ export class VehiclePlanImportService {
     const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number; isDeadhead: boolean }> = []
 
-    for (const [, tabRows] of blockMap.entries()) {
+    for (const [blockKey, tabRows] of blockMap.entries()) {
       // Sort purely chronologically by departure time.
       // tabId and sequence are scoped to a single line and unreliable for cross-line ordering.
       // Trips before 03:00 are end-of-operational-day — shifted +1440 so they sort after later trips.
       tabRows.sort((a, b) => {
-        const da = parseHHMM(a.departureHHMM)
-        const db = parseHHMM(b.departureHHMM)
+        const da   = parseHHMM(a.departureHHMM)
+        const db   = parseHHMM(b.departureHHMM)
         const adjA = da < 180 ? da + 1440 : da  // 180 = 03:00 operational day boundary
         const adjB = db < 180 ? db + 1440 : db
         return adjA - adjB
       })
 
-      const blockId    = randomUUID()
-      let   seqInBlock = 1
-      let   hasTrips   = false
+      const blockId = randomUUID()
 
-      let firstDep = Infinity, lastArr = -Infinity
-      let productiveMinutes = 0, deadrunMinutes = 0
-      let productiveKm = 0,      deadrunKm = 0
+      type BlockTripEntry = {
+        tripId:           string
+        routeId:          string
+        departureMinutes: number
+        arrivalMinutes:   number
+        isDeadhead:       boolean
+        km:               number
+        lineCode:         string
+        direction:        string
+      }
+      const perBlockTrips: BlockTripEntry[] = []
 
       // Synthetic depot-departure deadhead (saída de garagem)
       // c[17] carries the depot departure time on the vehicle's first trip row.
@@ -184,27 +216,32 @@ export class VehiclePlanImportService {
           const startMinutes    = depotDepMinutes - setupMinutes
 
           if (startMinutes < firstTripDep) {
-            const depotTripId = randomUUID()
-            if (startMinutes < firstDep) firstDep = startMinutes
-            deadrunMinutes += firstTripDep - startMinutes
-
-            tripRows.push({ id: depotTripId, routeId: firstRouteId, departureMinutes: startMinutes, arrivalMinutes: firstTripDep })
-            tripDayTypes.push({ tripId: depotTripId, dayTypeId })
-            blockTripRows.push({ vehicleBlockId: blockId, tripId: depotTripId, sequence: seqInBlock++, isDeadhead: true })
-            hasTrips = true
+            perBlockTrips.push({
+              tripId:           randomUUID(),
+              routeId:          firstRouteId,
+              departureMinutes: startMinutes,
+              arrivalMinutes:   firstTripDep,
+              isDeadhead:       true,
+              km:               0,
+              lineCode:         'depot',
+              direction:        '-',
+            })
           }
         }
       }
 
       let dayOffset          = 0
       let prevArrivalMinutes = -Infinity
+      let firstRouteKey: string | null = null
+      let lastRouteKey:  string | null = null
 
       for (const row of tabRows) {
         const line = lineByCode.get(row.lineCode)
         if (!line) continue
 
         const direction = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
-        const route     = routeByKey.get(`${line.id}:${direction}`)
+        const routeKey  = `${line.id}:${direction}`
+        const route     = routeByKey.get(routeKey)
 
         if (!route) {
           errors.push({
@@ -215,7 +252,9 @@ export class VehiclePlanImportService {
           continue
         }
 
-        const tripId = randomUUID()
+        if (!firstRouteKey) firstRouteKey = routeKey
+        lastRouteKey = routeKey
+
         const rawDep = parseHHMM(row.departureHHMM)
         const rawArr = parseHHMM(row.arrivalHHMM)
 
@@ -229,27 +268,107 @@ export class VehiclePlanImportService {
         if (arrivalMinutes < departureMinutes) arrivalMinutes += 1440  // safety guard
 
         prevArrivalMinutes = arrivalMinutes
-        const tripMinutes  = arrivalMinutes - departureMinutes
-        const km           = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 
-        if (departureMinutes < firstDep) firstDep = departureMinutes
-        if (arrivalMinutes   > lastArr)  lastArr  = arrivalMinutes
-
-        if (row.isProductive) {
-          productiveMinutes += tripMinutes
-          productiveKm      += km
-        } else {
-          deadrunMinutes += tripMinutes
-          deadrunKm      += km
-        }
-
-        tripRows.push({ id: tripId, routeId: route.id, departureMinutes, arrivalMinutes })
-        tripDayTypes.push({ tripId, dayTypeId })
-        blockTripRows.push({ vehicleBlockId: blockId, tripId, sequence: seqInBlock++, isDeadhead: !row.isProductive })
-        hasTrips = true
+        perBlockTrips.push({
+          tripId:           randomUUID(),
+          routeId:          route.id,
+          departureMinutes,
+          arrivalMinutes,
+          isDeadhead:       !row.isProductive,
+          km:               (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0,
+          lineCode:         row.lineCode,
+          direction,
+        })
       }
 
-      if (!hasTrips) continue
+      if (perBlockTrips.length === 0) continue
+
+      if (normalize) {
+        const tag = `[NORMALIZE] block=${blockKey}`
+
+        // 1. Interval: shorten productive trips where gap to next trip < idealIntervalMin
+        for (let i = 0; i < perBlockTrips.length - 1; i++) {
+          const curr = perBlockTrips[i]
+          const next = perBlockTrips[i + 1]
+          if (!curr.isDeadhead) {
+            const gap = next.departureMinutes - curr.arrivalMinutes
+            if (gap < idealIntervalMin) {
+              const newArr = next.departureMinutes - idealIntervalMin
+              if (newArr > curr.departureMinutes) curr.arrivalMinutes = newArr
+            }
+          }
+        }
+
+        // 2. Access deadrun: block doesn't start with a deadrun and matrix has depot→firstOrigin
+        if (!perBlockTrips[0].isDeadhead && firstRouteKey) {
+          const firstRoute = routeByKey.get(firstRouteKey)
+          if (firstRoute) {
+            const edge = matrixMap[`${depotId}:${firstRoute.originLocalityId}`]
+            if (edge && edge.minutes > 0) {
+              const first = perBlockTrips[0]
+              this.logger.log(
+                `${tag} | access deadrun | depot(${depotId}) → ${firstRoute.originLocalityId} | ` +
+                `${minutesToHHMM(first.departureMinutes - edge.minutes)}-${minutesToHHMM(first.departureMinutes)} | ` +
+                `${edge.minutes}min ${edge.km}km`,
+              )
+              perBlockTrips.unshift({
+                tripId:           randomUUID(),
+                routeId:          first.routeId,
+                departureMinutes: first.departureMinutes - edge.minutes,
+                arrivalMinutes:   first.departureMinutes,
+                isDeadhead:       true,
+                km:               edge.km,
+                lineCode:         'access',
+                direction:        '-',
+              })
+            }
+          }
+        }
+
+        // 3. Return deadrun: block doesn't end with a deadrun and matrix has lastDest→depot
+        if (!perBlockTrips[perBlockTrips.length - 1].isDeadhead && lastRouteKey) {
+          const lastRoute = routeByKey.get(lastRouteKey)
+          if (lastRoute) {
+            const edge = matrixMap[`${lastRoute.destinationLocalityId}:${depotId}`]
+            if (edge && edge.minutes > 0) {
+              const last = perBlockTrips[perBlockTrips.length - 1]
+              this.logger.log(
+                `${tag} | return deadrun | ${lastRoute.destinationLocalityId} → depot(${depotId}) | ` +
+                `${minutesToHHMM(last.arrivalMinutes)}-${minutesToHHMM(last.arrivalMinutes + edge.minutes)} | ` +
+                `${edge.minutes}min ${edge.km}km`,
+              )
+              perBlockTrips.push({
+                tripId:           randomUUID(),
+                routeId:          last.routeId,
+                departureMinutes: last.arrivalMinutes,
+                arrivalMinutes:   last.arrivalMinutes + edge.minutes,
+                isDeadhead:       true,
+                km:               edge.km,
+                lineCode:         'return',
+                direction:        '-',
+              })
+            }
+          }
+        }
+      }
+
+      // Compute block summary from perBlockTrips
+      let firstDep = Infinity, lastArr = -Infinity
+      let productiveMinutes = 0, deadrunMinutes = 0
+      let productiveKm = 0,      deadrunKm = 0
+
+      for (const t of perBlockTrips) {
+        if (t.departureMinutes < firstDep) firstDep = t.departureMinutes
+        if (t.arrivalMinutes   > lastArr)  lastArr  = t.arrivalMinutes
+        const mins = t.arrivalMinutes - t.departureMinutes
+        if (t.isDeadhead) {
+          deadrunMinutes += mins
+          deadrunKm      += t.km
+        } else {
+          productiveMinutes += mins
+          productiveKm      += t.km
+        }
+      }
 
       blockRows.push({
         id:            blockId,
@@ -267,6 +386,13 @@ export class VehiclePlanImportService {
           deadrunKm,
         },
       })
+
+      let seqInBlock = 1
+      for (const t of perBlockTrips) {
+        tripRows.push({ id: t.tripId, routeId: t.routeId, departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes })
+        tripDayTypes.push({ tripId: t.tripId, dayTypeId })
+        blockTripRows.push({ vehicleBlockId: blockId, tripId: t.tripId, sequence: seqInBlock++, isDeadhead: t.isDeadhead })
+      }
     }
 
     // 4 bulk inserts instead of O(n_trips) individual creates
