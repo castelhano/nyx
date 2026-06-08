@@ -1,10 +1,11 @@
-import { Controller, Post, Get, Delete, Param, Body, Query, Sse, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Post, Get, Delete, Param, Body, Query, Req, Sse, UseGuards, HttpCode } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtOrQueryGuard } from '../../../../auth/policies.guard'
 import { VehiclePlanService } from './vehicle-plan.service'
+import type { SolverParams } from './solver/solver.types'
 
 // JwtOrQueryGuard at class level covers both normal Bearer-header auth and the SSE
 // stream endpoint, which passes the JWT as ?token= because EventSource cannot set headers.
@@ -20,8 +21,14 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
 
   @Post(':id/generate')
   @HttpCode(200)
-  generate(@Param('id') id: string, @Body('jobId') jobId: string) {
-    return this.vehiclePlanService.generate(id, jobId)
+  generate(
+    @Param('id') id: string,
+    @Body('jobId') jobId: string,
+    @Body('params') params: SolverParams,
+    @Req() req: any,
+  ) {
+    const user: { role: string; branchIds: string[] } = req.user ?? { role: 'USER', branchIds: [] }
+    return this.vehiclePlanService.generate(id, jobId, params, user.branchIds, user.role)
   }
 
   @Sse(':id/stream')

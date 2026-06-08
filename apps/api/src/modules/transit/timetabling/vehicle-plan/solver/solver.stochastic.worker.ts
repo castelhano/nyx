@@ -20,14 +20,20 @@ parentPort!.on('message', (cmd: WorkerCommand) => {
 })
 
 process.on('uncaughtException', (err) => {
-  console.error('[solver-worker] uncaughtException:', err)
+  console.error('[solver-stochastic] uncaughtException:', err)
   if (!doneSent) {
     doneSent = true
-    parentPort?.postMessage({ type: 'done', stopReason: 'no_improvement' } satisfies SolverMessage)
+    parentPort?.postMessage({ type: 'done', stopReason: 'no_improvement', totalAttempts: 0 } satisfies SolverMessage)
   }
 })
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── types ───────────────────────────────────────────────────────────────────
+
+type Block = ScoringBlock & { trips: SolverTrip[]; locked: boolean }
+
+let nextBlockId = 0
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -37,14 +43,10 @@ function shuffle<T>(arr: T[]): T[] {
   return arr
 }
 
-// ─── mutable solution ─────────────────────────────────────────────────────────
-//
-// Block keeps trips sorted by departureMinutes at all times.
-// Each move produces a new Block[] array (immutable-style updates).
-
-type Block = ScoringBlock & { trips: SolverTrip[] }
-
-let nextBlockId = 0
+function insertSorted(trips: SolverTrip[], trip: SolverTrip): SolverTrip[] {
+  const idx = trips.findIndex(t => t.departureMinutes > trip.departureMinutes)
+  return idx === -1 ? [...trips, trip] : [...trips.slice(0, idx), trip, ...trips.slice(idx)]
+}
 
 // ─── feasibility ─────────────────────────────────────────────────────────────
 
@@ -67,10 +69,8 @@ function scoreAll(
   return scoreBlocks(blocks, matrix, config)
 }
 
-// ─── construction ────────────────────────────────────────────────────────────
+// ─── construction ─────────────────────────────────────────────────────────────
 
-// Greedy-assigns a list of trips (sorted by departure) into the given blocks,
-// opening new blocks when no existing one can accommodate a trip.
 function assignTrips(
   unassigned: SolverTrip[],
   blocks: Block[],
@@ -84,6 +84,7 @@ function assignTrips(
     let bestDeadrun: number = Infinity
 
     for (const block of blocks) {
+      if (block.locked) continue
       const last = block.trips[block.trips.length - 1]
       if (trip.requiredVehicleType && block.vehicleType !== trip.requiredVehicleType) continue
       const edge = getEdge(matrix, last.destinationLocalityId, trip.originLocalityId)
@@ -110,7 +111,7 @@ function assignTrips(
         }
       }
       if (!bestDepot) {
-        console.warn(`[solver-worker] no matrix entry for depot→${trip.originLocalityId}; using fallback depot for trip ${trip.id}`)
+        console.warn(`[solver-stochastic] no matrix entry for depot→${trip.originLocalityId}; using fallback depot for trip ${trip.id}`)
         bestDepot = depots[0]
       }
 
@@ -119,14 +120,12 @@ function assignTrips(
         depotId:     bestDepot,
         vehicleType: trip.requiredVehicleType ?? 'STANDARD',
         trips:       [trip],
+        locked:      false,
       })
     }
   }
 }
 
-// Builds the initial solution from the existing plan blocks, then greedily
-// assigns any trips not yet covered (e.g. newly inserted trips).
-// Falls back to a full greedy construction when no existing blocks are provided.
 function buildInitial(
   trips: SolverTrip[],
   matrix: Record<string, SolverMatrixEntry>,
@@ -136,7 +135,7 @@ function buildInitial(
   const blocks: Block[] = []
 
   if (initialBlocks.length > 0) {
-    const tripMap = new Map(trips.map(t => [t.id, t]))
+    const tripMap  = new Map(trips.map(t => [t.id, t]))
     const assigned = new Set<string>()
 
     for (const ib of initialBlocks) {
@@ -150,6 +149,7 @@ function buildInitial(
         depotId:     ib.depotId,
         vehicleType: ib.vehicleType,
         trips:       ibTrips.sort((a, b) => a.departureMinutes - b.departureMinutes),
+        locked:      ib.locked ?? false,
       })
     }
 
@@ -164,11 +164,6 @@ function buildInitial(
 
 // ─── neighborhood moves ──────────────────────────────────────────────────────
 
-function insertSorted(trips: SolverTrip[], trip: SolverTrip): SolverTrip[] {
-  const idx = trips.findIndex(t => t.departureMinutes > trip.departureMinutes)
-  return idx === -1 ? [...trips, trip] : [...trips.slice(0, idx), trip, ...trips.slice(idx)]
-}
-
 // Relocate: move one random trip from one block to another
 function moveRelocate(
   blocks: Block[],
@@ -176,15 +171,20 @@ function moveRelocate(
 ): Block[] | null {
   if (blocks.length < 2) return null
 
-  const fromIdx = Math.floor(Math.random() * blocks.length)
-  const from    = blocks[fromIdx]
-  const tripIdx = Math.floor(Math.random() * from.trips.length)
-  const trip    = from.trips[tripIdx]
+  const mutable = blocks.filter(b => !b.locked)
+  if (mutable.length < 1) return null
 
-  const order = shuffle(blocks.map((_, i) => i).filter(i => i !== fromIdx))
+  const fromIdx  = Math.floor(Math.random() * mutable.length)
+  const from     = mutable[fromIdx]
+  const tripIdx  = Math.floor(Math.random() * from.trips.length)
+  const trip     = from.trips[tripIdx]
 
-  for (const toIdx of order) {
-    const to = blocks[toIdx]
+  // respect pinnedBlock constraint
+  if (trip.constraints?.pinnedBlock) return null
+
+  const candidates = shuffle(blocks.filter(b => b !== from && !b.locked))
+
+  for (const to of candidates) {
     if (trip.requiredVehicleType && to.vehicleType !== trip.requiredVehicleType) continue
 
     const newTo: Block = { ...to, trips: insertSorted(to.trips, trip) }
@@ -192,31 +192,33 @@ function moveRelocate(
 
     const newFrom: Block = { ...from, trips: from.trips.filter((_, i) => i !== tripIdx) }
     return blocks
-      .map((b, i) => i === fromIdx ? newFrom : i === toIdx ? newTo : b)
+      .map(b => b === from ? newFrom : b === to ? newTo : b)
       .filter(b => b.trips.length > 0)
   }
 
   return null
 }
 
-// Swap: exchange one trip from each of two random blocks
+// Swap: exchange one trip from each of two random non-locked blocks
 function moveSwap(
   blocks: Block[],
   matrix: Record<string, SolverMatrixEntry>,
 ): Block[] | null {
-  if (blocks.length < 2) return null
+  const mutable = blocks.filter(b => !b.locked)
+  if (mutable.length < 2) return null
 
-  const i1  = Math.floor(Math.random() * blocks.length)
-  let   i2  = Math.floor(Math.random() * (blocks.length - 1))
+  const i1 = Math.floor(Math.random() * mutable.length)
+  let   i2 = Math.floor(Math.random() * (mutable.length - 1))
   if (i2 >= i1) i2++
 
-  const b1  = blocks[i1]
-  const b2  = blocks[i2]
+  const b1  = mutable[i1]
+  const b2  = mutable[i2]
   const t1i = Math.floor(Math.random() * b1.trips.length)
   const t2i = Math.floor(Math.random() * b2.trips.length)
   const t1  = b1.trips[t1i]
   const t2  = b2.trips[t2i]
 
+  if (t1.constraints?.pinnedBlock || t2.constraints?.pinnedBlock) return null
   if (t1.requiredVehicleType && b2.vehicleType !== t1.requiredVehicleType) return null
   if (t2.requiredVehicleType && b1.vehicleType !== t2.requiredVehicleType) return null
 
@@ -229,32 +231,32 @@ function moveSwap(
   const nb2: Block = { ...b2, trips: new2Trips }
   if (!feasible(nb1, matrix) || !feasible(nb2, matrix)) return null
 
-  return blocks.map((b, i) => i === i1 ? nb1 : i === i2 ? nb2 : b)
+  return blocks.map(b => b === b1 ? nb1 : b === b2 ? nb2 : b)
 }
 
-// Merge: combine all trips from two random blocks into one if the interleaving is feasible
+// Merge: combine all trips from two random non-locked blocks if feasible
 function moveMerge(
   blocks: Block[],
   matrix: Record<string, SolverMatrixEntry>,
 ): Block[] | null {
-  if (blocks.length < 2) return null
+  const mutable = blocks.filter(b => !b.locked)
+  if (mutable.length < 2) return null
 
-  const i1  = Math.floor(Math.random() * blocks.length)
-  let   i2  = Math.floor(Math.random() * (blocks.length - 1))
+  const i1 = Math.floor(Math.random() * mutable.length)
+  let   i2 = Math.floor(Math.random() * (mutable.length - 1))
   if (i2 >= i1) i2++
 
-  const b1 = blocks[i1]
-  const b2 = blocks[i2]
+  const b1 = mutable[i1]
+  const b2 = mutable[i2]
   if (b1.vehicleType !== b2.vehicleType) return null
 
   const combined = [...b1.trips, ...b2.trips]
     .sort((a, b) => a.departureMinutes - b.departureMinutes)
 
-  // try b1's depot first, then b2's
   for (const depotId of [b1.depotId, b2.depotId]) {
-    const merged: Block = { id: b1.id, depotId, vehicleType: b1.vehicleType, trips: combined }
+    const merged: Block = { id: b1.id, depotId, vehicleType: b1.vehicleType, trips: combined, locked: false }
     if (feasible(merged, matrix)) {
-      return [...blocks.filter((_, i) => i !== i1 && i !== i2), merged]
+      return [...blocks.filter(b => b !== b1 && b !== b2), merged]
     }
   }
 
@@ -264,6 +266,7 @@ function moveMerge(
 // ─── main loop (simulated annealing) ─────────────────────────────────────────
 
 let attempt             = 0
+let proposalIndex       = 0
 let bestBlocks:         Block[] = []
 let bestResult:         SolverResult | null = null
 let lastImprovementTime = Date.now()
@@ -274,7 +277,6 @@ function post(msg: SolverMessage): void {
   parentPort!.postMessage(msg)
 }
 
-// Fleet count is the primary improvement criterion; score breaks ties
 function isBetter(candidate: Block[], candidateResult: SolverResult): boolean {
   if (!bestResult) return true
   if (candidate.length < bestBlocks.length) return true
@@ -285,30 +287,32 @@ function isBetter(candidate: Block[], candidateResult: SolverResult): boolean {
 const initial = buildInitial(cfg.trips, cfg.matrix, cfg.depots)
 
 if (initial.length === 0) {
-  console.error(`[solver-worker] no blocks could be built. trips=${cfg.trips.length} depots=${cfg.depots.length}`)
-  post({ type: 'done', stopReason: 'no_improvement' })
+  console.error(`[solver-stochastic] no blocks could be built. trips=${cfg.trips.length} depots=${cfg.depots.length}`)
+  post({ type: 'done', stopReason: 'no_improvement', totalAttempts: 0 })
 } else {
   let current       = initial
   let currentResult = scoreAll(current, cfg.matrix, cfg.config)
   bestBlocks        = initial
   bestResult        = currentResult
 
-  post({ type: 'improvement', scenario: bestResult })
+  proposalIndex++
+  post({ type: 'improvement', scenario: bestResult, proposalIndex })
 
-  // Temperature cools from 5.0 to 0.05 over stopMaxTotalMinutes
-  const totalMs    = cfg.config.stopMaxTotalMinutes * 60_000
-  const initialTemp = 5.0
+  const totalMs     = cfg.config.stopMaxTotalMinutes * 60_000
+  // auto-calibrate temperature to the magnitude of the initial score
+  const initialTemp = Math.max(1, Math.abs(currentResult.score) * 0.02)
+  const finalTemp   = initialTemp * 0.01
 
   function runIteration(): void {
     if (stopped) {
-      if (!doneSent) { doneSent = true; post({ type: 'done', stopReason: 'user_stopped' }) }
+      if (!doneSent) { doneSent = true; post({ type: 'done', stopReason: 'user_stopped', totalAttempts: attempt }) }
       return
     }
 
     const elapsed = Date.now() - startTime
-    const temp    = initialTemp * Math.pow(0.01, Math.min(elapsed / totalMs, 1))
+    const t       = Math.min(elapsed / totalMs, 1)
+    const temp    = initialTemp * Math.pow(finalTemp / initialTemp, t)
 
-    // merge weighted higher to actively drive fleet reduction
     const r = Math.random()
     let neighbor: Block[] | null
     if      (r < 0.35) neighbor = moveRelocate(current, cfg.matrix)
@@ -327,7 +331,8 @@ if (initial.length === 0) {
           bestBlocks          = current
           bestResult          = currentResult
           lastImprovementTime = Date.now()
-          post({ type: 'improvement', scenario: bestResult })
+          proposalIndex++
+          post({ type: 'improvement', scenario: bestResult, proposalIndex })
         }
       }
     }
@@ -338,24 +343,24 @@ if (initial.length === 0) {
     if (now - lastProgressTime >= 250) {
       post({
         type:      'progress',
+        stage:     1,
         attempt,
         bestScore: bestResult?.score ?? 0,
         bestFleet: bestResult?.fleetCount ?? 0,
-        deadrunKm: bestResult?.deadrunKm ?? 0,
         elapsed,
       })
       lastProgressTime = now
     }
 
-    if (elapsed >= cfg.config.stopMaxTotalMinutes * 60_000) {
+    if (elapsed >= totalMs) {
       doneSent = true
-      post({ type: 'done', stopReason: 'max_time' })
+      post({ type: 'done', stopReason: 'max_time', totalAttempts: attempt })
       return
     }
 
     if (now - lastImprovementTime >= cfg.config.stopNoImprovementMinutes * 60_000) {
       doneSent = true
-      post({ type: 'done', stopReason: 'no_improvement' })
+      post({ type: 'done', stopReason: 'no_improvement', totalAttempts: attempt })
       return
     }
 

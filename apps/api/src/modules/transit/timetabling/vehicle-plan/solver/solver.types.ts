@@ -28,9 +28,10 @@ export interface SolverPlanningConfig {
     overtime:             FlatCriterionConfig
   }
   range: {
-    lineTransfer: RangeCriterionConfig
-    tripInterval: RangeCriterionConfig
-    deadrunRatio: RangeCriterionConfig
+    lineTransfer:     RangeCriterionConfig
+    tripInterval:     RangeCriterionConfig
+    deadrunRatio:     RangeCriterionConfig
+    minBlockDuration: RangeCriterionConfig
   }
 }
 
@@ -41,7 +42,7 @@ export interface SolverTrip {
   destinationLocalityId: string
   departureMinutes:      number
   arrivalMinutes:        number
-  tripKm:                number   // from line metrics (extensionKm) or matrix fallback
+  tripKm:                number
   requiredVehicleType:   string | null
   constraints:           { locked?: string[]; pinnedBlock?: string } | null
 }
@@ -54,7 +55,8 @@ export interface SolverMatrixEntry {
 export interface SolverInitialBlock {
   depotId:     string
   vehicleType: string
-  tripIds:     string[]  // ordered by sequence
+  tripIds:     string[]
+  locked?:     boolean
 }
 
 export interface SolverConfig {
@@ -63,7 +65,17 @@ export interface SolverConfig {
   trips:         SolverTrip[]
   matrix:        Record<string, SolverMatrixEntry>
   depots:        string[]
-  initialBlocks: SolverInitialBlock[]  // existing arrangement; empty = use greedy from scratch
+  initialBlocks: SolverInitialBlock[]
+}
+
+// Parameters passed by the frontend when requesting a solve run
+export interface SolverParams {
+  mode:                       'quick' | 'expanded'
+  redistributeTrips:          boolean
+  allowSharedOperation:       boolean
+  includeAccessAndCollection: boolean
+  direction:                  'automatic' | 'optimize_fleet' | 'optimize_drivers' | 'optimize_overtime'
+  customConfig?:              Partial<SolverPlanningConfig>
 }
 
 export interface SolverBlockTrip {
@@ -100,8 +112,9 @@ export interface SolverResult {
 }
 
 export type SolverMessage =
-  | { type: 'progress'; attempt: number; bestScore: number; bestFleet: number; deadrunKm: number; elapsed: number }
-  | { type: 'improvement'; scenario: SolverResult }
-  | { type: 'done'; stopReason: 'no_improvement' | 'max_time' | 'user_stopped' }
+  | { type: 'progress'; stage: number; attempt: number; bestScore: number; bestFleet: number; elapsed: number }
+  | { type: 'proposal';    stage: number; stageLabel: string; scenario: SolverResult; proposalIndex: number }
+  | { type: 'improvement'; scenario: SolverResult; proposalIndex: number }
+  | { type: 'done'; stopReason: 'no_improvement' | 'max_time' | 'user_stopped'; totalAttempts: number }
 
 export type WorkerCommand = { type: 'stop' }

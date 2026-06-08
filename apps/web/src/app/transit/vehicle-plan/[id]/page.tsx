@@ -13,36 +13,52 @@ import { apiFetch, getToken } from '@/lib/auth'
 import { useConfirm }         from '@/lib/confirm-context'
 import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
-import { GanttBoard }        from './components/GanttBoard'
-import { LinesPanel }        from './components/LinesPanel'
-import { FrequencyPanel }    from './components/FrequencyPanel'
-import { Button } from '@/components/ui/button'
+import { GanttBoard }      from './components/GanttBoard'
+import { LinesPanel }      from './components/LinesPanel'
+import { FrequencyPanel }  from './components/FrequencyPanel'
+import { GenerateModal }   from './components/GenerateModal'
+import { Button }          from '@/components/ui/button'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
 import type { ViewportSnapshot }     from './engine/gantt.types'
+import type { SolverParams }         from './components/GenerateModal'
 
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
 
-interface SolverProgress {
-  type:        'progress' | 'improvement' | 'done'
-  attempt?:    number
-  bestScore?:  number
-  bestFleet?:  number
-  deadrunKm?:  number
-  elapsed?:    number
-  stopReason?: string
+interface SolverMessage {
+  type:          string
+  stage?:        number
+  stageLabel?:   string
+  attempt?:      number
+  bestScore?:    number
+  bestFleet?:    number
+  elapsed?:      number
+  stopReason?:   string
+  totalAttempts?: number
+  proposalIndex?: number
+  scenario?:     { fleetCount: number; score: number; deadrunKm: number }
+}
+
+interface SolverDisplayState {
+  proposalCount: number
+  fleetCount:    number | null
+  score:         number | null
+  attempt:       number | null
+  stageLabel:    string | null
 }
 
 function useSolverStream(planId: string, jobId: string | null, onDone: () => void) {
   const eventSourceRef = useRef<EventSource | null>(null)
-  const [progress, setProgress] = useState<SolverProgress | null>(null)
+  const [state, setState] = useState<SolverDisplayState>({
+    proposalCount: 0, fleetCount: null, score: null, attempt: null, stageLabel: null,
+  })
 
   useEffect(() => {
     if (!jobId) {
       eventSourceRef.current?.close()
       eventSourceRef.current = null
-      setProgress(null)
+      setState({ proposalCount: 0, fleetCount: null, score: null, attempt: null, stageLabel: null })
       return
     }
 
@@ -52,9 +68,28 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
 
     es.onmessage = (ev) => {
       try {
-        const data = JSON.parse(ev.data) as SolverProgress
-        if (data.type === 'progress') setProgress(data)
-        if (data.type === 'done') {
+        const msg = JSON.parse(ev.data) as SolverMessage
+
+        if (msg.type === 'progress') {
+          setState(s => ({
+            ...s,
+            attempt:    msg.attempt ?? s.attempt,
+            fleetCount: msg.bestFleet ?? s.fleetCount,
+            score:      msg.bestScore ?? s.score,
+          }))
+        }
+
+        if (msg.type === 'proposal' || msg.type === 'improvement') {
+          setState(s => ({
+            ...s,
+            proposalCount: msg.proposalIndex ?? s.proposalCount,
+            fleetCount:    msg.scenario?.fleetCount ?? s.fleetCount,
+            score:         msg.scenario?.score      ?? s.score,
+            stageLabel:    msg.stageLabel            ?? s.stageLabel,
+          }))
+        }
+
+        if (msg.type === 'done') {
           es.close()
           onDone()
         }
@@ -70,7 +105,7 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
     return () => es.close()
   }, [planId, jobId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return progress
+  return state
 }
 
 // ── creation form (shown when id === 'new') ───────────────────────────────────
@@ -245,12 +280,13 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  const [isPending,       setIsPending]       = useState(false)
-  const [activeJobId,     setActiveJobId]     = useState<string | null>(null)
-  const [isSolverDone,    setIsSolverDone]    = useState(false)
-  const [linesPanelOpen,  setLinesPanelOpen]  = useState(false)
-  const [freqPanelOpen,   setFreqPanelOpen]   = useState(false)
-  const [ganttVp,         setGanttVp]         = useState<ViewportSnapshot>(INITIAL_VP)
+  const [isPending,         setIsPending]         = useState(false)
+  const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
+  const [isSolverDone,      setIsSolverDone]      = useState(false)
+  const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
+  const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
+  const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
+  const [generateModalOpen, setGenerateModalOpen] = useState(false)
 
   // Lines selection for display — all unchecked initially, nothing plotted
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
@@ -300,7 +336,8 @@ export default function VehiclePlanPage() {
 
   const solverProgress = useSolverStream(id, activeJobId, onSolverDone)
 
-  async function handleGenerate() {
+  async function handleGenerate(params: SolverParams) {
+    setGenerateModalOpen(false)
     if (!canUpdate) return
     if (activeJobId) {
       try {
@@ -317,7 +354,7 @@ export default function VehiclePlanPage() {
     try {
       const res = await apiFetch(`/transit/vehicle-plan/${id}/generate`, {
         method: 'POST',
-        body:   JSON.stringify({ jobId }),
+        body:   JSON.stringify({ jobId, params }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -328,6 +365,23 @@ export default function VehiclePlanPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao iniciar geração')
       setIsPending(false)
+    }
+  }
+
+  async function handleClearMetrics() {
+    try {
+      const res = await apiFetch(`/transit/vehicle-plan/${id}`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ metrics: null }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+      toast.success('Configuração personalizada removida')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao limpar configuração')
     }
   }
 
@@ -414,8 +468,9 @@ export default function VehiclePlanPage() {
 
   // ── topbar ───────────────────────────────────────────────────────────────────
 
-  const status    = record?.status as string | undefined
-  const planLines = ganttData?.plan?.lines ?? []
+  const status           = record?.status as string | undefined
+  const planLines        = ganttData?.plan?.lines ?? []
+  const hasCustomMetrics = !!( (record as Record<string, unknown> | undefined)?.metrics )
 
   useTopbarActions([
     // lines panel toggle
@@ -451,7 +506,7 @@ export default function VehiclePlanPage() {
       {
         label:    isPending ? 'Gerando…' : 'Gerar',
         icon:     Icons.Play,
-        onClick:  handleGenerate,
+        onClick:  () => setGenerateModalOpen(true),
         disabled: isPending,
       },
     ] : []),
@@ -510,6 +565,15 @@ export default function VehiclePlanPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {generateModalOpen && (
+        <GenerateModal
+          hasCustomMetrics={hasCustomMetrics}
+          onConfirm={handleGenerate}
+          onClearMetrics={handleClearMetrics}
+          onClose={() => setGenerateModalOpen(false)}
+        />
+      )}
+
       <div className="px-6 pt-4 pb-2 shrink-0 space-y-1">
         <AutoBreadcrumb domain="transit" resource="vehicle-plan" id={id} recordName={recordName} />
 
@@ -553,11 +617,14 @@ export default function VehiclePlanPage() {
             )}
             {activeJobId && (
               <span className={isSolverDone ? 'text-muted-foreground' : 'text-blue-600 animate-pulse'}>
-                {solverProgress?.attempt != null
-                  ? `Tentativa ${solverProgress.attempt.toLocaleString('pt-BR')}`
-                  : 'Calculando…'}
-                {solverProgress?.bestFleet != null && ` — ${solverProgress.bestFleet} blocos`}
-                {solverProgress?.bestScore != null && `, score ${solverProgress.bestScore.toFixed(1)}`}
+                {solverProgress.stageLabel
+                  ? solverProgress.stageLabel
+                  : solverProgress.attempt != null
+                    ? `Tentativa ${solverProgress.attempt.toLocaleString('pt-BR')}`
+                    : 'Calculando…'}
+                {solverProgress.fleetCount != null && ` — ${solverProgress.fleetCount} blocos`}
+                {solverProgress.score      != null && `, score ${solverProgress.score.toFixed(1)}`}
+                {solverProgress.proposalCount > 0  && ` [+${solverProgress.proposalCount}]`}
               </span>
             )}
           </div>

@@ -21,6 +21,7 @@ interface ActiveBlock {
   lineTransfers:          number
   totalLayoverMinutes:    number
   intervalCount:          number
+  specialTripCount:       number  // trips where requiredVehicleType != null && != block vehicleType
 }
 
 export function getEdge(
@@ -91,6 +92,11 @@ function toActiveBlock(block: ScoringBlock, matrix: Record<string, SolverMatrixE
     lastLineId              = trip.lineId
   }
 
+  // count trips whose vehicle type requirement is unmet by this block
+  const specialTripCount = block.trips.filter(
+    t => t.requiredVehicleType !== null && t.requiredVehicleType !== block.vehicleType,
+  ).length
+
   return {
     number:                 block.id,
     depotId:                block.depotId,
@@ -105,6 +111,7 @@ function toActiveBlock(block: ScoringBlock, matrix: Record<string, SolverMatrixE
     lineTransfers,
     totalLayoverMinutes,
     intervalCount,
+    specialTripCount,
   }
 }
 
@@ -142,6 +149,8 @@ export function scoreBlocks(
       rangeScore += config.range.tripInterval.modifier * rangeV(avgLayover, config.range.tripInterval)
     if (config.range.deadrunRatio.active)
       rangeScore += config.range.deadrunRatio.modifier * rangeV(drRatio, config.range.deadrunRatio)
+    if (config.range.minBlockDuration.active)
+      rangeScore += config.range.minBlockDuration.modifier * rangeV(duration, config.range.minBlockDuration)
   }
 
   let flatScore = 0
@@ -156,7 +165,9 @@ export function scoreBlocks(
   const stdDev  = durations.length > 0
     ? Math.sqrt(durations.reduce((acc, d) => acc + (d - mean) ** 2, 0) / durations.length)
     : 0
-  const specialCount = active.filter(b => b.vehicleType !== 'STANDARD').length
+
+  // sum of trips across all blocks where requiredVehicleType is unmet
+  const specialCount = active.reduce((sum, b) => sum + b.specialTripCount, 0)
 
   applyFlat(flat.fleetUsage.active,           flat.fleetUsage.direction,           flat.fleetUsage.weight,           active.length)
   applyFlat(flat.deadrunKm.active,            flat.deadrunKm.direction,            flat.deadrunKm.weight,            totalDeadrunKm)
