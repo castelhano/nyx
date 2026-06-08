@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
-import { vehiclesView, type VehiclePlanGanttData, type GanttBlock } from '../views/vehicles.view'
+import { vehiclesView, type VehiclePlanGanttData, type GanttBlock, type GanttBlockTrip } from '../views/vehicles.view'
 import { TimeRuler }          from './TimeRuler'
 import { RowList }            from './RowList'
 import { SegmentTooltip }     from './SegmentTooltip'
@@ -21,6 +21,27 @@ interface Props {
 interface TooltipState {
   segment: LayoutSegment
   rect:    DOMRect
+  headway: number | null
+}
+
+function computeHeadway(seg: LayoutSegment, blocks: GanttBlock[]): number | null {
+  if (seg.isDeadhead) return null
+  const bt     = seg.data as GanttBlockTrip
+  const lineId = bt.trip.route.line.id
+  const dir    = bt.trip.route.direction
+
+  const departures = blocks
+    .flatMap(b => b.blockTrips)
+    .filter(t => !t.isDeadhead && t.trip.route.line.id === lineId && t.trip.route.direction === dir)
+    .map(t => t.trip.departureMinutes)
+    .sort((a, b) => a - b)
+
+  const dep = bt.trip.departureMinutes
+  const idx = departures.indexOf(dep)
+  if (idx < 0 || departures.length < 2) return null
+
+  if (idx < departures.length - 1) return departures[idx + 1] - dep
+  return dep - departures[idx - 1]
 }
 
 interface BlockDetailState {
@@ -39,7 +60,9 @@ export function GanttBoard({ data, onViewportChange }: Props) {
   const containerRef         = useRef<HTMLDivElement>(null)
   const engineRef            = useRef<GanttEngine | null>(null)
   const onViewportChangeRef  = useRef(onViewportChange)
+  const dataRef              = useRef(data)
   useEffect(() => { onViewportChangeRef.current = onViewportChange }, [onViewportChange])
+  useEffect(() => { dataRef.current = data }, [data])
 
   const [vp,           setVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [layoutRows,   setLayoutRows]   = useState<LayoutRow[]>([])
@@ -79,7 +102,11 @@ export function GanttBoard({ data, onViewportChange }: Props) {
       if (state.hoveredSegment) {
         const rect = engine.getSegmentRect(state.hoveredSegment.id)
         if (rect) {
-          setTooltip({ segment: state.hoveredSegment, rect })
+          setTooltip({
+            segment: state.hoveredSegment,
+            rect,
+            headway: computeHeadway(state.hoveredSegment, dataRef.current?.blocks ?? []),
+          })
         }
       } else {
         setTooltip(null)
@@ -88,7 +115,13 @@ export function GanttBoard({ data, onViewportChange }: Props) {
 
     engine.onSegmentClickCallback((seg) => {
       const rect = engine.getSegmentRect(seg.id)
-      if (rect) setTooltip({ segment: seg, rect })
+      if (rect) {
+        setTooltip({
+          segment: seg,
+          rect,
+          headway: computeHeadway(seg, dataRef.current?.blocks ?? []),
+        })
+      }
     })
 
     return () => {
@@ -155,6 +188,7 @@ export function GanttBoard({ data, onViewportChange }: Props) {
               rect={tooltip.rect}
               containerW={vp.width}
               containerH={canvasH}
+              headway={tooltip.headway}
             />
           )}
         </div>

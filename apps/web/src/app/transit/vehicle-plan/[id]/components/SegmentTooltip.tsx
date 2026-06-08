@@ -6,10 +6,11 @@ interface Props {
   rect:       DOMRect
   containerW: number
   containerH: number
+  headway:    number | null
 }
 
 const GAP          = 8
-const EST_HEIGHT   = 76
+const EST_HEIGHT   = 88
 const EST_WIDTH    = 220
 
 function formatMinute(m: number): string {
@@ -18,7 +19,7 @@ function formatMinute(m: number): string {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
-export function SegmentTooltip({ segment, rect, containerW, containerH }: Props) {
+export function SegmentTooltip({ segment, rect, containerW, containerH, headway }: Props) {
   const bt   = segment.data as GanttBlockTrip
   const trip = bt.trip
 
@@ -44,6 +45,8 @@ export function SegmentTooltip({ segment, rect, containerW, containerH }: Props)
     transform = 'translateX(-50%)'
   }
 
+  const cycleMin = segment.endMinute - segment.startMinute
+
   return (
     <div
       className="absolute z-50 pointer-events-none"
@@ -63,8 +66,17 @@ export function SegmentTooltip({ segment, rect, containerW, containerH }: Props)
             </p>
           </>
         )}
-        <p className="text-xs text-muted-foreground mt-1">
-          {formatMinute(segment.startMinute)} – {formatMinute(segment.endMinute)}
+        <p className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">
+          <span className="text-muted-foreground">
+            {formatMinute(segment.startMinute)} – {formatMinute(segment.endMinute)}
+          </span>
+          <span className="text-foreground font-medium">{cycleMin}min</span>
+          {headway != null && (
+            <>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="text-foreground font-medium">↔{headway}min</span>
+            </>
+          )}
         </p>
       </div>
     </div>

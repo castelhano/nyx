@@ -725,8 +725,8 @@ export default function VehiclePlanPage() {
             )}
           </div>
 
-          {freqPanelOpen && ganttData && (
-            <FrequencyPanel data={ganttData} vp={ganttVp} />
+          {freqPanelOpen && plottedData && (
+            <FrequencyPanel data={plottedData} vp={ganttVp} />
           )}
         </div>
 

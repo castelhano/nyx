@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
 import type { ViewportSnapshot }     from '../engine/gantt.types'
 import { LABEL_WIDTH }               from './GanttBoard'
+import { TimeRuler }                 from './TimeRuler'
 
 const DIRECTION_LABELS: Record<string, string> = {
   OUTBOUND: 'IDA',
@@ -29,30 +30,20 @@ interface Props {
 }
 
 export function FrequencyPanel({ data, vp }: Props) {
-  const { groups, minMinute, maxMinute } = useMemo(() => {
-    const groups = new Map<string, number[]>()
+  const groups = useMemo(() => {
+    const map = new Map<string, number[]>()
 
     for (const block of data.blocks) {
       for (const bt of block.blockTrips) {
         if (bt.isDeadhead) continue
         const dir = bt.trip.route.direction
-        if (!groups.has(dir)) groups.set(dir, [])
-        groups.get(dir)!.push(bt.trip.departureMinutes)
+        if (!map.has(dir)) map.set(dir, [])
+        map.get(dir)!.push(bt.trip.departureMinutes)
       }
     }
 
-    for (const minutes of groups.values()) minutes.sort((a, b) => a - b)
-
-    let minMinute = Infinity
-    let maxMinute = -Infinity
-    for (const minutes of groups.values()) {
-      if (minutes[0] < minMinute)                   minMinute = minutes[0]
-      if (minutes[minutes.length - 1] > maxMinute)  maxMinute = minutes[minutes.length - 1]
-    }
-
-    if (minMinute === Infinity) { minMinute = 0; maxMinute = 1440 }
-
-    return { groups, minMinute, maxMinute }
+    for (const minutes of map.values()) minutes.sort((a, b) => a - b)
+    return map
   }, [data])
 
   const orderedDirs = [
@@ -64,6 +55,7 @@ export function FrequencyPanel({ data, vp }: Props) {
 
   return (
     <div className="border-t bg-card shrink-0 select-none">
+      {/* bars row */}
       <div className="flex items-stretch">
 
         {/* label column — same width as GanttBoard's row label panel */}
@@ -78,7 +70,6 @@ export function FrequencyPanel({ data, vp }: Props) {
               </span>
             </div>
           ))}
-          <div className="h-3.5" />
         </div>
 
         {/* bar area — same coordinate space as GanttBoard canvas */}
@@ -99,14 +90,16 @@ export function FrequencyPanel({ data, vp }: Props) {
               </div>
             )
           })}
-
-          <div className="flex justify-between text-[10px] text-muted-foreground/50 h-3.5">
-            <span>{fmtMin(minMinute)}</span>
-            <span>{fmtMin(Math.round((minMinute + maxMinute) / 2))}</span>
-            <span>{fmtMin(maxMinute)}</span>
-          </div>
         </div>
 
+      </div>
+
+      {/* time ruler — mirrors GanttBoard header layout: LABEL_WIDTH corner + flex-1 ruler */}
+      <div className="flex border-t">
+        <div className="shrink-0 border-r" style={{ width: LABEL_WIDTH }} />
+        <div className="flex-1 min-w-0">
+          <TimeRuler viewport={vp} className="border-b-0 bg-card" />
+        </div>
       </div>
     </div>
   )
