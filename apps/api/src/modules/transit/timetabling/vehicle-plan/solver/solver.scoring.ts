@@ -156,7 +156,7 @@ export function scoreBlocks(
   const stdDev  = durations.length > 0
     ? Math.sqrt(durations.reduce((acc, d) => acc + (d - mean) ** 2, 0) / durations.length)
     : 0
-  const specialCount = active.filter(b => b.vehicleType !== 'BUS').length
+  const specialCount = active.filter(b => b.vehicleType !== 'STANDARD').length
 
   applyFlat(flat.fleetUsage.active,           flat.fleetUsage.direction,           flat.fleetUsage.weight,           active.length)
   applyFlat(flat.deadrunKm.active,            flat.deadrunKm.direction,            flat.deadrunKm.weight,            totalDeadrunKm)

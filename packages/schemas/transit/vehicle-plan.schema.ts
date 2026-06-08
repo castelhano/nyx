@@ -54,6 +54,12 @@ export const vehiclePlanSchema = withMeta(
       },
     }),
 
+    metrics: z.record(z.string(), z.unknown()).optional().meta({
+      label:          'Métricas',
+      listVisibility: 'never',
+      showInForm:     false,
+    }),
+
     // populated by solver; shape: { fleetCount, score, deadrunKm, productiveKm, totalHours, ... }
     summary: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Resumo',

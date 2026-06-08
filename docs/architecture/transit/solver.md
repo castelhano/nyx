@@ -183,18 +183,25 @@ Each criterion maps a per-block value to a 0–1 quality score via a trapezoid f
 | `lineTransfer` | ** Line changes within the block | 1.5 |
 | `tripInterval` | ** Layover between consecutive trips (min) | 0.3 |
 | `deadrunRatio` | `deadrunKm / totalKm × 100` (%) | 1 |
-| `minBlockDuration` | Block total duration (min) — vehicle utilization quality | 1 |
+| `minBlockDuration` | Block total duration (min) — vehicle utilization quality (planning phase) | 1 |
+| `minDutyDuration`  | Duty total duration (min) — operator scheduling quality (scheduling phase) | 1 |
 
 ** Score and penalties applied per occurrence. [pending review]
 
 
-**`minBlockDuration` suggested values:**
+**`minBlockDuration` default values (planning phase):**
 
 ```
 floor=180, idealMin=420, idealMax=900, ceiling=1080
 ```
 
 This criterion contributes to the score and also serves as a **construction threshold** in Quick mode (see Stages 1.2 and 1.3).
+
+**`minDutyDuration` default values (scheduling phase):**
+
+```
+floor=390, idealMin=420, idealMax=480, ceiling=540
+```
 
 ---
 

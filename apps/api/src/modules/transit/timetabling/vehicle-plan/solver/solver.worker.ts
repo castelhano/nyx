@@ -117,7 +117,7 @@ function assignTrips(
       blocks.push({
         id:          nextBlockId++,
         depotId:     bestDepot,
-        vehicleType: trip.requiredVehicleType ?? 'BUS',
+        vehicleType: trip.requiredVehicleType ?? 'STANDARD',
         trips:       [trip],
       })
     }

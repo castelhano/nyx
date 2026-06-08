@@ -257,7 +257,7 @@ export class VehiclePlanImportService {
         branchId,
         blockNumber:   blockNumber++,
         depotId,
-        vehicleType:   'BUS',
+        vehicleType:   'STANDARD',
         summary: {
           totalMinutes: lastArr - firstDep,
           productiveMinutes,
@@ -271,7 +271,7 @@ export class VehiclePlanImportService {
 
     // 4 bulk inserts instead of O(n_trips) individual creates
     await (this.prisma as any).transitTrip.createMany({
-      data: tripRows.map(r => ({ ...r, requiredVehicleType: 'BUS' })),
+      data: tripRows,
     })
     await (this.prisma as any).tripDayType.createMany({ data: tripDayTypes })
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })

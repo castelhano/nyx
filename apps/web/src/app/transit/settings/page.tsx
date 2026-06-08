@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
@@ -18,20 +18,21 @@ import type { GeneralSettings, PlanningSettings, ScheduleSettings, FlatCriterion
 
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
-const FLAT_META: Record<keyof PlanningSettings['flat'], { label: string; unit: string; hint: string; phase: 1 | 2 }> = {
-  fleetUsage:           { label: 'Uso de Frota',              unit: 'por veículo',   hint: 'Peso por veículo utilizado no plano.',                                          phase: 1 },
-  deadrunKm:            { label: 'Km em Vazio',               unit: 'por km',        hint: 'Peso por km de deslocamento em vazio no plano.',                                phase: 1 },
-  totalKm:              { label: 'Km Total',                  unit: 'por km',        hint: 'Peso por km total percorrido no plano.',                                        phase: 1 },
-  distributionVariance: { label: 'Variância de Distribuição', unit: 'por coef.',     hint: 'Penaliza planos desbalanceados. Quantity = desvio padrão / média de km por bloco.', phase: 1 },
-  specialFleetUsage:    { label: 'Frota Especial',            unit: 'por bloco',     hint: 'Custo por bloco que requer tipo de veículo especial (requiredVehicleType).',     phase: 1 },
-  driverUsage:          { label: 'Uso de Condutores',         unit: 'por condutor',  hint: '[Fase 2] Custo por condutor utilizado no plano.',                                phase: 2 },
-  overtime:             { label: 'Hora Extra',                unit: 'por minuto',    hint: '[Fase 2] Custo por minuto de hora extra no plano.',                              phase: 2 },
+const FLAT_META: Record<keyof PlanningSettings['flat'], { label: string; unit: string; hint: string }> = {
+  fleetUsage:           { label: 'Uso de Frota',              unit: 'por veículo',  hint: 'Peso por veículo utilizado no plano.'                                              },
+  deadrunKm:            { label: 'Km em Vazio',               unit: 'por km',       hint: 'Peso por km de deslocamento em vazio no plano.'                                    },
+  totalKm:              { label: 'Km Total',                  unit: 'por km',       hint: 'Peso por km total percorrido no plano.'                                            },
+  distributionVariance: { label: 'Variância de Distribuição', unit: 'por coef.',    hint: 'Penaliza planos desbalanceados. Quantity = desvio padrão / média de km por bloco.' },
+  specialFleetUsage:    { label: 'Frota Especial',            unit: 'por bloco',    hint: 'Custo por bloco que requer tipo de veículo especial (requiredVehicleType).'        },
+  driverUsage:          { label: 'Uso de Condutores',         unit: 'por condutor', hint: 'Custo por condutor utilizado no plano.'                                            },
+  overtime:             { label: 'Hora Extra',                unit: 'por minuto',   hint: 'Custo por minuto de hora extra no plano.'                                          },
 }
 
 const RANGE_META: Record<keyof PlanningSettings['range'], { label: string; unit: string; hint: string }> = {
-  lineTransfer: { label: 'Troca de Linha',      unit: 'trocas', hint: 'Nº de trocas de linha no bloco (linhas distintas - 1). Zero = bloco com linha única.' },
-  tripInterval: { label: 'Intervalo de Viagem', unit: 'min',    hint: 'Menor intervalo entre viagens consecutivas no bloco (minutos).' },
-  deadrunRatio: { label: 'Ratio Km em Vazio',   unit: '%',      hint: 'Proporção de km em vazio sobre o total do bloco.' },
+  lineTransfer:    { label: 'Troca de Linha',       unit: 'trocas', hint: 'Nº de trocas de linha no bloco (linhas distintas - 1). Zero = bloco com linha única.' },
+  tripInterval:    { label: 'Intervalo de Viagem',  unit: 'min',    hint: 'Menor intervalo entre viagens consecutivas no bloco (minutos).' },
+  deadrunRatio:    { label: 'Ratio Km em Vazio',    unit: '%',      hint: 'Proporção de km em vazio sobre o total do bloco.' },
+  minBlockDuration:{ label: 'Duração Mínima Bloco', unit: 'min',    hint: 'Duração total do bloco (minutos). Blocos abaixo do idealMin são candidatos a fusão.' },
 }
 
 const SCHEDULE_META: Record<keyof ScheduleSettings['range'], { label: string; unit: string; hint: string }> = {
@@ -56,11 +57,23 @@ function SectionHeader({ label, sub }: { label: string; sub?: string }) {
 
 function HintPopover({ hint }: { hint: string }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos]   = useState({ top: 0, right: 0 })
+  const btnRef          = useRef<HTMLButtonElement>(null)
+
+  function handleOpen() {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+    setOpen((o) => !o)
+  }
+
   return (
-    <div className="relative">
+    <div>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleOpen}
         className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
       >
         <Icons.Info className="w-3.5 h-3.5" />
@@ -68,7 +81,10 @@ function HintPopover({ hint }: { hint: string }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-5 z-50 w-56 rounded border bg-popover p-2.5 text-xs text-muted-foreground shadow-md">
+          <div
+            className="fixed z-50 w-56 rounded border bg-popover p-2.5 text-xs text-muted-foreground shadow-md"
+            style={{ top: pos.top, right: pos.right }}
+          >
             {hint}
           </div>
         </>
@@ -77,13 +93,6 @@ function HintPopover({ hint }: { hint: string }) {
   )
 }
 
-function PhaseBadge() {
-  return (
-    <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
-      Fase 2
-    </span>
-  )
-}
 
 function DiffDot({ show }: { show: boolean }) {
   if (!show) return <span className="w-1.5" />
@@ -131,8 +140,8 @@ function FlatTable({ data, globalData, onChange, disabled }: {
   const keys = Object.keys(FLAT_META) as (keyof PlanningSettings['flat'])[]
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full min-w-max text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/30">
             <th className="w-1.5" />
@@ -148,16 +157,14 @@ function FlatTable({ data, globalData, onChange, disabled }: {
             const meta      = FLAT_META[key]
             const row       = data[key]
             const globalRow = globalData[key]
-            const isPhase2  = meta.phase === 2
             const isDiff    = !disabled && (
               row.active !== globalRow.active ||
               row.direction !== globalRow.direction ||
               row.weight !== globalRow.weight
             )
-            const isDisabled = disabled || isPhase2
 
             return (
-              <tr key={key} className={cn('group', isPhase2 && 'opacity-50')}>
+              <tr key={key} className="group">
                 <td className="pl-2 pr-0">
                   <div className="flex items-center justify-center h-full py-3">
                     <DiffDot show={isDiff} />
@@ -165,9 +172,8 @@ function FlatTable({ data, globalData, onChange, disabled }: {
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-2">
-                    <span className={cn(isPhase2 && 'text-muted-foreground')}>{meta.label}</span>
+                    <span>{meta.label}</span>
                     <span className="text-xs text-muted-foreground/50">{meta.unit}</span>
-                    {isPhase2 && <PhaseBadge />}
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
@@ -175,7 +181,7 @@ function FlatTable({ data, globalData, onChange, disabled }: {
                     <Switch
                       checked={row.active}
                       onToggle={() => onChange(key, 'active', !row.active)}
-                      disabled={isDisabled}
+                      disabled={disabled}
                     />
                   </div>
                 </td>
@@ -189,7 +195,7 @@ function FlatTable({ data, globalData, onChange, disabled }: {
                       onChange={(v) => onChange(key, 'weight', v)}
                       min={0}
                       step={10}
-                      disabled={isDisabled}
+                      disabled={disabled}
                     />
                   </div>
                 </td>
@@ -221,8 +227,8 @@ function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData
   const keys = Object.keys(meta) as (keyof T)[]
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full min-w-max text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/30">
             <th className="w-1.5" />
@@ -625,7 +631,6 @@ export default function TransitSettingsPage() {
             globalData={isBranch ? gSchedule.range : schedule.range}
             meta={SCHEDULE_META}
             onChange={updateScheduleRange}
-            disabled
           />
         )}
       </section>

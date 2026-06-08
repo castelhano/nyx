@@ -26,9 +26,10 @@ const flatDefault = {
 }
 
 const rangeDefault = {
-  lineTransfer: { active: true, modifier: 1.0, floor: 0, idealMin: 0, idealMax: 0,  ceiling: 4  },
-  tripInterval: { active: true, modifier: 0.3, floor: 3, idealMin: 5, idealMax: 10, ceiling: 15 },
-  deadrunRatio: { active: true, modifier: 1.0, floor: 0, idealMin: 0, idealMax: 10, ceiling: 25 },
+  lineTransfer:    { active: true, modifier: 1.0, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 4   },
+  tripInterval:    { active: true, modifier: 0.3, floor: 3,   idealMin: 5,   idealMax: 10,  ceiling: 15  },
+  deadrunRatio:    { active: true, modifier: 1.0, floor: 0,   idealMin: 0,   idealMax: 10,  ceiling: 25  },
+  minBlockDuration:{ active: true, modifier: 0.3, floor: 180, idealMin: 420, idealMax: 900, ceiling: 1080 },
 }
 
 export const planningSettingsSchema = z.object({
@@ -46,9 +47,10 @@ export const planningSettingsSchema = z.object({
   }).default(flatDefault),
 
   range: z.object({
-    lineTransfer: rangeCriterionSchema,
-    tripInterval: rangeCriterionSchema,
-    deadrunRatio: rangeCriterionSchema,
+    lineTransfer:    rangeCriterionSchema,
+    tripInterval:    rangeCriterionSchema,
+    deadrunRatio:    rangeCriterionSchema,
+    minBlockDuration:rangeCriterionSchema,
   }).default(rangeDefault),
 })
 

@@ -45,14 +45,14 @@ export const vehicleBlockSchema = withMeta(
       keybind:        'g',
     }),
 
-    vehicleType: z.enum(['BUS', 'MICRO_BUS', 'MINIBUS', 'VAN']).meta({
+    vehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).meta({
       label:          'Tipo de Veículo',
       listVisibility: 'visible',
       filter:         true,
       className:      'md:w-48',
       keybind:        't',
       optionLabels: {
-        BUS:       'Ônibus',
+        STANDARD:  'Ônibus',
         MICRO_BUS: 'Micro-ônibus',
         MINIBUS:   'Miniônibus',
         VAN:       'Van',

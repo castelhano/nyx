@@ -48,14 +48,14 @@ export const tripSchema = withMeta(
       keybind:        'h',
     }),
 
-    requiredVehicleType: z.enum(['BUS', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional().meta({
+    requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional().meta({
       label:          'Veículo Requerido',
       listVisibility: 'hidden',
       filter:         true,
       className:      'md:w-48',
       keybind:        'v',
       optionLabels: {
-        BUS:       'Ônibus',
+        STANDARD:  'Ônibus',
         MICRO_BUS: 'Micro-ônibus',
         MINIBUS:   'Miniônibus',
         VAN:       'Van',

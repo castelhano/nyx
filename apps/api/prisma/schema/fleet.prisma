@@ -15,7 +15,7 @@ enum FuelType {
 }
 
 enum VehicleType {
-  BUS
+  STANDARD
   ARTICULATED
   BI_ARTICULATED
   MICRO_BUS
@@ -64,7 +64,7 @@ model Vehicle {
   modelId          String?
   year             Int?
   modelYear        Int?
-  vehicleType      VehicleType       @default(BUS)
+  vehicleType      VehicleType       @default(STANDARD)
   color            String?
   fuelType         FuelType          @default(DIESEL)
   transmission     TransmissionType?
