@@ -52,12 +52,12 @@ export class Viewport {
   }
 
   scrollTo(y: number): void {
-    const maxScroll = Math.max(0, this.totalHeight - this.height)
+    const maxScroll = Math.max(0, this.totalHeight - this.height + 80)
     this.scrollY    = Math.max(0, Math.min(maxScroll, y))
   }
 
   scrollXTo(x: number): void {
-    const maxScroll = Math.max(0, (this.dayEndMinute - this.dayStartMinute) * this.pixelsPerMinute - this.width)
+    const maxScroll = Math.max(0, (this.dayEndMinute - this.dayStartMinute) * this.pixelsPerMinute - this.width + 120)
     this.scrollX    = Math.max(0, Math.min(maxScroll, x))
   }
 

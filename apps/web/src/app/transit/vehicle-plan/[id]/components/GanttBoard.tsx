@@ -150,7 +150,12 @@ export function GanttBoard({ data, onViewportChange }: Props) {
           />
 
           {tooltip && (
-            <SegmentTooltip segment={tooltip.segment} rect={tooltip.rect} />
+            <SegmentTooltip
+              segment={tooltip.segment}
+              rect={tooltip.rect}
+              containerW={vp.width}
+              containerH={canvasH}
+            />
           )}
         </div>
       </div>
