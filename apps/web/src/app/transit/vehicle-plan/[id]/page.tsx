@@ -16,7 +16,9 @@ import { extractError }      from '@/lib/utils'
 import { GanttBoard }      from './components/GanttBoard'
 import { LinesPanel }      from './components/LinesPanel'
 import { FrequencyPanel }  from './components/FrequencyPanel'
-import { GenerateModal }   from './components/GenerateModal'
+import { GenerateModal }       from './components/GenerateModal'
+import { SolverProposalDialog } from './components/SolverProposalDialog'
+import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }          from '@/components/ui/button'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
 import type { ViewportSnapshot }     from './engine/gantt.types'
@@ -27,41 +29,49 @@ const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 
 // ── solver progress via SSE ───────────────────────────────────────────────────
 
 interface SolverMessage {
-  type:          string
-  stage?:        number
-  stageLabel?:   string
-  attempt?:      number
-  bestScore?:    number
-  bestFleet?:    number
-  elapsed?:      number
-  stopReason?:   string
+  type:           string
+  stage?:         number
+  stageLabel?:    string
+  attempt?:       number
+  bestScore?:     number
+  bestFleet?:     number
+  elapsed?:       number
+  stopReason?:    string
   totalAttempts?: number
   proposalIndex?: number
-  scenario?:     { fleetCount: number; score: number; deadrunKm: number }
+  scenario?:      SolverScenario
 }
 
 interface SolverDisplayState {
-  proposalCount: number
-  fleetCount:    number | null
-  score:         number | null
-  attempt:       number | null
-  stageLabel:    string | null
+  proposalCount:     number
+  fleetCount:        number | null
+  score:             number | null
+  totalIterations:   number
+  currentLevel:      number
+  currentLevelLabel: string
+  bestScenario:      SolverScenario | null
+}
+
+const SOLVER_DISPLAY_RESET: SolverDisplayState = {
+  proposalCount: 0, fleetCount: null, score: null, totalIterations: 0,
+  currentLevel: 1, currentLevelLabel: 'FLEET', bestScenario: null,
 }
 
 function useSolverStream(planId: string, jobId: string | null, onDone: () => void) {
   const eventSourceRef = useRef<EventSource | null>(null)
-  const [state, setState] = useState<SolverDisplayState>({
-    proposalCount: 0, fleetCount: null, score: null, attempt: null, stageLabel: null,
-  })
+  const hadProgressRef = useRef(false)
+  const [state, setState] = useState<SolverDisplayState>(SOLVER_DISPLAY_RESET)
 
   useEffect(() => {
     if (!jobId) {
       eventSourceRef.current?.close()
       eventSourceRef.current = null
-      setState({ proposalCount: 0, fleetCount: null, score: null, attempt: null, stageLabel: null })
+      hadProgressRef.current = false
+      setState(SOLVER_DISPLAY_RESET)
       return
     }
 
+    hadProgressRef.current = false
     const token = getToken()
     const url   = `/api/transit/vehicle-plan/${planId}/stream?jobId=${jobId}&token=${encodeURIComponent(token)}`
     const es    = new EventSource(url)
@@ -71,21 +81,35 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
         const msg = JSON.parse(ev.data) as SolverMessage
 
         if (msg.type === 'progress') {
+          hadProgressRef.current = true
           setState(s => ({
             ...s,
-            attempt:    msg.attempt ?? s.attempt,
-            fleetCount: msg.bestFleet ?? s.fleetCount,
-            score:      msg.bestScore ?? s.score,
+            totalIterations: msg.attempt ?? s.totalIterations,
+            fleetCount:      msg.bestFleet ?? s.fleetCount,
+            score:           msg.bestScore ?? s.score,
           }))
         }
 
-        if (msg.type === 'proposal' || msg.type === 'improvement') {
+        if (msg.type === 'proposal') {
+          const isStochastic = hadProgressRef.current
+          setState(s => ({
+            ...s,
+            proposalCount:   msg.proposalIndex ?? s.proposalCount,
+            fleetCount:      msg.scenario?.fleetCount ?? s.fleetCount,
+            score:           msg.scenario?.score      ?? s.score,
+            bestScenario:    msg.scenario ? { ...msg.scenario } : s.bestScenario,
+            // deterministic: no progress msgs — count proposals as iterations
+            totalIterations: isStochastic ? s.totalIterations : (msg.proposalIndex ?? s.proposalCount + 1),
+          }))
+        }
+
+        if (msg.type === 'improvement') {
           setState(s => ({
             ...s,
             proposalCount: msg.proposalIndex ?? s.proposalCount,
             fleetCount:    msg.scenario?.fleetCount ?? s.fleetCount,
             score:         msg.scenario?.score      ?? s.score,
-            stageLabel:    msg.stageLabel            ?? s.stageLabel,
+            bestScenario:  msg.scenario ? { ...msg.scenario } : s.bestScenario,
           }))
         }
 
@@ -287,6 +311,8 @@ export default function VehiclePlanPage() {
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
+  const [detailsOpen,       setDetailsOpen]       = useState(false)
+  const [baselineSnapshot,  setBaselineSnapshot]  = useState<SolverBaseline | null>(null)
 
   // Lines selection for display — all unchecked initially, nothing plotted
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
@@ -339,6 +365,16 @@ export default function VehiclePlanPage() {
   async function handleGenerate(params: SolverParams) {
     setGenerateModalOpen(false)
     if (!canUpdate) return
+
+    if (ganttData) {
+      setBaselineSnapshot({
+        fleetCount: ganttData.blocks.length,
+        deadrunKm:  ganttData.blocks
+          .flatMap(b => b.blockTrips.filter(bt => bt.isDeadhead))
+          .reduce((sum, bt) => sum + (bt.deadheadKm ?? 0), 0),
+      })
+    }
+
     if (activeJobId) {
       try {
         await apiFetch(`/transit/vehicle-plan/${id}/stop`, {
@@ -471,6 +507,9 @@ export default function VehiclePlanPage() {
   const status           = record?.status as string | undefined
   const planLines        = ganttData?.plan?.lines ?? []
   const hasCustomMetrics = !!( (record as Record<string, unknown> | undefined)?.metrics )
+  const fleetDelta       = baselineSnapshot != null && solverProgress.fleetCount != null
+    ? solverProgress.fleetCount - baselineSnapshot.fleetCount
+    : null
 
   useTopbarActions([
     // lines panel toggle
@@ -574,6 +613,15 @@ export default function VehiclePlanPage() {
         />
       )}
 
+      {detailsOpen && (
+        <SolverProposalDialog
+          baseline={baselineSnapshot}
+          proposal={solverProgress.bestScenario}
+          proposalCount={solverProgress.proposalCount}
+          onClose={() => setDetailsOpen(false)}
+        />
+      )}
+
       <div className="px-6 pt-4 pb-2 shrink-0 space-y-1">
         <AutoBreadcrumb domain="transit" resource="vehicle-plan" id={id} recordName={recordName} />
 
@@ -616,15 +664,40 @@ export default function VehiclePlanPage() {
               </span>
             )}
             {activeJobId && (
-              <span className={isSolverDone ? 'text-muted-foreground' : 'text-blue-600 animate-pulse'}>
-                {solverProgress.stageLabel
-                  ? solverProgress.stageLabel
-                  : solverProgress.attempt != null
-                    ? `Tentativa ${solverProgress.attempt.toLocaleString('pt-BR')}`
-                    : 'Calculando…'}
-                {solverProgress.fleetCount != null && ` — ${solverProgress.fleetCount} blocos`}
-                {solverProgress.score      != null && `, score ${solverProgress.score.toFixed(1)}`}
-                {solverProgress.proposalCount > 0  && ` [+${solverProgress.proposalCount}]`}
+              <span className="flex items-center gap-1.5 font-mono text-xs tabular-nums">
+                <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                  isSolverDone
+                    ? 'bg-muted text-muted-foreground'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                }`}>
+                  LVL {solverProgress.currentLevel} {solverProgress.currentLevelLabel}
+                </span>
+                <span className="text-muted-foreground">—</span>
+                <span className={!isSolverDone ? 'text-blue-600 animate-pulse' : 'text-muted-foreground'}>
+                  {solverProgress.totalIterations.toLocaleString('pt-BR')}
+                </span>
+                <span className="bg-muted rounded px-1 py-0.5 text-muted-foreground">
+                  [{solverProgress.proposalCount}]
+                </span>
+                {fleetDelta != null && (
+                  <span className={`rounded px-1 py-0.5 ${
+                    fleetDelta < 0
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                      : fleetDelta > 0
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                        : 'bg-muted text-muted-foreground'
+                  }`}>
+                    [{fleetDelta > 0 ? '+' : ''}{fleetDelta}]
+                  </span>
+                )}
+                {solverProgress.bestScenario && (
+                  <button
+                    onClick={() => setDetailsOpen(true)}
+                    className="rounded px-1 py-0.5 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                  >
+                    [Detalhes]
+                  </button>
+                )}
               </span>
             )}
           </div>
