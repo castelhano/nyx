@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { Injectable, BadRequestException, Logger } from '@nestjs/common'
+import { Injectable, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { JobService } from '../../../core/job/job.service'
 import { VehiclePlanService } from './vehicle-plan.service'
@@ -12,15 +12,8 @@ interface ImportOutput {
   errors:  Array<{ line: number; record: string; message: string }>
 }
 
-function minutesToHHMM(minutes: number): string {
-  const m = ((minutes % 1440) + 1440) % 1440
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-}
-
 @Injectable()
 export class VehiclePlanImportService {
-  private readonly logger = new Logger(VehiclePlanImportService.name)
-
   constructor(
     private readonly prisma:          PrismaService,
     private readonly jobService:      JobService,
@@ -284,8 +277,6 @@ export class VehiclePlanImportService {
       if (perBlockTrips.length === 0) continue
 
       if (normalize) {
-        const tag = `[NORMALIZE] block=${blockKey}`
-
         // 1. Interval: shorten productive trips where gap to next trip < idealIntervalMin
         for (let i = 0; i < perBlockTrips.length - 1; i++) {
           const curr = perBlockTrips[i]
@@ -306,11 +297,6 @@ export class VehiclePlanImportService {
             const edge = matrixMap[`${depotId}:${firstRoute.originLocalityId}`]
             if (edge && edge.minutes > 0) {
               const first = perBlockTrips[0]
-              this.logger.log(
-                `${tag} | access deadrun | depot(${depotId}) → ${firstRoute.originLocalityId} | ` +
-                `${minutesToHHMM(first.departureMinutes - edge.minutes)}-${minutesToHHMM(first.departureMinutes)} | ` +
-                `${edge.minutes}min ${edge.km}km`,
-              )
               perBlockTrips.unshift({
                 tripId:           randomUUID(),
                 routeId:          first.routeId,
@@ -332,11 +318,6 @@ export class VehiclePlanImportService {
             const edge = matrixMap[`${lastRoute.destinationLocalityId}:${depotId}`]
             if (edge && edge.minutes > 0) {
               const last = perBlockTrips[perBlockTrips.length - 1]
-              this.logger.log(
-                `${tag} | return deadrun | ${lastRoute.destinationLocalityId} → depot(${depotId}) | ` +
-                `${minutesToHHMM(last.arrivalMinutes)}-${minutesToHHMM(last.arrivalMinutes + edge.minutes)} | ` +
-                `${edge.minutes}min ${edge.km}km`,
-              )
               perBlockTrips.push({
                 tripId:           randomUUID(),
                 routeId:          last.routeId,

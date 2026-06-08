@@ -11,6 +11,8 @@ The import ingests a semicolon-delimited scheduling file produced by external pl
 
 Entry point: `VehiclePlanImportService.import()` → spawns a job → calls `execute()`.
 
+An optional **`normalize`** flag (exposed as a boolean switch in the import modal) activates a post-collection normalization pass that adjusts trip intervals and injects missing depot deadruns. See [Normalization Pass](#normalization-pass).
+
 ---
 
 ## File Format
@@ -137,6 +139,42 @@ After sorting:
 If `startMinutes < firstTripDep`, a synthetic deadhead `BlockTrip` is created spanning `[startMinutes, firstTripDep]`. Its route is taken from the first trip with a resolvable route in the block.
 
 **`setupMinutes`** is a per-import parameter representing vehicle preparation time at the depot (fueling, pre-trip inspection). It pushes the block start earlier.
+
+---
+
+## Normalization Pass
+
+When the **Normalize trips** switch is enabled in the import modal, `execute()` loads the travel-time matrix and reads `tripInterval.idealMin` from the planning config before the block loop. After each block's trips are collected into the in-memory `perBlockTrips` array, three normalization steps run in order:
+
+### 1 — Trip interval
+
+For each consecutive pair `(curr, next)` where `curr` is a revenue trip:
+
+```
+gap = next.departureMinutes - curr.arrivalMinutes
+if gap < idealMin:
+  newArr = next.departureMinutes - idealMin
+  if newArr > curr.departureMinutes:   // guard: keep positive duration
+    curr.arrivalMinutes = newArr
+```
+
+This is the typical case where the scheduling file produces back-to-back trips `[07:00–08:00][08:00–09:00]`; the first trip's arrival is pulled back to `07:55` so the vehicle has `idealMin` minutes of layover at the terminal.
+
+### 2 — Access deadrun
+
+**Condition**: the first entry in `perBlockTrips` is not a deadhead (i.e. the file contained no depot-departure time and the first assignment is a revenue trip).
+
+**Action**: look up `matrix[depotId : firstRoute.originLocalityId]`. If the entry exists and `minutes > 0`, prepend a synthetic deadhead trip spanning `[firstDep − edge.minutes, firstDep]` using the first revenue trip's route and the matrix km value.
+
+If the matrix has no entry for that pair the step is skipped silently.
+
+### 3 — Return deadrun
+
+**Condition**: the last entry in `perBlockTrips` is not a deadhead.
+
+**Action**: look up `matrix[lastRoute.destinationLocalityId : depotId]`. If the entry exists and `minutes > 0`, append a synthetic deadhead trip spanning `[lastArr, lastArr + edge.minutes]` using the last revenue trip's route and the matrix km value.
+
+Both synthetic deadheads are included in the block summary (deadrunMinutes, deadrunKm) and persisted as regular `TransitTrip` + `BlockTrip` records with `isDeadhead = true`.
 
 ---
 
