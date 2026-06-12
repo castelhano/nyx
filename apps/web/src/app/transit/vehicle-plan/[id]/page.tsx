@@ -457,6 +457,7 @@ export default function VehiclePlanPage() {
       }
       setActiveJobId(null)
       setIsSolverDone(false)
+      setDetailsOpen(false)
       toast.success('Melhor solução assumida')
       await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
       await refetchGantt()
@@ -465,6 +466,19 @@ export default function VehiclePlanPage() {
     } finally {
       setIsPending(false)
     }
+  }
+
+  async function handleDiscard() {
+    if (!activeJobId) return
+    try {
+      await apiFetch(`/transit/vehicle-plan/${id}/stop`, {
+        method: 'POST',
+        body:   JSON.stringify({ jobId: activeJobId }),
+      })
+    } catch { /* ignore */ }
+    setActiveJobId(null)
+    setIsSolverDone(false)
+    setDetailsOpen(false)
   }
 
   async function handleDelete() {
@@ -545,13 +559,6 @@ export default function VehiclePlanPage() {
       onClick:  handleStop,
       disabled: isPending,
     }] : []),
-    // assumir
-    ...(activeJobId ? [{
-      label:    'Assumir Melhor',
-      icon:     Icons.Download,
-      onClick:  handleAssumeBest,
-      disabled: isPending,
-    }] : []),
     // generate: show when idle or after solver stopped (done state)
     ...((!activeJobId || isSolverDone) && canUpdate && status === 'DRAFT' ? [
       {
@@ -630,7 +637,10 @@ export default function VehiclePlanPage() {
           baseline={baselineSnapshot}
           proposal={solverProgress.bestScenario}
           proposalCount={solverProgress.proposalCount}
+          isPending={isPending}
           onClose={() => setDetailsOpen(false)}
+          onAssume={handleAssumeBest}
+          onDiscard={handleDiscard}
         />
       )}
 
@@ -702,14 +712,12 @@ export default function VehiclePlanPage() {
                     [{fleetDelta > 0 ? '+' : ''}{fleetDelta}]
                   </span>
                 )}
-                {solverProgress.bestScenario && (
-                  <button
-                    onClick={() => setDetailsOpen(true)}
-                    className="rounded px-1 py-0.5 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-                  >
-                    [Detalhes]
-                  </button>
-                )}
+                <button
+                  onClick={() => setDetailsOpen(true)}
+                  className="rounded px-1 py-0.5 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                >
+                  [Detalhes]
+                </button>
               </span>
             )}
           </div>
