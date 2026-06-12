@@ -366,12 +366,24 @@ export default function VehiclePlanPage() {
     setGenerateModalOpen(false)
     if (!canUpdate) return
 
-    if (ganttData) {
+    const savedSummary = (record as any)?.summary as Record<string, number> | null | undefined
+    if (savedSummary?.fleetCount != null) {
       setBaselineSnapshot({
-        fleetCount: ganttData.blocks.length,
-        deadrunKm:  ganttData.blocks
+        fleetCount:   savedSummary.fleetCount,
+        score:        savedSummary.score        ?? 0,
+        deadrunKm:    savedSummary.deadrunKm    ?? 0,
+        productiveKm: savedSummary.productiveKm ?? 0,
+        totalKm:      savedSummary.totalKm      ?? 0,
+      })
+    } else if (ganttData) {
+      setBaselineSnapshot({
+        fleetCount:   ganttData.blocks.length,
+        score:        0,
+        deadrunKm:    ganttData.blocks
           .flatMap(b => b.blockTrips.filter(bt => bt.isDeadhead))
           .reduce((sum, bt) => sum + (bt.deadheadKm ?? 0), 0),
+        productiveKm: 0,
+        totalKm:      0,
       })
     }
 

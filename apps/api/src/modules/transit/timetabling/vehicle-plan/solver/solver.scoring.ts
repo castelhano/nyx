@@ -24,6 +24,32 @@ interface ActiveBlock {
   specialTripCount:       number  // trips where requiredVehicleType != null && != block vehicleType
 }
 
+export function findMatrixMisses(
+  blocks: ScoringBlock[],
+  matrix: Record<string, SolverMatrixEntry>,
+): { origin: string; destination: string }[] {
+  const seen:   Set<string>                               = new Set()
+  const misses: { origin: string; destination: string }[] = []
+
+  const check = (origin: string, destination: string) => {
+    if (origin === destination) return
+    const key = `${origin}:${destination}`
+    if (seen.has(key)) return
+    seen.add(key)
+    if (!matrix[key]) misses.push({ origin, destination })
+  }
+
+  for (const block of blocks) {
+    if (block.trips.length === 0) continue
+    check(block.depotId, block.trips[0].originLocalityId)
+    for (let i = 1; i < block.trips.length; i++) {
+      check(block.trips[i - 1].destinationLocalityId, block.trips[i].originLocalityId)
+    }
+  }
+
+  return misses
+}
+
 export function getEdge(
   matrix: Record<string, SolverMatrixEntry>,
   from: string,

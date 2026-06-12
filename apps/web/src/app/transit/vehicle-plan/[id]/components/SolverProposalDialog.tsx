@@ -11,15 +11,18 @@ export interface SolverScenario {
 }
 
 export interface SolverBaseline {
-  fleetCount: number
-  deadrunKm:  number
+  fleetCount:   number
+  score:        number
+  deadrunKm:    number
+  productiveKm: number
+  totalKm:      number
 }
 
 interface Props {
-  baseline:     SolverBaseline | null
-  proposal:     SolverScenario | null
+  baseline:      SolverBaseline | null
+  proposal:      SolverScenario | null
   proposalCount: number
-  onClose:      () => void
+  onClose:       () => void
 }
 
 function fmtInt(val: number): string {
@@ -33,8 +36,11 @@ function fmtKm(val: number): string {
 export function SolverProposalDialog({ baseline, proposal, proposalCount, onClose }: Props) {
   if (!proposal) return null
 
-  const fleetDelta    = baseline != null ? proposal.fleetCount - baseline.fleetCount : null
-  const deadrunDelta  = baseline != null ? proposal.deadrunKm  - baseline.deadrunKm  : null
+  const fleetDelta      = baseline != null ? proposal.fleetCount   - baseline.fleetCount   : null
+  const deadrunDelta    = baseline != null ? proposal.deadrunKm    - baseline.deadrunKm    : null
+  const productiveDelta = baseline != null ? proposal.productiveKm - baseline.productiveKm : null
+  const totalDelta      = baseline != null ? proposal.totalKm      - baseline.totalKm      : null
+  const scoreDelta      = baseline != null ? proposal.score        - baseline.score        : null
 
   function deltaClass(delta: number | null, lowerBetter: boolean): string {
     if (delta == null || delta === 0) return 'text-muted-foreground'
@@ -47,6 +53,11 @@ export function SolverProposalDialog({ baseline, proposal, proposalCount, onClos
     const abs = useInt ? fmtInt(Math.abs(delta)) : fmtKm(Math.abs(delta))
     return `${delta > 0 ? '+' : delta < 0 ? '−' : ''}${abs}`
   }
+
+  const baselineCell = (val: number | null | undefined, fmt: (n: number) => string = fmtKm) =>
+    baseline != null && val != null
+      ? <span className="font-mono tabular-nums">{fmt(val)}</span>
+      : <span className="opacity-40">—</span>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -71,9 +82,7 @@ export function SolverProposalDialog({ baseline, proposal, proposalCount, onClos
           <tbody className="divide-y divide-border/50">
             <tr>
               <td className="py-2.5 text-muted-foreground">Frota</td>
-              <td className="py-2.5 text-right font-mono tabular-nums">
-                {baseline != null ? fmtInt(baseline.fleetCount) : <span className="opacity-40">—</span>}
-              </td>
+              <td className="py-2.5 text-right">{baselineCell(baseline?.fleetCount, fmtInt)}</td>
               <td className="py-2.5 text-right font-mono tabular-nums">{fmtInt(proposal.fleetCount)}</td>
               <td className={`py-2.5 text-right font-mono tabular-nums ${deltaClass(fleetDelta, true)}`}>
                 {fmtDelta(fleetDelta, true)}
@@ -81,9 +90,7 @@ export function SolverProposalDialog({ baseline, proposal, proposalCount, onClos
             </tr>
             <tr>
               <td className="py-2.5 text-muted-foreground">Km vazio</td>
-              <td className="py-2.5 text-right font-mono tabular-nums">
-                {baseline != null ? fmtKm(baseline.deadrunKm) : <span className="opacity-40">—</span>}
-              </td>
+              <td className="py-2.5 text-right">{baselineCell(baseline?.deadrunKm)}</td>
               <td className="py-2.5 text-right font-mono tabular-nums">{fmtKm(proposal.deadrunKm)}</td>
               <td className={`py-2.5 text-right font-mono tabular-nums ${deltaClass(deadrunDelta, true)}`}>
                 {fmtDelta(deadrunDelta)}
@@ -91,21 +98,27 @@ export function SolverProposalDialog({ baseline, proposal, proposalCount, onClos
             </tr>
             <tr>
               <td className="py-2.5 text-muted-foreground">Km produtivo</td>
-              <td className="py-2.5 text-right font-mono tabular-nums opacity-40">—</td>
+              <td className="py-2.5 text-right">{baselineCell(baseline?.productiveKm)}</td>
               <td className="py-2.5 text-right font-mono tabular-nums">{fmtKm(proposal.productiveKm)}</td>
-              <td className="py-2.5 text-right font-mono tabular-nums opacity-40">—</td>
+              <td className={`py-2.5 text-right font-mono tabular-nums ${deltaClass(productiveDelta, false)}`}>
+                {fmtDelta(productiveDelta)}
+              </td>
             </tr>
             <tr>
               <td className="py-2.5 text-muted-foreground">Km total</td>
-              <td className="py-2.5 text-right font-mono tabular-nums opacity-40">—</td>
+              <td className="py-2.5 text-right">{baselineCell(baseline?.totalKm)}</td>
               <td className="py-2.5 text-right font-mono tabular-nums">{fmtKm(proposal.totalKm)}</td>
-              <td className="py-2.5 text-right font-mono tabular-nums opacity-40">—</td>
+              <td className={`py-2.5 text-right font-mono tabular-nums ${deltaClass(totalDelta, true)}`}>
+                {fmtDelta(totalDelta)}
+              </td>
             </tr>
             <tr>
               <td className="py-2.5 text-muted-foreground">Score</td>
-              <td className="py-2.5 text-right font-mono tabular-nums opacity-40">—</td>
+              <td className="py-2.5 text-right">{baselineCell(baseline?.score)}</td>
               <td className="py-2.5 text-right font-mono tabular-nums">{fmtKm(proposal.score)}</td>
-              <td className="py-2.5 text-right font-mono tabular-nums opacity-40">—</td>
+              <td className={`py-2.5 text-right font-mono tabular-nums ${deltaClass(scoreDelta, false)}`}>
+                {fmtDelta(scoreDelta)}
+              </td>
             </tr>
           </tbody>
         </table>

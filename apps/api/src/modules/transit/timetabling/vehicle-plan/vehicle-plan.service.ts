@@ -8,7 +8,7 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
-import { scoreBlocks, type ScoringBlock } from './solver/solver.scoring'
+import { scoreBlocks, findMatrixMisses, type ScoringBlock } from './solver/solver.scoring'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 
@@ -378,7 +378,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }),
     }))
 
-    const result = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
+    const result      = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
+    const matrixMisses = findMatrixMisses(scoringBlocks, matrixMap)
 
     const r2 = (n: number) => Math.round(n * 100) / 100
     const summary: VehiclePlanSummary = {
@@ -390,6 +391,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       deadrunMinutes:    result.deadrunMinutes,
       productiveMinutes: result.productiveMinutes,
       totalMinutes:      result.totalMinutes,
+      ...(matrixMisses.length > 0 && { errors: { missingMatrix: matrixMisses } }),
     }
 
     await this.prisma.vehiclePlan.update({

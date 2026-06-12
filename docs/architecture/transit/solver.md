@@ -303,7 +303,7 @@ Two separate worker files, selected by the host service based on the chosen mode
 ```
 solver/
   solver.types.ts                    — shared interfaces (SolverConfig, SolverTrip, etc.)
-  solver.scoring.ts                  — shared scoring, callable from main thread and workers
+  solver.scoring.ts                  — shared scoring (`scoreBlocks`, `findMatrixMisses`), callable from main thread and workers
   solver.deterministic.worker.ts     — Quick mode implementation
   solver.stochastic.worker.ts        — Expanded mode implementation (current: solver.worker.ts)
 ```
@@ -345,6 +345,8 @@ scorePlan(planId):
   load blocks + trips (with route.direction + line.metrics) + matrix from DB
   compute tripKm per trip (same resolution rule as generate)
   call scoreBlocks() → write summary + generatedAt to vehiclePlan
+  call findMatrixMisses() → if any depot→trip or trip→trip pairs are absent from the matrix,
+    store them as summary.errors.missingMatrix [{ origin, destination }]
   called automatically by VehiclePlanImportService after each import
 ```
 

@@ -16,6 +16,9 @@ export const vehiclePlanSummarySchema = z.object({
   deadrunMinutes:    z.number(),
   productiveMinutes: z.number(),
   totalMinutes:      z.number(),
+  errors: z.object({
+    missingMatrix: z.array(z.object({ origin: z.string(), destination: z.string() })),
+  }).optional(),
 })
 export type VehiclePlanSummary = z.infer<typeof vehiclePlanSummarySchema>
 
