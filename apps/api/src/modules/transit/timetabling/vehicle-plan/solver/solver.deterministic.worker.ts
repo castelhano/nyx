@@ -76,8 +76,10 @@ function scoreAll(blocks: Block[]): SolverResult {
 
 // ─── proposal tracking ────────────────────────────────────────────────────────
 
+// Plan baseline — only emit proposals that strictly beat the stored plan
 let proposalIndex = 0
-let bestScore: number | null = null
+let bestFleet     = cfg.currentPlanFleetCount ?? Infinity
+let bestScore     = cfg.currentPlanScore ?? -Infinity
 
 function post(msg: SolverMessage): void {
   parentPort!.postMessage(msg)
@@ -85,7 +87,18 @@ function post(msg: SolverMessage): void {
 
 function tryEmitProposal(blocks: Block[], stage: number, stageLabel: string): void {
   const result = scoreAll(blocks)
-  if (bestScore === null || result.score > bestScore) {
+
+  const beats =
+    result.fleetCount < bestFleet ||
+    (result.fleetCount === bestFleet && result.score > bestScore)
+
+  console.log(
+    `[solver-deterministic] stage ${stage}: fleet=${result.fleetCount} score=${result.score.toFixed(1)}` +
+    ` | baseline: fleet=${bestFleet} score=${bestScore} → ${beats ? 'EMIT' : 'skip'}`,
+  )
+
+  if (beats) {
+    bestFleet = result.fleetCount
     bestScore = result.score
     proposalIndex++
     post({ type: 'proposal', stage, stageLabel, scenario: result, proposalIndex })
