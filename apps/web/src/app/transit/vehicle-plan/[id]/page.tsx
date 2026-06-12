@@ -519,8 +519,8 @@ export default function VehiclePlanPage() {
   const status           = record?.status as string | undefined
   const planLines        = ganttData?.plan?.lines ?? []
   const hasCustomMetrics = !!( (record as Record<string, unknown> | undefined)?.metrics )
-  const fleetDelta       = baselineSnapshot != null && solverProgress.fleetCount != null
-    ? solverProgress.fleetCount - baselineSnapshot.fleetCount
+  const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
+    ? solverProgress.bestScenario.fleetCount - baselineSnapshot.fleetCount
     : null
 
   useTopbarActions([

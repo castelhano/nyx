@@ -102,9 +102,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     // apply direction weight adjustments
     const adjustedCfg  = this.applyDirectionWeights(resolvedCfg as SolverPlanningConfig, params.direction)
 
+    const planSummary = plan.summary as VehiclePlanSummary | null
+
     const solverConfig: SolverConfig = {
       planId,
       initialBlocks,
+      currentPlanScore:      planSummary?.score,
+      currentPlanFleetCount: planSummary?.fleetCount,
       config: {
         operationalDayStartHour:  generalCfg.operationalDayStartHour,
         demandModifier:           generalCfg.demandModifier,

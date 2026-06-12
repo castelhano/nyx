@@ -60,12 +60,14 @@ export interface SolverInitialBlock {
 }
 
 export interface SolverConfig {
-  planId:        string
-  config:        SolverPlanningConfig
-  trips:         SolverTrip[]
-  matrix:        Record<string, SolverMatrixEntry>
-  depots:        string[]
-  initialBlocks: SolverInitialBlock[]
+  planId:               string
+  config:               SolverPlanningConfig
+  trips:                SolverTrip[]
+  matrix:               Record<string, SolverMatrixEntry>
+  depots:               string[]
+  initialBlocks:        SolverInitialBlock[]
+  currentPlanScore?:      number
+  currentPlanFleetCount?: number
 }
 
 // Parameters passed by the frontend when requesting a solve run
