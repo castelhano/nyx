@@ -331,6 +331,7 @@ CREATE TABLE "transit_line_calendar_exception_lines" (
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "routeId" TEXT NOT NULL,
+    "dayTypeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
     "requiredVehicleType" TEXT,
@@ -338,17 +339,8 @@ CREATE TABLE "transit_trips" (
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "transit_trip_day_types" (
-    "tripId" TEXT NOT NULL,
-    "dayTypeId" TEXT NOT NULL,
-
-    PRIMARY KEY ("tripId", "dayTypeId"),
-    CONSTRAINT "transit_trip_day_types_tripId_fkey" FOREIGN KEY ("tripId") REFERENCES "transit_trips" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "transit_trip_day_types_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable

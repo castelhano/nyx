@@ -202,9 +202,8 @@ Before inserting, `clearLinesFromPlan(planId, lineIds, dayTypeId)` removes the i
 3. For each affected `VehicleBlock`:
    - Empty (no remaining trips) → **delete**
    - Has trips from other lines → mark `isStale = true`
-4. Delete `TripDayType` entries for those trips + this dayType
-5. Delete `TransitTrip` records that are now fully orphaned (`dayTypes: none`)
-6. Upsert `VehiclePlanLine` for each imported line into this plan
+4. Delete `TransitTrip` records that have no remaining `BlockTrip` references
+5. Upsert `VehiclePlanLine` for each imported line into this plan
 
 Step 3 is an N+1 pattern (one `count` + one `delete`/`update` per block). It scales with the number of affected blocks and is the dominant cost on a re-import.
 
@@ -212,11 +211,10 @@ Step 3 is an N+1 pattern (one `count` + one `delete`/`update` per block). It sca
 
 ## Bulk Insert
 
-All inserts are collected in memory during the block loop — no DB calls inside the loop — then committed in four `createMany` calls:
+All inserts are collected in memory during the block loop — no DB calls inside the loop — then committed in three `createMany` calls:
 
 ```
 transitTrip.createMany
-tripDayType.createMany
 vehicleBlock.createMany
 blockTrip.createMany
 ```

@@ -12,9 +12,9 @@ export const tripSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
 
-    dayTypeIds: z.array(z.uuid()).min(1).meta({
-      label:          'Tipos de Dia',
-      widget:         'multi-select',
+    dayTypeId: z.uuid().meta({
+      label:          'Tipo de Dia',
+      widget:         'select',
       resource:       'day-type',
       domain:         'transit',
       labelField:     'name',

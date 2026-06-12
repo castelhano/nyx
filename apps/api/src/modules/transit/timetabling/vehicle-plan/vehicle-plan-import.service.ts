@@ -159,8 +159,7 @@ export class VehiclePlanImportService {
     }
 
     // Collect all records in memory — no DB calls inside the loop
-    const tripRows:      Array<{ id: string; routeId: string; departureMinutes: number; arrivalMinutes: number }> = []
-    const tripDayTypes:  Array<{ tripId: string; dayTypeId: string }> = []
+    const tripRows:      Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number; isDeadhead: boolean }> = []
 
@@ -370,8 +369,7 @@ export class VehiclePlanImportService {
 
       let seqInBlock = 1
       for (const t of perBlockTrips) {
-        tripRows.push({ id: t.tripId, routeId: t.routeId, departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes })
-        tripDayTypes.push({ tripId: t.tripId, dayTypeId })
+        tripRows.push({ id: t.tripId, routeId: t.routeId, dayTypeId, departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes })
         blockTripRows.push({ vehicleBlockId: blockId, tripId: t.tripId, sequence: seqInBlock++, isDeadhead: t.isDeadhead })
       }
     }
@@ -380,7 +378,6 @@ export class VehiclePlanImportService {
     await (this.prisma as any).transitTrip.createMany({
       data: tripRows,
     })
-    await (this.prisma as any).tripDayType.createMany({ data: tripDayTypes })
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
 
@@ -403,7 +400,7 @@ export class VehiclePlanImportService {
         vehicleBlock: { vehiclePlanId: planId },
         trip: {
           route:    { lineId: { in: lineIds } },
-          dayTypes: { some: { dayTypeId } },
+          dayTypeId,
         },
       },
       select: { id: true, vehicleBlockId: true, tripId: true },
@@ -428,14 +425,9 @@ export class VehiclePlanImportService {
       }
     }
 
-    // Remove TripDayType entries for this dayType
-    await (this.prisma as any).tripDayType.deleteMany({
-      where: { tripId: { in: tripIds }, dayTypeId },
-    })
-
-    // Delete trips that are now fully orphaned (no remaining blockTrip or dayType references)
+    // Delete trips that are now fully orphaned (no remaining BlockTrip references)
     await (this.prisma as any).transitTrip.deleteMany({
-      where: { id: { in: tripIds }, dayTypes: { none: {} } },
+      where: { id: { in: tripIds }, blockTrips: { none: {} } },
     })
   }
 }

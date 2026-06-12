@@ -59,7 +59,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const [trips, matrix, depotLocalities, generalCfg, globalPlanningCfg, existingBlocks] = await Promise.all([
       this.prisma.transitTrip.findMany({
-        where:   { dayTypes: { some: { dayTypeId: plan.dayTypeId } }, route: { lineId: { in: lineIds } } },
+        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } } },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } } },
       }),
       this.prisma.travelTimeMatrix.findMany(),
@@ -486,7 +486,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const referenced = new Set(still.map(bt => bt.tripId))
         const toDelete   = tripIds.filter(tid => !referenced.has(tid))
         if (toDelete.length) {
-          await tx.tripDayType.deleteMany({ where: { tripId: { in: toDelete } } })
           await tx.transitTrip.deleteMany({ where: { id: { in: toDelete } } })
         }
       }
