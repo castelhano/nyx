@@ -638,6 +638,7 @@ export default function VehiclePlanPage() {
           proposal={solverProgress.bestScenario}
           proposalCount={solverProgress.proposalCount}
           isPending={isPending}
+          canDiscard={isSolverDone || solverProgress.bestScenario != null}
           onClose={() => setDetailsOpen(false)}
           onAssume={handleAssumeBest}
           onDiscard={handleDiscard}
