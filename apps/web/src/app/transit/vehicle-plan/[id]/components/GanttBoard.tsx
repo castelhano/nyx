@@ -8,14 +8,17 @@ import { RowList }            from './RowList'
 import { SegmentTooltip }     from './SegmentTooltip'
 import { BlockDetailPopover } from './BlockDetailPopover'
 import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
-import type { ViewportSnapshot }         from '../engine/gantt.types'
+import type { ViewportSnapshot, Selection, GanttActionSpec } from '../engine/gantt.types'
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
 export const LABEL_WIDTH  = 160  // px — matches RowList width
 
 interface Props {
-  data:              VehiclePlanGanttData
-  onViewportChange?: (vp: ViewportSnapshot) => void
+  data:               VehiclePlanGanttData
+  onViewportChange?:  (vp: ViewportSnapshot) => void
+  selection?:         Selection | null
+  onSelectionChange?: (sel: Selection | null) => void
+  actionSpec?:        GanttActionSpec<VehiclePlanGanttData>
 }
 
 interface TooltipState {
@@ -55,14 +58,20 @@ const INITIAL_VP: ViewportSnapshot = {
   width: 0, dayStartMinute: 0,
 }
 
-export function GanttBoard({ data, onViewportChange }: Props) {
-  const canvasRef            = useRef<HTMLCanvasElement>(null)
-  const containerRef         = useRef<HTMLDivElement>(null)
-  const engineRef            = useRef<GanttEngine | null>(null)
-  const onViewportChangeRef  = useRef(onViewportChange)
-  const dataRef              = useRef(data)
-  useEffect(() => { onViewportChangeRef.current = onViewportChange }, [onViewportChange])
-  useEffect(() => { dataRef.current = data }, [data])
+export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec }: Props) {
+  const canvasRef             = useRef<HTMLCanvasElement>(null)
+  const containerRef          = useRef<HTMLDivElement>(null)
+  const engineRef             = useRef<GanttEngine | null>(null)
+  const onViewportChangeRef   = useRef(onViewportChange)
+  const onSelectionChangeRef  = useRef(onSelectionChange)
+  const actionSpecRef         = useRef(actionSpec)
+  const selectionRef          = useRef<Selection | null>(selection ?? null)
+  const dataRef               = useRef(data)
+  useEffect(() => { onViewportChangeRef.current   = onViewportChange },  [onViewportChange])
+  useEffect(() => { onSelectionChangeRef.current  = onSelectionChange }, [onSelectionChange])
+  useEffect(() => { actionSpecRef.current         = actionSpec },         [actionSpec])
+  useEffect(() => { selectionRef.current          = selection ?? null },  [selection])
+  useEffect(() => { dataRef.current               = data },               [data])
 
   const [vp,           setVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [layoutRows,   setLayoutRows]   = useState<LayoutRow[]>([])
@@ -114,13 +123,20 @@ export function GanttBoard({ data, onViewportChange }: Props) {
     })
 
     engine.onSegmentClickCallback((seg) => {
-      const rect = engine.getSegmentRect(seg.id)
-      if (rect) {
-        setTooltip({
-          segment: seg,
-          rect,
-          headway: computeHeadway(seg, dataRef.current?.blocks ?? []),
-        })
+      const spec = actionSpecRef.current
+      if (spec) {
+        const ctx = { allSegments: engine.getLayoutSegments(), allRows: engine.getLayoutRows() }
+        const next = spec.resolveSelection(seg, selectionRef.current, ctx)
+        onSelectionChangeRef.current?.(next)
+      } else {
+        const rect = engine.getSegmentRect(seg.id)
+        if (rect) {
+          setTooltip({
+            segment: seg,
+            rect,
+            headway: computeHeadway(seg, dataRef.current?.blocks ?? []),
+          })
+        }
       }
     })
 
@@ -130,6 +146,31 @@ export function GanttBoard({ data, onViewportChange }: Props) {
       engineRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── sync selection highlight with engine ────────────────────────────────────
+
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    if (!selection) {
+      engine.setSelectedSegIds(new Set())
+      return
+    }
+    if (selection.type === 'trip') {
+      engine.setSelectedSegIds(new Set([selection.segment.id]))
+      return
+    }
+    // interval: highlight all segs in the row within the time span (incl. deadheads)
+    const { rowId, from, to } = selection
+    const spanStart = Math.min(from.startMinute, to.startMinute)
+    const spanEnd   = Math.max(from.endMinute,   to.endMinute)
+    const ids = new Set(
+      engine.getLayoutSegments()
+        .filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd)
+        .map(s => s.id)
+    )
+    engine.setSelectedSegIds(ids)
+  }, [selection])
 
   // ── load view when data changes ─────────────────────────────────────────────
 

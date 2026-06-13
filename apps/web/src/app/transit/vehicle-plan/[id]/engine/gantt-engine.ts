@@ -19,15 +19,16 @@ export class GanttEngine {
   readonly hitTester   = new HitTester()
   readonly interaction = new Interaction()
 
-  private layout:      LayoutStrategy = new SequentialLayout()
-  private canvas!:     HTMLCanvasElement
-  private ctx!:        CanvasRenderingContext2D
-  private rafPending   = false
-  private ready        = false
+  private layout:        LayoutStrategy  = new SequentialLayout()
+  private canvas!:       HTMLCanvasElement
+  private ctx!:          CanvasRenderingContext2D
+  private rafPending     = false
+  private ready          = false
 
-  private layoutRows:  LayoutRow[]     = []
-  private segments:    LayoutSegment[] = []
-  private hoveredSeg:  string | null   = null
+  private layoutRows:    LayoutRow[]     = []
+  private segments:      LayoutSegment[] = []
+  private hoveredSeg:    string | null   = null
+  private selectedSegIds: Set<string>   = new Set()
 
   private onStateChange?: (state: EngineState) => void
   private onSegmentClickCb?: (seg: LayoutSegment, pos: Point) => void
@@ -83,6 +84,19 @@ export class GanttEngine {
     this.requestDraw()
   }
 
+  setSelectedSegIds(ids: Set<string>): void {
+    this.selectedSegIds = ids
+    this.requestDraw()
+  }
+
+  getLayoutSegments(): LayoutSegment[] {
+    return this.segments
+  }
+
+  getLayoutRows(): LayoutRow[] {
+    return this.layoutRows
+  }
+
   setHovered(segId: string | null): void {
     if (this.hoveredSeg === segId) return
     this.hoveredSeg = segId
@@ -128,7 +142,7 @@ export class GanttEngine {
   // ── private ────────────────────────────────────────────────────────────────
 
   private draw(): void {
-    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg)
+    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds)
     this.hitTester.build(this.segments, this.viewport, this.layoutRows)
   }
 

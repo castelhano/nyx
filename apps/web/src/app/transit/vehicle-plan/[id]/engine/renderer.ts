@@ -5,6 +5,11 @@ const SEG_RADIUS  = 3
 const SEG_PADDING = 3   // px vertical
 const LABEL_FONT  = '11px Inter, system-ui, sans-serif'
 const DEADHEAD_PATTERN_ALPHA = 0.4
+const DIM_ALPHA              = 0.25
+const SELECTION_RING_COLOR   = 'rgba(255, 255, 255, 0.9)'
+const SELECTION_RING_WIDTH   = 2.5
+
+const EMPTY_SET = new Set<string>()
 
 export class Renderer {
   private ctx!: CanvasRenderingContext2D
@@ -14,17 +19,18 @@ export class Renderer {
   }
 
   render(
-    viewport:     Viewport,
-    rows:         LayoutRow[],
-    segments:     LayoutSegment[],
-    hoveredSegId: string | null,
+    viewport:      Viewport,
+    rows:          LayoutRow[],
+    segments:      LayoutSegment[],
+    hoveredSegId:  string | null,
+    selectedSegIds: Set<string> = EMPTY_SET,
   ): void {
     const { ctx } = this
     ctx.clearRect(0, 0, viewport.width, viewport.height)
     this.drawRowBands(viewport, rows)
     this.drawTimeGrid(viewport)
     this.drawDayBoundaries(viewport)
-    this.drawSegments(viewport, rows, segments, hoveredSegId)
+    this.drawSegments(viewport, rows, segments, hoveredSegId, selectedSegIds)
   }
 
   private drawDayBoundaries(viewport: Viewport): void {
@@ -77,29 +83,39 @@ export class Renderer {
   }
 
   private drawSegments(
-    viewport:     Viewport,
-    rows:         LayoutRow[],
-    segments:     LayoutSegment[],
-    hoveredSegId: string | null,
+    viewport:      Viewport,
+    rows:          LayoutRow[],
+    segments:      LayoutSegment[],
+    hoveredSegId:  string | null,
+    selectedSegIds: Set<string>,
   ): void {
-    const { ctx }  = this
-    const rowMap   = new Map(rows.map((r) => [r.id, r]))
-    ctx.font       = LABEL_FONT
+    const { ctx }    = this
+    const rowMap     = new Map(rows.map((r) => [r.id, r]))
+    const hasSelect  = selectedSegIds.size > 0
+    ctx.font         = LABEL_FONT
     ctx.textBaseline = 'middle'
+
+    // collect selected rects for the ring pass
+    const rings: Array<{ x: number; y: number; w: number; h: number }> = []
 
     for (const seg of segments) {
       if (!viewport.isTimeVisible(seg.startMinute, seg.endMinute)) continue
       const row = rowMap.get(seg.rowId)
       if (!row || !viewport.isRowVisible(row.y, row.height)) continue
 
-      const x  = viewport.minuteToX(seg.startMinute)
-      const w  = Math.max(2, (seg.endMinute - seg.startMinute) * viewport.pixelsPerMinute)
-      const y  = viewport.contentToCanvasY(row.y) + SEG_PADDING
-      const h  = row.height - SEG_PADDING * 2
-      const hovered = seg.id === hoveredSegId
+      const x        = viewport.minuteToX(seg.startMinute)
+      const w        = Math.max(2, (seg.endMinute - seg.startMinute) * viewport.pixelsPerMinute)
+      const y        = viewport.contentToCanvasY(row.y) + SEG_PADDING
+      const h        = row.height - SEG_PADDING * 2
+      const isSelected = selectedSegIds.has(seg.id)
+      const hovered  = seg.id === hoveredSegId
 
       if (seg.isDeadhead) {
-        ctx.globalAlpha = DEADHEAD_PATTERN_ALPHA
+        ctx.globalAlpha = hasSelect && !isSelected ? DIM_ALPHA * 0.6 : DEADHEAD_PATTERN_ALPHA
+      } else if (hasSelect && !isSelected) {
+        ctx.globalAlpha = DIM_ALPHA
+      } else {
+        ctx.globalAlpha = 1
       }
 
       ctx.fillStyle = seg.color
@@ -107,7 +123,7 @@ export class Renderer {
       ctx.roundRect(x, y, w, h, SEG_RADIUS)
       ctx.fill()
 
-      if (hovered) {
+      if (hovered && !hasSelect) {
         ctx.strokeStyle = 'rgba(255,255,255,0.8)'
         ctx.lineWidth   = 2
         ctx.stroke()
@@ -117,7 +133,23 @@ export class Renderer {
 
       if (w > 30) {
         ctx.fillStyle = seg.isDeadhead ? '#6b7280' : '#fff'
+        const labelAlpha = hasSelect && !isSelected ? DIM_ALPHA : 1
+        if (labelAlpha < 1) ctx.globalAlpha = labelAlpha
         ctx.fillText(seg.label, x + 5, y + h / 2, Math.max(0, w - 10))
+        ctx.globalAlpha = 1
+      }
+
+      if (isSelected) rings.push({ x, y, w, h })
+    }
+
+    // ring pass: draw selection outline on top of everything
+    if (rings.length > 0) {
+      ctx.strokeStyle = SELECTION_RING_COLOR
+      ctx.lineWidth   = SELECTION_RING_WIDTH
+      for (const { x, y, w, h } of rings) {
+        ctx.beginPath()
+        ctx.roundRect(x, y, w, h, SEG_RADIUS)
+        ctx.stroke()
       }
     }
   }

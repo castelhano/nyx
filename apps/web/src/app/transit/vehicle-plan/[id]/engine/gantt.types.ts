@@ -1,3 +1,5 @@
+import type { LayoutRow, LayoutSegment } from './layout/layout.types'
+
 export interface GanttRow {
   id:    string
   label: string
@@ -35,4 +37,40 @@ export interface ViewportSnapshot {
   pixelsPerMinute: number
   width:           number
   dayStartMinute:  number
+}
+
+// ── selection ──────────────────────────────────────────────────────────────────
+
+export type Selection =
+  | { type: 'trip';     segment: LayoutSegment }
+  | { type: 'interval'; rowId: string; segments: LayoutSegment[]; from: LayoutSegment; to: LayoutSegment }
+
+// ── action bar ─────────────────────────────────────────────────────────────────
+
+export interface ActionItem {
+  id:        string
+  label?:    string
+  icon?:     string
+  variant:   'icon' | 'text' | 'both'
+  disabled?: boolean
+  danger?:   boolean
+  onClick:   () => void
+}
+
+export interface SelectionContext {
+  allSegments: LayoutSegment[]
+  allRows:     LayoutRow[]
+}
+
+export interface GanttActionSpec<TData = unknown> {
+  resolveSelection(
+    clicked: LayoutSegment,
+    current: Selection | null,
+    ctx:     SelectionContext,
+  ): Selection | null
+  getActions(
+    selection: Selection,
+    data:      TData,
+    onClose:   () => void,
+  ): ActionItem[]
 }

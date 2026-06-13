@@ -13,15 +13,17 @@ import { apiFetch, getToken } from '@/lib/auth'
 import { useConfirm }         from '@/lib/confirm-context'
 import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
-import { GanttBoard }      from './components/GanttBoard'
-import { LinesPanel }      from './components/LinesPanel'
-import { FrequencyPanel }  from './components/FrequencyPanel'
-import { GenerateModal }       from './components/GenerateModal'
-import { SolverProposalDialog } from './components/SolverProposalDialog'
+import { GanttBoard }        from './components/GanttBoard'
+import { GanttActionBar }    from './components/GanttActionBar'
+import { LinesPanel }        from './components/LinesPanel'
+import { FrequencyPanel }    from './components/FrequencyPanel'
+import { GenerateModal }         from './components/GenerateModal'
+import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
-import { Button }          from '@/components/ui/button'
+import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData } from './views/vehicles.view'
-import type { ViewportSnapshot }     from './engine/gantt.types'
+import { vehiclesActionSpec }        from './views/vehicles.actions'
+import type { ViewportSnapshot, Selection } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
 
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
@@ -304,6 +306,7 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
+  const [selection,         setSelection]         = useState<Selection | null>(null)
   const [isPending,         setIsPending]         = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
@@ -728,10 +731,16 @@ export default function VehiclePlanPage() {
       {/* gantt + lines panel */}
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 relative">
             {plottedData ? (
               plottedData.blocks.length > 0 ? (
-                <GanttBoard data={plottedData} onViewportChange={setGanttVp} />
+                <GanttBoard
+                  data={plottedData}
+                  onViewportChange={setGanttVp}
+                  selection={selection}
+                  onSelectionChange={setSelection}
+                  actionSpec={vehiclesActionSpec}
+                />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   Nenhum bloco para as linhas selecionadas
@@ -743,6 +752,14 @@ export default function VehiclePlanPage() {
                   ? 'Selecione linhas no painel e clique em Plotar'
                   : 'Carregando…'}
               </div>
+            )}
+
+            {selection && plottedData && (
+              <GanttActionBar
+                selection={selection}
+                actions={vehiclesActionSpec.getActions(selection, plottedData, () => setSelection(null))}
+                onDismiss={() => setSelection(null)}
+              />
             )}
           </div>
 
