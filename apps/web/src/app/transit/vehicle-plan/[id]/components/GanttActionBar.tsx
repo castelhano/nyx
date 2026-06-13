@@ -22,7 +22,7 @@ export function GanttActionBar({ selection, actions, onDismiss }: Props) {
   const summary = selectionSummary(selection)
 
   return (
-    <div style={{ animation: 'var(--animate-action-bar-in)' }} className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2.5 bg-background border border-border rounded-xl shadow-lg">
+    <div style={{ animation: 'var(--animate-action-bar-in)' }} className="absolute bottom-6 inset-x-0 mx-auto w-fit z-20 flex items-center gap-3 px-4 py-2.5 bg-background border border-border rounded-xl shadow-lg">
       <span className="text-sm font-medium text-foreground whitespace-nowrap select-none">
         {summary}
       </span>
