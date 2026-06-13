@@ -76,10 +76,19 @@ function ActionButton({ action }: { action: ActionItem }) {
   )
 }
 
+function minutesToHHMM(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 function selectionSummary(selection: Selection): string {
   if (selection.type === 'trip') {
-    return `Viagem: ${selection.segment.label}`
+    const { label, startMinute, endMinute } = selection.segment
+    return `${label}  ${minutesToHHMM(startMinute)} – ${minutesToHHMM(endMinute)}`
   }
-  const n = selection.segments.length
-  return `${n} ${n === 1 ? 'viagem' : 'viagens'} selecionadas`
+  const n     = selection.segments.length
+  const start = Math.min(...selection.segments.map(s => s.startMinute))
+  const end   = Math.max(...selection.segments.map(s => s.endMinute))
+  return `[ ${n} ]  ${minutesToHHMM(start)} – ${minutesToHHMM(end)}`
 }

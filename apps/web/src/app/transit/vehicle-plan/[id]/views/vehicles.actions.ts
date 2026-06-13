@@ -5,19 +5,23 @@ import type { VehiclePlanGanttData }                   from './vehicles.view'
 export const vehiclesActionSpec: GanttActionSpec<VehiclePlanGanttData> = {
 
   resolveSelection(clicked, current, { allSegments }) {
-    // dead-run segments are not selectable
     if (clicked.isDeadhead) return current ?? null
 
-    // clicking the already-selected trip deselects
-    if (current?.type === 'trip' && current.segment.id === clicked.id) return null
+    if (!current) return { type: 'trip', segment: clicked }
 
-    // no prior selection, or prior selection was an interval, or different row → single trip
-    if (!current || current.type === 'interval' || current.segment.rowId !== clicked.rowId) {
-      return { type: 'trip', segment: clicked }
-    }
+    const currentRowId = current.type === 'trip' ? current.segment.rowId : current.rowId
 
-    // same row, second trip → expand to interval
-    return buildInterval(current.segment, clicked, allSegments)
+    // different row → new single trip
+    if (currentRowId !== clicked.rowId) return { type: 'trip', segment: clicked }
+
+    // same row: anchor is the 'from' for intervals, or the trip for single selection
+    const anchor = current.type === 'trip' ? current.segment : current.from
+
+    // clicking the anchor → deselect
+    if (anchor.id === clicked.id) return null
+
+    // same row, any direction → build/resize interval anchored at 'from'
+    return buildInterval(anchor, clicked, allSegments)
   },
 
   getActions(selection, _data, onClose): ActionItem[] {
