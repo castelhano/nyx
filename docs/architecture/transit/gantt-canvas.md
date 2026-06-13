@@ -31,8 +31,12 @@ components/
   GanttBoard.tsx        — top-level React component; owns the engine lifecycle
   TimeRuler.tsx         — DOM time axis (header)
   RowList.tsx           — DOM row labels (left panel)
-  SegmentTooltip.tsx    — hover tooltip (absolute-positioned DOM)
+  SegmentTooltip.tsx    — hover/click tooltip (absolute-positioned DOM)
   BlockDetailPopover.tsx — click popover for block details
+  FrequencyPanel.tsx    — side panel showing line frequencies
+  GenerateModal.tsx     — modal to trigger block generation
+  LinesPanel.tsx        — side panel listing lines in the plan
+  SolverProposalDialog.tsx — dialog to review/accept solver proposals
 
 views/
   vehicles.view.ts      — GanttView implementation for VehiclePlan
@@ -102,11 +106,10 @@ All drawing code uses CSS pixel values. The `setTransform` call scales every can
 | `pixelsPerMinute` | Zoom level: CSS pixels per minute of timeline |
 | `dayStartMinute` | Leftmost visible minute (usually 0) |
 | `dayEndMinute` | Rightmost boundary; set dynamically by `setView` from the max segment `endMinute` |
-| `clockOffsetMinutes` | Added to operational minutes for ruler display (currently 0) |
 
 **Scroll clamping:**
-- `scrollY` is clamped to `[0, totalHeight - height]`
-- `scrollX` is clamped to `[0, (dayEndMinute - dayStartMinute) * pixelsPerMinute - width]`
+- `scrollY` is clamped to `[0, totalHeight - height + 80]` — the +80 px overscroll gives visual breathing room at the bottom
+- `scrollX` is clamped to `[0, (dayEndMinute - dayStartMinute) * pixelsPerMinute - width + 120]` — the +120 px overscroll keeps the last segment from being flush against the right edge
 
 **Zoom** is centered on a screen x position (`zoom(factor, centerX)`): the minute under the cursor is preserved after scaling `pixelsPerMinute`.
 
@@ -214,8 +217,8 @@ This prevents frame queuing and ensures consistent 60 fps behavior under rapid i
 `GanttBoard` owns the engine lifecycle:
 
 1. A `useEffect` with `[]` deps creates the engine and a `ResizeObserver`
-2. `ResizeObserver` calls `engine.init(canvas)` on first measurement, `engine.resize()` on subsequent
-3. `engine.onStateChangeCallback` drives React state updates (`setVp`, `setLayoutRows`)
+2. `ResizeObserver` calls `engine.viewport.resize(width, height)` then `engine.init(canvas)` on first measurement; `engine.resize(width, height)` on subsequent
+3. `engine.onStateChangeCallback` drives React state updates (`setVp`, `setLayoutRows`, `setTooltip`)
 4. A second `useEffect` on `[data]` calls `engine.setView(vehiclesView, data)` when data changes
 5. On unmount: `ro.disconnect()` + `engine.dispose()`
 
@@ -224,11 +227,24 @@ This prevents frame queuing and ensures consistent 60 fps behavior under rapid i
 ```
 User interaction / data change
   → Viewport mutation
-  → engine.notify()        — pushes ViewportSnapshot to React
+  → engine.notify()        — pushes EngineState to React
   → engine.requestDraw()   — schedules canvas frame
   → React re-renders overlays (TimeRuler, RowList, SegmentTooltip)
      using the snapshot (pure data, no engine reference)
 ```
+
+`engine.notify()` emits an `EngineState` object:
+
+```typescript
+interface EngineState {
+  viewport:       ViewportSnapshot
+  layoutRows:     LayoutRow[]
+  hoveredSegId:   string | null
+  hoveredSegment: LayoutSegment | null
+}
+```
+
+`GanttBoard` uses `hoveredSegment` to call `engine.getSegmentRect()` and update the tooltip position in the same callback, keeping hover response synchronous with the canvas frame.
 
 React never reads from the engine during render. The snapshot is the only bridge.
 
@@ -253,7 +269,7 @@ The canvas sits inside a flex layout. Overlays are positioned to visually align 
 
 **`SegmentTooltip`** is positioned using `engine.getSegmentRect(segId)`, which converts segment minutes and row y back to canvas pixel coordinates. It appears on hover and on click.
 
-**`BlockDetailPopover`** is triggered by clicking the info icon on a `RowList` entry. Its screen position is computed from `row.y - vp.scrollY + RULER_HEIGHT`.
+**`BlockDetailPopover`** is triggered by clicking the info icon on a `RowList` entry. Its screen position is computed as `screenY = RULER_HEIGHT + row.y - vp.scrollY` and `screenX = LABEL_WIDTH + 8`, placing it just to the right of the row label panel.
 
 ---
 
@@ -284,7 +300,7 @@ The current implementation is `vehiclesView` in `views/vehicles.view.ts`, which 
 
 **No `resolveIcon` needed.** The canvas module has no icon imports; icons only appear in `BlockDetailPopover` if needed, and must be imported via `lib/icons.ts`.
 
-**`clockOffsetMinutes` is reserved** for future wiring to `transit.general.operationalDayStartHour`. Currently 0 — the ruler displays absolute clock minutes. When wired, times before the operational day start would shift forward by the offset to display correctly in extended-hour notation (e.g. 25:30 for 01:30 of the next calendar day).
+**`clockOffsetMinutes` is not yet implemented.** A future `clockOffsetMinutes` property on `Viewport` is planned for wiring to `transit.general.operationalDayStartHour`. When added, times before the operational day start would shift forward by the offset for extended-hour notation (e.g. 25:30 for 01:30 of the next calendar day). Currently the ruler displays absolute clock minutes with no offset.
 
 **`dayEndMinute` is dynamic.** `setView` scans all segment `endMinute` values and sets `dayEndMinute = max(1440, maxEnd)`. This extends the horizontal scroll boundary automatically for blocks that cross midnight, without requiring any configuration.
 
