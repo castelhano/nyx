@@ -3,6 +3,11 @@ import type { VehicleBlockSummary } from '@nyx/schemas'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
+export interface TripConstraints {
+  locked?:      string[]
+  pinnedBlock?: string
+}
+
 export interface GanttBlockTrip {
   id:              string
   sequence:        number
@@ -10,8 +15,10 @@ export interface GanttBlockTrip {
   deadheadMinutes: number | null
   deadheadKm:      number | null
   trip: {
+    id:               string
     departureMinutes: number
     arrivalMinutes:   number
+    constraints:      TripConstraints | null
     route: {
       direction:           string
       line:                { id: string; code: string; name: string }

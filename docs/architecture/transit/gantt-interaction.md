@@ -89,22 +89,33 @@ export interface SelectionContext {
 ### ActionItem
 
 ```typescript
+export interface SplitMenuItem {
+  id:       string
+  label:    string
+  checked:  boolean
+  onToggle: () => void
+}
+
 export interface ActionItem {
-  id:        string
-  label?:    string
-  icon?:     string       // key in lib/icons.ts Icons map
-  variant:   'icon' | 'text' | 'both'
-  disabled?: boolean
-  danger?:   boolean
-  onClick:   () => void
+  id:         string
+  label?:     string
+  icon?:      string       // key in lib/icons.ts Icons map
+  variant:    'icon' | 'text' | 'both'
+  disabled?:  boolean
+  danger?:    boolean
+  active?:    boolean      // renders button in amber "locked/active" state
+  splitMenu?: SplitMenuItem[]  // if present, renders as split button with dropdown
+  onClick:    () => void
 }
 ```
+
+When `splitMenu` is present, `GanttActionBar` renders a split button: the left part is the main `onClick` trigger; the right part (`▾`) opens a checkbox dropdown anchored above the button. `active: true` applies an amber highlight to both halves.
 
 ---
 
 ## Selection Logic (vehicles view)
 
-`views/vehicles.actions.ts` implements `vehiclesActionSpec` with the following rules:
+`views/vehicles.actions.ts` exports `createVehiclesActionSpec(deps: VehiclesActionDeps)` — a factory that closes over mutation callbacks and returns a `GanttActionSpec`. The spec implements the following rules:
 
 | State | Click target | Result |
 |-------|-------------|--------|
@@ -249,10 +260,23 @@ Defined in `globals.css` inside `@theme`:
 
 `backwards` fill-mode ensures the `from` state (opacity 0) is applied before the first browser paint, preventing a flash of the fully-visible element.
 
+### Split button
+
+When an `ActionItem` has `splitMenu`, the bar renders a split button:
+
+```
+[ icon/label | ▾ ]
+```
+
+- Left half — main `onClick`; styled with amber when `active: true`
+- Right half — opens/closes the checkbox dropdown above the bar
+- The dropdown is closed on outside click (`pointerdown` listener) or `Escape`
+- `Escape` priority: closes the open dropdown first; a second `Escape` dismisses the bar
+
 ### Dismiss
 
 - Clicking `×` calls `onDismiss`
-- `Escape` keydown (global listener, cleaned up on unmount) calls `onDismiss`
+- `Escape` keydown (global listener, cleaned up on unmount) — closes open dropdown first, then `onDismiss`
 - Any action button's `onClick` can call `onClose` (the same function) after executing
 
 ---
@@ -261,12 +285,66 @@ Defined in `globals.css` inside `@theme`:
 
 To add editing to a new Gantt view (e.g. drivers):
 
-1. Create `views/drivers.actions.ts` exporting `driversActionSpec: GanttActionSpec<DriverPlanGanttData>`
+1. Create `views/drivers.actions.ts` exporting `createDriversActionSpec(deps): GanttActionSpec<DriverPlanGanttData>` — a factory that closes over mutation callbacks
 2. Implement `resolveSelection` — return `null` to clear, a `Selection` to set
-3. Implement `getActions` — return `ActionItem[]` appropriate for the selection type
-4. In `page.tsx`: add `useState<Selection | null>(null)`, pass `actionSpec={driversActionSpec}` to `GanttBoard`, render `GanttActionBar` when selection is non-null
+3. Implement `getActions` — return `ActionItem[]`; use `splitMenu` for toggle/dropdown actions
+4. In `page.tsx`: define mutation functions, call `createDriversActionSpec({ ... })` inside `useMemo`, wire `GanttBoard` and `GanttActionBar`
 
 The canvas engine, renderer, and `GanttActionBar` component require no changes.
+
+### Why a factory instead of a const
+
+Action handlers need to call `apiFetch` / React Query mutations, which only exist inside the component tree. A factory bound via `useMemo` gives the spec access to those functions through closure without passing callbacks through `GanttBoard` or polluting `GanttActionSpec` with app-layer types.
+
+---
+
+## Trip Constraints
+
+`TransitTrip.constraints` is a JSON column that controls solver behavior for individual trips:
+
+```typescript
+export interface TripConstraints {
+  locked?:      string[]   // field names the solver cannot modify
+  pinnedBlock?: string     // block UUID — trip cannot leave this block in future runs
+}
+```
+
+Recognised `locked` field names: `'departureMinutes'`, `'arrivalMinutes'`, `'cycleTime'`.
+
+### Lock action in the vehicles view
+
+The first button in the trip and interval action bars is a split lock button:
+
+| State | Icon | `active` | Main click |
+|-------|------|---------|-----------|
+| No constraints | `LockOpen` | false | Set `locked: ['departureMinutes', 'arrivalMinutes', 'cycleTime']` for all selected trips |
+| Any constraint present | `Lock` | true (amber) | Clear constraints (`null`) for all selected trips |
+
+The dropdown (`▾`) shows four independent checkboxes:
+
+| Checkbox | Constraint |
+|----------|-----------|
+| Horário inicial | `locked` includes `'departureMinutes'` |
+| Horário final | `locked` includes `'arrivalMinutes'` |
+| Tempo de ciclo | `locked` includes `'cycleTime'` |
+| Fixar ao Bloco | `pinnedBlock` set to the current block UUID |
+
+For interval selections, a checkbox is checked only if **all** trips in the interval have that constraint. Toggling applies the change to every trip in the selection.
+
+### Mutation
+
+`page.tsx` calls `PATCH /transit/transit-trip/:id` for each affected trip via `Promise.all`. After all requests resolve, `refetchGantt()` updates the canvas data. The mutation function is bound into the spec factory:
+
+```typescript
+const vehiclesActionSpec = useMemo(
+  () => createVehiclesActionSpec({
+    onUpdateConstraints: (tripIds, patches) => handleUpdateConstraints(tripIds, patches),
+  }),
+  [],
+)
+```
+
+`patches` is either a single `TripConstraints | null` (applied uniformly to all trips) or a `TripConstraints[]` (one patch per trip, for per-field toggles where each trip may have different existing state).
 
 ---
 

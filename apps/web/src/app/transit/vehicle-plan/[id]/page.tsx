@@ -21,8 +21,8 @@ import { GenerateModal }         from './components/GenerateModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
-import type { VehiclePlanGanttData } from './views/vehicles.view'
-import { vehiclesActionSpec }        from './views/vehicles.actions'
+import type { VehiclePlanGanttData, TripConstraints } from './views/vehicles.view'
+import { createVehiclesActionSpec }                   from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
 
@@ -524,6 +524,29 @@ export default function VehiclePlanPage() {
       setIsPending(false)
     }
   }
+
+  async function handleUpdateConstraints(tripIds: string[], patches: TripConstraints | null | TripConstraints[]) {
+    try {
+      await Promise.all(
+        tripIds.map((tripId, i) => {
+          const constraints = Array.isArray(patches) ? patches[i] : patches
+          return apiFetch(`/transit/transit-trip/${tripId}`, {
+            method: 'PATCH',
+            body:   JSON.stringify({ constraints }),
+          })
+        })
+      )
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar restrições')
+    }
+  }
+
+  const vehiclesActionSpec = useMemo(
+    () => createVehiclesActionSpec({ onUpdateConstraints: handleUpdateConstraints }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   function handlePlot() {
     setPlottedLineIds(new Set(selectedLineIds))

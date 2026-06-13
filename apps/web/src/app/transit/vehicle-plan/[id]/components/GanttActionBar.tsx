@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect }                 from 'react'
-import { resolveIcon, Icons }        from '@/lib/icons'
-import type { Selection, ActionItem } from '../engine/gantt.types'
+import { useEffect, useState, useRef } from 'react'
+import { resolveIcon, Icons }          from '@/lib/icons'
+import type { Selection, ActionItem, SplitMenuItem } from '../engine/gantt.types'
 
 interface Props {
   selection: Selection
@@ -11,18 +11,37 @@ interface Props {
 }
 
 export function GanttActionBar({ selection, actions, onDismiss }: Props) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onDismiss()
+      if (e.key === 'Escape') {
+        if (openMenuId) { setOpenMenuId(null); return }
+        onDismiss()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onDismiss])
+  }, [onDismiss, openMenuId])
+
+  // close dropdown on outside click
+  useEffect(() => {
+    if (!openMenuId) return
+    function onPointer(e: PointerEvent) {
+      const target = e.target as Element
+      if (!target.closest('[data-action-menu]')) setOpenMenuId(null)
+    }
+    window.addEventListener('pointerdown', onPointer)
+    return () => window.removeEventListener('pointerdown', onPointer)
+  }, [openMenuId])
 
   const summary = selectionSummary(selection)
 
   return (
-    <div style={{ animation: 'var(--animate-action-bar-in)' }} className="absolute bottom-6 inset-x-0 mx-auto w-fit z-20 flex items-center gap-3 px-4 py-2.5 bg-background border border-border rounded-xl shadow-lg">
+    <div
+      style={{ animation: 'var(--animate-action-bar-in)' }}
+      className="absolute bottom-6 inset-x-0 mx-auto w-fit z-20 flex items-center gap-3 px-4 py-2.5 bg-background border border-border rounded-xl shadow-lg"
+    >
       <span className="text-sm font-medium text-foreground whitespace-nowrap select-none">
         {summary}
       </span>
@@ -31,7 +50,14 @@ export function GanttActionBar({ selection, actions, onDismiss }: Props) {
 
       <div className="flex items-center gap-1">
         {actions.map(action => (
-          <ActionButton key={action.id} action={action} />
+          action.splitMenu
+            ? <SplitButton
+                key={action.id}
+                action={action}
+                menuOpen={openMenuId === action.id}
+                onToggleMenu={() => setOpenMenuId(v => v === action.id ? null : action.id)}
+              />
+            : <ActionButton key={action.id} action={action} />
         ))}
       </div>
 
@@ -48,12 +74,16 @@ export function GanttActionBar({ selection, actions, onDismiss }: Props) {
   )
 }
 
+// ── plain action button ───────────────────────────────────────────────────────
+
 function ActionButton({ action }: { action: ActionItem }) {
   const Icon = action.icon ? resolveIcon(action.icon) : null
 
   const colorClass = action.danger
     ? 'bg-destructive/10 hover:bg-destructive/20 text-destructive'
-    : 'bg-muted hover:bg-muted/70 text-foreground'
+    : action.active
+      ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400'
+      : 'bg-muted hover:bg-muted/70 text-foreground'
 
   return (
     <button
@@ -75,6 +105,99 @@ function ActionButton({ action }: { action: ActionItem }) {
     </button>
   )
 }
+
+// ── split button ──────────────────────────────────────────────────────────────
+
+function SplitButton({
+  action,
+  menuOpen,
+  onToggleMenu,
+}: {
+  action:        ActionItem
+  menuOpen:      boolean
+  onToggleMenu:  () => void
+}) {
+  const Icon = action.icon ? resolveIcon(action.icon) : null
+
+  const baseColor = action.active
+    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+    : 'bg-muted text-foreground'
+  const hoverMain    = action.active ? 'hover:bg-amber-500/25' : 'hover:bg-muted/70'
+  const hoverChevron = action.active ? 'hover:bg-amber-500/30' : 'hover:bg-accent'
+
+  return (
+    <div data-action-menu className="relative flex items-center">
+      {/* main button */}
+      <button
+        onClick={action.onClick}
+        disabled={action.disabled}
+        title={action.variant === 'icon' ? (action.label ?? action.id) : undefined}
+        className={[
+          'flex items-center gap-1.5 h-8 rounded-l px-2.5 text-sm font-medium transition-colors border-r border-background/30',
+          baseColor, hoverMain,
+          action.disabled ? 'opacity-50 pointer-events-none' : '',
+        ].join(' ')}
+      >
+        {(action.variant === 'icon' || action.variant === 'both') && Icon && (
+          <Icon className="w-4 h-4 shrink-0" />
+        )}
+        {(action.variant === 'text' || action.variant === 'both') && action.label && (
+          <span>{action.label}</span>
+        )}
+      </button>
+
+      {/* chevron toggle */}
+      <button
+        onClick={onToggleMenu}
+        className={[
+          'flex items-center justify-center h-8 w-6 rounded-r text-sm transition-colors',
+          baseColor, hoverChevron,
+        ].join(' ')}
+      >
+        <Icons.ChevronDown className={['w-3 h-3 transition-transform', menuOpen ? 'rotate-180' : ''].join(' ')} />
+      </button>
+
+      {/* dropdown */}
+      {menuOpen && action.splitMenu && (
+        <SplitMenuDropdown items={action.splitMenu} />
+      )}
+    </div>
+  )
+}
+
+function SplitMenuDropdown({ items }: { items: SplitMenuItem[] }) {
+  return (
+    <div className="absolute bottom-full left-0 mb-2 min-w-48 bg-popover border border-border rounded-lg shadow-lg py-1 z-30">
+      {items.map((item, i) => (
+        <label
+          key={item.id}
+          className={[
+            'flex items-center gap-2.5 px-3 py-1.5 text-sm cursor-pointer select-none transition-colors hover:bg-muted',
+            i > 0 && items[i - 1].id === 'sep' ? 'border-t border-border mt-1 pt-2' : '',
+          ].join(' ')}
+        >
+          <CheckBox checked={item.checked} onChange={item.onToggle} />
+          <span className="text-foreground">{item.label}</span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
+function CheckBox({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  const ref = useRef<HTMLInputElement>(null)
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      className="w-4 h-4 shrink-0 rounded"
+    />
+  )
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 function minutesToHHMM(minutes: number): string {
   const h = Math.floor(minutes / 60) % 24

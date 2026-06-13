@@ -47,14 +47,23 @@ export type Selection =
 
 // ── action bar ─────────────────────────────────────────────────────────────────
 
+export interface SplitMenuItem {
+  id:       string
+  label:    string
+  checked:  boolean
+  onToggle: () => void
+}
+
 export interface ActionItem {
-  id:        string
-  label?:    string
-  icon?:     string
-  variant:   'icon' | 'text' | 'both'
-  disabled?: boolean
-  danger?:   boolean
-  onClick:   () => void
+  id:         string
+  label?:     string
+  icon?:      string
+  variant:    'icon' | 'text' | 'both'
+  disabled?:  boolean
+  danger?:    boolean
+  active?:    boolean
+  splitMenu?: SplitMenuItem[]
+  onClick:    () => void
 }
 
 export interface SelectionContext {

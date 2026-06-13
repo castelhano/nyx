@@ -29,6 +29,7 @@ const iconNames = [
   'LayoutList',
   'List',
   'Lock',
+  'LockOpen',
   'Loader2',
   'MapPin',
   'MinusSquare',
