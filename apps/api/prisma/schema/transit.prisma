@@ -285,7 +285,7 @@ model BlockTrip {
   updatedAt       DateTime @updatedAt
 
   vehicleBlock VehicleBlock @relation(fields: [vehicleBlockId], references: [id], onDelete: Cascade)
-  trip         TransitTrip  @relation(fields: [tripId], references: [id])
+  trip         TransitTrip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@unique([vehicleBlockId, sequence])
   @@map("transit_block_trips")

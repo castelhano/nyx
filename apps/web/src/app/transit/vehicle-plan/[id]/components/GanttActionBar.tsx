@@ -80,7 +80,7 @@ function ActionButton({ action }: { action: ActionItem }) {
   const Icon = action.icon ? resolveIcon(action.icon) : null
 
   const colorClass = action.danger
-    ? 'bg-destructive/10 hover:bg-destructive/20 text-destructive'
+    ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
     : action.active
       ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400'
       : 'bg-muted hover:bg-muted/70 text-foreground'
@@ -91,7 +91,7 @@ function ActionButton({ action }: { action: ActionItem }) {
       disabled={action.disabled}
       title={action.variant === 'icon' ? (action.label ?? action.id) : undefined}
       className={[
-        'flex items-center gap-1.5 h-8 rounded px-2.5 text-sm font-medium transition-colors',
+        'flex items-center gap-1.5 h-8 rounded px-2.5 text-xs font-medium transition-colors',
         colorClass,
         action.disabled ? 'opacity-50 pointer-events-none' : '',
       ].join(' ')}

@@ -542,8 +542,37 @@ export default function VehiclePlanPage() {
     }
   }
 
+  async function handleDeleteTrips(tripIds: string[]) {
+    const count = tripIds.length
+    const ok = await confirm({
+      title:        count === 1 ? 'Excluir viagem' : `Excluir ${count} viagens`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      await Promise.all(
+        tripIds.map(async (tripId) => {
+          const res = await apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+          if (!res.ok) {
+            const json = await res.json().catch(() => ({}))
+            throw new Error(extractError(json))
+          }
+        })
+      )
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir viagens')
+    }
+  }
+
   const vehiclesActionSpec = useMemo(
-    () => createVehiclesActionSpec({ onUpdateConstraints: handleUpdateConstraints }),
+    () => createVehiclesActionSpec({
+      onUpdateConstraints: handleUpdateConstraints,
+      onDeleteTrips:       handleDeleteTrips,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )

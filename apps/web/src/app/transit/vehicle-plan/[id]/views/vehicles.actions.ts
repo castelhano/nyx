@@ -6,6 +6,7 @@ const ALL_LOCKED_FIELDS = ['departureMinutes', 'arrivalMinutes', 'cycleTime']
 
 export interface VehiclesActionDeps {
   onUpdateConstraints: (tripIds: string[], patches: TripConstraints | null | TripConstraints[]) => void
+  onDeleteTrips:       (tripIds: string[]) => void
 }
 
 export function createVehiclesActionSpec(
@@ -14,7 +15,8 @@ export function createVehiclesActionSpec(
   return {
 
     resolveSelection(clicked, current, { allSegments }) {
-      if (clicked.isDeadhead) return current ?? null
+      // skip positioning micro-segments (${bt.id}:dead) — not actual trips
+      if (clicked.id.endsWith(':dead')) return current ?? null
 
       if (!current) return { type: 'trip', segment: clicked }
 
@@ -31,45 +33,17 @@ export function createVehiclesActionSpec(
 
     getActions(selection, _data, onClose): ActionItem[] {
       if (selection.type === 'trip') {
+        const tripIds = [(selection.segment.data as GanttBlockTrip).trip.id]
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
-          {
-            id:      'move-trip',
-            label:   'Mover viagem',
-            variant: 'text',
-            onClick: () => { onClose() },
-          },
-          {
-            id:      'swap-line',
-            icon:    'ArrowRightLeft',
-            label:   'Trocar linha',
-            variant: 'both',
-            onClick: () => { onClose() },
-          },
+          makeDeleteAction(tripIds, deps),
         ]
       }
 
+      const tripIds = selection.segments.map(s => (s.data as GanttBlockTrip).trip.id)
       return [
         makeLockAction(selection.segments, selection.rowId, deps, onClose),
-        {
-          id:      'split-block',
-          icon:    'Scissors',
-          variant: 'icon',
-          onClick: () => { onClose() },
-        },
-        {
-          id:      'move-interval',
-          label:   'Mover intervalo',
-          variant: 'text',
-          onClick: () => { onClose() },
-        },
-        {
-          id:      'reassign-driver',
-          icon:    'Users',
-          label:   'Reassinar condutor',
-          variant: 'both',
-          onClick: () => { onClose() },
-        },
+        makeDeleteAction(tripIds, deps),
       ]
     },
   }
@@ -154,6 +128,19 @@ function makeLockAction(
   }
 }
 
+// ── delete button ─────────────────────────────────────────────────────────────
+
+function makeDeleteAction(tripIds: string[], deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'delete',
+    label:   'Excluir',
+    icon:    'Trash2',
+    variant: 'both',
+    danger:  true,
+    onClick: () => deps.onDeleteTrips(tripIds),
+  }
+}
+
 // ── constraint helpers ────────────────────────────────────────────────────────
 
 function hasConstraints(c: TripConstraints | null | undefined): boolean {
@@ -201,7 +188,7 @@ function buildInterval(
   const to   = a.startMinute <= b.startMinute ? b : a
 
   const rowSegs = allSegments
-    .filter(s => s.rowId === a.rowId && !s.isDeadhead)
+    .filter(s => s.rowId === a.rowId && !s.id.endsWith(':dead'))
     .sort((x, y) => x.startMinute - y.startMinute)
 
   const segments = rowSegs.filter(
