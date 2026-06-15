@@ -38,6 +38,7 @@ export function createVehiclesActionSpec(
         const bt      = selection.segment.data as GanttBlockTrip
         const block   = data.blocks.find(b => b.id === selection.segment.rowId)
         const tripIds = [bt.trip.id]
+
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           ...(block && canAddAccess(bt, block)      ? [makeAccessAction(bt.id, block.id, deps)]     : []),
@@ -134,12 +135,20 @@ function makeLockAction(
   }
 }
 
-// ── access button ─────────────────────────────────────────────────────────────
+// ── access / collection buttons ───────────────────────────────────────────────
+
+function sortedTrips(block: GanttBlock): GanttBlockTrip[] {
+  return [...block.blockTrips].sort((a, b) => a.sequence - b.sequence)
+}
 
 function canAddAccess(bt: GanttBlockTrip, block: GanttBlock): boolean {
   if (bt.isDeadhead) return false
-  const prev = block.blockTrips.find(t => t.sequence === bt.sequence - 1)
-  return !prev || !prev.isDeadhead
+  const sorted = sortedTrips(block)
+  const idx    = sorted.findIndex(t => t.id === bt.id)
+  if (idx < 0) return false
+  const prev = sorted[idx - 1]
+  // access makes sense when this is the first trip OR it immediately follows a deadhead
+  return !prev || prev.isDeadhead
 }
 
 function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
@@ -154,8 +163,12 @@ function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesAc
 
 function canAddCollection(bt: GanttBlockTrip, block: GanttBlock): boolean {
   if (bt.isDeadhead) return false
-  const next = block.blockTrips.find(t => t.sequence === bt.sequence + 1)
-  return !next || !next.isDeadhead
+  const sorted = sortedTrips(block)
+  const idx    = sorted.findIndex(t => t.id === bt.id)
+  if (idx < 0) return false
+  const next = sorted[idx + 1]
+  // collection makes sense when this is the last trip OR it immediately precedes a deadhead
+  return !next || next.isDeadhead
 }
 
 function makeCollectionAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
