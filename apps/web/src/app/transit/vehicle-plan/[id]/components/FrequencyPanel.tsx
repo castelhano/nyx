@@ -35,7 +35,6 @@ export function FrequencyPanel({ data, vp }: Props) {
 
     for (const block of data.blocks) {
       for (const bt of block.blockTrips) {
-        if (bt.trip.deadrunType != null || !bt.trip.route) continue
         const dir = bt.trip.route.direction
         if (!map.has(dir)) map.set(dir, [])
         map.get(dir)!.push(bt.trip.departureMinutes)

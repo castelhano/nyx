@@ -25,13 +25,13 @@ export class VehicleBlockController extends BaseController<VehicleBlock, CreateV
     return this.vehicleBlockService.addAccess(blockId, blockTripId, depotLocalityId)
   }
 
-  @Post(':id/collection')
+  @Post(':id/return')
   @HttpCode(200)
-  addCollection(
+  addReturn(
     @Param('id') blockId: string,
     @Body('blockTripId') blockTripId: string,
     @Body('depotLocalityId') depotLocalityId: string,
   ) {
-    return this.vehicleBlockService.addCollection(blockId, blockTripId, depotLocalityId)
+    return this.vehicleBlockService.addReturn(blockId, blockTripId, depotLocalityId)
   }
 }

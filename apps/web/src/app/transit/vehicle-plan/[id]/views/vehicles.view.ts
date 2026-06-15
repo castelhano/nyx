@@ -15,24 +15,32 @@ export interface GanttBlockTrip {
     id:               string
     departureMinutes: number
     arrivalMinutes:   number
-    deadrunType:      string | null
-    deadrunKm:        number | null
     constraints:      TripConstraints | null
     route: {
       direction:           string
       line:                { id: string; code: string; name: string }
       originLocality:      { id: string; name: string }
       destinationLocality: { id: string; name: string }
-    } | null
+    }
   }
 }
 
+export interface GanttBlockDeadrun {
+  id:                    string
+  type:                  'ACCESS' | 'RETURN' | 'DISPLACEMENT'
+  originLocalityId:      string
+  destinationLocalityId: string
+  departureMinutes:      number
+  arrivalMinutes:        number
+}
+
 export interface GanttBlock {
-  id:          string
-  blockNumber: number
-  vehicleType: string
-  summary:     VehicleBlockSummary | null
-  blockTrips:  GanttBlockTrip[]
+  id:            string
+  blockNumber:   number
+  vehicleType:   string
+  summary:       VehicleBlockSummary | null
+  blockTrips:    GanttBlockTrip[]
+  blockDeadruns: GanttBlockDeadrun[]
 }
 
 export interface VehiclePlanGanttData {
@@ -55,7 +63,6 @@ const PALETTE = [
 ]
 const DEADHEAD_COLOR = '#d1d5db'
 
-// Blend hex color with white to produce a lighter variant for INBOUND trips
 function lightenHex(hex: string, amount = 0.45): string {
   const r  = parseInt(hex.slice(1, 3), 16)
   const g  = parseInt(hex.slice(3, 5), 16)
@@ -67,9 +74,7 @@ function lightenHex(hex: string, amount = 0.45): string {
 }
 
 function lineColorMap(blocks: GanttBlock[]): Map<string, string> {
-  const lineIds = [...new Set(blocks.flatMap((b) =>
-    b.blockTrips.filter((t) => t.trip.deadrunType == null).map((t) => t.trip.route!.line.id),
-  ))]
+  const lineIds = [...new Set(blocks.flatMap(b => b.blockTrips.map(bt => bt.trip.route.line.id)))]
   const map = new Map<string, string>()
   lineIds.forEach((id, i) => map.set(id, PALETTE[i % PALETTE.length]))
   return map
@@ -87,26 +92,35 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
   },
 
   getSegments(row, data): GanttSegment[] {
-    const block   = row.data as GanttBlock
-    const colors  = lineColorMap(data.blocks)
+    const block  = row.data as GanttBlock
+    const colors = lineColorMap(data.blocks)
     const segs: GanttSegment[] = []
 
     for (const bt of block.blockTrips) {
-      const { trip } = bt
-      const isDeadrun = bt.trip.deadrunType != null
-
-      const baseColor = !isDeadrun && trip.route ? (colors.get(trip.route.line.id) ?? PALETTE[0]) : DEADHEAD_COLOR
-      const segColor  = !isDeadrun && trip.route?.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
-
+      const baseColor = colors.get(bt.trip.route.line.id) ?? PALETTE[0]
+      const segColor  = bt.trip.route.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
       segs.push({
         id:          bt.id,
         rowId:       row.id,
-        startMinute: trip.departureMinutes,
-        endMinute:   trip.arrivalMinutes,
-        isDeadhead:  isDeadrun,
-        label:       trip.route?.line.code ?? '',
-        color:       isDeadrun ? DEADHEAD_COLOR : segColor,
+        startMinute: bt.trip.departureMinutes,
+        endMinute:   bt.trip.arrivalMinutes,
+        isDeadhead:  false,
+        label:       bt.trip.route.line.code,
+        color:       segColor,
         data:        bt,
+      })
+    }
+
+    for (const d of block.blockDeadruns) {
+      segs.push({
+        id:          `${d.id}:dr`,
+        rowId:       row.id,
+        startMinute: d.departureMinutes,
+        endMinute:   d.arrivalMinutes,
+        isDeadhead:  true,
+        label:       '',
+        color:       DEADHEAD_COLOR,
+        data:        d,
       })
     }
 

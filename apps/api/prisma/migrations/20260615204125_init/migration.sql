@@ -330,18 +330,16 @@ CREATE TABLE "transit_line_calendar_exception_lines" (
 -- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "routeId" TEXT,
+    "routeId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
-    "deadrunType" TEXT,
-    "deadrunKm" REAL,
     "requiredVehicleType" TEXT,
     "constraints" JSONB,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -420,6 +418,22 @@ CREATE TABLE "transit_block_trips" (
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_block_trips_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "transit_block_trips_tripId_fkey" FOREIGN KEY ("tripId") REFERENCES "transit_trips" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_block_deadruns" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "vehicleBlockId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "originLocalityId" TEXT NOT NULL,
+    "destinationLocalityId" TEXT NOT NULL,
+    "departureMinutes" INTEGER NOT NULL,
+    "arrivalMinutes" INTEGER NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_block_deadruns_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_block_deadruns_originLocalityId_fkey" FOREIGN KEY ("originLocalityId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_block_deadruns_destinationLocalityId_fkey" FOREIGN KEY ("destinationLocalityId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateIndex

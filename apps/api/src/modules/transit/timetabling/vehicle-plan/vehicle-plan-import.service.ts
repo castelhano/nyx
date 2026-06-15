@@ -12,6 +12,28 @@ interface ImportOutput {
   errors:  Array<{ line: number; record: string; message: string }>
 }
 
+type ProductiveEntry = {
+  kind:             'trip'
+  id:               string
+  routeId:          string
+  departureMinutes: number
+  arrivalMinutes:   number
+  km:               number
+}
+
+type DeadrunEntry = {
+  kind:                  'deadrun'
+  id:                    string
+  type:                  'ACCESS' | 'RETURN' | 'DISPLACEMENT'
+  originLocalityId:      string
+  destinationLocalityId: string
+  departureMinutes:      number
+  arrivalMinutes:        number
+  km:                    number
+}
+
+type BlockEntry = ProductiveEntry | DeadrunEntry
+
 @Injectable()
 export class VehiclePlanImportService {
   constructor(
@@ -55,7 +77,6 @@ export class VehiclePlanImportService {
     normalize:    boolean = false,
     planId?:      string,
   ): Promise<ImportOutput> {
-    // In update mode the dayType comes from the existing plan
     if (planId) {
       const existing = await (this.prisma as any).vehiclePlan.findUnique({
         where:  { id: planId },
@@ -74,8 +95,6 @@ export class VehiclePlanImportService {
       message: `Linha ignorada: ${s.reason}`,
     }))
 
-    // Group rows by vehicleNumber (c[22]) — the physical bus.
-    // Falls back to lineCode when vehicleNumber is absent.
     const blockMap = new Map<string, typeof rows>()
     for (const row of rows) {
       const key = row.vehicleNumber || row.lineCode
@@ -107,7 +126,6 @@ export class VehiclePlanImportService {
       routes.map((r: any) => [`${r.lineId}:${r.direction}`, r]),
     )
 
-    // Load matrix + idealMin only when normalize is requested
     let matrixMap: Record<string, { minutes: number; km: number }> = {}
     let idealIntervalMin = 5
 
@@ -126,8 +144,6 @@ export class VehiclePlanImportService {
     let blockNumber = 1
 
     if (planId) {
-      // Update mode: clear existing data for the imported lines within this plan,
-      // then add new blocks/trips. Lines not in this import are untouched.
       await this.clearLinesFromPlan(planId, validLineIds, dayTypeId)
 
       for (const line of transitLines) {
@@ -138,7 +154,6 @@ export class VehiclePlanImportService {
         })
       }
 
-      // Continue blockNumber after the highest existing block in the plan
       const maxBlock = await (this.prisma as any).vehicleBlock.aggregate({
         where: { vehiclePlanId: planId },
         _max:  { blockNumber: true },
@@ -146,7 +161,6 @@ export class VehiclePlanImportService {
       blockNumber = (maxBlock._max.blockNumber ?? 0) + 1
       plan = { id: planId }
     } else {
-      // Create mode: brand-new DRAFT plan — no cleanup needed
       plan = await (this.prisma as any).vehiclePlan.create({
         data: {
           dayTypeId,
@@ -158,64 +172,50 @@ export class VehiclePlanImportService {
       })
     }
 
-    // Collect all records in memory — no DB calls inside the loop
-    const tripRows:      Array<{ id: string; routeId?: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number; deadrunType?: string; deadrunKm?: number }> = []
+    const tripRows:      Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
+    const deadrunRows:   Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
 
-    for (const [blockKey, tabRows] of blockMap.entries()) {
-      // Sort purely chronologically by departure time.
-      // tabId and sequence are scoped to a single line and unreliable for cross-line ordering.
-      // Trips before 03:00 are end-of-operational-day — shifted +1440 so they sort after later trips.
+    for (const [, tabRows] of blockMap.entries()) {
       tabRows.sort((a, b) => {
         const da   = parseHHMM(a.departureHHMM)
         const db   = parseHHMM(b.departureHHMM)
-        const adjA = da < 180 ? da + 1440 : da  // 180 = 03:00 operational day boundary
+        const adjA = da < 180 ? da + 1440 : da
         const adjB = db < 180 ? db + 1440 : db
         return adjA - adjB
       })
 
       const blockId = randomUUID()
-
-      type BlockTripEntry = {
-        tripId:           string
-        routeId?:         string
-        departureMinutes: number
-        arrivalMinutes:   number
-        deadrunType?:     string
-        km:               number
-        lineCode:         string
-        direction:        string
-      }
-      const perBlockTrips: BlockTripEntry[] = []
+      const perBlockEntries: BlockEntry[] = []
 
       // Synthetic depot-departure deadhead (saída de garagem)
-      // c[17] carries the depot departure time on the vehicle's first trip row.
       const depotRow = tabRows.find(r => r.depotDepartureHHMM !== '')
       if (depotRow) {
-        let firstRouteId: string | null = null
+        let firstRoute: { id: string; originLocalityId: string } | null = null
         for (const row of tabRows) {
-          const line  = lineByCode.get(row.lineCode)
+          const line = lineByCode.get(row.lineCode)
           if (!line) continue
           const dir   = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
           const route = routeByKey.get(`${line.id}:${dir}`)
-          if (route) { firstRouteId = route.id; break }
+          if (route) { firstRoute = route; break }
         }
 
-        if (firstRouteId) {
+        if (firstRoute) {
           const firstTripDep    = parseHHMM(tabRows[0].departureHHMM)
           const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM)
           const startMinutes    = depotDepMinutes - setupMinutes
 
           if (startMinutes < firstTripDep) {
-            perBlockTrips.push({
-              tripId:           randomUUID(),
-              departureMinutes: startMinutes,
-              arrivalMinutes:   firstTripDep,
-              deadrunType:      'ACCESS',
-              km:               0,
-              lineCode:         'depot',
-              direction:        '-',
+            perBlockEntries.push({
+              kind:                  'deadrun',
+              id:                    randomUUID(),
+              type:                  'ACCESS',
+              originLocalityId:      depotId,
+              destinationLocalityId: firstRoute.originLocalityId,
+              departureMinutes:      startMinutes,
+              arrivalMinutes:        firstTripDep,
+              km:                    0,
             })
           }
         }
@@ -249,37 +249,48 @@ export class VehiclePlanImportService {
         const rawDep = parseHHMM(row.departureHHMM)
         const rawArr = parseHHMM(row.arrivalHHMM)
 
-        // Sequential day inference: departure wraps before previous arrival → new calendar day
         if (rawDep + dayOffset < prevArrivalMinutes) dayOffset += 1440
         const departureMinutes = rawDep + dayOffset
 
-        // arrDay > depDay signals this specific trip's arrival crosses midnight
         const arrivalDayOffset = row.arrDay > row.depDay ? dayOffset + 1440 : dayOffset
         let arrivalMinutes = rawArr + arrivalDayOffset
-        if (arrivalMinutes < departureMinutes) arrivalMinutes += 1440  // safety guard
+        if (arrivalMinutes < departureMinutes) arrivalMinutes += 1440
 
         prevArrivalMinutes = arrivalMinutes
 
-        perBlockTrips.push({
-          tripId:           randomUUID(),
-          routeId:          row.isProductive ? route.id : undefined,
-          departureMinutes,
-          arrivalMinutes,
-          deadrunType:      row.isProductive ? undefined : 'DISPLACEMENT',
-          km:               (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0,
-          lineCode:         row.lineCode,
-          direction,
-        })
+        const km = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
+
+        if (row.isProductive) {
+          perBlockEntries.push({
+            kind:             'trip',
+            id:               randomUUID(),
+            routeId:          route.id,
+            departureMinutes,
+            arrivalMinutes,
+            km,
+          })
+        } else {
+          perBlockEntries.push({
+            kind:                  'deadrun',
+            id:                    randomUUID(),
+            type:                  'DISPLACEMENT',
+            originLocalityId:      route.originLocalityId,
+            destinationLocalityId: route.destinationLocalityId,
+            departureMinutes,
+            arrivalMinutes,
+            km,
+          })
+        }
       }
 
-      if (perBlockTrips.length === 0) continue
+      if (perBlockEntries.length === 0) continue
 
       if (normalize) {
         // 1. Interval: shorten productive trips where gap to next trip < idealIntervalMin
-        for (let i = 0; i < perBlockTrips.length - 1; i++) {
-          const curr = perBlockTrips[i]
-          const next = perBlockTrips[i + 1]
-          if (curr.deadrunType == null) {
+        for (let i = 0; i < perBlockEntries.length - 1; i++) {
+          const curr = perBlockEntries[i]
+          const next = perBlockEntries[i + 1]
+          if (curr.kind === 'trip') {
             const gap = next.departureMinutes - curr.arrivalMinutes
             if (gap < idealIntervalMin) {
               const newArr = next.departureMinutes - idealIntervalMin
@@ -289,61 +300,62 @@ export class VehiclePlanImportService {
         }
 
         // 2. Access deadrun: block doesn't start with a deadrun and matrix has depot→firstOrigin
-        if (perBlockTrips[0].deadrunType == null && firstRouteKey) {
+        if (perBlockEntries[0].kind === 'trip' && firstRouteKey) {
           const firstRoute = routeByKey.get(firstRouteKey)
           if (firstRoute) {
             const edge = matrixMap[`${depotId}:${firstRoute.originLocalityId}`]
             if (edge && edge.minutes > 0) {
-              const first = perBlockTrips[0]
-              perBlockTrips.unshift({
-                tripId:           randomUUID(),
-                departureMinutes: first.departureMinutes - edge.minutes,
-                arrivalMinutes:   first.departureMinutes,
-                deadrunType:      'ACCESS',
-                km:               edge.km,
-                lineCode:         'access',
-                direction:        '-',
+              const first = perBlockEntries[0]
+              perBlockEntries.unshift({
+                kind:                  'deadrun',
+                id:                    randomUUID(),
+                type:                  'ACCESS',
+                originLocalityId:      depotId,
+                destinationLocalityId: firstRoute.originLocalityId,
+                departureMinutes:      first.departureMinutes - edge.minutes,
+                arrivalMinutes:        first.departureMinutes,
+                km:                    edge.km,
               })
             }
           }
         }
 
         // 3. Return deadrun: block doesn't end with a deadrun and matrix has lastDest→depot
-        if (perBlockTrips[perBlockTrips.length - 1].deadrunType == null && lastRouteKey) {
+        if (perBlockEntries[perBlockEntries.length - 1].kind === 'trip' && lastRouteKey) {
           const lastRoute = routeByKey.get(lastRouteKey)
           if (lastRoute) {
             const edge = matrixMap[`${lastRoute.destinationLocalityId}:${depotId}`]
             if (edge && edge.minutes > 0) {
-              const last = perBlockTrips[perBlockTrips.length - 1]
-              perBlockTrips.push({
-                tripId:           randomUUID(),
-                departureMinutes: last.arrivalMinutes,
-                arrivalMinutes:   last.arrivalMinutes + edge.minutes,
-                deadrunType:      'RETURN',
-                km:               edge.km,
-                lineCode:         'return',
-                direction:        '-',
+              const last = perBlockEntries[perBlockEntries.length - 1]
+              perBlockEntries.push({
+                kind:                  'deadrun',
+                id:                    randomUUID(),
+                type:                  'RETURN',
+                originLocalityId:      lastRoute.destinationLocalityId,
+                destinationLocalityId: depotId,
+                departureMinutes:      last.arrivalMinutes,
+                arrivalMinutes:        last.arrivalMinutes + edge.minutes,
+                km:                    edge.km,
               })
             }
           }
         }
       }
 
-      // Compute block summary from perBlockTrips
       let firstDep = Infinity, lastArr = -Infinity
       let productiveMinutes = 0, deadrunMinutes = 0
       let productiveKm = 0,      deadrunKm = 0
 
-      for (const t of perBlockTrips) {
-        if (t.departureMinutes < firstDep) firstDep = t.departureMinutes
-        if (t.arrivalMinutes   > lastArr)  lastArr  = t.arrivalMinutes
-        const mins = t.arrivalMinutes - t.departureMinutes
-        if (t.deadrunType != null) {
+      for (const e of perBlockEntries) {
+        if (e.departureMinutes < firstDep) firstDep = e.departureMinutes
+        if (e.arrivalMinutes   > lastArr)  lastArr  = e.arrivalMinutes
+        const mins = e.arrivalMinutes - e.departureMinutes
+        if (e.kind === 'deadrun') {
           deadrunMinutes += mins
-          deadrunKm      += t.km
+          deadrunKm      += e.km
         } else {
           productiveMinutes += mins
-          productiveKm      += t.km
+          productiveKm      += e.km
         }
       }
 
@@ -365,37 +377,31 @@ export class VehiclePlanImportService {
       })
 
       let seqInBlock = 1
-      for (const t of perBlockTrips) {
-        if (t.deadrunType) {
-          tripRows.push({ id: t.tripId, dayTypeId, departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes, deadrunType: t.deadrunType, deadrunKm: t.km })
+      for (const e of perBlockEntries) {
+        if (e.kind === 'trip') {
+          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
+          blockTripRows.push({ vehicleBlockId: blockId, tripId: e.id, sequence: seqInBlock++ })
         } else {
-          tripRows.push({ id: t.tripId, routeId: t.routeId, dayTypeId, departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes })
+          deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
         }
-        blockTripRows.push({ vehicleBlockId: blockId, tripId: t.tripId, sequence: seqInBlock++ })
       }
     }
 
-    // 4 bulk inserts instead of O(n_trips) individual creates
-    await (this.prisma as any).transitTrip.createMany({
-      data: tripRows,
-    })
+    await (this.prisma as any).transitTrip.createMany({ data: tripRows })
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
+    await (this.prisma as any).blockDeadrun.createMany({ data: deadrunRows })
 
     await this.vehiclePlanSvc.scorePlan(plan.id)
 
     return { created: blockRows.length, trips: tripRows.length, errors }
   }
 
-  // Removes all trips for the given lines from this specific plan.
-  // Blocks that served only these lines are deleted; blocks that also serve
-  // other lines have their remaining trips preserved and are marked isStale.
   private async clearLinesFromPlan(
     planId:    string,
     lineIds:   string[],
     dayTypeId: string,
   ): Promise<void> {
-    // Find BlockTrips in this plan whose trips belong to the imported lines
     const affected = await (this.prisma as any).blockTrip.findMany({
       where: {
         vehicleBlock: { vehiclePlanId: planId },
@@ -413,20 +419,18 @@ export class VehiclePlanImportService {
     const tripIds      = [...new Set<string>(affected.map((bt: any) => bt.tripId))]
     const blockIds     = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
 
-    // Remove BlockTrips for the imported lines
     await (this.prisma as any).blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
 
-    // Delete empty blocks; mark blocks with remaining trips as stale
     for (const blockId of blockIds) {
       const remaining = await (this.prisma as any).blockTrip.count({ where: { vehicleBlockId: blockId } })
       if (remaining === 0) {
+        // cascade deletes blockDeadruns too
         await (this.prisma as any).vehicleBlock.delete({ where: { id: blockId } })
       } else {
         await (this.prisma as any).vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
       }
     }
 
-    // Delete trips that are now fully orphaned (no remaining BlockTrip references)
     await (this.prisma as any).transitTrip.deleteMany({
       where: { id: { in: tripIds }, blockTrips: { none: {} } },
     })

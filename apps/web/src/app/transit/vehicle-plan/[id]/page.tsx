@@ -307,7 +307,7 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  type DepotModal = { kind: 'access' | 'collection'; blockTripId: string; blockId: string }
+  type DepotModal = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 
   const [selection,   setSelection]   = useState<Selection | null>(null)
   const [depotModal,  setDepotModal]  = useState<DepotModal | null>(null)
@@ -355,7 +355,7 @@ export default function VehiclePlanPage() {
     return {
       ...ganttData,
       blocks: ganttData.blocks.filter(b =>
-        b.blockTrips.some(bt => bt.trip.deadrunType == null && plottedLineIds.has(bt.trip.route!.line.id))
+        b.blockTrips.some(bt => plottedLineIds.has(bt.trip.route.line.id))
       ),
     }
   }, [ganttData, plottedLineIds])
@@ -386,9 +386,7 @@ export default function VehiclePlanPage() {
       setBaselineSnapshot({
         fleetCount:   ganttData.blocks.length,
         score:        0,
-        deadrunKm:    ganttData.blocks
-          .flatMap(b => b.blockTrips.filter(bt => bt.trip.deadrunType != null))
-          .reduce((sum, bt) => sum + (bt.trip.deadrunKm ?? 0), 0),
+        deadrunKm:    ganttData.blocks.reduce((sum, b) => sum + (b.summary?.deadrunKm ?? 0), 0),
         productiveKm: 0,
         totalKm:      0,
       })
@@ -551,7 +549,7 @@ export default function VehiclePlanPage() {
   }
 
   function handleAddReturn(blockTripId: string, blockId: string) {
-    setDepotModal({ kind: 'collection', blockTripId, blockId })
+    setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
   async function handleConfirmDepotModal(depotLocalityId: string) {
@@ -781,7 +779,7 @@ export default function VehiclePlanPage() {
             )}
             {ganttData?.blocks != null && (
               <span>
-                {ganttData.blocks.reduce((sum, b) => sum + b.blockTrips.length, 0)} viagens
+                {ganttData.blocks.reduce((sum, b) => sum + b.blockTrips.length, 0)} viagens produtivas
               </span>
             )}
             {activeJobId && (

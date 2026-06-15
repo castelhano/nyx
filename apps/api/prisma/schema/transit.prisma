@@ -41,12 +41,14 @@ model TransitLocality {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  travelTimesFrom     TravelTimeMatrix[] @relation("TravelTimeOrigin")
-  travelTimesTo       TravelTimeMatrix[] @relation("TravelTimeDestination")
-  routesAsOrigin      TransitRoute[]     @relation("RouteOrigin")
-  routesAsDestination TransitRoute[]     @relation("RouteDestination")
-  routeLocalities     RouteLocality[]
-  vehicleBlocks       VehicleBlock[]
+  travelTimesFrom      TravelTimeMatrix[] @relation("TravelTimeOrigin")
+  travelTimesTo        TravelTimeMatrix[] @relation("TravelTimeDestination")
+  routesAsOrigin       TransitRoute[]     @relation("RouteOrigin")
+  routesAsDestination  TransitRoute[]     @relation("RouteDestination")
+  routeLocalities      RouteLocality[]
+  vehicleBlocks        VehicleBlock[]
+  deadrunsAsOrigin     BlockDeadrun[]     @relation("DeadrunOrigin")
+  deadrunsAsDestination BlockDeadrun[]    @relation("DeadrunDestination")
 
   @@map("transit_localities")
 }
@@ -179,14 +181,11 @@ model LineCalendarExceptionLine {
 
 model TransitTrip {
   id                  String       @id @default(uuid())
-  routeId             String?
+  routeId             String
   dayTypeId           String
   // minutes from operational day start; values > 1440 indicate overnight trips
   departureMinutes    Int
   arrivalMinutes      Int
-  // null for productive trips; set for deadruns
-  deadrunType         DeadrunType?
-  deadrunKm           Float?
   requiredVehicleType VehicleType?
   // { locked?: string[], pinnedBlock?: string }
   constraints         Json?
@@ -194,8 +193,8 @@ model TransitTrip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  route      TransitRoute? @relation(fields: [routeId], references: [id])
-  dayType    DayType       @relation(fields: [dayTypeId], references: [id])
+  route      TransitRoute @relation(fields: [routeId], references: [id])
+  dayType    DayType      @relation(fields: [dayTypeId], references: [id])
   blockTrips BlockTrip[]
 
   @@map("transit_trips")
@@ -250,10 +249,11 @@ model VehicleBlock {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  vehiclePlan VehiclePlan     @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
-  branch      Branch?         @relation("BranchVehicleBlocks", fields: [branchId], references: [id])
-  depot       TransitLocality @relation(fields: [depotId], references: [id])
-  blockTrips  BlockTrip[]
+  vehiclePlan   VehiclePlan     @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  branch        Branch?         @relation("BranchVehicleBlocks", fields: [branchId], references: [id])
+  depot         TransitLocality @relation(fields: [depotId], references: [id])
+  blockTrips    BlockTrip[]
+  blockDeadruns BlockDeadrun[]
 
   @@unique([vehiclePlanId, blockNumber])
   @@map("transit_vehicle_blocks")
@@ -297,4 +297,22 @@ model BlockTrip {
 
   @@unique([vehicleBlockId, sequence])
   @@map("transit_block_trips")
+}
+
+model BlockDeadrun {
+  id                    String      @id @default(uuid())
+  vehicleBlockId        String
+  type                  DeadrunType
+  originLocalityId      String
+  destinationLocalityId String
+  departureMinutes      Int
+  arrivalMinutes        Int
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  vehicleBlock        VehicleBlock    @relation(fields: [vehicleBlockId], references: [id], onDelete: Cascade)
+  originLocality      TransitLocality @relation("DeadrunOrigin", fields: [originLocalityId], references: [id])
+  destinationLocality TransitLocality @relation("DeadrunDestination", fields: [destinationLocalityId], references: [id])
+
+  @@map("transit_block_deadruns")
 }

@@ -22,7 +22,7 @@ export const tripSchema = withMeta(
       keybind:        'd',
     }),
 
-    routeId: z.uuid().optional().meta({
+    routeId: z.uuid().meta({
       label:          'Sentido',
       widget:         'select',
       resource:       'transit-route',
@@ -31,18 +31,6 @@ export const tripSchema = withMeta(
       listVisibility: 'visible',
       filter:         { type: 'relation', endpoint: 'transit/transit-route', labelField: 'name' },
       keybind:        'r',
-    }),
-
-    deadrunType: z.enum(['ACCESS', 'RETURN', 'DISPLACEMENT']).optional().meta({
-      label:          'Tipo de Vazio',
-      listVisibility: 'hidden',
-      showInForm:     false,
-    }),
-
-    deadrunKm: z.number().optional().meta({
-      label:          'Km em Vazio',
-      listVisibility: 'hidden',
-      showInForm:     false,
     }),
 
     // minutes from operational day start — allows values > 1440 for overnight trips

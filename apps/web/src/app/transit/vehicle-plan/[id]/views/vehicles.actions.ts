@@ -1,6 +1,6 @@
 import type { GanttActionSpec, Selection, ActionItem, SplitMenuItem } from '../engine/gantt.types'
 import type { LayoutSegment }                                          from '../engine/layout/layout.types'
-import type { VehiclePlanGanttData, GanttBlock, GanttBlockTrip, TripConstraints } from './vehicles.view'
+import type { VehiclePlanGanttData, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, TripConstraints } from './vehicles.view'
 
 const ALL_LOCKED_FIELDS = ['departureMinutes', 'arrivalMinutes', 'cycleTime']
 
@@ -17,8 +17,8 @@ export function createVehiclesActionSpec(
   return {
 
     resolveSelection(clicked, current, { allSegments }) {
-      // skip positioning micro-segments (${bt.id}:dead) — not actual trips
-      if (clicked.id.endsWith(':dead')) return current ?? null
+      // skip micro-segments and deadrun segments
+      if (clicked.id.endsWith(':dead') || clicked.id.endsWith(':dr')) return current ?? null
 
       if (!current) return { type: 'trip', segment: clicked }
 
@@ -40,10 +40,8 @@ export function createVehiclesActionSpec(
         const tripIds = [bt.trip.id]
 
         if (block) {
-          const sorted = sortedTrips(block)
           console.group(`[Gantt] trip seq=${bt.sequence} | ${bt.trip.route?.line?.code ?? '?'}`)
-          console.log('selected:', { id: bt.id, seq: bt.sequence, deadrunType: bt.trip.deadrunType, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })
-          console.log('block trips:', sorted.map(t => ({ id: t.id, seq: t.sequence, deadrunType: t.trip.deadrunType, dep: t.trip.departureMinutes, arr: t.trip.arrivalMinutes })))
+          console.log('selected:', { id: bt.id, seq: bt.sequence, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })
           console.log('canAddAccess:', canAddAccess(bt, block), '| canAddReturn:', canAddReturn(bt, block))
           console.groupEnd()
         }
@@ -143,26 +141,26 @@ function makeLockAction(
   }
 }
 
-// ── access / collection buttons ───────────────────────────────────────────────
+// ── access / return buttons ───────────────────────────────────────────────────
 
-// gap ≤ this between two productive trips → considered back-to-back (no room to insert deadrun)
+// gap ≤ this between two items → no room to insert a deadrun
 const BACK_TO_BACK_THRESHOLD = 15 // minutes
 
-function sortedTrips(block: GanttBlock): GanttBlockTrip[] {
-  return [...block.blockTrips].sort((a, b) => a.sequence - b.sequence)
-}
-
 function canAddAccess(bt: GanttBlockTrip, block: GanttBlock): boolean {
-  if (bt.trip.deadrunType != null) return false
-  const sorted = sortedTrips(block)
-  const idx    = sorted.findIndex(t => t.id === bt.id)
-  if (idx < 0) return false
-  const prev = sorted[idx - 1]
-  if (!prev) return true
-  if (prev.trip.deadrunType == null) {
-    return (bt.trip.departureMinutes - prev.trip.arrivalMinutes) > BACK_TO_BACK_THRESHOLD
-  }
-  return prev.trip.deadrunType === 'RETURN'
+  const btDep = bt.trip.departureMinutes
+
+  // already has an ACCESS deadrun arriving right before this trip
+  if (block.blockDeadruns.some(
+    (d: GanttBlockDeadrun) => d.type === 'ACCESS' && d.arrivalMinutes <= btDep && btDep - d.arrivalMinutes <= BACK_TO_BACK_THRESHOLD,
+  )) return false
+
+  // previous productive trip is back-to-back
+  const prevTrip = block.blockTrips
+    .filter(t => t.id !== bt.id && t.trip.arrivalMinutes <= btDep)
+    .sort((a, b) => b.trip.arrivalMinutes - a.trip.arrivalMinutes)[0]
+  if (prevTrip && btDep - prevTrip.trip.arrivalMinutes <= BACK_TO_BACK_THRESHOLD) return false
+
+  return true
 }
 
 function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
@@ -176,16 +174,20 @@ function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesAc
 }
 
 function canAddReturn(bt: GanttBlockTrip, block: GanttBlock): boolean {
-  if (bt.trip.deadrunType != null) return false
-  const sorted = sortedTrips(block)
-  const idx    = sorted.findIndex(t => t.id === bt.id)
-  if (idx < 0) return false
-  const next = sorted[idx + 1]
-  if (!next) return true
-  if (next.trip.deadrunType == null) {
-    return (next.trip.departureMinutes - bt.trip.arrivalMinutes) > BACK_TO_BACK_THRESHOLD
-  }
-  return next.trip.deadrunType === 'ACCESS'
+  const btArr = bt.trip.arrivalMinutes
+
+  // already has a RETURN deadrun departing right after this trip
+  if (block.blockDeadruns.some(
+    (d: GanttBlockDeadrun) => d.type === 'RETURN' && d.departureMinutes >= btArr && d.departureMinutes - btArr <= BACK_TO_BACK_THRESHOLD,
+  )) return false
+
+  // next productive trip is back-to-back
+  const nextTrip = block.blockTrips
+    .filter(t => t.id !== bt.id && t.trip.departureMinutes >= btArr)
+    .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)[0]
+  if (nextTrip && nextTrip.trip.departureMinutes - btArr <= BACK_TO_BACK_THRESHOLD) return false
+
+  return true
 }
 
 function makeReturnAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {

@@ -21,11 +21,8 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       select: {
         id:             true,
         vehicleBlockId: true,
-        sequence:       true,
         trip: {
           select: {
-            deadrunType:      true,
-            dayTypeId:        true,
             departureMinutes: true,
             route: { select: { originLocality: { select: { id: true } } } },
           },
@@ -35,9 +32,6 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
 
     if (!target || target.vehicleBlockId !== blockId) {
       throw new NotFoundException('Viagem não encontrada neste bloco')
-    }
-    if (target.trip.deadrunType != null) {
-      throw new BadRequestException('Não é possível adicionar acesso a uma viagem em vazio')
     }
 
     const originLocalityId = target.trip.route.originLocality.id
@@ -51,35 +45,16 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     }
 
     const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
-    const targetSeq       = target.sequence
 
     await db.$transaction(async (tx: any) => {
-      // Shift existing block trips down from highest sequence to avoid unique-constraint conflicts
-      const toShift = await tx.blockTrip.findMany({
-        where:   { vehicleBlockId: blockId, sequence: { gte: targetSeq } },
-        select:  { id: true, sequence: true },
-        orderBy: { sequence: 'desc' },
-      })
-      for (const bt of toShift) {
-        await tx.blockTrip.update({ where: { id: bt.id }, data: { sequence: bt.sequence + 1 } })
-      }
-
-      // 1-minute gap between access arrival and trip departure
-      const accessTrip = await tx.transitTrip.create({
+      await tx.blockDeadrun.create({
         data: {
-          dayTypeId:        target.trip.dayTypeId,
-          deadrunType:      'ACCESS',
-          deadrunKm:        travelTime.distanceKm,
-          departureMinutes: target.trip.departureMinutes - deadheadMinutes - 1,
-          arrivalMinutes:   target.trip.departureMinutes - 1,
-        },
-      })
-
-      await tx.blockTrip.create({
-        data: {
-          vehicleBlockId: blockId,
-          tripId:         accessTrip.id,
-          sequence:       targetSeq,
+          vehicleBlockId:        blockId,
+          type:                  'ACCESS',
+          originLocalityId:      depotLocalityId,
+          destinationLocalityId: originLocalityId,
+          departureMinutes:      target.trip.departureMinutes - deadheadMinutes - 1,
+          arrivalMinutes:        target.trip.departureMinutes - 1,
         },
       })
 
@@ -87,7 +62,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
-  async addCollection(blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
+  async addReturn(blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
     const db = this.prisma as any
 
     const target = await db.blockTrip.findUnique({
@@ -95,11 +70,8 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       select: {
         id:             true,
         vehicleBlockId: true,
-        sequence:       true,
         trip: {
           select: {
-            deadrunType:    true,
-            dayTypeId:      true,
             arrivalMinutes: true,
             route: { select: { destinationLocality: { select: { id: true } } } },
           },
@@ -109,9 +81,6 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
 
     if (!target || target.vehicleBlockId !== blockId) {
       throw new NotFoundException('Viagem não encontrada neste bloco')
-    }
-    if (target.trip.deadrunType != null) {
-      throw new BadRequestException('Não é possível adicionar recolhida a uma viagem em vazio')
     }
 
     const destinationLocalityId = target.trip.route.destinationLocality.id
@@ -125,35 +94,16 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     }
 
     const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
-    const targetSeq       = target.sequence
 
     await db.$transaction(async (tx: any) => {
-      // Shift block trips that come after the selected trip (from highest down)
-      const toShift = await tx.blockTrip.findMany({
-        where:   { vehicleBlockId: blockId, sequence: { gt: targetSeq } },
-        select:  { id: true, sequence: true },
-        orderBy: { sequence: 'desc' },
-      })
-      for (const bt of toShift) {
-        await tx.blockTrip.update({ where: { id: bt.id }, data: { sequence: bt.sequence + 1 } })
-      }
-
-      // 1-minute gap between trip arrival and collection departure
-      const collectionTrip = await tx.transitTrip.create({
+      await tx.blockDeadrun.create({
         data: {
-          dayTypeId:        target.trip.dayTypeId,
-          deadrunType:      'RETURN',
-          deadrunKm:        travelTime.distanceKm,
-          departureMinutes: target.trip.arrivalMinutes + 1,
-          arrivalMinutes:   target.trip.arrivalMinutes + 1 + deadheadMinutes,
-        },
-      })
-
-      await tx.blockTrip.create({
-        data: {
-          vehicleBlockId: blockId,
-          tripId:         collectionTrip.id,
-          sequence:       targetSeq + 1,
+          vehicleBlockId:        blockId,
+          type:                  'RETURN',
+          originLocalityId:      destinationLocalityId,
+          destinationLocalityId: depotLocalityId,
+          departureMinutes:      target.trip.arrivalMinutes + 1,
+          arrivalMinutes:        target.trip.arrivalMinutes + 1 + deadheadMinutes,
         },
       })
 

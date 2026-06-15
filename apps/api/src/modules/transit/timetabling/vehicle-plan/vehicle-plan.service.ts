@@ -336,7 +336,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             include: {
               trip: {
                 select: {
-                  deadrunType:      true,
                   departureMinutes: true,
                   arrivalMinutes:   true,
                   route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } },
@@ -361,26 +360,24 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       id:          idx,
       depotId:     b.depotId,
       vehicleType: b.vehicleType,
-      trips:       b.blockTrips
-        .filter(bt => bt.trip.deadrunType == null)
-        .map(bt => {
-          const route   = bt.trip.route!
-          const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
-          const tripKm  = metrics?.extensionKm?.[route.direction]
-            ?? matrixMap[`${route.originLocalityId}:${route.destinationLocalityId}`]?.km
-            ?? 0
-          return {
-            id:                    bt.tripId,
-            lineId:                route.lineId,
-            originLocalityId:      route.originLocalityId,
-            destinationLocalityId: route.destinationLocalityId,
-            departureMinutes:      bt.trip.departureMinutes,
-            arrivalMinutes:        bt.trip.arrivalMinutes,
-            tripKm,
-            requiredVehicleType:   null,
-            constraints:           null,
-          }
-        }),
+      trips:       b.blockTrips.map(bt => {
+        const route   = bt.trip.route
+        const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
+        const tripKm  = metrics?.extensionKm?.[route.direction]
+          ?? matrixMap[`${route.originLocalityId}:${route.destinationLocalityId}`]?.km
+          ?? 0
+        return {
+          id:                    bt.tripId,
+          lineId:                route.lineId,
+          originLocalityId:      route.originLocalityId,
+          destinationLocalityId: route.destinationLocalityId,
+          departureMinutes:      bt.trip.departureMinutes,
+          arrivalMinutes:        bt.trip.arrivalMinutes,
+          tripKm,
+          requiredVehicleType:   null,
+          constraints:           null,
+        }
+      }),
     }))
 
     const result      = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
@@ -406,18 +403,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   async duplicate(planId: string): Promise<VehiclePlan> {
-    const plan = await this.prisma.vehiclePlan.findUnique({
+    const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
         lines:  { select: { lineId: true } },
         blocks: {
           include: {
-            blockTrips: {
-              select: {
-                tripId:   true,
-                sequence: true,
-              },
-            },
+            blockTrips:    { select: { tripId: true, sequence: true } },
+            blockDeadruns: { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
           },
         },
       },
@@ -435,7 +428,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       if (plan.lines.length > 0) {
         await tx.vehiclePlanLine.createMany({
-          data: plan.lines.map(l => ({ vehiclePlanId: newPlan.id, lineId: l.lineId })),
+          data: plan.lines.map((l: any) => ({ vehiclePlanId: newPlan.id, lineId: l.lineId })),
         })
       }
 
@@ -452,10 +445,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
         if (block.blockTrips.length > 0) {
           await tx.blockTrip.createMany({
-            data: block.blockTrips.map(bt => ({
+            data: block.blockTrips.map((bt: any) => ({
               vehicleBlockId: newBlock.id,
               tripId:         bt.tripId,
               sequence:       bt.sequence,
+            })),
+          })
+        }
+
+        if (block.blockDeadruns.length > 0) {
+          await (tx as any).blockDeadrun.createMany({
+            data: block.blockDeadruns.map((d: any) => ({
+              vehicleBlockId:        newBlock.id,
+              type:                  d.type,
+              originLocalityId:      d.originLocalityId,
+              destinationLocalityId: d.destinationLocalityId,
+              departureMinutes:      d.departureMinutes,
+              arrivalMinutes:        d.arrivalMinutes,
             })),
           })
         }
@@ -521,7 +527,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
 
-    const blocks = await this.prisma.vehicleBlock.findMany({
+    const blocks = await (this.prisma as any).vehicleBlock.findMany({
       where:   { vehiclePlanId: planId },
       orderBy: { blockNumber: 'asc' },
       include: {
@@ -539,6 +545,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 },
               },
             },
+          },
+        },
+        blockDeadruns: {
+          orderBy: { departureMinutes: 'asc' },
+          include: {
+            originLocality:      { select: { id: true, name: true } },
+            destinationLocality: { select: { id: true, name: true } },
           },
         },
       },
