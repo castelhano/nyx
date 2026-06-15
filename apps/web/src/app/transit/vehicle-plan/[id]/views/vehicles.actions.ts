@@ -1,12 +1,14 @@
 import type { GanttActionSpec, Selection, ActionItem, SplitMenuItem } from '../engine/gantt.types'
 import type { LayoutSegment }                                          from '../engine/layout/layout.types'
-import type { VehiclePlanGanttData, GanttBlockTrip, TripConstraints } from './vehicles.view'
+import type { VehiclePlanGanttData, GanttBlock, GanttBlockTrip, TripConstraints } from './vehicles.view'
 
 const ALL_LOCKED_FIELDS = ['departureMinutes', 'arrivalMinutes', 'cycleTime']
 
 export interface VehiclesActionDeps {
   onUpdateConstraints: (tripIds: string[], patches: TripConstraints | null | TripConstraints[]) => void
   onDeleteTrips:       (tripIds: string[]) => void
+  onAddAccess:         (blockTripId: string, blockId: string) => void
+  onAddCollection:     (blockTripId: string, blockId: string) => void
 }
 
 export function createVehiclesActionSpec(
@@ -31,11 +33,15 @@ export function createVehiclesActionSpec(
       return buildInterval(anchor, clicked, allSegments)
     },
 
-    getActions(selection, _data, onClose): ActionItem[] {
+    getActions(selection, data, onClose): ActionItem[] {
       if (selection.type === 'trip') {
-        const tripIds = [(selection.segment.data as GanttBlockTrip).trip.id]
+        const bt      = selection.segment.data as GanttBlockTrip
+        const block   = data.blocks.find(b => b.id === selection.segment.rowId)
+        const tripIds = [bt.trip.id]
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
+          ...(block && canAddAccess(bt, block)      ? [makeAccessAction(bt.id, block.id, deps)]     : []),
+          ...(block && canAddCollection(bt, block)  ? [makeCollectionAction(bt.id, block.id, deps)] : []),
           makeDeleteAction(tripIds, deps),
         ]
       }
@@ -125,6 +131,40 @@ function makeLockAction(
       }
       onClose()
     },
+  }
+}
+
+// ── access button ─────────────────────────────────────────────────────────────
+
+function canAddAccess(bt: GanttBlockTrip, block: GanttBlock): boolean {
+  if (bt.isDeadhead) return false
+  const prev = block.blockTrips.find(t => t.sequence === bt.sequence - 1)
+  return !prev || !prev.isDeadhead
+}
+
+function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'access',
+    label:   'Acesso',
+    icon:    'Warehouse',
+    variant: 'both',
+    onClick: () => deps.onAddAccess(blockTripId, blockId),
+  }
+}
+
+function canAddCollection(bt: GanttBlockTrip, block: GanttBlock): boolean {
+  if (bt.isDeadhead) return false
+  const next = block.blockTrips.find(t => t.sequence === bt.sequence + 1)
+  return !next || !next.isDeadhead
+}
+
+function makeCollectionAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'collection',
+    label:   'Recolhida',
+    icon:    'Warehouse',
+    variant: 'both',
+    onClick: () => deps.onAddCollection(blockTripId, blockId),
   }
 }
 

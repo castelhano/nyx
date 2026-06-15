@@ -1,4 +1,4 @@
-import { Controller, UseGuards } from '@nestjs/common'
+import { Controller, Post, Param, Body, HttpCode, UseGuards } from '@nestjs/common'
 import { VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -13,5 +13,25 @@ export class VehicleBlockController extends BaseController<VehicleBlock, CreateV
     caslFactory: CaslAbilityFactory,
   ) {
     super(vehicleBlockService, caslFactory)
+  }
+
+  @Post(':id/access')
+  @HttpCode(200)
+  addAccess(
+    @Param('id') blockId: string,
+    @Body('blockTripId') blockTripId: string,
+    @Body('depotLocalityId') depotLocalityId: string,
+  ) {
+    return this.vehicleBlockService.addAccess(blockId, blockTripId, depotLocalityId)
+  }
+
+  @Post(':id/collection')
+  @HttpCode(200)
+  addCollection(
+    @Param('id') blockId: string,
+    @Body('blockTripId') blockTripId: string,
+    @Body('depotLocalityId') depotLocalityId: string,
+  ) {
+    return this.vehicleBlockService.addCollection(blockId, blockTripId, depotLocalityId)
   }
 }

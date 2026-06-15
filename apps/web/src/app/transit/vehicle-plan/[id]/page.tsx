@@ -18,6 +18,7 @@ import { GanttActionBar }    from './components/GanttActionBar'
 import { LinesPanel }        from './components/LinesPanel'
 import { FrequencyPanel }    from './components/FrequencyPanel'
 import { GenerateModal }         from './components/GenerateModal'
+import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
@@ -306,7 +307,10 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  const [selection,         setSelection]         = useState<Selection | null>(null)
+  type DepotModal = { kind: 'access' | 'collection'; blockTripId: string; blockId: string }
+
+  const [selection,   setSelection]   = useState<Selection | null>(null)
+  const [depotModal,  setDepotModal]  = useState<DepotModal | null>(null)
   const [isPending,         setIsPending]         = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
@@ -542,6 +546,35 @@ export default function VehiclePlanPage() {
     }
   }
 
+  function handleAddAccess(blockTripId: string, blockId: string) {
+    setDepotModal({ kind: 'access', blockTripId, blockId })
+  }
+
+  function handleAddCollection(blockTripId: string, blockId: string) {
+    setDepotModal({ kind: 'collection', blockTripId, blockId })
+  }
+
+  async function handleConfirmDepotModal(depotLocalityId: string) {
+    if (!depotModal) return
+    const { kind, blockTripId, blockId } = depotModal
+    setDepotModal(null)
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/${kind}`, {
+        method: 'POST',
+        body:   JSON.stringify({ blockTripId, depotLocalityId }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      const label = kind === 'access' ? 'acesso' : 'recolhida'
+      toast.error(err instanceof Error ? err.message : `Erro ao adicionar ${label}`)
+    }
+  }
+
   async function handleDeleteTrips(tripIds: string[]) {
     const count = tripIds.length
     const ok = await confirm({
@@ -572,6 +605,8 @@ export default function VehiclePlanPage() {
     () => createVehiclesActionSpec({
       onUpdateConstraints: handleUpdateConstraints,
       onDeleteTrips:       handleDeleteTrips,
+      onAddAccess:         handleAddAccess,
+      onAddCollection:     handleAddCollection,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -684,6 +719,14 @@ export default function VehiclePlanPage() {
           onConfirm={handleGenerate}
           onClearMetrics={handleClearMetrics}
           onClose={() => setGenerateModalOpen(false)}
+        />
+      )}
+
+      {depotModal && (
+        <AccessModal
+          title={depotModal.kind === 'access' ? 'Adicionar Acesso' : 'Adicionar Recolhida'}
+          onConfirm={handleConfirmDepotModal}
+          onClose={() => setDepotModal(null)}
         />
       )}
 
