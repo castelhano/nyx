@@ -21,6 +21,14 @@ enum VehiclePlanStatus {
   ACTIVE
 }
 
+enum DeadrunType {
+  ACCESS
+  RETURN
+  DISPLACEMENT
+
+  @@map("transit_deadrun_type")
+}
+
 model TransitLocality {
   id        String   @id @default(uuid())
   code      String   @unique
@@ -171,11 +179,14 @@ model LineCalendarExceptionLine {
 
 model TransitTrip {
   id                  String       @id @default(uuid())
-  routeId             String
+  routeId             String?
   dayTypeId           String
   // minutes from operational day start; values > 1440 indicate overnight trips
   departureMinutes    Int
   arrivalMinutes      Int
+  // null for productive trips; set for deadruns
+  deadrunType         DeadrunType?
+  deadrunKm           Float?
   requiredVehicleType VehicleType?
   // { locked?: string[], pinnedBlock?: string }
   constraints         Json?
@@ -183,8 +194,8 @@ model TransitTrip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  route      TransitRoute @relation(fields: [routeId], references: [id])
-  dayType    DayType      @relation(fields: [dayTypeId], references: [id])
+  route      TransitRoute? @relation(fields: [routeId], references: [id])
+  dayType    DayType       @relation(fields: [dayTypeId], references: [id])
   blockTrips BlockTrip[]
 
   @@map("transit_trips")
@@ -274,15 +285,12 @@ model LineGroupLine {
 }
 
 model BlockTrip {
-  id              String   @id @default(uuid())
-  vehicleBlockId  String
-  tripId          String
-  sequence        Int
-  isDeadhead      Boolean  @default(false)
-  deadheadMinutes Int?
-  deadheadKm      Float?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(uuid())
+  vehicleBlockId String
+  tripId         String
+  sequence       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   vehicleBlock VehicleBlock @relation(fields: [vehicleBlockId], references: [id], onDelete: Cascade)
   trip         TransitTrip  @relation(fields: [tripId], references: [id], onDelete: Cascade)

@@ -29,30 +29,6 @@ export const blockTripSchema = withMeta(
       keybind:        's',
     }),
 
-    // true when the vehicle travels empty to reach the next trip's origin
-    isDeadhead: z.boolean().default(false).meta({
-      label:          'Em Vazio',
-      widget:         'switch',
-      listVisibility: 'visible',
-      filter:         true,
-      keybind:        'z',
-    }),
-
-    // populated by solver from TravelTime matrix
-    deadheadMinutes: z.number().int().optional().meta({
-      label:          'Tempo em Vazio (min)',
-      listVisibility: 'hidden',
-      showInForm:     false,
-      className:      'md:w-44',
-    }),
-
-    deadheadKm: z.number().optional().meta({
-      label:          'Km em Vazio',
-      listVisibility: 'hidden',
-      showInForm:     false,
-      className:      'md:w-36',
-    }),
-
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

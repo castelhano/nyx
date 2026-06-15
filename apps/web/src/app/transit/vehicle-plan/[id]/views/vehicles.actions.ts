@@ -8,7 +8,7 @@ export interface VehiclesActionDeps {
   onUpdateConstraints: (tripIds: string[], patches: TripConstraints | null | TripConstraints[]) => void
   onDeleteTrips:       (tripIds: string[]) => void
   onAddAccess:         (blockTripId: string, blockId: string) => void
-  onAddCollection:     (blockTripId: string, blockId: string) => void
+  onAddReturn:         (blockTripId: string, blockId: string) => void
 }
 
 export function createVehiclesActionSpec(
@@ -39,10 +39,19 @@ export function createVehiclesActionSpec(
         const block   = data.blocks.find(b => b.id === selection.segment.rowId)
         const tripIds = [bt.trip.id]
 
+        if (block) {
+          const sorted = sortedTrips(block)
+          console.group(`[Gantt] trip seq=${bt.sequence} | ${bt.trip.route?.line?.code ?? '?'}`)
+          console.log('selected:', { id: bt.id, seq: bt.sequence, deadrunType: bt.trip.deadrunType, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })
+          console.log('block trips:', sorted.map(t => ({ id: t.id, seq: t.sequence, deadrunType: t.trip.deadrunType, dep: t.trip.departureMinutes, arr: t.trip.arrivalMinutes })))
+          console.log('canAddAccess:', canAddAccess(bt, block), '| canAddReturn:', canAddReturn(bt, block))
+          console.groupEnd()
+        }
+
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           ...(block && canAddAccess(bt, block)      ? [makeAccessAction(bt.id, block.id, deps)]     : []),
-          ...(block && canAddCollection(bt, block)  ? [makeCollectionAction(bt.id, block.id, deps)] : []),
+          ...(block && canAddReturn(bt, block)       ? [makeReturnAction(bt.id, block.id, deps)]     : []),
           makeDeleteAction(tripIds, deps),
         ]
       }
@@ -68,7 +77,6 @@ function makeLockAction(
   const tripIds = trips.map(t => t.id)
 
   const hasAnyLock = trips.some(t => hasConstraints(t.constraints))
-  const allFullyLocked = trips.every(t => isFullyLocked(t.constraints))
 
   // per-field checked state: true only if ALL trips have that field/flag
   const allHaveField = (field: string) =>
@@ -137,18 +145,24 @@ function makeLockAction(
 
 // ── access / collection buttons ───────────────────────────────────────────────
 
+// gap ≤ this between two productive trips → considered back-to-back (no room to insert deadrun)
+const BACK_TO_BACK_THRESHOLD = 15 // minutes
+
 function sortedTrips(block: GanttBlock): GanttBlockTrip[] {
   return [...block.blockTrips].sort((a, b) => a.sequence - b.sequence)
 }
 
 function canAddAccess(bt: GanttBlockTrip, block: GanttBlock): boolean {
-  if (bt.isDeadhead) return false
+  if (bt.trip.deadrunType != null) return false
   const sorted = sortedTrips(block)
   const idx    = sorted.findIndex(t => t.id === bt.id)
   if (idx < 0) return false
   const prev = sorted[idx - 1]
-  // access makes sense when this is the first trip OR it immediately follows a deadhead
-  return !prev || prev.isDeadhead
+  if (!prev) return true
+  if (prev.trip.deadrunType == null) {
+    return (bt.trip.departureMinutes - prev.trip.arrivalMinutes) > BACK_TO_BACK_THRESHOLD
+  }
+  return prev.trip.deadrunType === 'RETURN'
 }
 
 function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
@@ -161,23 +175,26 @@ function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesAc
   }
 }
 
-function canAddCollection(bt: GanttBlockTrip, block: GanttBlock): boolean {
-  if (bt.isDeadhead) return false
+function canAddReturn(bt: GanttBlockTrip, block: GanttBlock): boolean {
+  if (bt.trip.deadrunType != null) return false
   const sorted = sortedTrips(block)
   const idx    = sorted.findIndex(t => t.id === bt.id)
   if (idx < 0) return false
   const next = sorted[idx + 1]
-  // collection makes sense when this is the last trip OR it immediately precedes a deadhead
-  return !next || next.isDeadhead
+  if (!next) return true
+  if (next.trip.deadrunType == null) {
+    return (next.trip.departureMinutes - bt.trip.arrivalMinutes) > BACK_TO_BACK_THRESHOLD
+  }
+  return next.trip.deadrunType === 'ACCESS'
 }
 
-function makeCollectionAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+function makeReturnAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
   return {
-    id:      'collection',
+    id:      'return',
     label:   'Recolhida',
     icon:    'Warehouse',
     variant: 'both',
-    onClick: () => deps.onAddCollection(blockTripId, blockId),
+    onClick: () => deps.onAddReturn(blockTripId, blockId),
   }
 }
 

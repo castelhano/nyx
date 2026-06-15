@@ -297,12 +297,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
         await tx.blockTrip.createMany({
           data: block.trips.map(bt => ({
-            vehicleBlockId:  created.id,
-            tripId:          bt.tripId,
-            sequence:        bt.sequence,
-            isDeadhead:      bt.isDeadhead,
-            deadheadMinutes: bt.deadheadMinutes,
-            deadheadKm:      bt.deadheadKm,
+            vehicleBlockId: created.id,
+            tripId:         bt.tripId,
+            sequence:       bt.sequence,
           })),
         })
       }
@@ -339,6 +336,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             include: {
               trip: {
                 select: {
+                  deadrunType:      true,
                   departureMinutes: true,
                   arrivalMinutes:   true,
                   route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } },
@@ -363,23 +361,26 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       id:          idx,
       depotId:     b.depotId,
       vehicleType: b.vehicleType,
-      trips:       b.blockTrips.map(bt => {
-        const metrics = bt.trip.route.line.metrics as { extensionKm?: Record<string, number> } | null
-        const tripKm  = metrics?.extensionKm?.[bt.trip.route.direction]
-          ?? matrixMap[`${bt.trip.route.originLocalityId}:${bt.trip.route.destinationLocalityId}`]?.km
-          ?? 0
-        return {
-          id:                    bt.tripId,
-          lineId:                bt.trip.route.lineId,
-          originLocalityId:      bt.trip.route.originLocalityId,
-          destinationLocalityId: bt.trip.route.destinationLocalityId,
-          departureMinutes:      bt.trip.departureMinutes,
-          arrivalMinutes:        bt.trip.arrivalMinutes,
-          tripKm,
-          requiredVehicleType:   null,
-          constraints:           null,
-        }
-      }),
+      trips:       b.blockTrips
+        .filter(bt => bt.trip.deadrunType == null)
+        .map(bt => {
+          const route   = bt.trip.route!
+          const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
+          const tripKm  = metrics?.extensionKm?.[route.direction]
+            ?? matrixMap[`${route.originLocalityId}:${route.destinationLocalityId}`]?.km
+            ?? 0
+          return {
+            id:                    bt.tripId,
+            lineId:                route.lineId,
+            originLocalityId:      route.originLocalityId,
+            destinationLocalityId: route.destinationLocalityId,
+            departureMinutes:      bt.trip.departureMinutes,
+            arrivalMinutes:        bt.trip.arrivalMinutes,
+            tripKm,
+            requiredVehicleType:   null,
+            constraints:           null,
+          }
+        }),
     }))
 
     const result      = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
@@ -413,11 +414,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           include: {
             blockTrips: {
               select: {
-                tripId:          true,
-                sequence:        true,
-                isDeadhead:      true,
-                deadheadMinutes: true,
-                deadheadKm:      true,
+                tripId:   true,
+                sequence: true,
               },
             },
           },
@@ -455,12 +453,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         if (block.blockTrips.length > 0) {
           await tx.blockTrip.createMany({
             data: block.blockTrips.map(bt => ({
-              vehicleBlockId:  newBlock.id,
-              tripId:          bt.tripId,
-              sequence:        bt.sequence,
-              isDeadhead:      bt.isDeadhead,
-              deadheadMinutes: bt.deadheadMinutes,
-              deadheadKm:      bt.deadheadKm,
+              vehicleBlockId: newBlock.id,
+              tripId:         bt.tripId,
+              sequence:       bt.sequence,
             })),
           })
         }

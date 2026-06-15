@@ -9,22 +9,21 @@ export interface TripConstraints {
 }
 
 export interface GanttBlockTrip {
-  id:              string
-  sequence:        number
-  isDeadhead:      boolean
-  deadheadMinutes: number | null
-  deadheadKm:      number | null
+  id:       string
+  sequence: number
   trip: {
     id:               string
     departureMinutes: number
     arrivalMinutes:   number
+    deadrunType:      string | null
+    deadrunKm:        number | null
     constraints:      TripConstraints | null
     route: {
       direction:           string
       line:                { id: string; code: string; name: string }
       originLocality:      { id: string; name: string }
       destinationLocality: { id: string; name: string }
-    }
+    } | null
   }
 }
 
@@ -69,7 +68,7 @@ function lightenHex(hex: string, amount = 0.45): string {
 
 function lineColorMap(blocks: GanttBlock[]): Map<string, string> {
   const lineIds = [...new Set(blocks.flatMap((b) =>
-    b.blockTrips.filter((t) => !t.isDeadhead).map((t) => t.trip.route.line.id),
+    b.blockTrips.filter((t) => t.trip.deadrunType == null).map((t) => t.trip.route!.line.id),
   ))]
   const map = new Map<string, string>()
   lineIds.forEach((id, i) => map.set(id, PALETTE[i % PALETTE.length]))
@@ -94,34 +93,19 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
 
     for (const bt of block.blockTrips) {
       const { trip } = bt
+      const isDeadrun = bt.trip.deadrunType != null
 
-      // dead run segment placed immediately before the trip departure
-      if (bt.isDeadhead && bt.deadheadMinutes != null && bt.deadheadMinutes > 0) {
-        const endMin   = trip.departureMinutes
-        const startMin = endMin - bt.deadheadMinutes
-        segs.push({
-          id:          `${bt.id}:dead`,
-          rowId:       row.id,
-          startMinute: startMin,
-          endMinute:   endMin,
-          isDeadhead:  true,
-          label:       'Dead',
-          color:       DEADHEAD_COLOR,
-          data:        bt,
-        })
-      }
-
-      const baseColor = colors.get(trip.route.line.id) ?? PALETTE[0]
-      const segColor  = trip.route.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
+      const baseColor = !isDeadrun && trip.route ? (colors.get(trip.route.line.id) ?? PALETTE[0]) : DEADHEAD_COLOR
+      const segColor  = !isDeadrun && trip.route?.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
 
       segs.push({
         id:          bt.id,
         rowId:       row.id,
         startMinute: trip.departureMinutes,
         endMinute:   trip.arrivalMinutes,
-        isDeadhead:  bt.isDeadhead,
-        label:       trip.route.line.code,
-        color:       bt.isDeadhead ? DEADHEAD_COLOR : segColor,
+        isDeadhead:  isDeadrun,
+        label:       trip.route?.line.code ?? '',
+        color:       isDeadrun ? DEADHEAD_COLOR : segColor,
         data:        bt,
       })
     }

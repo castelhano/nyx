@@ -30,12 +30,13 @@ interface TooltipState {
 function computeHeadway(seg: LayoutSegment, blocks: GanttBlock[]): number | null {
   if (seg.isDeadhead) return null
   const bt     = seg.data as GanttBlockTrip
+  if (!bt.trip.route) return null
   const lineId = bt.trip.route.line.id
   const dir    = bt.trip.route.direction
 
   const departures = blocks
     .flatMap(b => b.blockTrips)
-    .filter(t => !t.isDeadhead && t.trip.route.line.id === lineId && t.trip.route.direction === dir)
+    .filter(t => t.trip.deadrunType == null && t.trip.route?.line.id === lineId && t.trip.route.direction === dir)
     .map(t => t.trip.departureMinutes)
     .sort((a, b) => a - b)
 
@@ -78,6 +79,7 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
   const [canvasH,      setCanvasH]      = useState(0)
   const [tooltip,      setTooltip]      = useState<TooltipState | null>(null)
   const [blockDetail,  setBlockDetail]  = useState<BlockDetailState | null>(null)
+  const lastEmittedVpRef               = useRef<ViewportSnapshot | null>(null)
 
   // ── engine lifecycle ────────────────────────────────────────────────────────
 
@@ -106,7 +108,21 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
     engine.onStateChangeCallback((state: EngineState) => {
       setVp(state.viewport)
       setLayoutRows(state.layoutRows)
-      onViewportChangeRef.current?.(state.viewport)
+
+      // only propagate to parent when viewport fields actually changed
+      const prev = lastEmittedVpRef.current
+      const next = state.viewport
+      if (
+        !prev ||
+        prev.scrollX         !== next.scrollX         ||
+        prev.scrollY         !== next.scrollY         ||
+        prev.pixelsPerMinute !== next.pixelsPerMinute ||
+        prev.width           !== next.width           ||
+        prev.dayStartMinute  !== next.dayStartMinute
+      ) {
+        lastEmittedVpRef.current = next
+        onViewportChangeRef.current?.(next)
+      }
 
       if (state.hoveredSegment) {
         const rect = engine.getSegmentRect(state.hoveredSegment.id)

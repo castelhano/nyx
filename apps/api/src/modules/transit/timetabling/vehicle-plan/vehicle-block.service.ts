@@ -22,10 +22,9 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
         id:             true,
         vehicleBlockId: true,
         sequence:       true,
-        isDeadhead:     true,
         trip: {
           select: {
-            routeId:          true,
+            deadrunType:      true,
             dayTypeId:        true,
             departureMinutes: true,
             route: { select: { originLocality: { select: { id: true } } } },
@@ -37,7 +36,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     if (!target || target.vehicleBlockId !== blockId) {
       throw new NotFoundException('Viagem não encontrada neste bloco')
     }
-    if (target.isDeadhead) {
+    if (target.trip.deadrunType != null) {
       throw new BadRequestException('Não é possível adicionar acesso a uma viagem em vazio')
     }
 
@@ -68,8 +67,9 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       // 1-minute gap between access arrival and trip departure
       const accessTrip = await tx.transitTrip.create({
         data: {
-          routeId:          target.trip.routeId,
           dayTypeId:        target.trip.dayTypeId,
+          deadrunType:      'ACCESS',
+          deadrunKm:        travelTime.distanceKm,
           departureMinutes: target.trip.departureMinutes - deadheadMinutes - 1,
           arrivalMinutes:   target.trip.departureMinutes - 1,
         },
@@ -80,8 +80,6 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
           vehicleBlockId: blockId,
           tripId:         accessTrip.id,
           sequence:       targetSeq,
-          isDeadhead:     true,
-          deadheadKm:     travelTime.distanceKm,
         },
       })
 
@@ -98,10 +96,9 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
         id:             true,
         vehicleBlockId: true,
         sequence:       true,
-        isDeadhead:     true,
         trip: {
           select: {
-            routeId:        true,
+            deadrunType:    true,
             dayTypeId:      true,
             arrivalMinutes: true,
             route: { select: { destinationLocality: { select: { id: true } } } },
@@ -113,7 +110,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     if (!target || target.vehicleBlockId !== blockId) {
       throw new NotFoundException('Viagem não encontrada neste bloco')
     }
-    if (target.isDeadhead) {
+    if (target.trip.deadrunType != null) {
       throw new BadRequestException('Não é possível adicionar recolhida a uma viagem em vazio')
     }
 
@@ -144,8 +141,9 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       // 1-minute gap between trip arrival and collection departure
       const collectionTrip = await tx.transitTrip.create({
         data: {
-          routeId:          target.trip.routeId,
           dayTypeId:        target.trip.dayTypeId,
+          deadrunType:      'RETURN',
+          deadrunKm:        travelTime.distanceKm,
           departureMinutes: target.trip.arrivalMinutes + 1,
           arrivalMinutes:   target.trip.arrivalMinutes + 1 + deadheadMinutes,
         },
@@ -156,8 +154,6 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
           vehicleBlockId: blockId,
           tripId:         collectionTrip.id,
           sequence:       targetSeq + 1,
-          isDeadhead:     true,
-          deadheadKm:     travelTime.distanceKm,
         },
       })
 

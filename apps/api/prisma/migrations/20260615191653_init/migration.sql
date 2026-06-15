@@ -330,16 +330,18 @@ CREATE TABLE "transit_line_calendar_exception_lines" (
 -- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "routeId" TEXT NOT NULL,
+    "routeId" TEXT,
     "dayTypeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
+    "deadrunType" TEXT,
+    "deadrunKm" REAL,
     "requiredVehicleType" TEXT,
     "constraints" JSONB,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
@@ -414,13 +416,10 @@ CREATE TABLE "transit_block_trips" (
     "vehicleBlockId" TEXT NOT NULL,
     "tripId" TEXT NOT NULL,
     "sequence" INTEGER NOT NULL,
-    "isDeadhead" BOOLEAN NOT NULL DEFAULT false,
-    "deadheadMinutes" INTEGER,
-    "deadheadKm" REAL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_block_trips_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "transit_block_trips_tripId_fkey" FOREIGN KEY ("tripId") REFERENCES "transit_trips" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_block_trips_tripId_fkey" FOREIGN KEY ("tripId") REFERENCES "transit_trips" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndex

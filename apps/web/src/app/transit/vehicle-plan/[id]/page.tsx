@@ -355,7 +355,7 @@ export default function VehiclePlanPage() {
     return {
       ...ganttData,
       blocks: ganttData.blocks.filter(b =>
-        b.blockTrips.some(bt => !bt.isDeadhead && plottedLineIds.has(bt.trip.route.line.id))
+        b.blockTrips.some(bt => bt.trip.deadrunType == null && plottedLineIds.has(bt.trip.route!.line.id))
       ),
     }
   }, [ganttData, plottedLineIds])
@@ -387,8 +387,8 @@ export default function VehiclePlanPage() {
         fleetCount:   ganttData.blocks.length,
         score:        0,
         deadrunKm:    ganttData.blocks
-          .flatMap(b => b.blockTrips.filter(bt => bt.isDeadhead))
-          .reduce((sum, bt) => sum + (bt.deadheadKm ?? 0), 0),
+          .flatMap(b => b.blockTrips.filter(bt => bt.trip.deadrunType != null))
+          .reduce((sum, bt) => sum + (bt.trip.deadrunKm ?? 0), 0),
         productiveKm: 0,
         totalKm:      0,
       })
@@ -550,7 +550,7 @@ export default function VehiclePlanPage() {
     setDepotModal({ kind: 'access', blockTripId, blockId })
   }
 
-  function handleAddCollection(blockTripId: string, blockId: string) {
+  function handleAddReturn(blockTripId: string, blockId: string) {
     setDepotModal({ kind: 'collection', blockTripId, blockId })
   }
 
@@ -606,7 +606,7 @@ export default function VehiclePlanPage() {
       onUpdateConstraints: handleUpdateConstraints,
       onDeleteTrips:       handleDeleteTrips,
       onAddAccess:         handleAddAccess,
-      onAddCollection:     handleAddCollection,
+      onAddReturn:         handleAddReturn,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
