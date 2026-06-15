@@ -6,6 +6,7 @@ export interface EmployeeSyncRow {
   hireDate:      Date
   dateOfBirth:   Date | null
   taxId:         string
+  jobTitle:      string | null
   preferredName: string | null
   _line:         number
 }
@@ -21,10 +22,55 @@ const GENDER_MAP: Record<string, 'MALE' | 'FEMALE'> = {
   F: 'FEMALE',
 }
 
+// Maps known header names to EmployeeSyncRow fields
+const COLUMN_MAP = {
+  CODFUNC:      'code',
+  NOMEFUNC:     'fullName',
+  SITUACAOFUNC: 'status',
+  SEXOFUNC:     'gender',
+  DTADMFUNC:    'hireDate',
+  DTNASCTOFUNC: 'dateOfBirth',
+  CPFNUMERO:    'taxId',
+  DESCFUNCAO:   'jobTitle',
+  APELIDOFUNC:  'preferredName',
+} as const
+
+type KnownHeader = keyof typeof COLUMN_MAP
+type ColumnField = (typeof COLUMN_MAP)[KnownHeader]
+
+interface ColumnSlice {
+  field: ColumnField
+  start: number
+  end:   number  // exclusive; last column uses line.length
+}
+
+function parseHeader(line: string): ColumnSlice[] | null {
+  const known = Object.keys(COLUMN_MAP) as KnownHeader[]
+  const found: { name: KnownHeader; start: number }[] = []
+
+  for (const name of known) {
+    const idx = line.indexOf(name)
+    if (idx !== -1) found.push({ name, start: idx })
+  }
+
+  if (found.length < 3) return null
+
+  found.sort((a, b) => a.start - b.start)
+
+  return found.map((col, i) => ({
+    field: COLUMN_MAP[col.name],
+    start: col.start,
+    end:   i + 1 < found.length ? found[i + 1].start : Infinity,
+  }))
+}
+
+function extract(line: string, col: ColumnSlice): string {
+  return line.substring(col.start, col.end === Infinity ? undefined : col.end).trim()
+}
+
 function parseDate(raw: string): Date | null {
-  const s = raw.trim()
-  if (!s || s.length !== 10) return null
-  const [day, month, year] = s.split('/')
+  if (!raw || raw.length !== 10) return null
+  const [day, month, year] = raw.split('/')
   const d = new Date(Date.UTC(+year, +month - 1, +day))
   return isNaN(d.getTime()) ? null : d
 }
@@ -40,27 +86,44 @@ function stripLeadingZeros(raw: string): string {
   return s === '' ? '0' : s
 }
 
-// Groups: 1=code  2=name  3=status  4=gender  5=hireDate  6=dateOfBirth  7=cpf  8=preferredName
-const DATA_LINE_RE =
-  /^\s+(\d{4,8})\s{2,}(.+?)\s{2,}([ADF])\s+([MF])\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{11})\s+(.*?)\s*$/
+// A data line must have a numeric code at the code column position
+const CODE_RE = /^\d+$/
 
 export function parseEmployeeSyncFile(buffer: Buffer): EmployeeSyncRow[] {
   const lines = buffer.toString('latin1').split('\n').map(l => l.replace(/\r$/, ''))
   const rows: EmployeeSyncRow[] = []
 
+  let columns: ColumnSlice[] | null = null
+
   for (let i = 0; i < lines.length; i++) {
-    const m = DATA_LINE_RE.exec(lines[i])
-    if (!m) continue
+    const line = lines[i]
+
+    if (!columns) {
+      columns = parseHeader(line)
+      continue
+    }
+
+    const codeCol = columns.find(c => c.field === 'code')
+    if (!codeCol) continue
+
+    const rawCode = extract(line, codeCol)
+    if (!CODE_RE.test(rawCode)) continue
+
+    const get = (field: ColumnField): string => {
+      const col = columns!.find(c => c.field === field)
+      return col ? extract(line, col) : ''
+    }
 
     rows.push({
-      code:          stripLeadingZeros(m[1]),
-      fullName:      m[2].trim(),
-      status:        STATUS_MAP[m[3]] ?? 'ACTIVE',
-      gender:        GENDER_MAP[m[4]] ?? null,
-      hireDate:      parseDate(m[5]) ?? new Date(),
-      dateOfBirth:   parseDate(m[6]),
-      taxId:         formatCpf(m[7]),
-      preferredName: m[8] || null,
+      code:          stripLeadingZeros(get('code')),
+      fullName:      get('fullName'),
+      status:        STATUS_MAP[get('status')] ?? 'ACTIVE',
+      gender:        GENDER_MAP[get('gender')] ?? null,
+      hireDate:      parseDate(get('hireDate')) ?? new Date(),
+      dateOfBirth:   parseDate(get('dateOfBirth')),
+      taxId:         formatCpf(get('taxId')),
+      jobTitle:      get('jobTitle') || null,
+      preferredName: get('preferredName') || null,
       _line:         i + 1,
     })
   }
