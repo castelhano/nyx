@@ -509,15 +509,36 @@ export default function VehiclePlanPage() {
     }
   }
 
-  async function handleActivate() {
+  async function handleActivate(force: boolean = false) {
+    if (typeof force !== 'boolean') force = false
     if (!canUpdate) return
     setIsPending(true)
     try {
-      const res = await apiFetch(`/transit/vehicle-plan/${id}/activate`, { method: 'POST' })
+      const res  = await apiFetch(`/transit/vehicle-plan/${id}/activate`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ force }),
+      })
+
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         throw new Error(extractError(json))
       }
+
+      const json = await res.json().catch(() => null)
+
+      if (json?.conflict) {
+        const label = json.conflict.description || json.conflict.id || 'outro planejamento'
+        const ok = await confirm({
+          title:        'Substituir planejamento ativo',
+          description:  `"${label}" está ativo e será desativado. Deseja continuar?`,
+          confirmLabel: 'Continuar',
+          variant:      'safeConfirm',
+        })
+        if (ok) await handleActivate(true)
+        return
+      }
+
       toast.success('Planejamento ativado')
       await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
     } catch (err) {

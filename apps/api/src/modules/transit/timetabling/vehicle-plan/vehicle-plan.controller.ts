@@ -59,8 +59,8 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
 
   @Post(':id/activate')
   @HttpCode(200)
-  activate(@Param('id') id: string) {
-    return this.vehiclePlanService.activate(id)
+  activate(@Param('id') id: string, @Body('force') force: boolean) {
+    return this.vehiclePlanService.activate(id, force ?? false)
   }
 
   @Post(':id/lines')

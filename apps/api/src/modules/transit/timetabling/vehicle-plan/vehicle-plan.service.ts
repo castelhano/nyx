@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Observable, Subject } from 'rxjs'
 import { Worker } from 'worker_threads'
 import path from 'path'
@@ -560,7 +560,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return { plan, blocks }
   }
 
-  async activate(planId: string): Promise<void> {
+  async activate(planId: string, force = false): Promise<{ conflict: { id: string; description: string | null } } | null> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:   { id: planId },
       include: { lines: { select: { lineId: true } } },
@@ -570,18 +570,21 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const lineIds  = plan.lines.map(l => l.lineId)
     const conflict = await this.prisma.vehiclePlan.findFirst({
-      where: {
-        id:        { not: planId },
-        dayTypeId: plan.dayTypeId,
-        status:    'ACTIVE',
-        lines:     { some: { lineId: { in: lineIds } } },
-      },
+      where:  { id: { not: planId }, dayTypeId: plan.dayTypeId, status: 'ACTIVE', lines: { some: { lineId: { in: lineIds } } } },
+      select: { id: true, description: true },
     })
-    if (conflict) throw new ConflictException('Somente um planejamento pode estar ativo para um tipo de dia')
 
-    await this.prisma.vehiclePlan.update({
-      where: { id: planId },
-      data:  { status: 'ACTIVE' },
+    if (conflict && !force) {
+      return { conflict: { id: conflict.id, description: conflict.description } }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (conflict) {
+        await tx.vehiclePlan.update({ where: { id: conflict.id }, data: { status: 'DRAFT' } })
+      }
+      await tx.vehiclePlan.update({ where: { id: planId }, data: { status: 'ACTIVE' } })
     })
+
+    return null
   }
 }
