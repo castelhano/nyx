@@ -30,6 +30,8 @@ export interface GanttBlockDeadrun {
   type:                  'ACCESS' | 'RETURN' | 'DISPLACEMENT'
   originLocalityId:      string
   destinationLocalityId: string
+  originLocality:        { id: string; name: string }
+  destinationLocality:   { id: string; name: string }
   departureMinutes:      number
   arrivalMinutes:        number
 }

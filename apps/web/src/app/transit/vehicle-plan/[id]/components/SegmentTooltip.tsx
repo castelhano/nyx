@@ -1,5 +1,11 @@
 import type { LayoutSegment } from '../engine/layout/layout.types'
-import type { GanttBlockTrip } from '../views/vehicles.view'
+import type { GanttBlockTrip, GanttBlockDeadrun } from '../views/vehicles.view'
+
+const DEADRUN_TYPE_LABEL: Record<string, string> = {
+  ACCESS:       'ACESSO',
+  RETURN:       'RECOLHIDA',
+  DISPLACEMENT: 'DESLOCAMENTO',
+}
 
 interface Props {
   segment:    LayoutSegment
@@ -54,7 +60,20 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway 
     >
       <div className="bg-popover border border-border rounded-lg shadow-lg px-3 py-2 text-sm min-w-[160px]">
         {segment.isDeadhead ? (
-          <p className="font-medium text-muted-foreground">Dead run</p>
+          <>
+            <p className="font-medium text-muted-foreground">Dead run</p>
+            {(() => {
+              const d = segment.data as GanttBlockDeadrun
+              return (
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  <span className="font-medium text-foreground">
+                    {DEADRUN_TYPE_LABEL[d.type] ?? d.type}
+                  </span>
+                  {' '}{d.originLocality.name} → {d.destinationLocality.name}
+                </p>
+              )
+            })()}
+          </>
         ) : (
           <>
             <p className="font-semibold">{trip.route.line.code} — {trip.route.line.name}</p>
