@@ -573,6 +573,69 @@ export default function VehiclePlanPage() {
     }
   }
 
+  async function handleDeleteDeadruns(deadrunIds: string[], blockId: string) {
+    const ok = await confirm({
+      title:        deadrunIds.length === 1 ? 'Excluir vazio' : `Excluir ${deadrunIds.length} vazios`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/deadruns`, {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ids: deadrunIds }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir vazio')
+    }
+  }
+
+  async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], blockId: string) {
+    const tripCount    = tripIds.length
+    const deadrunCount = deadrunIds.length
+    const parts        = [
+      tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`  : null,
+      deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}` : null,
+    ].filter(Boolean).join(' e ')
+
+    const ok = await confirm({
+      title:        `Excluir ${parts}`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      await Promise.all([
+        ...tripIds.map(async (tripId) => {
+          const res = await apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+          if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
+        }),
+        ...(deadrunIds.length > 0 ? [
+          apiFetch(`/transit/vehicle-block/${blockId}/deadruns`, {
+            method:  'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ ids: deadrunIds }),
+          }).then(async (res) => {
+            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
+          }),
+        ] : []),
+      ])
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir seleção')
+    }
+  }
+
   async function handleDeleteTrips(tripIds: string[]) {
     const count = tripIds.length
     const ok = await confirm({
@@ -603,6 +666,8 @@ export default function VehiclePlanPage() {
     () => createVehiclesActionSpec({
       onUpdateConstraints: handleUpdateConstraints,
       onDeleteTrips:       handleDeleteTrips,
+      onDeleteDeadruns:    handleDeleteDeadruns,
+      onDeleteInterval:    handleDeleteInterval,
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
     }),

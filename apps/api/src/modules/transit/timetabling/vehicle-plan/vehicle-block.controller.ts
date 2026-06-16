@@ -1,4 +1,4 @@
-import { Controller, Post, Param, Body, HttpCode, UseGuards } from '@nestjs/common'
+import { Controller, Post, Delete, Param, Body, HttpCode, UseGuards } from '@nestjs/common'
 import { VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -23,6 +23,14 @@ export class VehicleBlockController extends BaseController<VehicleBlock, CreateV
     @Body('depotLocalityId') depotLocalityId: string,
   ) {
     return this.vehicleBlockService.addAccess(blockId, blockTripId, depotLocalityId)
+  }
+
+  @Delete(':id/deadruns')
+  deleteDeadruns(
+    @Param('id') blockId: string,
+    @Body('ids') ids: string[],
+  ) {
+    return this.vehicleBlockService.deleteDeadruns(blockId, ids)
   }
 
   @Post(':id/return')

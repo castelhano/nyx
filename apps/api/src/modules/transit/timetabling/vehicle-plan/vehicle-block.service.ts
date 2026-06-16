@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { vehicleBlockSchema, VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
@@ -58,6 +58,22 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
         },
       })
 
+      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+    })
+  }
+
+  async deleteDeadruns(blockId: string, ids: string[]): Promise<void> {
+    if (ids.length === 0) return
+    const db = this.prisma as any
+    const found = await db.blockDeadrun.findMany({
+      where:  { id: { in: ids }, vehicleBlockId: blockId },
+      select: { id: true },
+    })
+    if (found.length !== ids.length) {
+      throw new NotFoundException('Um ou mais vazios não encontrados neste bloco')
+    }
+    await db.$transaction(async (tx: any) => {
+      await tx.blockDeadrun.deleteMany({ where: { id: { in: ids } } })
       await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
     })
   }

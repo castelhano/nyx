@@ -7,6 +7,8 @@ const ALL_LOCKED_FIELDS = ['departureMinutes', 'arrivalMinutes', 'cycleTime']
 export interface VehiclesActionDeps {
   onUpdateConstraints: (tripIds: string[], patches: TripConstraints | null | TripConstraints[]) => void
   onDeleteTrips:       (tripIds: string[]) => void
+  onDeleteDeadruns:    (deadrunIds: string[], blockId: string) => void
+  onDeleteInterval:    (tripIds: string[], deadrunIds: string[], blockId: string) => void
   onAddAccess:         (blockTripId: string, blockId: string) => void
   onAddReturn:         (blockTripId: string, blockId: string) => void
 }
@@ -17,8 +19,9 @@ export function createVehiclesActionSpec(
   return {
 
     resolveSelection(clicked, current, { allSegments }) {
-      // skip micro-segments and deadrun segments
-      if (clicked.id.endsWith(':dead') || clicked.id.endsWith(':dr')) return current ?? null
+      if (clicked.id.endsWith(':dead')) return current ?? null
+      // deadrun segments are selectable (single click only — excluded from intervals by buildInterval)
+      if (clicked.id.endsWith(':dr')) return { type: 'trip', segment: clicked }
 
       if (!current) return { type: 'trip', segment: clicked }
 
@@ -35,29 +38,35 @@ export function createVehiclesActionSpec(
 
     getActions(selection, data, onClose): ActionItem[] {
       if (selection.type === 'trip') {
-        const bt      = selection.segment.data as GanttBlockTrip
-        const block   = data.blocks.find(b => b.id === selection.segment.rowId)
-        const tripIds = [bt.trip.id]
-
-        if (block) {
-          console.group(`[Gantt] trip seq=${bt.sequence} | ${bt.trip.route?.line?.code ?? '?'}`)
-          console.log('selected:', { id: bt.id, seq: bt.sequence, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })
-          console.log('canAddAccess:', canAddAccess(bt, block), '| canAddReturn:', canAddReturn(bt, block))
-          console.groupEnd()
+        // deadrun segment selected (single click only)
+        if (selection.segment.id.endsWith(':dr')) {
+          const d     = selection.segment.data as GanttBlockDeadrun
+          const block = data.blocks.find(b => b.id === selection.segment.rowId)
+          return block ? [makeDeleteDeadrunsAction([d.id], block.id, deps)] : []
         }
+
+        const bt    = selection.segment.data as GanttBlockTrip
+        const block = data.blocks.find(b => b.id === selection.segment.rowId)
 
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
-          ...(block && canAddAccess(bt, block)      ? [makeAccessAction(bt.id, block.id, deps)]     : []),
-          ...(block && canAddReturn(bt, block)       ? [makeReturnAction(bt.id, block.id, deps)]     : []),
-          makeDeleteAction(tripIds, deps),
+          ...(block && canAddAccess(bt, block) ? [makeAccessAction(bt.id, block.id, deps)] : []),
+          ...(block && canAddReturn(bt, block)  ? [makeReturnAction(bt.id, block.id, deps)] : []),
+          makeDeleteAction([bt.trip.id], deps),
         ]
       }
 
-      const tripIds = selection.segments.map(s => (s.data as GanttBlockTrip).trip.id)
+      // interval selection — may include both trips and deadruns
+      const tripSegs   = selection.segments.filter(s => !s.id.endsWith(':dr'))
+      const drSegs     = selection.segments.filter(s =>  s.id.endsWith(':dr'))
+      const tripIds    = tripSegs.map(s => (s.data as GanttBlockTrip).trip.id)
+      const deadrunIds = drSegs.map(s => (s.data as GanttBlockDeadrun).id)
+
+      console.log('[getActions interval]', { tripIds, deadrunIds, blockId: selection.rowId })
+
       return [
-        makeLockAction(selection.segments, selection.rowId, deps, onClose),
-        makeDeleteAction(tripIds, deps),
+        makeLockAction(tripSegs, selection.rowId, deps, onClose),
+        makeDeleteIntervalAction(tripIds, deadrunIds, selection.rowId, deps),
       ]
     },
   }
@@ -71,7 +80,7 @@ function makeLockAction(
   deps:     VehiclesActionDeps,
   onClose:  () => void,
 ): ActionItem {
-  const trips = segments.map(s => (s.data as GanttBlockTrip).trip)
+  const trips   = segments.filter(s => !s.id.endsWith(':dr')).map(s => (s.data as GanttBlockTrip).trip)
   const tripIds = trips.map(t => t.id)
 
   const hasAnyLock = trips.some(t => hasConstraints(t.constraints))
@@ -200,7 +209,18 @@ function makeReturnAction(blockTripId: string, blockId: string, deps: VehiclesAc
   }
 }
 
-// ── delete button ─────────────────────────────────────────────────────────────
+// ── delete buttons ────────────────────────────────────────────────────────────
+
+function makeDeleteDeadrunsAction(deadrunIds: string[], blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'delete-deadrun',
+    label:   'Excluir vazio',
+    icon:    'Trash2',
+    variant: 'both',
+    danger:  true,
+    onClick: () => deps.onDeleteDeadruns(deadrunIds, blockId),
+  }
+}
 
 function makeDeleteAction(tripIds: string[], deps: VehiclesActionDeps): ActionItem {
   return {
@@ -210,6 +230,22 @@ function makeDeleteAction(tripIds: string[], deps: VehiclesActionDeps): ActionIt
     variant: 'both',
     danger:  true,
     onClick: () => deps.onDeleteTrips(tripIds),
+  }
+}
+
+function makeDeleteIntervalAction(
+  tripIds:    string[],
+  deadrunIds: string[],
+  blockId:    string,
+  deps:       VehiclesActionDeps,
+): ActionItem {
+  return {
+    id:      'delete',
+    label:   'Excluir',
+    icon:    'Trash2',
+    variant: 'both',
+    danger:  true,
+    onClick: () => deps.onDeleteInterval(tripIds, deadrunIds, blockId),
   }
 }
 
