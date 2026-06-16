@@ -577,7 +577,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         lines:     { some: { lineId: { in: lineIds } } },
       },
     })
-    if (conflict) throw new ConflictException('One or more lines are already covered by an active plan for this day type')
+    if (conflict) throw new ConflictException('Somente um planejamento pode estar ativo para um tipo de dia')
 
     await this.prisma.vehiclePlan.update({
       where: { id: planId },

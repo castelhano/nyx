@@ -285,6 +285,19 @@ export class VehiclePlanImportService {
 
       if (perBlockEntries.length === 0) continue
 
+      // Reclassify deadruns by position relative to productive trips:
+      // before first trip → ACCESS, after last trip → RETURN
+      {
+        const firstTripIdx = perBlockEntries.findIndex(e => e.kind === 'trip')
+        const lastTripIdx  = perBlockEntries.reduce((last, e, i) => e.kind === 'trip' ? i : last, -1)
+        for (let i = 0; i < perBlockEntries.length; i++) {
+          const e = perBlockEntries[i]
+          if (e.kind !== 'deadrun' || e.type !== 'DISPLACEMENT') continue
+          if (firstTripIdx >= 0 && i < firstTripIdx) e.type = 'ACCESS'
+          else if (lastTripIdx >= 0 && i > lastTripIdx) e.type = 'RETURN'
+        }
+      }
+
       if (normalize) {
         // 1. Interval: shorten productive trips where gap to next trip < idealIntervalMin
         for (let i = 0; i < perBlockEntries.length - 1; i++) {
