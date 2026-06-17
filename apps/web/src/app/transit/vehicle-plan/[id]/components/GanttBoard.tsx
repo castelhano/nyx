@@ -42,7 +42,7 @@ function computeHeadway(seg: LayoutSegment, blocks: GanttBlock[]): number | null
 
   const dep = bt.trip.departureMinutes
   const idx = departures.indexOf(dep)
-  if (idx < 0 || departures.length < 2) return null
+  if (idx <= 0 || departures.length < 2) return null
 
   if (idx < departures.length - 1) return departures[idx + 1] - dep
   return dep - departures[idx - 1]
