@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { useForm, FormProvider } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -259,15 +259,16 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                     {fields.map((f) => {
                       const locked = readonlyFields?.[f.name]
                       if (locked) {
-                        // Register hidden so value is included in form submission
                         register(f.name)
                         return (
-                          <div key={f.name} className="space-y-1">
-                            <label className="text-sm font-medium">{f.label}</label>
-                            <div className="text-sm px-3 py-2 rounded-sm border border-input bg-muted text-muted-foreground">
-                              {locked.displayLabel ?? locked.value}
+                          <Fragment key={f.name}>
+                            <label className="text-sm font-medium pt-2">{f.label}</label>
+                            <div className="space-y-1">
+                              <div className="text-sm px-3 py-2 rounded-sm border border-input bg-muted text-muted-foreground">
+                                {locked.displayLabel ?? locked.value}
+                              </div>
                             </div>
-                          </div>
+                          </Fragment>
                         )
                       }
                       return (
@@ -289,10 +290,10 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 rounded-sm text-sm transition-colors mt-1 cursor-pointer',
+                      'w-full flex items-center gap-2 px-3 py-2 rounded-sm border text-sm transition-colors mt-1 cursor-pointer',
                       file
                         ? 'border-border bg-accent text-accent-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-muted-foreground',
+                        : 'border-input text-muted-foreground hover:bg-muted',
                     )}
                   >
                     <Upload className="w-4 h-4 shrink-0" />
