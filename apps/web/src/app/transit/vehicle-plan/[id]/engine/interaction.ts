@@ -34,7 +34,6 @@ export class Interaction {
     this.on(this.canvas, 'mouseup',    this.onMouseUp)
     this.on(this.canvas, 'mouseleave', this.onMouseLeave)
     this.on(this.canvas, 'click',      this.onClick)
-    this.on(window,      'keydown',    this.onKeyDown)
   }
 
   private onWheel = (e: Event): void => {
@@ -89,15 +88,4 @@ export class Interaction {
     if (seg) this.engine.handleSegmentClick(seg, { x: me.offsetX, y: me.offsetY })
   }
 
-  private onKeyDown = (e: Event): void => {
-    const ke = e as KeyboardEvent
-    if (ke.key !== 'ArrowLeft' && ke.key !== 'ArrowRight') return
-    const active = document.activeElement
-    if (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA' || active?.tagName === 'SELECT') return
-    ke.preventDefault()
-    const delta = ke.key === 'ArrowRight' ? 80 : -80
-    this.engine.viewport.scrollXTo(this.engine.viewport.scrollX + delta)
-    this.engine.notify()
-    this.engine.requestDraw()
-  }
 }

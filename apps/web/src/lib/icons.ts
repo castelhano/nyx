@@ -4,6 +4,7 @@ export type { LucideIcon } from 'lucide-react'
 const iconNames = [
   'AlertCircle',
   'ArrowLeft',
+  'ArrowRight',
   'ArrowRightFromLine',
   'ArrowRightLeft',
   'BarChart2',
@@ -57,6 +58,8 @@ const iconNames = [
   'Users',
   'Warehouse',
   'X',
+  'ZoomIn',
+  'ZoomOut',
 ] as const
 
 export const Icons = Object.fromEntries(

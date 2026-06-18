@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useShortcut } from '@/lib/keywatch'
+import { Icons } from '@/lib/icons'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
 import { vehiclesView, type VehiclePlanGanttData, type GanttBlock, type GanttBlockTrip } from '../views/vehicles.view'
 import { TimeRuler }          from './TimeRuler'
@@ -195,6 +197,49 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
     if (!engine || !data) return
     engine.setView(vehiclesView, data)
   }, [data])
+
+  // ── grid keyboard navigation ────────────────────────────────────────────────
+
+  useShortcut('ctrl+←', () => {
+    const e = engineRef.current
+    if (!e) return
+    e.viewport.scrollXTo(e.viewport.scrollX - 80)
+    e.notify()
+    e.requestDraw()
+  }, { desc: 'Mover grid para esquerda', icon: Icons.ArrowLeft,  origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+
+  useShortcut('ctrl+→', () => {
+    const e = engineRef.current
+    if (!e) return
+    e.viewport.scrollXTo(e.viewport.scrollX + 80)
+    e.notify()
+    e.requestDraw()
+  }, { desc: 'Mover grid para direita', icon: Icons.ArrowRight, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+
+  useShortcut('ctrl++', () => {
+    const e = engineRef.current
+    if (!e) return
+    e.viewport.zoom(1.15, e.viewport.width / 2)
+    e.notify()
+    e.requestDraw()
+  }, { desc: 'Zoom in', icon: Icons.ZoomIn,  origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+
+  useShortcut('ctrl+-', () => {
+    const e = engineRef.current
+    if (!e) return
+    e.viewport.zoom(1 / 1.15, e.viewport.width / 2)
+    e.notify()
+    e.requestDraw()
+  }, { desc: 'Zoom out', icon: Icons.ZoomOut, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+
+  useShortcut('ctrl+0', () => {
+    const e = engineRef.current
+    if (!e) return
+    e.viewport.pixelsPerMinute = 1.2
+    e.viewport.scrollXTo(e.viewport.scrollX)
+    e.notify()
+    e.requestDraw()
+  }, { desc: 'Zoom padrão', icon: Icons.ZoomIn, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
 
   // ── block detail popover ────────────────────────────────────────────────────
 
