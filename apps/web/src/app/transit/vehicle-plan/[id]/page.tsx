@@ -828,10 +828,10 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {addTripOpen && plottedData && (
+      {addTripOpen && plottedData && plottedLineIds && (
         <AddTripModal
           planId={id}
-          plottedLines={plottedData.plan.lines}
+          plottedLines={plottedData.plan.lines.filter(l => plottedLineIds.has(l.lineId))}
           plottedBlocks={plottedData.blocks}
           onClose={() => setAddTripOpen(false)}
           onCreated={async () => { await refetchGantt() }}

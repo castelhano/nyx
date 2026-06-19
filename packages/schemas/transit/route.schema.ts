@@ -10,6 +10,7 @@ export const routeSchema = withMeta(
       label:          'Linha',
       showInForm:     false,
       listVisibility: 'hidden',
+      filter:         { type: 'select' },
     }),
 
     direction: z.enum(['OUTBOUND', 'INBOUND', 'CIRCULAR']).meta({

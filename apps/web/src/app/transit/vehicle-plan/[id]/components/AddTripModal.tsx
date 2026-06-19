@@ -80,16 +80,17 @@ const DIR_LABELS: Record<string, string> = {
   CIRCULAR: 'Circular',
 }
 
+const DIR_ORDER: Record<string, number> = {
+  CIRCULAR: 0,
+  OUTBOUND: 1,
+  INBOUND:  2,
+}
+
 function fmtMinutes(m: number): string {
   const h   = Math.floor(m / 60) % 24
   const min = m % 60
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
-
-const inputCls = [
-  'w-full text-sm rounded-sm border border-input bg-input-bg px-3 py-1.5',
-  'focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50',
-].join(' ')
 
 const selectCls = [
   'w-full appearance-none text-sm rounded-sm border border-input bg-input-bg',
@@ -123,11 +124,6 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
     enabled:   !!lineId,
     staleTime: 60_000,
   })
-
-  // Reset route selection when line changes
-  useEffect(() => {
-    setRouteId(routes[0]?.id ?? '')
-  }, [routes])
 
   // Clear arrival whenever any input changes
   useEffect(() => {
@@ -184,7 +180,7 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
     return () => { cancelled = true }
   }, [routeId, depHH, depMM, lineId, routes])
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     if (routes.length === 0) return
@@ -251,7 +247,7 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Linha</label>
           <div className="relative">
-            <select value={lineId} onChange={e => setLineId(e.target.value)} className={selectCls}>
+            <select value={lineId} onChange={e => { setLineId(e.target.value); setRouteId('') }} className={selectCls}>
               {plottedLines.map(({ lineId: lid, line }) => (
                 <option key={lid} value={lid}>{line.code} — {line.name}</option>
               ))}
@@ -263,12 +259,13 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
         {/* Sentido */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Sentido</label>
-          {routes.length === 0 ? (
+          {routes.length === 0 && lineId ? (
             <p className="text-xs text-muted-foreground italic py-1.5">Nenhum sentido disponível</p>
           ) : (
             <div className="relative">
               <select value={routeId} onChange={e => setRouteId(e.target.value)} className={selectCls}>
-                {routes.map(r => (
+                <option value="">Selecione um sentido…</option>
+                {[...routes].sort((a, b) => (DIR_ORDER[a.direction] ?? 99) - (DIR_ORDER[b.direction] ?? 99)).map(r => (
                   <option key={r.id} value={r.id}>{DIR_LABELS[r.direction] ?? r.direction} — {r.name}</option>
                 ))}
               </select>

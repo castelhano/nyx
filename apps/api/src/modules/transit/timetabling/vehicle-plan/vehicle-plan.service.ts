@@ -614,6 +614,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       include: {
         dayType: { select: { id: true, name: true, code: true } },
         lines: {
+          orderBy: { line: { code: 'asc' } },
           include: { line: { select: { id: true, name: true, code: true } } },
         },
       },
