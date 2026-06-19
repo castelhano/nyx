@@ -409,7 +409,18 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         lines:  { select: { lineId: true } },
         blocks: {
           include: {
-            blockTrips:    { select: { tripId: true, sequence: true } },
+            blockTrips: {
+              select: {
+                sequence: true,
+                trip: {
+                  select: {
+                    id: true, routeId: true, dayTypeId: true,
+                    departureMinutes: true, arrivalMinutes: true,
+                    requiredVehicleType: true, constraints: true, notes: true,
+                  },
+                },
+              },
+            },
             blockDeadruns: { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
           },
         },
@@ -432,6 +443,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         })
       }
 
+      // Build a map of original tripId → new tripId to deduplicate trips that
+      // appear in more than one block (e.g. after manual reassignments).
+      const tripIdMap = new Map<string, string>()
+
       for (const block of plan.blocks) {
         const newBlock = await tx.vehicleBlock.create({
           data: {
@@ -444,13 +459,28 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         })
 
         if (block.blockTrips.length > 0) {
-          await tx.blockTrip.createMany({
-            data: block.blockTrips.map((bt: any) => ({
-              vehicleBlockId: newBlock.id,
-              tripId:         bt.tripId,
-              sequence:       bt.sequence,
-            })),
-          })
+          const newBlockTrips: { vehicleBlockId: string; tripId: string; sequence: number }[] = []
+
+          for (const bt of block.blockTrips as any[]) {
+            const origId = bt.trip.id
+            if (!tripIdMap.has(origId)) {
+              const newTrip = await tx.transitTrip.create({
+                data: {
+                  routeId:             bt.trip.routeId,
+                  dayTypeId:           bt.trip.dayTypeId,
+                  departureMinutes:    bt.trip.departureMinutes,
+                  arrivalMinutes:      bt.trip.arrivalMinutes,
+                  requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
+                  constraints:         bt.trip.constraints ?? undefined,
+                  notes:               bt.trip.notes ?? undefined,
+                },
+              })
+              tripIdMap.set(origId, newTrip.id)
+            }
+            newBlockTrips.push({ vehicleBlockId: newBlock.id, tripId: tripIdMap.get(origId)!, sequence: bt.sequence })
+          }
+
+          await tx.blockTrip.createMany({ data: newBlockTrips })
         }
 
         if (block.blockDeadruns.length > 0) {
