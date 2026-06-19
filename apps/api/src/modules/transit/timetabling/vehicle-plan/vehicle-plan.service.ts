@@ -535,6 +535,69 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     job.worker?.postMessage({ type: 'stop' })
   }
 
+  async addTrip(planId: string, dto: {
+    routeId:          string
+    departureMinutes: number
+    arrivalMinutes:   number
+    blockId?:         string
+  }): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, dayTypeId: true, status: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+
+    const db = this.prisma as any
+
+    await db.$transaction(async (tx: any) => {
+      const trip = await tx.transitTrip.create({
+        data: {
+          dayTypeId:        plan.dayTypeId,
+          routeId:          dto.routeId,
+          departureMinutes: dto.departureMinutes,
+          arrivalMinutes:   dto.arrivalMinutes,
+        },
+      })
+
+      if (dto.blockId) {
+        const block = await tx.vehicleBlock.findFirst({
+          where:   { id: dto.blockId, vehiclePlanId: planId },
+          include: { blockTrips: { select: { sequence: true }, orderBy: { sequence: 'desc' }, take: 1 } },
+        })
+        if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
+        const nextSeq = (block.blockTrips[0]?.sequence ?? -1) + 1
+        await tx.blockTrip.create({ data: { vehicleBlockId: block.id, tripId: trip.id, sequence: nextSeq } })
+        await tx.vehicleBlock.update({ where: { id: block.id }, data: { isStale: true } })
+      } else {
+        const lastBlock = await tx.vehicleBlock.findFirst({
+          where:   { vehiclePlanId: planId },
+          orderBy: { blockNumber: 'desc' },
+          select:  { blockNumber: true, depotId: true },
+        })
+
+        let depotId: string
+        if (lastBlock?.depotId) {
+          depotId = lastBlock.depotId
+        } else {
+          const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
+          if (!depot) throw new BadRequestException('No depot locality configured')
+          depotId = depot.id
+        }
+
+        const newBlock = await tx.vehicleBlock.create({
+          data: {
+            vehiclePlanId: planId,
+            blockNumber:   (lastBlock?.blockNumber ?? 0) + 1,
+            depotId,
+            vehicleType:   'STANDARD',
+          },
+        })
+        await tx.blockTrip.create({ data: { vehicleBlockId: newBlock.id, tripId: trip.id, sequence: 0 } })
+      }
+    })
+  }
+
   async addLine(planId: string, lineId: string): Promise<void> {
     await this.prisma.vehiclePlanLine.create({ data: { vehiclePlanId: planId, lineId } })
   }

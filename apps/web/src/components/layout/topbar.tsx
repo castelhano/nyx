@@ -16,7 +16,7 @@ function ActionButton({ action }: { action: TopbarAction }) {
       type={action.type ?? 'button'}
       form={action.form}
       variant={action.variant ?? 'default'}
-      size="sm"
+      size={action.size ?? 'sm'}
       disabled={action.disabled}
       onClick={action.onClick}
       title={title}

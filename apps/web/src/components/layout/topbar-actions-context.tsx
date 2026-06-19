@@ -10,6 +10,7 @@ export interface TopbarAction {
   form?:     string
   disabled?: boolean
   variant?:  'default' | 'outline' | 'ghost' | 'destructive'
+  size?:     'sm' | 'default' | 'lg' | 'icon'
   keybind?:  string   // ex: 'Alt+F9' — exibido no title do botão
   // primary: sempre visível no mobile; false: colapsa no menu ⋯
   primary?:  boolean

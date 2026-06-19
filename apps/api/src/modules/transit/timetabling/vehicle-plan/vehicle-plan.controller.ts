@@ -63,6 +63,15 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.activate(id, force ?? false)
   }
 
+  @Post(':id/add-trip')
+  @HttpCode(201)
+  addTrip(
+    @Param('id') id: string,
+    @Body() body: { routeId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string },
+  ) {
+    return this.vehiclePlanService.addTrip(id, body)
+  }
+
   @Post(':id/lines')
   @HttpCode(200)
   addLine(@Param('id') id: string, @Body('lineId') lineId: string) {

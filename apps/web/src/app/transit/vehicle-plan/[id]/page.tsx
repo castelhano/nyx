@@ -20,6 +20,7 @@ import { FrequencyPanel }    from './components/FrequencyPanel'
 import { GenerateModal }         from './components/GenerateModal'
 import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
+import { AddTripModal }          from './components/AddTripModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints } from './views/vehicles.view'
@@ -320,6 +321,8 @@ export default function VehiclePlanPage() {
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
   const [detailsOpen,       setDetailsOpen]       = useState(false)
   const [baselineSnapshot,  setBaselineSnapshot]  = useState<SolverBaseline | null>(null)
+  const [editBarOpen,       setEditBarOpen]       = useState(false)
+  const [addTripOpen,       setAddTripOpen]       = useState(false)
 
   // Lines selection for display — all unchecked initially, nothing plotted
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
@@ -712,6 +715,15 @@ export default function VehiclePlanPage() {
     : null
 
   useTopbarActions([
+    // edit controls toggle — icon only, disabled until at least one line is plotted
+    ...(!isNew ? [{
+      label:    'Barra Edição',
+      icon:     Icons.SlidersHorizontal,
+      size:     'sm' as const,
+      onClick:  () => setEditBarOpen(v => !v),
+      disabled: !plottedLineIds || plottedLineIds.size === 0,
+      variant:  (editBarOpen ? 'default' : 'ghost') as 'default' | 'ghost',
+    }] : []),
     // lines panel toggle
     ...(!isNew ? [{
       label:   'Linhas',
@@ -763,7 +775,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       },
     ] : []),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size, plottedLineIds, editBarOpen])
 
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
@@ -813,6 +825,16 @@ export default function VehiclePlanPage() {
           title={depotModal.kind === 'access' ? 'Adicionar Acesso' : 'Adicionar Recolhida'}
           onConfirm={handleConfirmDepotModal}
           onClose={() => setDepotModal(null)}
+        />
+      )}
+
+      {addTripOpen && plottedData && (
+        <AddTripModal
+          planId={id}
+          plottedLines={plottedData.plan.lines}
+          plottedBlocks={plottedData.blocks}
+          onClose={() => setAddTripOpen(false)}
+          onCreated={async () => { await refetchGantt() }}
         />
       )}
 
@@ -908,6 +930,20 @@ export default function VehiclePlanPage() {
           </div>
         )}
       </div>
+
+      {/* edit action bar */}
+      {editBarOpen && plottedData && (
+        <div className="px-3 py-1 border-t border-border bg-muted/20 flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setAddTripOpen(true)}
+            title="Adicionar viagem"
+            className="flex items-center justify-center h-7 w-7 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <Icons.Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* gantt + lines panel */}
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
