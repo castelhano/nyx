@@ -396,10 +396,26 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       ...(matrixMisses.length > 0 && { errors: { missingMatrix: matrixMisses } }),
     }
 
-    await this.prisma.vehiclePlan.update({
-      where: { id: planId },
-      data:  { summary, generatedAt: new Date() },
-    })
+    await Promise.all([
+      this.prisma.vehiclePlan.update({
+        where: { id: planId },
+        data:  { summary, generatedAt: new Date() },
+      }),
+      ...blocks.map((block, idx) => {
+        const br: VehicleBlockSummary = {
+          totalMinutes:      result.blocks[idx].totalMinutes,
+          productiveMinutes: result.blocks[idx].productiveMinutes,
+          deadrunMinutes:    result.blocks[idx].deadrunMinutes,
+          totalKm:           r2(result.blocks[idx].totalKm),
+          productiveKm:      r2(result.blocks[idx].productiveKm),
+          deadrunKm:         r2(result.blocks[idx].deadrunKm),
+        }
+        return this.prisma.vehicleBlock.update({
+          where: { id: block.id },
+          data:  { summary: br, isStale: false },
+        })
+      }),
+    ])
   }
 
   async duplicate(planId: string): Promise<VehiclePlan> {
@@ -596,6 +612,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         await tx.blockTrip.create({ data: { vehicleBlockId: newBlock.id, tripId: trip.id, sequence: 0 } })
       }
     })
+
+    await this.scorePlan(planId)
   }
 
   async addLine(planId: string, lineId: string): Promise<void> {
