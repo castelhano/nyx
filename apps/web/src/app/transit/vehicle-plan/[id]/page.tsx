@@ -749,6 +749,7 @@ export default function VehiclePlanPage() {
         icon:     Icons.CheckCircle,
         onClick:  handleActivate,
         disabled: isPending,
+        overflow: true,
       },
     ] : []),
     // delete
@@ -759,6 +760,7 @@ export default function VehiclePlanPage() {
         onClick:  handleDelete,
         disabled: isPending,
         variant:  'destructive' as const,
+        overflow: true,
       },
     ] : []),
   ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size])

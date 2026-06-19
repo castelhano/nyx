@@ -13,6 +13,8 @@ export interface TopbarAction {
   keybind?:  string   // ex: 'Alt+F9' — exibido no title do botão
   // primary: sempre visível no mobile; false: colapsa no menu ⋯
   primary?:  boolean
+  // overflow: sempre no dropdown ⋯, mesmo em desktop
+  overflow?: boolean
 }
 
 interface TopbarActionsContextValue {

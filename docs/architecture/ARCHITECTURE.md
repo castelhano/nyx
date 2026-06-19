@@ -1552,19 +1552,36 @@ Page components declare their topbar buttons via `useTopbarActions()`. The `Topb
 
 ```typescript
 interface TopbarAction {
-  label:    string
-  icon:     LucideIcon
-  onClick?: () => void
-  type?:    'button' | 'submit'
-  form?:    string                // id of the form to submit
+  label:     string
+  icon?:     React.ElementType
+  onClick?:  () => void
+  type?:     'submit'
+  form?:     string       // id of the form to submit
   disabled?: boolean
-  primary?:  boolean
-  variant?:  'ghost' | 'default' | 'destructive'
-  keybind?:  string               // shortcut hint shown in the button title (e.g., 'ALT+F9')
+  variant?:  'default' | 'outline' | 'ghost' | 'destructive'
+  keybind?:  string       // shortcut hint shown in button title (e.g. 'Alt+F9')
+  primary?:  boolean      // mobile visibility — see Responsive rendering below
+  overflow?: boolean      // always rendered in the ⋯ dropdown, even on desktop
 }
 ```
 
-When `keybind` is set, the button's `title` attribute shows `"<label> (<keybind>)"` — providing a native tooltip shortcut hint without any additional UI. The keybind string is display-only at this layer; actual shortcut binding is done separately via `useShortcut()`.
+### Responsive rendering
+
+The topbar has three rendering tiers controlled by `primary` and `overflow`:
+
+| Flag | Desktop | Mobile |
+|---|---|---|
+| `overflow: false` (default), `primary` not `false` | Inline button | Inline button (icon only) |
+| `overflow: false`, `primary: false` | Inline button | In `⋯` dropdown |
+| `overflow: true` | In `⋯` dropdown | In `⋯` dropdown |
+
+**Desktop:** all non-overflow actions are rendered as inline buttons with icon + label. If any action has `overflow: true`, a `⋯` button appears at the end opening a `Dropdown` with those actions.
+
+**Mobile:** only `primary !== false` non-overflow actions are shown as icon-only inline buttons. A single `⋯` dropdown collects both `primary: false` non-overflow actions and all `overflow` actions.
+
+Use `overflow: true` for destructive or infrequently-used actions (e.g. "Delete", "Activate") that should not clutter the toolbar on any screen size.
+
+When `keybind` is set, the button's `title` attribute shows `"<label> (<keybind>)"` — a native tooltip shortcut hint without extra UI. The keybind string is display-only here; actual shortcut binding is done separately via `useShortcut()`.
 
 ---
 

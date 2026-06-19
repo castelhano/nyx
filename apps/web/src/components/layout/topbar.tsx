@@ -32,8 +32,11 @@ export function Topbar() {
   const { theme, setTheme } = useTheme()
   const { actions } = useTopbarActionsContext()
 
-  const primary   = actions.filter((a) => a.primary !== false)
-  const secondary = actions.filter((a) => a.primary === false)
+  const inline   = actions.filter((a) => !a.overflow)
+  const overflow = actions.filter((a) =>  a.overflow)
+
+  const mobilePrimary   = inline.filter((a) => a.primary !== false)
+  const mobileSecondary = [...inline.filter((a) => a.primary === false), ...overflow]
 
   return (
     <header className="flex h-12 shrink-0 items-center border-b border-border bg-background px-3 gap-2">
@@ -54,16 +57,11 @@ export function Topbar() {
       {/* Center — page-injected actions */}
       <div className="flex flex-1 items-center justify-end gap-2 pr-1">
 
-        {/* Desktop: todos os botões com ícone + label */}
+        {/* Desktop: inline como botões + dropdown ⋯ para overflow */}
         <div className="hidden md:flex items-center gap-2">
-          {actions.map((action, i) => <ActionButton key={i} action={action} />)}
-        </div>
+          {inline.map((action, i) => <ActionButton key={i} action={action} />)}
 
-        {/* Mobile: primários (ícone-only) + overflow ⋯ para secundários */}
-        <div className="flex md:hidden items-center gap-2">
-          {primary.map((action, i) => <ActionButton key={i} action={action} />)}
-
-          {secondary.length > 0 && (
+          {overflow.length > 0 && (
             <Dropdown
               align="end"
               side="bottom"
@@ -73,10 +71,37 @@ export function Topbar() {
                 </Button>
               }
             >
-              {secondary.map((action, i) => {
+              {overflow.map((action, i) => {
                 const Icon = action.icon
                 return (
-                  <DropdownItem key={i} onClick={action.onClick}>
+                  <DropdownItem key={i} onClick={action.onClick} disabled={action.disabled}>
+                    {Icon && <Icon className="w-4 h-4" />}
+                    {action.label}
+                  </DropdownItem>
+                )
+              })}
+            </Dropdown>
+          )}
+        </div>
+
+        {/* Mobile: primários (ícone-only) + dropdown ⋯ para secundários e overflow */}
+        <div className="flex md:hidden items-center gap-2">
+          {mobilePrimary.map((action, i) => <ActionButton key={i} action={action} />)}
+
+          {mobileSecondary.length > 0 && (
+            <Dropdown
+              align="end"
+              side="bottom"
+              trigger={
+                <Button variant="outline" size="sm" aria-label="Mais ações">
+                  <MoreHorizontal className="w-3.5 h-3.5" />
+                </Button>
+              }
+            >
+              {mobileSecondary.map((action, i) => {
+                const Icon = action.icon
+                return (
+                  <DropdownItem key={i} onClick={action.onClick} disabled={action.disabled}>
                     {Icon && <Icon className="w-4 h-4" />}
                     {action.label}
                   </DropdownItem>
