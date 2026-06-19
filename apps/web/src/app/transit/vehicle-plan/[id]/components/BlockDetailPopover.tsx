@@ -16,10 +16,12 @@ interface Props {
 }
 
 const VEHICLE_OPTIONS = [
-  { value: 'STANDARD',  label: 'Ônibus' },
-  { value: 'MICRO_BUS', label: 'Micro-ônibus' },
-  { value: 'MINIBUS',   label: 'Miniônibus' },
-  { value: 'VAN',       label: 'Van' },
+  { value: 'STANDARD',       label: 'Convencional' },
+  { value: 'ARTICULATED',    label: 'Articulado'   },
+  { value: 'BI_ARTICULATED', label: 'Biarticulado' },
+  { value: 'MICRO_BUS',      label: 'Micro-ônibus' },
+  { value: 'MINIBUS',        label: 'Miniônibus'   },
+  { value: 'VAN',            label: 'Van'          },
 ]
 
 const selectCls = [
@@ -54,9 +56,9 @@ export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate 
   }, [block.vehicleType, block.depotId, block.branchId, block.constraints])
 
   const { data: depots } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['transit', 'transit-locality', 'select-list'],
+    queryKey: ['transit', 'transit-locality', 'select-list', 'depots'],
     queryFn:  async () => {
-      const r = await apiFetch('/transit/transit-locality?pageSize=999')
+      const r = await apiFetch('/transit/transit-locality?pageSize=999&f_isDepot=true')
       const j = await r.json()
       return (j.data ?? []) as { id: string; name: string }[]
     },
