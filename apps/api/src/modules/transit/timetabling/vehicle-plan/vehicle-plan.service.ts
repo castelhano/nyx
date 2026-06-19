@@ -401,7 +401,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         where: { id: planId },
         data:  { summary, generatedAt: new Date() },
       }),
-      ...blocks.map((block, idx) => {
+      ...blocks.flatMap((block, idx) => {
+        if (!block.isStale) return []
         const br: VehicleBlockSummary = {
           totalMinutes:      result.blocks[idx].totalMinutes,
           productiveMinutes: result.blocks[idx].productiveMinutes,
@@ -410,10 +411,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           productiveKm:      r2(result.blocks[idx].productiveKm),
           deadrunKm:         r2(result.blocks[idx].deadrunKm),
         }
-        return this.prisma.vehicleBlock.update({
+        return [this.prisma.vehicleBlock.update({
           where: { id: block.id },
           data:  { summary: br, isStale: false },
-        })
+        })]
       }),
     ])
   }

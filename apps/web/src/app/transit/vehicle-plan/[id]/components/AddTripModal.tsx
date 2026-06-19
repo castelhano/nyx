@@ -11,8 +11,13 @@ import type { GanttBlock } from '../views/vehicles.view'
 
 // ── module-level cache — persists across modal opens within the session ────────
 
+interface CycleWindow { from: number; to: number; minutes: number; intervalMinutes: number }
 interface LineMetrics {
-  cycleWindows?: Array<{ from: number; to: number; cycleMinutes: number }>
+  windows?: {
+    OUTBOUND?: CycleWindow[]
+    INBOUND?:  CycleWindow[]
+    CIRCULAR?: CycleWindow[]
+  }
 }
 const lineMetricsCache = new Map<string, LineMetrics | null>()
 const travelTimeCache  = new Map<string, number | null>()   // key: "originId:destId"
@@ -145,15 +150,16 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
     setIsResolving(true)
 
     ;(async () => {
-      // 1. Try line.metrics.cycleWindows
+      // 1. Try line.metrics.windows[direction]
       const metrics = await getLineMetrics(lineId)
       if (cancelled) return
 
-      if (metrics?.cycleWindows?.length) {
-        const hour = hh % 24
-        const win  = metrics.cycleWindows.find(w => hour >= w.from && hour <= w.to)
+      if (metrics?.windows) {
+        const hour       = hh % 24
+        const dirWindows = metrics.windows[route.direction as 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'] ?? []
+        const win        = dirWindows.find(w => hour >= w.from && hour <= w.to)
         if (win) {
-          setArrivalMin(depMin + win.cycleMinutes)
+          setArrivalMin(depMin + win.minutes)
           setResolveErr(false)
           setIsResolving(false)
           return

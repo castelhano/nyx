@@ -50,11 +50,26 @@ export const lineSchema = withMeta(
         INBOUND:   z.number().positive().optional().meta({ label: 'Volta (km)' }),
         CIRCULAR:  z.number().positive().optional().meta({ label: 'Circular (km)' }),
       }).optional().meta({ label: 'Extensão por Sentido' }),
-      cycleWindows: z.array(z.object({
-        from:         z.number().positive().min(0).max(23).default(0).meta({ label: 'De',  placeholder: '04', min: 0, max: 23 }),
-        to:           z.number().positive().min(0).max(23).default(23).meta({ label: 'Até', placeholder: '12', min: 0, max: 23 }),
-        cycleMinutes: z.number().positive().min(1).meta({ label: 'Ciclo (min)', min: 1 }),
-      })).optional().meta({ label: 'Tempo de Ciclo por Faixa' }),
+      windows: z.object({
+        OUTBOUND: z.array(z.object({
+          from:            z.number().min(0).max(23).default(0).meta({ label: 'De',             min: 0, max: 23 }),
+          to:              z.number().min(0).max(23).default(23).meta({ label: 'Até',            min: 0, max: 23 }),
+          minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
+          intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+        })).optional().meta({ label: 'Ida' }),
+        INBOUND: z.array(z.object({
+          from:            z.number().min(0).max(23).default(0).meta({ label: 'De',             min: 0, max: 23 }),
+          to:              z.number().min(0).max(23).default(23).meta({ label: 'Até',            min: 0, max: 23 }),
+          minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
+          intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+        })).optional().meta({ label: 'Volta' }),
+        CIRCULAR: z.array(z.object({
+          from:            z.number().min(0).max(23).default(0).meta({ label: 'De',             min: 0, max: 23 }),
+          to:              z.number().min(0).max(23).default(23).meta({ label: 'Até',            min: 0, max: 23 }),
+          minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
+          intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+        })).optional().meta({ label: 'Circular' }),
+      }).optional().meta({ label: 'Janelas de Ciclo' }),
     }).optional().meta({
       label:          'Métricas',
       widget:         'object-editor',

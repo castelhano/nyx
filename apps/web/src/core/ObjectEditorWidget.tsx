@@ -47,6 +47,33 @@ export function SubObjectEditor({
   )
 }
 
+export function SubSectionEditor({
+  field, value, onChange, readonly,
+}: {
+  field:    MetadataField
+  value:    Record<string, unknown>
+  onChange: (v: Record<string, unknown>) => void
+  readonly?: boolean
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
+      {field.fields?.map(sub => {
+        if (sub.type !== 'array') return null
+        return (
+          <SubArrayEditor
+            key={sub.name}
+            field={sub}
+            value={(value[sub.name] ?? []) as Record<string, unknown>[]}
+            onChange={v => onChange({ ...value, [sub.name]: v })}
+            readonly={readonly}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 export function SubArrayEditor({
   field, value, onChange, readonly,
 }: {
@@ -144,6 +171,17 @@ export function ObjectEditorWidget({
           <div className="space-y-5">
             {field.fields?.map((sub) => {
               if (sub.type === 'object') {
+                if (sub.fields?.some(f => f.type === 'array')) {
+                  return (
+                    <SubSectionEditor
+                      key={sub.name}
+                      field={sub}
+                      value={(value[sub.name] ?? {}) as Record<string, unknown>}
+                      onChange={(v) => handleKey(sub.name, v)}
+                      readonly={readonly}
+                    />
+                  )
+                }
                 return (
                   <SubObjectEditor
                     key={sub.name}
