@@ -28,6 +28,7 @@ export function RowList({ rows, scrollY, height, onInfoClick }: Props) {
           const block   = row.data as GanttBlock
           const summary = block?.summary ?? null
           const trips   = block?.blockTrips?.length ?? 0
+          const locked  = block?.constraints?.locked === true
 
           return (
             <div
@@ -36,20 +37,27 @@ export function RowList({ rows, scrollY, height, onInfoClick }: Props) {
               style={{ top: row.y, height: row.height }}
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-xs font-medium text-foreground truncate">{row.label}</span>
-                  {onInfoClick && (
-                    <button
-                      onClick={() => onInfoClick(row)}
-                      className="shrink-0 p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-                    >
-                      <Icons.Info className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
+                <div className="text-xs font-medium text-foreground truncate">{row.label}</div>
                 <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
                   {trips}v{summary ? ` · ${fmtMinutes(summary.totalMinutes)}` : ''}
                 </div>
+              </div>
+
+              {/* icon column: info + lock stacked */}
+              <div className="flex flex-col items-center gap-0.5 shrink-0 ml-1">
+                {onInfoClick && (
+                  <button
+                    onClick={() => onInfoClick(row)}
+                    className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                  >
+                    <Icons.Info className="w-3 h-3" />
+                  </button>
+                )}
+                {locked && (
+                  <span className="p-0.5 text-amber-500">
+                    <Icons.Lock className="w-3 h-3" />
+                  </span>
+                )}
               </div>
             </div>
           )

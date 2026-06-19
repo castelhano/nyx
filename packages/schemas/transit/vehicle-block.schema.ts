@@ -34,6 +34,16 @@ export const vehicleBlockSchema = withMeta(
       keybind:        'b',
     }),
 
+    branchId: z.uuid().optional().meta({
+      label:          'Operador',
+      widget:         'select',
+      resource:       'branch',
+      domain:         'core',
+      labelField:     'name',
+      listVisibility: 'hidden',
+      keybind:        'o',
+    }),
+
     depotId: z.uuid().meta({
       label:          'Garagem',
       widget:         'select',

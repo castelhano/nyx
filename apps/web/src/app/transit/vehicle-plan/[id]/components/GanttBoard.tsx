@@ -21,6 +21,7 @@ interface Props {
   selection?:         Selection | null
   onSelectionChange?: (sel: Selection | null) => void
   actionSpec?:        GanttActionSpec<VehiclePlanGanttData>
+  onBlockUpdate?:     () => void
 }
 
 interface TooltipState {
@@ -61,7 +62,7 @@ const INITIAL_VP: ViewportSnapshot = {
   width: 0, dayStartMinute: 0,
 }
 
-export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec }: Props) {
+export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate }: Props) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
   const containerRef          = useRef<HTMLDivElement>(null)
   const engineRef             = useRef<GanttEngine | null>(null)
@@ -243,6 +244,12 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
 
   // ── block detail popover ────────────────────────────────────────────────────
 
+  useEffect(() => {
+    if (!blockDetail) return
+    const updated = data.blocks.find(b => b.id === blockDetail.block.id)
+    if (updated) setBlockDetail(prev => prev ? { ...prev, block: updated } : null)
+  }, [data])
+
   function handleRowInfo(row: LayoutRow) {
     const block   = row.data as GanttBlock
     const screenY = RULER_HEIGHT + row.y - vp.scrollY
@@ -303,6 +310,7 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
           screenY={blockDetail.screenY}
           screenX={blockDetail.screenX}
           onClose={() => setBlockDetail(null)}
+          onUpdate={() => onBlockUpdate?.()}
         />
       )}
     </div>

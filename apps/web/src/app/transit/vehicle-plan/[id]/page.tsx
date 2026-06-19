@@ -921,6 +921,7 @@ export default function VehiclePlanPage() {
                   selection={selection}
                   onSelectionChange={setSelection}
                   actionSpec={vehiclesActionSpec}
+                  onBlockUpdate={() => refetchGantt()}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

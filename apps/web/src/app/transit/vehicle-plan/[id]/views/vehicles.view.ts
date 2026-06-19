@@ -40,6 +40,11 @@ export interface GanttBlock {
   id:            string
   blockNumber:   number
   vehicleType:   string
+  branchId:      string | null
+  branch:        { id: string; name: string } | null
+  depotId:       string
+  depot:         { id: string; name: string }
+  constraints:   { locked?: true } | null
   summary:       VehicleBlockSummary | null
   blockTrips:    GanttBlockTrip[]
   blockDeadruns: GanttBlockDeadrun[]

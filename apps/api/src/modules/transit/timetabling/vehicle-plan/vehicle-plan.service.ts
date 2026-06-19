@@ -531,6 +531,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       where:   { vehiclePlanId: planId },
       orderBy: { blockNumber: 'asc' },
       include: {
+        branch: { select: { id: true, name: true } },
+        depot:  { select: { id: true, name: true } },
         blockTrips: {
           orderBy: { sequence: 'asc' },
           include: {
