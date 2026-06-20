@@ -24,4 +24,24 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
     })
     return result
   }
+
+  override async remove(id: string): Promise<void> {
+    const db = this.prisma as any
+
+    // Capture which blocks held this trip before cascade-deletes it
+    const rows: { vehicleBlockId: string }[] = await db.blockTrip.findMany({
+      where:  { tripId: id },
+      select: { vehicleBlockId: true },
+    })
+    const blockIds = rows.map(r => r.vehicleBlockId)
+
+    await super.remove(id)  // deletes TransitTrip → cascades BlockTrip
+
+    // Delete every block that is now completely empty (no trips left)
+    if (blockIds.length > 0) {
+      await db.vehicleBlock.deleteMany({
+        where: { id: { in: blockIds }, blockTrips: { none: {} } },
+      })
+    }
+  }
 }

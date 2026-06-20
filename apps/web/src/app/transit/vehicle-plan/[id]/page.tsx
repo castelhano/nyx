@@ -324,9 +324,8 @@ export default function VehiclePlanPage() {
   const [editBarOpen,       setEditBarOpen]       = useState(false)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
 
-  // Lines selection for display — all unchecked initially, nothing plotted
+  // Lines selection for display — checked lines are plotted immediately
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
-  const [plottedLineIds,  setPlottedLineIds]  = useState<Set<string> | null>(null)
 
   // ── data ────────────────────────────────────────────────────────────────────
 
@@ -351,17 +350,17 @@ export default function VehiclePlanPage() {
     staleTime: 10_000,
   })
 
-  // Filtered data: only blocks that have at least one productive trip from a plotted line
+  // Filtered data: only blocks that have at least one productive trip from a selected line
   const plottedData = useMemo<VehiclePlanGanttData | null>(() => {
-    if (!ganttData || plottedLineIds === null) return null
-    if (plottedLineIds.size === 0) return { ...ganttData, blocks: [] }
+    if (!ganttData) return null
+    if (selectedLineIds.size === 0) return { ...ganttData, blocks: [] }
     return {
       ...ganttData,
       blocks: ganttData.blocks.filter(b =>
-        b.blockTrips.some(bt => plottedLineIds.has(bt.trip.route.line.id))
+        b.blockTrips.some(bt => selectedLineIds.has(bt.trip.route.line.id))
       ),
     }
-  }, [ganttData, plottedLineIds])
+  }, [ganttData, selectedLineIds])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -699,12 +698,6 @@ export default function VehiclePlanPage() {
     [],
   )
 
-  function handlePlot() {
-    setPlottedLineIds(new Set(selectedLineIds))
-    setActiveJobId(null)
-    setIsSolverDone(false)
-  }
-
   // ── topbar ───────────────────────────────────────────────────────────────────
 
   const status           = record?.status as string | undefined
@@ -715,13 +708,13 @@ export default function VehiclePlanPage() {
     : null
 
   useTopbarActions([
-    // edit controls toggle — icon only, disabled until at least one line is plotted
+    // edit controls toggle — icon only, disabled until at least one line is selected
     ...(!isNew ? [{
       label:    'Barra Edição',
       icon:     Icons.SlidersHorizontal,
       size:     'sm' as const,
       onClick:  () => setEditBarOpen(v => !v),
-      disabled: !plottedLineIds || plottedLineIds.size === 0,
+      disabled: selectedLineIds.size === 0,
       variant:  (editBarOpen ? 'default' : 'ghost') as 'default' | 'ghost',
     }] : []),
     // lines panel toggle
@@ -729,14 +722,6 @@ export default function VehiclePlanPage() {
       label:   'Linhas',
       icon:    Icons.List,
       onClick: () => setLinesPanelOpen(v => !v),
-    }] : []),
-    // plot button — visible when plan has lines
-    ...(!isNew && planLines.length > 0 ? [{
-      label:    'Plotar',
-      icon:     Icons.BarChart2,
-      onClick:  handlePlot,
-      disabled: selectedLineIds.size === 0,
-      primary:  true,
     }] : []),
     // parar: only while stream is open
     ...(activeJobId && !isSolverDone ? [{
@@ -775,7 +760,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       },
     ] : []),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size, plottedLineIds, editBarOpen])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size, editBarOpen])
 
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
@@ -828,10 +813,10 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {addTripOpen && plottedData && plottedLineIds && (
+      {addTripOpen && plottedData && selectedLineIds.size > 0 && (
         <AddTripModal
           planId={id}
-          plottedLines={plottedData.plan.lines.filter(l => plottedLineIds.has(l.lineId))}
+          plottedLines={plottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
           plottedBlocks={plottedData.blocks}
           onClose={() => setAddTripOpen(false)}
           onCreated={async () => { await refetchGantt() }}
@@ -961,14 +946,14 @@ export default function VehiclePlanPage() {
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  Nenhum bloco para as linhas selecionadas
+                  {selectedLineIds.size === 0
+                    ? 'Selecione linhas no painel lateral para visualizar'
+                    : 'Nenhum bloco para as linhas selecionadas'}
                 </div>
               )
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                {ganttData
-                  ? 'Selecione linhas no painel e clique em Plotar'
-                  : 'Carregando…'}
+                Carregando…
               </div>
             )}
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button }   from '@/components/ui/button'
 import { Icons }    from '@/lib/icons'
@@ -20,7 +20,7 @@ interface LineMetrics {
   }
 }
 const lineMetricsCache = new Map<string, LineMetrics | null>()
-const travelTimeCache  = new Map<string, number | null>()   // key: "originId:destId"
+const travelTimeCache  = new Map<string, number | null>()
 
 async function getLineMetrics(lineId: string): Promise<LineMetrics | null> {
   if (lineMetricsCache.has(lineId)) return lineMetricsCache.get(lineId)!
@@ -69,6 +69,12 @@ interface Route {
   destinationLocalityId: string
 }
 
+interface Locality {
+  id:      string
+  name:    string
+  isDepot: boolean
+}
+
 interface Props {
   planId:        string
   plottedLines:  PlanLine[]
@@ -97,25 +103,40 @@ function fmtMinutes(m: number): string {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
+function hasOverlap(block: GanttBlock, dep: number, arr: number): boolean {
+  for (const bt of block.blockTrips) {
+    if (dep < bt.trip.arrivalMinutes && arr > bt.trip.departureMinutes) return true
+  }
+  for (const d of block.blockDeadruns) {
+    if (dep < d.arrivalMinutes && arr > d.departureMinutes) return true
+  }
+  return false
+}
+
 const selectCls = [
   'w-full appearance-none text-sm rounded-sm border border-input bg-input-bg',
   'px-3 py-1.5 pe-7 focus:outline-none focus:ring-1 focus:ring-ring',
 ].join(' ')
+
+const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring'
 
 // ── component ─────────────────────────────────────────────────────────────────
 
 export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onCreated }: Props) {
   const { toast } = useToast()
 
-  const [lineId,      setLineId]      = useState(plottedLines[0]?.lineId ?? '')
-  const [routeId,     setRouteId]     = useState('')
-  const [depHH,       setDepHH]       = useState('')
-  const [depMM,       setDepMM]       = useState('')
-  const [blockId,     setBlockId]     = useState<'new' | string>('new')
-  const [arrivalMin,  setArrivalMin]  = useState<number | null>(null)
-  const [resolveErr,  setResolveErr]  = useState(false)
-  const [isPending,   setIsPending]   = useState(false)
-  const [isResolving, setIsResolving] = useState(false)
+  const [tripType,     setTripType]     = useState<'productive' | 'deadrun'>('productive')
+  const [lineId,       setLineId]       = useState(plottedLines[0]?.lineId ?? '')
+  const [routeId,      setRouteId]      = useState('')
+  const [originId,     setOriginId]     = useState('')
+  const [destinationId, setDestinationId] = useState('')
+  const [depHH,        setDepHH]        = useState('')
+  const [depMM,        setDepMM]        = useState('')
+  const [cycleMinutes, setCycleMinutes] = useState('')
+  const [blockId,      setBlockId]      = useState<'new' | string>('new')
+  const [isPending,    setIsPending]    = useState(false)
+  const [isResolving,  setIsResolving]  = useState(false)
+  const resolveRef = useRef(0)
 
   const { data: routes = [] } = useQuery<Route[]>({
     queryKey: ['transit', 'transit-route', 'by-line', lineId],
@@ -126,96 +147,140 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
       const j = await r.json()
       return j.data ?? []
     },
-    enabled:   !!lineId,
+    enabled:   !!lineId && tripType === 'productive',
     staleTime: 60_000,
   })
 
-  // Clear arrival whenever any input changes
-  useEffect(() => {
-    setArrivalMin(null)
-    setResolveErr(false)
-  }, [lineId, routeId, depHH, depMM])
+  const { data: localities = [] } = useQuery<Locality[]>({
+    queryKey: ['transit', 'transit-locality', 'all'],
+    queryFn:  async () => {
+      const r = await apiFetch('/transit/transit-locality?pageSize=999')
+      if (!r.ok) return []
+      const j = await r.json()
+      return j.data ?? []
+    },
+    enabled:   tripType === 'deadrun',
+    staleTime: 300_000,
+  })
 
-  // Resolve arrival on demand when departure is complete
-  useEffect(() => {
+  // Reset route when line changes
+  useEffect(() => { setRouteId('') }, [lineId])
+
+  // Reset cycle when relevant inputs change
+  useEffect(() => { setCycleMinutes('') }, [tripType, lineId, routeId, originId, destinationId])
+
+  async function resolveCycle() {
     const hh = parseInt(depHH, 10)
-    const mm = parseInt(depMM, 10)
-    if (!routeId || depHH === '' || depMM === '' || isNaN(hh) || isNaN(mm) || hh < 0 || mm < 0 || mm > 59) return
+    if (isNaN(hh) || hh < 0) return
 
-    const route = routes.find(r => r.id === routeId)
-    if (!route) return
-
-    const depMin = hh * 60 + mm
-    let cancelled = false
+    const token = ++resolveRef.current
     setIsResolving(true)
 
-    ;(async () => {
-      // 1. Try line.metrics.windows[direction]
-      const metrics = await getLineMetrics(lineId)
-      if (cancelled) return
+    try {
+      if (tripType === 'productive') {
+        const route = routes.find(r => r.id === routeId)
+        if (!route) return
 
-      if (metrics?.windows) {
-        const hour       = hh % 24
-        const dirWindows = metrics.windows[route.direction as 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'] ?? []
-        const win        = dirWindows.find(w => hour >= w.from && hour <= w.to)
-        if (win) {
-          setArrivalMin(depMin + win.minutes)
-          setResolveErr(false)
-          setIsResolving(false)
-          return
+        const metrics = await getLineMetrics(lineId)
+        if (token !== resolveRef.current) return
+
+        if (metrics?.windows) {
+          const hour       = hh % 24
+          const dirWindows = metrics.windows[route.direction as 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'] ?? []
+          const win        = dirWindows.find(w => hour >= w.from && hour <= w.to)
+          if (win) { setCycleMinutes(String(win.minutes)); return }
         }
+
+        const travelMin = await getTravelTime(route.originLocalityId, route.destinationLocalityId)
+        if (token !== resolveRef.current) return
+        if (travelMin != null) setCycleMinutes(String(travelMin))
+      } else {
+        if (!originId || !destinationId) return
+        const travelMin = await getTravelTime(originId, destinationId)
+        if (token !== resolveRef.current) return
+        if (travelMin != null) setCycleMinutes(String(travelMin))
       }
+    } finally {
+      if (token === resolveRef.current) setIsResolving(false)
+    }
+  }
 
-      // 2. Fallback: TravelTimeMatrix origin → destination
-      const travelMin = await getTravelTime(route.originLocalityId, route.destinationLocalityId)
-      if (cancelled) return
+  // Also resolve when route or locality changes (if hour is already filled)
+  useEffect(() => {
+    const hh = parseInt(depHH, 10)
+    if (!depHH || isNaN(hh)) return
 
-      if (travelMin != null) {
-        setArrivalMin(depMin + travelMin)
-        setResolveErr(false)
-        setIsResolving(false)
-        return
-      }
+    if (tripType === 'productive' && !routeId) return
+    if (tripType === 'deadrun' && (!originId || !destinationId)) return
 
-      // 3. No data available
-      setArrivalMin(null)
-      setResolveErr(true)
-      setIsResolving(false)
-    })()
+    resolveCycle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, originId, destinationId, tripType])
 
-    return () => { cancelled = true }
-  }, [routeId, depHH, depMM, lineId, routes])
+  const depMin    = parseInt(depHH, 10) * 60 + parseInt(depMM, 10)
+  const cycleMin  = parseInt(cycleMinutes, 10)
+  const arrivalMin = (!isNaN(depMin) && !isNaN(cycleMin) && cycleMin > 0) ? depMin + cycleMin : null
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
-    if (routes.length === 0) return
-
     const hh = parseInt(depHH, 10)
     const mm = parseInt(depMM, 10)
-    if (!routeId || isNaN(hh) || isNaN(mm)) return
-
-    if (arrivalMin == null) {
-      toast.error('Horário de chegada indisponível — verifique as métricas da linha ou a matriz de tempos de viagem')
-      return
-    }
+    if (isNaN(hh) || isNaN(mm) || arrivalMin == null) return
 
     setIsPending(true)
     try {
-      const res = await apiFetch(`/transit/vehicle-plan/${planId}/add-trip`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          routeId,
-          departureMinutes: hh * 60 + mm,
-          arrivalMinutes:   arrivalMin,
-          blockId:          blockId === 'new' ? undefined : blockId,
-        }),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(extractError(j))
+      let resolvedBlockId: string | undefined = blockId === 'new' ? undefined : blockId
+      let createdInNewBlock = false
+
+      // Conflict detection: if a specific block is selected, check for overlaps
+      if (resolvedBlockId) {
+        const block = plottedBlocks.find(b => b.id === resolvedBlockId)
+        if (block && hasOverlap(block, depMin, arrivalMin)) {
+          resolvedBlockId = undefined
+          createdInNewBlock = true
+        }
       }
+
+      if (tripType === 'productive') {
+        if (!routeId) return
+        const res = await apiFetch(`/transit/vehicle-plan/${planId}/add-trip`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            routeId,
+            departureMinutes: depMin,
+            arrivalMinutes:   arrivalMin,
+            blockId:          resolvedBlockId,
+          }),
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(extractError(j))
+        }
+      } else {
+        if (!originId || !destinationId) return
+        const res = await apiFetch(`/transit/vehicle-plan/${planId}/add-deadrun`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            originLocalityId:      originId,
+            destinationLocalityId: destinationId,
+            departureMinutes:      depMin,
+            arrivalMinutes:        arrivalMin,
+            blockId:               resolvedBlockId,
+          }),
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(extractError(j))
+        }
+      }
+
+      if (createdInNewBlock) {
+        toast.info('Viagem adicionada em novo bloco pois conflita com outra viagem no bloco informado')
+      }
+
       onCreated()
       onClose()
     } catch (err) {
@@ -225,21 +290,24 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
     }
   }
 
-  // Blocks that have at least one trip from a plotted line
-  const plottedLineIds  = new Set(plottedLines.map(l => l.lineId))
-  const eligibleBlocks  = plottedBlocks.filter(b =>
+  const plottedLineIds = new Set(plottedLines.map(l => l.lineId))
+  const eligibleBlocks = plottedBlocks.filter(b =>
     b.blockTrips.some(bt => plottedLineIds.has(bt.trip.route.line.id))
   )
 
-  const depValid  = depHH !== '' && depMM !== '' && !isNaN(parseInt(depHH, 10)) && !isNaN(parseInt(depMM, 10))
-  const canSubmit = !!routeId && routes.length > 0 && depValid && arrivalMin != null && !isPending && !isResolving
+  const depValid   = depHH !== '' && depMM !== '' && !isNaN(parseInt(depHH, 10)) && !isNaN(parseInt(depMM, 10))
+  const cycleValid = !isNaN(cycleMin) && cycleMin > 0
+  const typeReady  = tripType === 'productive' ? !!routeId : (!!originId && !!destinationId)
+  const canSubmit  = typeReady && depValid && cycleValid && !isPending && !isResolving
+
+  const sortedLocalities = [...localities].sort((a, b) => a.name.localeCompare(b.name, 'pt'))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <form
         onSubmit={handleSubmit}
-        className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-5 space-y-4"
+        className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 p-5 space-y-4"
       >
         {/* header */}
         <div className="flex items-center justify-between">
@@ -249,74 +317,148 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
           </button>
         </div>
 
-        {/* Linha */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Linha</label>
-          <div className="relative">
-            <select value={lineId} onChange={e => { setLineId(e.target.value); setRouteId('') }} className={selectCls}>
-              {plottedLines.map(({ lineId: lid, line }) => (
-                <option key={lid} value={lid}>{line.code} — {line.name}</option>
-              ))}
-            </select>
-            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          </div>
+        {/* Tipo de viagem */}
+        <div className="flex items-center gap-6">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="radio"
+              name="tripType"
+              value="productive"
+              checked={tripType === 'productive'}
+              onChange={() => setTripType('productive')}
+              className="accent-primary"
+            />
+            <span className="text-sm">Produtiva</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="radio"
+              name="tripType"
+              value="deadrun"
+              checked={tripType === 'deadrun'}
+              onChange={() => setTripType('deadrun')}
+              className="accent-primary"
+            />
+            <span className="text-sm">Dead run <span className="text-xs text-muted-foreground">(Deslocamento)</span></span>
+          </label>
         </div>
 
-        {/* Sentido */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Sentido</label>
-          {routes.length === 0 && lineId ? (
-            <p className="text-xs text-muted-foreground italic py-1.5">Nenhum sentido disponível</p>
-          ) : (
-            <div className="relative">
-              <select value={routeId} onChange={e => setRouteId(e.target.value)} className={selectCls}>
-                <option value="">Selecione um sentido…</option>
-                {[...routes].sort((a, b) => (DIR_ORDER[a.direction] ?? 99) - (DIR_ORDER[b.direction] ?? 99)).map(r => (
-                  <option key={r.id} value={r.id}>{DIR_LABELS[r.direction] ?? r.direction} — {r.name}</option>
-                ))}
-              </select>
-              <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        {/* Productive: Linha + Sentido */}
+        {tripType === 'productive' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Linha</label>
+              <div className="relative">
+                <select value={lineId} onChange={e => setLineId(e.target.value)} className={selectCls}>
+                  {plottedLines.map(({ lineId: lid, line }) => (
+                    <option key={lid} value={lid}>{line.code} — {line.name}</option>
+                  ))}
+                </select>
+                <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Horário de início */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Horário de início</label>
-          <div className="flex items-center gap-1.5">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Sentido</label>
+              {routes.length === 0 && lineId ? (
+                <p className="text-xs text-muted-foreground italic py-1.5">Nenhum sentido</p>
+              ) : (
+                <div className="relative">
+                  <select value={routeId} onChange={e => setRouteId(e.target.value)} className={selectCls}>
+                    <option value="">Selecione…</option>
+                    {[...routes].sort((a, b) => (DIR_ORDER[a.direction] ?? 99) - (DIR_ORDER[b.direction] ?? 99)).map(r => (
+                      <option key={r.id} value={r.id}>{DIR_LABELS[r.direction] ?? r.direction} — {r.name}</option>
+                    ))}
+                  </select>
+                  <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Dead run: Origem + Destino */}
+        {tripType === 'deadrun' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Origem</label>
+              <div className="relative">
+                <select value={originId} onChange={e => setOriginId(e.target.value)} className={selectCls}>
+                  <option value="">Selecione…</option>
+                  {sortedLocalities.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Destino</label>
+              <div className="relative">
+                <select value={destinationId} onChange={e => setDestinationId(e.target.value)} className={selectCls}>
+                  <option value="">Selecione…</option>
+                  {sortedLocalities.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Partida + Duração + Chegada */}
+        <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
+          {/* Partida */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Partida</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={0} max={47}
+                placeholder="HH"
+                value={depHH}
+                onChange={e => setDepHH(e.target.value)}
+                onBlur={resolveCycle}
+                className="w-14 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <span className="text-muted-foreground font-semibold select-none">:</span>
+              <input
+                type="number"
+                min={0} max={59}
+                placeholder="MM"
+                value={depMM}
+                onChange={e => setDepMM(e.target.value)}
+                className="w-14 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Duração */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              {isResolving ? 'Calculando…' : 'Duração (min)'}
+            </label>
             <input
               type="number"
-              min={0} max={47}
-              placeholder="HH"
-              value={depHH}
-              onChange={e => setDepHH(e.target.value)}
-              className="w-16 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <span className="text-muted-foreground font-semibold text-base select-none">:</span>
-            <input
-              type="number"
-              min={0} max={59}
-              placeholder="MM"
-              value={depMM}
-              onChange={e => setDepMM(e.target.value)}
-              className="w-16 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
+              min={1}
+              placeholder="min"
+              value={cycleMinutes}
+              onChange={e => setCycleMinutes(e.target.value)}
+              className={inputCls}
             />
           </div>
-        </div>
 
-        {/* Horário de chegada (auto) */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Horário de chegada</label>
-          <div className="text-sm rounded-sm border border-input bg-muted/30 px-3 py-1.5 min-h-[34px] flex items-center">
-            {isResolving ? (
-              <span className="text-xs text-muted-foreground italic">Calculando…</span>
-            ) : resolveErr ? (
-              <span className="text-xs text-destructive">Sem dados de ciclo ou matriz para este sentido</span>
-            ) : arrivalMin != null ? (
-              <span className="font-mono">{fmtMinutes(arrivalMin)}</span>
-            ) : (
-              <span className="text-xs text-muted-foreground italic">Calculado automaticamente</span>
-            )}
+          {/* Chegada */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Chegada</label>
+            <div className="text-sm rounded-sm border border-input bg-muted/30 px-3 py-1.5 min-h-[34px] min-w-[72px] flex items-center justify-center">
+              {arrivalMin != null
+                ? <span className="font-mono">{fmtMinutes(arrivalMin)}</span>
+                : <span className="text-xs text-muted-foreground">—</span>
+              }
+            </div>
           </div>
         </div>
 
@@ -339,7 +481,7 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
           <Button type="button" variant="cancel" size="sm" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" size="sm" disabled={!canSubmit || routes.length === 0}>
+          <Button type="submit" size="sm" disabled={!canSubmit}>
             {isPending ? 'Adicionando…' : 'Adicionar'}
           </Button>
         </div>

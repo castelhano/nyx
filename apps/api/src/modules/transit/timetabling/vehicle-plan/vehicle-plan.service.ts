@@ -356,7 +356,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
     }
 
-    const scoringBlocks: ScoringBlock[] = blocks.map((b, idx) => ({
+    // Skip blocks with no trips — they crash toActiveBlock and have nothing to score
+    const blocksWithTrips  = blocks.filter(b => b.blockTrips.length > 0)
+    const blockToScoreIdx  = new Map(blocksWithTrips.map((b, i) => [b.id, i]))
+
+    const scoringBlocks: ScoringBlock[] = blocksWithTrips.map((b, idx) => ({
       id:          idx,
       depotId:     b.depotId,
       vehicleType: b.vehicleType,
@@ -380,7 +384,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }),
     }))
 
-    const result      = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
+    if (scoringBlocks.length === 0) return
+
+    const result       = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
     const matrixMisses = findMatrixMisses(scoringBlocks, matrixMap)
 
     const r2 = (n: number) => Math.round(n * 100) / 100
@@ -401,15 +407,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         where: { id: planId },
         data:  { summary, generatedAt: new Date() },
       }),
-      ...blocks.flatMap((block, idx) => {
+      ...blocks.flatMap((block) => {
         if (!block.isStale) return []
+        const sidx = blockToScoreIdx.get(block.id)
+        if (sidx === undefined) {
+          // empty block — clear stale flag, no summary to write
+          return [this.prisma.vehicleBlock.update({
+            where: { id: block.id },
+            data:  { isStale: false },
+          })]
+        }
         const br: VehicleBlockSummary = {
-          totalMinutes:      result.blocks[idx].totalMinutes,
-          productiveMinutes: result.blocks[idx].productiveMinutes,
-          deadrunMinutes:    result.blocks[idx].deadrunMinutes,
-          totalKm:           r2(result.blocks[idx].totalKm),
-          productiveKm:      r2(result.blocks[idx].productiveKm),
-          deadrunKm:         r2(result.blocks[idx].deadrunKm),
+          totalMinutes:      result.blocks[sidx].totalMinutes,
+          productiveMinutes: result.blocks[sidx].productiveMinutes,
+          deadrunMinutes:    result.blocks[sidx].deadrunMinutes,
+          totalKm:           r2(result.blocks[sidx].totalKm),
+          productiveKm:      r2(result.blocks[sidx].productiveKm),
+          deadrunKm:         r2(result.blocks[sidx].deadrunKm),
         }
         return [this.prisma.vehicleBlock.update({
           where: { id: block.id },
@@ -612,6 +626,74 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         })
         await tx.blockTrip.create({ data: { vehicleBlockId: newBlock.id, tripId: trip.id, sequence: 0 } })
       }
+    })
+
+    await this.scorePlan(planId)
+  }
+
+  async addDeadrun(planId: string, dto: {
+    originLocalityId:      string
+    destinationLocalityId: string
+    departureMinutes:      number
+    arrivalMinutes:        number
+    blockId?:             string
+  }): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, status: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+
+    const db = this.prisma as any
+
+    await db.$transaction(async (tx: any) => {
+      let blockId = dto.blockId
+
+      if (blockId) {
+        const block = await tx.vehicleBlock.findFirst({
+          where: { id: blockId, vehiclePlanId: planId },
+        })
+        if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
+      } else {
+        const lastBlock = await tx.vehicleBlock.findFirst({
+          where:   { vehiclePlanId: planId },
+          orderBy: { blockNumber: 'desc' },
+          select:  { blockNumber: true, depotId: true },
+        })
+
+        let depotId: string
+        if (lastBlock?.depotId) {
+          depotId = lastBlock.depotId
+        } else {
+          const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
+          if (!depot) throw new BadRequestException('No depot locality configured')
+          depotId = depot.id
+        }
+
+        const newBlock = await tx.vehicleBlock.create({
+          data: {
+            vehiclePlanId: planId,
+            blockNumber:   (lastBlock?.blockNumber ?? 0) + 1,
+            depotId,
+            vehicleType:   'STANDARD',
+          },
+        })
+        blockId = newBlock.id
+      }
+
+      await tx.blockDeadrun.create({
+        data: {
+          vehicleBlockId:        blockId,
+          type:                  'DISPLACEMENT',
+          originLocalityId:      dto.originLocalityId,
+          destinationLocalityId: dto.destinationLocalityId,
+          departureMinutes:      dto.departureMinutes,
+          arrivalMinutes:        dto.arrivalMinutes,
+        },
+      })
+
+      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
     })
 
     await this.scorePlan(planId)
