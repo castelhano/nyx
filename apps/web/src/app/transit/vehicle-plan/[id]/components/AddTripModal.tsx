@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button }   from '@/components/ui/button'
 import { Icons }    from '@/lib/icons'
@@ -290,17 +290,20 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
     }
   }
 
-  const plottedLineIds = new Set(plottedLines.map(l => l.lineId))
-  const eligibleBlocks = plottedBlocks.filter(b =>
-    b.blockTrips.some(bt => plottedLineIds.has(bt.trip.route.line.id))
+  const plottedLineIds = useMemo(() => new Set(plottedLines.map(l => l.lineId)), [plottedLines])
+  const eligibleBlocks = useMemo(
+    () => plottedBlocks.filter(b => b.blockTrips.some(bt => plottedLineIds.has(bt.trip.route.line.id))),
+    [plottedBlocks, plottedLineIds],
+  )
+  const sortedLocalities = useMemo(
+    () => [...localities].sort((a, b) => a.name.localeCompare(b.name, 'pt')),
+    [localities],
   )
 
   const depValid   = depHH !== '' && depMM !== '' && !isNaN(parseInt(depHH, 10)) && !isNaN(parseInt(depMM, 10))
   const cycleValid = !isNaN(cycleMin) && cycleMin > 0
   const typeReady  = tripType === 'productive' ? !!routeId : (!!originId && !!destinationId)
   const canSubmit  = typeReady && depValid && cycleValid && !isPending && !isResolving
-
-  const sortedLocalities = [...localities].sort((a, b) => a.name.localeCompare(b.name, 'pt'))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
