@@ -21,6 +21,7 @@ import { GenerateModal }         from './components/GenerateModal'
 import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
+import { MoveBlockModal }        from './components/MoveBlockModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints } from './views/vehicles.view'
@@ -309,9 +310,11 @@ export default function VehiclePlanPage() {
   const isNew = id === 'new'
 
   type DepotModal = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
+  type MoveModal  = { blockTripId: string; blockId: string }
 
   const [selection,   setSelection]   = useState<Selection | null>(null)
   const [depotModal,  setDepotModal]  = useState<DepotModal | null>(null)
+  const [moveModal,   setMoveModal]   = useState<MoveModal  | null>(null)
   const [isPending,         setIsPending]         = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
@@ -575,6 +578,30 @@ export default function VehiclePlanPage() {
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
+  function handleMoveTrip(blockTripId: string, blockId: string) {
+    setMoveModal({ blockTripId, blockId })
+  }
+
+  async function handleConfirmMoveModal(targetBlockId: string) {
+    if (!moveModal) return
+    const { blockTripId, blockId } = moveModal
+    setMoveModal(null)
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/move-trip`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ blockTripId, targetBlockId }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao mover viagem')
+    }
+  }
+
   async function handleConfirmDepotModal(depotLocalityId: string) {
     if (!depotModal) return
     const { kind, blockTripId, blockId } = depotModal
@@ -693,6 +720,7 @@ export default function VehiclePlanPage() {
       onDeleteInterval:    handleDeleteInterval,
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
+      onMoveTrip:          handleMoveTrip,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -812,6 +840,21 @@ export default function VehiclePlanPage() {
           onClose={() => setDepotModal(null)}
         />
       )}
+
+      {moveModal && plottedData && (() => {
+        const blockTrip = plottedData.blocks
+          .flatMap(b => b.blockTrips)
+          .find(bt => bt.id === moveModal.blockTripId)
+        return blockTrip ? (
+          <MoveBlockModal
+            blockTrip={blockTrip}
+            currentBlockId={moveModal.blockId}
+            blocks={plottedData.blocks}
+            onConfirm={handleConfirmMoveModal}
+            onClose={() => setMoveModal(null)}
+          />
+        ) : null
+      })()}
 
       {addTripOpen && plottedData && selectedLineIds.size > 0 && (
         <AddTripModal

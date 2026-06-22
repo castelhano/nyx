@@ -32,6 +32,7 @@ export class GanttEngine {
 
   private onStateChange?: (state: EngineState) => void
   private onSegmentClickCb?: (seg: LayoutSegment, pos: Point) => void
+  private onSegmentContextMenuCb?: (seg: LayoutSegment, pos: Point) => void
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
 
@@ -109,6 +110,11 @@ export class GanttEngine {
     if (seg) this.onSegmentClickCb?.(seg, pos)
   }
 
+  handleSegmentContextMenu(segId: string, pos: Point): void {
+    const seg = this.segments.find((s) => s.id === segId)
+    if (seg) this.onSegmentContextMenuCb?.(seg, pos)
+  }
+
   getSegmentRect(segId: string): DOMRect | null {
     const seg = this.segments.find((s) => s.id === segId)
     if (!seg) return null
@@ -128,6 +134,10 @@ export class GanttEngine {
 
   onSegmentClickCallback(cb: (seg: LayoutSegment, pos: Point) => void): void {
     this.onSegmentClickCb = cb
+  }
+
+  onSegmentContextMenuCallback(cb: (seg: LayoutSegment, pos: Point) => void): void {
+    this.onSegmentContextMenuCb = cb
   }
 
   requestDraw(): void {

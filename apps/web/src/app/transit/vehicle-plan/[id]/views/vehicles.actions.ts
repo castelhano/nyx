@@ -11,6 +11,7 @@ export interface VehiclesActionDeps {
   onDeleteInterval:    (tripIds: string[], deadrunIds: string[], blockId: string) => void
   onAddAccess:         (blockTripId: string, blockId: string) => void
   onAddReturn:         (blockTripId: string, blockId: string) => void
+  onMoveTrip:          (blockTripId: string, blockId: string) => void
 }
 
 export function createVehiclesActionSpec(
@@ -52,6 +53,7 @@ export function createVehiclesActionSpec(
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           ...(block && canAddAccess(bt, block) ? [makeAccessAction(bt.id, block.id, deps)] : []),
           ...(block && canAddReturn(bt, block)  ? [makeReturnAction(bt.id, block.id, deps)] : []),
+          makeMoveAction(bt.id, selection.segment.rowId, deps),
           makeDeleteAction([bt.trip.id], deps),
         ]
       }
@@ -206,6 +208,16 @@ function makeReturnAction(blockTripId: string, blockId: string, deps: VehiclesAc
     icon:    'Warehouse',
     variant: 'both',
     onClick: () => deps.onAddReturn(blockTripId, blockId),
+  }
+}
+
+function makeMoveAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'move',
+    label:   'Mover para bloco',
+    icon:    'ArrowRightLeft',
+    variant: 'both',
+    onClick: () => deps.onMoveTrip(blockTripId, blockId),
   }
 }
 

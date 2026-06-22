@@ -28,12 +28,13 @@ export class Interaction {
   }
 
   private attach(): void {
-    this.on(this.canvas, 'wheel',      this.onWheel)
-    this.on(this.canvas, 'mousedown',  this.onMouseDown)
-    this.on(this.canvas, 'mousemove',  this.onMouseMove)
-    this.on(this.canvas, 'mouseup',    this.onMouseUp)
-    this.on(this.canvas, 'mouseleave', this.onMouseLeave)
-    this.on(this.canvas, 'click',      this.onClick)
+    this.on(this.canvas, 'wheel',        this.onWheel)
+    this.on(this.canvas, 'mousedown',    this.onMouseDown)
+    this.on(this.canvas, 'mousemove',    this.onMouseMove)
+    this.on(this.canvas, 'mouseup',      this.onMouseUp)
+    this.on(this.canvas, 'mouseleave',   this.onMouseLeave)
+    this.on(this.canvas, 'click',        this.onClick)
+    this.on(this.canvas, 'contextmenu',  this.onContextMenu)
   }
 
   private onWheel = (e: Event): void => {
@@ -86,6 +87,13 @@ export class Interaction {
     const me  = e as MouseEvent
     const seg = this.engine.hitTester.hitTest({ x: me.offsetX, y: me.offsetY })
     if (seg) this.engine.handleSegmentClick(seg, { x: me.offsetX, y: me.offsetY })
+  }
+
+  private onContextMenu = (e: Event): void => {
+    const me = e as MouseEvent
+    me.preventDefault()
+    const seg = this.engine.hitTester.hitTest({ x: me.offsetX, y: me.offsetY })
+    if (seg) this.engine.handleSegmentContextMenu(seg, { x: me.clientX, y: me.clientY })
   }
 
 }

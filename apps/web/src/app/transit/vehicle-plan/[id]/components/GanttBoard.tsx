@@ -9,8 +9,9 @@ import { TimeRuler }          from './TimeRuler'
 import { RowList }            from './RowList'
 import { SegmentTooltip }     from './SegmentTooltip'
 import { BlockDetailPopover } from './BlockDetailPopover'
+import { GanttContextMenu }   from './GanttContextMenu'
 import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
-import type { ViewportSnapshot, Selection, GanttActionSpec } from '../engine/gantt.types'
+import type { ViewportSnapshot, Selection, GanttActionSpec, ActionItem } from '../engine/gantt.types'
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
 export const LABEL_WIDTH  = 160  // px — matches RowList width
@@ -47,7 +48,6 @@ function computeHeadway(seg: LayoutSegment, blocks: GanttBlock[]): number | null
   const idx = departures.indexOf(dep)
   if (idx <= 0 || departures.length < 2) return null
 
-  if (idx < departures.length - 1) return departures[idx + 1] - dep
   return dep - departures[idx - 1]
 }
 
@@ -55,6 +55,12 @@ interface BlockDetailState {
   block:   GanttBlock
   screenY: number
   screenX: number
+}
+
+interface ContextMenuState {
+  x:       number
+  y:       number
+  actions: ActionItem[]
 }
 
 const INITIAL_VP: ViewportSnapshot = {
@@ -82,6 +88,7 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
   const [canvasH,      setCanvasH]      = useState(0)
   const [tooltip,      setTooltip]      = useState<TooltipState | null>(null)
   const [blockDetail,  setBlockDetail]  = useState<BlockDetailState | null>(null)
+  const [contextMenu,  setContextMenu]  = useState<ContextMenuState | null>(null)
   const lastEmittedVpRef               = useRef<ViewportSnapshot | null>(null)
 
   // ── engine lifecycle ────────────────────────────────────────────────────────
@@ -157,6 +164,16 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
           })
         }
       }
+    })
+
+    engine.onSegmentContextMenuCallback((seg, pos) => {
+      if (seg.id.endsWith(':dead')) return
+      const spec = actionSpecRef.current
+      if (!spec) return
+      const synthSel: Selection = { type: 'trip', segment: seg }
+      const actions = spec.getActions(synthSel, dataRef.current, () => setContextMenu(null))
+        .filter(a => !a.splitMenu)
+      if (actions.length > 0) setContextMenu({ x: pos.x, y: pos.y, actions })
     })
 
     return () => {
@@ -311,6 +328,15 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
           screenX={blockDetail.screenX}
           onClose={() => setBlockDetail(null)}
           onUpdate={() => onBlockUpdate?.()}
+        />
+      )}
+
+      {contextMenu && (
+        <GanttContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          actions={contextMenu.actions}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>

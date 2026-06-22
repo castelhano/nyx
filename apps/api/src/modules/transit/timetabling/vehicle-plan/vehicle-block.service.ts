@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { vehicleBlockSchema, VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
@@ -75,6 +75,40 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     await db.$transaction(async (tx: any) => {
       await tx.blockDeadrun.deleteMany({ where: { id: { in: ids } } })
       await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+    })
+  }
+
+  async moveTrip(blockId: string, blockTripId: string, targetBlockId: string): Promise<void> {
+    if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
+    const db = this.prisma as any
+
+    const blockTrip = await db.blockTrip.findUnique({
+      where:  { id: blockTripId },
+      select: { id: true, vehicleBlockId: true },
+    })
+    if (!blockTrip || blockTrip.vehicleBlockId !== blockId) {
+      throw new NotFoundException('Viagem não encontrada neste bloco')
+    }
+
+    const targetBlock = await db.vehicleBlock.findUnique({
+      where:  { id: targetBlockId },
+      select: { id: true },
+    })
+    if (!targetBlock) throw new NotFoundException('Bloco destino não encontrado')
+
+    const maxSeq = await db.blockTrip.aggregate({
+      where: { vehicleBlockId: targetBlockId },
+      _max:  { sequence: true },
+    })
+    const nextSequence = (maxSeq._max.sequence ?? 0) + 1
+
+    await db.$transaction(async (tx: any) => {
+      await tx.blockTrip.update({
+        where: { id: blockTripId },
+        data:  { vehicleBlockId: targetBlockId, sequence: nextSequence },
+      })
+      await tx.vehicleBlock.update({ where: { id: blockId },       data: { isStale: true } })
+      await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })
     })
   }
 
