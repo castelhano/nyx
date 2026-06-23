@@ -310,7 +310,7 @@ export default function VehiclePlanPage() {
   const isNew = id === 'new'
 
   type DepotModal = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
-  type MoveModal  = { blockTripId: string; blockId: string }
+  type MoveModal  = { blockTripIds: string[]; blockId: string }
 
   const [selection,   setSelection]   = useState<Selection | null>(null)
   const [depotModal,  setDepotModal]  = useState<DepotModal | null>(null)
@@ -578,18 +578,18 @@ export default function VehiclePlanPage() {
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
-  function handleMoveTrip(blockTripId: string, blockId: string) {
-    setMoveModal({ blockTripId, blockId })
+  function handleMoveTrip(blockTripIds: string[], blockId: string) {
+    setMoveModal({ blockTripIds, blockId })
   }
 
   async function handleConfirmMoveModal(targetBlockId: string) {
     if (!moveModal) return
-    const { blockTripId, blockId } = moveModal
+    const { blockTripIds, blockId } = moveModal
     setMoveModal(null)
     try {
       const res = await apiFetch(`/transit/vehicle-block/${blockId}/move-trip`, {
         method: 'PATCH',
-        body:   JSON.stringify({ blockTripId, targetBlockId }),
+        body:   JSON.stringify({ blockTripIds, targetBlockId }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -842,12 +842,11 @@ export default function VehiclePlanPage() {
       )}
 
       {moveModal && plottedData && (() => {
-        const blockTrip = plottedData.blocks
-          .flatMap(b => b.blockTrips)
-          .find(bt => bt.id === moveModal.blockTripId)
-        return blockTrip ? (
+        const allBlockTrips = plottedData.blocks.flatMap(b => b.blockTrips)
+        const blockTrips    = moveModal.blockTripIds.map(id => allBlockTrips.find(bt => bt.id === id)).filter(Boolean) as typeof allBlockTrips
+        return blockTrips.length > 0 ? (
           <MoveBlockModal
-            blockTrip={blockTrip}
+            blockTrips={blockTrips}
             currentBlockId={moveModal.blockId}
             blocks={plottedData.blocks}
             onConfirm={handleConfirmMoveModal}

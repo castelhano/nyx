@@ -29,10 +29,10 @@ export class VehicleBlockController extends BaseController<VehicleBlock, CreateV
   @HttpCode(200)
   moveTrip(
     @Param('id') blockId: string,
-    @Body('blockTripId') blockTripId: string,
+    @Body('blockTripIds') blockTripIds: string[],
     @Body('targetBlockId') targetBlockId: string,
   ) {
-    return this.vehicleBlockService.moveTrip(blockId, blockTripId, targetBlockId)
+    return this.vehicleBlockService.moveTrip(blockId, blockTripIds, targetBlockId)
   }
 
   @Delete(':id/deadruns')

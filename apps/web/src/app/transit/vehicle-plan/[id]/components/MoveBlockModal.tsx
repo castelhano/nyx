@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { Button }   from '@/components/ui/button'
-import { Icons }    from '@/lib/icons'
+import { useState, useMemo } from 'react'
+import { Button }            from '@/components/ui/button'
+import { Icons }             from '@/lib/icons'
 import type { GanttBlock, GanttBlockTrip } from '../views/vehicles.view'
 
 interface Props {
-  blockTrip:      GanttBlockTrip
+  blockTrips:     GanttBlockTrip[]
   currentBlockId: string
   blocks:         GanttBlock[]
   onConfirm:      (targetBlockId: string) => void
@@ -19,15 +19,42 @@ function minutesToHHMM(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-export function MoveBlockModal({ blockTrip, currentBlockId, blocks, onConfirm, onClose }: Props) {
+function findConflicts(moving: GanttBlockTrip[], targetBlock: GanttBlock): GanttBlockTrip[] {
+  const conflicts: GanttBlockTrip[] = []
+  for (const bt of targetBlock.blockTrips) {
+    const dep = bt.trip.departureMinutes
+    const arr = bt.trip.arrivalMinutes
+    const overlaps = moving.some(m => m.trip.departureMinutes < arr && dep < m.trip.arrivalMinutes)
+    if (overlaps) conflicts.push(bt)
+  }
+  return conflicts
+}
+
+export function MoveBlockModal({ blockTrips, currentBlockId, blocks, onConfirm, onClose }: Props) {
   const [targetBlockId, setTargetBlockId] = useState('')
 
   const otherBlocks = blocks.filter(b => b.id !== currentBlockId)
-  const { trip }    = blockTrip
+  const isSingle    = blockTrips.length === 1
+
+  const conflicts = useMemo<GanttBlockTrip[]>(() => {
+    if (!targetBlockId) return []
+    const target = otherBlocks.find(b => b.id === targetBlockId)
+    return target ? findConflicts(blockTrips, target) : []
+  }, [targetBlockId, blockTrips, otherBlocks])
+
+  function description(): string {
+    if (isSingle) {
+      const { trip } = blockTrips[0]
+      return `${trip.route.line.code} · ${minutesToHHMM(trip.departureMinutes)} → ${minutesToHHMM(trip.arrivalMinutes)}`
+    }
+    const deps = blockTrips.map(bt => bt.trip.departureMinutes).sort((a, b) => a - b)
+    const arrs = blockTrips.map(bt => bt.trip.arrivalMinutes).sort((a, b) => a - b)
+    return `${blockTrips.length} viagens · ${minutesToHHMM(deps[0])} – ${minutesToHHMM(arrs[arrs.length - 1])}`
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (targetBlockId) onConfirm(targetBlockId)
+    if (targetBlockId && !conflicts.length) onConfirm(targetBlockId)
   }
 
   return (
@@ -37,11 +64,9 @@ export function MoveBlockModal({ blockTrip, currentBlockId, blocks, onConfirm, o
         onSubmit={handleSubmit}
         className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-6 space-y-4"
       >
-        <h2 className="text-base font-semibold">Mover viagem</h2>
+        <h2 className="text-base font-semibold">Mover {isSingle ? 'viagem' : 'viagens'}</h2>
 
-        <p className="text-sm text-muted-foreground">
-          {trip.route.line.code} · {minutesToHHMM(trip.departureMinutes)} → {minutesToHHMM(trip.arrivalMinutes)}
-        </p>
+        <p className="text-sm text-muted-foreground">{description()}</p>
 
         <div>
           <label htmlFor="targetBlockId" className="text-sm font-medium">
@@ -70,11 +95,22 @@ export function MoveBlockModal({ blockTrip, currentBlockId, blocks, onConfirm, o
           </div>
         </div>
 
+        {conflicts.length > 0 && (
+          <div className="text-sm bg-destructive/40 rounded-md px-3 py-2 space-y-1">
+            <p className="font-medium">Conflito de horários no bloco destino:</p>
+            {conflicts.map(c => (
+              <p key={c.id} className="text-xs">
+                {c.trip.route.line.code} · {minutesToHHMM(c.trip.departureMinutes)} → {minutesToHHMM(c.trip.arrivalMinutes)}
+              </p>
+            ))}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="cancel" size="sm" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" size="sm" disabled={!targetBlockId || otherBlocks.length === 0}>
+          <Button type="submit" size="sm" disabled={!targetBlockId || otherBlocks.length === 0 || conflicts.length > 0}>
             Mover
           </Button>
         </div>

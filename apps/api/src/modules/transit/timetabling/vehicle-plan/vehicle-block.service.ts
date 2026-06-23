@@ -2,10 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { vehicleBlockSchema, VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
+import { VehiclePlanService } from './vehicle-plan.service'
 
 @Injectable()
 export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto> {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly vehiclePlanService: VehiclePlanService,
+  ) {
     super(prisma, 'vehicleBlock', vehicleBlockSchema, 'transit')
   }
 
@@ -78,16 +82,23 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
-  async moveTrip(blockId: string, blockTripId: string, targetBlockId: string): Promise<void> {
+  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string): Promise<void> {
     if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
+    if (!blockTripIds.length)      throw new BadRequestException('Nenhuma viagem informada')
     const db = this.prisma as any
 
-    const blockTrip = await db.blockTrip.findUnique({
-      where:  { id: blockTripId },
-      select: { id: true, vehicleBlockId: true },
+    const sourceBlock = await db.vehicleBlock.findUnique({
+      where:  { id: blockId },
+      select: { id: true, vehiclePlanId: true },
     })
-    if (!blockTrip || blockTrip.vehicleBlockId !== blockId) {
-      throw new NotFoundException('Viagem não encontrada neste bloco')
+    if (!sourceBlock) throw new NotFoundException('Bloco de origem não encontrado')
+
+    const found = await db.blockTrip.findMany({
+      where:  { id: { in: blockTripIds }, vehicleBlockId: blockId },
+      select: { id: true },
+    })
+    if (found.length !== blockTripIds.length) {
+      throw new NotFoundException('Uma ou mais viagens não encontradas neste bloco')
     }
 
     const targetBlock = await db.vehicleBlock.findUnique({
@@ -100,16 +111,20 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       where: { vehicleBlockId: targetBlockId },
       _max:  { sequence: true },
     })
-    const nextSequence = (maxSeq._max.sequence ?? 0) + 1
+    let nextSequence = (maxSeq._max.sequence ?? 0) + 1
 
     await db.$transaction(async (tx: any) => {
-      await tx.blockTrip.update({
-        where: { id: blockTripId },
-        data:  { vehicleBlockId: targetBlockId, sequence: nextSequence },
-      })
+      for (const btId of blockTripIds) {
+        await tx.blockTrip.update({
+          where: { id: btId },
+          data:  { vehicleBlockId: targetBlockId, sequence: nextSequence++ },
+        })
+      }
       await tx.vehicleBlock.update({ where: { id: blockId },       data: { isStale: true } })
       await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })
     })
+
+    await this.vehiclePlanService.scorePlan(sourceBlock.vehiclePlanId)
   }
 
   async addReturn(blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
