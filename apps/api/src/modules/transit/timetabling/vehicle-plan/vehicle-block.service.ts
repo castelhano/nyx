@@ -66,6 +66,32 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
+  async updateDeadruns(
+    blockId: string,
+    updates: { id: string; departureMinutes: number; arrivalMinutes: number }[],
+  ): Promise<void> {
+    if (updates.length === 0) return
+    const db = this.prisma as any
+
+    const found = await db.blockDeadrun.findMany({
+      where:  { id: { in: updates.map(u => u.id) }, vehicleBlockId: blockId },
+      select: { id: true },
+    })
+    if (found.length !== updates.length) {
+      throw new NotFoundException('Um ou mais vazios não encontrados neste bloco')
+    }
+
+    await db.$transaction(async (tx: any) => {
+      for (const u of updates) {
+        await tx.blockDeadrun.update({
+          where: { id: u.id },
+          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes },
+        })
+      }
+      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+    })
+  }
+
   async deleteDeadruns(blockId: string, ids: string[]): Promise<void> {
     if (ids.length === 0) return
     const db = this.prisma as any

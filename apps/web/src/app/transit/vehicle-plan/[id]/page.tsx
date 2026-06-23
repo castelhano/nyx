@@ -313,13 +313,15 @@ export default function VehiclePlanPage() {
   type DepotModal = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
   type MoveModal  = { blockTripIds: string[]; blockId: string }
 
-  type TripPatch = { departureMinutes?: number; arrivalMinutes?: number }
+  type TripPatch    = { departureMinutes?: number; arrivalMinutes?: number }
+  type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
 
-  const [selection,       setSelection]       = useState<Selection | null>(null)
-  const [depotModal,      setDepotModal]       = useState<DepotModal | null>(null)
-  const [moveModal,       setMoveModal]        = useState<MoveModal  | null>(null)
-  const [pendingChanges,  setPendingChanges]   = useState<Map<string, TripPatch>>(new Map())
-  const [isPending,       setIsPending]        = useState(false)
+  const [selection,             setSelection]             = useState<Selection | null>(null)
+  const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
+  const [moveModal,             setMoveModal]             = useState<MoveModal  | null>(null)
+  const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
+  const [pendingDeadrunChanges, setPendingDeadrunChanges] = useState<Map<string, DeadrunPatch>>(new Map())
+  const [isPending,             setIsPending]             = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
@@ -372,7 +374,7 @@ export default function VehiclePlanPage() {
   // Merges pending local overrides into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0) return plottedData
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0) return plottedData
     return {
       ...plottedData,
       blocks: plottedData.blocks.map(b => ({
@@ -382,9 +384,14 @@ export default function VehiclePlanPage() {
           if (!patch) return bt
           return { ...bt, trip: { ...bt.trip, ...patch } }
         }),
+        blockDeadruns: b.blockDeadruns.map(dr => {
+          const patch = pendingDeadrunChanges.get(dr.id)
+          if (!patch) return dr
+          return { ...dr, ...patch }
+        }),
       })),
     }
-  }, [plottedData, pendingChanges])
+  }, [plottedData, pendingChanges, pendingDeadrunChanges])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -601,61 +608,87 @@ export default function VehiclePlanPage() {
       return `${h}:${min}(${m})`
     }
 
-    const overrides = new Map<string, TripPatch>()
+    const overrides   = new Map<string, TripPatch>()
+    const drOverrides = new Map<string, DeadrunPatch>()
 
-    // Process per block: a block = one vehicle, so trips within a block cannot overlap.
-    // Trips across different blocks (same direction) run concurrently on different vehicles
-    // and don't need headway enforcement here.
+    // Process per block: a block = one vehicle.
+    // Merge trips and deadruns into chronological order so deadruns shift automatically
+    // when the preceding trip's arrival extends.
     console.group('[AjustarCiclo]', plottedData.blocks.length, 'blocos')
 
     for (const block of plottedData.blocks) {
-      const sorted = [...block.blockTrips].sort((a, b) => a.sequence - b.sequence)
-      console.group(`Bloco ${block.blockNumber} — ${sorted.length} viagens`)
+      type TripItem    = { kind: 'trip';    dep: number; bt: typeof block.blockTrips[0] }
+      type DrItem      = { kind: 'deadrun'; dep: number; dr: typeof block.blockDeadruns[0] }
+      type BlockItem   = TripItem | DrItem
 
-      for (let i = 0; i < sorted.length; i++) {
-        const { trip } = sorted[i]
+      const items: BlockItem[] = [
+        ...block.blockTrips.map(bt   => ({ kind: 'trip'    as const, dep: bt.trip.departureMinutes, bt })),
+        ...block.blockDeadruns.map(dr => ({ kind: 'deadrun' as const, dep: dr.departureMinutes,      dr })),
+      ].sort((a, b) => a.dep - b.dep)
 
-        // Effective departure may have been pushed by the previous trip in this block
-        const effectiveDep = overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes
+      console.group(`Bloco ${block.blockNumber} — ${items.length} itens`)
 
-        const window = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
-        if (!window) {
-          console.log(`  trip ${trip.id.slice(-6)} [${trip.route.direction}] sem janela — ignorada`)
-          continue
-        }
+      let prevArrival     = -Infinity
+      let pendingInterval = 0  // interval to apply before the next trip (0 after a deadrun)
 
-        const newArrival = effectiveDep + window.minutes
+      for (let i = 0; i < items.length; i++) {
+        const item     = items[i]
+        const nextItem = items[i + 1]
 
-        const patch: TripPatch = {}
-        if (effectiveDep !== trip.departureMinutes) patch.departureMinutes = effectiveDep
-        if (newArrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = newArrival
-        if (Object.keys(patch).length > 0) {
-          overrides.set(trip.id, { ...overrides.get(trip.id), ...patch })
-        }
+        if (item.kind === 'trip') {
+          const { trip } = item.bt
+          const minDep      = prevArrival === -Infinity ? -Infinity : prevArrival + pendingInterval
+          const effectiveDep = Math.max(
+            overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes,
+            minDep,
+          )
+          const pushed = effectiveDep > trip.departureMinutes
 
-        const pushed = effectiveDep !== trip.departureMinutes
-        console.log(
-          `  trip ${trip.id.slice(-6)} [${trip.route.direction.slice(0,3)}]` +
-          ` orig: ${fmt(trip.departureMinutes)}→${fmt(trip.arrivalMinutes)}` +
-          ` calc: ${fmt(effectiveDep)}→${fmt(newArrival)}` +
-          ` cycle=${window.minutes} interval=${window.intervalMinutes}` +
-          (pushed ? ' ← EMPURRADA' : ''),
-        )
+          const window    = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
+          const newArrival = window
+            ? effectiveDep + window.minutes
+            : effectiveDep + (trip.arrivalMinutes - trip.departureMinutes)
 
-        // Push the next trip in the same block if it departs before this one arrives
-        // (plus the configured interval as minimum gap between trips of the same vehicle)
-        if (i + 1 < sorted.length) {
-          const nextTrip   = sorted[i + 1].trip
-          const nextEffDep = overrides.get(nextTrip.id)?.departureMinutes ?? nextTrip.departureMinutes
-          const minNextDep = newArrival + window.intervalMinutes
+          const patch: TripPatch = {}
+          if (effectiveDep !== trip.departureMinutes) patch.departureMinutes = effectiveDep
+          if (newArrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = newArrival
+          if (Object.keys(patch).length > 0) overrides.set(trip.id, { ...overrides.get(trip.id), ...patch })
 
-          if (nextEffDep < minNextDep) {
-            console.log(
-              `    → empurra próxima trip ${nextTrip.id.slice(-6)}: ${fmt(nextEffDep)} → ${fmt(minNextDep)}` +
-              ` (arrival ${fmt(newArrival)} + interval ${window.intervalMinutes})`,
-            )
-            overrides.set(nextTrip.id, { ...overrides.get(nextTrip.id), departureMinutes: minNextDep })
-          }
+          console.log(
+            `  trip ${trip.id.slice(-6)} [${trip.route.direction.slice(0, 3)}]` +
+            ` orig: ${fmt(trip.departureMinutes)}→${fmt(trip.arrivalMinutes)}` +
+            ` calc: ${fmt(effectiveDep)}→${fmt(newArrival)}` +
+            ` cycle=${window?.minutes ?? '?'} interval=${window?.intervalMinutes ?? '?'}` +
+            (pushed ? ' ← EMPURRADA' : ''),
+          )
+
+          prevArrival = newArrival
+          // If next item is another trip (no deadrun between them), enforce the route headway.
+          // If next item is a deadrun, set interval=0 — the deadrun itself is the gap.
+          pendingInterval = (nextItem?.kind === 'trip' && window) ? window.intervalMinutes : 0
+
+        } else {
+          // Deadrun: shift departure to prevArrival when the preceding trip extended past it,
+          // then preserve the original travel duration.
+          const { dr } = item
+          const duration = dr.arrivalMinutes - dr.departureMinutes
+          const newDep   = prevArrival > dr.departureMinutes ? prevArrival : dr.departureMinutes
+          const newArr   = newDep + duration
+
+          const dpatch: DeadrunPatch = {}
+          if (newDep !== dr.departureMinutes) dpatch.departureMinutes = newDep
+          if (newArr !== dr.arrivalMinutes)   dpatch.arrivalMinutes   = newArr
+          if (Object.keys(dpatch).length > 0) drOverrides.set(dr.id, dpatch)
+
+          console.log(
+            `  deadrun ${dr.id.slice(-6)} [${dr.type}]` +
+            ` orig: ${fmt(dr.departureMinutes)}→${fmt(dr.arrivalMinutes)}` +
+            ` calc: ${fmt(newDep)}→${fmt(newArr)}` +
+            (newDep !== dr.departureMinutes ? ' ← EMPURRADO' : ''),
+          )
+
+          prevArrival     = newArr
+          pendingInterval = 0  // next trip starts right after deadrun, no extra interval
         }
       }
 
@@ -665,17 +698,26 @@ export default function VehiclePlanPage() {
     console.groupEnd()
 
     setPendingChanges(overrides)
-    if (overrides.size > 0) {
-      toast.success(`${overrides.size} ${overrides.size === 1 ? 'viagem ajustada' : 'viagens ajustadas'} — use Salvar para persistir`)
+    setPendingDeadrunChanges(drOverrides)
+
+    const tripCount    = overrides.size
+    const deadrunCount = drOverrides.size
+    if (tripCount > 0 || deadrunCount > 0) {
+      const parts = [
+        tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`     : null,
+        deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}` : null,
+      ].filter(Boolean).join(' e ')
+      toast.success(`${parts} ajustados — use Salvar para persistir`)
     } else {
       toast.error('Nenhuma viagem com ciclo configurado encontrada')
     }
   }
 
   async function handleSavePending() {
-    if (pendingChanges.size === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0) return
     setIsPending(true)
     try {
+      // Save trip patches
       await Promise.all(
         Array.from(pendingChanges.entries()).map(([tripId, patch]) =>
           apiFetch(`/transit/transit-trip/${tripId}`, {
@@ -684,7 +726,32 @@ export default function VehiclePlanPage() {
           }),
         ),
       )
+
+      // Save deadrun patches grouped by block (endpoint requires block ownership)
+      if (pendingDeadrunChanges.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const updates = block.blockDeadruns
+              .filter(dr => pendingDeadrunChanges.has(dr.id))
+              .map(dr => {
+                const patch = pendingDeadrunChanges.get(dr.id)!
+                return {
+                  id:               dr.id,
+                  departureMinutes: patch.departureMinutes ?? dr.departureMinutes,
+                  arrivalMinutes:   patch.arrivalMinutes   ?? dr.arrivalMinutes,
+                }
+              })
+            if (updates.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
+              method: 'PATCH',
+              body:   JSON.stringify({ updates }),
+            })]
+          }),
+        )
+      }
+
       setPendingChanges(new Map())
+      setPendingDeadrunChanges(new Map())
       await refetchGantt()
       toast.success('Alterações salvas')
     } catch (err) {
@@ -1110,18 +1177,18 @@ export default function VehiclePlanPage() {
           <button
             type="button"
             onClick={handleSavePending}
-            disabled={isPending || pendingChanges.size === 0}
-            title={pendingChanges.size > 0 ? `Salvar ${pendingChanges.size} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
+            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0)}
+            title={(pendingChanges.size + pendingDeadrunChanges.size) > 0 ? `Salvar ${pendingChanges.size + pendingDeadrunChanges.size} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
           >
             <Icons.Save className="w-3.5 h-3.5 shrink-0" />
-            <span>Salvar{pendingChanges.size > 0 ? ` (${pendingChanges.size})` : ''}</span>
+            <span>Salvar{(pendingChanges.size + pendingDeadrunChanges.size) > 0 ? ` (${pendingChanges.size + pendingDeadrunChanges.size})` : ''}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setPendingChanges(new Map())}
-            disabled={isPending || pendingChanges.size === 0}
+            onClick={() => { setPendingChanges(new Map()); setPendingDeadrunChanges(new Map()) }}
+            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0)}
             title="Descartar todas as alterações pendentes"
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
           >
