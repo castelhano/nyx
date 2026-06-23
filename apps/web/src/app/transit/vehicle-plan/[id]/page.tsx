@@ -594,59 +594,75 @@ export default function VehiclePlanPage() {
   function handleAdjustCycle() {
     if (!plottedData) return
 
-    // Group trips by (lineId + direction) to process headways together
-    const groups = new Map<string, typeof plottedData.blocks[0]['blockTrips']>()
-    for (const block of plottedData.blocks) {
-      for (const bt of block.blockTrips) {
-        if (!bt.trip.route.line.metrics?.windows) continue
-        const key = `${bt.trip.route.line.id}:${bt.trip.route.direction}`
-        const arr = groups.get(key)
-        if (arr) arr.push(bt)
-        else groups.set(key, [bt])
-      }
+    const fmt = (m: number) => {
+      if (!isFinite(m)) return '–'
+      const h = String(Math.floor(m / 60) % 24).padStart(2, '0')
+      const min = String(m % 60).padStart(2, '0')
+      return `${h}:${min}(${m})`
     }
 
     const overrides = new Map<string, TripPatch>()
 
-    for (const bts of groups.values()) {
-      // Process in chronological order
-      const sorted = [...bts].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+    // Process per block: a block = one vehicle, so trips within a block cannot overlap.
+    // Trips across different blocks (same direction) run concurrently on different vehicles
+    // and don't need headway enforcement here.
+    console.group('[AjustarCiclo]', plottedData.blocks.length, 'blocos')
 
-      let prevDeparture = -Infinity
-      let prevArrival   = -Infinity
-      let prevInterval  = 0
+    for (const block of plottedData.blocks) {
+      const sorted = [...block.blockTrips].sort((a, b) => a.sequence - b.sequence)
+      console.group(`Bloco ${block.blockNumber} — ${sorted.length} viagens`)
 
-      for (const bt of sorted) {
-        const { trip } = bt
+      for (let i = 0; i < sorted.length; i++) {
+        const { trip } = sorted[i]
 
-        // Minimum departure: no overlap with previous arrival AND maintain headway
-        let departure = trip.departureMinutes
-        const minDep  = Math.max(prevArrival, prevDeparture + prevInterval)
-        if (departure < minDep) departure = minDep
+        // Effective departure may have been pushed by the previous trip in this block
+        const effectiveDep = overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes
 
-        const window = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, departure)
+        const window = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
         if (!window) {
-          // No window configured — preserve original duration, still enforce no overlap
-          prevDeparture = departure
-          prevArrival   = departure + (trip.arrivalMinutes - trip.departureMinutes)
-          prevInterval  = 0
+          console.log(`  trip ${trip.id.slice(-6)} [${trip.route.direction}] sem janela — ignorada`)
           continue
         }
 
-        const arrival = departure + window.minutes
+        const newArrival = effectiveDep + window.minutes
 
         const patch: TripPatch = {}
-        if (departure !== trip.departureMinutes) patch.departureMinutes = departure
-        if (arrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = arrival
+        if (effectiveDep !== trip.departureMinutes) patch.departureMinutes = effectiveDep
+        if (newArrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = newArrival
         if (Object.keys(patch).length > 0) {
           overrides.set(trip.id, { ...overrides.get(trip.id), ...patch })
         }
 
-        prevDeparture = departure
-        prevArrival   = arrival
-        prevInterval  = window.intervalMinutes
+        const pushed = effectiveDep !== trip.departureMinutes
+        console.log(
+          `  trip ${trip.id.slice(-6)} [${trip.route.direction.slice(0,3)}]` +
+          ` orig: ${fmt(trip.departureMinutes)}→${fmt(trip.arrivalMinutes)}` +
+          ` calc: ${fmt(effectiveDep)}→${fmt(newArrival)}` +
+          ` cycle=${window.minutes} interval=${window.intervalMinutes}` +
+          (pushed ? ' ← EMPURRADA' : ''),
+        )
+
+        // Push the next trip in the same block if it departs before this one arrives
+        // (plus the configured interval as minimum gap between trips of the same vehicle)
+        if (i + 1 < sorted.length) {
+          const nextTrip   = sorted[i + 1].trip
+          const nextEffDep = overrides.get(nextTrip.id)?.departureMinutes ?? nextTrip.departureMinutes
+          const minNextDep = newArrival + window.intervalMinutes
+
+          if (nextEffDep < minNextDep) {
+            console.log(
+              `    → empurra próxima trip ${nextTrip.id.slice(-6)}: ${fmt(nextEffDep)} → ${fmt(minNextDep)}` +
+              ` (arrival ${fmt(newArrival)} + interval ${window.intervalMinutes})`,
+            )
+            overrides.set(nextTrip.id, { ...overrides.get(nextTrip.id), departureMinutes: minNextDep })
+          }
+        }
       }
+
+      console.groupEnd()
     }
+
+    console.groupEnd()
 
     setPendingChanges(overrides)
     if (overrides.size > 0) {
