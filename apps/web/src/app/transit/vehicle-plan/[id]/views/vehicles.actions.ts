@@ -64,8 +64,6 @@ export function createVehiclesActionSpec(
       const tripIds    = tripSegs.map(s => (s.data as GanttBlockTrip).trip.id)
       const deadrunIds = drSegs.map(s => (s.data as GanttBlockDeadrun).id)
 
-      console.log('[getActions interval]', { tripIds, deadrunIds, blockId: selection.rowId })
-
       const blockTripIds = tripSegs.map(s => (s.data as GanttBlockTrip).id)
 
       return [

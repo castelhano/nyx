@@ -842,8 +842,8 @@ export default function VehiclePlanPage() {
       )}
 
       {moveModal && plottedData && (() => {
-        const allBlockTrips = plottedData.blocks.flatMap(b => b.blockTrips)
-        const blockTrips    = moveModal.blockTripIds.map(id => allBlockTrips.find(bt => bt.id === id)).filter(Boolean) as typeof allBlockTrips
+        const btMap      = new Map(plottedData.blocks.flatMap(b => b.blockTrips.map(bt => [bt.id, bt] as const)))
+        const blockTrips = moveModal.blockTripIds.map(id => btMap.get(id)).filter(Boolean) as NonNullable<ReturnType<typeof btMap.get>>[]
         return blockTrips.length > 0 ? (
           <MoveBlockModal
             blockTrips={blockTrips}

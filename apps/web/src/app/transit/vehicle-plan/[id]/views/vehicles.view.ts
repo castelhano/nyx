@@ -89,6 +89,9 @@ function lineColorMap(blocks: GanttBlock[]): Map<string, string> {
 
 // ── view definition ───────────────────────────────────────────────────────────
 
+let _colorCacheBlocks: GanttBlock[] | null = null
+let _colorCacheMap:    Map<string, string> | null = null
+
 export const vehiclesView: GanttView<VehiclePlanGanttData> = {
   getRows(data): GanttRow[] {
     return data.blocks.map((b) => ({
@@ -99,8 +102,12 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
   },
 
   getSegments(row, data): GanttSegment[] {
-    const block  = row.data as GanttBlock
-    const colors = lineColorMap(data.blocks)
+    const block = row.data as GanttBlock
+    if (_colorCacheBlocks !== data.blocks) {
+      _colorCacheBlocks = data.blocks
+      _colorCacheMap    = lineColorMap(data.blocks)
+    }
+    const colors = _colorCacheMap!
     const segs: GanttSegment[] = []
 
     for (const bt of block.blockTrips) {
