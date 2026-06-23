@@ -52,6 +52,7 @@ const iconNames = [
   'Tag',
   'Timer',
   'Trash2',
+  'Undo2',
   'Truck',
   'Upload',
   'UserRound',

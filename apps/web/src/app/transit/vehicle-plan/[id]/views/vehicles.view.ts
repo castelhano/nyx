@@ -8,6 +8,39 @@ export interface TripConstraints {
   pinnedBlock?: string
 }
 
+export interface CycleWindow {
+  from:            number
+  to:              number
+  minutes:         number
+  intervalMinutes: number
+}
+
+export interface LineMetrics {
+  extensionKm?: Record<string, number>
+  windows?:     Record<string, CycleWindow[]>
+}
+
+/** Returns the full cycle window for a trip given the line metrics, direction,
+ *  and departure time. Falls back to OUTBOUND when direction has no windows. */
+export function resolveCycleWindow(
+  metrics:          LineMetrics | null | undefined,
+  direction:        string,
+  departureMinutes: number,
+): CycleWindow | null {
+  if (!metrics?.windows) return null
+  const windows = metrics.windows[direction] ?? metrics.windows['OUTBOUND'] ?? []
+  const hour    = Math.floor(departureMinutes / 60) % 24
+  return windows.find(w => hour >= w.from && hour <= w.to) ?? null
+}
+
+export function resolveCycleMinutes(
+  metrics:          LineMetrics | null | undefined,
+  direction:        string,
+  departureMinutes: number,
+): number | null {
+  return resolveCycleWindow(metrics, direction, departureMinutes)?.minutes ?? null
+}
+
 export interface GanttBlockTrip {
   id:       string
   sequence: number
@@ -18,7 +51,7 @@ export interface GanttBlockTrip {
     constraints:      TripConstraints | null
     route: {
       direction:           string
-      line:                { id: string; code: string; name: string }
+      line:                { id: string; code: string; name: string; metrics: LineMetrics | null }
       originLocality:      { id: string; name: string }
       destinationLocality: { id: string; name: string }
     }
@@ -56,7 +89,7 @@ export interface VehiclePlanGanttData {
     status:  string
     summary: unknown
     dayType: { id: string; name: string; code: string } | null
-    lines:   Array<{ lineId: string; line: { id: string; code: string; name: string } }>
+    lines:   Array<{ lineId: string; line: { id: string; code: string; name: string; metrics: LineMetrics | null } }>
   }
   blocks: GanttBlock[]
 }

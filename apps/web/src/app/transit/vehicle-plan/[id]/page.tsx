@@ -25,7 +25,8 @@ import { MoveBlockModal }        from './components/MoveBlockModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints } from './views/vehicles.view'
-import { createVehiclesActionSpec }                   from './views/vehicles.actions'
+import { resolveCycleWindow }                            from './views/vehicles.view'
+import { createVehiclesActionSpec }                     from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
 
@@ -312,10 +313,13 @@ export default function VehiclePlanPage() {
   type DepotModal = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
   type MoveModal  = { blockTripIds: string[]; blockId: string }
 
-  const [selection,   setSelection]   = useState<Selection | null>(null)
-  const [depotModal,  setDepotModal]  = useState<DepotModal | null>(null)
-  const [moveModal,   setMoveModal]   = useState<MoveModal  | null>(null)
-  const [isPending,         setIsPending]         = useState(false)
+  type TripPatch = { departureMinutes?: number; arrivalMinutes?: number }
+
+  const [selection,       setSelection]       = useState<Selection | null>(null)
+  const [depotModal,      setDepotModal]       = useState<DepotModal | null>(null)
+  const [moveModal,       setMoveModal]        = useState<MoveModal  | null>(null)
+  const [pendingChanges,  setPendingChanges]   = useState<Map<string, TripPatch>>(new Map())
+  const [isPending,       setIsPending]        = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
@@ -364,6 +368,23 @@ export default function VehiclePlanPage() {
       ),
     }
   }, [ganttData, selectedLineIds])
+
+  // Merges pending local overrides into the plotted data before rendering
+  const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
+    if (!plottedData) return null
+    if (pendingChanges.size === 0) return plottedData
+    return {
+      ...plottedData,
+      blocks: plottedData.blocks.map(b => ({
+        ...b,
+        blockTrips: b.blockTrips.map(bt => {
+          const patch = pendingChanges.get(bt.trip.id)
+          if (!patch) return bt
+          return { ...bt, trip: { ...bt.trip, ...patch } }
+        }),
+      })),
+    }
+  }, [plottedData, pendingChanges])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -567,6 +588,93 @@ export default function VehiclePlanPage() {
       await refetchGantt()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao atualizar restrições')
+    }
+  }
+
+  function handleAdjustCycle() {
+    if (!plottedData) return
+
+    // Group trips by (lineId + direction) to process headways together
+    const groups = new Map<string, typeof plottedData.blocks[0]['blockTrips']>()
+    for (const block of plottedData.blocks) {
+      for (const bt of block.blockTrips) {
+        if (!bt.trip.route.line.metrics?.windows) continue
+        const key = `${bt.trip.route.line.id}:${bt.trip.route.direction}`
+        const arr = groups.get(key)
+        if (arr) arr.push(bt)
+        else groups.set(key, [bt])
+      }
+    }
+
+    const overrides = new Map<string, TripPatch>()
+
+    for (const bts of groups.values()) {
+      // Process in chronological order
+      const sorted = [...bts].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+
+      let prevDeparture = -Infinity
+      let prevArrival   = -Infinity
+      let prevInterval  = 0
+
+      for (const bt of sorted) {
+        const { trip } = bt
+
+        // Minimum departure: no overlap with previous arrival AND maintain headway
+        let departure = trip.departureMinutes
+        const minDep  = Math.max(prevArrival, prevDeparture + prevInterval)
+        if (departure < minDep) departure = minDep
+
+        const window = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, departure)
+        if (!window) {
+          // No window configured — preserve original duration, still enforce no overlap
+          prevDeparture = departure
+          prevArrival   = departure + (trip.arrivalMinutes - trip.departureMinutes)
+          prevInterval  = 0
+          continue
+        }
+
+        const arrival = departure + window.minutes
+
+        const patch: TripPatch = {}
+        if (departure !== trip.departureMinutes) patch.departureMinutes = departure
+        if (arrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = arrival
+        if (Object.keys(patch).length > 0) {
+          overrides.set(trip.id, { ...overrides.get(trip.id), ...patch })
+        }
+
+        prevDeparture = departure
+        prevArrival   = arrival
+        prevInterval  = window.intervalMinutes
+      }
+    }
+
+    setPendingChanges(overrides)
+    if (overrides.size > 0) {
+      toast.success(`${overrides.size} ${overrides.size === 1 ? 'viagem ajustada' : 'viagens ajustadas'} — use Salvar para persistir`)
+    } else {
+      toast.error('Nenhuma viagem com ciclo configurado encontrada')
+    }
+  }
+
+  async function handleSavePending() {
+    if (pendingChanges.size === 0) return
+    setIsPending(true)
+    try {
+      await Promise.all(
+        Array.from(pendingChanges.entries()).map(([tripId, patch]) =>
+          apiFetch(`/transit/transit-trip/${tripId}`, {
+            method: 'PATCH',
+            body:   JSON.stringify(patch),
+          }),
+        ),
+      )
+      setPendingChanges(new Map())
+      await refetchGantt()
+      toast.success('Alterações salvas')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')
+    } finally {
+      setIsPending(false)
     }
   }
 
@@ -969,6 +1077,41 @@ export default function VehiclePlanPage() {
           >
             <Icons.Plus className="w-3.5 h-3.5" />
           </button>
+
+          <div className="w-px h-4 bg-border mx-1 shrink-0" />
+
+          <button
+            type="button"
+            onClick={handleAdjustCycle}
+            disabled={isPending}
+            title="Ajustar duração das viagens ao ciclo configurado por sentido"
+            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
+          >
+            <Icons.Timer className="w-3.5 h-3.5 shrink-0" />
+            <span>Ajustar Ciclo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSavePending}
+            disabled={isPending || pendingChanges.size === 0}
+            title={pendingChanges.size > 0 ? `Salvar ${pendingChanges.size} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
+            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
+          >
+            <Icons.Save className="w-3.5 h-3.5 shrink-0" />
+            <span>Salvar{pendingChanges.size > 0 ? ` (${pendingChanges.size})` : ''}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPendingChanges(new Map())}
+            disabled={isPending || pendingChanges.size === 0}
+            title="Descartar todas as alterações pendentes"
+            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
+          >
+            <Icons.Undo2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Reverter</span>
+          </button>
         </div>
       )}
 
@@ -976,10 +1119,10 @@ export default function VehiclePlanPage() {
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           <div className="flex-1 min-h-0 relative">
-            {plottedData ? (
-              plottedData.blocks.length > 0 ? (
+            {mergedPlottedData ? (
+              mergedPlottedData.blocks.length > 0 ? (
                 <GanttBoard
-                  data={plottedData}
+                  data={mergedPlottedData}
                   onViewportChange={setGanttVp}
                   selection={selection}
                   onSelectionChange={setSelection}
@@ -999,10 +1142,10 @@ export default function VehiclePlanPage() {
               </div>
             )}
 
-            {selection && plottedData && (
+            {selection && mergedPlottedData && (
               <GanttActionBar
                 selection={selection}
-                actions={vehiclesActionSpec.getActions(selection, plottedData, () => setSelection(null))}
+                actions={vehiclesActionSpec.getActions(selection, mergedPlottedData, () => setSelection(null))}
                 onDismiss={() => setSelection(null)}
               />
             )}

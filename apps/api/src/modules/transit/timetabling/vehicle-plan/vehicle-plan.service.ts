@@ -716,7 +716,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayType: { select: { id: true, name: true, code: true } },
         lines: {
           orderBy: { line: { code: 'asc' } },
-          include: { line: { select: { id: true, name: true, code: true } } },
+          include: { line: { select: { id: true, name: true, code: true, metrics: true } } },
         },
       },
     })
@@ -735,7 +735,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               include: {
                 route: {
                   include: {
-                    line:                { select: { id: true, name: true, code: true } },
+                    line:                { select: { id: true, name: true, code: true, metrics: true } },
                     originLocality:      { select: { id: true, name: true } },
                     destinationLocality: { select: { id: true, name: true } },
                   },
