@@ -61,6 +61,20 @@ const INITIAL_VP: ViewportSnapshot = {
   width: 0, dayStartMinute: 0,
 }
 
+function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection | null {
+  if (sel.type === 'trip') {
+    const fresh = freshSegs.find(s => s.id === sel.segment.id)
+    return fresh ? { type: 'trip', segment: fresh } : null
+  }
+  const freshFrom = freshSegs.find(s => s.id === sel.from.id)
+  const freshTo   = freshSegs.find(s => s.id === sel.to.id)
+  if (!freshFrom || !freshTo) return null
+  const freshSegments = sel.segments
+    .map(s => freshSegs.find(f => f.id === s.id))
+    .filter((s): s is LayoutSegment => s !== undefined)
+  return { ...sel, from: freshFrom, to: freshTo, segments: freshSegments }
+}
+
 export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate }: Props) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
   const containerRef          = useRef<HTMLDivElement>(null)
@@ -196,6 +210,12 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
     const engine = engineRef.current
     if (!engine || !data) return
     engine.setView(vehiclesView, data)
+
+    // refresh selection so consumers get updated segment data (e.g. fresh constraints)
+    const sel = selectionRef.current
+    if (sel && onSelectionChangeRef.current) {
+      onSelectionChangeRef.current(refreshSelection(sel, engine.getLayoutSegments()))
+    }
   }, [data])
 
   // ── grid keyboard navigation ────────────────────────────────────────────────

@@ -8,6 +8,9 @@ const DEADHEAD_PATTERN_ALPHA = 0.4
 const DIM_ALPHA              = 0.25
 const SELECTION_RING_COLOR   = 'rgba(255, 255, 255, 0.9)'
 const SELECTION_RING_WIDTH   = 2.5
+const LOCK_DOT_RADIUS        = 3
+const LOCK_DOT_COLOR         = '#f59e0b'
+const LOCK_DOT_MIN_WIDTH     = 12  // skip dot below this segment width
 
 const EMPTY_SET = new Set<string>()
 
@@ -95,8 +98,9 @@ export class Renderer {
     ctx.font         = LABEL_FONT
     ctx.textBaseline = 'middle'
 
-    // collect selected rects for the ring pass
+    // collect selected rects for the ring pass and locked positions for the dot pass
     const rings: Array<{ x: number; y: number; w: number; h: number }> = []
+    const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
 
     for (const seg of segments) {
       if (!viewport.isTimeVisible(seg.startMinute, seg.endMinute)) continue
@@ -140,6 +144,14 @@ export class Renderer {
       }
 
       if (isSelected) rings.push({ x, y, w, h })
+
+      if (seg.locked && !seg.isDeadhead && w > LOCK_DOT_MIN_WIDTH) {
+        dots.push({
+          cx:     x + w - LOCK_DOT_RADIUS - 3,
+          cy:     y + LOCK_DOT_RADIUS + 3,
+          dimmed: hasSelect && !isSelected,
+        })
+      }
     }
 
     // ring pass: draw selection outline on top of everything
@@ -151,6 +163,18 @@ export class Renderer {
         ctx.roundRect(x, y, w, h, SEG_RADIUS)
         ctx.stroke()
       }
+    }
+
+    // dot pass: amber indicator for locked trips
+    if (dots.length > 0) {
+      ctx.fillStyle = LOCK_DOT_COLOR
+      for (const { cx, cy, dimmed } of dots) {
+        ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
+        ctx.beginPath()
+        ctx.arc(cx, cy, LOCK_DOT_RADIUS, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
     }
   }
 }

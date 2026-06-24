@@ -16,6 +16,7 @@ export interface LayoutSegment {
   startMinute: number
   endMinute:   number
   isDeadhead:  boolean
+  locked?:     boolean
   label:       string
   color:       string
   data:        unknown

@@ -146,12 +146,14 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
     for (const bt of block.blockTrips) {
       const baseColor = colors.get(bt.trip.route.line.id) ?? PALETTE[0]
       const segColor  = bt.trip.route.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
+      const c = bt.trip.constraints
       segs.push({
         id:          bt.id,
         rowId:       row.id,
         startMinute: bt.trip.departureMinutes,
         endMinute:   bt.trip.arrivalMinutes,
         isDeadhead:  false,
+        locked:      !!((c?.locked?.length ?? 0) > 0 || c?.pinnedBlock),
         label:       bt.trip.route.line.code,
         color:       segColor,
         data:        bt,
