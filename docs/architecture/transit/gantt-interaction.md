@@ -46,12 +46,12 @@ export type Selection =
 
 | Variant | When | Contents |
 |---------|------|----------|
-| `'trip'` | A single non-deadhead segment is clicked | The clicked `LayoutSegment` |
-| `'interval'` | A second trip is clicked in the same row | `rowId`, anchor `from`, endpoint `to`, and all non-deadhead `segments` between them (inclusive) |
+| `'trip'` | A single segment is clicked (trip or deadrun) | The clicked `LayoutSegment` |
+| `'interval'` | A second trip is clicked in the same row | `rowId`, anchor `from`, endpoint `to`, and all segments between them (inclusive, including deadruns) |
 
 `from` is the **anchor** — it stays fixed across subsequent clicks. `to` moves as the user clicks other trips in the same row, expanding or shrinking the interval without changing the anchor.
 
-`segments` contains only non-deadhead trips. The canvas highlight (see [Visual Feedback](#visual-feedback)) independently includes dead-run segments within the span.
+`selection.segments` for an interval contains **all** segments in the span (trips and deadruns alike). The action spec separates them internally with `segments.filter(s => !s.id.endsWith(':dr'))` and `segments.filter(s => s.id.endsWith(':dr'))`.
 
 Selection state is owned by the **page** (`page.tsx`), not by `GanttBoard`. `GanttBoard` is fully controlled.
 
@@ -115,27 +115,69 @@ When `splitMenu` is present, `GanttActionBar` renders a split button: the left p
 
 ## Selection Logic (vehicles view)
 
-`views/vehicles.actions.ts` exports `createVehiclesActionSpec(deps: VehiclesActionDeps)` — a factory that closes over mutation callbacks and returns a `GanttActionSpec`. The spec implements the following rules:
+`views/vehicles.actions.ts` exports `createVehiclesActionSpec(deps: VehiclesActionDeps)` — a factory that closes over mutation callbacks and returns a `GanttActionSpec`.
+
+### Segment ID conventions
+
+The vehicles view produces two segment ID formats:
+
+| Suffix | Type | Selectable |
+|--------|------|-----------|
+| none | Block trip (productive) | Yes — trip or interval |
+| `:dr` | Deadrun (ACCESS / RETURN / DISPLACEMENT) | Yes — trip only (never anchor/expand an interval) |
+| `:dead` | Reserved guard suffix (not currently produced) | No — selection is unchanged |
+
+### Resolution rules
 
 | State | Click target | Result |
 |-------|-------------|--------|
+| Any | `:dead` segment | No change (guard for future view implementations) |
+| Any | `:dr` segment (deadrun) | `{ type: 'trip', segment: clicked }` — always starts a fresh trip selection |
 | No selection | Any trip | `{ type: 'trip', segment: clicked }` |
-| Any | Dead-run | No change |
-| `trip` | Same trip (anchor) | `null` (deselect) |
-| `trip` or `interval` | Different row | `{ type: 'trip', segment: clicked }` |
+| Any | Different row | `{ type: 'trip', segment: clicked }` |
+| `trip` or `interval` | Anchor segment | `null` (deselect) |
 | `trip` | Different trip, same row | `{ type: 'interval', from: anchor, to: clicked, ... }` |
-| `interval` | Any trip in same row (not anchor) | Resize interval — anchor `from` stays, `to` moves to clicked |
-| `interval` | Anchor trip | `null` (deselect) |
+| `interval` | Any non-anchor trip, same row | Resize — anchor `from` stays, `to` moves to clicked |
 
-Clicking inside an existing interval shrinks it; clicking outside expands it. Both cases go through the same `buildInterval(anchor, clicked, allSegments)` call.
+Clicking inside an existing interval shrinks it; clicking outside expands it. Both go through the same `buildInterval(anchor, clicked, allSegments)` call.
 
-`buildInterval` filters `allSegments` to the same row, excludes dead-runs, sorts by `startMinute`, and collects all trips between `from.startMinute` and `to.startMinute` (inclusive).
+`buildInterval` filters `allSegments` to the same row (excluding `:dead` markers), sorts by `startMinute`, and collects all segments between `from.startMinute` and `to.startMinute` (inclusive). Dead-run `:dr` segments within the span are included in `selection.segments`.
+
+---
+
+## Available Actions
+
+### Trip selection — productive trip
+
+| Order | Action | Condition |
+|-------|--------|-----------|
+| 1 | Lock (split button) | Always |
+| 2 | Access (`Acesso`) | Only when a garage-out deadrun can be inserted before this trip |
+| 3 | Return (`Recolhida`) | Only when a garage-in deadrun can be inserted after this trip |
+| 4 | Move to block (`Mover para bloco`) | Always |
+| 5 | Delete (`Excluir`) | Always |
+
+Access and Return are suppressed when the trip is back-to-back (gap ≤ 15 min) with an adjacent trip or an existing deadrun of the same type.
+
+### Trip selection — deadrun (`:dr`)
+
+| Order | Action | Condition |
+|-------|--------|-----------|
+| 1 | Delete deadrun (`Excluir vazio`) | Always |
+
+### Interval selection
+
+| Order | Action | Condition |
+|-------|--------|-----------|
+| 1 | Lock (split button) | Always |
+| 2 | Move to block (`Mover para bloco`) | Always |
+| 3 | Delete interval (`Excluir`) | Always — removes all trips and deadruns in the span |
 
 ---
 
 ## Wiring GanttBoard
 
-`GanttBoard` accepts three new optional props:
+`GanttBoard` accepts these props for the interaction layer:
 
 ```typescript
 interface Props {
@@ -143,6 +185,7 @@ interface Props {
   selection?:         Selection | null
   onSelectionChange?: (sel: Selection | null) => void
   actionSpec?:        GanttActionSpec<VehiclePlanGanttData>
+  onBlockUpdate?:     () => void
 }
 ```
 
@@ -177,7 +220,7 @@ useEffect(() => {
     engine.setSelectedSegIds(new Set([selection.segment.id]))
     return
   }
-  // interval: include dead-runs within the time span for visual continuity
+  // interval: include all segs in the row within the time span (incl. deadruns)
   const { rowId, from, to } = selection
   const spanStart = Math.min(from.startMinute, to.startMinute)
   const spanEnd   = Math.max(from.endMinute,   to.endMinute)
@@ -190,7 +233,7 @@ useEffect(() => {
 }, [selection])
 ```
 
-Dead-run segments are included in the canvas highlight even though they are excluded from `selection.segments` — this gives a continuous visual span across the interval.
+Dead-run segments are included in the canvas highlight even for interval selections, giving a continuous visual span across the interval.
 
 ---
 
@@ -239,8 +282,8 @@ interface Props {
 ```
 
 Summary format:
-- Trip: `{line}  {HH:MM} – {HH:MM}` (departure and arrival)
-- Interval: `[ {n} ]  {HH:MM} – {HH:MM}` (count, earliest departure, latest arrival)
+- Trip: `{segment.label}  {HH:MM} – {HH:MM}` (segment label is the line code; empty string for deadruns)
+- Interval: `[ {n} ]  {HH:MM} – {HH:MM}` (count of all segments in the span, earliest start, latest end)
 
 ### Positioning
 
@@ -281,6 +324,74 @@ When an `ActionItem` has `splitMenu`, the bar renders a split button:
 
 ---
 
+## Trip Constraints
+
+`TripConstraints` is a JSON column on `TransitTrip` that controls solver behavior for individual trips:
+
+```typescript
+export interface TripConstraints {
+  locked?:      string[]   // field names the solver cannot modify
+  pinnedBlock?: string     // block UUID — trip cannot leave this block in future runs
+}
+```
+
+Recognised `locked` field names: `'departureMinutes'`, `'arrivalMinutes'`, `'cycleTime'`.
+
+### Lock action in the vehicles view
+
+The first button in the trip and interval action bars is a split lock button:
+
+| State | Icon | `active` | Main click |
+|-------|------|---------|-----------|
+| No constraints on any selected trip | `LockOpen` | false | Set `locked: ['departureMinutes', 'arrivalMinutes', 'cycleTime']` for all selected trips |
+| Any constraint present on any trip | `Lock` | true (amber) | Clear constraints (`null`) for all selected trips |
+
+The dropdown (`▾`) shows four independent checkboxes:
+
+| Checkbox | Constraint |
+|----------|-----------|
+| Horário inicial | `locked` includes `'departureMinutes'` |
+| Horário final | `locked` includes `'arrivalMinutes'` |
+| Tempo de ciclo | `locked` includes `'cycleTime'` |
+| Fixar ao Bloco | `pinnedBlock` set to the current block UUID |
+
+For interval selections, a checkbox is checked only if **all** trips in the interval have that constraint. Toggling applies the change to every trip in the selection individually (per-trip patch array).
+
+### Mutations
+
+The page (`page.tsx`) wires all mutation callbacks into the spec factory. The full set of operations:
+
+| Dep | API call | Trigger |
+|-----|----------|---------|
+| `onUpdateConstraints` | `PATCH /transit/transit-trip/:id` per trip via `Promise.all` | Lock/unlock, per-field toggle |
+| `onDeleteTrips` | `DELETE /transit/transit-trip/:id` per trip | Delete single trip |
+| `onDeleteDeadruns` | `DELETE /transit/vehicle-block/:blockId/deadrun/:id` per deadrun | Delete single deadrun |
+| `onDeleteInterval` | Batch delete of trips + deadruns in the span | Delete interval |
+| `onAddAccess` | `POST /transit/vehicle-block/:blockId/access` | Add garage-out deadrun before trip |
+| `onAddReturn` | `POST /transit/vehicle-block/:blockId/return` | Add garage-in deadrun after trip |
+| `onMoveTrip` | `POST /transit/vehicle-block/:blockId/move` | Move block trips to a different block |
+
+After any mutation resolves, the page calls `refetchGantt()` to update the canvas data. The mutation functions are bound into the spec factory via `useMemo`:
+
+```typescript
+const vehiclesActionSpec = useMemo(
+  () => createVehiclesActionSpec({
+    onUpdateConstraints: (tripIds, patches) => handleUpdateConstraints(tripIds, patches),
+    onDeleteTrips:       (tripIds)          => handleDeleteTrips(tripIds),
+    onDeleteDeadruns:    (ids, blockId)     => handleDeleteDeadruns(ids, blockId),
+    onDeleteInterval:    (tIds, dIds, bId)  => handleDeleteInterval(tIds, dIds, bId),
+    onAddAccess:         (btId, blockId)    => handleAddAccess(btId, blockId),
+    onAddReturn:         (btId, blockId)    => handleAddReturn(btId, blockId),
+    onMoveTrip:          (btIds, blockId)   => handleMoveTrip(btIds, blockId),
+  }),
+  [],
+)
+```
+
+`patches` for `onUpdateConstraints` is either a single `TripConstraints | null` (applied uniformly to all trips) or a `TripConstraints[]` (one patch per trip, for per-field toggles where each trip may have different existing state).
+
+---
+
 ## Adding a New View's Actions
 
 To add editing to a new Gantt view (e.g. drivers):
@@ -298,62 +409,14 @@ Action handlers need to call `apiFetch` / React Query mutations, which only exis
 
 ---
 
-## Trip Constraints
-
-`TransitTrip.constraints` is a JSON column that controls solver behavior for individual trips:
-
-```typescript
-export interface TripConstraints {
-  locked?:      string[]   // field names the solver cannot modify
-  pinnedBlock?: string     // block UUID — trip cannot leave this block in future runs
-}
-```
-
-Recognised `locked` field names: `'departureMinutes'`, `'arrivalMinutes'`, `'cycleTime'`.
-
-### Lock action in the vehicles view
-
-The first button in the trip and interval action bars is a split lock button:
-
-| State | Icon | `active` | Main click |
-|-------|------|---------|-----------|
-| No constraints | `LockOpen` | false | Set `locked: ['departureMinutes', 'arrivalMinutes', 'cycleTime']` for all selected trips |
-| Any constraint present | `Lock` | true (amber) | Clear constraints (`null`) for all selected trips |
-
-The dropdown (`▾`) shows four independent checkboxes:
-
-| Checkbox | Constraint |
-|----------|-----------|
-| Horário inicial | `locked` includes `'departureMinutes'` |
-| Horário final | `locked` includes `'arrivalMinutes'` |
-| Tempo de ciclo | `locked` includes `'cycleTime'` |
-| Fixar ao Bloco | `pinnedBlock` set to the current block UUID |
-
-For interval selections, a checkbox is checked only if **all** trips in the interval have that constraint. Toggling applies the change to every trip in the selection.
-
-### Mutation
-
-`page.tsx` calls `PATCH /transit/transit-trip/:id` for each affected trip via `Promise.all`. After all requests resolve, `refetchGantt()` updates the canvas data. The mutation function is bound into the spec factory:
-
-```typescript
-const vehiclesActionSpec = useMemo(
-  () => createVehiclesActionSpec({
-    onUpdateConstraints: (tripIds, patches) => handleUpdateConstraints(tripIds, patches),
-  }),
-  [],
-)
-```
-
-`patches` is either a single `TripConstraints | null` (applied uniformly to all trips) or a `TripConstraints[]` (one patch per trip, for per-field toggles where each trip may have different existing state).
-
----
-
 ## Key Design Decisions
 
 **`GanttActionSpec` is generic.** Each view controls its own selection rules and actions. Views that need cross-block interactions (e.g. moving an interval from one block to another) can handle the multi-row state entirely within `resolveSelection` by inspecting `ctx.allRows`.
 
-**`selection.segments` excludes dead-runs; canvas highlight includes them.** The action spec operates on trips only — actions like "move interval" apply to trips, not dead-runs. The visual highlight includes dead-runs for continuity. These are computed separately and intentionally kept decoupled.
+**`selection.segments` includes deadruns; action spec separates them.** `buildInterval` collects all segments in the time span (including `:dr` deadruns). The action spec then splits them into `tripSegs` and `drSegs` as needed — for example, the delete-interval action deletes both. This avoids re-querying allSegments inside action callbacks.
 
 **The bar receives computed `actions`, not the spec.** `GanttActionBar` is a pure display component. It has no dependency on `GanttActionSpec` or view-specific types. The page assembles actions and passes them down.
 
 **`inset-x-0 mx-auto w-fit` for centering.** Using margin-based centering instead of `transform: translateX(-50%)` decouples horizontal positioning from the animation transform, avoiding the visual jump that occurs when both CSS classes and keyframes compete over the `transform` property.
+
+**Dead-run trip-type selection enables delete.** Clicking a `:dr` segment starts a `{ type: 'trip' }` selection just like a productive trip. This allows the action spec to render a delete button for standalone deadruns without needing a separate selection variant. Deadruns cannot be interval anchors — clicking them always resets to a fresh trip selection.

@@ -31,15 +31,19 @@ components/
   GanttBoard.tsx        — top-level React component; owns the engine lifecycle
   TimeRuler.tsx         — DOM time axis (header)
   RowList.tsx           — DOM row labels (left panel)
-  SegmentTooltip.tsx    — hover/click tooltip (absolute-positioned DOM)
+  SegmentTooltip.tsx    — hover tooltip (absolute-positioned DOM)
   BlockDetailPopover.tsx — click popover for block details
   FrequencyPanel.tsx    — side panel showing line frequencies
   GenerateModal.tsx     — modal to trigger block generation
   LinesPanel.tsx        — side panel listing lines in the plan
   SolverProposalDialog.tsx — dialog to review/accept solver proposals
+  AddTripModal.tsx      — modal to add a new trip to a block
+  AccessModal.tsx       — modal to configure an access (garage-out) deadrun
+  MoveBlockModal.tsx    — modal to move trips to a different block
 
 views/
   vehicles.view.ts      — GanttView implementation for VehiclePlan
+  vehicles.actions.ts   — GanttActionSpec implementation for the vehicles view
 ```
 
 ---
@@ -185,9 +189,18 @@ The index is rebuilt on every draw call because `x` and `y` values change on eve
 | `mousemove` | canvas | Update drag position or hit-test for hover |
 | `mouseup` / `mouseleave` | canvas | End drag; clear hover |
 | `click` | canvas | Hit-test and fire segment click callback |
-| `keydown` | window | ArrowLeft/Right: horizontal scroll by 80 px (skipped when input focused) |
 
 All handlers call `engine.notify()` + `engine.requestDraw()` after mutating viewport state.
+
+**Keyboard shortcuts** are not handled by `Interaction`. They are registered in `GanttBoard` via `useShortcut`:
+
+| Shortcut | Action |
+|----------|--------|
+| `ctrl+←` | Horizontal scroll left by 80 px |
+| `ctrl+→` | Horizontal scroll right by 80 px |
+| `ctrl++` | Zoom in (factor 1.15, centered on viewport midpoint) |
+| `ctrl+-` | Zoom out (factor 1/1.15, centered on viewport midpoint) |
+| `ctrl+0` | Reset zoom to default (`pixelsPerMinute = 1.2`) |
 
 ---
 
@@ -222,6 +235,23 @@ This prevents frame queuing and ensures consistent 60 fps behavior under rapid i
 4. A second `useEffect` on `[data]` calls `engine.setView(vehiclesView, data)` when data changes
 5. On unmount: `ro.disconnect()` + `engine.dispose()`
 
+### Props
+
+```typescript
+interface Props {
+  data:               VehiclePlanGanttData
+  onViewportChange?:  (vp: ViewportSnapshot) => void
+  selection?:         Selection | null
+  onSelectionChange?: (sel: Selection | null) => void
+  actionSpec?:        GanttActionSpec<VehiclePlanGanttData>
+  onBlockUpdate?:     () => void
+}
+```
+
+`onViewportChange` is emitted from inside `onStateChangeCallback` with field-level deduplication — it only fires when at least one of `scrollX`, `scrollY`, `pixelsPerMinute`, `width`, or `dayStartMinute` actually changed. This prevents cascading re-renders in parent pages that display a synchronized secondary view.
+
+`onBlockUpdate` is called by `BlockDetailPopover` when the user edits a block inline (e.g. changing vehicle type or depot), so the page can trigger a data refetch.
+
 ### State flow
 
 ```
@@ -248,6 +278,18 @@ interface EngineState {
 
 React never reads from the engine during render. The snapshot is the only bridge.
 
+### Engine public API (called by GanttBoard)
+
+| Method | Purpose |
+|--------|---------|
+| `setView(view, data)` | Recomputes layout and redraws for new data |
+| `setSelectedSegIds(ids)` | Pushes a highlight set to the renderer; triggers redraw |
+| `getLayoutSegments()` | Returns the current flat segment array (read-only, by reference) |
+| `getLayoutRows()` | Returns the current row array (read-only, by reference) |
+| `getSegmentRect(segId)` | Converts a segment's minutes/row-y to a canvas-space `DOMRect` |
+| `notify()` | Pushes current state to the `onStateChangeCallback` |
+| `requestDraw()` | Schedules a RAF-deduplicated canvas draw |
+
 ---
 
 ## DOM Overlays
@@ -267,7 +309,7 @@ The canvas sits inside a flex layout. Overlays are positioned to visually align 
 
 **`RowList`** renders row labels as a scrollable list. Its scroll position is driven by `vp.scrollY` — it does not scroll independently. Row `y` values from `LayoutRow` are used to position each label.
 
-**`SegmentTooltip`** is positioned using `engine.getSegmentRect(segId)`, which converts segment minutes and row y back to canvas pixel coordinates. It appears on hover and on click.
+**`SegmentTooltip`** is positioned using `engine.getSegmentRect(segId)`, which converts segment minutes and row y back to canvas pixel coordinates. It appears on hover when no `actionSpec` is wired, and on click when no `actionSpec` is provided.
 
 **`BlockDetailPopover`** is triggered by clicking the info icon on a `RowList` entry. Its screen position is computed as `screenY = RULER_HEIGHT + row.y - vp.scrollY` and `screenX = LABEL_WIDTH + 8`, placing it just to the right of the row label panel.
 
@@ -290,7 +332,14 @@ interface GanttView<TData> {
 
 `getSegments` is called per-row. Segments carry `startMinute` and `endMinute` as absolute clock minutes. The view is responsible for all color logic and label text; the engine is display-agnostic.
 
-The current implementation is `vehiclesView` in `views/vehicles.view.ts`, which maps `VehicleBlock → GanttRow` and `BlockTrip → GanttSegment`, with line-based color palette and lighter shade for INBOUND direction.
+The current implementation is `vehiclesView` in `views/vehicles.view.ts`, which maps `VehicleBlock → GanttRow` and produces two segment types:
+
+| Segment type | ID convention | `isDeadhead` | Source |
+|---|---|---|---|
+| Block trip | `blockTrip.id` | `false` | `GanttBlockTrip` |
+| Deadrun | `${deadrun.id}:dr` | `true` | `GanttBlockDeadrun` (ACCESS / RETURN / DISPLACEMENT) |
+
+Line color is assigned by stable index from a 15-color palette. INBOUND trips receive a lightened variant of their line color (`lightenHex`, +45% toward white).
 
 ---
 
@@ -305,3 +354,5 @@ The current implementation is `vehiclesView` in `views/vehicles.view.ts`, which 
 **`dayEndMinute` is dynamic.** `setView` scans all segment `endMinute` values and sets `dayEndMinute = max(1440, maxEnd)`. This extends the horizontal scroll boundary automatically for blocks that cross midnight, without requiring any configuration.
 
 **Layout is decoupled from rendering.** `LayoutStrategy.compute` is pure — no side effects, no DOM access. It can be replaced without touching the renderer, hit tester, or viewport.
+
+**Tooltip is suppressed when `actionSpec` is wired.** When an `actionSpec` is provided to `GanttBoard`, segment clicks route through `resolveSelection` instead of showing a tooltip. The hover tooltip still appears on mouseover in both modes.
