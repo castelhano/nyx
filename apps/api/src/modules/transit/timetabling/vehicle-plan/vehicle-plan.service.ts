@@ -616,10 +616,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   async addTrip(planId: string, dto: {
-    routeId:          string
-    departureMinutes: number
-    arrivalMinutes:   number
-    blockId?:         string
+    routeId:                string
+    departureMinutes:       number
+    arrivalMinutes:         number
+    blockId?:               string
+    accessDepotLocalityId?: string
+    returnDepotLocalityId?: string
   }): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
@@ -640,6 +642,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         },
       })
 
+      let resolvedBlockId: string
+
       if (dto.blockId) {
         const block = await tx.vehicleBlock.findFirst({
           where:   { id: dto.blockId, vehiclePlanId: planId },
@@ -649,6 +653,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const nextSeq = (block.blockTrips[0]?.sequence ?? -1) + 1
         await tx.blockTrip.create({ data: { vehicleBlockId: block.id, tripId: trip.id, sequence: nextSeq } })
         await tx.vehicleBlock.update({ where: { id: block.id }, data: { isStale: true } })
+        resolvedBlockId = block.id
       } else {
         const lastBlock = await tx.vehicleBlock.findFirst({
           where:   { vehiclePlanId: planId },
@@ -674,6 +679,53 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           },
         })
         await tx.blockTrip.create({ data: { vehicleBlockId: newBlock.id, tripId: trip.id, sequence: 0 } })
+        resolvedBlockId = newBlock.id
+      }
+
+      if (dto.accessDepotLocalityId || dto.returnDepotLocalityId) {
+        const route = await tx.transitRoute.findUnique({
+          where:  { id: dto.routeId },
+          select: { originLocalityId: true, destinationLocalityId: true },
+        })
+        if (!route) throw new NotFoundException('Route not found')
+
+        if (dto.accessDepotLocalityId) {
+          const tt = await tx.travelTimeMatrix.findUnique({
+            where: { originId_destinationId: { originId: dto.accessDepotLocalityId, destinationId: route.originLocalityId } },
+          })
+          if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
+          const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
+          await tx.blockDeadrun.create({
+            data: {
+              vehicleBlockId:        resolvedBlockId,
+              type:                  'ACCESS',
+              originLocalityId:      dto.accessDepotLocalityId,
+              destinationLocalityId: route.originLocalityId,
+              departureMinutes:      dto.departureMinutes - minutes - 1,
+              arrivalMinutes:        dto.departureMinutes - 1,
+            },
+          })
+        }
+
+        if (dto.returnDepotLocalityId) {
+          const tt = await tx.travelTimeMatrix.findUnique({
+            where: { originId_destinationId: { originId: route.destinationLocalityId, destinationId: dto.returnDepotLocalityId } },
+          })
+          if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
+          const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
+          await tx.blockDeadrun.create({
+            data: {
+              vehicleBlockId:        resolvedBlockId,
+              type:                  'RETURN',
+              originLocalityId:      route.destinationLocalityId,
+              destinationLocalityId: dto.returnDepotLocalityId,
+              departureMinutes:      dto.arrivalMinutes + 1,
+              arrivalMinutes:        dto.arrivalMinutes + minutes + 1,
+            },
+          })
+        }
+
+        await tx.vehicleBlock.update({ where: { id: resolvedBlockId }, data: { isStale: true } })
       }
     })
 

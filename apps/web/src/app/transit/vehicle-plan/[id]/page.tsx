@@ -25,13 +25,43 @@ import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun } from './compo
 import { MoveBlockModal }        from './components/MoveBlockModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
-import type { VehiclePlanGanttData, TripConstraints, GanttBlock } from './views/vehicles.view'
+import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun } from './views/vehicles.view'
 import { resolveCycleWindow }                            from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
+import { getTravelTime }             from './travel-time'
 
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
+
+function buildFakeAccessReturn(a: PendingAddTrip): GanttBlockDeadrun[] {
+  const result: GanttBlockDeadrun[] = []
+  if (a.access) {
+    result.push({
+      id:                    `${a._tempId}:access`,
+      type:                  'ACCESS',
+      originLocalityId:      a.access.localityId,
+      destinationLocalityId: a.originLocality.id,
+      originLocality:        { id: a.access.localityId, name: '' },
+      destinationLocality:   a.originLocality,
+      departureMinutes:      a.departureMinutes - a.access.travelMinutes - 1,
+      arrivalMinutes:        a.departureMinutes - 1,
+    })
+  }
+  if (a.return) {
+    result.push({
+      id:                    `${a._tempId}:return`,
+      type:                  'RETURN',
+      originLocalityId:      a.destinationLocality.id,
+      destinationLocalityId: a.return.localityId,
+      originLocality:        a.destinationLocality,
+      destinationLocality:   { id: a.return.localityId, name: '' },
+      departureMinutes:      a.arrivalMinutes + 1,
+      arrivalMinutes:        a.arrivalMinutes + a.return.travelMinutes + 1,
+    })
+  }
+  return result
+}
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
 
@@ -425,6 +455,7 @@ export default function VehiclePlanPage() {
             departureMinutes:      a.departureMinutes,
             arrivalMinutes:        a.arrivalMinutes,
           })),
+          ...addTrips.flatMap(buildFakeAccessReturn),
         ],
       }
     })
@@ -470,7 +501,7 @@ export default function VehiclePlanPage() {
             destinationLocality:   a.destinationLocality,
             departureMinutes:      a.departureMinutes,
             arrivalMinutes:        a.arrivalMinutes,
-          }] : [],
+          }] : buildFakeAccessReturn(a as PendingAddTrip),
         }
       })
 
@@ -863,10 +894,12 @@ export default function VehiclePlanPage() {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({
-              routeId:          entry.routeId,
-              departureMinutes: entry.departureMinutes,
-              arrivalMinutes:   entry.arrivalMinutes,
-              blockId:          resolvedBlockId,
+              routeId:                entry.routeId,
+              departureMinutes:       entry.departureMinutes,
+              arrivalMinutes:         entry.arrivalMinutes,
+              blockId:                resolvedBlockId,
+              ...(entry.access && { accessDepotLocalityId: entry.access.localityId }),
+              ...(entry.return && { returnDepotLocalityId: entry.return.localityId }),
             }),
           })
           if (!res.ok) {
@@ -940,6 +973,28 @@ export default function VehiclePlanPage() {
     if (!depotModal) return
     const { kind, blockTripId, blockId } = depotModal
     setDepotModal(null)
+
+    // Intercept pending trips: bundle access/return into the pending entry
+    const pendingIdx = pendingAdds.findIndex(a => a._kind === 'trip' && a._tempId === blockTripId)
+    if (pendingIdx !== -1) {
+      const entry    = pendingAdds[pendingIdx] as PendingAddTrip
+      const originId = kind === 'access' ? depotLocalityId         : entry.destinationLocality.id
+      const destId   = kind === 'access' ? entry.originLocality.id : depotLocalityId
+      const travelMinutes = await getTravelTime(originId, destId)
+      if (travelMinutes === null) {
+        toast.error('Mapeamento não localizado na matriz entre os pontos informados')
+        return
+      }
+      setPendingAdds(prev => prev.map((a, i) => {
+        if (i !== pendingIdx || a._kind !== 'trip') return a
+        return kind === 'access'
+          ? { ...a, access: { localityId: depotLocalityId, travelMinutes } }
+          : { ...a, return: { localityId: depotLocalityId, travelMinutes } }
+      }))
+      setSelection(null)
+      return
+    }
+
     try {
       const res = await apiFetch(`/transit/vehicle-block/${blockId}/${kind}`, {
         method: 'POST',

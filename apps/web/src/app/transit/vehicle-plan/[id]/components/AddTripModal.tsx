@@ -7,10 +7,10 @@ import { Icons }    from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import type { GanttBlock, LineMetrics } from '../views/vehicles.view'
+import { getTravelTime } from '../travel-time'
 
 // ── module-level cache — persists across modal opens within the session ────────
 const lineMetricsCache = new Map<string, LineMetrics | null>()
-const travelTimeCache  = new Map<string, number | null>()
 
 async function getLineMetrics(lineId: string): Promise<LineMetrics | null> {
   if (lineMetricsCache.has(lineId)) return lineMetricsCache.get(lineId)!
@@ -23,23 +23,6 @@ async function getLineMetrics(lineId: string): Promise<LineMetrics | null> {
     return metrics
   } catch {
     lineMetricsCache.set(lineId, null)
-    return null
-  }
-}
-
-async function getTravelTime(originId: string, destinationId: string): Promise<number | null> {
-  const key = `${originId}:${destinationId}`
-  if (travelTimeCache.has(key)) return travelTimeCache.get(key)!
-  try {
-    const r = await apiFetch(`/transit/travel-time-matrix?f_originId=${originId}&f_destinationId=${destinationId}&pageSize=1`)
-    if (!r.ok) { travelTimeCache.set(key, null); return null }
-    const j    = await r.json()
-    const item = (j.data ?? [])[0]
-    const min  = item != null ? Math.round(item.baseMinutes * item.speedRatio) : null
-    travelTimeCache.set(key, min)
-    return min
-  } catch {
-    travelTimeCache.set(key, null)
     return null
   }
 }
@@ -67,6 +50,8 @@ export interface PendingAddTrip {
   departureMinutes:    number
   arrivalMinutes:      number
   blockId:             string
+  access?: { localityId: string; travelMinutes: number }
+  return?: { localityId: string; travelMinutes: number }
 }
 
 export interface PendingAddDeadrun {
