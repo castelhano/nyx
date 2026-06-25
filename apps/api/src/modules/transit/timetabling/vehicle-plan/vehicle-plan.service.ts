@@ -364,27 +364,48 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       id:          idx,
       depotId:     b.depotId,
       vehicleType: b.vehicleType,
-      trips:       b.blockTrips.map(bt => {
-        const route   = bt.trip.route
-        const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
-        const tripKm  = metrics?.extensionKm?.[route.direction]
-          ?? matrixMap[`${route.originLocalityId}:${route.destinationLocalityId}`]?.km
-          ?? 0
-        return {
-          id:                    bt.tripId,
-          lineId:                route.lineId,
-          originLocalityId:      route.originLocalityId,
-          destinationLocalityId: route.destinationLocalityId,
-          departureMinutes:      bt.trip.departureMinutes,
-          arrivalMinutes:        bt.trip.arrivalMinutes,
-          tripKm,
-          requiredVehicleType:   null,
-          constraints:           null,
-        }
-      }),
+      trips:       [...b.blockTrips]
+        .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+        .map(bt => {
+          const route   = bt.trip.route
+          const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
+          const tripKm  = metrics?.extensionKm?.[route.direction]
+            ?? matrixMap[`${route.originLocalityId}:${route.destinationLocalityId}`]?.km
+            ?? 0
+          return {
+            id:                    bt.tripId,
+            lineId:                route.lineId,
+            originLocalityId:      route.originLocalityId,
+            destinationLocalityId: route.destinationLocalityId,
+            departureMinutes:      bt.trip.departureMinutes,
+            arrivalMinutes:        bt.trip.arrivalMinutes,
+            tripKm,
+            requiredVehicleType:   null,
+            constraints:           null,
+          }
+        }),
     }))
 
     if (scoringBlocks.length === 0) return
+
+    // DEBUG: log trip order and matrix edges for stale blocks
+    const staleBlockIds = new Set(blocks.filter(b => b.isStale).map(b => b.id))
+    for (const sb of scoringBlocks) {
+      const dbBlock = blocksWithTrips[sb.id]
+      if (!staleBlockIds.has(dbBlock.id)) continue
+      this.logger.debug(`[scorePlan] block ${dbBlock.id} (${sb.trips.length} trips), depot=${sb.depotId}`)
+      for (let i = 0; i < sb.trips.length; i++) {
+        const t    = sb.trips[i]
+        const from = i === 0 ? sb.depotId : sb.trips[i - 1].destinationLocalityId
+        const key  = `${from}:${t.originLocalityId}`
+        const edge = from === t.originLocalityId ? { minutes: 0, km: 0 } : (matrixMap[key] ?? null)
+        this.logger.debug(
+          `  [${i}] dep=${t.departureMinutes} arr=${t.arrivalMinutes} ` +
+          `origin=${t.originLocalityId} dest=${t.destinationLocalityId} ` +
+          `| deadrun_from_prev: ${edge ? `${edge.minutes}min ${edge.km}km` : `MISSING(${key})`}`,
+        )
+      }
+    }
 
     const result       = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
     const matrixMisses = findMatrixMisses(scoringBlocks, matrixMap)
@@ -425,6 +446,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           productiveKm:      r2(result.blocks[sidx].productiveKm),
           deadrunKm:         r2(result.blocks[sidx].deadrunKm),
         }
+        this.logger.debug(
+          `[scorePlan] block ${block.id} summary → ` +
+          `total=${br.totalMinutes} productive=${br.productiveMinutes} deadrun=${br.deadrunMinutes} ` +
+          `totalKm=${br.totalKm} productiveKm=${br.productiveKm} deadrunKm=${br.deadrunKm}`,
+        )
         return [this.prisma.vehicleBlock.update({
           where: { id: block.id },
           data:  { summary: br, isStale: false },

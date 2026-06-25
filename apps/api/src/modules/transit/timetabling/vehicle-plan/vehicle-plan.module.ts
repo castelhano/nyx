@@ -13,5 +13,6 @@ import { CaslModule } from '../../../../auth/casl.module'
   imports:     [TransitSettingsModule, JobModule, CaslModule],
   controllers: [VehiclePlanController, VehicleBlockController, VehiclePlanImportController],
   providers:   [VehiclePlanService, VehicleBlockService, VehiclePlanImportService],
+  exports:     [VehiclePlanService],
 })
 export class VehiclePlanModule {}
