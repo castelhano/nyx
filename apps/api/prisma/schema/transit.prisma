@@ -38,6 +38,7 @@ model TransitLocality {
   lng       Float?
   isDepot   Boolean  @default(false)
   notes     String?
+  snapInfo  Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

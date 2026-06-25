@@ -227,6 +227,7 @@ CREATE TABLE "transit_localities" (
     "lng" REAL,
     "isDepot" BOOLEAN NOT NULL DEFAULT false,
     "notes" TEXT,
+    "snapInfo" JSONB,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );

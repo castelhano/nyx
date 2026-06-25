@@ -58,28 +58,55 @@ export class OsrmService {
     }
 
     // OSRM expects longitude,latitude
-    const coords = localities.map((l) => `${l.lng},${l.lat}`).join(';')
-    const url    = `${this.osrmUrl}/table/v1/driving/${coords}?annotations=duration,distance`
+    const coords   = localities.map((l) => `${l.lng},${l.lat}`).join(';')
+    const radiuses = localities.map(() => 'unlimited').join(';')
+    const url      = `${this.osrmUrl}/table/v1/driving/${coords}?annotations=duration,distance&radiuses=${radiuses}`
 
     this.logger.debug(`OSRM request: ${localities.length} localities, URL length=${url.length}`)
     this.logger.debug(`OSRM URL: ${url}`)
 
-    let data: { durations: (number | null)[][], distances: (number | null)[][] }
+    type OsrmWaypoint = { location: [number, number]; distance: number; name: string }
+    type OsrmResponse = {
+      durations:    (number | null)[][]
+      distances:    (number | null)[][]
+      sources:      OsrmWaypoint[]
+      destinations: OsrmWaypoint[]
+    }
+
+    let data: OsrmResponse
     try {
       const res = await fetch(url)
       if (!res.ok) throw new Error(`OSRM returned ${res.status}`)
-      data = await res.json() as { durations: (number | null)[][], distances: (number | null)[][] }
+      data = await res.json() as OsrmResponse
     } catch (err) {
       this.logger.warn(`OSRM matrix failed: ${(err as Error).message}`)
       throw err
     }
 
-    // Debug: log raw sample (first 3×3 block) to verify coordinates and response format
-    this.logger.debug(`OSRM durations[0..2][0..2]: ${JSON.stringify(data.durations.slice(0, 3).map(r => r?.slice(0, 3)))}`)
-    this.logger.debug(`OSRM distances[0..2][0..2]: ${JSON.stringify(data.distances.slice(0, 3).map(r => r?.slice(0, 3)))}`)
-    this.logger.debug(`OSRM locality[0]: id=${localities[0].id} lat=${localities[0].lat} lng=${localities[0].lng}`)
-    if (localities[1]) {
-      this.logger.debug(`OSRM locality[1]: id=${localities[1].id} lat=${localities[1].lat} lng=${localities[1].lng}`)
+    // Persist snapInfo for each locality based on OSRM sources
+    const checkedAt = new Date().toISOString()
+    const snapUpdates = localities.map((locality, i) => {
+      const waypoint = data.sources[i]
+      if (!waypoint) return null
+      return this.prisma.transitLocality.update({
+        where: { id: locality.id },
+        data: {
+          snapInfo: {
+            lat:       waypoint.location[1],
+            lng:       waypoint.location[0],
+            distanceM: waypoint.distance,
+            roadName:  waypoint.name || undefined,
+            checkedAt,
+          },
+        },
+      })
+    }).filter(Boolean)
+
+    await Promise.all(snapUpdates)
+
+    const snappedCount = localities.filter((_, i) => (data.sources[i]?.distance ?? 0) > 0).length
+    if (snappedCount > 0) {
+      this.logger.warn(`OSRM snapping: ${snappedCount} localities adjusted to nearest road`)
     }
 
     const manualEntries = await this.prisma.travelTimeMatrix.findMany({

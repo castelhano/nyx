@@ -2,6 +2,14 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
+export const snapInfoSchema = z.object({
+  lat:       z.number(),
+  lng:       z.number(),
+  distanceM: z.number(),
+  roadName:  z.string().optional(),
+  checkedAt: z.string().datetime(),
+})
+
 export const localitySchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
@@ -56,6 +64,8 @@ export const localitySchema = withMeta(
       listVisibility: 'never',
     }),
 
+    snapInfo: snapInfoSchema.nullable().optional().meta({ showInForm: false, listVisibility: 'never' }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
@@ -71,6 +81,7 @@ export const localitySchema = withMeta(
 export const createLocalitySchema = localitySchema.omit({ id: true, createdAt: true, updatedAt: true })
 export const updateLocalitySchema  = createLocalitySchema.partial()
 
+export type SnapInfo          = z.infer<typeof snapInfoSchema>
 export type Locality          = z.infer<typeof localitySchema>
 export type CreateLocalityDto = z.infer<typeof createLocalitySchema>
 export type UpdateLocalityDto = z.infer<typeof updateLocalitySchema>
