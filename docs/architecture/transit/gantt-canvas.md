@@ -37,9 +37,12 @@ components/
   GenerateModal.tsx     — modal to trigger block generation
   LinesPanel.tsx        — side panel listing lines in the plan
   SolverProposalDialog.tsx — dialog to review/accept solver proposals
-  AddTripModal.tsx      — modal to add a new trip to a block
+  AddTripModal.tsx      — modal to add a new trip (queues a PendingAddEntry; persisted on save)
   AccessModal.tsx       — modal to configure an access (garage-out) deadrun
   MoveBlockModal.tsx    — modal to move trips to a different block
+
+travel-time.ts          — shared getTravelTime(originId, destinationId) with module-level cache;
+                          queries /transit/travel-time-matrix and applies Math.round(baseMinutes * speedRatio)
 
 views/
   vehicles.view.ts      — GanttView implementation for VehiclePlan
