@@ -8,7 +8,6 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
-import { scoreBlocks, findMatrixMisses, type ScoringBlock } from './solver/solver.scoring'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 
@@ -327,7 +326,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   async scorePlan(planId: string): Promise<void> {
-    const [blocks, matrix, planningCfg] = await Promise.all([
+    const [plan, blocks, matrix] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { summary: true } }),
       this.prisma.vehicleBlock.findMany({
         where:   { vehiclePlanId: planId },
         include: {
@@ -338,124 +338,147 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 select: {
                   departureMinutes: true,
                   arrivalMinutes:   true,
-                  route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } },
+                  route: {
+                    select: {
+                      originLocalityId:      true,
+                      destinationLocalityId: true,
+                      direction:             true,
+                      line: { select: { metrics: true } },
+                    },
+                  },
                 },
               },
+            },
+          },
+          blockDeadruns: {
+            select: {
+              originLocalityId:      true,
+              destinationLocalityId: true,
+              departureMinutes:      true,
+              arrivalMinutes:        true,
             },
           },
         },
       }),
       this.prisma.travelTimeMatrix.findMany(),
-      this.planningConfig.get(),
     ])
 
-    if (blocks.length === 0) return
+    if (!plan || blocks.length === 0) return
 
-    const matrixMap: Record<string, { minutes: number; km: number }> = {}
+    const matrixKm: Record<string, number> = {}
     for (const m of matrix) {
-      matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
+      matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm
     }
 
-    // Skip blocks with no trips — they crash toActiveBlock and have nothing to score
-    const blocksWithTrips  = blocks.filter(b => b.blockTrips.length > 0)
-    const blockToScoreIdx  = new Map(blocksWithTrips.map((b, i) => [b.id, i]))
+    const blocksWithTrips = blocks.filter(b => b.blockTrips.length > 0)
+    const staleWithTrips  = blocksWithTrips.filter(b => b.isStale)
+    const emptyStale      = blocks.filter(b => b.isStale && b.blockTrips.length === 0)
 
-    const scoringBlocks: ScoringBlock[] = blocksWithTrips.map((b, idx) => ({
-      id:          idx,
-      depotId:     b.depotId,
-      vehicleType: b.vehicleType,
-      trips:       [...b.blockTrips]
-        .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
-        .map(bt => {
-          const route   = bt.trip.route
-          const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
-          const tripKm  = metrics?.extensionKm?.[route.direction]
-            ?? matrixMap[`${route.originLocalityId}:${route.destinationLocalityId}`]?.km
-            ?? 0
-          return {
-            id:                    bt.tripId,
-            lineId:                route.lineId,
-            originLocalityId:      route.originLocalityId,
-            destinationLocalityId: route.destinationLocalityId,
-            departureMinutes:      bt.trip.departureMinutes,
-            arrivalMinutes:        bt.trip.arrivalMinutes,
-            tripKm,
-            requiredVehicleType:   null,
-            constraints:           null,
-          }
-        }),
-    }))
-
-    if (scoringBlocks.length === 0) return
-
-    // DEBUG: log trip order and matrix edges for stale blocks
-    const staleBlockIds = new Set(blocks.filter(b => b.isStale).map(b => b.id))
-    for (const sb of scoringBlocks) {
-      const dbBlock = blocksWithTrips[sb.id]
-      if (!staleBlockIds.has(dbBlock.id)) continue
-      this.logger.debug(`[scorePlan] block ${dbBlock.id} (${sb.trips.length} trips), depot=${sb.depotId}`)
-      for (let i = 0; i < sb.trips.length; i++) {
-        const t    = sb.trips[i]
-        const from = i === 0 ? sb.depotId : sb.trips[i - 1].destinationLocalityId
-        const key  = `${from}:${t.originLocalityId}`
-        const edge = from === t.originLocalityId ? { minutes: 0, km: 0 } : (matrixMap[key] ?? null)
-        this.logger.debug(
-          `  [${i}] dep=${t.departureMinutes} arr=${t.arrivalMinutes} ` +
-          `origin=${t.originLocalityId} dest=${t.destinationLocalityId} ` +
-          `| deadrun_from_prev: ${edge ? `${edge.minutes}min ${edge.km}km` : `MISSING(${key})`}`,
-        )
-      }
-    }
-
-    const result       = scoreBlocks(scoringBlocks, matrixMap, planningCfg)
-    const matrixMisses = findMatrixMisses(scoringBlocks, matrixMap)
+    if (staleWithTrips.length === 0 && emptyStale.length === 0) return
 
     const r2 = (n: number) => Math.round(n * 100) / 100
-    const summary: VehiclePlanSummary = {
-      fleetCount:        result.fleetCount,
-      score:             result.score,
-      deadrunKm:         r2(result.deadrunKm),
-      productiveKm:      r2(result.productiveKm),
-      totalKm:           r2(result.totalKm),
-      deadrunMinutes:    result.deadrunMinutes,
-      productiveMinutes: result.productiveMinutes,
-      totalMinutes:      result.totalMinutes,
-      ...(matrixMisses.length > 0 && { errors: { missingMatrix: matrixMisses } }),
+
+    const freshSummaries = staleWithTrips.map(block => {
+      let productiveMinutes = 0
+      let productiveKm      = 0
+      let deadrunMinutes    = 0
+      let deadrunKm         = 0
+
+      for (const bt of block.blockTrips) {
+        const route   = bt.trip.route
+        const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
+        const tripKm  = metrics?.extensionKm?.[route.direction]
+          ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
+          ?? 0
+        productiveMinutes += bt.trip.arrivalMinutes - bt.trip.departureMinutes
+        productiveKm      += tripKm
+      }
+
+      for (const dr of block.blockDeadruns) {
+        deadrunMinutes += dr.arrivalMinutes - dr.departureMinutes
+        deadrunKm      += matrixKm[`${dr.originLocalityId}:${dr.destinationLocalityId}`] ?? 0
+      }
+
+      const allDepartures = [
+        ...block.blockTrips.map(bt => bt.trip.departureMinutes),
+        ...block.blockDeadruns.map(dr => dr.departureMinutes),
+      ]
+      const allArrivals = [
+        ...block.blockTrips.map(bt => bt.trip.arrivalMinutes),
+        ...block.blockDeadruns.map(dr => dr.arrivalMinutes),
+      ]
+      const totalMinutes = Math.max(...allArrivals) - Math.min(...allDepartures)
+
+      const summary: VehicleBlockSummary = {
+        totalMinutes,
+        productiveMinutes,
+        deadrunMinutes,
+        totalKm:      r2(productiveKm + deadrunKm),
+        productiveKm: r2(productiveKm),
+        deadrunKm:    r2(deadrunKm),
+      }
+      return { block, summary }
+    })
+
+    // Aggregate plan totals: fresh stale + stored non-stale
+    let totalDeadrunKm         = 0
+    let totalDeadrunMinutes    = 0
+    let totalProductiveKm      = 0
+    let totalProductiveMinutes = 0
+    let totalKm                = 0
+    let totalMinutes           = 0
+
+    for (const { summary } of freshSummaries) {
+      totalDeadrunKm         += summary.deadrunKm
+      totalDeadrunMinutes    += summary.deadrunMinutes
+      totalProductiveKm      += summary.productiveKm
+      totalProductiveMinutes += summary.productiveMinutes
+      totalKm                += summary.totalKm
+      totalMinutes           += summary.totalMinutes
+    }
+
+    for (const block of blocksWithTrips) {
+      if (block.isStale) continue
+      const s = block.summary as VehicleBlockSummary | null
+      if (!s) continue
+      totalDeadrunKm         += s.deadrunKm         ?? 0
+      totalDeadrunMinutes    += s.deadrunMinutes     ?? 0
+      totalProductiveKm      += s.productiveKm      ?? 0
+      totalProductiveMinutes += s.productiveMinutes  ?? 0
+      totalKm                += s.totalKm            ?? 0
+      totalMinutes           += s.totalMinutes       ?? 0
+    }
+
+    const existingScore = (plan.summary as VehiclePlanSummary | null)?.score ?? 0
+
+    const planSummary: VehiclePlanSummary = {
+      fleetCount:        blocksWithTrips.length,
+      score:             existingScore,
+      deadrunKm:         r2(totalDeadrunKm),
+      productiveKm:      r2(totalProductiveKm),
+      totalKm:           r2(totalKm),
+      deadrunMinutes:    totalDeadrunMinutes,
+      productiveMinutes: totalProductiveMinutes,
+      totalMinutes:      totalMinutes,
     }
 
     await Promise.all([
       this.prisma.vehiclePlan.update({
         where: { id: planId },
-        data:  { summary, generatedAt: new Date() },
+        data:  { summary: planSummary, generatedAt: new Date() },
       }),
-      ...blocks.flatMap((block) => {
-        if (!block.isStale) return []
-        const sidx = blockToScoreIdx.get(block.id)
-        if (sidx === undefined) {
-          // empty block — clear stale flag, no summary to write
-          return [this.prisma.vehicleBlock.update({
-            where: { id: block.id },
-            data:  { isStale: false },
-          })]
-        }
-        const br: VehicleBlockSummary = {
-          totalMinutes:      result.blocks[sidx].totalMinutes,
-          productiveMinutes: result.blocks[sidx].productiveMinutes,
-          deadrunMinutes:    result.blocks[sidx].deadrunMinutes,
-          totalKm:           r2(result.blocks[sidx].totalKm),
-          productiveKm:      r2(result.blocks[sidx].productiveKm),
-          deadrunKm:         r2(result.blocks[sidx].deadrunKm),
-        }
-        this.logger.debug(
-          `[scorePlan] block ${block.id} summary → ` +
-          `total=${br.totalMinutes} productive=${br.productiveMinutes} deadrun=${br.deadrunMinutes} ` +
-          `totalKm=${br.totalKm} productiveKm=${br.productiveKm} deadrunKm=${br.deadrunKm}`,
-        )
-        return [this.prisma.vehicleBlock.update({
+      ...freshSummaries.map(({ block, summary }) =>
+        this.prisma.vehicleBlock.update({
           where: { id: block.id },
-          data:  { summary: br, isStale: false },
-        })]
-      }),
+          data:  { summary, isStale: false },
+        })
+      ),
+      ...emptyStale.map(block =>
+        this.prisma.vehicleBlock.update({
+          where: { id: block.id },
+          data:  { isStale: false },
+        })
+      ),
     ])
   }
 

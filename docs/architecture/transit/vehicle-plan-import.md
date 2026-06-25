@@ -211,30 +211,33 @@ Step 3 is an N+1 pattern (one `count` + one `delete`/`update` per block). It sca
 
 ## Bulk Insert
 
-All inserts are collected in memory during the block loop — no DB calls inside the loop — then committed in three `createMany` calls:
+All inserts are collected in memory during the block loop — no DB calls inside the loop — then committed in four `createMany` calls:
 
 ```
 transitTrip.createMany
 vehicleBlock.createMany
 blockTrip.createMany
+blockDeadrun.createMany
 ```
 
 ---
 
 ## Post-Import Scoring
 
-After the four `createMany` calls complete, `execute()` calls `VehiclePlanService.scorePlan(planId)`. This computes the plan's initial score and populates `vehiclePlan.summary` and `generatedAt` without running the SA solver:
+After the four `createMany` calls complete, `execute()` calls `VehiclePlanService.scorePlan(planId)`.
 
-```
-scorePlan(planId):
-  load blocks + trips (with route.direction + line.metrics) + matrix from DB
-  compute tripKm per trip: line.metrics.extensionKm[direction] ?? matrix[o:d].km ?? 0
-  call scoreBlocks() → write summary + generatedAt to vehiclePlan
-```
+Blocks are created with `isStale: true` and no pre-computed summary. `scorePlan` detects the stale blocks and computes each block's summary directly from its records:
 
-The resulting `summary` includes `fleetCount`, `score`, `deadrunKm`, `productiveKm`, `totalKm`, and duration totals — all km values rounded to 2 decimal places. This gives the plan an immediately visible baseline score without requiring a full solver run.
+- **productiveMinutes** — sum of `arrivalMinutes − departureMinutes` across all `BlockTrip` records
+- **deadrunMinutes** — sum of `arrivalMinutes − departureMinutes` across all `BlockDeadrun` records
+- **productiveKm** — sum of trip km: `line.metrics.extensionKm[direction]` if set, otherwise `matrix[origin:destination].km`
+- **deadrunKm** — sum of `matrix[origin:destination].km` for each `BlockDeadrun` record
+- **totalMinutes** — span from the earliest departure to the latest arrival across all trips and deadruns in the block
+- **totalKm** — `productiveKm + deadrunKm`
 
-See [solver.md](./solver.md) for scoring internals.
+The travel-time matrix is used **only for km lookups** — minutes are never derived from it.
+
+The plan-level `summary` aggregates the fresh stale-block values with the stored summaries of any non-stale blocks already in the plan. The `score` field is preserved from the plan's existing summary (set to `0` on a new plan) and is not recalculated here — a full solver run is required to produce a meaningful score.
 
 ---
 

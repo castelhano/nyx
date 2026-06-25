@@ -379,14 +379,7 @@ export class VehiclePlanImportService {
         blockNumber:   blockNumber++,
         depotId,
         vehicleType:   'STANDARD',
-        summary: {
-          totalMinutes: lastArr - firstDep,
-          productiveMinutes,
-          deadrunMinutes,
-          totalKm:      productiveKm + deadrunKm,
-          productiveKm,
-          deadrunKm,
-        },
+        isStale:       true,
       })
 
       let seqInBlock = 1
