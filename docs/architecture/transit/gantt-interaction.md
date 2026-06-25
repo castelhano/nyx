@@ -330,12 +330,13 @@ When an `ActionItem` has `splitMenu`, the bar renders a split button:
 
 ```typescript
 export interface TripConstraints {
-  locked?:      string[]   // field names the solver cannot modify
-  pinnedBlock?: string     // block UUID — trip cannot leave this block in future runs
+  locked?: string[]   // field names the solver cannot modify
 }
 ```
 
-Recognised `locked` field names: `'departureMinutes'`, `'arrivalMinutes'`, `'cycleTime'`.
+Recognised `locked` field names: `'departureMinutes'`, `'cycleTime'`.
+
+`arrivalMinutes` is intentionally not a lockable field — if both `departureMinutes` and `cycleTime` are locked, `arrivalMinutes` is implicitly fixed.
 
 ### Lock action in the vehicles view
 
@@ -343,17 +344,15 @@ The first button in the trip and interval action bars is a split lock button:
 
 | State | Icon | `active` | Main click |
 |-------|------|---------|-----------|
-| No constraints on any selected trip | `LockOpen` | false | Set `locked: ['departureMinutes', 'arrivalMinutes', 'cycleTime']` for all selected trips |
+| No constraints on any selected trip | `LockOpen` | false | Set `locked: ['departureMinutes', 'cycleTime']` for all selected trips |
 | Any constraint present on any trip | `Lock` | true (amber) | Clear constraints (`null`) for all selected trips |
 
-The dropdown (`▾`) shows four independent checkboxes:
+The dropdown (`▾`) shows two independent checkboxes:
 
 | Checkbox | Constraint |
 |----------|-----------|
 | Horário inicial | `locked` includes `'departureMinutes'` |
-| Horário final | `locked` includes `'arrivalMinutes'` |
 | Tempo de ciclo | `locked` includes `'cycleTime'` |
-| Fixar ao Bloco | `pinnedBlock` set to the current block UUID |
 
 For interval selections, a checkbox is checked only if **all** trips in the interval have that constraint. Toggling applies the change to every trip in the selection individually (per-trip patch array).
 

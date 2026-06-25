@@ -4,8 +4,7 @@ import type { VehicleBlockSummary } from '@nyx/schemas'
 // ── API shapes ────────────────────────────────────────────────────────────────
 
 export interface TripConstraints {
-  locked?:      string[]
-  pinnedBlock?: string
+  locked?: string[]
 }
 
 export interface CycleWindow {
@@ -153,7 +152,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         startMinute: bt.trip.departureMinutes,
         endMinute:   bt.trip.arrivalMinutes,
         isDeadhead:  false,
-        locked:      !!((c?.locked?.length ?? 0) > 0 || c?.pinnedBlock),
+        locked:      (c?.locked?.length ?? 0) > 0,
         label:       bt.trip.route.line.code,
         color:       segColor,
         data:        bt,

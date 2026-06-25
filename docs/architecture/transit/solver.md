@@ -101,8 +101,7 @@ The matrix is **not** consulted for productive km inside the worker or scorer. T
 
 ```typescript
 {
-  locked?:      string[]   // block IDs this trip may not enter
-  pinnedBlock?: string     // trip cannot leave this block ID
+  locked?: string[]   // field names the solver cannot modify, e.g. ['departureMinutes']
 }
 ```
 
@@ -112,7 +111,7 @@ The matrix is **not** consulted for productive km inside the worker or scorer. T
 { locked: true }   // entire block is frozen — no trips added, removed, or reordered
 ```
 
-Locked blocks enter the solver unchanged and are excluded from all construction stages. Trips with `pinnedBlock` cannot be reassigned to a different block.
+Locked blocks enter the solver unchanged and are excluded from all construction stages.
 
 ### Branch scope
 
@@ -434,6 +433,6 @@ When the user accepts a proposal:
 
 **Feasibility only checks inter-trip layover.** Depot → first trip reachability is not validated during SA moves. A move that changes the first trip of a block could silently produce an unreachable depot start if the matrix is sparse.
 
-**Trip constraints are not yet enforced by the SA worker.** `pinnedBlock` and `locked` in `SolverTrip.constraints`, and `locked` in `VehicleBlock.constraints`, are not read by the current implementation. All trips and blocks are freely modifiable.
+**Trip constraints are not yet enforced by the SA worker.** `locked` in `SolverTrip.constraints` and `locked` in `VehicleBlock.constraints` are not read by the current implementation. All trips and blocks are freely modifiable.
 
 **Stage 2 and Stage 3 are not implemented.** Driver optimization and multi-operator distribution are mapped for future phases and have no worker code yet.

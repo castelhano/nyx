@@ -187,7 +187,7 @@ model TransitTrip {
   departureMinutes    Int
   arrivalMinutes      Int
   requiredVehicleType VehicleType?
-  // { locked?: string[], pinnedBlock?: string }
+  // {"locked":["departureMinutes","cycleTime"]}
   constraints         Json?
   notes               String?
   createdAt           DateTime     @default(now())
@@ -205,7 +205,8 @@ model VehiclePlan {
   dayTypeId   String
   description String?
   status      VehiclePlanStatus @default(DRAFT)
-  // populated by solver;
+  // populated by solver, current shape:
+  // {"fleetCount":102,"score":0,"deadrunKm":0,"productiveKm":23249.58,"totalKm":23249.58,"deadrunMinutes":6650,"productiveMinutes":73213,"totalMinutes":98230}
   summary     Json?
   generatedAt DateTime?
   // { locked?: true }
@@ -240,9 +241,10 @@ model VehicleBlock {
   blockNumber   Int
   depotId       String
   vehicleType VehicleType
-  // true when any trip in the block was modified after generation
+  // true when any trip in the block was modified, used for update summary
   isStale     Boolean     @default(false)
-  // populated by solver; shape: { totalMinutes, totalKm, deadrunKm, productiveKm, ... }
+  // populated by solver; current shape:
+  // {"totalMinutes":1127,"productiveMinutes":758,"deadrunMinutes":47,"totalKm":439.2,"productiveKm":439.2,"deadrunKm":0}
   summary     Json?
   // { locked?: true }
   constraints Json?

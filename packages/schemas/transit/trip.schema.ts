@@ -5,7 +5,6 @@ import { withMeta } from '../with-meta'
 // Constraints shape — managed via dedicated UI controls, not raw JSON input
 export interface TripConstraints {
   locked?: string[]       // field names the solver cannot modify, e.g. ['departureMinutes']
-  pinnedBlock?: string    // UUID — trip cannot be moved to another block in future runs
 }
 
 export const tripSchema = withMeta(

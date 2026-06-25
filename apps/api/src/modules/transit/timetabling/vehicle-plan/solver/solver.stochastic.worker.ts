@@ -179,9 +179,6 @@ function moveRelocate(
   const tripIdx  = Math.floor(Math.random() * from.trips.length)
   const trip     = from.trips[tripIdx]
 
-  // respect pinnedBlock constraint
-  if (trip.constraints?.pinnedBlock) return null
-
   const candidates = shuffle(blocks.filter(b => b !== from && !b.locked))
 
   for (const to of candidates) {
@@ -218,7 +215,6 @@ function moveSwap(
   const t1  = b1.trips[t1i]
   const t2  = b2.trips[t2i]
 
-  if (t1.constraints?.pinnedBlock || t2.constraints?.pinnedBlock) return null
   if (t1.requiredVehicleType && b2.vehicleType !== t1.requiredVehicleType) return null
   if (t2.requiredVehicleType && b1.vehicleType !== t2.requiredVehicleType) return null
 

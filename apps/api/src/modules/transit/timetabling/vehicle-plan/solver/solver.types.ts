@@ -44,7 +44,7 @@ export interface SolverTrip {
   arrivalMinutes:        number
   tripKm:                number
   requiredVehicleType:   string | null
-  constraints:           { locked?: string[]; pinnedBlock?: string } | null
+  constraints:           { locked?: string[] } | null
 }
 
 export interface SolverMatrixEntry {
