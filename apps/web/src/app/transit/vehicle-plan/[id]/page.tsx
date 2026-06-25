@@ -21,10 +21,11 @@ import { GenerateModal }         from './components/GenerateModal'
 import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
+import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun } from './components/AddTripModal'
 import { MoveBlockModal }        from './components/MoveBlockModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
-import type { VehiclePlanGanttData, TripConstraints } from './views/vehicles.view'
+import type { VehiclePlanGanttData, TripConstraints, GanttBlock } from './views/vehicles.view'
 import { resolveCycleWindow }                            from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection } from './engine/gantt.types'
@@ -321,6 +322,7 @@ export default function VehiclePlanPage() {
   const [moveModal,             setMoveModal]             = useState<MoveModal  | null>(null)
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
   const [pendingDeadrunChanges, setPendingDeadrunChanges] = useState<Map<string, DeadrunPatch>>(new Map())
+  const [pendingAdds,           setPendingAdds]           = useState<PendingAddEntry[]>([])
   const [isPending,             setIsPending]             = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
@@ -371,27 +373,109 @@ export default function VehiclePlanPage() {
     }
   }, [ganttData, selectedLineIds])
 
-  // Merges pending local overrides into the plotted data before rendering
+  // Merges pending local overrides and additions into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0) return plottedData
-    return {
-      ...plottedData,
-      blocks: plottedData.blocks.map(b => ({
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return plottedData
+
+    const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
+    let extraBlockCount  = 0
+
+    const blocks = plottedData.blocks.map(b => {
+      const addTrips    = pendingAdds.filter((a): a is PendingAddTrip    => a._kind === 'trip'    && a.blockId === b.id)
+      const addDeadruns = pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.blockId === b.id)
+      return {
         ...b,
-        blockTrips: b.blockTrips.map(bt => {
-          const patch = pendingChanges.get(bt.trip.id)
-          if (!patch) return bt
-          return { ...bt, trip: { ...bt.trip, ...patch } }
-        }),
-        blockDeadruns: b.blockDeadruns.map(dr => {
-          const patch = pendingDeadrunChanges.get(dr.id)
-          if (!patch) return dr
-          return { ...dr, ...patch }
-        }),
-      })),
-    }
-  }, [plottedData, pendingChanges, pendingDeadrunChanges])
+        blockTrips: [
+          ...b.blockTrips.map(bt => {
+            const patch = pendingChanges.get(bt.trip.id)
+            if (!patch) return bt
+            return { ...bt, trip: { ...bt.trip, ...patch } }
+          }),
+          ...addTrips.map(a => ({
+            id:       a._tempId,
+            sequence: 99,
+            trip: {
+              id:               `${a._tempId}:trip`,
+              departureMinutes: a.departureMinutes,
+              arrivalMinutes:   a.arrivalMinutes,
+              constraints:      null,
+              route: {
+                direction:           a.direction,
+                line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
+                originLocality:      a.originLocality,
+                destinationLocality: a.destinationLocality,
+              },
+            },
+          })),
+        ],
+        blockDeadruns: [
+          ...b.blockDeadruns.map(dr => {
+            const patch = pendingDeadrunChanges.get(dr.id)
+            if (!patch) return dr
+            return { ...dr, ...patch }
+          }),
+          ...addDeadruns.map(a => ({
+            id:                    a._tempId,
+            type:                  'DISPLACEMENT' as const,
+            originLocalityId:      a.originLocality.id,
+            destinationLocalityId: a.destinationLocality.id,
+            originLocality:        a.originLocality,
+            destinationLocality:   a.destinationLocality,
+            departureMinutes:      a.departureMinutes,
+            arrivalMinutes:        a.arrivalMinutes,
+          })),
+        ],
+      }
+    })
+
+    // Fake blocks for pending adds targeting a new block
+    const firstBlock  = plottedData.blocks[0]
+    const fakeBlocks: GanttBlock[] = pendingAdds
+      .filter(a => a.blockId === 'new')
+      .map(a => {
+        extraBlockCount++
+        return {
+          id:          `pending:${a._tempId}`,
+          blockNumber: maxBlockNumber + extraBlockCount,
+          vehicleType: firstBlock?.vehicleType ?? '',
+          branchId:    firstBlock?.branchId    ?? null,
+          branch:      firstBlock?.branch      ?? null,
+          depotId:     firstBlock?.depotId     ?? '',
+          depot:       firstBlock?.depot       ?? { id: '', name: '' },
+          constraints: null,
+          summary:     null,
+          blockTrips: a._kind === 'trip' ? [{
+            id:       a._tempId,
+            sequence: 0,
+            trip: {
+              id:               `${a._tempId}:trip`,
+              departureMinutes: a.departureMinutes,
+              arrivalMinutes:   a.arrivalMinutes,
+              constraints:      null,
+              route: {
+                direction:           a.direction,
+                line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
+                originLocality:      a.originLocality,
+                destinationLocality: a.destinationLocality,
+              },
+            },
+          }] : [],
+          blockDeadruns: a._kind === 'deadrun' ? [{
+            id:                    a._tempId,
+            type:                  'DISPLACEMENT' as const,
+            originLocalityId:      a.originLocality.id,
+            destinationLocalityId: a.destinationLocality.id,
+            originLocality:        a.originLocality,
+            destinationLocality:   a.destinationLocality,
+            departureMinutes:      a.departureMinutes,
+            arrivalMinutes:        a.arrivalMinutes,
+          }] : [],
+        }
+      })
+
+    return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -730,8 +814,12 @@ export default function VehiclePlanPage() {
     }
   }
 
+  function handlePendingAdd(entry: PendingAddEntry) {
+    setPendingAdds(prev => [...prev, entry])
+  }
+
   async function handleSavePending() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
     setIsPending(true)
     try {
       // Save trip patches
@@ -767,8 +855,46 @@ export default function VehiclePlanPage() {
         )
       }
 
+      // Persist pending adds
+      for (const entry of pendingAdds) {
+        const resolvedBlockId = entry.blockId === 'new' ? undefined : entry.blockId
+        if (entry._kind === 'trip') {
+          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-trip`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              routeId:          entry.routeId,
+              departureMinutes: entry.departureMinutes,
+              arrivalMinutes:   entry.arrivalMinutes,
+              blockId:          resolvedBlockId,
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(extractError(j))
+          }
+        } else {
+          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              originLocalityId:      entry.originLocality.id,
+              destinationLocalityId: entry.destinationLocality.id,
+              departureMinutes:      entry.departureMinutes,
+              arrivalMinutes:        entry.arrivalMinutes,
+              blockId:               resolvedBlockId,
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(extractError(j))
+          }
+        }
+      }
+
       setPendingChanges(new Map())
       setPendingDeadrunChanges(new Map())
+      setPendingAdds([])
       await refetchGantt()
       toast.success('Alterações salvas')
     } catch (err) {
@@ -1069,7 +1195,7 @@ export default function VehiclePlanPage() {
           plottedLines={plottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
           plottedBlocks={plottedData.blocks}
           onClose={() => setAddTripOpen(false)}
-          onCreated={async () => { await refetchGantt() }}
+          onPendingAdd={handlePendingAdd}
         />
       )}
 
@@ -1194,18 +1320,18 @@ export default function VehiclePlanPage() {
           <button
             type="button"
             onClick={handleSavePending}
-            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0)}
-            title={(pendingChanges.size + pendingDeadrunChanges.size) > 0 ? `Salvar ${pendingChanges.size + pendingDeadrunChanges.size} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
+            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
+            title={(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? `Salvar ${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
           >
             <Icons.Save className="w-3.5 h-3.5 shrink-0" />
-            <span>Salvar{(pendingChanges.size + pendingDeadrunChanges.size) > 0 ? ` (${pendingChanges.size + pendingDeadrunChanges.size})` : ''}</span>
+            <span>Salvar{(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? ` (${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length})` : ''}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => { setPendingChanges(new Map()); setPendingDeadrunChanges(new Map()) }}
-            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0)}
+            onClick={() => { setPendingChanges(new Map()); setPendingDeadrunChanges(new Map()); setPendingAdds([]) }}
+            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
             title="Descartar todas as alterações pendentes"
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
           >

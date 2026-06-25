@@ -6,19 +6,9 @@ import { Button }   from '@/components/ui/button'
 import { Icons }    from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
-import { extractError } from '@/lib/utils'
-import type { GanttBlock } from '../views/vehicles.view'
+import type { GanttBlock, LineMetrics } from '../views/vehicles.view'
 
 // ── module-level cache — persists across modal opens within the session ────────
-
-interface CycleWindow { from: number; to: number; minutes: number; intervalMinutes: number }
-interface LineMetrics {
-  windows?: {
-    OUTBOUND?: CycleWindow[]
-    INBOUND?:  CycleWindow[]
-    CIRCULAR?: CycleWindow[]
-  }
-}
 const lineMetricsCache = new Map<string, LineMetrics | null>()
 const travelTimeCache  = new Map<string, number | null>()
 
@@ -58,8 +48,38 @@ async function getTravelTime(originId: string, destinationId: string): Promise<n
 
 interface PlanLine {
   lineId: string
-  line:   { id: string; code: string; name: string }
+  line:   { id: string; code: string; name: string; metrics: LineMetrics | null }
 }
+
+// ── pending add types (exported for page.tsx) ──────────────────────────────────
+
+export interface PendingAddTrip {
+  _kind:               'trip'
+  _tempId:             string
+  routeId:             string
+  direction:           string
+  lineId:              string
+  lineCode:            string
+  lineName:            string
+  lineMetrics:         LineMetrics | null
+  originLocality:      { id: string; name: string }
+  destinationLocality: { id: string; name: string }
+  departureMinutes:    number
+  arrivalMinutes:      number
+  blockId:             string
+}
+
+export interface PendingAddDeadrun {
+  _kind:               'deadrun'
+  _tempId:             string
+  originLocality:      { id: string; name: string }
+  destinationLocality: { id: string; name: string }
+  departureMinutes:    number
+  arrivalMinutes:      number
+  blockId:             string
+}
+
+export type PendingAddEntry = PendingAddTrip | PendingAddDeadrun
 
 interface Route {
   id:                    string
@@ -80,7 +100,7 @@ interface Props {
   plottedLines:  PlanLine[]
   plottedBlocks: GanttBlock[]
   onClose:       () => void
-  onCreated:     () => void
+  onPendingAdd:  (entry: PendingAddEntry) => void
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -122,7 +142,7 @@ const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onCreated }: Props) {
+export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAdd }: Props) {
   const { toast } = useToast()
 
   const [tripType,     setTripType]     = useState<'productive' | 'deadrun'>('productive')
@@ -134,7 +154,6 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
   const [depMM,        setDepMM]        = useState('')
   const [cycleMinutes, setCycleMinutes] = useState('')
   const [blockId,      setBlockId]      = useState<'new' | string>('new')
-  const [isPending,    setIsPending]    = useState(false)
   const [isResolving,  setIsResolving]  = useState(false)
   const resolveRef = useRef(0)
 
@@ -221,73 +240,59 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
   const cycleMin  = parseInt(cycleMinutes, 10)
   const arrivalMin = (!isNaN(depMin) && !isNaN(cycleMin) && cycleMin > 0) ? depMin + cycleMin : null
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     const hh = parseInt(depHH, 10)
     const mm = parseInt(depMM, 10)
     if (isNaN(hh) || isNaN(mm) || arrivalMin == null) return
 
-    setIsPending(true)
-    try {
-      let resolvedBlockId: string | undefined = blockId === 'new' ? undefined : blockId
-      let createdInNewBlock = false
+    let resolvedBlockId = blockId
 
-      // Conflict detection: if a specific block is selected, check for overlaps
-      if (resolvedBlockId) {
-        const block = plottedBlocks.find(b => b.id === resolvedBlockId)
-        if (block && hasOverlap(block, depMin, arrivalMin)) {
-          resolvedBlockId = undefined
-          createdInNewBlock = true
-        }
+    // Conflict detection: if a specific block is selected, check for overlaps
+    if (resolvedBlockId !== 'new') {
+      const block = plottedBlocks.find(b => b.id === resolvedBlockId)
+      if (block && hasOverlap(block, depMin, arrivalMin)) {
+        resolvedBlockId = 'new'
+        toast.info('Viagem será adicionada em novo bloco pois conflita com outra viagem no bloco informado')
       }
-
-      if (tripType === 'productive') {
-        if (!routeId) return
-        const res = await apiFetch(`/transit/vehicle-plan/${planId}/add-trip`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            routeId,
-            departureMinutes: depMin,
-            arrivalMinutes:   arrivalMin,
-            blockId:          resolvedBlockId,
-          }),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(extractError(j))
-        }
-      } else {
-        if (!originId || !destinationId) return
-        const res = await apiFetch(`/transit/vehicle-plan/${planId}/add-deadrun`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            originLocalityId:      originId,
-            destinationLocalityId: destinationId,
-            departureMinutes:      depMin,
-            arrivalMinutes:        arrivalMin,
-            blockId:               resolvedBlockId,
-          }),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(extractError(j))
-        }
-      }
-
-      if (createdInNewBlock) {
-        toast.info('Viagem adicionada em novo bloco pois conflita com outra viagem no bloco informado')
-      }
-
-      onCreated()
-      onClose()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao criar viagem')
-    } finally {
-      setIsPending(false)
     }
+
+    if (tripType === 'productive') {
+      const route    = routes.find(r => r.id === routeId)
+      if (!route) return
+      const planLine = plottedLines.find(l => l.lineId === lineId)
+      onPendingAdd({
+        _kind:               'trip',
+        _tempId:             crypto.randomUUID(),
+        routeId,
+        direction:           route.direction,
+        lineId,
+        lineCode:            planLine?.line.code ?? '',
+        lineName:            planLine?.line.name ?? '',
+        lineMetrics:         planLine?.line.metrics ?? null,
+        originLocality:      { id: route.originLocalityId, name: '' },
+        destinationLocality: { id: route.destinationLocalityId, name: '' },
+        departureMinutes:    depMin,
+        arrivalMinutes:      arrivalMin,
+        blockId:             resolvedBlockId,
+      })
+    } else {
+      if (!originId || !destinationId) return
+      const originLoc = localities.find(l => l.id === originId)
+      const destLoc   = localities.find(l => l.id === destinationId)
+      onPendingAdd({
+        _kind:               'deadrun',
+        _tempId:             crypto.randomUUID(),
+        originLocality:      { id: originId,      name: originLoc?.name ?? '' },
+        destinationLocality: { id: destinationId, name: destLoc?.name   ?? '' },
+        departureMinutes:    depMin,
+        arrivalMinutes:      arrivalMin,
+        blockId:             resolvedBlockId,
+      })
+    }
+
+    onClose()
   }
 
   const plottedLineIds = useMemo(() => new Set(plottedLines.map(l => l.lineId)), [plottedLines])
@@ -303,7 +308,7 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
   const depValid   = depHH !== '' && depMM !== '' && !isNaN(parseInt(depHH, 10)) && !isNaN(parseInt(depMM, 10))
   const cycleValid = !isNaN(cycleMin) && cycleMin > 0
   const typeReady  = tripType === 'productive' ? !!routeId : (!!originId && !!destinationId)
-  const canSubmit  = typeReady && depValid && cycleValid && !isPending && !isResolving
+  const canSubmit  = typeReady && depValid && cycleValid && !isResolving
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -485,7 +490,7 @@ export function AddTripModal({ planId, plottedLines, plottedBlocks, onClose, onC
             Cancelar
           </Button>
           <Button type="submit" size="sm" disabled={!canSubmit}>
-            {isPending ? 'Adicionando…' : 'Adicionar'}
+            Adicionar
           </Button>
         </div>
       </form>
