@@ -592,7 +592,24 @@ export default function VehiclePlanPage() {
           })
         })
       )
-      await refetchGantt()
+      queryClient.setQueryData(
+        ['transit', 'vehicle-plan', id, 'gantt'],
+        (old: VehiclePlanGanttData | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            blocks: old.blocks.map(b => ({
+              ...b,
+              blockTrips: b.blockTrips.map(bt => {
+                const idx = tripIds.indexOf(bt.trip.id)
+                if (idx === -1) return bt
+                const constraints = Array.isArray(patches) ? patches[idx] : patches
+                return { ...bt, trip: { ...bt.trip, constraints } }
+              }),
+            })),
+          }
+        },
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao atualizar restrições')
     }

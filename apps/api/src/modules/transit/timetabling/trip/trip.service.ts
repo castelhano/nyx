@@ -22,10 +22,13 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
 
   override async update(id: string, dto: UpdateTripDto): Promise<Trip> {
     const result = await super.update(id, dto)
-    await this.prisma.vehicleBlock.updateMany({
-      where: { blockTrips: { some: { tripId: id } } },
-      data:  { isStale: true },
-    })
+    const timeFieldsChanged = dto.departureMinutes !== undefined || dto.arrivalMinutes !== undefined
+    if (timeFieldsChanged) {
+      await this.prisma.vehicleBlock.updateMany({
+        where: { blockTrips: { some: { tripId: id } } },
+        data:  { isStale: true },
+      })
+    }
     return result
   }
 

@@ -9,7 +9,7 @@ const DIM_ALPHA              = 0.25
 const SELECTION_RING_COLOR   = 'rgba(255, 255, 255, 0.9)'
 const SELECTION_RING_WIDTH   = 2.5
 const LOCK_DOT_RADIUS        = 3
-const LOCK_DOT_COLOR         = '#f59e0b'
+const LOCK_DOT_COLOR         = '#0f172a'
 const LOCK_DOT_MIN_WIDTH     = 12  // skip dot below this segment width
 
 const EMPTY_SET = new Set<string>()
@@ -165,7 +165,7 @@ export class Renderer {
       }
     }
 
-    // dot pass: amber indicator for locked trips
+    // dot pass: lock indicator (slate-900, avoids palette color conflicts)
     if (dots.length > 0) {
       ctx.fillStyle = LOCK_DOT_COLOR
       for (const { cx, cy, dimmed } of dots) {
