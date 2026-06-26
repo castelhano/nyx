@@ -22,7 +22,7 @@ export default function TransitLineListPage() {
       primary: true,
     }] : []),
     {
-      label:   'Atualizar Ciclos',
+      label:   'Ciclos',
       icon:    Icons.RefreshCw,
       onClick: () => router.push('/transit/transit-line/cycle-map'),
       variant: 'ghost' as const,

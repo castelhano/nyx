@@ -44,7 +44,7 @@ export default function CycleMapPage() {
   const [saving,        setSaving]        = useState(false)
   const [dirStates,     setDirStates]     = useState<Map<Direction, DirState>>(new Map())
 
-  // â”€â”€ topbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── Topbar ──────────────────────────
 
   useTopbarActions([
     {
@@ -54,7 +54,7 @@ export default function CycleMapPage() {
       variant: 'ghost',
     },
     ...(csvData ? [{
-      label:    saving ? 'Salvandoâ€¦' : 'Salvar e AvanÃ§ar',
+      label:    saving ? 'Salvando¦' : 'Salvar',
       icon:     Icons.Save,
       onClick:  handleSave,
       primary:  true,
@@ -62,17 +62,17 @@ export default function CycleMapPage() {
       keybind:  'ALT+G',
     }] : []),
     ...(csvData && csvData.lines.length > 1 ? [{
-      label:   'Pular Linha',
+      label:   'Próxima',
       icon:    Icons.ArrowRight,
       onClick: advanceLine,
       variant: 'ghost' as const,
     }] : []),
   ], [csvData, saving, lineIndex])
 
-  useShortcut('alt+g', handleSave, { desc: 'Salvar e avanÃ§ar' })
-  useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar' })
+  useShortcut('alt+g', handleSave, { desc: 'Salvar e avançar linha' })
+  useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar', order: 2 })
 
-  // â”€â”€ CSV load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── CSV load ──────────────────────────
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -132,7 +132,7 @@ export default function CycleMapPage() {
     setDirStates(next)
   }
 
-  // â”€â”€ includeEdited toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── includeEdited toggle ──────────────────────────
 
   function toggleIncludeEdited() {
     if (!csvData) return
@@ -154,7 +154,7 @@ export default function CycleMapPage() {
     })
   }
 
-  // â”€â”€ line navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── line navigation ──────────────────────────
 
   function advanceLine() {
     if (!csvData) return
@@ -168,7 +168,7 @@ export default function CycleMapPage() {
     loadLineData(csvData, next, includeEdited, linesMap)
   }
 
-  // â”€â”€ save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── save ──────────────────────────
 
   async function handleSave() {
     if (!csvData || saving) return
@@ -206,7 +206,7 @@ export default function CycleMapPage() {
     }
   }
 
-  // â”€â”€ canvas callbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── canvas callbacks ──────────────────────────
 
   const handleCutsChange = useCallback((dir: Direction, cuts: number[]) => {
     setDirStates(prev => {
@@ -235,7 +235,8 @@ export default function CycleMapPage() {
     })
   }, [])
 
-  // â”€â”€ render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────── render ──────────────────────────
+  
 
   const currentLine = csvData ? csvData.lines[lineIndex] : null
   const totalLines  = csvData?.lines.length ?? 0
@@ -300,7 +301,7 @@ export default function CycleMapPage() {
 
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                 <Switch checked={includeEdited} onToggle={toggleIncludeEdited} />
-                Considerar viagens editadas
+                Considerar editadas
               </label>
 
               <div className="flex items-center gap-3 text-xs text-muted-foreground ml-auto">
