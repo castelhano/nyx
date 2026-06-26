@@ -1,7 +1,7 @@
 import { markOutliers } from './cycle-utils'
 import type { DotCluster, DotClickInfo, CycleEngineState } from './types'
 
-const PAD   = { left: 52, right: 20, top: 24, bottom: 44 }
+const PAD   = { left: 52, right: 20, top: 44, bottom: 44 }
 const COLORS = {
   normal:   '#3b82f6',
   outlier:  '#ef4444',
@@ -201,7 +201,7 @@ export class CycleEngine {
       ctx.stroke()
       ctx.restore()
 
-      // pill label centered in window
+      // pill label pinned to the reserved top strip (above chart area)
       const label  = `${rounded}min`
       ctx.save()
       ctx.font         = 'bold 11px Inter, system-ui, sans-serif'
@@ -209,19 +209,20 @@ export class CycleEngine {
       ctx.textBaseline = 'middle'
       const midX  = (x1 + x2) / 2
       const tw    = ctx.measureText(label).width
-      const ph    = 16
+      const ph    = 18
       const pw    = tw + 12
-      const pillY = y - ph / 2 - 4
+      const stripMidY = PAD.top / 2          // center of the top reserved strip
+      const pillY     = stripMidY - ph / 2
       ctx.fillStyle   = 'rgba(255,255,255,0.92)'
       ctx.strokeStyle = COLORS.avgLine
       ctx.lineWidth   = 1
       ctx.setLineDash([])
       ctx.beginPath()
-      ctx.roundRect(midX - pw / 2, pillY, pw, ph, 4)
+      ctx.roundRect(midX - pw / 2, pillY, pw, ph, 5)
       ctx.fill()
       ctx.stroke()
       ctx.fillStyle = '#3b82f6'
-      ctx.fillText(label, midX, pillY + ph / 2)
+      ctx.fillText(label, midX, stripMidY)
       ctx.restore()
     }
   }
