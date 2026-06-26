@@ -159,7 +159,8 @@ interface DotDetailProps {
 
 function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onClose }: DotDetailProps) {
   const H      = 200  // popup height estimate
-  const top    = canvasY + H > containerH ? canvasY - H - 8 : canvasY + 12
+  const topRaw = canvasY + H > containerH ? canvasY - H - 8 : canvasY + 12
+  const top    = Math.max(4, topRaw)
   const left   = Math.max(8, Math.min(canvasX - 120, 400))
 
   return (
@@ -198,7 +199,7 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
         </span>
       </div>
 
-      <div className="max-h-[120px] overflow-y-auto space-y-1 mb-3">
+      <div className="max-h-[120px] overflow-y-auto space-y-1 mb-3 pr-2">
         {cluster.trips.map((t, i) => (
           <div key={i} className="text-xs text-muted-foreground flex justify-between gap-2">
             <span>{t.date} {t.departureTime}</span>

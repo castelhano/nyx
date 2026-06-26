@@ -172,11 +172,6 @@ export class CycleEngine {
     const maxH = this.hours[this.hours.length - 1]
     const bounds = [minH, ...cuts.filter(c => c >= minH && c < maxH).map(c => c + 1), maxH + 1]
 
-    ctx.save()
-    ctx.strokeStyle = COLORS.avgLine
-    ctx.lineWidth   = 2
-    ctx.setLineDash([4, 4])
-
     for (let i = 0; i < bounds.length - 1; i++) {
       const from = bounds[i]
       const to   = bounds[i + 1] - 1
@@ -190,15 +185,45 @@ export class CycleEngine {
       const total = active.reduce((s, c) => s + c.minutes * c.count, 0)
       const cnt   = active.reduce((s, c) => s + c.count, 0)
       const avg   = total / cnt
+      const rounded = Math.round(avg)
       const y     = Math.round(this.minutesToY(avg, yMin, yMax)) + 0.5
-      const x1    = this.hourToX(from)! - this.colWidth() * 0.5
-      const x2    = this.hourToX(to)!   + this.colWidth() * 0.5
+      const x1    = Math.max(PAD.left,        this.hourToX(from)! - this.colWidth() * 0.5)
+      const x2    = Math.min(W - PAD.right,   this.hourToX(to)!   + this.colWidth() * 0.5)
+
+      // dashed avg line
+      ctx.save()
+      ctx.strokeStyle = COLORS.avgLine
+      ctx.lineWidth   = 2
+      ctx.setLineDash([4, 4])
       ctx.beginPath()
-      ctx.moveTo(Math.max(PAD.left, x1), y)
-      ctx.lineTo(Math.min(W - PAD.right, x2), y)
+      ctx.moveTo(x1, y)
+      ctx.lineTo(x2, y)
       ctx.stroke()
+      ctx.restore()
+
+      // pill label centered in window
+      const label  = `${rounded}min`
+      ctx.save()
+      ctx.font         = 'bold 11px Inter, system-ui, sans-serif'
+      ctx.textAlign    = 'center'
+      ctx.textBaseline = 'middle'
+      const midX  = (x1 + x2) / 2
+      const tw    = ctx.measureText(label).width
+      const ph    = 16
+      const pw    = tw + 12
+      const pillY = y - ph / 2 - 4
+      ctx.fillStyle   = 'rgba(255,255,255,0.92)'
+      ctx.strokeStyle = COLORS.avgLine
+      ctx.lineWidth   = 1
+      ctx.setLineDash([])
+      ctx.beginPath()
+      ctx.roundRect(midX - pw / 2, pillY, pw, ph, 4)
+      ctx.fill()
+      ctx.stroke()
+      ctx.fillStyle = '#3b82f6'
+      ctx.fillText(label, midX, pillY + ph / 2)
+      ctx.restore()
     }
-    ctx.restore()
   }
 
   private drawCuts(yMin: number, yMax: number): void {

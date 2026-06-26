@@ -292,7 +292,7 @@ export default function CycleMapPage() {
                     <option key={code} value={i}>{code}</option>
                   ))}
                 </Select>
-                <span className="text-xs text-muted-foreground">{lineIndex + 1} / {totalLines}</span>
+                <span className="text-xs text-muted-foreground">{lineIndex + 1} de {totalLines} no CSV</span>
               </div>
 
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
