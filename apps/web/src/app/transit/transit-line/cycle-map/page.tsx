@@ -26,7 +26,10 @@ interface DirState {
 interface LineRecord {
   id:      string
   code:    string
-  metrics: { windows?: Record<Direction, Array<{ intervalMinutes: number }>> } | null
+  metrics: {
+    extensionKm?: Record<string, number>
+    windows?:     Record<Direction, Array<{ intervalMinutes: number }>>
+  } | null
 }
 
 export default function CycleMapPage() {
@@ -187,7 +190,7 @@ export default function CycleMapPage() {
 
       const res = await apiFetch(`/transit/transit-line/${lineRec.id}`, {
         method: 'PATCH',
-        body:   JSON.stringify({ metrics: { windows } }),
+        body:   JSON.stringify({ metrics: { ...lineRec.metrics, windows } }),
       })
 
       if (!res.ok) {
