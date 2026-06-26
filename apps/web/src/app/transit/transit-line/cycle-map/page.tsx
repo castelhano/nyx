@@ -1,18 +1,21 @@
-﻿'use client'
+'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { useRouter }             from 'next/navigation'
-import { Icons }                 from '@/lib/icons'
-import { Switch }                from '@/components/ui/switch'
-import { Select }                from '@/components/ui/select'
-import { Breadcrumb }            from '@/components/ui/breadcrumb'
-import { useTopbarActions }      from '@/components/layout/topbar-actions-context'
-import { useShortcut }           from '@/lib/keywatch'
-import { apiFetch }              from '@/lib/auth'
-import { useToast }              from '@/lib/toast-context'
-import { parseCsv }              from './csv-parser'
+import { createPortal }                  from 'react-dom'
+import { useRouter }                     from 'next/navigation'
+import { Icons }                         from '@/lib/icons'
+import { cn }                            from '@/lib/utils'
+import { Button }                        from '@/components/ui/button'
+import { Switch }                        from '@/components/ui/switch'
+import { Select }                        from '@/components/ui/select'
+import { Breadcrumb }                    from '@/components/ui/breadcrumb'
+import { useTopbarActions }              from '@/components/layout/topbar-actions-context'
+import { useShortcut }                   from '@/lib/keywatch'
+import { apiFetch }                      from '@/lib/auth'
+import { useToast }                      from '@/lib/toast-context'
+import { parseCsv }                      from './csv-parser'
 import { buildHourClusters, suggestCuts, computeWindows } from './cycle-utils'
-import { CycleMapCanvas }        from './CycleMapCanvas'
+import { CycleMapCanvas }                from './CycleMapCanvas'
 import type { CsvData, Direction, DotCluster } from './types'
 
 const DIRECTIONS: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
@@ -32,34 +35,41 @@ interface LineRecord {
   } | null
 }
 
+interface SaveAllResult {
+  saved:  string[]
+  errors: Array<{ code: string; message: string }>
+}
+
 export default function CycleMapPage() {
   const router       = useRouter()
   const { toast }    = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [csvData,       setCsvData]       = useState<CsvData | null>(null)
-  const [linesMap,      setLinesMap]      = useState<Map<string, LineRecord>>(new Map())
-  const [lineIndex,     setLineIndex]     = useState(0)
-  const [includeEdited, setIncludeEdited] = useState(true)
-  const [saving,        setSaving]        = useState(false)
-  const [dirStates,     setDirStates]     = useState<Map<Direction, DirState>>(new Map())
+  const [csvData,        setCsvData]        = useState<CsvData | null>(null)
+  const [linesMap,       setLinesMap]       = useState<Map<string, LineRecord>>(new Map())
+  const [lineIndex,      setLineIndex]      = useState(0)
+  const [includeEdited,  setIncludeEdited]  = useState(true)
+  const [saving,         setSaving]         = useState(false)
+  const [savingAll,      setSavingAll]      = useState(false)
+  const [saveAllResult,  setSaveAllResult]  = useState<SaveAllResult | null>(null)
+  const [dirStates,      setDirStates]      = useState<Map<Direction, DirState>>(new Map())
 
   // ──────────────── Topbar ──────────────────────────
 
   useTopbarActions([
-    {
-      label:   'Voltar',
-      icon:    Icons.ArrowLeft,
-      onClick: () => router.push('/transit/transit-line'),
-      variant: 'ghost',
-    },
     ...(csvData ? [{
-      label:    saving ? 'Salvando¦' : 'Salvar',
+      label:    saving ? 'Salvando…' : 'Salvar',
       icon:     Icons.Save,
       onClick:  handleSave,
       primary:  true,
-      disabled: saving,
+      disabled: saving || savingAll,
       keybind:  'ALT+G',
+    }, {
+      label:    savingAll ? 'Salvando…' : 'Salvar todos',
+      icon:     Icons.Layers,
+      onClick:  handleSaveAll,
+      disabled: saving || savingAll,
+      overflow: true,
     }] : []),
     ...(csvData && csvData.lines.length > 1 ? [{
       label:   'Próxima',
@@ -67,10 +77,10 @@ export default function CycleMapPage() {
       onClick: advanceLine,
       variant: 'ghost' as const,
     }] : []),
-  ], [csvData, saving, lineIndex])
+  ], [csvData, saving, savingAll, lineIndex])
 
-  useShortcut('alt+g', handleSave, { desc: 'Salvar e avançar linha' })
-  useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar', order: 2 })
+  useShortcut('alt+g', handleSave, { desc: 'Salvar e avançar linha', icon: Icons.Save })
+  useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar', icon: Icons.ArrowLeft, order: 2 })
 
   // ──────────────── CSV load ──────────────────────────
 
@@ -176,7 +186,7 @@ export default function CycleMapPage() {
     const lineRec  = linesMap.get(lineCode)
 
     if (!lineRec) {
-      toast.error(`Linha ${lineCode} nÃ£o encontrada no sistema`)
+      toast.error(`Linha ${lineCode} não encontrada no sistema`)
       return
     }
 
@@ -204,6 +214,68 @@ export default function CycleMapPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // ──────────────── save all ──────────────────────────
+
+  async function handleSaveAll() {
+    if (!csvData || saving || savingAll) return
+    setSavingAll(true)
+
+    const saved:  string[]                            = []
+    const errors: Array<{ code: string; message: string }> = []
+
+    for (let i = 0; i < csvData.lines.length; i++) {
+      const lineCode = csvData.lines[i]
+      const lineRec  = linesMap.get(lineCode)
+
+      if (!lineRec) {
+        errors.push({ code: lineCode, message: 'Não encontrada no sistema' })
+        continue
+      }
+
+      try {
+        const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>> = {}
+
+        if (i === lineIndex) {
+          for (const [dir, state] of dirStates) {
+            const w = computeWindows(state.hourClusters, state.cuts, state.intervalMinutes)
+            if (w.length > 0) windows[dir] = w
+          }
+        } else {
+          const dirMap = csvData.byLine.get(lineCode)
+          if (dirMap) {
+            for (const dir of DIRECTIONS) {
+              const trips = dirMap.get(dir)
+              if (!trips || trips.length === 0) continue
+              const hc              = buildHourClusters(trips, includeEdited)
+              const cuts            = suggestCuts(trips)
+              const existingWindows = lineRec.metrics?.windows?.[dir]
+              const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? 5
+              const w = computeWindows(hc, cuts, intervalMinutes)
+              if (w.length > 0) windows[dir] = w
+            }
+          }
+        }
+
+        const res = await apiFetch(`/transit/transit-line/${lineRec.id}`, {
+          method: 'PATCH',
+          body:   JSON.stringify({ metrics: { ...lineRec.metrics, windows } }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          errors.push({ code: lineCode, message: err?.message?.message ?? 'Erro ao salvar' })
+        } else {
+          saved.push(lineCode)
+        }
+      } catch (e: unknown) {
+        errors.push({ code: lineCode, message: (e as Error)?.message ?? 'Erro desconhecido' })
+      }
+    }
+
+    setSavingAll(false)
+    setSaveAllResult({ saved, errors })
   }
 
   // ──────────────── canvas callbacks ──────────────────────────
@@ -236,7 +308,6 @@ export default function CycleMapPage() {
   }, [])
 
   // ──────────────── render ──────────────────────────
-  
 
   const currentLine = csvData ? csvData.lines[lineIndex] : null
   const totalLines  = csvData?.lines.length ?? 0
@@ -351,7 +422,80 @@ export default function CycleMapPage() {
           </>
         )}
       </div>
+
+      {/* save-all result modal */}
+      {saveAllResult && typeof window !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onPointerDown={(e) => { if (e.target === e.currentTarget) setSaveAllResult(null) }}
+        >
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-background border border-border rounded-lg shadow-xl w-full max-w-md flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <h2 className="font-semibold text-base">Resultado — Salvar todos</h2>
+              <button
+                type="button"
+                onClick={() => setSaveAllResult(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Icons.X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div className="rounded-sm p-3 bg-muted">
+                  <div className="text-2xl font-bold">{saveAllResult.saved.length}</div>
+                  <div className="text-xs text-muted-foreground">Salvas</div>
+                </div>
+                <div className={cn('rounded-sm p-3', saveAllResult.errors.length > 0 ? 'bg-destructive/10' : 'bg-muted')}>
+                  <div className={cn('text-2xl font-bold', saveAllResult.errors.length > 0 && 'text-destructive')}>
+                    {saveAllResult.errors.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Erros</div>
+                </div>
+              </div>
+
+              {saveAllResult.errors.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-destructive">
+                    {saveAllResult.errors.length} erro{saveAllResult.errors.length !== 1 ? 's' : ''}
+                  </p>
+                  <div className="max-h-48 overflow-y-auto rounded-sm border border-border text-xs">
+                    <table className="w-full">
+                      <thead className="sticky top-0 bg-muted">
+                        <tr>
+                          <th className="text-left px-2 py-1 font-medium text-muted-foreground w-24">Linha</th>
+                          <th className="text-left px-2 py-1 font-medium text-muted-foreground">Mensagem</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {saveAllResult.errors.map((err, i) => (
+                          <tr key={i} className="border-t border-border">
+                            <td className="px-2 py-1 font-mono">{err.code}</td>
+                            <td className="px-2 py-1 text-destructive">{err.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {saveAllResult.saved.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Linhas salvas: {saveAllResult.saved.join(', ')}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end px-5 py-3 border-t border-border shrink-0">
+              <Button onClick={() => setSaveAllResult(null)}>Fechar</Button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
-

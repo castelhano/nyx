@@ -1354,7 +1354,7 @@ export default function VehiclePlanPage() {
             type="button"
             onClick={() => setAddTripOpen(true)}
             title="Adicionar viagem"
-            className="flex items-center justify-center h-7 w-7 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+            className="flex items-center justify-center h-7 w-7 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
           >
             <Icons.Plus className="w-3.5 h-3.5" />
           </button>
@@ -1366,7 +1366,7 @@ export default function VehiclePlanPage() {
             onClick={handleAdjustCycle}
             disabled={isPending}
             title="Ajustar duração das viagens ao ciclo configurado por sentido"
-            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
+            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
           >
             <Icons.Timer className="w-3.5 h-3.5 shrink-0" />
             <span>Ajustar Ciclo</span>
@@ -1377,10 +1377,10 @@ export default function VehiclePlanPage() {
             onClick={handleSavePending}
             disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
             title={(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? `Salvar ${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
-            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
+            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:hover:bg-emerald-800/90 dark:text-emerald-50 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
           >
             <Icons.Save className="w-3.5 h-3.5 shrink-0" />
-            <span>Salvar{(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? ` (${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length})` : ''}</span>
+            <span>{(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? ` (${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length})` : '(0)'}</span>
           </button>
 
           <button
@@ -1388,10 +1388,10 @@ export default function VehiclePlanPage() {
             onClick={() => { setPendingChanges(new Map()); setPendingDeadrunChanges(new Map()); setPendingAdds([]) }}
             disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
             title="Descartar todas as alterações pendentes"
-            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs"
+            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
           >
             <Icons.Undo2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Reverter</span>
+            <span>Descartar</span>
           </button>
         </div>
       )}
