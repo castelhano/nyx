@@ -110,7 +110,7 @@ export function CycleMapCanvas({
       <div
         ref={wrapRef}
         className="relative w-full bg-background border border-border rounded-sm"
-        style={{ height: 260 }}
+        style={{ height: 320 }}
       >
         {!hasData && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
@@ -130,7 +130,7 @@ export function CycleMapCanvas({
             hour={detail.hour}
             canvasX={detail.x}
             canvasY={detail.y}
-            containerH={260}
+            containerH={320}
             onToggle={() => handleToggle(detail.hour, hourClusters.get(detail.hour)?.indexOf(detail.cluster) ?? -1)}
             onClose={() => setDetail(null)}
           />

@@ -282,10 +282,11 @@ export class CycleEngine {
     for (const h of this.hours) {
       const clusters = this.hourClusters.get(h)
       if (!clusters) continue
-      const cx = this.hourToX(h)!
+      const colIdx = this.hours.indexOf(h)
 
       for (let i = 0; i < clusters.length; i++) {
         const c   = clusters[i]
+        const cx  = this.dotX(colIdx, i, clusters.length)
         const cy  = this.minutesToY(c.minutes, yMin, yMax)
         const r   = this.dotRadius(c.count)
         const hov = this.hoveredDot?.hour === h && this.hoveredDot.idx === i
@@ -328,6 +329,15 @@ export class CycleEngine {
   }
 
   // ── coordinate helpers ────────────────────────────────────────────────────
+
+  private dotX(colIdx: number, dotIdx: number, total: number): number {
+    const cW      = this.colWidth()
+    const colLeft = PAD.left + colIdx * cW
+    if (total === 1) return colLeft + cW / 2
+    const margin  = Math.max(DOT_MAX_R + 2, cW * 0.1)
+    const usable  = Math.max(0, cW - 2 * margin)
+    return colLeft + margin + (dotIdx / (total - 1)) * usable
+  }
 
   private colWidth(): number {
     if (this.hours.length === 0) return 1
@@ -409,7 +419,7 @@ export class CycleEngine {
         cluster:    dot.cluster,
         hour:       dot.hour,
         clusterIdx: dot.idx,
-        canvasX:    x,
+        canvasX:    dot.cx,
         canvasY:    y,
       } : null)
       this.requestDraw()
@@ -464,7 +474,7 @@ export class CycleEngine {
         cluster:    dot.cluster,
         hour:       dot.hour,
         clusterIdx: dot.idx,
-        canvasX:    x,
+        canvasX:    dot.cx,
         canvasY:    y,
       })
       return
@@ -502,20 +512,21 @@ export class CycleEngine {
 
   private hitDot(
     mx: number, my: number,
-  ): { hour: number; idx: number; cluster: DotCluster } | null {
+  ): { hour: number; idx: number; cluster: DotCluster; cx: number } | null {
     const { min: yMin, max: yMax } = this.yRange()
-    let best: { hour: number; idx: number; cluster: DotCluster; dist: number } | null = null
+    let best: { hour: number; idx: number; cluster: DotCluster; cx: number; dist: number } | null = null
 
     for (const h of this.hours) {
-      const cs = this.hourClusters.get(h)
+      const cs     = this.hourClusters.get(h)
       if (!cs) continue
-      const cx = this.hourToX(h)!
+      const colIdx = this.hours.indexOf(h)
       for (let i = 0; i < cs.length; i++) {
+        const cx   = this.dotX(colIdx, i, cs.length)
         const cy   = this.minutesToY(cs[i].minutes, yMin, yMax)
         const r    = this.dotRadius(cs[i].count) + DOT_HIT_PAD
         const dist = Math.hypot(mx - cx, my - cy)
         if (dist <= r && (!best || dist < best.dist)) {
-          best = { hour: h, idx: i, cluster: cs[i], dist }
+          best = { hour: h, idx: i, cluster: cs[i], cx, dist }
         }
       }
     }
