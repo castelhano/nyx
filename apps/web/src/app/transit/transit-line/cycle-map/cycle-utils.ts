@@ -9,7 +9,7 @@ export function clusterTrips(trips: RawTrip[]): DotCluster[] {
   const groups: RawTrip[][] = []
   let current: RawTrip[] = [sorted[0]]
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].cycleMinutes - sorted[i - 1].cycleMinutes <= CLUSTER_TOLERANCE) {
+    if (sorted[i].cycleMinutes - current[0].cycleMinutes <= CLUSTER_TOLERANCE) {
       current.push(sorted[i])
     } else {
       groups.push(current)
