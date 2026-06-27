@@ -17,8 +17,15 @@ import { parseCsv }                      from './csv-parser'
 import { buildHourClusters, suggestCuts, computeWindows } from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
 import type { CsvData, Direction, DotCluster } from './types'
+import { title } from 'process'
 
 const DIRECTIONS: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
+
+const DEFAULT_INTERVAL: Record<Direction, number> = {
+  OUTBOUND: 10,
+  INBOUND:  1,
+  CIRCULAR: 5,
+}
 
 interface DirState {
   hourClusters:    Map<number, DotCluster[]>
@@ -79,7 +86,8 @@ export default function CycleMapPage() {
     }] : []),
   ], [csvData, saving, savingAll, lineIndex])
 
-  useShortcut('alt+g', handleSave, { desc: 'Salvar e avançar linha', icon: Icons.Save })
+  useShortcut('alt+g', handleSave,  { desc: 'Salvar e avançar linha', icon: Icons.Save })
+  useShortcut('alt+j', advanceLine, { desc: 'Próxima linha', icon: Icons.ArrowRight })
   useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar', icon: Icons.ArrowLeft, order: 2 })
 
   // ──────────────── CSV load ──────────────────────────
@@ -135,7 +143,7 @@ export default function CycleMapPage() {
       const hc              = buildHourClusters(trips, withEdited)
       const cuts            = suggestCuts(trips)
       const existingWindows = existing?.metrics?.windows?.[dir]
-      const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? 5
+      const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
 
       next.set(dir, { hourClusters: hc, cuts, intervalMinutes })
     }
@@ -251,7 +259,7 @@ export default function CycleMapPage() {
               const hc              = buildHourClusters(trips, includeEdited)
               const cuts            = suggestCuts(trips)
               const existingWindows = lineRec.metrics?.windows?.[dir]
-              const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? 5
+              const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
               const w = computeWindows(hc, cuts, intervalMinutes)
               if (w.length > 0) windows[dir] = w
             }
