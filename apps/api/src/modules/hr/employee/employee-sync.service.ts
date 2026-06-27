@@ -46,9 +46,10 @@ export class EmployeeSyncService {
     let updated  = 0
 
     const syncedCodes: string[] = []
+    let lastProgressUpdate = 0
 
-    for (const row of rows) {
-      const { _line, ...data } = row
+    for (let i = 0; i < rows.length; i++) {
+      const { _line, ...data } = rows[i]
       syncedCodes.push(data.code)
 
       try {
@@ -75,6 +76,12 @@ export class EmployeeSyncService {
         }
       } catch (err: any) {
         errors.push({ line: _line, record: data.code, message: err?.message ?? 'Erro desconhecido' })
+      }
+
+      const now = Date.now()
+      if (i === 0 || now - lastProgressUpdate >= 3000) {
+        await this.jobService.updateProgress(jobId, { processed: i + 1, total: rows.length, current: data.code })
+        lastProgressUpdate = now
       }
 
     }
