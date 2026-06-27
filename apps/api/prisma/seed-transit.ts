@@ -1,9 +1,13 @@
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
+import { PrismaPg } from '@prisma/adapter-pg'
 
-const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
-const prisma  = new PrismaClient({ adapter })
+const url      = process.env.DATABASE_URL!
+const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
+  ? new PrismaPg({ connectionString: url })
+  : new PrismaLibSql({ url })
+const prisma   = new PrismaClient({ adapter })
 
 // ── localities ────────────────────────────────────────────────────────────────
 

@@ -132,6 +132,52 @@ pnpm db:migrate       # applies any new migrations and regenerates the client
 
 ---
 
+## Database — SQLite (dev) and PostgreSQL
+
+By default the project runs on **SQLite via LibSQL** (zero-setup, file at `apps/api/dev.db`). To test against **PostgreSQL**, use the scripts below. Both modes are supported without code changes — `PrismaService` and all seed files select the correct adapter based on the `DATABASE_URL` prefix automatically.
+
+### Switching to PostgreSQL
+
+Requires [Docker](https://docs.docker.com/get-docker/).
+
+```bash
+# 1. Switch provider and .env (run from project root)
+bash scripts/use-pg.sh
+
+# 2. Start the PostgreSQL container
+docker compose -f docker-compose.pg.yml up -d
+
+# 3. Push the schema (db:migrate doesn't work when switching provider)
+cd apps/api && pnpm db:push
+
+# 4. Seed
+pnpm db:seed       # admin user
+pnpm db:seed-core  # optional: sample companies/branches
+```
+
+> **Why `db:push` and not `db:migrate`:** `prisma/migrations/migration_lock.toml` records the `sqlite` provider. Prisma blocks `migrate dev` when the provider changes. `db:push` syncs the schema directly without a migration history — suitable for testing. To maintain a proper PostgreSQL migration history, delete `prisma/migrations/` and start fresh with `db:migrate`.
+
+### Switching back to SQLite
+
+```bash
+# From project root
+bash scripts/use-sqlite.sh
+
+# Regenerate the Prisma client
+cd apps/api && pnpm db:generate
+```
+
+### What the scripts do
+
+| Script | Effect |
+|---|---|
+| `scripts/use-pg.sh` | Sets `provider = "postgresql"` in `_base.prisma`, saves current `.env` as `.env.sqlite`, copies `.env.pg` to `.env` |
+| `scripts/use-sqlite.sh` | Restores `provider = "sqlite"` in `_base.prisma`, restores `.env` from `.env.sqlite` |
+
+The PostgreSQL container (`nyx-postgres`) persists data in a Docker volume (`nyx_nyx_pg_data`). Stop it with `docker compose -f docker-compose.pg.yml down` and remove the volume with `docker volume rm nyx_nyx_pg_data` when no longer needed.
+
+---
+
 ## OSRM — travel time matrix
 
 The transit planning module uses [OSRM](https://project-osrm.org/) to automatically generate the travel-time/distance matrix between localities. It is an **optional** dependency — without it, the matrix can be filled manually through the UI.
@@ -214,6 +260,6 @@ Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
 
 ## Tech stack
 
-- **Backend:** NestJS · Prisma ORM 7 · SQLite (dev) · JWT · CASL (authorization)
+- **Backend:** NestJS · Prisma ORM 7 · SQLite/LibSQL (dev) · PostgreSQL (prod/test) · JWT · CASL (authorization)
 - **Frontend:** Next.js 14 · React 18 · Tailwind CSS · TanStack Query/Table · React Hook Form · Zod
 - **Tooling:** pnpm workspaces · Turborepo · TypeScript 5
