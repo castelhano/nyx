@@ -18,7 +18,8 @@ export class OsrmService {
    *
    * Entries with source = MANUAL are never overwritten.
    */
-  async generateMatrix(): Promise<{ generated: number; skipped: number }> {
+  async generateMatrix(opts: { source?: 'OSRM' | 'MANUAL' } = {}): Promise<{ generated: number; skipped: number }> {
+    const entrySource = opts.source ?? 'OSRM'
     const [routes, routeLocalityIds] = await Promise.all([
       this.prisma.transitRoute.findMany({
         select: { originLocalityId: true, destinationLocalityId: true },
@@ -111,16 +112,20 @@ export class OsrmService {
       this.logger.warn(`OSRM snapping: ${snappedCount} localities adjusted to nearest road`)
     }
 
-    const manualEntries = await this.prisma.travelTimeMatrix.findMany({
-      where:  { source: 'MANUAL' },
-      select: { originId: true, destinationId: true },
-    })
-    const manualSet = new Set(manualEntries.map((r) => `${r.originId}:${r.destinationId}`))
-
     const localityIds = localities.map((l) => l.id)
 
-    // Build all new entries — skip manual pairs and OSRM null responses
-    type MatrixRow = { originId: string; destinationId: string; baseMinutes: number; distanceKm: number; source: 'OSRM' }
+    // When generating as OSRM, preserve existing MANUAL entries
+    const manualSet = new Set<string>()
+    if (entrySource === 'OSRM') {
+      const manualEntries = await this.prisma.travelTimeMatrix.findMany({
+        where:  { source: 'MANUAL', originId: { in: localityIds }, destinationId: { in: localityIds } },
+        select: { originId: true, destinationId: true },
+      })
+      for (const r of manualEntries) manualSet.add(`${r.originId}:${r.destinationId}`)
+    }
+
+    // Build all new entries — skip manual pairs (OSRM mode only) and OSRM null responses
+    type MatrixRow = { originId: string; destinationId: string; baseMinutes: number; distanceKm: number; source: 'OSRM' | 'MANUAL' }
     const insertData: MatrixRow[] = []
     let nullPairs = 0
 
@@ -145,16 +150,18 @@ export class OsrmService {
           destinationId: destination.id,
           baseMinutes:   Math.ceil(rawDuration / 60),
           distanceKm:    Math.round(rawDistance / 10) / 100,
-          source:        'OSRM',
+          source:        entrySource,
         })
       }
     }
 
-    // Atomic replace: delete stale OSRM entries, then bulk-insert the fresh ones
+    // Atomic replace: delete stale entries, then bulk-insert the fresh ones
+    // MANUAL mode deletes everything (OSRM + MANUAL) to fully overwrite
+    // OSRM mode deletes only OSRM entries to preserve MANUAL overrides
     await this.prisma.$transaction([
       this.prisma.travelTimeMatrix.deleteMany({
         where: {
-          source:        'OSRM',
+          ...(entrySource === 'OSRM' ? { source: 'OSRM' } : {}),
           originId:      { in: localityIds },
           destinationId: { in: localityIds },
         },

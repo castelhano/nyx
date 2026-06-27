@@ -43,11 +43,15 @@ export default function TravelTimeMatrixPage() {
     }
   })
 
-  async function handleGenerate() {
+  async function handleGenerate(source: 'OSRM' | 'MANUAL' = 'OSRM') {
     if (isRunning) return
     setJobId(null)
     try {
-      const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/generate`, { method: 'POST' })
+      const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/generate`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ source }),
+      })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         throw new Error(extractError(json))
@@ -72,7 +76,13 @@ export default function TravelTimeMatrixPage() {
     {
       label:    isRunning ? 'Gerando…' : 'Gerar Matriz',
       icon:     Icons.RefreshCw,
-      onClick:  handleGenerate,
+      onClick:  () => handleGenerate('OSRM'),
+      disabled: isRunning,
+    },
+    {
+      label:    isRunning ? 'Gerando…' : 'Gerar Manual',
+      icon:     Icons.Lock,
+      onClick:  () => handleGenerate('MANUAL'),
       disabled: isRunning,
     },
     ...(meta?.permissions?.create !== false ? [{

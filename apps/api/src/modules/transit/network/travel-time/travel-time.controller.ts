@@ -1,4 +1,4 @@
-import { Controller, Post, HttpCode, UseGuards, Request } from '@nestjs/common'
+import { Controller, Post, HttpCode, UseGuards, Request, Body } from '@nestjs/common'
 import { TravelTime, CreateTravelTimeDto, UpdateTravelTimeDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -21,7 +21,12 @@ export class TravelTimeController extends BaseController<TravelTime, CreateTrave
 
   @Post('generate')
   @HttpCode(200)
-  async generate(@Request() req: any): Promise<{ jobId: string }> {
+  async generate(
+    @Request() req: any,
+    @Body() body: { source?: 'OSRM' | 'MANUAL' },
+  ): Promise<{ jobId: string }> {
+    const source = body?.source === 'MANUAL' ? 'MANUAL' : 'OSRM'
+
     const job = await this.jobService.createJob({
       type:        'osrm-matrix',
       domain:      'transit',
@@ -29,7 +34,7 @@ export class TravelTimeController extends BaseController<TravelTime, CreateTrave
       createdById: req.user.id,
     })
 
-    this.jobService.run(job.id, () => this.osrm.generateMatrix())
+    this.jobService.run(job.id, () => this.osrm.generateMatrix({ source }))
 
     return { jobId: job.id }
   }
