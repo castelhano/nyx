@@ -26,7 +26,7 @@ export function useJobProgress(jobId: string | null, onDone?: (job: JobData) => 
     enabled:         !!jobId,
     refetchInterval: (q) => {
       const s = q.state.data?.status
-      return s === 'PENDING' || s === 'RUNNING' ? 2000 : false
+      return s === 'PENDING' || s === 'RUNNING' ? 1000 : false
     },
   })
 

@@ -46,7 +46,9 @@ export class EmployeeSyncService {
     let updated  = 0
 
     const syncedCodes: string[] = []
-    let lastProgressUpdate = 0
+    let lastProgressUpdate = Date.now()
+
+    await this.jobService.updateProgress(jobId, { processed: 0, total: rows.length, current: '' })
 
     for (let i = 0; i < rows.length; i++) {
       const { _line, ...data } = rows[i]
@@ -79,7 +81,7 @@ export class EmployeeSyncService {
       }
 
       const now = Date.now()
-      if (i === 0 || now - lastProgressUpdate >= 3000) {
+      if (now - lastProgressUpdate >= 2000) {
         await this.jobService.updateProgress(jobId, { processed: i + 1, total: rows.length, current: data.code })
         lastProgressUpdate = now
       }
