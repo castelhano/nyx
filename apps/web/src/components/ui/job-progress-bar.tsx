@@ -55,9 +55,11 @@ export function JobProgressBar({ job, isRunning, isCompleted, isFailed, classNam
       )}
 
       {isFailed && (
-        <div className="flex items-center gap-2 text-destructive">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span className="text-xs">{job?.error ?? 'Falha no processamento'}</span>
+        <div className='bg-destructive/50 p-2 rounded-sm'>
+          <div className="flex items-center gap-2 text-destructive-foreground">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span className="text-xs">{job?.error ?? 'Falha no processamento'}</span>
+          </div>
         </div>
       )}
     </div>
