@@ -174,7 +174,7 @@ export class VehiclePlanImportService {
 
     const tripRows:      Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const deadrunRows:   Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
-    const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary: object }> = []
+    const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
 
     for (const [, tabRows] of blockMap.entries()) {
