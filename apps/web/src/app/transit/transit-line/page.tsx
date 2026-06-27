@@ -1,16 +1,19 @@
 'use client'
 
-import { useRouter }        from 'next/navigation'
-import { AutoList }         from '@/core/AutoList'
-import { AutoBreadcrumb }   from '@/core/AutoBreadcrumb'
-import { usePageGuard }     from '@/core/usePageGuard'
-import { useTopbarActions } from '@/components/layout/topbar-actions-context'
-import { useShortcut }      from '@/lib/keywatch'
-import { Icons }            from '@/lib/icons'
+import { useState }             from 'react'
+import { useRouter }            from 'next/navigation'
+import { AutoList }             from '@/core/AutoList'
+import { AutoBreadcrumb }       from '@/core/AutoBreadcrumb'
+import { usePageGuard }         from '@/core/usePageGuard'
+import { useTopbarActions }     from '@/components/layout/topbar-actions-context'
+import { useShortcut }          from '@/lib/keywatch'
+import { Icons }                from '@/lib/icons'
+import { ExtensionReviewModal } from './ExtensionReviewModal'
 
 export default function TransitLineListPage() {
   const router              = useRouter()
   const { guardNode, meta } = usePageGuard('transit', 'transit-line')
+  const [showExtModal, setShowExtModal] = useState(false)
 
   if (guardNode) return guardNode
 
@@ -21,6 +24,12 @@ export default function TransitLineListPage() {
       onClick: () => router.push('/transit/transit-line/new'),
       primary: true,
     }] : []),
+    {
+      label:   'Extensões',
+      icon:    Icons.SlidersHorizontal,
+      onClick: () => setShowExtModal(true),
+      variant: 'ghost' as const,
+    },
     {
       label:   'Ciclos',
       icon:    Icons.RefreshCw,
@@ -44,6 +53,12 @@ export default function TransitLineListPage() {
         resource="transit-line"
         onEdit={(id) => router.push(`/transit/transit-line/${id}`)}
       />
+      {showExtModal && (
+        <ExtensionReviewModal
+          onClose={() => setShowExtModal(false)}
+          onApplied={() => setShowExtModal(false)}
+        />
+      )}
     </div>
   )
 }

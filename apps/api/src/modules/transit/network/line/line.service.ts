@@ -5,6 +5,17 @@ import { BaseService } from '../../../../core/base.service'
 import { stringContains } from '../../../../core/db.utils'
 import type { PaginatedResult, PaginationQuery } from '@nyx/types'
 
+export interface ExtensionDivergence {
+  lineId:      string
+  lineCode:    string
+  lineName:    string
+  direction:   string
+  storedKm:    number
+  computedKm:  number
+  diffKm:      number
+  diffPercent: number
+}
+
 // Pure-numeric codes sort as numbers; mixed/alpha codes sort after, then localeCompare.
 // e.g. 31 < 105 < 301 < 800 < A02 < A22B < C01 < R03
 function sortByCode(a: string, b: string): number {
@@ -50,5 +61,108 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     const page = query.page ?? 1
     const size = query.pageSize ?? 20
     return { data: sorted.slice((page - 1) * size, page * size), total: all.total, page, pageSize: size }
+  }
+
+  async reviewExtensions(): Promise<ExtensionDivergence[]> {
+    const lines = await this.prisma.transitLine.findMany({
+      where:  { isActive: true },
+      select: {
+        id:      true,
+        code:    true,
+        name:    true,
+        metrics: true,
+        routes: {
+          where:  { isActive: true },
+          select: {
+            direction:            true,
+            originLocalityId:     true,
+            destinationLocalityId: true,
+          },
+        },
+      },
+    })
+
+    // Collect all origin→destination pairs needed from TravelTimeMatrix
+    const pairsNeeded = new Set<string>()
+    for (const line of lines) {
+      for (const route of line.routes) {
+        pairsNeeded.add(`${route.originLocalityId}:${route.destinationLocalityId}`)
+      }
+    }
+
+    const matrixMap = new Map<string, number>()
+    if (pairsNeeded.size > 0) {
+      const originIds = [...new Set([...pairsNeeded].map((p) => p.split(':')[0]))]
+      const destIds   = [...new Set([...pairsNeeded].map((p) => p.split(':')[1]))]
+      const entries   = await this.prisma.travelTimeMatrix.findMany({
+        where:  { originId: { in: originIds }, destinationId: { in: destIds } },
+        select: { originId: true, destinationId: true, distanceKm: true },
+      })
+      for (const e of entries) {
+        matrixMap.set(`${e.originId}:${e.destinationId}`, e.distanceKm)
+      }
+    }
+
+    const result: ExtensionDivergence[] = []
+
+    for (const line of lines) {
+      if (line.routes.length === 0) continue
+
+      const metrics = line.metrics as { extensionKm?: Record<string, number> } | null
+
+      for (const route of line.routes) {
+        const storedKm = metrics?.extensionKm?.[route.direction]
+        if (storedKm == null) continue
+
+        const computedKm = matrixMap.get(`${route.originLocalityId}:${route.destinationLocalityId}`)
+        if (computedKm == null) continue
+
+        const diffKm = Math.abs(computedKm - storedKm)
+        if (diffKm < 0.001) continue
+
+        result.push({
+          lineId:      line.id,
+          lineCode:    line.code,
+          lineName:    line.name,
+          direction:   route.direction,
+          storedKm:    Math.round(storedKm * 100) / 100,
+          computedKm:  Math.round(computedKm * 100) / 100,
+          diffKm:      Math.round(diffKm * 100) / 100,
+          diffPercent: Math.round((diffKm / storedKm) * 10000) / 100,
+        })
+      }
+    }
+
+    return result.sort((a, b) => b.diffPercent - a.diffPercent)
+  }
+
+  async applyExtensions(
+    updates: Array<{ lineId: string; direction: string; computedKm: number }>,
+  ): Promise<{ updated: number }> {
+    const byLine = new Map<string, Array<{ direction: string; computedKm: number }>>()
+    for (const u of updates) {
+      if (!byLine.has(u.lineId)) byLine.set(u.lineId, [])
+      byLine.get(u.lineId)!.push(u)
+    }
+
+    await Promise.all(
+      [...byLine.entries()].map(async ([lineId, lineUpdates]) => {
+        const current = await this.prisma.transitLine.findUnique({
+          where:  { id: lineId },
+          select: { metrics: true },
+        })
+        const metrics     = (current?.metrics as Record<string, unknown> ?? {})
+        const extensionKm = { ...(metrics.extensionKm as Record<string, number> ?? {}) }
+        for (const u of lineUpdates) {
+          extensionKm[u.direction] = Math.round(u.computedKm * 100) / 100
+        }
+        await this.prisma.transitLine.update({
+          where: { id: lineId },
+          data:  { metrics: { ...metrics, extensionKm } },
+        })
+      }),
+    )
+
+    return { updated: updates.length }
   }
 }

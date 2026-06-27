@@ -162,9 +162,9 @@ export function SnapSyncModal({ onClose, onApplied }: Props) {
             </div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-card border-b border-border">
+              <thead className="sticky top-0 z-10 border-b border-border">
                 <tr>
-                  <th className="px-3 py-2 text-left w-8">
+                  <th className="bg-card px-3 py-2 text-left w-8">
                     <input
                       type="checkbox"
                       checked={allChecked}
@@ -173,13 +173,13 @@ export function SnapSyncModal({ onClose, onApplied }: Props) {
                       className="accent-ring w-4 h-4"
                     />
                   </th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Código</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lat atual</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lng atual</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lat snap</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lng snap</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Variação</th>
+                  <th className="bg-card px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Código</th>
+                  <th className="bg-card px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome</th>
+                  <th className="bg-card px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lat atual</th>
+                  <th className="bg-card px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lng atual</th>
+                  <th className="bg-card px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lat snap</th>
+                  <th className="bg-card px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Lng snap</th>
+                  <th className="bg-card px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Variação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
