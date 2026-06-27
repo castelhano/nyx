@@ -51,7 +51,8 @@ export function parseCsv(text: string): CsvData {
     const dir     = mapDirection(trajeto)
     if (!dir) continue
 
-    const lineCode = trajeto.split(' - ')[0].trim()
+    const rawCode  = trajeto.split(' - ')[0].trim()
+    const lineCode = /^\d+$/.test(rawCode) ? String(Number(rawCode)) : rawCode
     const partida  = c[iPartida] ?? ''
     if (!partida || partida === '-') continue
 
