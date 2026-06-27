@@ -12,4 +12,12 @@ export class TravelTimeService extends BaseService<TravelTime, CreateTravelTimeD
   protected buildSearchWhere(_search: string) {
     return {}
   }
+
+  async setSourceAll(lock: boolean): Promise<{ updated: number }> {
+    const result = await this.prisma.travelTimeMatrix.updateMany({
+      where: { source: lock ? 'OSRM' : 'MANUAL' },
+      data:  { source: lock ? 'MANUAL' : 'OSRM' },
+    })
+    return { updated: result.count }
+  }
 }

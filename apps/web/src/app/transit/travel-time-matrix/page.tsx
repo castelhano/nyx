@@ -12,6 +12,7 @@ import { useShortcut }     from '@/lib/keywatch'
 import { apiFetch }        from '@/lib/auth'
 import { downloadCsv }     from '@/lib/csv'
 import { useToast }        from '@/lib/toast-context'
+import { useConfirm }      from '@/lib/confirm-context'
 import { extractError }    from '@/lib/utils'
 import { useJobProgress }  from '@/lib/use-job-progress'
 import { JobProgressBar }  from '@/components/ui/job-progress-bar'
@@ -22,6 +23,7 @@ const RESOURCE = 'travel-time-matrix'
 export default function TravelTimeMatrixPage() {
   const router       = useRouter()
   const { toast }    = useToast()
+  const confirm      = useConfirm()
   const queryClient  = useQueryClient()
   const { guardNode, meta } = usePageGuard(DOMAIN, RESOURCE)
 
@@ -43,8 +45,43 @@ export default function TravelTimeMatrixPage() {
     }
   })
 
+  async function handleSetSource(lock: boolean) {
+    const ok = await confirm({
+      title:        lock ? 'Travar todos os registros?' : 'Destravar todos os registros?',
+      description:  lock
+        ? 'Todos os registros com source OSRM serão alterados para MANUAL.'
+        : 'Todos os registros com source MANUAL serão alterados para OSRM.',
+      confirmLabel: lock ? 'Travar todos' : 'Destravar todos',
+      variant:      'default',
+    })
+    if (!ok) return
+    try {
+      const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/set-source`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ lock }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      const { updated } = await res.json() as { updated: number }
+      toast.success(`${updated} registro${updated !== 1 ? 's' : ''} ${lock ? 'travado' : 'destravado'}${updated !== 1 ? 's' : ''}`)
+      queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE] })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar source')
+    }
+  }
+
   async function handleGenerate(source: 'OSRM' | 'MANUAL' = 'OSRM') {
     if (isRunning) return
+    const ok = await confirm({
+      title:        'Gerar matriz de tempos?',
+      description:  'Isso irá recalcular todos os pares origem-destino via OSRM.',
+      confirmLabel: 'Gerar',
+      variant:      'default',
+    })
+    if (!ok) return
     setJobId(null)
     try {
       const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/generate`, {
@@ -80,10 +117,16 @@ export default function TravelTimeMatrixPage() {
       disabled: isRunning,
     },
     {
-      label:    isRunning ? 'Gerando…' : 'Gerar Manual',
+      label:    'Travar todos',
       icon:     Icons.Lock,
-      onClick:  () => handleGenerate('MANUAL'),
-      disabled: isRunning,
+      onClick:  () => handleSetSource(true),
+      overflow: true,
+    },
+    {
+      label:    'Destravar todos',
+      icon:     Icons.LockOpen,
+      onClick:  () => handleSetSource(false),
+      overflow: true,
     },
     ...(meta?.permissions?.create !== false ? [{
       label:   'Novo',
