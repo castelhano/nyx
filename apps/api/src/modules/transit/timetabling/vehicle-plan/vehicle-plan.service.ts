@@ -512,7 +512,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       const newPlan = await tx.vehiclePlan.create({
         data: {
           dayTypeId:   plan.dayTypeId,
+          description: plan.description ?? undefined,
           status:      'DRAFT',
+          metrics:     plan.metrics     ?? undefined,
+          summary:     plan.summary     ?? undefined,
+          generatedAt: plan.generatedAt ?? undefined,
           constraints: plan.constraints ?? undefined,
         },
       })
