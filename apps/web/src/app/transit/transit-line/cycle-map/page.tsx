@@ -208,7 +208,7 @@ export default function CycleMapPage() {
 
       const res = await apiFetch(`/transit/transit-line/${lineRec.id}`, {
         method: 'PATCH',
-        body:   JSON.stringify({ metrics: { ...lineRec.metrics, windows } }),
+        body:   JSON.stringify({ metrics: { windows } }),
       })
 
       if (!res.ok) {
@@ -268,7 +268,7 @@ export default function CycleMapPage() {
 
         const res = await apiFetch(`/transit/transit-line/${lineRec.id}`, {
           method: 'PATCH',
-          body:   JSON.stringify({ metrics: { ...lineRec.metrics, windows } }),
+          body:   JSON.stringify({ metrics: { windows } }),
         })
 
         if (!res.ok) {

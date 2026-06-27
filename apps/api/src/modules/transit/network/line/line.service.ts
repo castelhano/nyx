@@ -23,6 +23,17 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     super(prisma, 'transitLine', lineSchema, 'transit')
   }
 
+  override async update(id: string, dto: UpdateLineDto): Promise<Line> {
+    if (dto.metrics === undefined) return super.update(id, dto)
+
+    const current = await this.findOne(id)
+    const merged  = { ...(current.metrics as object ?? {}), ...dto.metrics }
+    return this.model.update({
+      where: { id },
+      data:  this.sanitizeDto({ ...dto, metrics: merged } as Record<string, unknown>),
+    }) as Promise<Line>
+  }
+
   protected buildSearchWhere(search: string) {
     return {
       OR: [

@@ -61,6 +61,14 @@ model TransitLine {
   type      LineType
   isActive  Boolean  @default(true)
   notes     String?
+  /* metrics shape
+   {
+   "extensionKm":{"OUTBOUND":38.85,"INBOUND":38.85},
+   "windows":{
+    "OUTBOUND":[{"from":0,"to":23,"minutes":13,"intervalMinutes":10}],
+    "INBOUND":[{"from":0,"to":23,"minutes":13,"intervalMinutes":5}]
+    }}
+  */
   metrics   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

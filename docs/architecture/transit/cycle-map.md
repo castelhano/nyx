@@ -113,6 +113,10 @@ Users can click a dot to toggle outlier/disabled state. Vertical cut lines are d
 - **Include edited toggle**: rebuilds `hourClusters` for the current line with or without trips flagged as edited in the source system.
 - **Encoding**: CSV is read as `latin1` to handle accented characters from Brazilian operations exports.
 
+### Partial metrics update
+
+The save payload sends only `{ metrics: { windows } }` — it does **not** spread the full `metrics` object on the frontend. The backend (`LineService.update`) reads the current record and shallow-merges the incoming `metrics` patch on top of the existing value before writing. This ensures that other keys inside `metrics` (e.g. `extensionKm`, future demand windows) are never overwritten by the cycle map, regardless of how stale the frontend's cached line data is.
+
 ---
 
 ## CSV Layouts

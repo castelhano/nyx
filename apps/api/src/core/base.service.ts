@@ -21,7 +21,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     resourceRegistry.push({ domain, resource: this.resourceKey, schema })
   }
 
-  private get model() {
+  protected get model() {
     return (this.prisma as any)[this.modelName]
   }
 
@@ -93,7 +93,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
 
   private static readonly IMMUTABLE_FIELDS = new Set(['id', 'createdAt', 'updatedAt'])
 
-  private sanitizeDto(dto: Record<string, unknown>): Record<string, unknown> {
+  protected sanitizeDto(dto: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {}
     for (const [name, rawField] of Object.entries(this.schema.shape)) {
       if (BaseService.IMMUTABLE_FIELDS.has(name) || !(name in dto)) continue
