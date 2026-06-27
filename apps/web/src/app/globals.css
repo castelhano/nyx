@@ -112,8 +112,8 @@
     --muted:                  210 5% 22%;     /* superfície desabilitada, ghost           */
     --muted-foreground:       210 0% 70%;     /* texto secundário, placeholder            */
 
-    --destructive:            10 38% 28%;      /* botão ação destrutiva                    */
-    --destructive-foreground: 10 30% 98%;     /* texto ícone sobre --destructive          */
+    --destructive:            0 62% 52%;      /* botão ação destrutiva                    */
+    --destructive-foreground: 210 40% 98%;     /* texto ícone sobre --destructive          */
 
     /* ── Controles de formulário ─────────────────────────────────────────── */
     --input-bg:               220 8% 14%;     /* fundo de inputs — recuado em relação ao card (L=16) */

@@ -52,7 +52,7 @@ export class LocalityService extends BaseService<Locality, CreateLocalityDto, Up
         const snap = l.snapInfo as SnapInfo
         return this.prisma.transitLocality.update({
           where: { id: l.id },
-          data:  { lat: snap.lat, lng: snap.lng, snapInfo: null },
+          data:  { lat: snap.lat, lng: snap.lng, snapInfo: { ...snap, distanceM: 0 } },
         })
       }),
     )

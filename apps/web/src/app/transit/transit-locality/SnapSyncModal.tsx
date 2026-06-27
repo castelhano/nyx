@@ -53,7 +53,7 @@ export function SnapSyncModal({ onClose, onApplied }: Props) {
   }, [])
 
   const visible = useMemo(
-    () => localities.filter((l) => (l.snapInfo?.distanceM ?? 0) >= thresholdM),
+    () => localities.filter((l) => (l.snapInfo?.distanceM ?? 0) > thresholdM),
     [localities, thresholdM],
   )
 
@@ -135,10 +135,10 @@ export function SnapSyncModal({ onClose, onApplied }: Props) {
             <input
               ref={inputRef}
               type="number"
-              min="0"
+              min="1"
               value={threshold}
               onChange={(e) => setThreshold(e.target.value)}
-              placeholder="0"
+              placeholder="1"
               className="w-24 h-8 rounded-sm border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -148,7 +148,7 @@ export function SnapSyncModal({ onClose, onApplied }: Props) {
         <div className="px-5 py-2 text-xs text-muted-foreground border-b border-border bg-muted/30">
           {loading
             ? 'Carregando…'
-            : `${localities.length} com snap disponível — ${visible.length} com variação ≥ ${fmtDistance(thresholdM)} — ${selectedInView.length} selecionada${selectedInView.length !== 1 ? 's' : ''}`
+            : `${localities.length} com snap disponível — ${visible.length} com variação > ${fmtDistance(thresholdM)} — ${selectedInView.length} selecionada${selectedInView.length !== 1 ? 's' : ''}`
           }
         </div>
 

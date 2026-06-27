@@ -63,7 +63,7 @@ export const travelTimeSchema = withMeta(
   {
     label:       'Tempo de Percurso',
     labelPlural: 'Tempos de Percurso',
-    nameField:   'baseMinutes',
+    nameField:   'id',
     icon:        'Timer',
     defaultSort: { field: 'baseMinutes', order: 'asc' },
   },

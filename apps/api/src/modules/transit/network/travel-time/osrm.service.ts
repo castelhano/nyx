@@ -79,8 +79,10 @@ export class OsrmService {
       if (!res.ok) throw new Error(`OSRM returned ${res.status}`)
       data = await res.json() as OsrmResponse
     } catch (err) {
-      this.logger.warn(`OSRM matrix failed: ${(err as Error).message}`)
-      throw err
+      const msg = (err as Error).message ?? ''
+      this.logger.warn(`OSRM matrix failed: ${msg}`)
+      const isConnErr = msg === 'fetch failed' || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND')
+      throw new Error(isConnErr ? `Servidor OSRM não responde (${this.osrmUrl})` : msg)
     }
 
     // Persist snapInfo for each locality based on OSRM sources
