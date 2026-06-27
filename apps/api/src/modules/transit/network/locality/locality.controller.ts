@@ -1,4 +1,4 @@
-import { Controller, UseGuards } from '@nestjs/common'
+import { Controller, Post, Body, UseGuards } from '@nestjs/common'
 import { Locality, CreateLocalityDto, UpdateLocalityDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -13,5 +13,10 @@ export class LocalityController extends BaseController<Locality, CreateLocalityD
     caslFactory: CaslAbilityFactory,
   ) {
     super(localityService, caslFactory)
+  }
+
+  @Post('snap-sync')
+  applySnap(@Body() body: { ids?: string[]; minDistanceM?: number }) {
+    return this.localityService.applySnap(body)
   }
 }
