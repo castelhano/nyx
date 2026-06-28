@@ -26,4 +26,14 @@ export class LineController extends BaseController<Line, CreateLineDto, UpdateLi
   ) {
     return this.lineService.applyExtensions(body.updates ?? [])
   }
+
+  @Post('demand/apply')
+  applyDemand(
+    @Body() body: {
+      dayTypeCode: string
+      updates: Array<{ lineId: string; demand: Record<string, Record<string, number>> }>
+    },
+  ) {
+    return this.lineService.applyDemand(body.dayTypeCode ?? '', body.updates ?? [])
+  }
 }

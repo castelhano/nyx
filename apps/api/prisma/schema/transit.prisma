@@ -63,11 +63,13 @@ model TransitLine {
   notes     String?
   /* metrics shape
    {
-   "extensionKm":{"OUTBOUND":38.85,"INBOUND":38.85},
+   "extensionKm":{"OUTBOUND":16.5,"INBOUND":16.5},
    "windows":{
-    "OUTBOUND":[{"from":0,"to":23,"minutes":13,"intervalMinutes":10}],
-    "INBOUND":[{"from":0,"to":23,"minutes":13,"intervalMinutes":5}]
-    }}
+      "OUTBOUND":[{"from":4,"to":5,"minutes":54,"intervalMinutes":10}, ...
+   "demand":{
+      "U":{
+          "OUTBOUND":{
+              "4":24,"5":241,...
   */
   metrics   Json?
   createdAt DateTime @default(now())

@@ -9,11 +9,13 @@ import { useTopbarActions }     from '@/components/layout/topbar-actions-context
 import { useShortcut }          from '@/lib/keywatch'
 import { Icons }                from '@/lib/icons'
 import { ExtensionReviewModal } from './ExtensionReviewModal'
+import { DemandImportModal }    from './DemandImportModal'
 
 export default function TransitLineListPage() {
   const router              = useRouter()
   const { guardNode, meta } = usePageGuard('transit', 'transit-line')
-  const [showExtModal, setShowExtModal] = useState(false)
+  const [showExtModal,    setShowExtModal]    = useState(false)
+  const [showDemandModal, setShowDemandModal] = useState(false)
 
   if (guardNode) return guardNode
 
@@ -24,6 +26,12 @@ export default function TransitLineListPage() {
       onClick: () => router.push('/transit/transit-line/new'),
       primary: true,
     }] : []),
+    {
+      label:   'Demanda',
+      icon:    Icons.BarChart2,
+      onClick: () => setShowDemandModal(true),
+      variant: 'ghost' as const,
+    },
     {
       label:   'Extensões',
       icon:    Icons.SlidersHorizontal,
@@ -57,6 +65,12 @@ export default function TransitLineListPage() {
         <ExtensionReviewModal
           onClose={() => setShowExtModal(false)}
           onApplied={() => setShowExtModal(false)}
+        />
+      )}
+      {showDemandModal && (
+        <DemandImportModal
+          onClose={() => setShowDemandModal(false)}
+          onApplied={() => setShowDemandModal(false)}
         />
       )}
     </div>
