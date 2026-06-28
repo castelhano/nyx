@@ -742,11 +742,14 @@ export default function VehiclePlanPage() {
 
     const overrides   = new Map<string, TripPatch>()
     const drOverrides = new Map<string, DeadrunPatch>()
+    let tripsWithWindow = 0
 
     // Process per block: a block = one vehicle.
     // Merge trips and deadruns into chronological order so deadruns shift automatically
     // when the preceding trip's arrival extends.
     console.group('[AjustarCiclo]', plottedData.blocks.length, 'blocos')
+    console.log('[AjustarCiclo] selectedLineIds:', [...selectedLineIds])
+    console.log('[AjustarCiclo] ganttData blocks total:', ganttData?.blocks.length ?? 'sem ganttData')
 
     for (const block of plottedData.blocks) {
       type TripItem    = { kind: 'trip';    dep: number; bt: typeof block.blockTrips[0] }
@@ -758,7 +761,7 @@ export default function VehiclePlanPage() {
         ...block.blockDeadruns.map(dr => ({ kind: 'deadrun' as const, dep: dr.departureMinutes,      dr })),
       ].sort((a, b) => a.dep - b.dep)
 
-      console.group(`Bloco ${block.blockNumber} — ${items.length} itens`)
+      console.group(`Bloco ${block.blockNumber} — ${items.length} itens (${block.blockTrips.length} viagens, ${block.blockDeadruns.length} vazios)`)
 
       let prevArrival     = -Infinity
       let pendingInterval = 0  // interval to apply before the next trip (0 after a deadrun)
@@ -769,6 +772,14 @@ export default function VehiclePlanPage() {
 
         if (item.kind === 'trip') {
           const { trip } = item.bt
+          const rawMetrics = trip.route.line.metrics
+          console.log(
+            `  [RAW] trip ${trip.id.slice(-6)} linha=${trip.route.line.code} dir=${trip.route.direction}` +
+            ` metrics type=${typeof rawMetrics}` +
+            ` metrics=`, rawMetrics,
+            ` windows=`, (rawMetrics as any)?.windows,
+          )
+
           const minDep      = prevArrival === -Infinity ? -Infinity : prevArrival + pendingInterval
           const effectiveDep = Math.max(
             overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes,
@@ -776,9 +787,10 @@ export default function VehiclePlanPage() {
           )
           const pushed = effectiveDep > trip.departureMinutes
 
-          const window    = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
-          const newArrival = window
-            ? effectiveDep + window.minutes
+          const cycleWindow = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
+          if (cycleWindow) tripsWithWindow++
+          const newArrival = cycleWindow
+            ? effectiveDep + cycleWindow.minutes
             : effectiveDep + (trip.arrivalMinutes - trip.departureMinutes)
 
           const patch: TripPatch = {}
@@ -790,14 +802,15 @@ export default function VehiclePlanPage() {
             `  trip ${trip.id.slice(-6)} [${trip.route.direction.slice(0, 3)}]` +
             ` orig: ${fmt(trip.departureMinutes)}→${fmt(trip.arrivalMinutes)}` +
             ` calc: ${fmt(effectiveDep)}→${fmt(newArrival)}` +
-            ` cycle=${window?.minutes ?? '?'} interval=${window?.intervalMinutes ?? '?'}` +
+            ` cycle=${cycleWindow?.minutes ?? 'SEM JANELA'} interval=${cycleWindow?.intervalMinutes ?? '-'}` +
+            ` patch=${JSON.stringify(patch)}` +
             (pushed ? ' ← EMPURRADA' : ''),
           )
 
           prevArrival = newArrival
           // If next item is another trip (no deadrun between them), enforce the route headway.
           // If next item is a deadrun, set interval=0 — the deadrun itself is the gap.
-          pendingInterval = (nextItem?.kind === 'trip' && window) ? window.intervalMinutes : 0
+          pendingInterval = (nextItem?.kind === 'trip' && cycleWindow) ? cycleWindow.intervalMinutes : 0
 
         } else {
           // Deadrun: shift departure to prevArrival when the preceding trip extended past it,
@@ -840,6 +853,8 @@ export default function VehiclePlanPage() {
         deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}` : null,
       ].filter(Boolean).join(' e ')
       toast.success(`${parts} ajustados — use Salvar para persistir`)
+    } else if (tripsWithWindow > 0) {
+      toast.success('Ciclo já está correto em todas as viagens — nenhuma alteração realizada')
     } else {
       toast.error('Nenhuma viagem com ciclo configurado encontrada')
     }
