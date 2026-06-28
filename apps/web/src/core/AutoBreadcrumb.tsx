@@ -71,7 +71,10 @@ export function AutoBreadcrumb({ domain, resource, id, recordName, contextParams
     }
   })
 
-  segments.push({ label: resourceLabel, href: `/${domain}/${resource}` })
+  const listQuery = Object.keys(contextParams).length
+    ? `?${new URLSearchParams(contextParams)}`
+    : ''
+  segments.push({ label: resourceLabel, href: `/${domain}/${resource}${listQuery}` })
 
   if (id) {
     const rawLabel = id === 'new' ? 'Novo' : (recordName ?? meta?.label ?? '…')

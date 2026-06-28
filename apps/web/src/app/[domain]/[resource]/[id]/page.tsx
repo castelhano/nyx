@@ -62,6 +62,17 @@ export default function ResourceDetailPage() {
 
   const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
 
+  // Quando o lineId (ou outro contextField) não veio na URL, deriva do registro carregado
+  const effectiveListPath = useMemo(() => {
+    if (contextQuery || !meta?.breadcrumb?.length || !record) return listPath
+    const params = new URLSearchParams()
+    for (const bc of meta.breadcrumb) {
+      const val = record[bc.contextField]
+      if (val) params.set(bc.contextField, String(val))
+    }
+    return params.size ? `/${domain}/${resource}?${params}` : listPath
+  }, [contextQuery, listPath, meta?.breadcrumb, record, domain, resource])
+
   const visibleChildren = useMemo(
     () => meta?.children?.filter((child) => {
       if (!child.privatePermissions) return true
@@ -97,7 +108,7 @@ export default function ResourceDetailPage() {
         throw json
       }
       toast.success(msgs.deleted())
-      router.push(listPath)
+      router.push(effectiveListPath)
     } catch (err) {
       toast.error(extractError(err as Record<string, unknown>, msgs.error.delete()))
       setIsPending(false)
@@ -135,7 +146,7 @@ export default function ResourceDetailPage() {
     origin:  'apps/web/src/app/[domain]/[resource]/[id]/page',
   })
 
-  useShortcut('alt+v', () => router.push(listPath), {
+  useShortcut('alt+v', () => router.push(effectiveListPath), {
     desc: 'Voltar', icon: ArrowLeft,
     origin: 'apps/web/src/app/[domain]/[resource]/[id]/page', context: 'all',
   })
@@ -162,7 +173,7 @@ export default function ResourceDetailPage() {
         const redirect = meta.afterCreate.replace(/\{(\w+)\}/g, (_, key) => String(created[key] ?? ''))
         router.push(redirect)
       } else {
-        router.push(listPath)
+        router.push(effectiveListPath)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : msgs.error.save())

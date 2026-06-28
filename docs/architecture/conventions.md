@@ -20,27 +20,12 @@
 
 ### Route convention — always singular
 
-API routes and `domains.ts` keys are always **singular**. Never auto-pluralize.
+API routes are always **singular**. Never auto-pluralize.
 
 ```
-domains.ts key  →  controller prefix  →  URL
-'user'          →  'core/user'        →  GET /core/user
-'company'       →  'core/company'     →  GET /core/company
-'branch'        →  'core/branch'      →  GET /core/branch
-```
-
-### Routes file
-
-Every resource has a `<resource>.routes.ts` with typed path constants used by the frontend for non-metadata calls (deactivate, custom endpoints, etc.):
-
-```typescript
-// apps/api/src/modules/core/company/company.routes.ts
-export const CompanyRoutes = {
-  root:       '/core/company',
-  metadata:   '/core/company/metadata',
-  byId:       (id: string) => `/core/company/${id}`,
-  deactivate: (id: string) => `/core/company/${id}/deactivate`,
-} as const
+controller prefix  →  URL
+'core/company'     →  GET /core/company
+'core/branch'      →  GET /core/branch
 ```
 
 ---
@@ -66,9 +51,6 @@ export const companySchema = withMeta(
     label:       'Empresa',
     labelPlural: 'Empresas',
     nameField:   'legalName',
-    children: [
-      { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId' },
-    ],
     groups: {
       'Contato': ['phone', 'email', 'website'],
     },
@@ -104,8 +86,9 @@ export const companySchema = withMeta(
 | `nameField` | `string` | Field used as display name in breadcrumb (default: `'name'`) |
 | `allowCsv` | `boolean` | Adds CSV download button to list topbar (rendered as `primary: false` — icon-only on mobile via overflow menu) |
 | `groups` | `Record<string, string[]>` | Tab groups for `AutoForm` — `{ 'Tab label': ['field1', 'field2'] }` |
-| `children` | `ChildResourceDef[]` | Child resources — adds navigation buttons to parent form topbar as `primary: false` (overflow on mobile) |
-| `breadcrumb` | `BreadcrumbDef[]` | Parent chain — used by `AutoBreadcrumb` to resolve parent labels |
+| `breadcrumb` | `BreadcrumbDef[]` | Declares this resource as a child — used by `AutoBreadcrumb` to resolve the parent chain; also removes this resource from sidebar and discovery |
+
+> **Children are auto-derived — the parent declares nothing.** When a child schema declares `breadcrumb: [{ resource: 'company', ... }]`, the metadata builder scans `resourceRegistry` and automatically adds `branch` to `company`'s `children` list. No field in the parent schema is needed.
 
 ---
 
@@ -115,11 +98,11 @@ Minimum checklist. Each step is mandatory.
 
 ### Step 1 — Zod Schema
 
-Create `packages/schemas/core/<resource>.schema.ts` following the pattern in section 2. Export from `packages/schemas/index.ts`.
+Create `packages/schemas/<domain>/<resource>.schema.ts` following the pattern in section 2. Export from `packages/schemas/index.ts`.
 
 ### Step 2 — Prisma model
 
-Add the model to `apps/api/prisma/schema.prisma`, then from `apps/api/`:
+Add the model to `apps/api/prisma/schema/<domain>.prisma`, then from `apps/api/`:
 
 ```bash
 pnpm db:migrate   # applies migration + regenerates client
@@ -129,13 +112,13 @@ pnpm db:push
 
 ### Step 3 — Service
 
-Create `apps/api/src/modules/core/<resource>/<resource>.service.ts` extending `BaseService`:
+Create `apps/api/src/modules/<domain>/<resource>/<resource>.service.ts` extending `BaseService`:
 
 ```typescript
 @Injectable()
 export class CompanyService extends BaseService<Company, CreateCompanyDto, UpdateCompanyDto> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'company', companySchema)
+    super(prisma, 'company', companySchema, 'core')
   }
 
   protected buildSearchWhere(search: string) {
@@ -175,49 +158,19 @@ Create `<resource>.module.ts` importing `CaslModule`:
 export class CompanyModule {}
 ```
 
-Register in `CoreModule`.
+Register in the parent domain module (e.g. `CoreModule`).
 
-### Step 6 — Routes file
-
-Create `<resource>.routes.ts` with typed path constants (see section 1).
-
-### Step 7 — Frontend registry
-
-Add the resource to `domains.ts`. The `key` must match the controller prefix segment exactly:
-
-```typescript
-// apps/web/src/core/domains.ts
-core: {
-  resources: [
-    { key: 'company', label: 'Empresas', icon: Building },
-  ],
-}
-```
-
-The sidebar and breadcrumb update automatically. No page files required for standard CRUD — the dynamic routes `[domain]/[resource]` and `[domain]/[resource]/[id]` handle it.
-
-To override with custom UI, create `app/core/<resource>/page.tsx`.
-
-**Child resources** (e.g. `branch`) must **not** be added to `domains.ts` — they are accessed only through the parent form's topbar button, never directly from the sidebar.
+**Result:** the resource appears automatically in the sidebar and discovery. No frontend registry files to update — the `BaseService` constructor pushes to `resourceRegistry`, which feeds the sidebar, breadcrumb and discovery endpoint.
 
 ---
 
 ## 4. Parent-Child Resource Pattern
 
-Used when a resource only makes sense in the context of a parent (e.g. Branch → Company). No custom pages required.
+Used when a resource only makes sense in the context of a parent (e.g. Branch → Company). No custom pages required for either side.
 
-### Parent schema — declare `children`
+### Parent schema — no changes needed
 
-```typescript
-// packages/schemas/core/company.schema.ts
-withMeta(z.object({ ... }), {
-  children: [
-    { resource: 'branch', domain: 'core', label: 'Filiais', contextField: 'companyId' },
-  ],
-})
-```
-
-`AutoForm` renders a "Filiais" button in the topbar (only when editing an existing record) that navigates to `/{domain}/branch?companyId={id}`.
+The parent schema requires **no extra declaration**. Child resources are discovered automatically at runtime by scanning `resourceRegistry` for schemas that declare `breadcrumb[].resource === '<parent>'`. The parent's `getMetadata()` response includes `children` computed automatically.
 
 ### Child schema — declare `breadcrumb`
 
@@ -234,25 +187,43 @@ withMeta(z.object({
   ...
 }), {
   breadcrumb: [
-    { resource: 'company', contextField: 'companyId', listLabel: 'Empresas', nameField: 'legalName' },
+    { resource: 'company', contextField: 'companyId', listLabel: 'Empresas', nameField: 'legalName', keybind: 'f9' },
   ],
 })
 ```
 
-`AutoBreadcrumb` uses `breadcrumb` to fetch parent records and build the full chain.
+Effect of `breadcrumb`:
+- **Removes this resource from the sidebar and discovery** (it's a child, accessed only through the parent)
+- **Builds the navigation trail** in `AutoBreadcrumb` — fetches parent record name and renders the full chain
+- **Registers a shortcut button** on the parent detail page (`keybind: 'f9'`) that navigates to the child list filtered by parent
 
 ### URL context params convention
 
-When navigating from parent to child list/form, the parent ID is passed as a query param:
+When navigating from parent to child list or form, the parent ID is passed as a query param:
 
 | Param form | Behavior |
 |-----------|----------|
-| `?companyId=xxx` | Pre-fills `companyId` field as **readonly** in new records |
+| `?companyId=xxx` | Pre-fills `companyId` field as **readonly** in new records; filters child list to that parent |
 | `?_taxId=00.000.000` | Pre-fills `taxId` field as **editable** default (underscore prefix = derived default) |
 
-The list page propagates context params to the "New" button and the edit row links, so context is never lost.
+The list page propagates context params to the "New" button and the edit row links, so context is never lost while navigating within a parent's children.
 
 ### `Alt+V` behavior
 
-- In child list (`/core/branch?companyId=xxx`): navigates to the parent record (`/core/company/xxx`)
-- In child form (`/core/branch/yyy?companyId=xxx`): navigates back to the child list with context preserved
+| Location | Destination |
+|----------|-------------|
+| Child list (`/core/branch?companyId=xxx`) | Parent record (`/core/company/xxx`) |
+| Child form (`/core/branch/yyy?companyId=xxx`) | Child list with context preserved (`/core/branch?companyId=xxx`) |
+| Child form accessed directly without context param | Child list with context derived from the loaded record's `companyId` field |
+
+### Breadcrumb trail links
+
+`AutoBreadcrumb` builds the full trail including correct links at every level:
+
+```
+Início / Core / Empresas / Acme / Filiais / Filial SP
+         ↑       ↑           ↑       ↑           ↑
+        /core  /core/company /core/company/xxx  /core/branch?companyId=xxx  (current, no link)
+```
+
+The "Filiais" segment always links to `/core/branch?companyId=xxx` — context is preserved at every point in the trail.
