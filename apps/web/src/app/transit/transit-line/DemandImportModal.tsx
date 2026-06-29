@@ -241,7 +241,7 @@ export function DemandImportModal({ onClose, onApplied }: Props) {
             <label className="text-xs text-muted-foreground">Arquivos JSON</label>
             <Button
               size="sm"
-              variant="ghost"
+              variant="default"
               onClick={() => fileRef.current?.click()}
               disabled={parsing || loadingSetup}
             >
