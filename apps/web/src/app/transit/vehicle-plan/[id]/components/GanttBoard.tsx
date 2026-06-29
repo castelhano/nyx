@@ -11,7 +11,6 @@ import { SegmentTooltip }     from './SegmentTooltip'
 import { BlockDetailPopover } from './BlockDetailPopover'
 import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
 import type { ViewportSnapshot, Selection, GanttActionSpec } from '../engine/gantt.types'
-import type { LayoutSegment } from '../engine/layout/layout.types'
 
 export interface GanttBoardHandle {
   getSegments: () => LayoutSegment[]
@@ -45,7 +44,7 @@ function computeHeadway(seg: LayoutSegment, blocks: GanttBlock[]): number | null
 
   const departures = blocks
     .flatMap(b => b.blockTrips)
-    .filter(t => t.trip.deadrunType == null && t.trip.route?.line.id === lineId && t.trip.route.direction === dir)
+    .filter(t => t.trip.route?.line.id === lineId && t.trip.route.direction === dir)
     .map(t => t.trip.departureMinutes)
     .sort((a, b) => a - b)
 

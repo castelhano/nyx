@@ -886,6 +886,13 @@ export default function VehiclePlanPage() {
     }
   }
 
+  function handleSelectionChange(sel: Selection | null) {
+    setSelection(sel)
+    if (editBarOpen && sel?.type === 'trip') {
+      setFocusedSegId(sel.segment.id)
+    }
+  }
+
   function handlePendingAdd(entry: PendingAddEntry) {
     setPendingAdds(prev => [...prev, entry])
   }
@@ -1311,7 +1318,7 @@ export default function VehiclePlanPage() {
     desc:    'Item anterior no bloco',
     icon:    Icons.ArrowLeft,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen && !selection,
   })
 
   useShortcut('→', () => {
@@ -1326,7 +1333,7 @@ export default function VehiclePlanPage() {
     desc:    'Próximo item no bloco',
     icon:    Icons.ArrowRight,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen && !selection,
   })
 
   useShortcut('↑', () => {
@@ -1348,7 +1355,7 @@ export default function VehiclePlanPage() {
     desc:    'Bloco anterior (viagem mais próxima)',
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen && !selection,
   })
 
   useShortcut('↓', () => {
@@ -1370,7 +1377,7 @@ export default function VehiclePlanPage() {
     desc:    'Próximo bloco (viagem mais próxima)',
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen && !selection,
   })
 
   useShortcut('shift+←', () => {
@@ -1461,7 +1468,7 @@ export default function VehiclePlanPage() {
     desc:    'Próxima viagem mesmo sentido',
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen && !selection,
   })
 
   useShortcut('pageup', () => {
@@ -1476,7 +1483,7 @@ export default function VehiclePlanPage() {
     desc:    'Viagem anterior mesmo sentido',
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen && !selection,
   })
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -1692,7 +1699,7 @@ export default function VehiclePlanPage() {
                   data={mergedPlottedData}
                   onViewportChange={setGanttVp}
                   selection={selection}
-                  onSelectionChange={setSelection}
+                  onSelectionChange={handleSelectionChange}
                   actionSpec={vehiclesActionSpec}
                   onBlockUpdate={() => refetchGantt()}
                   focusedSegId={editBarOpen ? focusedSegId : null}
