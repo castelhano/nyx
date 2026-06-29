@@ -886,6 +886,155 @@ export default function VehiclePlanPage() {
     }
   }
 
+  // ── trip timing keyboard ops (edit bar, single-trip focus) ─────────────────
+
+  const handleTripTimingOp = useCallback((
+    op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly',
+  ) => {
+    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
+
+    let foundBlock: typeof mergedPlottedData.blocks[0]              | null = null
+    let foundBt:    typeof mergedPlottedData.blocks[0]['blockTrips'][0] | null = null
+    for (const block of mergedPlottedData.blocks) {
+      const bt = block.blockTrips.find(bt => bt.id === focusedSegId)
+      if (bt) { foundBlock = block; foundBt = bt; break }
+    }
+    if (!foundBlock || !foundBt) return
+
+    // Skip pending-add trips (not in ganttData — can't patch via pendingChanges map)
+    const isTempTrip = !ganttData?.blocks.some(b =>
+      b.blockTrips.some(bt => bt.trip.id === foundBt!.trip.id)
+    )
+    if (isTempTrip) return
+
+    type TItem = { kind: 'trip';    id: string; tripId: string; dep: number; arr: number }
+    type DItem = { kind: 'deadrun'; id: string; drId:  string;  dep: number; arr: number }
+    type Item  = TItem | DItem
+
+    const items: Item[] = [
+      ...foundBlock.blockTrips.map(bt => ({
+        kind: 'trip' as const, id: bt.id, tripId: bt.trip.id,
+        dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes,
+      })),
+      ...foundBlock.blockDeadruns.map(dr => ({
+        kind: 'deadrun' as const, id: dr.id, drId: dr.id,
+        dep: dr.departureMinutes, arr: dr.arrivalMinutes,
+      })),
+    ].sort((a, b) => a.dep - b.dep)
+
+    const markedIdx = items.findIndex(i => i.kind === 'trip' && i.id === focusedSegId)
+    if (markedIdx === -1) return
+    const marked = items[markedIdx]
+
+    let prevProd: Item | null = null
+    for (let i = markedIdx - 1; i >= 0; i--) {
+      if (items[i].kind === 'trip') { prevProd = items[i]; break }
+    }
+    let nextProd: Item | null = null
+    for (let i = markedIdx + 1; i < items.length; i++) {
+      if (items[i].kind === 'trip') { nextProd = items[i]; break }
+    }
+
+    const itemBefore = markedIdx > 0 ? items[markedIdx - 1] : null
+    const subsequent = items.slice(markedIdx + 1)
+
+    const newTrips = new Map(pendingChanges)
+    const newDrs   = new Map(pendingDeadrunChanges)
+
+    function setTrip(tripId: string, dep: number, arr: number) {
+      const orig = ganttData?.blocks.flatMap(b => b.blockTrips).find(bt => bt.trip.id === tripId)?.trip
+      const patch: TripPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) newTrips.set(tripId, patch)
+      else newTrips.delete(tripId)
+    }
+
+    function setDr(drId: string, dep: number, arr: number) {
+      const orig = ganttData?.blocks.flatMap(b => b.blockDeadruns).find(dr => dr.id === drId)
+      const patch: DeadrunPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) newDrs.set(drId, patch)
+      else newDrs.delete(drId)
+    }
+
+    function shiftSubsequent(delta: number) {
+      for (const item of subsequent) {
+        if (item.kind === 'trip') setTrip((item as TItem).tripId, item.dep + delta, item.arr + delta)
+        else                      setDr((item as DItem).drId,    item.dep + delta, item.arr + delta)
+      }
+    }
+
+    // Push only deadruns that sit between the marked trip and the next productive trip
+    function pushLeadingDeadruns(delta: number) {
+      for (const item of subsequent) {
+        if (item.kind === 'deadrun') setDr((item as DItem).drId, item.dep + delta, item.arr + delta)
+        else break
+      }
+    }
+
+    const tripId = foundBt.trip.id
+
+    switch (op) {
+      case 'grow': {
+        setTrip(tripId, marked.dep, marked.arr + 1)
+        shiftSubsequent(1)
+        break
+      }
+      case 'shrink': {
+        if (marked.arr - marked.dep <= 1) return
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        if (!prevProd && itemBefore?.kind === 'deadrun')
+          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        setTrip(tripId, marked.dep, marked.arr - 1)
+        shiftSubsequent(-1)
+        break
+      }
+      case 'push': {
+        setTrip(tripId, marked.dep + 1, marked.arr + 1)
+        shiftSubsequent(1)
+        break
+      }
+      case 'pull': {
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        if (!prevProd && itemBefore?.kind === 'deadrun')
+          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        setTrip(tripId, marked.dep - 1, marked.arr - 1)
+        shiftSubsequent(-1)
+        break
+      }
+      case 'growOnly': {
+        if (nextProd && nextProd.dep - marked.arr <= 1) return
+        pushLeadingDeadruns(1)
+        setTrip(tripId, marked.dep, marked.arr + 1)
+        break
+      }
+      case 'shrinkOnly': {
+        if (marked.arr - marked.dep <= 1) return
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        setTrip(tripId, marked.dep, marked.arr - 1)
+        break
+      }
+      case 'pushOnly': {
+        if (nextProd && nextProd.dep - marked.arr <= 1) return
+        pushLeadingDeadruns(1)
+        setTrip(tripId, marked.dep + 1, marked.arr + 1)
+        break
+      }
+      case 'pullOnly': {
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        if (!prevProd && itemBefore?.kind === 'deadrun')
+          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        setTrip(tripId, marked.dep - 1, marked.arr - 1)
+        break
+      }
+    }
+
+    setPendingChanges(newTrips)
+    setPendingDeadrunChanges(newDrs)
+  }, [focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges])
+
   function handleSelectionChange(sel: Selection | null) {
     setSelection(sel)
     if (editBarOpen && sel?.type === 'trip') {
@@ -1521,6 +1670,61 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
+  })
+
+  // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
+  const isTripFocused = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
+
+  useShortcut('+', () => handleTripTimingOp('grow'), {
+    desc: 'Crescer ciclo + empurrar posteriores',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+  })
+
+  useShortcut('-', () => handleTripTimingOp('shrink'), {
+    desc: 'Encolher ciclo + puxar posteriores',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+  })
+
+  useShortcut(' ', () => handleTripTimingOp('push'), {
+    desc: 'Avançar viagem + empurrar posteriores',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+    preventDefault: true,
+  })
+
+  useShortcut('backspace', () => handleTripTimingOp('pull'), {
+    desc: 'Atrasar viagem + puxar posteriores',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+    preventDefault: true,
+  })
+
+  useShortcut('shift++', () => handleTripTimingOp('growOnly'), {
+    desc: 'Crescer ciclo (sem propagar)',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+  })
+
+  useShortcut('shift+-', () => handleTripTimingOp('shrinkOnly'), {
+    desc: 'Encolher ciclo (sem propagar)',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+  })
+
+  useShortcut('shift+ ', () => handleTripTimingOp('pushOnly'), {
+    desc: 'Avançar viagem (sem propagar)',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+    preventDefault: true,
+  })
+
+  useShortcut('shift+backspace', () => handleTripTimingOp('pullOnly'), {
+    desc: 'Atrasar viagem (sem propagar)',
+    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: isTripFocused,
+    preventDefault: true,
   })
 
   // ── render ─────────────────────────────────────────────────────────────────
