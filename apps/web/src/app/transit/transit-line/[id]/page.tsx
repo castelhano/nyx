@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo }   from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { Save, ArrowLeft, LayoutList, Trash2, BarChart2 } from 'lucide-react'
+import { Save, ArrowLeft, LayoutList, Trash2, BarChart2, Download } from 'lucide-react'
 import { AutoForm }           from '@/core/AutoForm'
 import { AutoBreadcrumb }     from '@/core/AutoBreadcrumb'
 import { usePageGuard }       from '@/core/usePageGuard'
@@ -180,8 +180,37 @@ export default function TransitLineDetailPage() {
     }
   }
 
-  const demand = (record?.metrics as Record<string, unknown> | undefined)?.demand as DemandData | undefined
+  const demand    = (record?.metrics as Record<string, unknown> | undefined)?.demand as DemandData | undefined
   const hasDemand = !!demand && Object.keys(demand).length > 0
+
+  type WindowEntry = { from: number; to: number; minutes: number; intervalMinutes: number }
+  const windows    = (record?.metrics as Record<string, unknown> | undefined)?.windows as Record<string, WindowEntry[]> | undefined
+  const hasWindows = !!windows && Object.values(windows).some((arr) => arr?.length > 0)
+
+  const DIR_LABEL: Record<string, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
+
+  function exportCycles() {
+    if (!windows) return
+    const BOM  = '﻿'
+    const rows: string[] = ['sentido;de;ate;viagem (min);intervalo (min)']
+    for (const [dir, entries] of Object.entries(windows)) {
+      if (!entries?.length) continue
+      const label = DIR_LABEL[dir] ?? dir
+      for (const w of entries) {
+        rows.push(`${label};${w.from};${w.to};${w.minutes};${w.intervalMinutes}`)
+      }
+    }
+    const blob = new Blob([BOM + rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = Object.assign(document.createElement('a'), {
+      href:     url,
+      download: `ciclos_${String(record?.code ?? id)}.csv`,
+    })
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -202,17 +231,20 @@ export default function TransitLineDetailPage() {
         formId={FORM_ID}
         resetSignal={resetSignal}
         groupSlots={{
-          Metricas: hasDemand ? (
-            <div className="mt-4 pt-4 border-t border-border">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setChartOpen(true)}
-              >
-                <BarChart2 className="w-3.5 h-3.5" />
-                Ver Demanda
-              </Button>
+          Metricas: (hasDemand || hasWindows) ? (
+            <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
+              {hasDemand && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setChartOpen(true)}>
+                  <BarChart2 className="w-3.5 h-3.5" />
+                  Ver Demanda
+                </Button>
+              )}
+              {hasWindows && (
+                <Button type="button" variant="outline" size="sm" onClick={exportCycles}>
+                  <Download className="w-3.5 h-3.5" />
+                  Exportar Ciclos
+                </Button>
+              )}
             </div>
           ) : null,
         }}
