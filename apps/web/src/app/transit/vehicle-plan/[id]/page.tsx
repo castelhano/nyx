@@ -839,11 +839,11 @@ export default function VehiclePlanPage() {
           pendingInterval = (nextItem?.kind === 'trip' && cycleWindow) ? cycleWindow.intervalMinutes : 0
 
         } else {
-          // Deadrun: shift departure to prevArrival when the preceding trip extended past it,
-          // then preserve the original travel duration.
+          // Deadrun: always anchor to prevArrival (follows preceding trip in both directions),
+          // preserving the original travel duration. Skip only when there is no preceding item.
           const { dr } = item
           const duration = dr.arrivalMinutes - dr.departureMinutes
-          const newDep   = prevArrival > dr.departureMinutes ? prevArrival : dr.departureMinutes
+          const newDep   = prevArrival !== -Infinity ? prevArrival : dr.departureMinutes
           const newArr   = newDep + duration
 
           const dpatch: DeadrunPatch = {}
@@ -855,7 +855,7 @@ export default function VehiclePlanPage() {
             `  deadrun ${dr.id.slice(-6)} [${dr.type}]` +
             ` orig: ${fmt(dr.departureMinutes)}→${fmt(dr.arrivalMinutes)}` +
             ` calc: ${fmt(newDep)}→${fmt(newArr)}` +
-            (newDep !== dr.departureMinutes ? ' ← EMPURRADO' : ''),
+            (newDep > dr.departureMinutes ? ' ← EMPURRADO' : newDep < dr.departureMinutes ? ' ← ADIANTADO' : ''),
           )
 
           prevArrival     = newArr
@@ -1327,7 +1327,7 @@ export default function VehiclePlanPage() {
   })
 
   useShortcut('alt+l', () => handleDiscardPendingWithConfirm(), {
-    desc:    'Limpar alterações pendentes',
+    desc:    'Reverte alterações pendentes',
     icon:    Icons.Undo2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen,
