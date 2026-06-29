@@ -156,7 +156,7 @@ export default function ChangePasswordPage() {
           </section>
 
           {serverError && (
-            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2 flex flex-col gap-0.5">
+            <div className="text-sm text-destructive-foreground bg-destructive/60 border border-destructive rounded-md px-3 py-2 flex flex-col gap-0.5">
               {(Array.isArray(serverError) ? serverError : [serverError]).map((msg, i) => (
                 <p key={i}>{msg}</p>
               ))}

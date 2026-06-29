@@ -134,23 +134,40 @@ pnpm db:migrate       # applies any new migrations and regenerates the client
 
 ## Database — SQLite (dev) and PostgreSQL
 
-By default the project runs on **SQLite via LibSQL** (zero-setup, file at `apps/api/dev.db`). To test against **PostgreSQL**, use the scripts below. Both modes are supported without code changes — `PrismaService` and all seed files select the correct adapter based on the `DATABASE_URL` prefix automatically.
+By default the project runs on **SQLite via LibSQL** (zero-setup, file at `apps/api/dev.db`). PostgreSQL is also supported without code changes — `PrismaService` and all seed files select the correct adapter based on the `DATABASE_URL` prefix automatically.
 
 ### Switching to PostgreSQL
 
 Requires [Docker](https://docs.docker.com/get-docker/).
 
+**1. Edit two files** to switch the provider and connection URL:
+
+`apps/api/prisma/schema/_base.prisma`:
+```prisma
+datasource db {
+  // provider = "sqlite"
+  provider = "postgresql"
+}
+```
+
+`apps/api/.env`:
+```env
+# DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://nyx:nyx@localhost:5432/nyx"
+```
+
+**2. Start the PostgreSQL container** (from project root):
 ```bash
-# 1. Switch provider and .env (run from project root)
-bash scripts/use-pg.sh
-
-# 2. Start the PostgreSQL container
 docker compose -f docker-compose.pg.yml up -d
+```
 
-# 3. Push the schema (db:migrate doesn't work when switching provider)
+**3. Push the schema** (`db:migrate` doesn't work when switching provider):
+```bash
 cd apps/api && pnpm db:push
+```
 
-# 4. Seed
+**4. Seed:**
+```bash
 pnpm db:seed       # admin user
 pnpm db:seed-core  # optional: sample companies/branches
 ```
@@ -159,20 +176,11 @@ pnpm db:seed-core  # optional: sample companies/branches
 
 ### Switching back to SQLite
 
-```bash
-# From project root
-bash scripts/use-sqlite.sh
+Revert both files (uncomment SQLite lines, comment out PostgreSQL lines), then regenerate the client:
 
-# Regenerate the Prisma client
+```bash
 cd apps/api && pnpm db:generate
 ```
-
-### What the scripts do
-
-| Script | Effect |
-|---|---|
-| `scripts/use-pg.sh` | Sets `provider = "postgresql"` in `_base.prisma`, saves current `.env` as `.env.sqlite`, copies `.env.pg` to `.env` |
-| `scripts/use-sqlite.sh` | Restores `provider = "sqlite"` in `_base.prisma`, restores `.env` from `.env.sqlite` |
 
 The PostgreSQL container (`nyx-postgres`) persists data in a Docker volume (`nyx_nyx_pg_data`). Stop it with `docker compose -f docker-compose.pg.yml down` and remove the volume with `docker volume rm nyx_nyx_pg_data` when no longer needed.
 
