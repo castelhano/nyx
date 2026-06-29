@@ -9,8 +9,9 @@ import { useSidebar } from './sidebar-context'
 import { useTopbarActionsContext, type TopbarAction } from './topbar-actions-context'
 
 function ActionButton({ action }: { action: TopbarAction }) {
-  const Icon  = action.icon
-  const title = action.keybind ? `${action.label} (${action.keybind})` : action.label
+  const Icon     = action.icon
+  const iconOnly = action.size === 'icon'
+  const title    = action.keybind ? `${action.label} (${action.keybind})` : action.label
   return (
     <Button
       type={action.type ?? 'button'}
@@ -22,7 +23,7 @@ function ActionButton({ action }: { action: TopbarAction }) {
       title={title}
     >
       {Icon && <Icon className="w-3.5 h-3.5" />}
-      <span className="hidden md:inline">{action.label}</span>
+      {!iconOnly && <span className="hidden md:inline">{action.label}</span>}
     </Button>
   )
 }
@@ -32,11 +33,12 @@ export function Topbar() {
   const { theme, setTheme } = useTheme()
   const { actions } = useTopbarActionsContext()
 
-  const inline   = actions.filter((a) => !a.overflow)
-  const overflow = actions.filter((a) =>  a.overflow)
+  const startActions = actions.filter((a) => a.position === 'start' && !a.overflow)
+  const endInline    = actions.filter((a) => a.position !== 'start' && !a.overflow)
+  const overflow     = actions.filter((a) => a.overflow)
 
-  const mobilePrimary   = inline.filter((a) => a.primary !== false)
-  const mobileSecondary = [...inline.filter((a) => a.primary === false), ...overflow]
+  const mobilePrimary   = endInline.filter((a) => a.primary !== false)
+  const mobileSecondary = [...endInline.filter((a) => a.primary === false), ...overflow]
 
   return (
     <header className="flex h-12 shrink-0 items-center border-b border-border bg-background px-3 gap-2">
@@ -55,11 +57,21 @@ export function Topbar() {
       </button>
 
       {/* Center — page-injected actions */}
-      <div className="flex flex-1 items-center justify-end gap-2 pr-1">
+      <div className="flex flex-1 items-center gap-2 pr-1">
 
-        {/* Desktop: inline como botões + dropdown ⋯ para overflow */}
-        <div className="hidden md:flex items-center gap-2">
-          {inline.map((action, i) => <ActionButton key={i} action={action} />)}
+        {/* Start zone — left-aligned, separado do grupo principal */}
+        {startActions.length > 0 && (
+          <>
+            <div className="flex items-center gap-1">
+              {startActions.map((action, i) => <ActionButton key={i} action={action} />)}
+            </div>
+            <div className="w-px h-5 bg-border shrink-0" />
+          </>
+        )}
+
+        {/* End zone — desktop: inline + overflow dropdown */}
+        <div className="hidden md:flex flex-1 items-center justify-end gap-2">
+          {endInline.map((action, i) => <ActionButton key={i} action={action} />)}
 
           {overflow.length > 0 && (
             <Dropdown
@@ -85,7 +97,7 @@ export function Topbar() {
         </div>
 
         {/* Mobile: primários (ícone-only) + dropdown ⋯ para secundários e overflow */}
-        <div className="flex md:hidden items-center gap-2">
+        <div className="flex md:hidden flex-1 items-center justify-end gap-2">
           {mobilePrimary.map((action, i) => <ActionButton key={i} action={action} />)}
 
           {mobileSecondary.length > 0 && (

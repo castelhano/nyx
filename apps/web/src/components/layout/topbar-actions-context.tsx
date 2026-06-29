@@ -16,6 +16,8 @@ export interface TopbarAction {
   primary?:  boolean
   // overflow: sempre no dropdown ⋯, mesmo em desktop
   overflow?: boolean
+  // position: 'start' alinha à esquerda antes do separador; 'end' (padrão) agrupa à direita
+  position?: 'start' | 'end'
 }
 
 interface TopbarActionsContextValue {

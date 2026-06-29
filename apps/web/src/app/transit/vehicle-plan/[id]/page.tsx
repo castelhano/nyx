@@ -1198,61 +1198,95 @@ export default function VehiclePlanPage() {
   const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
     ? solverProgress.bestScenario.fleetCount - baselineSnapshot.fleetCount
     : null
+  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length
 
   useTopbarActions([
-    // edit controls toggle — icon only, disabled until at least one line is selected
+    // toggle barra de edição — sempre visível, alinhado à esquerda
     ...(!isNew ? [{
       label:    'Barra Edição',
       icon:     Icons.SlidersHorizontal,
-      size:     'sm' as const,
+      size:     'icon' as const,
       onClick:  () => setEditBarOpen(v => !v),
-      disabled: selectedLineIds.size === 0,
+      disabled: !editBarOpen && selectedLineIds.size === 0,
       variant:  (editBarOpen ? 'default' : 'ghost') as 'default' | 'ghost',
+      keybind:  'F9',
+      position: 'start' as const,
     }] : []),
-    // lines panel toggle
-    ...(!isNew ? [{
-      label:   'Linhas',
-      icon:    Icons.List,
-      onClick: () => setLinesPanelOpen(v => !v),
-    }] : []),
-    // parar: only while stream is open
-    ...(activeJobId && !isSolverDone ? [{
-      label:    'Parar',
-      icon:     Icons.Square,
-      onClick:  handleStop,
-      disabled: isPending,
-    }] : []),
-    // generate: show when idle or after solver stopped (done state)
-    ...((!activeJobId || isSolverDone) && canUpdate && status === 'DRAFT' ? [
+
+    // ── modo edição ────────────────────────────────────────────────────────────
+    ...(editBarOpen ? [
       {
+        label:    'Viagem',
+        icon:     Icons.Plus,
+        size:     'sm' as const,
+        variant:  'ghost' as const,
+        onClick:  () => setAddTripOpen(true),
+      },
+      {
+        label:    'Ajustar Ciclo',
+        icon:     Icons.Timer,
+        size:     'sm' as const,
+        onClick:  handleAdjustCycle,
+        disabled: isPending,
+      },
+      {
+        label:    pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
+        icon:     Icons.Save,
+        size:     'sm' as const,
+        onClick:  handleSavePendingWithConfirm,
+        disabled: isPending || pendingCount === 0,
+        keybind:  'Alt+G',
+      },
+      {
+        label:    'Limpar',
+        icon:     Icons.Undo2,
+        size:     'sm' as const,
+        onClick:  handleDiscardPendingWithConfirm,
+        disabled: isPending || pendingCount === 0,
+        variant:  'destructive' as const,
+        keybind:  'Alt+L',
+      },
+    ] : [
+    // ── modo normal ────────────────────────────────────────────────────────────
+      // lines panel toggle
+      ...(!isNew ? [{
+        label:   'Linhas',
+        icon:    Icons.List,
+        onClick: () => setLinesPanelOpen(v => !v),
+      }] : []),
+      // parar: only while stream is open
+      ...(activeJobId && !isSolverDone ? [{
+        label:    'Parar',
+        icon:     Icons.Square,
+        onClick:  handleStop,
+        disabled: isPending,
+      }] : []),
+      // generate
+      ...((!activeJobId || isSolverDone) && canUpdate && status === 'DRAFT' ? [{
         label:    isPending ? 'Gerando…' : 'Gerar',
         icon:     Icons.Play,
         onClick:  () => setGenerateModalOpen(true),
         disabled: isPending,
-      },
-    ] : []),
-    // activate
-    ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
-      {
+      }] : []),
+      // activate
+      ...(!activeJobId && canUpdate && status === 'DRAFT' ? [{
         label:    isPending ? 'Ativando…' : 'Ativar',
         icon:     Icons.CheckCircle,
         onClick:  handleActivate,
         disabled: isPending,
         overflow: true,
-      },
-    ] : []),
-    // delete
-    ...(!activeJobId && canUpdate && status === 'DRAFT' ? [
-      {
+      }] : []),
+      // delete
+      ...(!activeJobId && canUpdate && status === 'DRAFT' ? [{
         label:    'Excluir',
         icon:     Icons.Trash2,
         onClick:  handleDelete,
         disabled: isPending,
         variant:  'destructive' as const,
         overflow: true,
-      },
-    ] : []),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size, editBarOpen])
+      }] : []),
+    ]),
+  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, selectedLineIds.size, editBarOpen, pendingCount])
 
   // ── keyboard nav focus ────────────────────────────────────────────────────
 
@@ -1638,55 +1672,6 @@ export default function VehiclePlanPage() {
           </div>
         )}
       </div>
-
-      {/* edit action bar */}
-      {editBarOpen && plottedData && (
-        <div className="px-3 py-1 border-t border-border bg-muted/20 flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => setAddTripOpen(true)}
-            title="Adicionar viagem"
-            className="flex items-center justify-center h-7 w-7 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-          >
-            <Icons.Plus className="w-3.5 h-3.5" />
-          </button>
-
-          <div className="w-px h-4 bg-border mx-1 shrink-0" />
-
-          <button
-            type="button"
-            onClick={handleAdjustCycle}
-            disabled={isPending}
-            title="Ajustar duração das viagens ao ciclo configurado por sentido"
-            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
-          >
-            <Icons.Timer className="w-3.5 h-3.5 shrink-0" />
-            <span>Ajustar Ciclo</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSavePendingWithConfirm}
-            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
-            title={(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? `Salvar ${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
-            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:hover:bg-emerald-800/90 dark:text-emerald-50 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
-          >
-            <Icons.Save className="w-3.5 h-3.5 shrink-0" />
-            <span>{(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? ` (${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length})` : '(0)'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleDiscardPendingWithConfirm}
-            disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
-            title="Descartar todas as alterações pendentes"
-            className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
-          >
-            <Icons.Undo2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Limpar</span>
-          </button>
-        </div>
-      )}
 
       {/* gantt + lines panel */}
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">

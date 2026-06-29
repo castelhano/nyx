@@ -1559,15 +1559,20 @@ interface TopbarAction {
   form?:     string       // id of the form to submit
   disabled?: boolean
   variant?:  'default' | 'outline' | 'ghost' | 'destructive'
+  size?:     'sm' | 'default' | 'lg' | 'icon'  // 'icon' renders square button, no label
   keybind?:  string       // shortcut hint shown in button title (e.g. 'Alt+F9')
   primary?:  boolean      // mobile visibility — see Responsive rendering below
   overflow?: boolean      // always rendered in the ⋯ dropdown, even on desktop
+  position?: 'start' | 'end'  // 'start' pins to the left zone (before separator); default 'end'
 }
 ```
 
 ### Responsive rendering
 
-The topbar has three rendering tiers controlled by `primary` and `overflow`:
+The topbar center section has two zones separated by a vertical divider:
+
+- **Start zone** (`position: 'start'`): left-aligned, intended for context-toggle controls (e.g. an edit-mode toggle that is always visible). Rendered before the separator on both desktop and mobile.
+- **End zone** (`position: 'end'`, default): right-aligned, holds the main page actions. Subject to the `overflow` / `primary` tiers below.
 
 | Flag | Desktop | Mobile |
 |---|---|---|
@@ -1575,11 +1580,13 @@ The topbar has three rendering tiers controlled by `primary` and `overflow`:
 | `overflow: false`, `primary: false` | Inline button | In `⋯` dropdown |
 | `overflow: true` | In `⋯` dropdown | In `⋯` dropdown |
 
-**Desktop:** all non-overflow actions are rendered as inline buttons with icon + label. If any action has `overflow: true`, a `⋯` button appears at the end opening a `Dropdown` with those actions.
+**Desktop:** all non-overflow end-zone actions are rendered as inline buttons with icon + label. If any action has `overflow: true`, a `⋯` button appears at the end opening a `Dropdown` with those actions.
 
 **Mobile:** only `primary !== false` non-overflow actions are shown as icon-only inline buttons. A single `⋯` dropdown collects both `primary: false` non-overflow actions and all `overflow` actions.
 
 Use `overflow: true` for destructive or infrequently-used actions (e.g. "Delete", "Activate") that should not clutter the toolbar on any screen size.
+
+Use `size: 'icon'` for buttons that should render as a square icon-only button with no label on any screen size — suitable for toggle controls in the start zone.
 
 When `keybind` is set, the button's `title` attribute shows `"<label> (<keybind>)"` — a native tooltip shortcut hint without extra UI. The keybind string is display-only here; actual shortcut binding is done separately via `useShortcut()`.
 
