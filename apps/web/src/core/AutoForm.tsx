@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useForm, FormProvider } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
@@ -18,9 +18,10 @@ interface Props {
   onSubmit:        (data: Record<string, unknown>) => Promise<void>
   formId?:         string
   resetSignal?:    number
+  groupSlots?:     Record<string, ReactNode>
 }
 
-export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, onSubmit, formId, resetSignal }: Props) {
+export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, onSubmit, formId, resetSignal, groupSlots }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { coreRef }  = useKeywatch()
   const keybindGroup = useRef(`autoform-${resource}`)
@@ -184,7 +185,12 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
         ref={tabsRef}
         tabs={tabs.map((g) => ({
           label:      g.label,
-          content:    fieldGrid(g.fields, false),
+          content:    (
+            <>
+              {fieldGrid(g.fields, false)}
+              {groupSlots?.[g.label]}
+            </>
+          ),
           errorCount: g.fields.filter((f) => errors[f.name]).length || undefined,
         }))}
       />

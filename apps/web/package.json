@@ -20,6 +20,7 @@
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.76.0",
     "react-imask": "^7.6.1",
+    "recharts": "^3.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
