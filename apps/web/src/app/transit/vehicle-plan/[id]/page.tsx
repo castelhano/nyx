@@ -1750,6 +1750,53 @@ export default function VehiclePlanPage() {
       }
     }
 
+    // Compute next focus before applying state
+    let nextFocusId: string | null = null
+    if (focusedSegId) {
+      const deletedSegIds  = new Set(segRefs.map(r => r.id))
+      const newTripDels    = new Set([...pendingDeletes,         ...tripIds])
+      const newDrDels      = new Set([...pendingDeadrunDeletes,  ...deadrunIds])
+      for (const t of tempIds) deletedSegIds.add(t)  // pending-add blockTrip IDs
+
+      let foundBlock: typeof mergedPlottedData.blocks[0] | null = null
+      let focusedDep = 0
+      for (const block of mergedPlottedData.blocks) {
+        const bt = block.blockTrips.find(bt => bt.id === focusedSegId)
+        if (bt) { foundBlock = block; focusedDep = bt.trip.departureMinutes; break }
+        const dr = block.blockDeadruns.find(dr => `${dr.id}:dr` === focusedSegId)
+        if (dr) { foundBlock = block; focusedDep = dr.departureMinutes; break }
+      }
+
+      if (foundBlock) {
+        const remaining = [
+          ...foundBlock.blockTrips
+            .filter(bt => !deletedSegIds.has(bt.id) && !newTripDels.has(bt.trip.id))
+            .map(bt => ({ id: bt.id, dep: bt.trip.departureMinutes })),
+          ...foundBlock.blockDeadruns
+            .filter(dr => !deletedSegIds.has(`${dr.id}:dr`) && !newDrDels.has(dr.id))
+            .map(dr => ({ id: `${dr.id}:dr`, dep: dr.departureMinutes })),
+        ]
+
+        if (remaining.length > 0) {
+          nextFocusId = remaining.reduce((best, cur) =>
+            Math.abs(cur.dep - focusedDep) < Math.abs(best.dep - focusedDep) ? cur : best
+          ).id
+        } else {
+          const allOther = mergedPlottedData.blocks
+            .filter(b => b !== foundBlock)
+            .flatMap(b => b.blockTrips
+              .filter(bt => !newTripDels.has(bt.trip.id))
+              .map(bt => ({ id: bt.id, dep: bt.trip.departureMinutes }))
+            )
+          if (allOther.length > 0) {
+            nextFocusId = allOther.reduce((best, cur) =>
+              Math.abs(cur.dep - focusedDep) < Math.abs(best.dep - focusedDep) ? cur : best
+            ).id
+          }
+        }
+      }
+    }
+
     if (tempIds.length > 0)
       setPendingAdds(prev => prev.filter(a => !tempIds.includes(a._tempId)))
 
@@ -1771,6 +1818,7 @@ export default function VehiclePlanPage() {
       })
     }
 
+    setFocusedSegId(nextFocusId)
     setSelection(null)
   }, {
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
