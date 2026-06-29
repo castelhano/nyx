@@ -1048,6 +1048,34 @@ export default function VehiclePlanPage() {
     setPendingAdds(prev => [...prev, entry])
   }
 
+  function clearAllPending() {
+    setPendingChanges(new Map())
+    setPendingDeadrunChanges(new Map())
+    setPendingAdds([])
+    setPendingDeletes(new Set())
+    setPendingDeadrunDeletes(new Set())
+  }
+
+  async function handleToggleEditBar() {
+    if (editBarOpen && pendingCount > 0) {
+      const ok = await confirm({
+        title:        'Fechar modo de edição',
+        description:  'Existem alterações pendentes que serão descartadas.',
+        confirmLabel: 'Fechar e descartar',
+        variant:      'destructive',
+      })
+      if (!ok) return
+      clearAllPending()
+      setSelection(null)
+      setFocusedSegId(null)
+      setEditBarOpen(false)
+    } else if (!editBarOpen && selectedLineIds.size === 0) {
+      return
+    } else {
+      setEditBarOpen(v => !v)
+    }
+  }
+
   async function handleSavePendingWithConfirm() {
     if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
     const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size
@@ -1387,7 +1415,7 @@ export default function VehiclePlanPage() {
       label:    'Barra Edição',
       icon:     Icons.SlidersHorizontal,
       size:     'icon' as const,
-      onClick:  () => setEditBarOpen(v => !v),
+      onClick:  () => handleToggleEditBar(),
       disabled: !editBarOpen && selectedLineIds.size === 0,
       variant:  (editBarOpen ? 'default' : 'ghost') as 'default' | 'ghost',
       keybind:  'F9',
@@ -1487,7 +1515,22 @@ export default function VehiclePlanPage() {
 
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
-  useShortcut('alt+v', () => router.push('/transit/vehicle-plan'), {
+  useShortcut('alt+v', () => {
+    if (editBarOpen && pendingCount > 0) {
+      confirm({
+        title:        'Sair do modo de edição',
+        description:  'Existem alterações pendentes que serão descartadas ao sair.',
+        confirmLabel: 'Sair e descartar',
+        variant:      'destructive',
+      }).then(ok => {
+        if (!ok) return
+        clearAllPending()
+        router.push('/transit/vehicle-plan')
+      })
+    } else {
+      router.push('/transit/vehicle-plan')
+    }
+  }, {
     desc:    'Voltar',
     icon:    Icons.ArrowLeft,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
@@ -1514,10 +1557,7 @@ export default function VehiclePlanPage() {
     enabled: editBarOpen,
   })
 
-  useShortcut('f9', () => setEditBarOpen(v => {
-    if (!v && selectedLineIds.size === 0) return v
-    return !v
-  }), {
+  useShortcut('f9', () => handleToggleEditBar(), {
     desc:    'Exibir/ocultar barra de edição',
     icon:    Icons.SlidersHorizontal,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
