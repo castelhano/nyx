@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useShortcutContext } from '@/lib/keywatch'
 
 export interface ConfirmModalOptions {
   title:          string
@@ -36,6 +37,8 @@ export function ConfirmModal({
   const confirmRef                  = useRef<HTMLButtonElement>(null)
   const [remaining, setRemaining]   = useState(confirmDelay)
   const isLocked                    = remaining > 0
+
+  useShortcutContext('modal')
 
   useEffect(() => {
     if (!isLocked) confirmRef.current?.focus()
@@ -90,7 +93,7 @@ export function ConfirmModal({
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" tabIndex={-1} onClick={onCancel}>
             {cancelLabel}
           </Button>
           <Button ref={confirmRef} variant={variant} onClick={onConfirm} disabled={isLocked}>

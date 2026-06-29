@@ -6,6 +6,7 @@ import { Button }   from '@/components/ui/button'
 import { Icons }    from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
+import { useShortcutContext } from '@/lib/keywatch'
 import type { GanttBlock, LineMetrics } from '../views/vehicles.view'
 import { getTravelTime } from '../travel-time'
 
@@ -129,6 +130,7 @@ const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2
 
 export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAdd }: Props) {
   const { toast } = useToast()
+  useShortcutContext('modal')
 
   const [tripType,     setTripType]     = useState<'productive' | 'deadrun'>('productive')
   const [lineId,       setLineId]       = useState(plottedLines[0]?.lineId ?? '')
@@ -471,7 +473,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
 
         {/* actions */}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="cancel" size="sm" onClick={onClose}>
+          <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
             Cancelar
           </Button>
           <Button type="submit" size="sm" disabled={!canSubmit}>

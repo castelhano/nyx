@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { useShortcutContext } from '@/lib/keywatch'
 
 export interface SolverParams {
   mode:                       'quick' | 'expanded'
@@ -28,6 +29,7 @@ interface Props {
 
 export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onClose }: Props) {
   const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS)
+  useShortcutContext('modal')
 
   function set<K extends keyof SolverParams>(key: K, value: SolverParams[K]) {
     setParams(p => ({ ...p, [key]: value }))
@@ -151,7 +153,7 @@ export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onC
 
         {/* actions */}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="cancel" size="sm" onClick={onClose}>
+          <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
             Cancelar
           </Button>
           <Button type="submit" size="sm">

@@ -864,6 +864,33 @@ export default function VehiclePlanPage() {
     setPendingAdds(prev => [...prev, entry])
   }
 
+  async function handleSavePendingWithConfirm() {
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
+    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length
+    const ok = await confirm({
+      title:        'Salvar alterações',
+      description:  `Confirmar o salvamento de ${total} alteração(ões) pendente(s)?`,
+      confirmLabel: 'Salvar',
+      variant:      'safeConfirm',
+    })
+    if (!ok) return
+    await handleSavePending()
+  }
+
+  async function handleDiscardPendingWithConfirm() {
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
+    const ok = await confirm({
+      title:        'Descartar alterações',
+      description:  'Todas as alterações pendentes serão removidas.',
+      confirmLabel: 'Descartar',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    setPendingChanges(new Map())
+    setPendingDeadrunChanges(new Map())
+    setPendingAdds([])
+  }
+
   async function handleSavePending() {
     if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
     setIsPending(true)
@@ -1209,6 +1236,30 @@ export default function VehiclePlanPage() {
     origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
   })
 
+  useShortcut('alt+g', () => handleSavePendingWithConfirm(), {
+    desc:    'Salvar alterações pendentes',
+    icon:    Icons.Save,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('alt+l', () => handleDiscardPendingWithConfirm(), {
+    desc:    'Limpar alterações pendentes',
+    icon:    Icons.Undo2,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('f9', () => setEditBarOpen(v => {
+    if (!v && selectedLineIds.size === 0) return v
+    return !v
+  }), {
+    desc:    'Exibir/ocultar barra de edição',
+    icon:    Icons.SlidersHorizontal,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: !isNew,
+  })
+
   // ── render ─────────────────────────────────────────────────────────────────
 
   if (guardNode) return guardNode
@@ -1389,7 +1440,7 @@ export default function VehiclePlanPage() {
 
           <button
             type="button"
-            onClick={handleSavePending}
+            onClick={handleSavePendingWithConfirm}
             disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
             title={(pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length) > 0 ? `Salvar ${pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length} alteração(ões) pendente(s)` : 'Sem alterações pendentes'}
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-emerald-600 text-white hover:bg-emerald-700/90 dark:bg-emerald-800 dark:hover:bg-emerald-800/90 dark:text-emerald-50 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
@@ -1400,7 +1451,7 @@ export default function VehiclePlanPage() {
 
           <button
             type="button"
-            onClick={() => { setPendingChanges(new Map()); setPendingDeadrunChanges(new Map()); setPendingAdds([]) }}
+            onClick={handleDiscardPendingWithConfirm}
             disabled={isPending || (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0)}
             title="Descartar todas as alterações pendentes"
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"

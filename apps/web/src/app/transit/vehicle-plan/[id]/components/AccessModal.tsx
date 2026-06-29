@@ -5,6 +5,7 @@ import { useQuery }  from '@tanstack/react-query'
 import { Button }    from '@/components/ui/button'
 import { Icons }     from '@/lib/icons'
 import { apiFetch }  from '@/lib/auth'
+import { useShortcutContext } from '@/lib/keywatch'
 
 interface Depot {
   id:   string
@@ -20,6 +21,7 @@ interface Props {
 
 export function AccessModal({ title, onConfirm, onClose }: Props) {
   const [depotId, setDepotId] = useState('')
+  useShortcutContext('modal')
 
   const { data: depots = [], isLoading } = useQuery<Depot[]>({
     queryKey: ['transit', 'transit-locality', 'depots'],
@@ -72,7 +74,7 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
         </div>
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="cancel" size="sm" onClick={onClose}>
+          <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
             Cancelar
           </Button>
           <Button type="submit" size="sm" disabled={!depotId || isLoading}>

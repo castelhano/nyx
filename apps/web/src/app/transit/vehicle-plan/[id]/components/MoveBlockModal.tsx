@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { Button }            from '@/components/ui/button'
 import { Icons }             from '@/lib/icons'
+import { useShortcutContext } from '@/lib/keywatch'
 import type { GanttBlock, GanttBlockTrip } from '../views/vehicles.view'
 
 interface Props {
@@ -32,6 +33,7 @@ function findConflicts(moving: GanttBlockTrip[], targetBlock: GanttBlock): Gantt
 
 export function MoveBlockModal({ blockTrips, currentBlockId, blocks, onConfirm, onClose }: Props) {
   const [targetBlockId, setTargetBlockId] = useState('')
+  useShortcutContext('modal')
 
   const otherBlocks = blocks.filter(b => b.id !== currentBlockId)
   const isSingle    = blockTrips.length === 1
@@ -107,7 +109,7 @@ export function MoveBlockModal({ blockTrips, currentBlockId, blocks, onConfirm, 
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="cancel" size="sm" onClick={onClose}>
+          <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
             Cancelar
           </Button>
           <Button type="submit" size="sm" disabled={!targetBlockId || otherBlocks.length === 0 || conflicts.length > 0}>
