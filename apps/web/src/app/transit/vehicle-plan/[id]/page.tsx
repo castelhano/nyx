@@ -1222,13 +1222,16 @@ export default function VehiclePlanPage() {
         variant:  'ghost' as const,
         onClick:  () => setAddTripOpen(true),
       },
+      { label: '', separator: true },
       {
         label:    'Ajustar Ciclo',
         icon:     Icons.Timer,
         size:     'sm' as const,
         onClick:  handleAdjustCycle,
         disabled: isPending,
+        variant:  'ghost' as const,
       },
+      { label: '', separator: true },
       {
         label:    pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
         icon:     Icons.Save,

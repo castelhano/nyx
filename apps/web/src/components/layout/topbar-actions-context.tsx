@@ -18,6 +18,8 @@ export interface TopbarAction {
   overflow?: boolean
   // position: 'start' alinha à esquerda antes do separador; 'end' (padrão) agrupa à direita
   position?: 'start' | 'end'
+  // separator: renderiza um divisor vertical no lugar do botão (demais campos ignorados)
+  separator?: boolean
 }
 
 interface TopbarActionsContextValue {

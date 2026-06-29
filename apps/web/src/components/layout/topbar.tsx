@@ -71,7 +71,11 @@ export function Topbar() {
 
         {/* End zone — desktop: inline + overflow dropdown */}
         <div className="hidden md:flex flex-1 items-center justify-end gap-2">
-          {endInline.map((action, i) => <ActionButton key={i} action={action} />)}
+          {endInline.map((action, i) =>
+            action.separator
+              ? <div key={i} className="w-px h-5 bg-border shrink-0" />
+              : <ActionButton key={i} action={action} />
+          )}
 
           {overflow.length > 0 && (
             <Dropdown
