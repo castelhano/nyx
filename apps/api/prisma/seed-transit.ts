@@ -70,7 +70,7 @@ function biWindows(cycleMin: number) {
   const leg = Math.round((cycleMin - 15) / 2)
   return {
     OUTBOUND: [{ from: 0, to: 23, minutes: leg, intervalMinutes: 10 }],
-    INBOUND:  [{ from: 0, to: 23, minutes: leg, intervalMinutes: 5  }],
+    INBOUND:  [{ from: 0, to: 23, minutes: leg, intervalMinutes: 1  }],
   }
 }
 
