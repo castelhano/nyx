@@ -58,7 +58,8 @@ async function parseAndAggregate(files: File[]): Promise<Record<string, LineDema
       const direction = SENTIDO_MAP[item.sentido]
       if (!direction) continue   // SEM_SENTIDO — skip
 
-      const code = item.linha
+      const raw  = item.linha
+      const code = /^\d+$/.test(raw) ? String(parseInt(raw, 10)) : raw
       if (!accum[code])            accum[code] = {}
       if (!accum[code][direction]) accum[code][direction] = {}
 
@@ -144,7 +145,7 @@ export function DemandImportModal({ onClose, onApplied }: Props) {
         }
       }
 
-      newMatched.sort((a, b) => a.lineCode.localeCompare(b.lineCode))
+      newMatched.sort((a, b) => a.lineCode.localeCompare(b.lineCode, undefined, { numeric: true }))
       newUnmatched.sort()
       setMatched(newMatched)
       setUnmatched(newUnmatched)
