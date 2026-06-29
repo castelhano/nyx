@@ -1406,7 +1406,7 @@ export default function VehiclePlanPage() {
             className="flex items-center gap-1.5 h-7 px-2 rounded-sm border border-input bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:pointer-events-none text-xs cursor-pointer"
           >
             <Icons.Undo2 className="w-3.5 h-3.5 shrink-0" />
-            <span>Descartar</span>
+            <span>Limpar</span>
           </button>
         </div>
       )}
