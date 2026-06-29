@@ -29,6 +29,11 @@ const KeywatchContext = createContext<KeywatchContextValue>({
   currentContext: 'default',
 })
 
+// Acesso ao core fora da subárvore do Provider (ex: ConfirmProvider, montado
+// acima do AppLayout para sobreviver à ausência de KeywatchProvider em /login e no SSR)
+let activeCore: KeywatchCore | null = null
+export function getKeywatchCore(): KeywatchCore | null { return activeCore }
+
 interface KeywatchProviderProps {
   children:       React.ReactNode
   options?:       CoreOptions
@@ -90,6 +95,11 @@ export function KeywatchProvider({
   useEffect(() => {
     if (coreRef.current) coreRef.current.locked = isModalOpen
   }, [isModalOpen])
+
+  useEffect(() => {
+    activeCore = coreRef.current
+    return () => { activeCore = null }
+  }, [])
 
   return (
     <KeywatchContext.Provider value={{ coreRef, isModalOpen, openModal, closeModal, currentContext }}>
