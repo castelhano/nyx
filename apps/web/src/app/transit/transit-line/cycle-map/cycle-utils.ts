@@ -40,16 +40,12 @@ function quantile(sorted: number[], q: number): number {
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo)
 }
 
-export function markOutliers(clusters: DotCluster[], debugHour?: number): DotCluster[] {
+export function markOutliers(clusters: DotCluster[]): DotCluster[] {
   // collect individual trip values from active clusters for robust IQR
   const active   = clusters.filter(c => !c.isDisabled)
   const allVals  = active.flatMap(c => c.trips.map(t => t.cycleMinutes)).sort((a, b) => a - b)
 
-  const tag = debugHour !== undefined ? `[outlier h=${debugHour}]` : '[outlier]'
-  console.debug(tag, 'n_trips:', allVals.length, 'vals:', allVals)
-
   if (allVals.length < 4) {
-    console.debug(tag, '→ skipped (n < 4)')
     return clusters.map(c => ({ ...c, isOutlier: false }))
   }
 
@@ -59,17 +55,10 @@ export function markOutliers(clusters: DotCluster[], debugHour?: number): DotClu
   const lo  = q1 - 1.5 * iqr
   const hi  = q3 + 1.5 * iqr
 
-  console.debug(tag, `Q1=${q1.toFixed(1)} Q3=${q3.toFixed(1)} IQR=${iqr.toFixed(1)} → [${lo.toFixed(1)}, ${hi.toFixed(1)}]`)
-
   const result = clusters.map(c => ({
     ...c,
     isOutlier: !c.isDisabled && (c.minutes < lo || c.minutes > hi),
   }))
-
-  result.forEach(c => {
-    if (c.isOutlier) console.debug(tag, `  OUTLIER → cluster center=${c.minutes}min (${c.count} viagens)`)
-  })
-  console.debug(tag, 'clusters:', result.map(c => `${c.minutes}min×${c.count}${c.isOutlier ? ' [OUT]' : ''}`))
 
   return result
 }
@@ -88,7 +77,7 @@ export function buildHourClusters(
 
   const result = new Map<number, DotCluster[]>()
   for (const [h, ts] of byHour) {
-    result.set(h, markOutliers(clusterTrips(ts), h))
+    result.set(h, markOutliers(clusterTrips(ts)))
   }
   return result
 }

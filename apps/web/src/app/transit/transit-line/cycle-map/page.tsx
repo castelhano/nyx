@@ -54,12 +54,15 @@ export default function CycleMapPage() {
 
   const [csvData,        setCsvData]        = useState<CsvData | null>(null)
   const [linesMap,       setLinesMap]       = useState<Map<string, LineRecord>>(new Map())
+  const [savedLines,     setSavedLines]     = useState<Set<string>>(new Set())
   const [lineIndex,      setLineIndex]      = useState(0)
   const [includeEdited,  setIncludeEdited]  = useState(true)
   const [saving,         setSaving]         = useState(false)
   const [savingAll,      setSavingAll]      = useState(false)
   const [saveAllResult,  setSaveAllResult]  = useState<SaveAllResult | null>(null)
   const [dirStates,      setDirStates]      = useState<Map<Direction, DirState>>(new Map())
+
+  const poolLines  = csvData ? csvData.lines.filter(code => !savedLines.has(code)) : []
 
   // ──────────────── Topbar ──────────────────────────
 
@@ -77,17 +80,24 @@ export default function CycleMapPage() {
       onClick:  handleSaveAll,
       disabled: saving || savingAll,
       overflow: true,
+    }, {
+      label:   'Remover',
+      icon:    Icons.Trash2,
+      onClick: handleRemove,
+      disabled: saving || savingAll,
+      keybind: 'ALT+;',
     }] : []),
-    ...(csvData && csvData.lines.length > 1 ? [{
+    ...(csvData && poolLines.length > 1 ? [{
       label:   'Próxima',
       icon:    Icons.ArrowRight,
       onClick: advanceLine,
       variant: 'ghost' as const,
     }] : []),
-  ], [csvData, saving, savingAll, lineIndex])
+  ], [csvData, saving, savingAll, lineIndex, poolLines.length])
 
-  useShortcut('alt+g', handleSave,  { desc: 'Salvar e avançar linha', icon: Icons.Save })
-  useShortcut('alt+j', advanceLine, { desc: 'Próxima linha', icon: Icons.ArrowRight })
+  useShortcut('alt+g', handleSave,    { desc: 'Salvar e avançar linha', icon: Icons.Save })
+  useShortcut('alt+j', advanceLine,   { desc: 'Próxima linha',           icon: Icons.ArrowRight })
+  useShortcut('alt+;', handleRemove,  { desc: 'Remover do pool',         icon: Icons.Trash2 })
   useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar', icon: Icons.ArrowLeft, order: 2 })
 
   // ──────────────── CSV load ──────────────────────────
@@ -117,19 +127,19 @@ export default function CycleMapPage() {
 
       setCsvData(data)
       setLinesMap(map)
+      setSavedLines(new Set())
       setLineIndex(0)
-      loadLineData(data, 0, includeEdited, map)
+      loadLineData(data, data.lines[0], includeEdited, map)
     }
     reader.readAsText(file, 'latin1')
   }
 
   function loadLineData(
     data:        CsvData,
-    idx:         number,
+    lineCode:    string,
     withEdited:  boolean,
     map:         Map<string, LineRecord>,
   ) {
-    const lineCode = data.lines[idx]
     const dirMap   = data.byLine.get(lineCode)
     if (!dirMap) return
 
@@ -155,7 +165,7 @@ export default function CycleMapPage() {
   function toggleIncludeEdited() {
     if (!csvData) return
     const next     = !includeEdited
-    const lineCode = csvData.lines[lineIndex]
+    const lineCode = poolLines[lineIndex]
     const dirMap   = csvData.byLine.get(lineCode)
     setIncludeEdited(next)
     if (!dirMap) return
@@ -177,20 +187,36 @@ export default function CycleMapPage() {
   function advanceLine() {
     if (!csvData) return
     const next = lineIndex + 1
-    if (next >= csvData.lines.length) {
+    if (next >= poolLines.length) {
       toast.success('Todas as linhas foram processadas')
       router.push('/transit/transit-line')
       return
     }
     setLineIndex(next)
-    loadLineData(csvData, next, includeEdited, linesMap)
+    loadLineData(csvData, poolLines[next], includeEdited, linesMap)
+  }
+
+  // ──────────────── remove from pool ──────────────────────────
+
+  function handleRemove() {
+    if (!csvData) return
+    const lineCode = poolLines[lineIndex]
+    const newPool  = poolLines.filter(c => c !== lineCode)
+    setSavedLines(prev => new Set([...prev, lineCode]))
+    if (newPool.length === 0) {
+      router.push('/transit/transit-line')
+      return
+    }
+    const nextIdx = Math.min(lineIndex, newPool.length - 1)
+    setLineIndex(nextIdx)
+    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap)
   }
 
   // ──────────────── save ──────────────────────────
 
   async function handleSave() {
     if (!csvData || saving) return
-    const lineCode = csvData.lines[lineIndex]
+    const lineCode = poolLines[lineIndex]
     const lineRec  = linesMap.get(lineCode)
 
     if (!lineRec) {
@@ -218,7 +244,19 @@ export default function CycleMapPage() {
       }
 
       toast.success(`Linha ${lineCode} salva`)
-      advanceLine()
+
+      const newPool = poolLines.filter(c => c !== lineCode)
+      setSavedLines(prev => new Set([...prev, lineCode]))
+
+      if (newPool.length === 0) {
+        toast.success('Todas as linhas foram processadas')
+        router.push('/transit/transit-line')
+        return
+      }
+
+      const nextIdx = Math.min(lineIndex, newPool.length - 1)
+      setLineIndex(nextIdx)
+      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap)
     } finally {
       setSaving(false)
     }
@@ -233,8 +271,8 @@ export default function CycleMapPage() {
     const saved:  string[]                            = []
     const errors: Array<{ code: string; message: string }> = []
 
-    for (let i = 0; i < csvData.lines.length; i++) {
-      const lineCode = csvData.lines[i]
+    for (let i = 0; i < poolLines.length; i++) {
+      const lineCode = poolLines[i]
       const lineRec  = linesMap.get(lineCode)
 
       if (!lineRec) {
@@ -283,6 +321,12 @@ export default function CycleMapPage() {
     }
 
     setSavingAll(false)
+    setSavedLines(prev => {
+      const next = new Set(prev)
+      saved.forEach(code => next.add(code))
+      return next
+    })
+    setLineIndex(0)
     setSaveAllResult({ saved, errors })
   }
 
@@ -317,8 +361,8 @@ export default function CycleMapPage() {
 
   // ──────────────── render ──────────────────────────
 
-  const currentLine = csvData ? csvData.lines[lineIndex] : null
-  const totalLines  = csvData?.lines.length ?? 0
+  const currentLine = poolLines[lineIndex] ?? null
+  const totalLines  = poolLines.length
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -366,16 +410,19 @@ export default function CycleMapPage() {
                   onChange={e => {
                     const idx = Number(e.target.value)
                     setLineIndex(idx)
-                    loadLineData(csvData, idx, includeEdited, linesMap)
+                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap)
                   }}
                   size="sm"
                   className="w-36"
                 >
-                  {csvData.lines.map((code, i) => (
+                  {poolLines.map((code, i) => (
                     <option key={code} value={i}>{code}</option>
                   ))}
                 </Select>
-                <span className="text-xs text-muted-foreground">{lineIndex + 1} de {totalLines} no CSV</span>
+                <span className="text-xs text-muted-foreground">
+                  {lineIndex + 1} de {totalLines}
+                  {savedLines.size > 0 && ` · ${savedLines.size} salva${savedLines.size !== 1 ? 's' : ''}`}
+                </span>
               </div>
 
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
