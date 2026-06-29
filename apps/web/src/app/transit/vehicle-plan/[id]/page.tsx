@@ -14,6 +14,7 @@ import { useConfirm }         from '@/lib/confirm-context'
 import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
 import { GanttBoard }        from './components/GanttBoard'
+import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { LinesPanel }        from './components/LinesPanel'
 import { FrequencyPanel }    from './components/FrequencyPanel'
@@ -366,6 +367,9 @@ export default function VehiclePlanPage() {
   const [addTripOpen,       setAddTripOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
 
+  const ganttBoardRef    = useRef<GanttBoardHandle>(null)
+  const shiftAnchorRef   = useRef<string | null>(null)
+
   // Lines selection for display — checked lines are plotted immediately
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
 
@@ -508,6 +512,18 @@ export default function VehiclePlanPage() {
 
     return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
   }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds])
+
+  // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
+  const allTrips = useMemo(() => {
+    if (!mergedPlottedData) return [] as Array<{ segId: string; dep: number; direction: string }>
+    return mergedPlottedData.blocks.flatMap(block =>
+      block.blockTrips.map(bt => ({
+        segId:     bt.id,
+        dep:       bt.trip.departureMinutes,
+        direction: bt.trip.route.direction,
+      }))
+    ).sort((a, b) => a.dep - b.dep)
+  }, [mergedPlottedData])
 
   // Flat per-block item lists for keyboard navigation (trips + deadruns by dep)
   const navBlocks = useMemo(() => {
@@ -1234,7 +1250,12 @@ export default function VehiclePlanPage() {
   // ── keyboard nav focus ────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!editBarOpen) { setFocusedSegId(null); return }
+    if (!editBarOpen) {
+      setFocusedSegId(null)
+      setSelection(null)
+      shiftAnchorRef.current = null
+      return
+    }
     const first = navBlocks[0]
     if (first?.length) setFocusedSegId(first[0].segId)
   }, [editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1280,10 +1301,11 @@ export default function VehiclePlanPage() {
 
   useShortcut('←', () => {
     if (!focusedSegId) return
+    setSelection(null); shiftAnchorRef.current = null
     for (const block of navBlocks) {
       const idx = block.findIndex(i => i.segId === focusedSegId)
       if (idx > 0) { setFocusedSegId(block[idx - 1].segId); break }
-      if (idx === 0) break // first item of block — don't change block
+      if (idx === 0) break
     }
   }, {
     desc:    'Item anterior no bloco',
@@ -1294,10 +1316,11 @@ export default function VehiclePlanPage() {
 
   useShortcut('→', () => {
     if (!focusedSegId) return
+    setSelection(null); shiftAnchorRef.current = null
     for (const block of navBlocks) {
       const idx = block.findIndex(i => i.segId === focusedSegId)
       if (idx !== -1 && idx < block.length - 1) { setFocusedSegId(block[idx + 1].segId); break }
-      if (idx === block.length - 1) break // last item of block — don't change block
+      if (idx === block.length - 1) break
     }
   }, {
     desc:    'Próximo item no bloco',
@@ -1308,6 +1331,7 @@ export default function VehiclePlanPage() {
 
   useShortcut('↑', () => {
     if (!focusedSegId) return
+    setSelection(null); shiftAnchorRef.current = null
     for (let bi = 1; bi < navBlocks.length; bi++) {
       const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
       if (idx === -1) continue
@@ -1329,6 +1353,7 @@ export default function VehiclePlanPage() {
 
   useShortcut('↓', () => {
     if (!focusedSegId) return
+    setSelection(null); shiftAnchorRef.current = null
     for (let bi = 0; bi < navBlocks.length - 1; bi++) {
       const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
       if (idx === -1) continue
@@ -1344,6 +1369,112 @@ export default function VehiclePlanPage() {
   }, {
     desc:    'Próximo bloco (viagem mais próxima)',
     icon:    Icons.ArrowDown,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('shift+←', () => {
+    if (!focusedSegId) return
+    if (!shiftAnchorRef.current) shiftAnchorRef.current = focusedSegId
+
+    let nextFocus = focusedSegId
+    for (const block of navBlocks) {
+      const idx = block.findIndex(i => i.segId === focusedSegId)
+      if (idx > 0)   { nextFocus = block[idx - 1].segId; break }
+      if (idx === 0) break
+    }
+    setFocusedSegId(nextFocus)
+
+    const segs   = ganttBoardRef.current?.getSegments() ?? []
+    const anchor = segs.find(s => s.id === shiftAnchorRef.current!)
+    const target = segs.find(s => s.id === nextFocus)
+    if (!anchor || !target) return
+    if (anchor.id === target.id) {
+      setSelection({ type: 'trip', segment: anchor })
+    } else if (anchor.rowId === target.rowId) {
+      const rowId     = anchor.rowId
+      const spanStart = Math.min(anchor.startMinute, target.startMinute)
+      const spanEnd   = Math.max(anchor.endMinute,   target.endMinute)
+      setSelection({
+        type:     'interval',
+        rowId,
+        from:     anchor,
+        to:       target,
+        segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
+      })
+    }
+  }, {
+    desc:    'Selecionar intervalo (retrair)',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+    display: false,
+  })
+
+  useShortcut('shift+→', () => {
+    if (!focusedSegId) return
+    if (!shiftAnchorRef.current) shiftAnchorRef.current = focusedSegId
+
+    let nextFocus = focusedSegId
+    for (const block of navBlocks) {
+      const idx = block.findIndex(i => i.segId === focusedSegId)
+      if (idx !== -1 && idx < block.length - 1) { nextFocus = block[idx + 1].segId; break }
+      if (idx === block.length - 1)              break
+    }
+    setFocusedSegId(nextFocus)
+
+    const segs   = ganttBoardRef.current?.getSegments() ?? []
+    const anchor = segs.find(s => s.id === shiftAnchorRef.current!)
+    const target = segs.find(s => s.id === nextFocus)
+    if (!anchor || !target) return
+    if (anchor.id === target.id) {
+      setSelection({ type: 'trip', segment: anchor })
+    } else if (anchor.rowId === target.rowId) {
+      const rowId     = anchor.rowId
+      const spanStart = Math.min(anchor.startMinute, target.startMinute)
+      const spanEnd   = Math.max(anchor.endMinute,   target.endMinute)
+      setSelection({
+        type:     'interval',
+        rowId,
+        from:     anchor,
+        to:       target,
+        segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
+      })
+    }
+  }, {
+    desc:    'Selecionar intervalo (expandir)',
+    icon:    Icons.ArrowRight,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+    display: false,
+  })
+
+  useShortcut('pagedown', () => {
+    if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (curIdx === -1) return
+    const dir = allTrips[curIdx].direction
+    for (let i = curIdx + 1; i < allTrips.length; i++) {
+      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    }
+  }, {
+    desc:    'Próxima viagem mesmo sentido',
+    icon:    Icons.ArrowDown,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('pageup', () => {
+    if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (curIdx === -1) return
+    const dir = allTrips[curIdx].direction
+    for (let i = curIdx - 1; i >= 0; i--) {
+      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    }
+  }, {
+    desc:    'Viagem anterior mesmo sentido',
+    icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen,
   })
@@ -1557,6 +1688,7 @@ export default function VehiclePlanPage() {
             {mergedPlottedData ? (
               mergedPlottedData.blocks.length > 0 ? (
                 <GanttBoard
+                  ref={ganttBoardRef}
                   data={mergedPlottedData}
                   onViewportChange={setGanttVp}
                   selection={selection}

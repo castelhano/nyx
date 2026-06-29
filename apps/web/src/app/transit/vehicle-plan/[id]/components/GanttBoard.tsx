@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { useShortcut } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
@@ -11,6 +11,11 @@ import { SegmentTooltip }     from './SegmentTooltip'
 import { BlockDetailPopover } from './BlockDetailPopover'
 import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
 import type { ViewportSnapshot, Selection, GanttActionSpec } from '../engine/gantt.types'
+import type { LayoutSegment } from '../engine/layout/layout.types'
+
+export interface GanttBoardHandle {
+  getSegments: () => LayoutSegment[]
+}
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
 export const LABEL_WIDTH  = 160  // px — matches RowList width
@@ -76,10 +81,17 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
   return { ...sel, from: freshFrom, to: freshTo, segments: freshSegments }
 }
 
-export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId }: Props) {
+export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoard(
+  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId }: Props,
+  ref,
+) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
   const containerRef          = useRef<HTMLDivElement>(null)
   const engineRef             = useRef<GanttEngine | null>(null)
+
+  useImperativeHandle(ref, () => ({
+    getSegments: () => engineRef.current?.getLayoutSegments() ?? [],
+  }), [])
   const onViewportChangeRef   = useRef(onViewportChange)
   const onSelectionChangeRef  = useRef(onSelectionChange)
   const actionSpecRef         = useRef(actionSpec)
@@ -378,4 +390,4 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
 
     </div>
   )
-}
+})
