@@ -986,7 +986,6 @@ export default function VehiclePlanPage() {
       }
       case 'shrink': {
         if (marked.arr - marked.dep <= 1) return
-        if (prevProd && marked.dep - prevProd.arr <= 1) return
         if (!prevProd && itemBefore?.kind === 'deadrun')
           setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
         setTrip(tripId, marked.dep, marked.arr - 1)
@@ -1098,15 +1097,11 @@ export default function VehiclePlanPage() {
       variant:      'destructive',
     })
     if (!ok) return
-    setPendingChanges(new Map())
-    setPendingDeadrunChanges(new Map())
-    setPendingAdds([])
-    setPendingDeletes(new Set())
-    setPendingDeadrunDeletes(new Set())
+    clearAllPending()
   }
 
   async function handleSavePending() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
     setIsPending(true)
     try {
       // Save trip patches
