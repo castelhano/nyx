@@ -354,6 +354,8 @@ export default function VehiclePlanPage() {
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
   const [pendingDeadrunChanges, setPendingDeadrunChanges] = useState<Map<string, DeadrunPatch>>(new Map())
   const [pendingAdds,           setPendingAdds]           = useState<PendingAddEntry[]>([])
+  const [pendingDeletes,        setPendingDeletes]        = useState<Set<string>>(new Set())
+  const [pendingDeadrunDeletes, setPendingDeadrunDeletes] = useState<Set<string>>(new Set())
   const [isPending,             setIsPending]             = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
@@ -411,7 +413,7 @@ export default function VehiclePlanPage() {
   // Merges pending local overrides and additions into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return plottedData
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return plottedData
 
     const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
     let extraBlockCount  = 0
@@ -422,7 +424,7 @@ export default function VehiclePlanPage() {
       return {
         ...b,
         blockTrips: [
-          ...b.blockTrips.map(bt => {
+          ...b.blockTrips.filter(bt => !pendingDeletes.has(bt.trip.id)).map(bt => {
             const patch = pendingChanges.get(bt.trip.id)
             if (!patch) return bt
             return { ...bt, trip: { ...bt.trip, ...patch } }
@@ -445,7 +447,7 @@ export default function VehiclePlanPage() {
           })),
         ],
         blockDeadruns: [
-          ...b.blockDeadruns.map(dr => {
+          ...b.blockDeadruns.filter(dr => !pendingDeadrunDeletes.has(dr.id)).map(dr => {
             const patch = pendingDeadrunChanges.get(dr.id)
             if (!patch) return dr
             return { ...dr, ...patch }
@@ -511,7 +513,7 @@ export default function VehiclePlanPage() {
       })
 
     return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
-  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds])
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
   const allTrips = useMemo(() => {
@@ -1047,8 +1049,8 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
-    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
+    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size
     const ok = await confirm({
       title:        'Salvar alterações',
       description:  `Confirmar o salvamento de ${total} alteração(ões) pendente(s)?`,
@@ -1060,7 +1062,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDiscardPendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
     const ok = await confirm({
       title:        'Descartar alterações',
       description:  'Todas as alterações pendentes serão removidas.',
@@ -1071,6 +1073,8 @@ export default function VehiclePlanPage() {
     setPendingChanges(new Map())
     setPendingDeadrunChanges(new Map())
     setPendingAdds([])
+    setPendingDeletes(new Set())
+    setPendingDeadrunDeletes(new Set())
   }
 
   async function handleSavePending() {
@@ -1105,6 +1109,32 @@ export default function VehiclePlanPage() {
             return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
               method: 'PATCH',
               body:   JSON.stringify({ updates }),
+            })]
+          }),
+        )
+      }
+
+      // Delete pending-deleted trips
+      if (pendingDeletes.size > 0) {
+        await Promise.all(
+          Array.from(pendingDeletes).map(tripId =>
+            apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+          ),
+        )
+      }
+
+      // Delete pending-deleted deadruns grouped by block
+      if (pendingDeadrunDeletes.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const ids = block.blockDeadruns
+              .filter(dr => pendingDeadrunDeletes.has(dr.id))
+              .map(dr => dr.id)
+            if (ids.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
+              method:  'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ ids }),
             })]
           }),
         )
@@ -1152,6 +1182,8 @@ export default function VehiclePlanPage() {
       setPendingChanges(new Map())
       setPendingDeadrunChanges(new Map())
       setPendingAdds([])
+      setPendingDeletes(new Set())
+      setPendingDeadrunDeletes(new Set())
       await refetchGantt()
       toast.success('Alterações salvas')
     } catch (err) {
@@ -1347,7 +1379,7 @@ export default function VehiclePlanPage() {
   const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
     ? solverProgress.bestScenario.fleetCount - baselineSnapshot.fleetCount
     : null
-  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length
+  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size
 
   useTopbarActions([
     // toggle barra de edição — sempre visível, alinhado à esquerda
@@ -1675,55 +1707,75 @@ export default function VehiclePlanPage() {
   // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
   const isTripFocused = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
 
-  useShortcut('+', () => handleTripTimingOp('grow'), {
-    desc: 'Crescer ciclo + empurrar posteriores',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-  })
+  useShortcut('+',              () => handleTripTimingOp('grow'),      { enabled: isTripFocused, display: false })
+  useShortcut('-',              () => handleTripTimingOp('shrink'),    { enabled: isTripFocused, display: false })
+  useShortcut(' ',              () => handleTripTimingOp('push'),      { enabled: isTripFocused, display: false, preventDefault: true })
+  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { enabled: isTripFocused, display: false, preventDefault: true })
+  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { enabled: isTripFocused, display: false })
+  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ enabled: isTripFocused, display: false })
+  useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
+  useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
 
-  useShortcut('-', () => handleTripTimingOp('shrink'), {
-    desc: 'Encolher ciclo + puxar posteriores',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-  })
+  useShortcut('delete', () => {
+    if (!mergedPlottedData) return
 
-  useShortcut(' ', () => handleTripTimingOp('push'), {
-    desc: 'Avançar viagem + empurrar posteriores',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-    preventDefault: true,
-  })
+    // Build list of segment references: prefer active selection, fall back to focusedSegId
+    type SegRef = { id: string; isDeadhead: boolean }
+    let segRefs: SegRef[] = []
+    if (selection) {
+      const segs = selection.type === 'trip' ? [selection.segment] : selection.segments
+      segRefs = segs.map(s => ({ id: s.id, isDeadhead: s.isDeadhead }))
+    } else if (focusedSegId) {
+      segRefs = [{ id: focusedSegId, isDeadhead: focusedSegId.endsWith(':dr') }]
+    }
+    if (segRefs.length === 0) return
 
-  useShortcut('backspace', () => handleTripTimingOp('pull'), {
-    desc: 'Atrasar viagem + puxar posteriores',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-    preventDefault: true,
-  })
+    const tripIds:    string[] = []
+    const tempIds:    string[] = []
+    const deadrunIds: string[] = []
 
-  useShortcut('shift++', () => handleTripTimingOp('growOnly'), {
-    desc: 'Crescer ciclo (sem propagar)',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-  })
+    for (const { id, isDeadhead } of segRefs) {
+      if (isDeadhead) {
+        deadrunIds.push(id.replace(/:dr$/, ''))
+      } else {
+        for (const block of mergedPlottedData.blocks) {
+          const bt = block.blockTrips.find(bt => bt.id === id)
+          if (bt) {
+            const isTemp = pendingAdds.some(a => a._kind === 'trip' && a._tempId === bt.id)
+            if (isTemp) tempIds.push(bt.id)
+            else        tripIds.push(bt.trip.id)
+            break
+          }
+        }
+      }
+    }
 
-  useShortcut('shift+-', () => handleTripTimingOp('shrinkOnly'), {
-    desc: 'Encolher ciclo (sem propagar)',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-  })
+    if (tempIds.length > 0)
+      setPendingAdds(prev => prev.filter(a => !tempIds.includes(a._tempId)))
 
-  useShortcut('shift+ ', () => handleTripTimingOp('pushOnly'), {
-    desc: 'Avançar viagem (sem propagar)',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
-    preventDefault: true,
-  })
+    if (tripIds.length > 0) {
+      setPendingDeletes(prev => new Set([...prev, ...tripIds]))
+      setPendingChanges(prev => {
+        const next = new Map(prev)
+        for (const tid of tripIds) next.delete(tid)
+        return next
+      })
+    }
 
-  useShortcut('shift+backspace', () => handleTripTimingOp('pullOnly'), {
-    desc: 'Atrasar viagem (sem propagar)',
-    origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: isTripFocused,
+    if (deadrunIds.length > 0) {
+      setPendingDeadrunDeletes(prev => new Set([...prev, ...deadrunIds]))
+      setPendingDeadrunChanges(prev => {
+        const next = new Map(prev)
+        for (const did of deadrunIds) next.delete(did)
+        return next
+      })
+    }
+
+    setSelection(null)
+  }, {
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && (!!selection || !!focusedSegId),
+    display: false,
     preventDefault: true,
   })
 
@@ -1919,7 +1971,7 @@ export default function VehiclePlanPage() {
           </div>
 
           {freqPanelOpen && plottedData && (
-            <FrequencyPanel data={plottedData} vp={ganttVp} />
+            <FrequencyPanel data={mergedPlottedData ?? plottedData} vp={ganttVp} />
           )}
         </div>
 
