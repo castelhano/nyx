@@ -29,6 +29,7 @@ export class GanttEngine {
   private segments:      LayoutSegment[] = []
   private hoveredSeg:    string | null   = null
   private selectedSegIds: Set<string>   = new Set()
+  private focusedSegId:  string | null  = null
 
   private onStateChange?: (state: EngineState) => void
   private onSegmentClickCb?: (seg: LayoutSegment, pos: Point) => void
@@ -89,6 +90,11 @@ export class GanttEngine {
     this.requestDraw()
   }
 
+  setFocusedSegId(id: string | null): void {
+    this.focusedSegId = id
+    this.requestDraw()
+  }
+
   getLayoutSegments(): LayoutSegment[] {
     return this.segments
   }
@@ -142,7 +148,7 @@ export class GanttEngine {
   // ── private ────────────────────────────────────────────────────────────────
 
   private draw(): void {
-    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds)
+    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds, this.focusedSegId)
     this.hitTester.build(this.segments, this.viewport, this.layoutRows)
   }
 

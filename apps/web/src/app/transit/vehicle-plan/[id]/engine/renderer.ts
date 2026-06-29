@@ -22,18 +22,19 @@ export class Renderer {
   }
 
   render(
-    viewport:      Viewport,
-    rows:          LayoutRow[],
-    segments:      LayoutSegment[],
-    hoveredSegId:  string | null,
+    viewport:       Viewport,
+    rows:           LayoutRow[],
+    segments:       LayoutSegment[],
+    hoveredSegId:   string | null,
     selectedSegIds: Set<string> = EMPTY_SET,
+    focusedSegId:   string | null = null,
   ): void {
     const { ctx } = this
     ctx.clearRect(0, 0, viewport.width, viewport.height)
     this.drawRowBands(viewport, rows)
     this.drawTimeGrid(viewport)
     this.drawDayBoundaries(viewport)
-    this.drawSegments(viewport, rows, segments, hoveredSegId, selectedSegIds)
+    this.drawSegments(viewport, rows, segments, hoveredSegId, selectedSegIds, focusedSegId)
   }
 
   private drawDayBoundaries(viewport: Viewport): void {
@@ -86,11 +87,12 @@ export class Renderer {
   }
 
   private drawSegments(
-    viewport:      Viewport,
-    rows:          LayoutRow[],
-    segments:      LayoutSegment[],
-    hoveredSegId:  string | null,
+    viewport:       Viewport,
+    rows:           LayoutRow[],
+    segments:       LayoutSegment[],
+    hoveredSegId:   string | null,
     selectedSegIds: Set<string>,
+    focusedSegId:   string | null,
   ): void {
     const { ctx }    = this
     const rowMap     = new Map(rows.map((r) => [r.id, r]))
@@ -101,6 +103,7 @@ export class Renderer {
     // collect selected rects for the ring pass and locked positions for the dot pass
     const rings: Array<{ x: number; y: number; w: number; h: number }> = []
     const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
+    let focusRect: { x: number; y: number; w: number; h: number } | null = null
 
     for (const seg of segments) {
       if (!viewport.isTimeVisible(seg.startMinute, seg.endMinute)) continue
@@ -144,6 +147,7 @@ export class Renderer {
       }
 
       if (isSelected) rings.push({ x, y, w, h })
+      if (seg.id === focusedSegId && !isSelected) focusRect = { x, y, w, h }
 
       if (seg.locked && !seg.isDeadhead && w > LOCK_DOT_MIN_WIDTH) {
         dots.push({
@@ -163,6 +167,15 @@ export class Renderer {
         ctx.roundRect(x, y, w, h, SEG_RADIUS)
         ctx.stroke()
       }
+    }
+
+    // focus ring pass: keyboard-nav highlight — same ring, no dimming
+    if (focusRect) {
+      ctx.strokeStyle = SELECTION_RING_COLOR
+      ctx.lineWidth   = SELECTION_RING_WIDTH
+      ctx.beginPath()
+      ctx.roundRect(focusRect.x, focusRect.y, focusRect.w, focusRect.h, SEG_RADIUS)
+      ctx.stroke()
     }
 
     // dot pass: lock indicator (slate-900, avoids palette color conflicts)

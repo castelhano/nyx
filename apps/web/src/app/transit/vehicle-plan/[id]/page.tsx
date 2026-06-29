@@ -364,6 +364,7 @@ export default function VehiclePlanPage() {
   const [baselineSnapshot,  setBaselineSnapshot]  = useState<SolverBaseline | null>(null)
   const [editBarOpen,       setEditBarOpen]       = useState(false)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
+  const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
 
   // Lines selection for display — checked lines are plotted immediately
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
@@ -507,6 +508,15 @@ export default function VehiclePlanPage() {
 
     return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
   }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds])
+
+  // Flat per-block item lists for keyboard navigation (trips + deadruns by dep)
+  const navBlocks = useMemo(() => {
+    if (!mergedPlottedData) return [] as Array<Array<{ segId: string; dep: number }>>
+    return mergedPlottedData.blocks.map(block => [
+      ...block.blockTrips.map(bt   => ({ segId: bt.id,           dep: bt.trip.departureMinutes })),
+      ...block.blockDeadruns.map(dr => ({ segId: `${dr.id}:dr`,  dep: dr.departureMinutes })),
+    ].sort((a, b) => a.dep - b.dep))
+  }, [mergedPlottedData])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -1221,6 +1231,14 @@ export default function VehiclePlanPage() {
     ] : []),
   ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, linesPanelOpen, planLines.length, selectedLineIds.size, editBarOpen])
 
+  // ── keyboard nav focus ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!editBarOpen) { setFocusedSegId(null); return }
+    const first = navBlocks[0]
+    if (first?.length) setFocusedSegId(first[0].segId)
+  }, [editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── shortcuts ─────────────────────────────────────────────────────────────
 
   useShortcut('alt+v', () => router.push('/transit/vehicle-plan'), {
@@ -1258,6 +1276,76 @@ export default function VehiclePlanPage() {
     icon:    Icons.SlidersHorizontal,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: !isNew,
+  })
+
+  useShortcut('←', () => {
+    if (!focusedSegId) return
+    for (const block of navBlocks) {
+      const idx = block.findIndex(i => i.segId === focusedSegId)
+      if (idx > 0) { setFocusedSegId(block[idx - 1].segId); break }
+      if (idx === 0) break // first item of block — don't change block
+    }
+  }, {
+    desc:    'Item anterior no bloco',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('→', () => {
+    if (!focusedSegId) return
+    for (const block of navBlocks) {
+      const idx = block.findIndex(i => i.segId === focusedSegId)
+      if (idx !== -1 && idx < block.length - 1) { setFocusedSegId(block[idx + 1].segId); break }
+      if (idx === block.length - 1) break // last item of block — don't change block
+    }
+  }, {
+    desc:    'Próximo item no bloco',
+    icon:    Icons.ArrowRight,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('↑', () => {
+    if (!focusedSegId) return
+    for (let bi = 1; bi < navBlocks.length; bi++) {
+      const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
+      if (idx === -1) continue
+      const curDep = navBlocks[bi][idx].dep
+      const prev   = navBlocks[bi - 1]
+      if (!prev.length) break
+      const nearest = prev.reduce((best, item) =>
+        Math.abs(item.dep - curDep) < Math.abs(best.dep - curDep) ? item : best
+      )
+      setFocusedSegId(nearest.segId)
+      break
+    }
+  }, {
+    desc:    'Bloco anterior (viagem mais próxima)',
+    icon:    Icons.ArrowUp,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+  })
+
+  useShortcut('↓', () => {
+    if (!focusedSegId) return
+    for (let bi = 0; bi < navBlocks.length - 1; bi++) {
+      const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
+      if (idx === -1) continue
+      const curDep = navBlocks[bi][idx].dep
+      const next   = navBlocks[bi + 1]
+      if (!next.length) break
+      const nearest = next.reduce((best, item) =>
+        Math.abs(item.dep - curDep) < Math.abs(best.dep - curDep) ? item : best
+      )
+      setFocusedSegId(nearest.segId)
+      break
+    }
+  }, {
+    desc:    'Próximo bloco (viagem mais próxima)',
+    icon:    Icons.ArrowDown,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
   })
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -1475,6 +1563,7 @@ export default function VehiclePlanPage() {
                   onSelectionChange={setSelection}
                   actionSpec={vehiclesActionSpec}
                   onBlockUpdate={() => refetchGantt()}
+                  focusedSegId={editBarOpen ? focusedSegId : null}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

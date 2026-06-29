@@ -22,6 +22,7 @@ interface Props {
   onSelectionChange?: (sel: Selection | null) => void
   actionSpec?:        GanttActionSpec<VehiclePlanGanttData>
   onBlockUpdate?:     () => void
+  focusedSegId?:      string | null
 }
 
 interface TooltipState {
@@ -75,7 +76,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
   return { ...sel, from: freshFrom, to: freshTo, segments: freshSegments }
 }
 
-export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate }: Props) {
+export function GanttBoard({ data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId }: Props) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
   const containerRef          = useRef<HTMLDivElement>(null)
   const engineRef             = useRef<GanttEngine | null>(null)
@@ -203,6 +204,48 @@ export function GanttBoard({ data, onViewportChange, selection, onSelectionChang
     )
     engine.setSelectedSegIds(ids)
   }, [selection])
+
+  // ── sync focused segment (keyboard nav) ────────────────────────────────────
+
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine) return
+
+    if (focusedSegId) {
+      const seg = engine.getLayoutSegments().find(s => s.id === focusedSegId)
+      if (seg) {
+        const row = engine.getLayoutRows().find(r => r.id === seg.rowId)
+        const vp  = engine.viewport
+        let scrolled = false
+
+        const segStartX = (seg.startMinute - vp.dayStartMinute) * vp.pixelsPerMinute
+        const segEndX   = (seg.endMinute   - vp.dayStartMinute) * vp.pixelsPerMinute
+        const MARGIN_X  = 60
+        if (segStartX < vp.scrollX + MARGIN_X) {
+          vp.scrollXTo(segStartX - MARGIN_X)
+          scrolled = true
+        } else if (segEndX > vp.scrollX + vp.width - MARGIN_X) {
+          vp.scrollXTo(segEndX - vp.width + MARGIN_X)
+          scrolled = true
+        }
+
+        if (row) {
+          const MARGIN_Y = 8
+          if (row.y < vp.scrollY + MARGIN_Y) {
+            vp.scrollTo(row.y - MARGIN_Y)
+            scrolled = true
+          } else if (row.y + row.height > vp.scrollY + vp.height - MARGIN_Y) {
+            vp.scrollTo(row.y + row.height - vp.height + MARGIN_Y)
+            scrolled = true
+          }
+        }
+
+        if (scrolled) engine.notify()
+      }
+    }
+
+    engine.setFocusedSegId(focusedSegId ?? null)
+  }, [focusedSegId])
 
   // ── load view when data changes ─────────────────────────────────────────────
 
