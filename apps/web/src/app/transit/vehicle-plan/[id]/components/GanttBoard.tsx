@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { useShortcut } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
@@ -9,8 +9,9 @@ import { TimeRuler }          from './TimeRuler'
 import { RowList }            from './RowList'
 import { SegmentTooltip }     from './SegmentTooltip'
 import { BlockDetailPopover } from './BlockDetailPopover'
+import { BlockSelectionHint } from './BlockSelectionHint'
 import type { LayoutRow, LayoutSegment } from '../engine/layout/layout.types'
-import type { ViewportSnapshot, Selection, GanttActionSpec } from '../engine/gantt.types'
+import type { ViewportSnapshot, Selection, GanttActionSpec, RowHintEntry } from '../engine/gantt.types'
 
 export interface GanttBoardHandle {
   getSegments: () => LayoutSegment[]
@@ -19,6 +20,8 @@ export interface GanttBoardHandle {
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
 export const LABEL_WIDTH  = 160  // px — matches RowList width
+
+const EMPTY_HINTS: RowHintEntry[] = []
 
 interface Props {
   data:               VehiclePlanGanttData
@@ -29,6 +32,7 @@ interface Props {
   onBlockUpdate?:     () => void
   focusedSegId?:      string | null
   moveTargetBlockId?: string | null
+  moveTargetHints?:   RowHintEntry[]
 }
 
 interface TooltipState {
@@ -83,7 +87,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
 }
 
 export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoard(
-  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId }: Props,
+  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS }: Props,
   ref,
 ) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
@@ -356,6 +360,13 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
     setBlockDetail({ block, screenY, screenX })
   }
 
+  const moveTargetRect = useMemo(() => {
+    if (!moveTargetBlockId) return null
+    const row = layoutRows.find(r => r.id === moveTargetBlockId)
+    if (!row) return null
+    return { x: 0, y: row.y - vp.scrollY, width: vp.width, height: row.height }
+  }, [moveTargetBlockId, layoutRows, vp.scrollY, vp.width])
+
   // ── render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -398,6 +409,10 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
               containerH={canvasH}
               headway={tooltip.headway}
             />
+          )}
+
+          {moveTargetRect && (
+            <BlockSelectionHint rect={moveTargetRect} hints={moveTargetHints} />
           )}
         </div>
       </div>

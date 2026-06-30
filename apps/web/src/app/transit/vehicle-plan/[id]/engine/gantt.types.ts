@@ -84,3 +84,10 @@ export interface GanttActionSpec<TData = unknown> {
     onClose:   () => void,
   ): ActionItem[]
 }
+
+// ── row-targeted shortcut hints (e.g. move-target row) ──────────────────────────
+
+export interface RowHintEntry {
+  keys:  string[]
+  label: string
+}

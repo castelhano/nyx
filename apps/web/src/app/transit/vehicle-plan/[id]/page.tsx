@@ -28,7 +28,7 @@ import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun } from './views/vehicles.view'
 import { resolveCycleWindow }                            from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
-import type { ViewportSnapshot, Selection } from './engine/gantt.types'
+import type { ViewportSnapshot, Selection, RowHintEntry } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
 import { getTravelTime }             from './travel-time'
 
@@ -586,6 +586,11 @@ export default function VehiclePlanPage() {
 
   // Reset move target whenever selection changes
   useEffect(() => { setMoveTargetBlockId(null) }, [selection])
+
+  // Shortcut hints shown alongside the move-target row highlight
+  const moveTargetHints = useMemo<RowHintEntry[]>(() => (
+    moveTargetBlockId ? [{ keys: ['Q', 'M'], label: 'Mover' }] : []
+  ), [moveTargetBlockId])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -2134,6 +2139,7 @@ export default function VehiclePlanPage() {
                   onBlockUpdate={() => refetchGantt()}
                   focusedSegId={editBarOpen ? focusedSegId : null}
                   moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
+                  moveTargetHints={moveTargetHints}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
