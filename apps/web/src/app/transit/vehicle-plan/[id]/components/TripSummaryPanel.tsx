@@ -28,45 +28,45 @@ export function TripSummaryPanel({ trip, deadrun, headway }: Props) {
   const cycleMin = arr - dep
 
   return (
-    <div className="bg-popover border border-border rounded-lg shadow-lg px-4 py-2.5 text-sm min-w-[220px]">
-      {deadrun ? (
-        <div className="flex items-center gap-1.5 mb-2">
-          <Icons.Truck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            Vazio — {DEADRUN_TYPE_LABEL[deadrun.type] ?? deadrun.type}
-          </span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-muted text-foreground">
-            {trip!.trip.route.line.code}
-          </span>
-          <span className="text-xs font-medium text-muted-foreground">
-            {DIRECTION_LABELS[trip!.trip.route.direction] ?? trip!.trip.route.direction}
-          </span>
-        </div>
-      )}
+    <div className="bg-popover border border-border rounded-lg shadow-lg px-3 py-2 text-sm">
+      {/* title row — same fixed height regardless of trip/deadrun content */}
+      <div className="h-5 flex items-center gap-1.5">
+        {deadrun ? (
+          <>
+            <Icons.Truck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Vazio — {DEADRUN_TYPE_LABEL[deadrun.type] ?? deadrun.type}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-xs font-semibold px-1.5 rounded bg-muted text-foreground leading-5">
+              {trip!.trip.route.line.code}
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">
+              {DIRECTION_LABELS[trip!.trip.route.direction] ?? trip!.trip.route.direction}
+            </span>
+          </>
+        )}
+      </div>
 
-      <div className="flex items-baseline gap-4">
+      <div className="flex items-end gap-3 mt-1">
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Início</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Início</div>
           <div className="text-base font-semibold tabular-nums leading-tight">{formatMinute(dep)}</div>
         </div>
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Fim</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Fim</div>
           <div className="text-base font-semibold tabular-nums leading-tight">{formatMinute(arr)}</div>
         </div>
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Ciclo</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Ciclo</div>
           <div className="text-base font-semibold tabular-nums leading-tight">{cycleMin}min</div>
         </div>
+        {!deadrun && headway != null && (
+          <div className="text-base font-semibold tabular-nums leading-tight">{headway}&apos;</div>
+        )}
       </div>
-
-      {!deadrun && headway != null && (
-        <div className="mt-1.5 text-xs text-muted-foreground">
-          Headway: <span className="font-medium text-foreground">↔{headway}min</span>
-        </div>
-      )}
     </div>
   )
 }

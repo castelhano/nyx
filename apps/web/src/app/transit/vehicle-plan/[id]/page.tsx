@@ -2038,13 +2038,7 @@ export default function VehiclePlanPage() {
   const recordName = record ? String(record.status ?? '') : undefined
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden">
-      {editBarOpen && (summaryTrip || summaryDeadrun) && (
-        <div className="absolute top-3 right-6 z-30">
-          <TripSummaryPanel trip={summaryTrip} deadrun={summaryDeadrun} headway={summaryHeadway} />
-        </div>
-      )}
-
+    <div className="flex flex-col h-full overflow-hidden">
       {generateModalOpen && (
         <GenerateModal
           hasCustomMetrics={hasCustomMetrics}
@@ -2085,83 +2079,89 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      <div className="px-6 pt-4 pb-2 shrink-0 space-y-1">
-        <AutoBreadcrumb domain="transit" resource="vehicle-plan" id={id} recordName={recordName} />
+      <div className="px-6 pt-4 pb-2 shrink-0 flex items-start justify-between gap-4">
+        <div className="space-y-1 min-w-0 flex-1">
+          <AutoBreadcrumb domain="transit" resource="vehicle-plan" id={id} recordName={recordName} />
 
-        {/* summary bar */}
-        {record && (
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <InlineDescription
-              value={(record as Record<string, unknown>).description as string | undefined}
-              disabled={!canUpdate}
-              onSave={async (val) => {
-                const res = await apiFetch(`/transit/vehicle-plan/${id}`, {
-                  method: 'PATCH',
-                  body:   JSON.stringify({ description: val }),
-                })
-                if (!res.ok) {
-                  const json = await res.json().catch(() => ({}))
-                  throw new Error(extractError(json))
-                }
-                await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
-              }}
-            />
-            <span>
-              Status:{' '}
-              <span className={status === 'ACTIVE' ? 'text-green-600 font-medium' : 'font-medium'}>
-                {status === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
-              </span>
-            </span>
-            {ganttData?.plan?.dayType && (
-              <span>Tipo: <span className="font-medium">{ganttData.plan.dayType.code}</span></span>
-            )}
-            {ganttData?.plan?.lines != null && (
-              <span>{ganttData.plan.lines.length} {ganttData.plan.lines.length === 1 ? 'linha' : 'linhas'}</span>
-            )}
-            {ganttData?.blocks != null && (
-              <span>{ganttData.blocks.length} {ganttData.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
-            )}
-            {ganttData?.blocks != null && (
+          {/* summary bar */}
+          {record && (
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <InlineDescription
+                value={(record as Record<string, unknown>).description as string | undefined}
+                disabled={!canUpdate}
+                onSave={async (val) => {
+                  const res = await apiFetch(`/transit/vehicle-plan/${id}`, {
+                    method: 'PATCH',
+                    body:   JSON.stringify({ description: val }),
+                  })
+                  if (!res.ok) {
+                    const json = await res.json().catch(() => ({}))
+                    throw new Error(extractError(json))
+                  }
+                  await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+                }}
+              />
               <span>
-                {ganttData.blocks.reduce((sum, b) => sum + b.blockTrips.length, 0)} viagens produtivas
+                Status:{' '}
+                <span className={status === 'ACTIVE' ? 'text-green-600 font-medium' : 'font-medium'}>
+                  {status === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
+                </span>
               </span>
-            )}
-            {activeJobId && (
-              <span className="flex items-center gap-1.5 font-mono text-xs tabular-nums">
-                <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                  isSolverDone
-                    ? 'bg-muted text-muted-foreground'
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                }`}>
-                  LVL {solverProgress.currentLevel} {solverProgress.currentLevelLabel}
+              {ganttData?.plan?.dayType && (
+                <span>Tipo: <span className="font-medium">{ganttData.plan.dayType.code}</span></span>
+              )}
+              {ganttData?.plan?.lines != null && (
+                <span>{ganttData.plan.lines.length} {ganttData.plan.lines.length === 1 ? 'linha' : 'linhas'}</span>
+              )}
+              {ganttData?.blocks != null && (
+                <span>{ganttData.blocks.length} {ganttData.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
+              )}
+              {ganttData?.blocks != null && (
+                <span>
+                  {ganttData.blocks.reduce((sum, b) => sum + b.blockTrips.length, 0)} viagens produtivas
                 </span>
-                <span className="text-muted-foreground">—</span>
-                <span className={!isSolverDone ? 'text-blue-600 animate-pulse' : 'text-muted-foreground'}>
-                  {solverProgress.totalIterations.toLocaleString('pt-BR')}
-                </span>
-                <span className="bg-muted rounded px-1 py-0.5 text-muted-foreground">
-                  [{solverProgress.proposalCount}]
-                </span>
-                {fleetDelta != null && (
-                  <span className={`rounded px-1 py-0.5 ${
-                    fleetDelta < 0
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                      : fleetDelta > 0
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
-                        : 'bg-muted text-muted-foreground'
+              )}
+              {activeJobId && (
+                <span className="flex items-center gap-1.5 font-mono text-xs tabular-nums">
+                  <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                    isSolverDone
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                   }`}>
-                    [{fleetDelta > 0 ? '+' : ''}{fleetDelta}]
+                    LVL {solverProgress.currentLevel} {solverProgress.currentLevelLabel}
                   </span>
-                )}
-                <button
-                  onClick={() => setDetailsOpen(true)}
-                  className="rounded px-1 py-0.5 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-                >
-                  [Detalhes]
-                </button>
-              </span>
-            )}
-          </div>
+                  <span className="text-muted-foreground">—</span>
+                  <span className={!isSolverDone ? 'text-blue-600 animate-pulse' : 'text-muted-foreground'}>
+                    {solverProgress.totalIterations.toLocaleString('pt-BR')}
+                  </span>
+                  <span className="bg-muted rounded px-1 py-0.5 text-muted-foreground">
+                    [{solverProgress.proposalCount}]
+                  </span>
+                  {fleetDelta != null && (
+                    <span className={`rounded px-1 py-0.5 ${
+                      fleetDelta < 0
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                        : fleetDelta > 0
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                          : 'bg-muted text-muted-foreground'
+                    }`}>
+                      [{fleetDelta > 0 ? '+' : ''}{fleetDelta}]
+                    </span>
+                  )}
+                  <button
+                    onClick={() => setDetailsOpen(true)}
+                    className="rounded px-1 py-0.5 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                  >
+                    [Detalhes]
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {editBarOpen && (summaryTrip || summaryDeadrun) && (
+          <TripSummaryPanel trip={summaryTrip} deadrun={summaryDeadrun} headway={summaryHeadway} />
         )}
       </div>
 
