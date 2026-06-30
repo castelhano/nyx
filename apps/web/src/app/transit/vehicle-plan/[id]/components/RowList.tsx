@@ -43,7 +43,7 @@ export function RowList({ rows, scrollY, height, onInfoClick }: Props) {
                 </div>
               </div>
 
-              {/* icon column: info + lock stacked */}
+              {/* icon column: info / lock */}
               <div className="flex flex-col items-center gap-0.5 shrink-0 ml-1">
                 {onInfoClick && (
                   <button

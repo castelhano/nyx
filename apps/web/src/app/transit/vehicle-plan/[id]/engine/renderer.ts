@@ -11,6 +11,9 @@ const SELECTION_RING_WIDTH   = 2.5
 const LOCK_DOT_RADIUS        = 3
 const LOCK_DOT_COLOR         = '#0f172a'
 const LOCK_DOT_MIN_WIDTH     = 12  // skip dot below this segment width
+const MOVE_TARGET_COLOR      = '#3b82f6'
+const MOVE_TARGET_FILL       = 'rgba(59, 130, 246, 0.08)'
+const MOVE_TARGET_WIDTH      = 2
 
 const EMPTY_SET = new Set<string>()
 
@@ -22,19 +25,22 @@ export class Renderer {
   }
 
   render(
-    viewport:       Viewport,
-    rows:           LayoutRow[],
-    segments:       LayoutSegment[],
-    hoveredSegId:   string | null,
-    selectedSegIds: Set<string> = EMPTY_SET,
-    focusedSegId:   string | null = null,
+    viewport:        Viewport,
+    rows:            LayoutRow[],
+    segments:        LayoutSegment[],
+    hoveredSegId:    string | null,
+    selectedSegIds:  Set<string> = EMPTY_SET,
+    focusedSegId:    string | null = null,
+    moveTargetRowId: string | null = null,
   ): void {
     const { ctx } = this
     ctx.clearRect(0, 0, viewport.width, viewport.height)
     this.drawRowBands(viewport, rows)
+    this.drawMoveTargetFill(viewport, rows, moveTargetRowId)
     this.drawTimeGrid(viewport)
     this.drawDayBoundaries(viewport)
     this.drawSegments(viewport, rows, segments, hoveredSegId, selectedSegIds, focusedSegId)
+    this.drawMoveTargetBorder(viewport, rows, moveTargetRowId)
   }
 
   private drawDayBoundaries(viewport: Viewport): void {
@@ -69,6 +75,35 @@ export class Renderer {
         ctx.fillRect(0, canvasY, viewport.width, row.height)
       }
     }
+  }
+
+  private drawMoveTargetFill(viewport: Viewport, rows: LayoutRow[], rowId: string | null): void {
+    if (!rowId) return
+    const row = rows.find((r) => r.id === rowId)
+    if (!row || !viewport.isRowVisible(row.y, row.height)) return
+    const { ctx } = this
+    const canvasY = viewport.contentToCanvasY(row.y)
+    ctx.fillStyle = MOVE_TARGET_FILL
+    ctx.fillRect(0, canvasY, viewport.width, row.height)
+  }
+
+  private drawMoveTargetBorder(viewport: Viewport, rows: LayoutRow[], rowId: string | null): void {
+    if (!rowId) return
+    const row = rows.find((r) => r.id === rowId)
+    if (!row || !viewport.isRowVisible(row.y, row.height)) return
+    const { ctx } = this
+    const canvasY = viewport.contentToCanvasY(row.y)
+    ctx.save()
+    ctx.strokeStyle = MOVE_TARGET_COLOR
+    ctx.lineWidth   = MOVE_TARGET_WIDTH
+    ctx.setLineDash([])
+    ctx.strokeRect(
+      MOVE_TARGET_WIDTH / 2,
+      canvasY + MOVE_TARGET_WIDTH / 2,
+      viewport.width - MOVE_TARGET_WIDTH,
+      row.height - MOVE_TARGET_WIDTH,
+    )
+    ctx.restore()
   }
 
   private drawTimeGrid(viewport: Viewport): void {

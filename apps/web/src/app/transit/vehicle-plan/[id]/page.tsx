@@ -23,7 +23,6 @@ import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun } from './components/AddTripModal'
-import { MoveBlockModal }        from './components/MoveBlockModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun } from './views/vehicles.view'
@@ -342,15 +341,15 @@ export default function VehiclePlanPage() {
 
   const isNew = id === 'new'
 
-  type DepotModal = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
-  type MoveModal  = { blockTripIds: string[]; blockId: string }
-
-  type TripPatch    = { departureMinutes?: number; arrivalMinutes?: number }
+  type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
+  type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
   type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
+  type PendingMove = { blockTripIds: string[]; fromBlockId: string; toBlockId: string }
 
   const [selection,             setSelection]             = useState<Selection | null>(null)
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
-  const [moveModal,             setMoveModal]             = useState<MoveModal  | null>(null)
+  const [moveTargetBlockId,     setMoveTargetBlockId]     = useState<string | null>(null)
+  const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
   const [pendingDeadrunChanges, setPendingDeadrunChanges] = useState<Map<string, DeadrunPatch>>(new Map())
   const [pendingAdds,           setPendingAdds]           = useState<PendingAddEntry[]>([])
@@ -413,12 +412,12 @@ export default function VehiclePlanPage() {
   // Merges pending local overrides and additions into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return plottedData
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return plottedData
 
     const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
     let extraBlockCount  = 0
 
-    const blocks = plottedData.blocks.map(b => {
+    let blocks = plottedData.blocks.map(b => {
       const addTrips    = pendingAdds.filter((a): a is PendingAddTrip    => a._kind === 'trip'    && a.blockId === b.id)
       const addDeadruns = pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.blockId === b.id)
       return {
@@ -512,8 +511,34 @@ export default function VehiclePlanPage() {
         }
       })
 
+    // Apply pending block moves
+    if (pendingMoves.length > 0) {
+      const blockMap     = new Map(blocks.map(b => [b.id, b]))
+      const awayByBlock  = new Map<string, Set<string>>()
+      for (const move of pendingMoves) {
+        if (!awayByBlock.has(move.fromBlockId)) awayByBlock.set(move.fromBlockId, new Set())
+        for (const id of move.blockTripIds) awayByBlock.get(move.fromBlockId)!.add(id)
+      }
+      blocks = blocks.map(block => {
+        const awayIds = awayByBlock.get(block.id) ?? new Set<string>()
+        const movedIn = pendingMoves
+          .filter(m => m.toBlockId === block.id)
+          .flatMap(m => {
+            const fromBlock = blockMap.get(m.fromBlockId)
+            if (!fromBlock) return []
+            return m.blockTripIds
+              .map(id => fromBlock.blockTrips.find(bt => bt.id === id))
+              .filter((bt): bt is NonNullable<typeof bt> => bt != null)
+          })
+        return {
+          ...block,
+          blockTrips: [...block.blockTrips.filter(bt => !awayIds.has(bt.id)), ...movedIn],
+        }
+      })
+    }
+
     return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
-  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes])
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingMoves])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
   const allTrips = useMemo(() => {
@@ -535,6 +560,32 @@ export default function VehiclePlanPage() {
       ...block.blockDeadruns.map(dr => ({ segId: `${dr.id}:dr`,  dep: dr.departureMinutes })),
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
+
+  // Full block order + source block index, used to navigate move targets
+  // relative to the source block's own position (skipping the source itself).
+  const moveTargetBlocks = useMemo(() => {
+    if (!mergedPlottedData || !selection) return null
+    const sourceId     = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
+    const allBlockIds  = mergedPlottedData.blocks.map(b => b.id)
+    const sourceIndex  = allBlockIds.indexOf(sourceId)
+    if (sourceIndex === -1) return null
+    return { allBlockIds, sourceIndex }
+  }, [mergedPlottedData, selection])
+
+  // Step the move-target cursor by ±1, skipping over the source block and
+  // clamping (not wrapping) at the array boundaries.
+  function stepMoveTarget(prev: string | null, dir: 1 | -1): string | null {
+    if (!moveTargetBlocks) return prev
+    const { allBlockIds, sourceIndex } = moveTargetBlocks
+    const curIdx = prev ? allBlockIds.indexOf(prev) : sourceIndex
+    let next = curIdx + dir
+    if (next === sourceIndex) next += dir
+    if (next < 0 || next >= allBlockIds.length) return prev
+    return allBlockIds[next]
+  }
+
+  // Reset move target whenever selection changes
+  useEffect(() => { setMoveTargetBlockId(null) }, [selection])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -1053,6 +1104,7 @@ export default function VehiclePlanPage() {
     setPendingAdds([])
     setPendingDeletes(new Set())
     setPendingDeadrunDeletes(new Set())
+    setPendingMoves([])
   }
 
   async function handleToggleEditBar() {
@@ -1076,8 +1128,8 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
-    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return
+    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
     const ok = await confirm({
       title:        'Salvar alterações',
       description:  `Confirmar o salvamento de ${total} alteração(ões) pendente(s)?`,
@@ -1089,7 +1141,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDiscardPendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return
     const ok = await confirm({
       title:        'Descartar alterações',
       description:  'Todas as alterações pendentes serão removidas.',
@@ -1101,7 +1153,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePending() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return
     setIsPending(true)
     try {
       // Save trip patches
@@ -1202,11 +1254,24 @@ export default function VehiclePlanPage() {
         }
       }
 
+      // Persist pending moves
+      for (const move of pendingMoves) {
+        const res = await apiFetch(`/transit/vehicle-block/${move.fromBlockId}/move-trip`, {
+          method: 'PATCH',
+          body:   JSON.stringify({ blockTripIds: move.blockTripIds, targetBlockId: move.toBlockId }),
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(extractError(j))
+        }
+      }
+
       setPendingChanges(new Map())
       setPendingDeadrunChanges(new Map())
       setPendingAdds([])
       setPendingDeletes(new Set())
       setPendingDeadrunDeletes(new Set())
+      setPendingMoves([])
       await refetchGantt()
       toast.success('Alterações salvas')
     } catch (err) {
@@ -1224,28 +1289,49 @@ export default function VehiclePlanPage() {
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
-  function handleMoveTrip(blockTripIds: string[], blockId: string) {
-    setMoveModal({ blockTripIds, blockId })
-  }
+  function handleConfirmMove() {
+    if (!selection || !moveTargetBlockId || !mergedPlottedData) return
 
-  async function handleConfirmMoveModal(targetBlockId: string) {
-    if (!moveModal) return
-    const { blockTripIds, blockId } = moveModal
-    setMoveModal(null)
-    try {
-      const res = await apiFetch(`/transit/vehicle-block/${blockId}/move-trip`, {
-        method: 'PATCH',
-        body:   JSON.stringify({ blockTripIds, targetBlockId }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(extractError(json))
+    const sourceBlockId = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
+    const sourceBlock   = mergedPlottedData.blocks.find(b => b.id === sourceBlockId)
+    const targetBlock   = mergedPlottedData.blocks.find(b => b.id === moveTargetBlockId)
+    if (!sourceBlock || !targetBlock) return
+
+    const blockTripIds = selection.type === 'trip'
+      ? (selection.segment.isDeadhead ? [] : [selection.segment.id])
+      : selection.segments.filter(s => !s.isDeadhead).map(s => s.id)
+
+    if (blockTripIds.length === 0) return
+
+    const movedTrips = blockTripIds.map(btId => {
+      const bt = sourceBlock.blockTrips.find(bt => bt.id === btId)
+      if (!bt) return null
+      return { dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes }
+    }).filter((t): t is { dep: number; arr: number } => t != null)
+
+    const targetTrips = targetBlock.blockTrips.map(bt => ({
+      dep: bt.trip.departureMinutes,
+      arr: bt.trip.arrivalMinutes,
+    }))
+
+    for (const moved of movedTrips) {
+      for (const existing of targetTrips) {
+        if (moved.dep < existing.arr && moved.arr > existing.dep) {
+          toast.error('Conflito: sobreposição de horários no bloco de destino')
+          return
+        }
       }
-      setSelection(null)
-      await refetchGantt()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao mover viagem')
     }
+
+    setPendingMoves(prev => {
+      const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
+      return [...filtered, { blockTripIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
+    })
+
+    const n = blockTripIds.length
+    toast.success(`${n} ${n === 1 ? 'viagem movida' : 'viagens movidas'} para Bloco ${targetBlock.blockNumber} — use Salvar para persistir`)
+    setSelection(null)
+    setMoveTargetBlockId(null)
   }
 
   async function handleConfirmDepotModal(depotLocalityId: string) {
@@ -1388,7 +1474,6 @@ export default function VehiclePlanPage() {
       onDeleteInterval:    handleDeleteInterval,
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
-      onMoveTrip:          handleMoveTrip,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -1402,7 +1487,7 @@ export default function VehiclePlanPage() {
   const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
     ? solverProgress.bestScenario.fleetCount - baselineSnapshot.fleetCount
     : null
-  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size
+  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
 
   useTopbarActions([
     // toggle barra de edição — sempre visível, alinhado à esquerda
@@ -1677,6 +1762,31 @@ export default function VehiclePlanPage() {
     }
   }, { enabled: editBarOpen, display: false })
 
+  // ── move-target navigation (Up/Down with active selection) ──────────────────
+
+  const selectionHasTrips = selection
+    ? (selection.type === 'trip'
+        ? !selection.segment.isDeadhead
+        : selection.segments.some(s => !s.isDeadhead))
+    : false
+
+  useShortcut('↑', () => {
+    if (!moveTargetBlocks) return
+    setMoveTargetBlockId(prev => stepMoveTarget(prev, -1))
+  }, { enabled: editBarOpen && selectionHasTrips, display: false })
+
+  useShortcut('↓', () => {
+    if (!moveTargetBlocks) return
+    setMoveTargetBlockId(prev => stepMoveTarget(prev, 1))
+  }, { enabled: editBarOpen && selectionHasTrips, display: false })
+
+  useShortcut('q+m', () => handleConfirmMove(), {
+    desc:    'Mover viagens para bloco alvo',
+    icon:    Icons.ArrowRightLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && selectionHasTrips && !!moveTargetBlockId,
+  })
+
   useShortcut('pagedown', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
     const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
@@ -1896,20 +2006,6 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {moveModal && plottedData && (() => {
-        const btMap      = new Map(plottedData.blocks.flatMap(b => b.blockTrips.map(bt => [bt.id, bt] as const)))
-        const blockTrips = moveModal.blockTripIds.map(id => btMap.get(id)).filter(Boolean) as NonNullable<ReturnType<typeof btMap.get>>[]
-        return blockTrips.length > 0 ? (
-          <MoveBlockModal
-            blockTrips={blockTrips}
-            currentBlockId={moveModal.blockId}
-            blocks={plottedData.blocks}
-            onConfirm={handleConfirmMoveModal}
-            onClose={() => setMoveModal(null)}
-          />
-        ) : null
-      })()}
-
       {addTripOpen && plottedData && selectedLineIds.size > 0 && (
         <AddTripModal
           planId={id}
@@ -2028,6 +2124,7 @@ export default function VehiclePlanPage() {
                   actionSpec={vehiclesActionSpec}
                   onBlockUpdate={() => refetchGantt()}
                   focusedSegId={editBarOpen ? focusedSegId : null}
+                  moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

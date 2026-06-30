@@ -27,6 +27,7 @@ interface Props {
   actionSpec?:        GanttActionSpec<VehiclePlanGanttData>
   onBlockUpdate?:     () => void
   focusedSegId?:      string | null
+  moveTargetBlockId?: string | null
 }
 
 interface TooltipState {
@@ -81,7 +82,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
 }
 
 export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoard(
-  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId }: Props,
+  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId }: Props,
   ref,
 ) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
@@ -257,6 +258,29 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
 
     engine.setFocusedSegId(focusedSegId ?? null)
   }, [focusedSegId])
+
+  // ── sync move-target row highlight + scroll into view ───────────────────────
+
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    engine.setMoveTargetRowId(moveTargetBlockId ?? null)
+
+    if (!moveTargetBlockId) return
+    const row = engine.getLayoutRows().find(r => r.id === moveTargetBlockId)
+    if (!row) return
+    const vp = engine.viewport
+    const MARGIN_Y = 8
+    let scrolled = false
+    if (row.y < vp.scrollY + MARGIN_Y) {
+      vp.scrollTo(row.y - MARGIN_Y)
+      scrolled = true
+    } else if (row.y + row.height > vp.scrollY + vp.height - MARGIN_Y) {
+      vp.scrollTo(row.y + row.height - vp.height + MARGIN_Y)
+      scrolled = true
+    }
+    if (scrolled) engine.notify()
+  }, [moveTargetBlockId])
 
   // ── load view when data changes ─────────────────────────────────────────────
 
