@@ -1567,12 +1567,7 @@ export default function VehiclePlanPage() {
       if (idx > 0) { setFocusedSegId(block[idx - 1].segId); break }
       if (idx === 0) break
     }
-  }, {
-    desc:    'Item anterior no bloco',
-    icon:    Icons.ArrowLeft,
-    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && !selection,
-  })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('→', () => {
     if (!focusedSegId) return
@@ -1582,12 +1577,7 @@ export default function VehiclePlanPage() {
       if (idx !== -1 && idx < block.length - 1) { setFocusedSegId(block[idx + 1].segId); break }
       if (idx === block.length - 1) break
     }
-  }, {
-    desc:    'Próximo item no bloco',
-    icon:    Icons.ArrowRight,
-    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && !selection,
-  })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('↑', () => {
     if (!focusedSegId) return
@@ -1604,12 +1594,7 @@ export default function VehiclePlanPage() {
       setFocusedSegId(nearest.segId)
       break
     }
-  }, {
-    desc:    'Bloco anterior (viagem mais próxima)',
-    icon:    Icons.ArrowUp,
-    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && !selection,
-  })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('↓', () => {
     if (!focusedSegId) return
@@ -1626,12 +1611,7 @@ export default function VehiclePlanPage() {
       setFocusedSegId(nearest.segId)
       break
     }
-  }, {
-    desc:    'Próximo bloco (viagem mais próxima)',
-    icon:    Icons.ArrowDown,
-    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && !selection,
-  })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('shift+←', () => {
     if (!focusedSegId) return
@@ -1663,13 +1643,7 @@ export default function VehiclePlanPage() {
         segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
       })
     }
-  }, {
-    desc:    'Selecionar intervalo (retrair)',
-    icon:    Icons.ArrowLeft,
-    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
-    display: false,
-  })
+  }, { enabled: editBarOpen, display: false })
 
   useShortcut('shift+→', () => {
     if (!focusedSegId) return
@@ -1701,13 +1675,7 @@ export default function VehiclePlanPage() {
         segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
       })
     }
-  }, {
-    desc:    'Selecionar intervalo (expandir)',
-    icon:    Icons.ArrowRight,
-    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
-    display: false,
-  })
+  }, { enabled: editBarOpen, display: false })
 
   useShortcut('pagedown', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
