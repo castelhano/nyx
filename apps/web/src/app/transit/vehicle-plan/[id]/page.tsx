@@ -1707,6 +1707,36 @@ export default function VehiclePlanPage() {
     enabled: editBarOpen && !selection,
   })
 
+  useShortcut('home', () => {
+    const first = navBlocks[0]?.[0]
+    if (first) { setFocusedSegId(first.segId); setSelection(null); shiftAnchorRef.current = null }
+  }, { enabled: editBarOpen && !selection, display: false })
+
+  useShortcut('end', () => {
+    const lastBlock = navBlocks[navBlocks.length - 1]
+    const last = lastBlock?.[lastBlock.length - 1]
+    if (last) { setFocusedSegId(last.segId); setSelection(null); shiftAnchorRef.current = null }
+  }, { enabled: editBarOpen && !selection, display: false })
+
+  useShortcut('shift+home', () => {
+    if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (curIdx === -1) return
+    const dir = allTrips[curIdx].direction
+    const first = allTrips.find(t => t.direction === dir)
+    if (first) setFocusedSegId(first.segId)
+  }, { enabled: editBarOpen && !selection, display: false })
+
+  useShortcut('shift+end', () => {
+    if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (curIdx === -1) return
+    const dir = allTrips[curIdx].direction
+    for (let i = allTrips.length - 1; i >= 0; i--) {
+      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    }
+  }, { enabled: editBarOpen && !selection, display: false })
+
   // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
   const isTripFocused = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
 
