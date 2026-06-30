@@ -14,6 +14,7 @@ import type { ViewportSnapshot, Selection, GanttActionSpec } from '../engine/gan
 
 export interface GanttBoardHandle {
   getSegments: () => LayoutSegment[]
+  getRows:     () => LayoutRow[]
 }
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
@@ -91,6 +92,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
 
   useImperativeHandle(ref, () => ({
     getSegments: () => engineRef.current?.getLayoutSegments() ?? [],
+    getRows:     () => engineRef.current?.getLayoutRows()     ?? [],
   }), [])
   const onViewportChangeRef   = useRef(onViewportChange)
   const onSelectionChangeRef  = useRef(onSelectionChange)

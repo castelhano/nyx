@@ -1644,6 +1644,15 @@ export default function VehiclePlanPage() {
     enabled: !isNew,
   })
 
+  useShortcut('contextmenu', () => {
+    if (!focusedSegId) return
+    const segs = ganttBoardRef.current?.getSegments() ?? []
+    const seg  = segs.find(s => s.id === focusedSegId)
+    if (!seg) return
+    const rows = ganttBoardRef.current?.getRows() ?? []
+    handleSelectionChange(vehiclesActionSpec.resolveSelection(seg, selection, { allSegments: segs, allRows: rows }))
+  }, { enabled: editBarOpen && !selection && !!focusedSegId, display: false })
+
   useShortcut('←', () => {
     if (!focusedSegId) return
     setSelection(null); shiftAnchorRef.current = null
