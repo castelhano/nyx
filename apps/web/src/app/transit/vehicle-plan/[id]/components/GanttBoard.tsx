@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle }
 import { useShortcut } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
-import { vehiclesView, type VehiclePlanGanttData, type GanttBlock, type GanttBlockTrip } from '../views/vehicles.view'
+import { vehiclesView, computeHeadway, type VehiclePlanGanttData, type GanttBlock, type GanttBlockTrip } from '../views/vehicles.view'
 import { TimeRuler }          from './TimeRuler'
 import { RowList }            from './RowList'
 import { SegmentTooltip }     from './SegmentTooltip'
@@ -39,26 +39,6 @@ interface TooltipState {
   segment: LayoutSegment
   rect:    DOMRect
   headway: number | null
-}
-
-function computeHeadway(seg: LayoutSegment, blocks: GanttBlock[]): number | null {
-  if (seg.isDeadhead) return null
-  const bt     = seg.data as GanttBlockTrip
-  if (!bt.trip.route) return null
-  const lineId = bt.trip.route.line.id
-  const dir    = bt.trip.route.direction
-
-  const departures = blocks
-    .flatMap(b => b.blockTrips)
-    .filter(t => t.trip.route?.line.id === lineId && t.trip.route.direction === dir)
-    .map(t => t.trip.departureMinutes)
-    .sort((a, b) => a - b)
-
-  const dep = bt.trip.departureMinutes
-  const idx = departures.indexOf(dep)
-  if (idx <= 0 || departures.length < 2) return null
-
-  return dep - departures[idx - 1]
 }
 
 interface BlockDetailState {
@@ -165,7 +145,9 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
           setTooltip({
             segment: state.hoveredSegment,
             rect,
-            headway: computeHeadway(state.hoveredSegment, dataRef.current?.blocks ?? []),
+            headway: state.hoveredSegment.isDeadhead
+              ? null
+              : computeHeadway(state.hoveredSegment.data as GanttBlockTrip, dataRef.current?.blocks ?? []),
           })
         }
       } else {
@@ -185,7 +167,9 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
           setTooltip({
             segment: seg,
             rect,
-            headway: computeHeadway(seg, dataRef.current?.blocks ?? []),
+            headway: seg.isDeadhead
+              ? null
+              : computeHeadway(seg.data as GanttBlockTrip, dataRef.current?.blocks ?? []),
           })
         }
       }

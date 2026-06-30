@@ -40,6 +40,30 @@ export function resolveCycleMinutes(
   return resolveCycleWindow(metrics, direction, departureMinutes)?.minutes ?? null
 }
 
+export const DIRECTION_LABELS: Record<string, string> = {
+  OUTBOUND: 'IDA',
+  INBOUND:  'VOLTA',
+  CIRCULAR: 'CIRC',
+}
+
+/** Minutes since the previous departure of the same line+direction across all blocks. */
+export function computeHeadway(bt: GanttBlockTrip, blocks: GanttBlock[]): number | null {
+  const lineId = bt.trip.route.line.id
+  const dir    = bt.trip.route.direction
+
+  const departures = blocks
+    .flatMap(b => b.blockTrips)
+    .filter(t => t.trip.route?.line.id === lineId && t.trip.route.direction === dir)
+    .map(t => t.trip.departureMinutes)
+    .sort((a, b) => a - b)
+
+  const dep = bt.trip.departureMinutes
+  const idx = departures.indexOf(dep)
+  if (idx <= 0 || departures.length < 2) return null
+
+  return dep - departures[idx - 1]
+}
+
 export interface GanttBlockTrip {
   id:       string
   sequence: number

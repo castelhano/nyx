@@ -1,4 +1,5 @@
 import type { LayoutSegment } from '../engine/layout/layout.types'
+import { DIRECTION_LABELS } from '../views/vehicles.view'
 import type { GanttBlockTrip, GanttBlockDeadrun } from '../views/vehicles.view'
 
 const DEADRUN_TYPE_LABEL: Record<string, string> = {
@@ -79,7 +80,7 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway 
             <p className="font-semibold">{trip.route.line.code} — {trip.route.line.name}</p>
             <p className="text-muted-foreground text-xs mt-0.5">
               <span className="font-medium text-foreground">
-                {trip.route.direction === 'OUTBOUND' ? 'IDA' : 'VOLTA'}
+                {DIRECTION_LABELS[trip.route.direction] ?? trip.route.direction}
               </span>
               {' '}{trip.route.originLocality.name} → {trip.route.destinationLocality.name}
             </p>

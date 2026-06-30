@@ -18,6 +18,7 @@ import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { LinesPanel }        from './components/LinesPanel'
 import { FrequencyPanel }    from './components/FrequencyPanel'
+import { TripSummaryPanel }  from './components/TripSummaryPanel'
 import { GenerateModal }         from './components/GenerateModal'
 import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
@@ -25,8 +26,8 @@ import { AddTripModal }          from './components/AddTripModal'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun } from './components/AddTripModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
-import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun } from './views/vehicles.view'
-import { resolveCycleWindow }                            from './views/vehicles.view'
+import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockTrip, GanttBlockDeadrun } from './views/vehicles.view'
+import { resolveCycleWindow, computeHeadway }            from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection, RowHintEntry } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
@@ -368,8 +369,9 @@ export default function VehiclePlanPage() {
   const [addTripOpen,       setAddTripOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
 
-  const ganttBoardRef    = useRef<GanttBoardHandle>(null)
-  const shiftAnchorRef   = useRef<string | null>(null)
+  const ganttBoardRef       = useRef<GanttBoardHandle>(null)
+  const shiftAnchorRef      = useRef<string | null>(null)
+  const groupAnchorSegIdRef = useRef<string | null>(null)
 
   // Lines selection for display — checked lines are plotted immediately
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
@@ -1984,6 +1986,40 @@ export default function VehiclePlanPage() {
     preventDefault: true,
   })
 
+  // ── trip summary panel ────────────────────────────────────────────────────
+  // Tracks the segment whose data the panel shows: the single selected/focused
+  // segment, or — once a group (interval) selection starts — the segment that
+  // was selected right before it grew into a group, kept fixed while it grows.
+  if (!selection) {
+    groupAnchorSegIdRef.current = null
+  } else if (selection.type === 'trip') {
+    groupAnchorSegIdRef.current = selection.segment.id
+  } else if (!groupAnchorSegIdRef.current) {
+    groupAnchorSegIdRef.current = selection.from.id
+  }
+
+  const summarySegId = selection ? groupAnchorSegIdRef.current : focusedSegId
+
+  let summaryTrip:    GanttBlockTrip    | null = null
+  let summaryDeadrun: GanttBlockDeadrun | null = null
+  if (summarySegId && mergedPlottedData) {
+    if (summarySegId.endsWith(':dr')) {
+      const drId = summarySegId.slice(0, -3)
+      for (const block of mergedPlottedData.blocks) {
+        const dr = block.blockDeadruns.find(dr => dr.id === drId)
+        if (dr) { summaryDeadrun = dr; break }
+      }
+    } else {
+      for (const block of mergedPlottedData.blocks) {
+        const bt = block.blockTrips.find(bt => bt.id === summarySegId)
+        if (bt) { summaryTrip = bt; break }
+      }
+    }
+  }
+  const summaryHeadway = summaryTrip && mergedPlottedData
+    ? computeHeadway(summaryTrip, mergedPlottedData.blocks)
+    : null
+
   // ── render ─────────────────────────────────────────────────────────────────
 
   if (guardNode) return guardNode
@@ -2002,7 +2038,13 @@ export default function VehiclePlanPage() {
   const recordName = record ? String(record.status ?? '') : undefined
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="relative flex flex-col h-full overflow-hidden">
+      {editBarOpen && (summaryTrip || summaryDeadrun) && (
+        <div className="absolute top-3 right-6 z-30">
+          <TripSummaryPanel trip={summaryTrip} deadrun={summaryDeadrun} headway={summaryHeadway} />
+        </div>
+      )}
+
       {generateModalOpen && (
         <GenerateModal
           hasCustomMetrics={hasCustomMetrics}
