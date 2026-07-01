@@ -1,0 +1,21 @@
+services:
+  osrm-prepare:
+    image: osrm/osrm-backend
+    container_name: nyx-osrm-prepare
+    entrypoint: ["/bin/sh", "/scripts/prepare.sh"]
+    volumes:
+      - ./osrm/data:/data
+      - ./osrm/prepare.sh:/scripts/prepare.sh:ro
+
+  osrm-routed:
+    image: osrm/osrm-backend
+    container_name: nyx-osrm-routed
+    entrypoint: ["/bin/sh", "/scripts/route.sh"]
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm/data:/data
+      - ./osrm/route.sh:/scripts/route.sh:ro
+    depends_on:
+      osrm-prepare:
+        condition: service_completed_successfully

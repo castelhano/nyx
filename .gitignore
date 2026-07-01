@@ -35,3 +35,7 @@ dist
 # file uploads (preserve directory via .gitkeep)
 apps/api/uploads/*
 !apps/api/uploads/.gitkeep
+
+# osrm data (pbf download + generated graph files)
+osrm/data/*
+!osrm/data/.gitkeep
