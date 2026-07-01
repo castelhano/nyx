@@ -192,39 +192,33 @@ The transit planning module uses [OSRM](https://project-osrm.org/) to automatica
 
 When running, OSRM must be reachable at the URL defined by `OSRM_URL` in `apps/api/.env` (default: `http://localhost:5000`).
 
-### Setup (Docker)
+### Setup (Docker Compose)
 
-**1. Download the OSM map for your region** (from [Geofabrik](https://download.geofabrik.de/)):
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) running.
+
+**1. Download the OSM map for your region** (from [Geofabrik](https://download.geofabrik.de/)) into `osrm/data/` (gitignored):
 
 ```bash
 # Example: Centro-Oeste region (~185 MB, covers Mato Grosso/Cuiabá)
-wget https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf
+curl -o osrm/data/centro-oeste-latest.osm.pbf https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf
 
 # Full Brazil (~1.9 GB, slow to process — use only if needed)
-# wget https://download.geofabrik.de/south-america/brazil-latest.osm.pbf
+# curl -o osrm/data/brazil-latest.osm.pbf https://download.geofabrik.de/south-america/brazil-latest.osm.pbf
 ```
 
-**2. Pre-process the map** (run from the folder containing the `.pbf` file):
+Any single `.osm.pbf` file works — the scripts pick it up by extension, no renaming needed.
+
+**2. Start OSRM** (from project root):
 
 ```bash
-docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-extract -p /opt/car.lua /data/centro-oeste-latest.osm.pbf
-
-docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-partition /data/centro-oeste-latest.osrm
-
-docker run -t -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-customize /data/centro-oeste-latest.osrm
+docker compose -f docker-compose.osrm.yml up
 ```
 
-> Pre-processing only needs to run once. The resulting `.osrm.*` files can be reused across restarts.
+This runs two services:
+- `osrm-prepare` — runs `osrm-extract`, `osrm-partition`, and `osrm-customize` once against the `.pbf` in `osrm/data/`, then exits. On subsequent runs it detects the already-processed `.osrm.mldgr` file and skips straight to the next step.
+- `osrm-routed` — starts the routing server on port 5000 once `osrm-prepare` finishes successfully.
 
-**3. Start the routing server:**
-
-```bash
-docker run -d -p 5000:5000 -v "$(pwd):/data" ghcr.io/project-osrm/osrm-backend \
-  osrm-routed --algorithm mld /data/centro-oeste-latest.osrm
-```
+Add `-d` to run in the background. Pre-processing a regional extract like Centro-Oeste takes a few minutes; stop the stack with `docker compose -f docker-compose.osrm.yml down`.
 
 **Quick test:**
 
