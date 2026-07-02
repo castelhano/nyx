@@ -1273,13 +1273,13 @@ export default function VehiclePlanPage() {
         }
       }
 
+      await refetchGantt()
       setPendingChanges(new Map())
       setPendingDeadrunChanges(new Map())
       setPendingAdds([])
       setPendingDeletes(new Set())
       setPendingDeadrunDeletes(new Set())
       setPendingMoves([])
-      await refetchGantt()
       toast.success('Alterações salvas')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')
@@ -1335,8 +1335,6 @@ export default function VehiclePlanPage() {
       return [...filtered, { blockTripIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
     })
 
-    const n = blockTripIds.length
-    toast.success(`${n} ${n === 1 ? 'viagem movida' : 'viagens movidas'} para Bloco ${targetBlock.blockNumber} — use Salvar para persistir`)
     setSelection(null)
     setMoveTargetBlockId(null)
   }
