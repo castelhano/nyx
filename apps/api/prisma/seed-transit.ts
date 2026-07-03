@@ -2,12 +2,20 @@ import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
+import type { PrismaService } from '../src/prisma/prisma.service'
+import { OsrmService } from '../src/modules/transit/network/travel-time/osrm.service'
+import { RouteService } from '../src/modules/transit/network/route/route.service'
 
 const url      = process.env.DATABASE_URL!
 const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
   ? new PrismaPg({ connectionString: url })
   : new PrismaLibSql({ url })
 const prisma   = new PrismaClient({ adapter })
+
+// RouteService/OsrmService only need the PrismaClient surface — safe to
+// instantiate outside Nest's DI container for the seed script.
+const osrm         = new OsrmService(prisma as unknown as PrismaService)
+const routeService = new RouteService(prisma as unknown as PrismaService, osrm)
 
 // ── localities ────────────────────────────────────────────────────────────────
 
@@ -257,11 +265,23 @@ async function main() {
     const lineId   = lineMap.get(r.lineCode)!
     const originId = localityMap.get(r.originCode)!
     const destId   = localityMap.get(r.destinationCode)!
-    const existing = await prisma.transitRoute.findFirst({ where: { lineId, direction: r.direction as any } })
-    const record   = existing ?? await prisma.transitRoute.create({
+    const existing = await prisma.transitRoute.findFirst({
+      where:  { lineId, direction: r.direction as any },
+      select: { id: true, _count: { select: { localities: true } } },
+    })
+    const record = existing ?? await prisma.transitRoute.create({
       data: { lineId, direction: r.direction as any, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: true },
     })
     routeMap.set(`${r.lineCode}:${r.direction}`, record.id)
+
+    const hasLocalities = existing ? existing._count.localities > 0 : false
+    if (!hasLocalities) {
+      try {
+        await routeService.buildInitialTrajectory(record.id, originId, destId)
+      } catch {
+        // OSRM offline — trajectory generated lazily later via "Reprocessar"
+      }
+    }
   }
   console.log(`  ✓ routes (${ROUTES.length})`)
 

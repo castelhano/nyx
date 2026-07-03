@@ -265,15 +265,19 @@ CREATE TABLE "transit_routes" (
 CREATE TABLE "transit_route_localities" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "routeId" TEXT NOT NULL,
-    "localityId" TEXT NOT NULL,
+    "localityId" TEXT,
+    "lat" REAL,
+    "lng" REAL,
     "sequence" INTEGER NOT NULL,
     "deltaMinutes" INTEGER,
     "deltaKm" REAL,
+    "deltaSource" TEXT NOT NULL DEFAULT 'OSRM',
+    "geometry" JSONB,
     "allowsCrewChange" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_route_localities_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "transit_route_localities_localityId_fkey" FOREIGN KEY ("localityId") REFERENCES "transit_localities" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_route_localities_localityId_fkey" FOREIGN KEY ("localityId") REFERENCES "transit_localities" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
