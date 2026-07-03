@@ -104,19 +104,28 @@ model TransitRoute {
 }
 
 model RouteLocality {
-  id               String   @id @default(uuid())
+  id               String           @id @default(uuid())
   routeId          String
-  localityId       String
+  // null = routing waypoint (forces OSRM through a point without being a bus stop)
+  localityId       String?
+  // populated when localityId is null (waypoint coords)
+  lat              Float?
+  lng              Float?
   sequence         Int
   // null → runtime falls back to TravelTimeMatrix for this pair
   deltaMinutes     Int?
   deltaKm          Float?
-  allowsCrewChange Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  // protects manual overrides from being clobbered by auto-generation
+  deltaSource      TravelTimeSource @default(OSRM)
+  // GeoJSON LineString for the leg from the previous stop to this one; null for sequence=1
+  geometry         Json?
+  allowsCrewChange Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  route    TransitRoute    @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  locality TransitLocality @relation(fields: [localityId], references: [id])
+  route    TransitRoute     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  // nulls are treated as distinct in both SQLite and PG — multiple waypoints per route are allowed
+  locality TransitLocality? @relation(fields: [localityId], references: [id])
 
   @@unique([routeId, sequence])
   @@unique([routeId, localityId])

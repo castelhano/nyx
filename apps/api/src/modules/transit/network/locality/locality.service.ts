@@ -35,6 +35,24 @@ export class LocalityService extends BaseService<Locality, CreateLocalityDto, Up
     return result
   }
 
+  async findRoutesForLocality(localityId: string) {
+    return this.prisma.routeLocality.findMany({
+      where:   { localityId },
+      select: {
+        sequence: true,
+        route: {
+          select: {
+            id:        true,
+            name:      true,
+            direction: true,
+            line: { select: { id: true, code: true, name: true } },
+          },
+        },
+      },
+      orderBy: { route: { line: { code: 'asc' } } },
+    })
+  }
+
   async applySnap(opts: { ids?: string[]; minDistanceM?: number }): Promise<{ updated: number; skipped: number }> {
     const where = opts.ids?.length ? { id: { in: opts.ids } } : {}
 

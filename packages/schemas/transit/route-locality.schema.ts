@@ -12,7 +12,8 @@ export const routeLocalitySchema = withMeta(
       listVisibility: 'hidden',
     }),
 
-    localityId: z.uuid().meta({
+    // null = routing waypoint (not a bus stop)
+    localityId: z.uuid().optional().nullable().meta({
       label:          'Localidade',
       widget:         'select',
       resource:       'transit-locality',
@@ -23,6 +24,10 @@ export const routeLocalitySchema = withMeta(
       keybind:        'l',
     }),
 
+    // populated when localityId is null (waypoint)
+    lat: z.number().optional().nullable().meta({ showInForm: false, listVisibility: 'never' }),
+    lng: z.number().optional().nullable().meta({ showInForm: false, listVisibility: 'never' }),
+
     sequence: z.number().int().min(1).meta({
       label:          'Ordem',
       listVisibility: 'visible',
@@ -31,7 +36,7 @@ export const routeLocalitySchema = withMeta(
     }),
 
     // null → fallback to TravelTime matrix
-    deltaMinutes: z.number().int().min(0).optional().meta({
+    deltaMinutes: z.number().int().min(0).optional().nullable().meta({
       label:          'Δ Tempo (min)',
       listVisibility: 'visible',
       className:      'md:w-42',
@@ -39,12 +44,21 @@ export const routeLocalitySchema = withMeta(
     }),
 
     // null → fallback to TravelTime matrix
-    deltaKm: z.number().min(0).optional().meta({
+    deltaKm: z.number().min(0).optional().nullable().meta({
       label:          'Δ Distância (km)',
       listVisibility: 'visible',
       className:      'md:w-42',
       keybind:        'k',
     }),
+
+    deltaSource: z.enum(['OSRM', 'MANUAL']).default('OSRM').meta({
+      label:          'Fonte Δ',
+      listVisibility: 'never',
+      showInForm:     false,
+    }),
+
+    // GeoJSON LineString — leg from previous stop to this one; null for sequence=1
+    geometry: z.unknown().optional().nullable().meta({ showInForm: false, listVisibility: 'never' }),
 
     allowsCrewChange: z.boolean().default(false).meta({
       label:          'Troca de Turno',

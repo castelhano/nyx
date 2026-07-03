@@ -1,12 +1,78 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
 
+export type GeoJSONLineString = { type: 'LineString'; coordinates: [number, number][] }
+
+export interface OsrmRouteLeg {
+  duration: number        // seconds
+  distance: number        // metres
+  geometry: GeoJSONLineString
+}
+
+export interface OsrmRouteResult {
+  fullGeometry: GeoJSONLineString
+  legs: OsrmRouteLeg[]
+}
+
+export interface OsrmNearestResult {
+  location: [number, number]  // [lng, lat]
+  distance: number
+  name: string
+}
+
 @Injectable()
 export class OsrmService {
   private readonly logger = new Logger(OsrmService.name)
   private readonly osrmUrl = process.env.OSRM_URL ?? 'http://localhost:5000'
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async getRoute(coords: { lat: number; lng: number }[]): Promise<OsrmRouteResult> {
+    if (coords.length < 2) throw new Error('At least 2 coordinates required for route')
+    const coordStr = coords.map((c) => `${c.lng},${c.lat}`).join(';')
+    const url = `${this.osrmUrl}/route/v1/driving/${coordStr}?geometries=geojson&overview=full&steps=true`
+
+    type OsrmStep = { geometry: GeoJSONLineString }
+    type OsrmLeg  = { duration: number; distance: number; steps: OsrmStep[] }
+    type OsrmResp = { routes: Array<{ geometry: GeoJSONLineString; legs: OsrmLeg[] }> }
+
+    let data: OsrmResp
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`OSRM /route returned ${res.status}`)
+      data = await res.json() as OsrmResp
+    } catch (err) {
+      const msg = (err as Error).message ?? ''
+      const isConn = msg === 'fetch failed' || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND')
+      throw new Error(isConn ? `Servidor OSRM não responde (${this.osrmUrl})` : msg)
+    }
+
+    const route = data.routes[0]
+    if (!route) throw new Error('OSRM returned no routes')
+
+    const legs: OsrmRouteLeg[] = route.legs.map((leg) => {
+      const coords: [number, number][] = []
+      for (let j = 0; j < leg.steps.length; j++) {
+        const stepCoords = leg.steps[j].geometry.coordinates
+        if (j === 0) coords.push(...stepCoords)
+        else coords.push(...stepCoords.slice(1))
+      }
+      return { duration: leg.duration, distance: leg.distance, geometry: { type: 'LineString', coordinates: coords } }
+    })
+
+    return { fullGeometry: route.geometry, legs }
+  }
+
+  async getNearestPoint(lat: number, lng: number): Promise<OsrmNearestResult> {
+    const url = `${this.osrmUrl}/nearest/v1/driving/${lng},${lat}`
+    type OsrmResp = { waypoints: Array<{ location: [number, number]; distance: number; name: string }> }
+    const res  = await fetch(url)
+    if (!res.ok) throw new Error(`OSRM /nearest returned ${res.status}`)
+    const data = await res.json() as OsrmResp
+    const wp   = data.waypoints[0]
+    if (!wp) throw new Error('OSRM returned no nearest waypoint')
+    return { location: wp.location, distance: wp.distance, name: wp.name }
+  }
 
   /**
    * Regenerates travel-time entries for the subset of localities that are
@@ -35,7 +101,7 @@ export class OsrmService {
       relevantIds.add(r.destinationLocalityId)
     }
     for (const rl of routeLocalityIds) {
-      relevantIds.add(rl.localityId)
+      if (rl.localityId) relevantIds.add(rl.localityId)
     }
 
     const depots = await this.prisma.transitLocality.findMany({
