@@ -130,16 +130,21 @@ export default function TransitRoutePage() {
         for (const p of pendingPoints.filter((p) => p.insertAfterSequence === rl.sequence)) allItems.push({ type: 'pending', p })
       }
 
-      // re-sequence existing, create new for pending — a "Ponto de Ônibus" without
-      // an existing localityId needs its TransitLocality created first
-      let newSeq = 1
+      const withSeq = allItems.map((item, i) => ({ item, seq: i + 1 }))
+
+      // Wave 1 — move every existing row whose sequence is changing out to a safe
+      // offset first. Patching straight to final numbers concurrently can collide
+      // mid-flight with the @@unique([routeId, sequence]) constraint (e.g. a new
+      // row's INSERT landing on a slot a moving row hasn't vacated yet).
+      const OFFSET = 1_000_000
+      const moves = withSeq.filter(({ item, seq }) => item.type === 'existing' && item.rl.sequence !== seq)
+      await Promise.all(moves.map(({ item, seq }) => apiPatch(`/transit/route-locality/${(item as { rl: RouteLocality }).rl.id}`, { sequence: seq + OFFSET })))
+
+      // Wave 2 — land on the real sequence; new stops (and their TransitLocality, if any) are created here
       const ops: Promise<unknown>[] = []
-      for (const item of allItems) {
-        const seq = newSeq++
+      for (const { item, seq } of withSeq) {
         if (item.type === 'existing') {
-          if (item.rl.sequence !== seq) {
-            ops.push(apiPatch(`/transit/route-locality/${item.rl.id}`, { sequence: seq }))
-          }
+          if (item.rl.sequence !== seq) ops.push(apiPatch(`/transit/route-locality/${item.rl.id}`, { sequence: seq }))
         } else {
           const p = item.p
           ops.push((async () => {
