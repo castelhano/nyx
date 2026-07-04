@@ -53,6 +53,8 @@ export interface PendingPoint {
   _pendingId: string   // client-only uuid
   localityId: string | null
   localityName: string | null
+  code: string | null   // set when a new TransitLocality must be created on save
+  abbr: string | null
   lat: number
   lng: number
   isWaypoint: boolean

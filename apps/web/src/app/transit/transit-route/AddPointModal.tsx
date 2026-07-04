@@ -18,16 +18,23 @@ interface Props {
 type Mode = 'stop' | 'waypoint'
 
 export function AddPointModal({ localities, prefillLat, prefillLng, prefillName, onAdd, onClose }: Props) {
+  // insert after the current last stop by default — always a valid, selectable option
+  const insertOptions = localities.map((rl, i) => ({
+    label: i === 0 ? 'No início (após origem)' : `Após ${rl.locality?.name ?? `Ponto ${rl.sequence}`} (seq ${rl.sequence})`,
+    value: i === 0 ? 0 : rl.sequence,
+  }))
+
   const [mode,       setMode]       = useState<Mode>('stop')
   const [localityId, setLocalityId] = useState('')
   const [latStr,     setLatStr]     = useState(prefillLat?.toFixed(6) ?? '')
   const [lngStr,     setLngStr]     = useState(prefillLng?.toFixed(6) ?? '')
   const [name,       setName]       = useState(prefillName ?? '')
-  const [afterSeq,   setAfterSeq]   = useState<number>(() => {
-    const last = localities.at(-1)
-    return last ? last.sequence - 1 : 0
-  })
+  const [code,       setCode]       = useState('')
+  const [abbr,       setAbbr]       = useState('')
+  const [afterSeq,   setAfterSeq]   = useState<number>(() => insertOptions.at(-1)?.value ?? 0)
   const [snapping,   setSnapping]   = useState(false)
+
+  const isNewLocality = mode === 'stop' && !localityId
 
   const { options: rawLocalities } = useFieldOptions({ resource: 'transit-locality', domain: 'transit' })
   const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
@@ -46,23 +53,19 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
     }).catch(() => {}).finally(() => setSnapping(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // insert before destination (last), after second-to-last by default
-  const insertOptions = localities.map((rl, i) => ({
-    label: i === 0 ? 'No início (após origem)' : `Após ${rl.locality?.name ?? `Ponto ${rl.sequence}`} (seq ${rl.sequence})`,
-    value: i === 0 ? 0 : rl.sequence,
-  }))
-
   function handleAdd() {
     const lat = parseFloat(latStr)
     const lng = parseFloat(lngStr)
-    if (mode === 'waypoint' && (isNaN(lat) || isNaN(lng))) return
-    if (mode === 'stop' && !localityId && (isNaN(lat) || isNaN(lng))) return
+    if ((mode === 'waypoint' || isNewLocality) && (isNaN(lat) || isNaN(lng))) return
+    if (isNewLocality && (!code.trim() || !name.trim())) return
 
     const selectedLocality = localityOptions.find((o) => o.value === localityId)
     onAdd({
       _pendingId:          crypto.randomUUID(),
       localityId:          mode === 'stop' && localityId ? localityId : null,
       localityName:        mode === 'stop' ? (selectedLocality?.label ?? (name || null)) : null,
+      code:                isNewLocality ? code.trim() : null,
+      abbr:                isNewLocality && abbr.trim() ? abbr.trim() : null,
       lat,
       lng,
       isWaypoint:          mode === 'waypoint',
@@ -107,7 +110,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
           </div>
         )}
 
-        {(!localityId || mode === 'waypoint') && (
+        {(mode === 'waypoint' || isNewLocality) && (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm font-medium">Latitude</label>
@@ -132,17 +135,42 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
           </div>
         )}
 
-        {mode === 'stop' && !localityId && (
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Nome da nova localidade</label>
-            <input
-              className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={snapping ? 'Buscando endereço…' : 'Nome do ponto'}
-              disabled={snapping}
-            />
-          </div>
+        {isNewLocality && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Código</label>
+                <input
+                  className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="Ex: 1234"
+                  maxLength={10}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Abreviação</label>
+                <input
+                  className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={abbr}
+                  onChange={(e) => setAbbr(e.target.value)}
+                  placeholder="Opcional"
+                  maxLength={10}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Nome da nova localidade</label>
+              <input
+                className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={snapping ? 'Buscando endereço…' : 'Nome do ponto'}
+                disabled={snapping}
+              />
+            </div>
+          </>
         )}
 
         <div className="space-y-1">
@@ -160,7 +188,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="cancel" onClick={onClose}>Cancelar</Button>
-          <Button type="button" onClick={handleAdd} disabled={snapping}>
+          <Button type="button" onClick={handleAdd} disabled={snapping || (isNewLocality && (!code.trim() || !name.trim()))}>
             Adicionar
           </Button>
         </div>

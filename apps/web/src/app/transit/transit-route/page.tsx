@@ -23,6 +23,18 @@ const MapCanvas = dynamic(() => import('./MapCanvas'), { ssr: false })
 type CanvasMode  = 'ruler' | 'map'
 type TopbarState = 'idle' | 'pending' | 'suggesting'
 
+async function apiPost(path: string, body?: unknown): Promise<unknown> {
+  const res = await apiFetch(path, { method: 'POST', ...(body !== undefined ? { body: JSON.stringify(body) } : {}) })
+  if (!res.ok) throw await res.json()
+  return res.status === 204 ? undefined : res.json()
+}
+
+async function apiPatch(path: string, body: unknown): Promise<unknown> {
+  const res = await apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) })
+  if (!res.ok) throw await res.json()
+  return res.json()
+}
+
 export default function TransitRoutePage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -106,66 +118,50 @@ export default function TransitRoutePage() {
     if (!routeId || pendingPoints.length === 0) return
     setIsSaving(true)
     try {
-      // get current localities to determine new sequences
-      const current: RouteLocality[] = selectedLocalities
-      const sorted = [...current].sort((a, b) => a.sequence - b.sequence)
-      const destination = sorted.at(-1)
+      // build new sequence list: insert pending points after their anchor,
+      // matched against the *current* stop list (including the last one —
+      // a pending point may extend the route past today's final stop)
+      const sorted = [...selectedLocalities].sort((a, b) => a.sequence - b.sequence)
 
-      // build new sequence list: insert pending points at their positions
-      // then renumber, keeping destination last
-      const withoutDest = destination ? sorted.slice(0, -1) : sorted
-      const groups: RouteLocality[][] = []
-      const seqMap = new Map(withoutDest.map((rl) => [rl.sequence, rl]))
-      const uniqueSeqs = [...new Set(withoutDest.map((rl) => rl.sequence))].sort((a, b) => a - b)
-
-      for (const seq of uniqueSeqs) {
-        const rl = seqMap.get(seq)
-        if (rl) groups.push([rl])
-        const inserts = pendingPoints.filter((p) => p.insertAfterSequence === seq)
-        for (const p of inserts) {
-          groups.push([{ ...rl, _pending: p } as any])
-        }
-      }
-      // also handle insertAfterSequence = 0 (before first)
-      const beforeFirst = pendingPoints.filter((p) => p.insertAfterSequence === 0)
-
-      // persist each pending point as a new RouteLocality
-      let newSeq = 1
       const allItems: Array<{ type: 'existing'; rl: RouteLocality } | { type: 'pending'; p: PendingPoint }> = []
-
-      for (const p of beforeFirst) allItems.push({ type: 'pending', p })
-      for (const rl of withoutDest) {
+      for (const p of pendingPoints.filter((p) => p.insertAfterSequence === 0)) allItems.push({ type: 'pending', p })
+      for (const rl of sorted) {
         allItems.push({ type: 'existing', rl })
-        const inserts = pendingPoints.filter((p) => p.insertAfterSequence === rl.sequence)
-        for (const p of inserts) allItems.push({ type: 'pending', p })
+        for (const p of pendingPoints.filter((p) => p.insertAfterSequence === rl.sequence)) allItems.push({ type: 'pending', p })
       }
-      if (destination) allItems.push({ type: 'existing', rl: destination })
 
-      // re-sequence existing, create new for pending
+      // re-sequence existing, create new for pending — a "Ponto de Ônibus" without
+      // an existing localityId needs its TransitLocality created first
+      let newSeq = 1
       const ops: Promise<unknown>[] = []
       for (const item of allItems) {
         const seq = newSeq++
         if (item.type === 'existing') {
           if (item.rl.sequence !== seq) {
-            ops.push(apiFetch(`/transit/route-locality/${item.rl.id}`, { method: 'PATCH', body: JSON.stringify({ sequence: seq }) }))
+            ops.push(apiPatch(`/transit/route-locality/${item.rl.id}`, { sequence: seq }))
           }
         } else {
           const p = item.p
-          const body: Record<string, unknown> = { routeId, sequence: seq, allowsCrewChange: false }
-          if (p.localityId) {
-            body.localityId = p.localityId
-          } else {
-            body.lat = p.lat
-            body.lng = p.lng
-          }
-          ops.push(apiFetch('/transit/route-locality', { method: 'POST', body: JSON.stringify(body) }))
+          ops.push((async () => {
+            const body: Record<string, unknown> = { routeId, sequence: seq, allowsCrewChange: false }
+            if (p.localityId) {
+              body.localityId = p.localityId
+            } else if (p.code) {
+              const locality = await apiPost('/transit/transit-locality', { code: p.code, abbr: p.abbr ?? undefined, name: p.localityName, lat: p.lat, lng: p.lng })
+              body.localityId = (locality as { id: string }).id
+            } else {
+              body.lat = p.lat
+              body.lng = p.lng
+            }
+            await apiPost('/transit/route-locality', body)
+          })())
         }
       }
       await Promise.all(ops)
       setPendingPoints([])
 
       // reprocess trajectory
-      await apiFetch(`/transit/transit-route/${routeId}/reprocess`, { method: 'POST' })
+      await apiPost(`/transit/transit-route/${routeId}/reprocess`)
       queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
       toast.success('Trajetória salva e reprocessada')
     } catch (err) {
@@ -181,8 +177,7 @@ export default function TransitRoutePage() {
     if (!routeId) return
     setIsReprocessing(true)
     try {
-      const res = await apiFetch(`/transit/transit-route/${routeId}/reprocess`, { method: 'POST' })
-      if (!res.ok) throw await res.json()
+      await apiPost(`/transit/transit-route/${routeId}/reprocess`)
       queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
       toast.success('Trajetória reprocessada')
     } catch (err) {
@@ -198,9 +193,7 @@ export default function TransitRoutePage() {
     if (!routeId) return
     setIsSuggesting(true)
     try {
-      const res = await apiFetch(`/transit/transit-route/${routeId}/suggest-localities`, { method: 'POST' })
-      if (!res.ok) throw await res.json()
-      const data = await res.json() as SuggestedLocality[]
+      const data = await apiPost(`/transit/transit-route/${routeId}/suggest-localities`) as SuggestedLocality[]
       setSuggestions(data)
     } catch (err) {
       toast.error(extractError(err as Record<string, unknown>, 'Erro ao sugerir pontos'))
@@ -216,6 +209,8 @@ export default function TransitRoutePage() {
       _pendingId:          crypto.randomUUID(),
       localityId:          s.id,
       localityName:        s.name,
+      code:                null,
+      abbr:                null,
       lat:                 s.lat,
       lng:                 s.lng,
       isWaypoint:          false,
