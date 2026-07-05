@@ -52,7 +52,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     return this.prisma.routeLocality.findMany({
       where:   { routeId },
       orderBy: { sequence: 'asc' },
-      include: { locality: { select: { id: true, name: true, code: true, lat: true, lng: true } } },
+      include: { locality: { select: { id: true, name: true, code: true, abbr: true, lat: true, lng: true } } },
     }) as Promise<RouteLocalityWithLocality[]>
   }
 

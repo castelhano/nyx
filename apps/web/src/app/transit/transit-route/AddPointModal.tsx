@@ -18,10 +18,12 @@ interface Props {
 type Mode = 'stop' | 'waypoint'
 
 export function AddPointModal({ localities, prefillLat, prefillLng, prefillName, onAdd, onClose }: Props) {
-  // insert after the current last stop by default — always a valid, selectable option
-  const insertOptions = localities.map((rl, i) => ({
-    label: i === 0 ? 'No início (após origem)' : `Após ${rl.locality?.name ?? `Ponto ${rl.sequence}`} (seq ${rl.sequence})`,
-    value: i === 0 ? 0 : rl.sequence,
+  // insert after the current last stop before the destination by default —
+  // the destination (last stop) can't be used as an anchor, since no point may come after it.
+  // label position = the sequence the new point will take (origin is position 0)
+  const insertOptions = localities.slice(0, -1).map((rl, i) => ({
+    label: `${String(i + 1).padStart(2, '0')} - Após ${rl.locality?.abbr ?? `Ponto ${rl.sequence}`}`,
+    value: rl.sequence,
   }))
 
   const [mode,       setMode]       = useState<Mode>('stop')

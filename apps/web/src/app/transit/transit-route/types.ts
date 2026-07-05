@@ -4,6 +4,7 @@ export interface RouteLocalityLocality {
   id: string
   name: string
   code: string
+  abbr: string | null
   lat: number | null
   lng: number | null
 }
