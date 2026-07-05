@@ -33,8 +33,8 @@ export class RouteController extends BaseController<Route, CreateRouteDto, Updat
 
   @Post(':id/reprocess')
   @HttpCode(200)
-  async reprocess(@Param('id') id: string) {
-    await this.routeService.reprocess(id)
+  async reprocess(@Param('id') id: string, @Body() body?: { forceAll?: boolean }) {
+    await this.routeService.reprocess(id, { forceAll: body?.forceAll })
     return { ok: true }
   }
 

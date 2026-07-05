@@ -65,7 +65,9 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     })
   }
 
-  async reprocess(routeId: string): Promise<void> {
+  // forceAll overwrites MANUAL overrides too (and resets them to OSRM) — used when a
+  // point is deleted, since the legs around it no longer represent the same trip
+  async reprocess(routeId: string, opts: { forceAll?: boolean } = {}): Promise<void> {
     const localities = await this.getTrajectory(routeId)
     if (localities.length < 2) return
 
@@ -82,9 +84,10 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
         }
         const leg = result.legs[i - 1]
         const updates: Record<string, unknown> = { geometry: leg.geometry as unknown }
-        if (rl.deltaSource !== 'MANUAL') {
+        if (opts.forceAll || rl.deltaSource !== 'MANUAL') {
           updates.deltaMinutes = Math.ceil(leg.duration / 60)
           updates.deltaKm      = Math.round(leg.distance / 10) / 100
+          if (opts.forceAll) updates.deltaSource = 'OSRM'
         }
         return this.prisma.routeLocality.update({ where: { id: rl.id }, data: updates })
       }),

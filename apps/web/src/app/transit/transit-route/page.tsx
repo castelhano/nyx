@@ -10,30 +10,22 @@ import { useToast }                          from '@/lib/toast-context'
 import { useShortcut }                       from '@/lib/keywatch'
 import { useTopbarActions }                  from '@/components/layout/topbar-actions-context'
 import { Breadcrumb }                        from '@/components/ui/breadcrumb'
+import { Button }                            from '@/components/ui/button'
 import { RoutePanel }                        from './RoutePanel'
 import { RulerCanvas }                       from './RulerCanvas'
 import { CreateRouteModal }                  from './CreateRouteModal'
 import { AddPointModal }                     from './AddPointModal'
 import { SuggestModal }                      from './SuggestModal'
+import { SeqModal }                          from './SeqModal'
+import { apiPost, apiPatch }                 from './api'
 import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } from './types'
+import { DIR_COLOR }                         from './types'
 import { extractError } from '@/lib/utils'
 
 const MapCanvas = dynamic(() => import('./MapCanvas'), { ssr: false })
 
 type CanvasMode  = 'ruler' | 'map'
 type TopbarState = 'idle' | 'pending' | 'suggesting'
-
-async function apiPost(path: string, body?: unknown): Promise<unknown> {
-  const res = await apiFetch(path, { method: 'POST', ...(body !== undefined ? { body: JSON.stringify(body) } : {}) })
-  if (!res.ok) throw await res.json()
-  return res.status === 204 ? undefined : res.json()
-}
-
-async function apiPatch(path: string, body: unknown): Promise<unknown> {
-  const res = await apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) })
-  if (!res.ok) throw await res.json()
-  return res.json()
-}
 
 export default function TransitRoutePage() {
   const router       = useRouter()
@@ -46,6 +38,7 @@ export default function TransitRoutePage() {
 
   const [canvasMode,    setCanvasMode]    = useState<CanvasMode>('ruler')
   const [showCreate,    setShowCreate]    = useState(false)
+  const [showSeq,       setShowSeq]       = useState(false)
   const [addPointMode,  setAddPointMode]  = useState(false)
   const [mapClickPos,   setMapClickPos]   = useState<{ lat: number; lng: number } | null>(null)
   const [pendingPoints, setPendingPoints] = useState<PendingPoint[]>([])
@@ -304,6 +297,17 @@ export default function TransitRoutePage() {
             Mapa
           </button>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!routeId}
+          onClick={() => setShowSeq(true)}
+        >
+          <Icons.List className="w-3.5 h-3.5" />
+          Seq
+        </Button>
       </div>
 
       {/* stale trajectory badge */}
@@ -364,6 +368,20 @@ export default function TransitRoutePage() {
           suggestions={suggestions}
           onConfirm={handleConfirmSuggestions}
           onClose={() => setSuggestions(null)}
+        />
+      )}
+
+      {showSeq && routeId && (
+        <SeqModal
+          routeId={routeId}
+          localities={selectedLocalities}
+          color={DIR_COLOR[routes.find((r) => r.id === routeId)?.direction ?? 'OUTBOUND']}
+          disabled={pendingPoints.length > 0}
+          onClose={() => setShowSeq(false)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
+            toast.success('Sequência atualizada')
+          }}
         />
       )}
     </div>

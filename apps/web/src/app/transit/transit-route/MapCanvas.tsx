@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, CircleMarker, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { DIR_COLOR, getCoord, type GeoJSONLineString, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
+import { stopGlyphMarkup } from './StopGlyph'
 
 // Leaflet icons broken in webpack — fix the default icon
 import L from 'leaflet'
@@ -99,14 +100,32 @@ export default function MapCanvas({
               {lls.map((rl) => {
                 const c = getCoord(rl)
                 if (!c) return null
-                const isWaypoint  = rl.localityId === null
-                const isEndpoint  = rl.localityId === route.originLocalityId || rl.localityId === route.destinationLocalityId
+                const isWaypoint    = rl.localityId === null
+                const isOrigin      = rl.localityId === route.originLocalityId
+                const isDestination = rl.localityId === route.destinationLocalityId
+
+                if (isOrigin || isDestination) {
+                  return (
+                    <Marker
+                      key={rl.id}
+                      position={[c.lat, c.lng]}
+                      opacity={opacity}
+                      icon={L.divIcon({
+                        html:       stopGlyphMarkup(isOrigin ? 'origin' : 'destination', color, 18),
+                        className:  '',
+                        iconSize:   [18, 18],
+                        iconAnchor: [9, 9],
+                      })}
+                      eventHandlers={{ click: () => onSelectRoute(route.id) }}
+                    />
+                  )
+                }
 
                 return (
                   <CircleMarker
                     key={rl.id}
                     center={[c.lat, c.lng]}
-                    radius={isWaypoint ? 3 : isEndpoint ? 8 : 5}
+                    radius={isWaypoint ? 3 : 5}
                     pathOptions={{
                       color:       isWaypoint ? '#94a3b8' : color,
                       fillColor:   isWaypoint ? '#94a3b8' : color,

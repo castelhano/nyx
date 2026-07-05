@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { DIR_COLOR, type RouteLocality, type TransitRoute } from './types'
+import { StopGlyph } from './StopGlyph'
 
 interface Props {
   routes:          TransitRoute[]
@@ -78,17 +79,11 @@ function RulerRow({ route, localities, isSelected, onClick }: {
               style={{ left: `${pct}%` }}
               title={stop.locality?.name ?? `Seq ${stop.sequence}`}
             >
-              {isOrigin || isDest ? (
-                <div
-                  className="w-3 h-3 rounded-full border-2 border-background"
-                  style={{ backgroundColor: color }}
-                />
-              ) : (
-                <div
-                  className="w-2 h-2 rounded-full border border-background"
-                  style={{ backgroundColor: color }}
-                />
-              )}
+              <StopGlyph
+                kind={isOrigin ? 'origin' : isDest ? 'destination' : 'stop'}
+                color={color}
+                size={isOrigin || isDest ? 14 : 10}
+              />
               {(isOrigin || isDest || stops.length <= 6) && (
                 <div
                   className="absolute top-4 left-1/2 -translate-x-1/2 text-[10px] whitespace-nowrap text-muted-foreground max-w-16 truncate"
