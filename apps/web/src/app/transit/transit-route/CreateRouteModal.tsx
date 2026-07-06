@@ -29,15 +29,22 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
   })
   const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
 
+  const isCircular = direction === 'CIRCULAR'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!originId || !destId || !name.trim()) { setError('Preencha todos os campos'); return }
+    if (!originId || (!isCircular && !destId) || !name.trim()) { setError('Preencha todos os campos'); return }
     setIsPending(true)
     setError(null)
     try {
       const res = await apiFetch('/transit/transit-route', {
         method: 'POST',
-        body: JSON.stringify({ lineId, direction, name: name.trim(), originLocalityId: originId, destinationLocalityId: destId, isActive: true }),
+        body: JSON.stringify({
+          lineId, direction, name: name.trim(),
+          originLocalityId:      originId,
+          destinationLocalityId: isCircular ? originId : destId,
+          isActive: true,
+        }),
       })
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j as Record<string, unknown>, 'Erro ao criar sentido')) }
       const route = await res.json()
@@ -88,7 +95,7 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium">Origem</label>
+          <label className="text-sm font-medium">{isCircular ? 'Origem / Destino' : 'Origem'}</label>
           <select
             className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
             value={originId}
@@ -100,22 +107,27 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          {isCircular && (
+            <p className="text-xs text-muted-foreground">Rota circular — o destino é o mesmo ponto de origem.</p>
+          )}
         </div>
 
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Destino</label>
-          <select
-            className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-            value={destId}
-            onChange={(e) => setDestId(e.target.value)}
-            disabled={localitiesLoading}
-          >
-            <option value="">Selecione…</option>
-            {localityOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
+        {!isCircular && (
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Destino</label>
+            <select
+              className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+              value={destId}
+              onChange={(e) => setDestId(e.target.value)}
+              disabled={localitiesLoading}
+            >
+              <option value="">Selecione…</option>
+              {localityOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 

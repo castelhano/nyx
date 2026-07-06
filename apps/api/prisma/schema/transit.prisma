@@ -127,8 +127,9 @@ model RouteLocality {
   // nulls are treated as distinct in both SQLite and PG — multiple waypoints per route are allowed
   locality TransitLocality? @relation(fields: [localityId], references: [id])
 
+  // no @@unique([routeId, localityId]) — a circular route legitimately uses the
+  // same locality for both its origin (sequence 1) and destination (last sequence)
   @@unique([routeId, sequence])
-  @@unique([routeId, localityId])
   @@map("transit_route_localities")
 }
 

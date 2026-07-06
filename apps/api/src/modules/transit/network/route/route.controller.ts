@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Req, Body, Param, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Get, Post, Req, Body, Param, UseGuards, HttpCode, Logger } from '@nestjs/common'
 import { Route, CreateRouteDto, UpdateRouteDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -9,6 +9,8 @@ import { RouteService } from './route.service'
 @Controller('transit/transit-route')
 @UseGuards(JwtAuthGuard)
 export class RouteController extends BaseController<Route, CreateRouteDto, UpdateRouteDto> {
+  private readonly logger = new Logger(RouteController.name)
+
   constructor(
     private readonly routeService: RouteService,
     caslFactory: CaslAbilityFactory,
@@ -22,7 +24,7 @@ export class RouteController extends BaseController<Route, CreateRouteDto, Updat
     const created = route as unknown as { id: string; originLocalityId: string; destinationLocalityId: string }
     this.routeService
       .buildInitialTrajectory(created.id, created.originLocalityId, created.destinationLocalityId)
-      .catch(() => {})
+      .catch((err) => this.logger.error(`buildInitialTrajectory failed for route ${created.id}: ${err.message}`))
     return route
   }
 
