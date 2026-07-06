@@ -291,6 +291,17 @@ export default function TransitRoutePage() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [pendingPoints.length])
 
+  // Esc cancels "adicionar ponto" — covers both waiting for the map click
+  // (crosshair, no modal yet) and the modal already being open
+  useEffect(() => {
+    if (!addPointMode) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setAddPointMode(false); setMapClickPos(null) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [addPointMode])
+
   // ── render ────────────────────────────────────────────────────────────────
 
   const lineName = lineData?.code ? `${lineData.code} — ${lineData.name ?? ''}` : 'Sentidos'
