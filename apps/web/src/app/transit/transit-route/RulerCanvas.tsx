@@ -11,14 +11,13 @@ interface Props {
   onSelectRoute:   (id: string) => void
 }
 
-function RulerRow({ route, localities, isSelected, onClick }: {
+function RulerRow({ route, localities, onClick }: {
   route: TransitRoute
   localities: RouteLocality[]
-  isSelected: boolean
   onClick: () => void
 }) {
   const color = DIR_COLOR[route.direction]
-  const opacity = isSelected || !isSelected ? 1 : 0.4   // all fully visible in ruler
+  const opacity = 1   // all fully visible in ruler
 
   // Only bus stops (localityId != null) appear in the ruler
   const stops = localities.filter((rl) => rl.localityId !== null)
@@ -104,7 +103,7 @@ function RulerRow({ route, localities, isSelected, onClick }: {
   )
 }
 
-export function RulerCanvas({ routes, localities, selectedRouteId, onSelectRoute }: Props) {
+export function RulerCanvas({ routes, localities, onSelectRoute }: Props) {
   if (routes.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -120,7 +119,6 @@ export function RulerCanvas({ routes, localities, selectedRouteId, onSelectRoute
           key={route.id}
           route={route}
           localities={localities[route.id] ?? []}
-          isSelected={route.id === selectedRouteId}
           onClick={() => onSelectRoute(route.id)}
         />
       ))}

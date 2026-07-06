@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams }        from 'next/navigation'
 import dynamic                               from 'next/dynamic'
 import { useQuery, useQueryClient }          from '@tanstack/react-query'
