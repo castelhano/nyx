@@ -7,6 +7,7 @@ import { useQuery, useQueryClient }          from '@tanstack/react-query'
 import { Icons }                             from '@/lib/icons'
 import { apiFetch }                          from '@/lib/auth'
 import { useToast }                          from '@/lib/toast-context'
+import { useConfirm }                        from '@/lib/confirm-context'
 import { useShortcut }                       from '@/lib/keywatch'
 import { useTopbarActions }                  from '@/components/layout/topbar-actions-context'
 import { Breadcrumb }                        from '@/components/ui/breadcrumb'
@@ -17,7 +18,7 @@ import { CreateRouteModal }                  from './CreateRouteModal'
 import { AddPointModal }                     from './AddPointModal'
 import { SuggestModal }                      from './SuggestModal'
 import { SeqModal }                          from './SeqModal'
-import { apiPost, apiPatch }                 from './api'
+import { apiPost, apiPatch, apiDelete }      from './api'
 import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } from './types'
 import { DIR_COLOR }                         from './types'
 import { extractError } from '@/lib/utils'
@@ -32,6 +33,7 @@ export default function TransitRoutePage() {
   const searchParams = useSearchParams()
   const queryClient  = useQueryClient()
   const { toast }    = useToast()
+  const confirm      = useConfirm()
 
   const lineId    = searchParams.get('lineId') ?? ''
   const routeId   = searchParams.get('routeId') ?? ''
@@ -46,6 +48,7 @@ export default function TransitRoutePage() {
   const [isSaving,      setIsSaving]     = useState(false)
   const [isReprocessing,setIsReprocessing] = useState(false)
   const [isSuggesting,  setIsSuggesting]  = useState(false)
+  const [isDeleting,    setIsDeleting]    = useState(false)
 
   const topbarState: TopbarState = suggestions !== null ? 'suggesting' : pendingPoints.length > 0 ? 'pending' : 'idle'
 
@@ -185,6 +188,34 @@ export default function TransitRoutePage() {
     }
   }
 
+  // ── delete route ───────────────────────────────────────────────────────────
+
+  async function handleDeleteRoute() {
+    if (!routeId) return
+    const route = routes.find((r) => r.id === routeId)
+    const ok = await confirm({
+      title:       'Excluir sentido?',
+      description: `${route?.name ?? 'Este sentido'} e todos os seus pontos serão removidos permanentemente.`,
+      variant:      'destructive',
+    })
+    if (!ok) return
+    setIsDeleting(true)
+    try {
+      await apiDelete(`/transit/transit-route/${routeId}`)
+      queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete('routeId')
+      router.replace(`/transit/transit-route?${params}`)
+      setPendingPoints([])
+      setSuggestions(null)
+      toast.success('Sentido excluído')
+    } catch (err) {
+      toast.error(extractError(err as Record<string, unknown>, 'Erro ao excluir sentido'))
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // ── suggest ───────────────────────────────────────────────────────────────
 
   async function handleSuggest() {
@@ -230,17 +261,19 @@ export default function TransitRoutePage() {
     ] : topbarState === 'suggesting' ? [
       { label: 'Cancelar sugestão', icon: Icons.X, onClick: () => setSuggestions(null), variant: 'ghost' as const },
     ] : [
-      { label: isReprocessing ? 'Reprocessando…' : 'Reprocessar', icon: Icons.RefreshCw, onClick: handleReprocess, disabled: isReprocessing || !routeId },
+      { label: isReprocessing ? 'Reprocessando…' : 'Reprocessar', icon: Icons.RefreshCw, onClick: handleReprocess, disabled: isReprocessing || !routeId, overflow: true },
       {
         label:    isSuggesting ? 'Sugerindo…' : 'Sugerir pontos',
         icon:     Icons.Sparkles,
         onClick:  handleSuggest,
         disabled: isSuggesting || !hasGeometry,
         title:    !hasGeometry ? 'Gere a trajetória primeiro' : undefined,
+        overflow: true,
       } as any,
       { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => setAddPointMode(true), variant: 'ghost' as const },
+      { label: isDeleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDeleteRoute, disabled: isDeleting, overflow: true },
     ],
-    [routeId, topbarState, isSaving, isReprocessing, isSuggesting, hasGeometry],
+    [routeId, topbarState, isSaving, isReprocessing, isSuggesting, isDeleting, hasGeometry],
   )
 
   useShortcut('alt+v', () => router.push(lineId ? `/transit/transit-line/${lineId}` : '/transit'), {
