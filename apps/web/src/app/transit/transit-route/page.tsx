@@ -63,7 +63,7 @@ export default function TransitRoutePage() {
 
   const { data: routes = [] } = useQuery<TransitRoute[]>({
     queryKey: ['transit', 'transit-route', { lineId }],
-    queryFn:  () => apiFetch(`/transit/transit-route?lineId=${lineId}&pageSize=100`).then((r) => r.json().then((j: any) => j.data ?? [])),
+    queryFn:  () => apiFetch(`/transit/transit-route?lineId=${lineId}&pageSize=100&sortField=direction&sortOrder=desc`).then((r) => r.json().then((j: any) => j.data ?? [])),
     enabled:  !!lineId,
     staleTime: 30_000,
   })
