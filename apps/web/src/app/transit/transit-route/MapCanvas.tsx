@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { DIR_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
+import { PointDetails } from './PointDetails'
 
 // Leaflet icons broken in webpack — fix the default icon
 import L from 'leaflet'
@@ -84,6 +85,11 @@ export default function MapCanvas({
           // collect leg geometries, keeping the owning RouteLocality so we can key by it
           const legs = lls.filter((rl) => rl.geometry != null)
 
+          // sequence number shown next to each point is the 0-indexed position among
+          // real stops only (origin = 0) — waypoints are routing-only and stay unnumbered
+          const stops     = lls.filter((rl) => rl.localityId !== null)
+          const stopIndex = new Map(stops.map((rl, i) => [rl.id, i]))
+
           return (
             <span key={route.id}>
               {legs.map((rl) => (
@@ -104,6 +110,7 @@ export default function MapCanvas({
                 const isWaypoint    = rl.localityId === null
                 const isOrigin      = rl.localityId === route.originLocalityId
                 const isDestination = rl.localityId === route.destinationLocalityId
+                const position      = stopIndex.get(rl.id) ?? null
 
                 if (isOrigin || isDestination) {
                   return (
@@ -117,8 +124,12 @@ export default function MapCanvas({
                         iconSize:   [18, 18],
                         iconAnchor: [9, 9],
                       })}
-                      eventHandlers={{ click: () => onSelectRoute(route.id) }}
-                    />
+                    >
+                      <Tooltip permanent direction="top" offset={[0, -10]} className="!py-0 !px-1 !text-[10px] !leading-tight">
+                        {position}
+                      </Tooltip>
+                      <Popup><PointDetails rl={rl} position={position} /></Popup>
+                    </Marker>
                   )
                 }
 
@@ -135,8 +146,13 @@ export default function MapCanvas({
                       weight:      isWaypoint ? 1 : 2,
                       dashArray:   isWaypoint ? '3,3' : undefined,
                     }}
-                    eventHandlers={{ click: () => onSelectRoute(route.id) }}
                   >
+                    {!isWaypoint && (
+                      <Tooltip permanent direction="top" offset={[0, -6]} className="!py-0 !px-1 !text-[10px] !leading-tight">
+                        {position}
+                      </Tooltip>
+                    )}
+                    <Popup><PointDetails rl={rl} position={position} /></Popup>
                   </CircleMarker>
                 )
               })}

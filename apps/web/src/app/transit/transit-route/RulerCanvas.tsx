@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { DIR_COLOR, type RouteLocality, type TransitRoute } from './types'
 import { StopGlyph } from './StopGlyph'
+import { PointDetailModal } from './PointDetailModal'
 
 interface Props {
   routes:          TransitRoute[]
@@ -11,13 +12,13 @@ interface Props {
   onSelectRoute:   (id: string) => void
 }
 
-function RulerRow({ route, localities, onClick }: {
+function RulerRow({ route, localities }: {
   route: TransitRoute
   localities: RouteLocality[]
-  onClick: () => void
 }) {
   const color = DIR_COLOR[route.direction]
   const opacity = 1   // all fully visible in ruler
+  const [detail, setDetail] = useState<{ rl: RouteLocality; position: number } | null>(null)
 
   // Only bus stops (localityId != null) appear in the ruler
   const stops = localities.filter((rl) => rl.localityId !== null)
@@ -41,11 +42,7 @@ function RulerRow({ route, localities, onClick }: {
 
   if (stops.length === 0) {
     return (
-      <div
-        className="flex items-center gap-3 px-4 py-3 rounded-sm cursor-pointer hover:bg-muted/50 transition-colors"
-        style={{ opacity }}
-        onClick={onClick}
-      >
+      <div className="flex items-center gap-3 px-4 py-3 rounded-sm" style={{ opacity }}>
         <span className="text-xs text-muted-foreground w-20 shrink-0">{route.name}</span>
         <span className="text-xs text-muted-foreground italic">Sem paradas cadastradas</span>
       </div>
@@ -53,57 +50,64 @@ function RulerRow({ route, localities, onClick }: {
   }
 
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-4 cursor-pointer hover:bg-muted/30 transition-colors rounded-sm"
-      style={{ opacity }}
-      onClick={onClick}
-    >
-      <span className="text-xs font-medium text-muted-foreground w-20 shrink-0 truncate">{route.name}</span>
+    <>
+      <div className="flex items-center gap-3 px-4 py-4 rounded-sm" style={{ opacity }}>
+        <span className="text-xs font-medium text-muted-foreground w-20 shrink-0 truncate">{route.name}</span>
 
-      <div className="relative flex-1 h-10">
-        {/* track line */}
-        <div
-          className="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 rounded-full"
-          style={{ backgroundColor: color, opacity: 0.4 }}
-        />
+        <div className="relative flex-1 h-10">
+          {/* track line */}
+          <div
+            className="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 rounded-full"
+            style={{ backgroundColor: color, opacity: 0.4 }}
+          />
 
-        {stops.map((stop, i) => {
-          const pct = positions[i]
-          const isOrigin = i === 0
-          const isDest   = i === stops.length - 1
-          return (
-            <div
-              key={stop.id}
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
-              style={{ left: `${pct}%` }}
-              title={stop.locality?.name ?? `Seq ${stop.sequence}`}
-            >
-              <StopGlyph
-                kind={isOrigin ? 'origin' : isDest ? 'destination' : 'stop'}
-                color={color}
-                size={isOrigin || isDest ? 14 : 10}
-              />
-              {(isOrigin || isDest || stops.length <= 6) && (
-                <div
-                  className="absolute top-4 left-1/2 -translate-x-1/2 text-[10px] whitespace-nowrap text-muted-foreground max-w-16 truncate"
-                  title={stop.locality?.name}
-                >
-                  {stop.locality?.name?.split(' ')[0]}
+          {stops.map((stop, i) => {
+            const pct = positions[i]
+            const isOrigin = i === 0
+            const isDest   = i === stops.length - 1
+            const label    = stop.locality?.abbr || stop.locality?.name?.split(' ')[0]
+            return (
+              <div
+                key={stop.id}
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer"
+                style={{ left: `${pct}%` }}
+                title={stop.locality?.name ?? `Seq ${stop.sequence}`}
+                onClick={() => setDetail({ rl: stop, position: i })}
+              >
+                <div className="flex flex-col items-center">
+                  <span className="text-[9px] leading-none text-muted-foreground mb-0.5">{i}</span>
+                  <StopGlyph
+                    kind={isOrigin ? 'origin' : isDest ? 'destination' : 'stop'}
+                    color={color}
+                    size={isOrigin || isDest ? 14 : 10}
+                  />
                 </div>
-              )}
-            </div>
-          )
-        })}
+                {(isOrigin || isDest || stops.length <= 6) && (
+                  <div
+                    className="absolute top-6 left-1/2 -translate-x-1/2 text-[10px] whitespace-nowrap text-muted-foreground max-w-16 truncate"
+                    title={stop.locality?.name}
+                  >
+                    {label}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {!hasRealDistances && (
+          <span className="text-[10px] text-muted-foreground shrink-0 italic">distribuição estimada</span>
+        )}
       </div>
 
-      {!hasRealDistances && (
-        <span className="text-[10px] text-muted-foreground shrink-0 italic">distribuição estimada</span>
+      {detail && (
+        <PointDetailModal rl={detail.rl} position={detail.position} onClose={() => setDetail(null)} />
       )}
-    </div>
+    </>
   )
 }
 
-export function RulerCanvas({ routes, localities, onSelectRoute }: Props) {
+export function RulerCanvas({ routes, localities }: Props) {
   if (routes.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -119,7 +123,6 @@ export function RulerCanvas({ routes, localities, onSelectRoute }: Props) {
           key={route.id}
           route={route}
           localities={localities[route.id] ?? []}
-          onClick={() => onSelectRoute(route.id)}
         />
       ))}
     </div>
