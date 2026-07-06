@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { routeSchema, Route, CreateRouteDto, UpdateRouteDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
@@ -35,6 +35,8 @@ export interface SuggestedLocality {
 
 @Injectable()
 export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRouteDto> {
+  private readonly logger = new Logger(RouteService.name)
+
   constructor(
     prisma: PrismaService,
     private readonly osrm: OsrmService,
@@ -72,7 +74,25 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     if (localities.length < 2) return
 
     const coords = this.coordsFromLocalities(localities)
+
+    this.logger.debug(`reprocess route=${routeId} stops=${localities.length}`)
+    localities.forEach((rl, i) => {
+      this.logger.debug(
+        `  [${i}] seq=${rl.sequence} id=${rl.id} localityId=${rl.localityId ?? '(waypoint)'} `
+        + `name=${rl.locality?.name ?? '-'} lat=${coords[i].lat} lng=${coords[i].lng}`,
+      )
+    })
+
     const result = await this.osrm.getRoute(coords)
+
+    result.legs.forEach((leg, i) => {
+      const from = localities[i]
+      const to   = localities[i + 1]
+      this.logger.debug(
+        `  leg[${i}] ${from.locality?.name ?? from.id} -> ${to.locality?.name ?? to.id}: `
+        + `duration=${leg.duration}s distance=${leg.distance}m points=${leg.geometry.coordinates.length}`,
+      )
+    })
 
     await this.prisma.$transaction(
       localities.map((rl, i) => {

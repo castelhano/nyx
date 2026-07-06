@@ -32,9 +32,12 @@ export class OsrmService {
     const coordStr = coords.map((c) => `${c.lng},${c.lat}`).join(';')
     const url = `${this.osrmUrl}/route/v1/driving/${coordStr}?geometries=geojson&overview=full&steps=true`
 
+    this.logger.debug(`OSRM /route request: ${url}`)
+
+    type OsrmWaypoint = { location: [number, number]; distance: number; name: string }
     type OsrmStep = { geometry: GeoJSONLineString }
     type OsrmLeg  = { duration: number; distance: number; steps: OsrmStep[] }
-    type OsrmResp = { routes: Array<{ geometry: GeoJSONLineString; legs: OsrmLeg[] }> }
+    type OsrmResp = { routes: Array<{ geometry: GeoJSONLineString; legs: OsrmLeg[]; distance: number; duration: number }>; waypoints?: OsrmWaypoint[] }
 
     let data: OsrmResp
     try {
@@ -49,6 +52,14 @@ export class OsrmService {
 
     const route = data.routes[0]
     if (!route) throw new Error('OSRM returned no routes')
+
+    this.logger.debug(`OSRM /route response: total distance=${route.distance}m duration=${route.duration}s legs=${route.legs.length}`)
+    data.waypoints?.forEach((wp, i) => {
+      this.logger.debug(
+        `  waypoint[${i}] requested=(${coords[i].lng},${coords[i].lat}) `
+        + `snapped=(${wp.location[0]},${wp.location[1]}) snapDistance=${wp.distance}m name="${wp.name}"`,
+      )
+    })
 
     const legs: OsrmRouteLeg[] = route.legs.map((leg) => {
       const coords: [number, number][] = []

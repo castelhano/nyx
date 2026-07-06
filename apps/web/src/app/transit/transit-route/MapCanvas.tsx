@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DIR_COLOR, getCoord, type GeoJSONLineString, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
+import { DIR_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 
 // Leaflet icons broken in webpack — fix the default icon
@@ -81,17 +81,18 @@ export default function MapCanvas({
           const color    = DIR_COLOR[route.direction]
           const opacity  = selectedRouteId ? (isSelected ? 1 : 0.3) : 0.8
 
-          // collect leg geometries
-          const legGeoms: GeoJSONLineString[] = lls
-            .filter((rl) => rl.geometry != null)
-            .map((rl) => rl.geometry as GeoJSONLineString)
+          // collect leg geometries, keeping the owning RouteLocality so we can key by it
+          const legs = lls.filter((rl) => rl.geometry != null)
 
           return (
             <span key={route.id}>
-              {legGeoms.map((geom, gi) => (
+              {legs.map((rl) => (
                 <GeoJSON
-                  key={`${route.id}-leg-${gi}`}
-                  data={geom as any}
+                  // react-leaflet's GeoJSON only builds the layer once at mount and never
+                  // diffs the `data` prop on re-render — key by updatedAt so a changed
+                  // geometry (after Gravar/Reprocessar) forces a remount instead of showing stale shape
+                  key={`${rl.id}-${rl.updatedAt}`}
+                  data={rl.geometry as any}
                   style={{ color, weight: isSelected ? 4 : 2, opacity }}
                   eventHandlers={{ click: () => onSelectRoute(route.id) }}
                 />

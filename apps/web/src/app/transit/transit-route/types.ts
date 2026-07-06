@@ -21,6 +21,7 @@ export interface RouteLocality {
   deltaSource: 'OSRM' | 'MANUAL'
   geometry: GeoJSONLineString | null
   allowsCrewChange: boolean
+  updatedAt: string
   locality: RouteLocalityLocality | null
 }
 
