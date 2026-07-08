@@ -819,13 +819,6 @@ export default function VehiclePlanPage() {
   function handleAdjustCycle() {
     if (!plottedData) return
 
-    const fmt = (m: number) => {
-      if (!isFinite(m)) return '–'
-      const h = String(Math.floor(m / 60) % 24).padStart(2, '0')
-      const min = String(m % 60).padStart(2, '0')
-      return `${h}:${min}(${m})`
-    }
-
     const overrides   = new Map<string, TripPatch>()
     const drOverrides = new Map<string, DeadrunPatch>()
     let tripsWithWindow = 0
@@ -833,10 +826,6 @@ export default function VehiclePlanPage() {
     // Process per block: a block = one vehicle.
     // Merge trips and deadruns into chronological order so deadruns shift automatically
     // when the preceding trip's arrival extends.
-    console.group('[AjustarCiclo]', plottedData.blocks.length, 'blocos')
-    console.log('[AjustarCiclo] selectedLineIds:', [...selectedLineIds])
-    console.log('[AjustarCiclo] ganttData blocks total:', ganttData?.blocks.length ?? 'sem ganttData')
-
     for (const block of plottedData.blocks) {
       type TripItem    = { kind: 'trip';    dep: number; bt: typeof block.blockTrips[0] }
       type DrItem      = { kind: 'deadrun'; dep: number; dr: typeof block.blockDeadruns[0] }
@@ -847,8 +836,6 @@ export default function VehiclePlanPage() {
         ...block.blockDeadruns.map(dr => ({ kind: 'deadrun' as const, dep: dr.departureMinutes,      dr })),
       ].sort((a, b) => a.dep - b.dep)
 
-      console.group(`Bloco ${block.blockNumber} — ${items.length} itens (${block.blockTrips.length} viagens, ${block.blockDeadruns.length} vazios)`)
-
       let prevArrival     = -Infinity
       let pendingInterval = 0  // interval to apply before the next trip (0 after a deadrun)
 
@@ -858,21 +845,12 @@ export default function VehiclePlanPage() {
 
         if (item.kind === 'trip') {
           const { trip } = item.bt
-          const rawMetrics = trip.route.line.metrics
-          console.log(
-            `  [RAW] trip ${trip.id.slice(-6)} linha=${trip.route.line.code} dir=${trip.route.direction}` +
-            ` metrics type=${typeof rawMetrics}` +
-            ` metrics=`, rawMetrics,
-            ` windows=`, (rawMetrics as any)?.windows,
-          )
 
           const minDep      = prevArrival === -Infinity ? -Infinity : prevArrival + pendingInterval
           const effectiveDep = Math.max(
             overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes,
             minDep,
           )
-          const pushed = effectiveDep > trip.departureMinutes
-
           const cycleWindow = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
           if (cycleWindow) tripsWithWindow++
           const newArrival = cycleWindow
@@ -883,15 +861,6 @@ export default function VehiclePlanPage() {
           if (effectiveDep !== trip.departureMinutes) patch.departureMinutes = effectiveDep
           if (newArrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = newArrival
           if (Object.keys(patch).length > 0) overrides.set(trip.id, { ...overrides.get(trip.id), ...patch })
-
-          console.log(
-            `  trip ${trip.id.slice(-6)} [${trip.route.direction.slice(0, 3)}]` +
-            ` orig: ${fmt(trip.departureMinutes)}→${fmt(trip.arrivalMinutes)}` +
-            ` calc: ${fmt(effectiveDep)}→${fmt(newArrival)}` +
-            ` cycle=${cycleWindow?.minutes ?? 'SEM JANELA'} interval=${cycleWindow?.intervalMinutes ?? '-'}` +
-            ` patch=${JSON.stringify(patch)}` +
-            (pushed ? ' ← EMPURRADA' : ''),
-          )
 
           prevArrival = newArrival
           // If next item is another trip (no deadrun between them), enforce the route headway.
@@ -911,22 +880,11 @@ export default function VehiclePlanPage() {
           if (newArr !== dr.arrivalMinutes)   dpatch.arrivalMinutes   = newArr
           if (Object.keys(dpatch).length > 0) drOverrides.set(dr.id, dpatch)
 
-          console.log(
-            `  deadrun ${dr.id.slice(-6)} [${dr.type}]` +
-            ` orig: ${fmt(dr.departureMinutes)}→${fmt(dr.arrivalMinutes)}` +
-            ` calc: ${fmt(newDep)}→${fmt(newArr)}` +
-            (newDep > dr.departureMinutes ? ' ← EMPURRADO' : newDep < dr.departureMinutes ? ' ← ADIANTADO' : ''),
-          )
-
           prevArrival     = newArr
           pendingInterval = 0  // next trip starts right after deadrun, no extra interval
         }
       }
-
-      console.groupEnd()
     }
-
-    console.groupEnd()
 
     setPendingChanges(overrides)
     setPendingDeadrunChanges(drOverrides)

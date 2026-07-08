@@ -140,14 +140,11 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     dayTypeCode: string,
     updates: Array<{ lineId: string; demand: Record<string, Record<string, number>> }>,
   ): Promise<{ updated: number }> {
-    console.log(`[applyDemand] dayTypeCode=${dayTypeCode} updates=${updates.length}`)
-
     const ids   = updates.map((u) => u.lineId)
     const lines = await this.prisma.transitLine.findMany({
       where:  { id: { in: ids } },
       select: { id: true, code: true, metrics: true },
     })
-    console.log(`[applyDemand] found ${lines.length} lines in DB`)
 
     const lineMap = new Map(lines.map((l) => [l.id, l]))
 
@@ -155,26 +152,16 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     await Promise.all(
       updates.map(async (u) => {
         const line = lineMap.get(u.lineId)
-        if (!line) {
-          console.warn(`[applyDemand] line id not found: ${u.lineId}`)
-          return
-        }
+        if (!line) return
         const metrics = (line.metrics as Record<string, unknown> ?? {})
         const demand  = { ...(metrics.demand as Record<string, unknown> ?? {}) }
         demand[dayTypeCode] = u.demand
         const newMetrics = { ...metrics, demand }
-        console.log(`[applyDemand] updating ${line.code} — demand keys: ${Object.keys(u.demand).join(',')}`)
-        try {
-          await this.prisma.transitLine.update({
-            where: { id: line.id },
-            data:  { metrics: newMetrics },
-          })
-          updated++
-          console.log(`[applyDemand] saved ${line.code}`)
-        } catch (err) {
-          console.error(`[applyDemand] error saving ${line.code}:`, err)
-          throw err
-        }
+        await this.prisma.transitLine.update({
+          where: { id: line.id },
+          data:  { metrics: newMetrics },
+        })
+        updated++
       }),
     )
 

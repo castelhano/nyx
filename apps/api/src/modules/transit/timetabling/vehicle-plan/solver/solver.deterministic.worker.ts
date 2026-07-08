@@ -92,11 +92,6 @@ function tryEmitProposal(blocks: Block[], stage: number, stageLabel: string): vo
     result.fleetCount < bestFleet ||
     (result.fleetCount === bestFleet && result.score > bestScore)
 
-  console.log(
-    `[solver-deterministic] stage ${stage}: fleet=${result.fleetCount} score=${result.score.toFixed(1)}` +
-    ` | baseline: fleet=${bestFleet} score=${bestScore} → ${beats ? 'EMIT' : 'skip'}`,
-  )
-
   if (beats) {
     bestFleet = result.fleetCount
     bestScore = result.score

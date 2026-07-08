@@ -301,14 +301,9 @@ if (initial.length === 0) {
   bestBlocks        = initial
   bestResult        = currentResult
 
-  console.log(`[solver-stochastic] initial: fleet=${currentResult.fleetCount} score=${currentResult.score.toFixed(1)} | plan baseline: fleet=${planFleet} score=${planScore}`)
-
   if (beatsPlan(initial, currentResult)) {
     proposalIndex++
     post({ type: 'improvement', scenario: bestResult, proposalIndex })
-    console.log(`[solver-stochastic] initial beats plan → emitting improvement #${proposalIndex}`)
-  } else {
-    console.log(`[solver-stochastic] initial does NOT beat plan, skipping initial improvement`)
   }
 
   const totalMs     = cfg.config.stopMaxTotalMinutes * 60_000
@@ -348,9 +343,6 @@ if (initial.length === 0) {
           if (beatsPlan(current, currentResult)) {
             proposalIndex++
             post({ type: 'improvement', scenario: bestResult, proposalIndex })
-            console.log(`[solver-stochastic] improvement #${proposalIndex}: fleet=${currentResult.fleetCount} score=${currentResult.score.toFixed(1)} (plan: fleet=${planFleet} score=${planScore})`)
-          } else {
-            console.log(`[solver-stochastic] internal improvement but still worse than plan: fleet=${currentResult.fleetCount} score=${currentResult.score.toFixed(1)}`)
           }
         }
       }
