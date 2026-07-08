@@ -157,7 +157,7 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
         const demand  = { ...(metrics.demand as Record<string, unknown> ?? {}) }
         demand[dayTypeCode] = u.demand
         const newMetrics = { ...metrics, demand }
-        await this.prisma.transitLine.update({
+        await this.model.update({
           where: { id: line.id },
           data:  { metrics: newMetrics },
         })
