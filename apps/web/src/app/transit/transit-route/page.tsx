@@ -144,7 +144,7 @@ export default function TransitRoutePage() {
         } else {
           const p = item.p
           ops.push((async () => {
-            const body: Record<string, unknown> = { routeId, sequence: seq, allowsCrewChange: false }
+            const body: Record<string, unknown> = { routeId, sequence: seq, allowsCrewChange: p.allowsCrewChange }
             if (p.localityId) {
               body.localityId = p.localityId
             } else if (p.code) {
@@ -243,6 +243,7 @@ export default function TransitRoutePage() {
       lat:                 s.lat,
       lng:                 s.lng,
       isWaypoint:          false,
+      allowsCrewChange:    false,
       insertAfterSequence: s.insertAfterSequence,
     }))
     setPendingPoints((prev) => [...prev, ...newPending])

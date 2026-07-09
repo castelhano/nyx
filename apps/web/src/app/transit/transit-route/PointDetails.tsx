@@ -21,7 +21,7 @@ export function PointDetails({ rl, position }: Props) {
     ['Distância',          fmt(rl.deltaKm, ' km')],
     ['Tempo',              fmt(rl.deltaMinutes, ' min')],
     ['Origem do dado',     rl.deltaSource === 'MANUAL' ? 'Manual' : 'OSRM'],
-    ['Troca de motorista', rl.allowsCrewChange ? 'Sim' : 'Não'],
+    ...(rl.localityId != null ? [['Troca de motorista', rl.allowsCrewChange ? 'Sim' : 'Não'] as [string, string]] : []),
     ['Coordenadas',        lat != null && lng != null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : '—'],
   ]
 

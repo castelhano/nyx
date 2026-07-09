@@ -60,6 +60,7 @@ export interface PendingPoint {
   lat: number
   lng: number
   isWaypoint: boolean
+  allowsCrewChange: boolean
   insertAfterSequence: number
 }
 

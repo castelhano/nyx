@@ -33,6 +33,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
   const [name,       setName]       = useState(prefillName ?? '')
   const [code,       setCode]       = useState('')
   const [abbr,       setAbbr]       = useState('')
+  const [allowsCrewChange, setAllowsCrewChange] = useState(false)
   const [afterSeq,   setAfterSeq]   = useState<number>(() => insertOptions.at(-1)?.value ?? 0)
   const [snapping,   setSnapping]   = useState(false)
 
@@ -71,6 +72,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
       lat,
       lng,
       isWaypoint:          mode === 'waypoint',
+      allowsCrewChange:    mode === 'stop' && allowsCrewChange,
       insertAfterSequence: afterSeq,
     })
     onClose()
@@ -110,6 +112,18 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
               ))}
             </select>
           </div>
+        )}
+
+        {mode === 'stop' && (
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded-sm border-input"
+              checked={allowsCrewChange}
+              onChange={(e) => setAllowsCrewChange(e.target.checked)}
+            />
+            Troca de motorista
+          </label>
         )}
 
         {(mode === 'waypoint' || isNewLocality) && (
