@@ -56,7 +56,7 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <form
         onSubmit={handleSubmit}
         className="bg-background border border-border rounded-md shadow-lg w-full max-w-md p-6 space-y-4"

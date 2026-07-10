@@ -12,7 +12,7 @@ interface Props {
 
 export function PointDetailModal({ rl, position, onClose }: Props) {
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="bg-background border border-border rounded-md shadow-lg w-full max-w-xs p-4 space-y-3"
         onClick={(e) => e.stopPropagation()}

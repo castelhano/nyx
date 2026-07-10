@@ -86,7 +86,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
   }
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background border border-border rounded-md shadow-lg w-full max-w-md p-6 space-y-4">
         <h2 className="text-lg font-semibold">Adicionar Ponto</h2>
 

@@ -61,7 +61,7 @@ export default function MapCanvas({
   }, [selectedRouteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`flex-1 relative ${addPointMode ? 'cursor-crosshair' : ''}`}>
+    <div className={`flex-1 relative isolate ${addPointMode ? 'cursor-crosshair' : ''}`}>
       <MapContainer
         center={CUIABA_CENTER}
         zoom={12}
@@ -178,7 +178,7 @@ export default function MapCanvas({
       </MapContainer>
 
       {addPointMode && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1001] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md">
           Clique no mapa para posicionar o ponto
         </div>
       )}

@@ -26,7 +26,7 @@ export function SuggestModal({ suggestions, onConfirm, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background border border-border rounded-md shadow-lg w-full max-w-lg p-6 space-y-4">
         <div>
           <h2 className="text-lg font-semibold">Pontos sugeridos no trajeto</h2>
