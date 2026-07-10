@@ -270,7 +270,7 @@ async function main() {
       select: { id: true, _count: { select: { localities: true } } },
     })
     const record = existing ?? await prisma.transitRoute.create({
-      data: { lineId, direction: r.direction as any, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: true },
+      data: { lineId, direction: r.direction as any, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: true, isPrimary: true },
     })
     routeMap.set(`${r.lineCode}:${r.direction}`, record.id)
 

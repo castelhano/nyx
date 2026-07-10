@@ -138,7 +138,7 @@ export function ExtensionReviewModal({ onClose, onApplied }: Props) {
           <div>
             <h2 className="text-base font-semibold">Revisão de Extensões</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Trajetos com divergência entre extensão armazenada e calculada pela matriz
+              Trajetos com divergência entre extensão armazenada e a trajetória gerada (sentido principal)
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -182,7 +182,7 @@ export function ExtensionReviewModal({ onClose, onApplied }: Props) {
           ) : visible.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
               {rows.length === 0
-                ? 'Nenhuma divergência encontrada — extensões alinhadas com a matriz'
+                ? 'Nenhuma divergência encontrada — extensões alinhadas com a trajetória gerada'
                 : `Nenhuma divergência com variação > ${thresholdVal}${filterMode === 'pct' ? '%' : ' km'}`
               }
             </div>

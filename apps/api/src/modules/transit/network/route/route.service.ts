@@ -46,6 +46,31 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     return { name: stringContains(search) }
   }
 
+  // at most one primary route per (lineId, direction) — used to pick which
+  // trajectory represents the line's official extension for that direction
+  override async create(dto: CreateRouteDto): Promise<Route> {
+    if (!dto.isPrimary) return super.create(dto)
+    return this.prisma.$transaction(async (tx) => {
+      await tx.transitRoute.updateMany({
+        where: { lineId: dto.lineId, direction: dto.direction, isPrimary: true },
+        data:  { isPrimary: false },
+      })
+      return tx.transitRoute.create({ data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedCreateInput }) as unknown as Route
+    })
+  }
+
+  override async update(id: string, dto: UpdateRouteDto): Promise<Route> {
+    if (!dto.isPrimary) return super.update(id, dto)
+    const current = await this.findOne(id)
+    return this.prisma.$transaction(async (tx) => {
+      await tx.transitRoute.updateMany({
+        where: { lineId: current.lineId, direction: dto.direction ?? current.direction, isPrimary: true, id: { not: id } },
+        data:  { isPrimary: false },
+      })
+      return tx.transitRoute.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedUpdateInput }) as unknown as Route
+    })
+  }
+
   async getTrajectory(routeId: string): Promise<RouteLocalityWithLocality[]> {
     const route = await this.prisma.transitRoute.findUnique({ where: { id: routeId } })
     if (!route) throw new NotFoundException('TransitRoute not found')

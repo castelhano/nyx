@@ -254,6 +254,7 @@ CREATE TABLE "transit_routes" (
     "originLocalityId" TEXT NOT NULL,
     "destinationLocalityId" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isPrimary" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_routes_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -491,9 +492,6 @@ CREATE UNIQUE INDEX "transit_lines_code_key" ON "transit_lines"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_route_localities_routeId_sequence_key" ON "transit_route_localities"("routeId", "sequence");
-
--- CreateIndex
-CREATE UNIQUE INDEX "transit_route_localities_routeId_localityId_key" ON "transit_route_localities"("routeId", "localityId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_travel_times_originId_destinationId_key" ON "transit_travel_times"("originId", "destinationId");

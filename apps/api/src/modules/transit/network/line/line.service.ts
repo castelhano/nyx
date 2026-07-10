@@ -72,36 +72,18 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
         name:    true,
         metrics: true,
         routes: {
-          where:  { isActive: true },
+          where:  { isActive: true, isPrimary: true },
           select: {
-            direction:            true,
-            originLocalityId:     true,
-            destinationLocalityId: true,
+            id:        true,
+            direction: true,
+            localities: {
+              orderBy: { sequence: 'asc' },
+              select:  { sequence: true, deltaKm: true },
+            },
           },
         },
       },
     })
-
-    // Collect all origin→destination pairs needed from TravelTimeMatrix
-    const pairsNeeded = new Set<string>()
-    for (const line of lines) {
-      for (const route of line.routes) {
-        pairsNeeded.add(`${route.originLocalityId}:${route.destinationLocalityId}`)
-      }
-    }
-
-    const matrixMap = new Map<string, number>()
-    if (pairsNeeded.size > 0) {
-      const originIds = [...new Set([...pairsNeeded].map((p) => p.split(':')[0]))]
-      const destIds   = [...new Set([...pairsNeeded].map((p) => p.split(':')[1]))]
-      const entries   = await this.prisma.travelTimeMatrix.findMany({
-        where:  { originId: { in: originIds }, destinationId: { in: destIds } },
-        select: { originId: true, destinationId: true, distanceKm: true },
-      })
-      for (const e of entries) {
-        matrixMap.set(`${e.originId}:${e.destinationId}`, e.distanceKm)
-      }
-    }
 
     const result: ExtensionDivergence[] = []
 
@@ -114,9 +96,12 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
         const storedKm = metrics?.extensionKm?.[route.direction]
         if (storedKm == null) continue
 
-        const computedKm = matrixMap.get(`${route.originLocalityId}:${route.destinationLocalityId}`)
-        if (computedKm == null) continue
+        // sequence 1 is the origin and carries no incoming leg — every other
+        // stop must have a computed deltaKm or the trajectory isn't fully generated
+        const legs = route.localities.filter((rl) => rl.sequence > 1)
+        if (legs.length === 0 || legs.some((rl) => rl.deltaKm == null)) continue
 
+        const computedKm = legs.reduce((sum, rl) => sum + rl.deltaKm!, 0)
         const diffKm = Math.abs(computedKm - storedKm)
         if (diffKm < 0.001) continue
 

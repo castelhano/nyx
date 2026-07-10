@@ -62,6 +62,14 @@ export const routeSchema = withMeta(
       defaultValue:   'true',
     }),
 
+    isPrimary: z.boolean().default(false).meta({
+      label:          'Principal',
+      widget:         'switch',
+      listVisibility: 'visible',
+      filter:         true,
+      defaultValue:   'false',
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

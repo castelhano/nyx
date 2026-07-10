@@ -91,6 +91,10 @@ model TransitRoute {
   originLocalityId      String
   destinationLocalityId String
   isActive              Boolean        @default(true)
+  // the route whose trajectory represents the line's official extension for this
+  // direction, used to confront TransitLine.metrics.extensionKm — at most one per
+  // (lineId, direction), enforced in RouteService
+  isPrimary             Boolean        @default(false)
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
