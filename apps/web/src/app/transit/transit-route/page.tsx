@@ -188,6 +188,17 @@ export default function TransitRoutePage() {
     }
   }
 
+  // ── primary route ─────────────────────────────────────────────────────────
+
+  async function handleTogglePrimary(route: TransitRoute) {
+    try {
+      await apiPatch(`/transit/transit-route/${route.id}`, { isPrimary: !route.isPrimary })
+      queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
+    } catch (err) {
+      toast.error(extractError(err as Record<string, unknown>, 'Erro ao definir sentido principal'))
+    }
+  }
+
   // ── delete route ───────────────────────────────────────────────────────────
 
   async function handleDeleteRoute() {
@@ -369,6 +380,7 @@ export default function TransitRoutePage() {
           selectedRouteId={routeId || null}
           onSelect={selectRoute}
           onAddRoute={() => setShowCreate(true)}
+          onTogglePrimary={handleTogglePrimary}
         />
 
         <div className="flex-1 flex min-w-0">

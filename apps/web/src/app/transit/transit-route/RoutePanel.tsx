@@ -8,9 +8,10 @@ interface Props {
   selectedRouteId: string | null
   onSelect:        (id: string) => void
   onAddRoute:      () => void
+  onTogglePrimary: (route: TransitRoute) => void
 }
 
-export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute }: Props) {
+export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute, onTogglePrimary }: Props) {
   return (
     <aside className="w-56 shrink-0 border-r border-border flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
@@ -32,11 +33,13 @@ export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute }: Pr
           </div>
         ) : (
           routes.map((route) => (
-            <button
+            <div
               key={route.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(route.id)}
-              className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors hover:bg-muted ${
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(route.id) } }}
+              className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors hover:bg-muted cursor-pointer ${
                 route.id === selectedRouteId ? 'bg-muted' : ''
               }`}
             >
@@ -44,11 +47,21 @@ export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute }: Pr
                 className="mt-1 w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: DIR_COLOR[route.direction] }}
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="text-xs font-medium text-muted-foreground">{DIR_LABEL[route.direction]}</div>
                 <div className="text-sm truncate">{route.name}</div>
               </div>
-            </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onTogglePrimary(route) }}
+                title={route.isPrimary ? 'Sentido principal — extensão oficial da linha' : 'Definir como sentido principal'}
+                className="mt-0.5 shrink-0 p-0.5 rounded-sm hover:bg-background/80"
+              >
+                <Icons.Star
+                  className={`w-3.5 h-3.5 ${route.isPrimary ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground/40'}`}
+                />
+              </button>
+            </div>
           ))
         )}
       </div>

@@ -33,6 +33,7 @@ export interface TransitRoute {
   originLocalityId: string
   destinationLocalityId: string
   isActive: boolean
+  isPrimary: boolean
 }
 
 export interface GeoJSONLineString {

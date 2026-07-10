@@ -55,6 +55,7 @@ const iconNames = [
   'ShoppingCart',
   'SlidersHorizontal',
   'Square',
+  'Star',
   'Tag',
   'Timer',
   'Trash2',
