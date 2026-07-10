@@ -24,6 +24,11 @@ export class LocalityController extends BaseController<Locality, CreateLocalityD
     return result
   }
 
+  @Get('next-code')
+  async nextCode() {
+    return { code: await this.localityService.suggestNextCode() }
+  }
+
   @Get('reverse-geocode')
   async reverseGeocode(@Query('lat') lat: string, @Query('lng') lng: string) {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`

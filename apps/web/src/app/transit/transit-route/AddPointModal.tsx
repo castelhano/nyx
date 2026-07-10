@@ -42,6 +42,13 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
   const { options: rawLocalities } = useFieldOptions({ resource: 'transit-locality', domain: 'transit' })
   const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
 
+  // suggest the next free locality code once on mount — user can still overwrite it
+  useEffect(() => {
+    apiFetch('/transit/transit-locality/next-code').then((r) => r.json()).then((data) => {
+      setCode((prev) => prev || String(data.code ?? ''))
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // when lat/lng are prefilled from map click, try to snap and reverse-geocode
   useEffect(() => {
     if (!prefillLat || !prefillLng) return

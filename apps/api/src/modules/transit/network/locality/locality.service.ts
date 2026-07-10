@@ -35,6 +35,15 @@ export class LocalityService extends BaseService<Locality, CreateLocalityDto, Up
     return result
   }
 
+  async suggestNextCode(): Promise<string> {
+    const rows = await this.prisma.transitLocality.findMany({ select: { code: true } })
+    const maxCode = rows.reduce((max, { code }) => {
+      const n = Number(code)
+      return Number.isInteger(n) && String(n) === code && n > max ? n : max
+    }, 999)
+    return String(maxCode + 1)
+  }
+
   async findRoutesForLocality(localityId: string) {
     return this.prisma.routeLocality.findMany({
       where:   { localityId },
