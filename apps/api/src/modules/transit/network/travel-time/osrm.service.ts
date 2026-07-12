@@ -130,7 +130,6 @@ export class OsrmService {
     const url      = `${this.osrmUrl}/table/v1/driving/${coords}?annotations=duration,distance&radiuses=${radiuses}`
 
     this.logger.debug(`OSRM request: ${localities.length} localities, URL length=${url.length}`)
-    this.logger.debug(`OSRM URL: ${url}`)
 
     type OsrmWaypoint = { location: [number, number]; distance: number; name: string }
     type OsrmResponse = {

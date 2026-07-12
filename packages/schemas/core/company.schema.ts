@@ -26,7 +26,7 @@ export const companySchema = withMeta(
   {
     label:        'Empresa',
     labelPlural:  'Empresas',
-    nameField:    'legalName',
+    nameField:    'tradeName',
     icon:         'Building',
     afterCreate:  '/core/branch?companyId={id}',
     groups: {
