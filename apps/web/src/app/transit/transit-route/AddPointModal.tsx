@@ -5,9 +5,11 @@ import { Button }               from '@/components/ui/button'
 import { useFieldOptions }      from '@/core/useFieldOptions'
 import { apiFetch }        from '@/lib/auth'
 import type { PendingPoint, RouteLocality } from './types'
+import { resolveOrder }         from './order'
 
 interface Props {
-  localities: RouteLocality[]
+  existing: RouteLocality[]
+  pending:  PendingPoint[]
   prefillLat?: number
   prefillLng?: number
   prefillName?: string
@@ -17,13 +19,19 @@ interface Props {
 
 type Mode = 'stop' | 'waypoint'
 
-export function AddPointModal({ localities, prefillLat, prefillLng, prefillName, onAdd, onClose }: Props) {
+export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefillName, onAdd, onClose }: Props) {
   // insert after the current last stop before the destination by default —
   // the destination (last stop) can't be used as an anchor, since no point may come after it.
-  // label position = the sequence the new point will take (origin is position 0)
-  const insertOptions = localities.slice(0, -1).map((rl, i) => ({
-    label: `${String(i + 1).padStart(2, '0')} - Após ${rl.locality?.abbr ?? `Ponto ${rl.sequence}`}`,
-    value: rl.sequence,
+  // includes pending (not-yet-saved) points so a chain of additions before
+  // "Gravar" can anchor onto each other, not just onto persisted stops
+  const orderedItems = resolveOrder(existing, pending)
+  const insertOptions = orderedItems.slice(0, -1).map((item, i) => ({
+    label: `${String(i + 1).padStart(2, '0')} - Após ${
+      item.type === 'existing'
+        ? (item.rl.locality?.abbr ?? `Ponto ${item.rl.sequence}`)
+        : `${item.p.localityName ?? 'Novo ponto'} (pendente)`
+    }`,
+    value: item.key,
   }))
 
   const [mode,       setMode]       = useState<Mode>('stop')
@@ -34,7 +42,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
   const [code,       setCode]       = useState('')
   const [abbr,       setAbbr]       = useState('')
   const [allowsCrewChange, setAllowsCrewChange] = useState(false)
-  const [afterSeq,   setAfterSeq]   = useState<number>(() => insertOptions.at(-1)?.value ?? 0)
+  const [afterKey,   setAfterKey]   = useState<string | null>(() => insertOptions.at(-1)?.value ?? null)
   const [snapping,   setSnapping]   = useState(false)
 
   const isNewLocality = mode === 'stop' && !localityId
@@ -42,10 +50,15 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
   const { options: rawLocalities } = useFieldOptions({ resource: 'transit-locality', domain: 'transit' })
   const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
 
-  // suggest the next free locality code once on mount — user can still overwrite it
+  // suggest the next free locality code once on mount — user can still overwrite it.
+  // the server only knows about persisted codes, so bump past any code already
+  // claimed by a pending (not-yet-saved) point to avoid a unique-constraint clash on save
   useEffect(() => {
     apiFetch('/transit/transit-locality/next-code').then((r) => r.json()).then((data) => {
-      setCode((prev) => prev || String(data.code ?? ''))
+      const usedByPending = new Set(pending.map((p) => p.code).filter((c): c is string => c != null))
+      let n = Number(data.code)
+      while (usedByPending.has(String(n))) n += 1
+      setCode((prev) => prev || String(n))
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -80,7 +93,7 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
       lng,
       isWaypoint:          mode === 'waypoint',
       allowsCrewChange:    mode === 'stop' && allowsCrewChange,
-      insertAfterSequence: afterSeq,
+      insertAfterKey:      afterKey,
     })
     onClose()
   }
@@ -200,11 +213,11 @@ export function AddPointModal({ localities, prefillLat, prefillLng, prefillName,
           <label className="text-sm font-medium">Inserir</label>
           <select
             className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-            value={afterSeq}
-            onChange={(e) => setAfterSeq(Number(e.target.value))}
+            value={afterKey ?? ''}
+            onChange={(e) => setAfterKey(e.target.value || null)}
           >
             {insertOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value ?? ''} value={o.value ?? ''}>{o.label}</option>
             ))}
           </select>
         </div>

@@ -21,6 +21,7 @@ import { SeqModal }                          from './SeqModal'
 import { apiPost, apiPatch, apiDelete }      from './api'
 import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } from './types'
 import { DIR_COLOR }                         from './types'
+import { resolveOrder }                      from './order'
 import { extractError } from '@/lib/utils'
 
 const MapCanvas = dynamic(() => import('./MapCanvas'), { ssr: false })
@@ -114,18 +115,10 @@ export default function TransitRoutePage() {
     if (!routeId || pendingPoints.length === 0) return
     setIsSaving(true)
     try {
-      // build new sequence list: insert pending points after their anchor,
-      // matched against the *current* stop list (including the last one —
-      // a pending point may extend the route past today's final stop)
-      const sorted = [...selectedLocalities].sort((a, b) => a.sequence - b.sequence)
-
-      const allItems: Array<{ type: 'existing'; rl: RouteLocality } | { type: 'pending'; p: PendingPoint }> = []
-      for (const p of pendingPoints.filter((p) => p.insertAfterSequence === 0)) allItems.push({ type: 'pending', p })
-      for (const rl of sorted) {
-        allItems.push({ type: 'existing', rl })
-        for (const p of pendingPoints.filter((p) => p.insertAfterSequence === rl.sequence)) allItems.push({ type: 'pending', p })
-      }
-
+      // build new sequence list: merge persisted stops with pending points,
+      // resolving anchor chains (a pending point may anchor onto another
+      // pending point added earlier in the same session)
+      const allItems = resolveOrder(selectedLocalities, pendingPoints)
       const withSeq = allItems.map((item, i) => ({ item, seq: i + 1 }))
 
       // Wave 1 — move every existing row whose sequence is changing out to a safe
@@ -134,7 +127,7 @@ export default function TransitRoutePage() {
       // row's INSERT landing on a slot a moving row hasn't vacated yet).
       const OFFSET = 1_000_000
       const moves = withSeq.filter(({ item, seq }) => item.type === 'existing' && item.rl.sequence !== seq)
-      await Promise.all(moves.map(({ item, seq }) => apiPatch(`/transit/route-locality/${(item as { rl: RouteLocality }).rl.id}`, { sequence: seq + OFFSET })))
+      await Promise.all(moves.map(({ item, seq }) => apiPatch(`/transit/route-locality/${(item as { type: 'existing'; rl: RouteLocality }).rl.id}`, { sequence: seq + OFFSET })))
 
       // Wave 2 — land on the real sequence; new stops (and their TransitLocality, if any) are created here
       const ops: Promise<unknown>[] = []
@@ -244,18 +237,19 @@ export default function TransitRoutePage() {
 
   async function handleConfirmSuggestions(selected: SuggestedLocality[]) {
     if (!routeId || selected.length === 0) { setSuggestions(null); return }
-    // add selected as pending points
+    // add selected as pending points — suggestions anchor to an existing
+    // stop's sequence number, resolve it to that stop's id
     const newPending: PendingPoint[] = selected.map((s) => ({
-      _pendingId:          crypto.randomUUID(),
-      localityId:          s.id,
-      localityName:        s.name,
-      code:                null,
-      abbr:                null,
-      lat:                 s.lat,
-      lng:                 s.lng,
-      isWaypoint:          false,
-      allowsCrewChange:    false,
-      insertAfterSequence: s.insertAfterSequence,
+      _pendingId:       crypto.randomUUID(),
+      localityId:       s.id,
+      localityName:     s.name,
+      code:             null,
+      abbr:             null,
+      lat:              s.lat,
+      lng:              s.lng,
+      isWaypoint:       false,
+      allowsCrewChange: false,
+      insertAfterKey:   selectedLocalities.find((rl) => rl.sequence === s.insertAfterSequence)?.id ?? null,
     }))
     setPendingPoints((prev) => [...prev, ...newPending])
     setSuggestions(null)
@@ -285,7 +279,7 @@ export default function TransitRoutePage() {
       { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => setAddPointMode(true), variant: 'ghost' as const },
       { label: isDeleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDeleteRoute, disabled: isDeleting, overflow: true },
     ],
-    [routeId, topbarState, isSaving, isReprocessing, isSuggesting, isDeleting, hasGeometry],
+    [routeId, topbarState, isSaving, isReprocessing, isSuggesting, isDeleting, hasGeometry, pendingPoints, selectedLocalities],
   )
 
   useShortcut('alt+v', () => router.push(lineId ? `/transit/transit-line/${lineId}` : '/transit'), {
@@ -412,7 +406,8 @@ export default function TransitRoutePage() {
 
       {(addPointMode && canvasMode === 'ruler') || (mapClickPos) ? (
         <AddPointModal
-          localities={selectedLocalities}
+          existing={selectedLocalities}
+          pending={pendingPoints}
           prefillLat={mapClickPos?.lat}
           prefillLng={mapClickPos?.lng}
           onAdd={addPendingPoint}

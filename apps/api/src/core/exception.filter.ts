@@ -35,6 +35,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           (exception.meta?.target as string[] | undefined) ??
           ((exception.meta?.driverAdapterError as any)?.cause?.constraint?.fields as string[] | undefined) ??
           []
+        this.logger.warn(`${req.method} ${req.url} → ${exception.code} ${def.code} fields=${fields.join(',')}`)
         return res.status(def.status).json({
           statusCode: def.status,
           timestamp:  new Date().toISOString(),

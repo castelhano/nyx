@@ -62,7 +62,9 @@ export interface PendingPoint {
   lng: number
   isWaypoint: boolean
   allowsCrewChange: boolean
-  insertAfterSequence: number
+  // RouteLocality.id or another pending point's _pendingId to insert after;
+  // null = insert as the very first stop, before the origin
+  insertAfterKey: string | null
 }
 
 export const DIR_COLOR: Record<RouteDirection, string> = {
