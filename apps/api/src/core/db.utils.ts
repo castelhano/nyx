@@ -6,3 +6,9 @@ export function stringContains(val: string) {
     ? { contains: val, mode: 'insensitive' as const }
     : { contains: val }
 }
+
+export function stringEquals(val: string) {
+  return isPostgres
+    ? { equals: val, mode: 'insensitive' as const }
+    : { equals: val }
+}

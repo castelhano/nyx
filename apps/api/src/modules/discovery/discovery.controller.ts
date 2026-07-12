@@ -38,6 +38,7 @@ export class DiscoveryController {
         label:       meta.label       ?? toTitleCase(entry.resource),
         labelPlural: meta.labelPlural ?? `${meta.label ?? toTitleCase(entry.resource)}s`,
         icon:        meta.icon        ?? '',
+        nameField:   meta.nameField   ?? 'name',
         ...(meta.isSingleton        ? { isSingleton: true }        : {}),
         ...(meta.privatePermissions ? { privatePermissions: true } : {}),
       }

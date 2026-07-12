@@ -43,6 +43,13 @@ export abstract class BaseController<T, CreateDTO, UpdateDTO> {
     return this.service.findAll(query)
   }
 
+  @Get('lookup')
+  async lookup(@Req() req: { user?: AuthUser }, @Query('value') value: string): Promise<T | null> {
+    await this.assertAbility(req.user, 'read')
+    if (!value) return null
+    return this.service.lookupByNameField(value)
+  }
+
   @Get(':id')
   async findOne(@Req() req: { user?: AuthUser }, @Param('id') id: string): Promise<T> {
     await this.assertAbility(req.user, 'read')

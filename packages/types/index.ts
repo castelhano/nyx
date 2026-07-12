@@ -161,6 +161,7 @@ export interface DiscoveryResource {
   label:               string
   labelPlural:         string
   icon:                string
+  nameField:           string
   isSingleton?:        boolean
   privatePermissions?: boolean  // exige concessão explícita; não aparece no sidebar
 }

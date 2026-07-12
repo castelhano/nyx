@@ -4,6 +4,7 @@ import type { PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/ty
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
 import { buildFilterWhere } from './filter.builder'
+import { stringEquals } from './db.utils'
 import { resourceRegistry } from './resource-registry'
 
 @Injectable()
@@ -74,6 +75,21 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     ])
 
     return { data, total, page, pageSize }
+  }
+
+  async lookupByNameField(value: string): Promise<T | null> {
+    const nameField   = (this.schema as any)._schemaMeta?.nameField ?? 'name'
+    const fieldSchema = this.unwrapField(this.schema.shape[nameField] as ZodType)
+    const include      = this.buildRelationIncludes()
+    const includeOpt   = Object.keys(include).length ? { include } : {}
+
+    if (fieldSchema instanceof ZodNumber) {
+      const num = Number(value)
+      if (Number.isNaN(num)) return null
+      return this.model.findFirst({ where: { [nameField]: num }, ...includeOpt })
+    }
+
+    return this.model.findFirst({ where: { [nameField]: stringEquals(value) }, ...includeOpt })
   }
 
   async findOne(id: string): Promise<T> {
