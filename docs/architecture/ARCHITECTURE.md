@@ -777,19 +777,23 @@ When adding a new icon: import it in `icons.ts` and add it to the `Icons` map. N
 
 ```typescript
 // apps/web/src/core/useDiscovery.ts
+const EMPTY_DOMAINS: DiscoveryDomain[] = []   // stable reference — see note below
+
 export function useDiscovery() {
   const { user } = useAuth()
   return useQuery<DiscoveryDomain[]>({
     queryKey:    ['discovery', user?.id],   // scoped per user — different users never share cache
     queryFn:     async () => { const r = await apiFetch('/discovery'); return r.json() },
     staleTime:   process.env.NODE_ENV === 'production' ? Infinity : 0,
-    initialData: [],
+    initialData: EMPTY_DOMAINS,
     enabled:     !!user,                   // never fetches before auth resolves
   })
 }
 ```
 
 Used by: `Sidebar`, `app/page.tsx`, `app/[domain]/page.tsx`, `AutoBreadcrumb`.
+
+> **Stable `initialData` note:** `initialData` must be a module-level constant, not an inline `[]` literal. While the query hasn't resolved yet (e.g. during an `apps/api` dev restart triggered by editing `packages/schemas`), TanStack Query returns `initialData` fresh on every render. An inline literal is a new array reference each time, which destabilizes any `useMemo`/`useEffect` downstream that depends on the returned data (e.g. `visibleChildren` in `app/[domain]/[resource]/[id]/page.tsx`, feeding `useTopbarActions`) — causing a render loop and React's "Maximum update depth exceeded".
 
 ### 4.15.1 Frontend — useFieldOptions
 
