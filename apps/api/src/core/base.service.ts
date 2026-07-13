@@ -83,13 +83,18 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const include      = this.buildRelationIncludes()
     const includeOpt   = Object.keys(include).length ? { include } : {}
 
-    if (fieldSchema instanceof ZodNumber) {
-      const num = Number(value)
-      if (Number.isNaN(num)) return null
-      return this.model.findFirst({ where: { [nameField]: num }, ...includeOpt })
-    }
+    try {
+      if (fieldSchema instanceof ZodNumber) {
+        const num = Number(value)
+        if (Number.isNaN(num)) return null
+        return await this.model.findFirst({ where: { [nameField]: num }, ...includeOpt })
+      }
 
-    return this.model.findFirst({ where: { [nameField]: stringEquals(value) }, ...includeOpt })
+      return await this.model.findFirst({ where: { [nameField]: stringEquals(value) }, ...includeOpt })
+    } catch {
+      // nameField pode não suportar o filtro (ex.: enum) — trata como "não encontrado"
+      return null
+    }
   }
 
   async findOne(id: string): Promise<T> {
