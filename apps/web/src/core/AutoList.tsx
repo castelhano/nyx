@@ -329,6 +329,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   const debouncedActiveFilters = useDebounce(activeFilters, 350)
   const defaultFiltersApplied = useRef(false)
   const pickerRef = useRef<HTMLDivElement>(null)
+  const rowRefs   = useRef<Map<number, HTMLTableRowElement>>(new Map())
   const filterRef = useRef<HTMLDivElement>(null)
 
   function handleFilterChange(key: string, value: string) {
@@ -421,6 +422,11 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }, [meta?.resource])
 
   useEffect(() => { setFocusedRow(null) }, [page, sorting, filters, debouncedActiveFilters])
+
+  useEffect(() => {
+    if (focusedRow === null) return
+    rowRefs.current.get(focusedRow)?.scrollIntoView({ block: 'nearest' })
+  }, [focusedRow])
 
   useEffect(() => {
     if (!pickerOpen) return
@@ -628,6 +634,10 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
               {table.getRowModel().rows.map((row, rowIdx) => (
                 <tr
                   key={row.id}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(rowIdx, el)
+                    else rowRefs.current.delete(rowIdx)
+                  }}
                   onClick={() => setFocusedRow(rowIdx)}
                   className={cn(
                     'hover:bg-row-hover border-b border-border cursor-default',
