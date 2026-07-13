@@ -182,13 +182,15 @@ export class CycleEngine {
       }
       const active = all.filter(c => !c.isOutlier && !c.isDisabled)
       if (active.length === 0) continue
+      const hoursInWindow = this.hours.filter(h => h >= from && h <= to)
+      if (hoursInWindow.length === 0) continue
       const total = active.reduce((s, c) => s + c.minutes * c.count, 0)
       const cnt   = active.reduce((s, c) => s + c.count, 0)
       const avg   = total / cnt
       const rounded = Math.round(avg)
       const y     = Math.round(this.minutesToY(avg, yMin, yMax)) + 0.5
-      const x1    = Math.max(PAD.left,        this.hourToX(from)! - this.colWidth() * 0.5)
-      const x2    = Math.min(W - PAD.right,   this.hourToX(to)!   + this.colWidth() * 0.5)
+      const x1    = Math.max(PAD.left,        this.hourToX(hoursInWindow[0])! - this.colWidth() * 0.5)
+      const x2    = Math.min(W - PAD.right,   this.hourToX(hoursInWindow[hoursInWindow.length - 1])! + this.colWidth() * 0.5)
 
       // dashed avg line
       ctx.save()
