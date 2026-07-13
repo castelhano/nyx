@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
 import { useDiscovery } from '@/core/useDiscovery'
 import { resolveIcon } from '@/lib/icons'
-import { useShortcut } from '@/lib/keywatch'
+import { useShortcut, useKeywatch } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { httpError, httpRetry } from '@/lib/query'
 import { cn } from '@/lib/utils'
@@ -29,6 +29,7 @@ export function GlobalSearch() {
   const listRef  = useRef<HTMLUListElement>(null)
   const router   = useRouter()
   const { data: domains } = useDiscovery()
+  const { coreRef } = useKeywatch()
 
   // "linha:301" → prefix resolve o resource (como antes), valor após ':' vira lookup exato pelo nameField
   const colonIdx   = query.indexOf(':')
@@ -94,6 +95,15 @@ export function GlobalSearch() {
     setCursor(0)
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
+
+  // Trava os atalhos de fundo (setas do grid, alt+g/v/l etc.) enquanto o modal
+  // estiver aberto. Ao fechar por qualquer motivo, o cleanup desempilha o contexto.
+  useEffect(() => {
+    const core = coreRef.current
+    if (!core || !open) return
+    core.setContext('global-search', 'Busca global')
+    return () => { core.setContext() }
+  }, [open, coreRef])
 
   // Keep active item in view on arrow navigation
   useEffect(() => {
