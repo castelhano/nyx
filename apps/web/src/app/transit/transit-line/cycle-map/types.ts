@@ -34,6 +34,18 @@ export interface DotClickInfo {
   canvasY:    number
 }
 
+export interface MarqueeItem {
+  hour:    number
+  idx:     number
+  cluster: DotCluster
+}
+
+export interface MarqueeSelection {
+  items: MarqueeItem[]
+  x:     number
+  y:     number
+}
+
 export interface CycleEngineState {
   width:  number
   height: number

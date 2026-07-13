@@ -1,5 +1,5 @@
 import { markOutliers } from './cycle-utils'
-import type { DotCluster, DotClickInfo, CycleEngineState } from './types'
+import type { DotCluster, DotClickInfo, CycleEngineState, MarqueeItem, MarqueeSelection } from './types'
 
 const PAD   = { left: 52, right: 20, top: 44, bottom: 44 }
 const COLORS = {
@@ -19,6 +19,7 @@ const CUT_HIT     = 7   // px tolerance to hit a cut line
 const DOT_HIT_PAD = 4   // extra px around dot radius
 const DOT_MIN_R   = 5
 const DOT_MAX_R   = 18
+const MARQUEE_MIN_DRAG = 4  // px before a mousedown-drag counts as a marquee, not a click
 
 export class CycleEngine {
   private canvas!:       HTMLCanvasElement
@@ -34,13 +35,18 @@ export class CycleEngine {
 
   private hoveredDot:    { hour: number; idx: number } | null = null
   private dragCut:       { original: number; boundary: number } | null = null
+  private marqueeDown:   { x: number; y: number } | null = null
+  private marqueeRect:   { x0: number; y0: number; x1: number; y1: number } | null = null
+  private confirmedSelection: MarqueeItem[] | null = null
+  private suppressNextClick = false
   private handlers:      { el: EventTarget; type: string; fn: EventListener }[] = []
 
-  onStateChange?: (s: CycleEngineState) => void
-  onCutsChange?:  (cuts: number[]) => void
-  onDotToggle?:   (hour: number, clusterIdx: number) => void
-  onDotClick?:    (info: DotClickInfo) => void
-  onHoverChange?: (info: DotClickInfo | null) => void
+  onStateChange?:    (s: CycleEngineState) => void
+  onCutsChange?:     (cuts: number[]) => void
+  onDotToggle?:      (hour: number, clusterIdx: number) => void
+  onDotClick?:       (info: DotClickInfo) => void
+  onHoverChange?:    (info: DotClickInfo | null) => void
+  onMarqueeSelect?:  (sel: MarqueeSelection | null) => void
 
   // ── lifecycle ─────────────────────────────────────────────────────────────
 
@@ -75,6 +81,13 @@ export class CycleEngine {
     this.hourClusters = hourClusters
     this.hours        = Array.from(hourClusters.keys()).sort((a, b) => a - b)
     this.cuts         = new Set(cuts)
+    this.requestDraw()
+  }
+
+  // drop any pending marquee confirmation (e.g. React closed the popup, or data changed underneath it)
+  clearSelection(): void {
+    if (!this.confirmedSelection) return
+    this.confirmedSelection = null
     this.requestDraw()
   }
 
@@ -148,6 +161,9 @@ export class CycleEngine {
 
     // dots
     this.drawDots(yMin, yMax)
+
+    // marquee selection rectangle (live drag)
+    this.drawMarquee()
 
     // X axis baseline
     ctx.save()
@@ -281,6 +297,11 @@ export class CycleEngine {
     ctx.textBaseline = 'middle'
     ctx.textAlign    = 'center'
 
+    const liveSelection = this.marqueeRect ? this.dotsInRect(this.marqueeRect) : null
+    const selectedKeys  = new Set(
+      (this.confirmedSelection ?? liveSelection ?? []).map(s => `${s.hour}:${s.idx}`),
+    )
+
     for (const h of this.hours) {
       const clusters = this.hourClusters.get(h)
       if (!clusters) continue
@@ -292,6 +313,7 @@ export class CycleEngine {
         const cy  = this.minutesToY(c.minutes, yMin, yMax)
         const r   = this.dotRadius(c.count)
         const hov = this.hoveredDot?.hour === h && this.hoveredDot.idx === i
+        const sel = selectedKeys.has(`${h}:${i}`)
 
         ctx.globalAlpha = c.isDisabled ? 0.35 : 1
 
@@ -318,6 +340,16 @@ export class CycleEngine {
           ctx.stroke()
         }
 
+        // marquee selection ring
+        if (sel) {
+          ctx.globalAlpha = 1
+          ctx.strokeStyle = '#f59e0b'
+          ctx.lineWidth   = 2.5
+          ctx.beginPath()
+          ctx.arc(cx, cy, r + 3, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+
         ctx.globalAlpha = 1
 
         // count label
@@ -327,6 +359,25 @@ export class CycleEngine {
         }
       }
     }
+    ctx.restore()
+  }
+
+  private drawMarquee(): void {
+    if (!this.marqueeRect) return
+    const { ctx } = this
+    const { x0, y0, x1, y1 } = this.marqueeRect
+    const x = Math.min(x0, x1)
+    const y = Math.min(y0, y1)
+    const w = Math.abs(x1 - x0)
+    const h = Math.abs(y1 - y0)
+
+    ctx.save()
+    ctx.fillStyle   = 'rgba(59,130,246,0.08)'
+    ctx.strokeStyle = 'rgba(59,130,246,0.6)'
+    ctx.lineWidth   = 1
+    ctx.setLineDash([4, 3])
+    ctx.fillRect(x, y, w, h)
+    ctx.strokeRect(x, y, w, h)
     ctx.restore()
   }
 
@@ -397,6 +448,19 @@ export class CycleEngine {
       this.dragCut   = { original: cut, boundary }
       this.canvas.style.cursor = 'ew-resize'
       e.preventDefault()
+      return
+    }
+
+    // starting any new interaction dismisses a pending marquee confirmation
+    if (this.confirmedSelection) {
+      this.confirmedSelection = null
+      this.onMarqueeSelect?.(null)
+    }
+
+    const inCutZone = y > this.height - PAD.bottom - 4
+    const onDot     = this.hitDot(x, y) !== null
+    if (!inCutZone && !onDot) {
+      this.marqueeDown = { x, y }
     }
   }
 
@@ -406,6 +470,17 @@ export class CycleEngine {
       const b = this.xToBoundary(x)
       if (b !== null) this.dragCut.boundary = b
       this.requestDraw()
+      return
+    }
+
+    if (this.marqueeDown) {
+      const dx = x - this.marqueeDown.x
+      const dy = y - this.marqueeDown.y
+      if (this.marqueeRect || Math.hypot(dx, dy) > MARQUEE_MIN_DRAG) {
+        this.marqueeRect = { x0: this.marqueeDown.x, y0: this.marqueeDown.y, x1: x, y1: y }
+        this.canvas.style.cursor = 'crosshair'
+        this.requestDraw()
+      }
       return
     }
 
@@ -428,31 +503,56 @@ export class CycleEngine {
     }
   }
 
-  private onMouseUp = (_e: MouseEvent): void => {
-    if (!this.dragCut) return
-    const { original, boundary } = this.dragCut
-    this.dragCut = null
-    this.canvas.style.cursor = ''
+  private onMouseUp = (e: MouseEvent): void => {
+    if (this.dragCut) {
+      const { original, boundary } = this.dragCut
+      this.dragCut = null
+      this.canvas.style.cursor = ''
+      this.suppressNextClick = true
 
-    // remove old cut, add at new position
-    const newCut = boundary > 0 && boundary < this.hours.length
-      ? this.hours[boundary - 1]
-      : null
+      // remove old cut, add at new position
+      const newCut = boundary > 0 && boundary < this.hours.length
+        ? this.hours[boundary - 1]
+        : null
 
-    const next = new Set(this.cuts)
-    next.delete(original)
-    if (newCut !== null && newCut !== original) next.add(newCut)
-    else next.add(original) // didn't move enough — keep original
+      const next = new Set(this.cuts)
+      next.delete(original)
+      if (newCut !== null && newCut !== original) next.add(newCut)
+      else next.add(original) // didn't move enough — keep original
 
-    this.cuts = next
-    this.onCutsChange?.([...this.cuts])
-    this.requestDraw()
+      this.cuts = next
+      this.onCutsChange?.([...this.cuts])
+      this.requestDraw()
+      return
+    }
+
+    if (this.marqueeDown) {
+      const rect = this.marqueeRect
+      this.marqueeDown = null
+      this.marqueeRect = null
+      this.canvas.style.cursor = ''
+      if (rect) {
+        this.suppressNextClick = true
+        const items = this.dotsInRect(rect)
+        if (items.length > 0) {
+          this.confirmedSelection = items
+          this.onMarqueeSelect?.({ items, x: e.offsetX, y: e.offsetY })
+        }
+        this.requestDraw()
+      }
+    }
   }
 
   private onMouseLeave = (): void => {
     if (this.dragCut) {
       // cancel drag
       this.dragCut = null
+      this.canvas.style.cursor = ''
+      this.requestDraw()
+    }
+    if (this.marqueeDown) {
+      this.marqueeDown = null
+      this.marqueeRect = null
       this.canvas.style.cursor = ''
       this.requestDraw()
     }
@@ -464,7 +564,10 @@ export class CycleEngine {
   }
 
   private onClick = (e: MouseEvent): void => {
-    if (this.dragCut) return  // was a drag, not a click
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false
+      return
+    }
 
     const { offsetX: x, offsetY: y } = e
     const H = this.height
@@ -533,6 +636,29 @@ export class CycleEngine {
       }
     }
     return best
+  }
+
+  private dotsInRect(rect: { x0: number; y0: number; x1: number; y1: number }): MarqueeItem[] {
+    const { min: yMin, max: yMax } = this.yRange()
+    const left   = Math.min(rect.x0, rect.x1)
+    const right  = Math.max(rect.x0, rect.x1)
+    const top    = Math.min(rect.y0, rect.y1)
+    const bottom = Math.max(rect.y0, rect.y1)
+    const found: MarqueeItem[] = []
+
+    for (const h of this.hours) {
+      const cs = this.hourClusters.get(h)
+      if (!cs) continue
+      const colIdx = this.hours.indexOf(h)
+      for (let i = 0; i < cs.length; i++) {
+        const cx = this.dotX(colIdx, i, cs.length)
+        const cy = this.minutesToY(cs[i].minutes, yMin, yMax)
+        if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
+          found.push({ hour: h, idx: i, cluster: cs[i] })
+        }
+      }
+    }
+    return found
   }
 
   private hitCut(x: number, y: number): number | null {
