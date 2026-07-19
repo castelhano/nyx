@@ -321,6 +321,11 @@ model VehiclePlanLine {
   // Set automatically when the line is added; does not follow newer approvals
   // silently, so the plan stays traceable/stable against the OS it was built on.
   lineScheduleId String?
+  // set when a trip belonging to this line (in this plan) is edited/removed in a way
+  // that diverges from its linked LineDeparture — signals that formalizing a new
+  // LineSchedule version (with all of this line's current trips) may be warranted.
+  // Cleared when the line's schedule is switched/rematerialized.
+  isDrifted      Boolean       @default(false)
 
   vehiclePlan  VehiclePlan   @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
   line         TransitLine   @relation(fields: [lineId], references: [id])

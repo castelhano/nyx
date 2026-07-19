@@ -929,7 +929,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     await this.prisma.vehiclePlanLine.update({
       where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-      data:  { lineScheduleId },
+      data:  { lineScheduleId, isDrifted: false },
     })
   }
 
