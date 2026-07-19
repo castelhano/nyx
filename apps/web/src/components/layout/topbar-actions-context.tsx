@@ -20,6 +20,9 @@ export interface TopbarAction {
   position?: 'start' | 'end'
   // separator: renderiza um divisor vertical no lugar do botão (demais campos ignorados)
   separator?: boolean
+  // menu: quando presente, o botão vira um split-button — clique principal mantém
+  // onClick normal, e um chevron ao lado abre um dropdown com estes itens
+  menu?: { label: string; icon?: React.ElementType; onClick: () => void }[]
 }
 
 interface TopbarActionsContextValue {

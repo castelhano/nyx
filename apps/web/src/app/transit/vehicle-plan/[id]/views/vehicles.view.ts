@@ -112,7 +112,12 @@ export interface VehiclePlanGanttData {
     status:  string
     summary: unknown
     dayType: { id: string; name: string; code: string } | null
-    lines:   Array<{ lineId: string; line: { id: string; code: string; name: string; metrics: LineMetrics | null } }>
+    lines:   Array<{
+      lineId:         string
+      lineScheduleId: string | null
+      line:         { id: string; code: string; name: string; metrics: LineMetrics | null }
+      lineSchedule: { id: string; version: number; status: string; approvalRef: string | null } | null
+    }>
   }
   blocks: GanttBlock[]
 }

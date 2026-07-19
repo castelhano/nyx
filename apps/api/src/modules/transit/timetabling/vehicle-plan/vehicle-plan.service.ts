@@ -829,6 +829,110 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
   }
 
+  // Removes this plan's blocks/trips for the given lines (dayType-scoped) — used both
+  // by re-import and by switchLineSchedule. TransitTrip rows are a pool potentially
+  // shared across plans, so trips are only deleted once no block anywhere references
+  // them anymore; otherwise they're left in place for whoever else still uses them.
+  async clearLinesFromPlan(
+    planId:    string,
+    lineIds:   string[],
+    dayTypeId: string,
+  ): Promise<void> {
+    const affected = await (this.prisma as any).blockTrip.findMany({
+      where: {
+        vehicleBlock: { vehiclePlanId: planId },
+        trip: {
+          route:    { lineId: { in: lineIds } },
+          dayTypeId,
+        },
+      },
+      select: { id: true, vehicleBlockId: true, tripId: true },
+    })
+
+    if (affected.length === 0) return
+
+    const blockTripIds = affected.map((bt: any) => bt.id)
+    const tripIds      = [...new Set<string>(affected.map((bt: any) => bt.tripId))]
+    const blockIds     = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
+
+    await (this.prisma as any).blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
+
+    for (const blockId of blockIds) {
+      const remaining = await (this.prisma as any).blockTrip.count({ where: { vehicleBlockId: blockId } })
+      if (remaining === 0) {
+        // cascade deletes blockDeadruns too
+        await (this.prisma as any).vehicleBlock.delete({ where: { id: blockId } })
+      } else {
+        await (this.prisma as any).vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+      }
+    }
+
+    await (this.prisma as any).transitTrip.deleteMany({
+      where: { id: { in: tripIds }, blockTrips: { none: {} } },
+    })
+  }
+
+  // Swaps which LineSchedule version backs a line within this plan: discards the
+  // line's current blocks/trips in this plan and rematerializes fresh TransitTrip
+  // rows from the target schedule's LineDeparture list (arrival computed via the
+  // travel-time matrix). Leaves the new trips unassigned to any block — the plan
+  // must be regenerated ("Gerar") afterward to reblock them.
+  async switchLineSchedule(planId: string, lineId: string, lineScheduleId: string): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, dayTypeId: true, status: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+
+    const planLine = await this.prisma.vehiclePlanLine.findUnique({
+      where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+    })
+    if (!planLine) throw new NotFoundException('Line not found in this plan')
+
+    const schedule = await (this.prisma as any).lineSchedule.findUnique({
+      where:   { id: lineScheduleId },
+      include: { departures: { include: { route: { select: { originLocalityId: true, destinationLocalityId: true } } } } },
+    })
+    if (!schedule) throw new NotFoundException('LineSchedule not found')
+    if (schedule.lineId !== lineId) throw new BadRequestException('LineSchedule does not belong to this line')
+    if (schedule.dayTypeId !== plan.dayTypeId) throw new BadRequestException('LineSchedule dayType does not match this plan')
+
+    const matrix    = await this.prisma.travelTimeMatrix.findMany()
+    const matrixMap = new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes * m.speedRatio]))
+
+    const missingRoutes = new Set<string>()
+    const tripRows = (schedule.departures as any[]).map(d => {
+      const minutes = matrixMap.get(`${d.route.originLocalityId}:${d.route.destinationLocalityId}`)
+      if (minutes === undefined) missingRoutes.add(d.routeId)
+      return {
+        routeId:             d.routeId,
+        dayTypeId:           plan.dayTypeId,
+        lineDepartureId:     d.id,
+        departureMinutes:    d.departureMinutes,
+        arrivalMinutes:      d.departureMinutes + Math.round(minutes ?? 0),
+        requiredVehicleType: d.requiredVehicleType ?? undefined,
+      }
+    })
+
+    if (missingRoutes.size > 0) {
+      throw new BadRequestException(
+        `Faltam dados de tempo de viagem para ${missingRoutes.size} trecho(s) desta linha — configure a matriz de tempos antes de trocar de versão`,
+      )
+    }
+
+    await this.clearLinesFromPlan(planId, [lineId], plan.dayTypeId)
+
+    if (tripRows.length > 0) {
+      await (this.prisma as any).transitTrip.createMany({ data: tripRows })
+    }
+
+    await this.prisma.vehiclePlanLine.update({
+      where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+      data:  { lineScheduleId },
+    })
+  }
+
   async getGanttData(planId: string) {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:   { id: planId },
@@ -836,7 +940,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayType: { select: { id: true, name: true, code: true } },
         lines: {
           orderBy: { line: { code: 'asc' } },
-          include: { line: { select: { id: true, name: true, code: true, metrics: true } } },
+          include: {
+            line:         { select: { id: true, name: true, code: true, metrics: true } },
+            lineSchedule: { select: { id: true, version: true, status: true, approvalRef: true } },
+          },
         },
       },
     })

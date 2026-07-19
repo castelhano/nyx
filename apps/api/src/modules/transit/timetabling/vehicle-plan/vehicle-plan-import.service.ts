@@ -153,7 +153,7 @@ export class VehiclePlanImportService {
     let blockNumber = 1
 
     if (planId) {
-      await this.clearLinesFromPlan(planId, validLineIds, dayTypeId)
+      await this.vehiclePlanSvc.clearLinesFromPlan(planId, validLineIds, dayTypeId)
 
       for (const line of transitLines as any[]) {
         const lineScheduleId = lineScheduleByLineId.get(line.id)
@@ -452,42 +452,4 @@ export class VehiclePlanImportService {
     return created.id
   }
 
-  private async clearLinesFromPlan(
-    planId:    string,
-    lineIds:   string[],
-    dayTypeId: string,
-  ): Promise<void> {
-    const affected = await (this.prisma as any).blockTrip.findMany({
-      where: {
-        vehicleBlock: { vehiclePlanId: planId },
-        trip: {
-          route:    { lineId: { in: lineIds } },
-          dayTypeId,
-        },
-      },
-      select: { id: true, vehicleBlockId: true, tripId: true },
-    })
-
-    if (affected.length === 0) return
-
-    const blockTripIds = affected.map((bt: any) => bt.id)
-    const tripIds      = [...new Set<string>(affected.map((bt: any) => bt.tripId))]
-    const blockIds     = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
-
-    await (this.prisma as any).blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
-
-    for (const blockId of blockIds) {
-      const remaining = await (this.prisma as any).blockTrip.count({ where: { vehicleBlockId: blockId } })
-      if (remaining === 0) {
-        // cascade deletes blockDeadruns too
-        await (this.prisma as any).vehicleBlock.delete({ where: { id: blockId } })
-      } else {
-        await (this.prisma as any).vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-      }
-    }
-
-    await (this.prisma as any).transitTrip.deleteMany({
-      where: { id: { in: tripIds }, blockTrips: { none: {} } },
-    })
-  }
 }

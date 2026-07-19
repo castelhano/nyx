@@ -17,6 +17,7 @@ import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { LinesPanel }        from './components/LinesPanel'
+import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
 import { TripSummaryPanel }  from './components/TripSummaryPanel'
 import { GenerateModal }         from './components/GenerateModal'
@@ -363,6 +364,7 @@ export default function VehiclePlanPage() {
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
+  const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [detailsOpen,       setDetailsOpen]       = useState(false)
   const [baselineSnapshot,  setBaselineSnapshot]  = useState<SolverBaseline | null>(null)
   const [editBarOpen,       setEditBarOpen]       = useState(false)
@@ -1508,6 +1510,12 @@ export default function VehiclePlanPage() {
         label:   'Linhas',
         icon:    Icons.List,
         onClick: () => setLinesPanelOpen(v => !v),
+        menu: [
+          { label: 'Versões', icon: Icons.GitBranch, onClick: () => {
+            if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
+            setVersionsModalOpen(true)
+          } },
+        ],
       }] : []),
       // parar: only while stream is open
       ...(activeJobId && !isSolverDone ? [{
@@ -2001,6 +2009,17 @@ export default function VehiclePlanPage() {
           onConfirm={handleGenerate}
           onClearMetrics={handleClearMetrics}
           onClose={() => setGenerateModalOpen(false)}
+        />
+      )}
+
+      {versionsModalOpen && ganttData?.plan?.dayType && (
+        <SwitchLineScheduleModal
+          planId={id}
+          dayTypeId={ganttData.plan.dayType.id}
+          lines={planLines.filter(l => selectedLineIds.has(l.lineId))}
+          hasPendingChanges={pendingCount > 0}
+          onApplied={() => refetchGantt()}
+          onClose={() => setVersionsModalOpen(false)}
         />
       )}
 

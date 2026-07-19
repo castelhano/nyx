@@ -1,6 +1,6 @@
 'use client'
 
-import { PanelLeft, Bell, Sun, Moon, MoreHorizontal } from 'lucide-react'
+import { PanelLeft, Bell, Sun, Moon, MoreHorizontal, ChevronDown } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,56 @@ function ActionButton({ action }: { action: TopbarAction }) {
       {Icon && <Icon className="w-3.5 h-3.5" />}
       {!iconOnly && <span className="hidden md:inline">{action.label}</span>}
     </Button>
+  )
+}
+
+// Split-button — mesmo botão de ação principal + um chevron que abre um dropdown
+// com itens extras (action.menu). Usado quando uma ação de topbar precisa oferecer
+// opções relacionadas sem virar vários botões separados.
+function SplitActionButton({ action }: { action: TopbarAction }) {
+  const Icon = action.icon
+  return (
+    <div className="inline-flex items-stretch rounded-md overflow-hidden">
+      <Button
+        type={action.type ?? 'button'}
+        form={action.form}
+        variant={action.variant ?? 'default'}
+        size={action.size ?? 'sm'}
+        disabled={action.disabled}
+        onClick={action.onClick}
+        title={action.keybind ? `${action.label} (${action.keybind})` : action.label}
+        className="rounded-r-none"
+      >
+        {Icon && <Icon className="w-3.5 h-3.5" />}
+        <span className="hidden md:inline">{action.label}</span>
+      </Button>
+      <Dropdown
+        align="end"
+        side="bottom"
+        trigger={
+          <Button
+            type="button"
+            variant={action.variant ?? 'default'}
+            size={action.size ?? 'sm'}
+            disabled={action.disabled}
+            className="rounded-l-none border-l border-background/20 px-1"
+            aria-label="Mais opções"
+          >
+            <ChevronDown className="w-3.5 h-3.5" />
+          </Button>
+        }
+      >
+        {action.menu!.map((item, i) => {
+          const ItemIcon = item.icon
+          return (
+            <DropdownItem key={i} onClick={item.onClick}>
+              {ItemIcon && <ItemIcon className="w-4 h-4" />}
+              {item.label}
+            </DropdownItem>
+          )
+        })}
+      </Dropdown>
+    </div>
   )
 }
 
@@ -74,7 +124,9 @@ export function Topbar() {
           {endInline.map((action, i) =>
             action.separator
               ? <div key={i} className="w-px h-5 bg-border shrink-0" />
-              : <ActionButton key={i} action={action} />
+              : action.menu
+                ? <SplitActionButton key={i} action={action} />
+                : <ActionButton key={i} action={action} />
           )}
 
           {overflow.length > 0 && (
