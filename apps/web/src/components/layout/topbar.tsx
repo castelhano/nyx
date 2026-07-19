@@ -57,7 +57,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
             variant={action.variant ?? 'default'}
             size={action.size ?? 'sm'}
             disabled={action.disabled}
-            className="rounded-l-none border-l border-background/20 px-1"
+            className="rounded-l-none border-l border-background/20 px-1.5"
             aria-label="Mais opções"
           >
             <ChevronDown className="w-3.5 h-3.5" />

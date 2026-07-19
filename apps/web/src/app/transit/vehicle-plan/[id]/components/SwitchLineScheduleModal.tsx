@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
@@ -37,11 +37,13 @@ const STATUS_LABELS: Record<string, string> = {
 }
 
 const STATUS_CLASSES: Record<string, string> = {
-  DRAFT:      'bg-amber-50 text-amber-700 border-amber-200',
-  APPROVED:   'bg-green-50 text-green-700 border-green-200',
+  DRAFT:      'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+  APPROVED:   'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300 dark:border-green-800',
   SUPERSEDED: 'bg-muted text-muted-foreground border-border',
   ARCHIVED:   'bg-muted text-muted-foreground border-border opacity-60',
 }
+
+const ANALISE_CLASSES = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
 
 const NO_REF_KEY = '__sem_referencia__'
 
@@ -59,6 +61,14 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
   )
   const [groupOverride, setGroupOverride] = useState<Map<string, string>>(new Map())
   const [isSubmitting,  setIsSubmitting]  = useState(false)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
 
   const historyQueries = useQueries({
     queries: lines.map(l => ({
@@ -139,7 +149,7 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {hasPendingChanges && (
-            <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+            <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
               <Icons.AlertCircle className="w-4 h-4 shrink-0" />
               Salve ou descarte as alterações pendentes do Gantt antes de trocar de versão.
             </div>
@@ -169,7 +179,7 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
             const badgesInGroup = groups.get(currentGroup) ?? []
 
             return (
-              <div key={l.lineId} className="rounded-md border border-border p-3 space-y-2.5">
+              <div key={l.lineId} className="rounded-md border border-border bg-muted/40 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">
                     <span className="font-mono font-medium">{l.line.code}</span>
@@ -177,10 +187,10 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
                   </span>
                   {l.lineSchedule ? (
                     <span className={`text-xs rounded-full border px-2 py-0.5 ${STATUS_CLASSES[l.lineSchedule.status]}`}>
-                      v{l.lineSchedule.version} · {STATUS_LABELS[l.lineSchedule.status]}
+                      {l.lineSchedule.approvalRef ?? 'Sem referência'} V{l.lineSchedule.version} - {STATUS_LABELS[l.lineSchedule.status]}
                     </span>
                   ) : (
-                    <span className="text-xs rounded-full border px-2 py-0.5 bg-amber-50 text-amber-700 border-amber-200">
+                    <span className={`text-xs rounded-full border px-2 py-0.5 ${ANALISE_CLASSES}`}>
                       Em análise
                     </span>
                   )}
