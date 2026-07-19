@@ -21,6 +21,13 @@ enum VehiclePlanStatus {
   ACTIVE
 }
 
+enum LineScheduleStatus {
+  DRAFT
+  APPROVED
+  SUPERSEDED
+  ARCHIVED
+}
+
 enum DeadrunType {
   ACCESS
   RETURN
@@ -79,6 +86,7 @@ model TransitLine {
   planLines  VehiclePlanLine[]
   exceptions LineCalendarExceptionLine[]
   lineGroups LineGroupLine[]
+  schedules  LineSchedule[]
 
   @@map("transit_lines")
 }
@@ -169,6 +177,7 @@ model DayType {
 
   trips                        TransitTrip[]
   vehiclePlans                 VehiclePlan[]
+  lineSchedules                LineSchedule[]
   calendarExceptionsAsOverride LineCalendarException[] @relation("ExceptionOverrideDayType")
   calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
 
@@ -203,10 +212,40 @@ model LineCalendarExceptionLine {
   @@map("transit_line_calendar_exception_lines")
 }
 
+// A line's officially planned service — the sequence of departures per direction
+// that the line operates under, as agreed with the granting authority (órgão gestor).
+// Versioned per (line, dayType): at most one APPROVED version at a time; approving
+// a new version supersedes the previous one, which is kept for history.
+model LineSchedule {
+  id          String             @id @default(uuid())
+  lineId      String
+  dayTypeId   String
+  version     Int
+  status      LineScheduleStatus @default(DRAFT)
+  // vigência — set when the version is approved
+  validFrom   DateTime?
+  // set when superseded by a newer approved version
+  validTo     DateTime?
+  // nº do processo/portaria do órgão gestor — optional, may be filled in after the fact
+  approvalRef String?
+  approvedAt  DateTime?
+  notes       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  line    TransitLine   @relation(fields: [lineId], references: [id])
+  dayType DayType       @relation(fields: [dayTypeId], references: [id])
+  trips   TransitTrip[]
+
+  @@unique([lineId, dayTypeId, version])
+  @@map("transit_line_schedules")
+}
+
 model TransitTrip {
   id                  String       @id @default(uuid())
   routeId             String
   dayTypeId           String
+  lineScheduleId      String
   // minutes from operational day start; values > 1440 indicate overnight trips
   departureMinutes    Int
   arrivalMinutes      Int
@@ -217,9 +256,10 @@ model TransitTrip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  route      TransitRoute @relation(fields: [routeId], references: [id])
-  dayType    DayType      @relation(fields: [dayTypeId], references: [id])
-  blockTrips BlockTrip[]
+  route        TransitRoute @relation(fields: [routeId], references: [id])
+  dayType      DayType      @relation(fields: [dayTypeId], references: [id])
+  lineSchedule LineSchedule @relation(fields: [lineScheduleId], references: [id])
+  blockTrips   BlockTrip[]
 
   @@map("transit_trips")
 }

@@ -32,6 +32,18 @@ export const tripSchema = withMeta(
       keybind:        'r',
     }),
 
+    // vincula a viagem à versão do quadro de horários da linha à qual ela pertence —
+    // só pode ser criada/editada enquanto essa versão estiver em DRAFT
+    lineScheduleId: z.uuid().meta({
+      label:          'Quadro de Horários',
+      widget:         'select',
+      resource:       'line-schedule',
+      domain:         'transit',
+      labelField:     'version',
+      showInForm:     false,
+      listVisibility: 'hidden',
+    }),
+
     // minutes from operational day start — allows values > 1440 for overnight trips
     departureMinutes: z.number().int().min(0).meta({
       label:          'Partida (min)',

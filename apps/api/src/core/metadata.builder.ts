@@ -61,6 +61,7 @@ function deriveChildren(resource: string): ChildResourceDef[] | undefined {
       label:        m.labelPlural ?? toTitleCase(entry.resource),
       contextField: breadcrumbEntry.contextField,
       ...(breadcrumbEntry.keybind  ? { keybind:            breadcrumbEntry.keybind } : {}),
+      ...(breadcrumbEntry.overflow ? { overflow:           true }                    : {}),
       ...(m.privatePermissions     ? { privatePermissions: true }                    : {}),
     })
   }

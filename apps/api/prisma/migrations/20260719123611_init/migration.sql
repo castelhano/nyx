@@ -334,10 +334,29 @@ CREATE TABLE "transit_line_calendar_exception_lines" (
 );
 
 -- CreateTable
+CREATE TABLE "transit_line_schedules" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "lineId" TEXT NOT NULL,
+    "dayTypeId" TEXT NOT NULL,
+    "version" INTEGER NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "validFrom" DATETIME,
+    "validTo" DATETIME,
+    "approvalRef" TEXT,
+    "approvedAt" DATETIME,
+    "notes" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_line_schedules_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_line_schedules_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "routeId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
+    "lineScheduleId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
     "requiredVehicleType" TEXT,
@@ -346,7 +365,8 @@ CREATE TABLE "transit_trips" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_trips_lineScheduleId_fkey" FOREIGN KEY ("lineScheduleId") REFERENCES "transit_line_schedules" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -498,6 +518,9 @@ CREATE UNIQUE INDEX "transit_travel_times_originId_destinationId_key" ON "transi
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_day_types_code_key" ON "transit_day_types"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_line_schedules_lineId_dayTypeId_version_key" ON "transit_line_schedules"("lineId", "dayTypeId", "version");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_vehicle_blocks_vehiclePlanId_blockNumber_key" ON "transit_vehicle_blocks"("vehiclePlanId", "blockNumber");

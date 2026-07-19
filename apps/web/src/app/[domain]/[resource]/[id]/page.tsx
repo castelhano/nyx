@@ -92,7 +92,8 @@ export default function ResourceDetailPage() {
           onClick: () => router.push(href),
           variant: 'ghost' as const,
           primary: false,
-          ...(child.keybind ? { keybind: child.keybind.toUpperCase() } : {}),
+          ...(child.keybind  ? { keybind:  child.keybind.toUpperCase() } : {}),
+          ...(child.overflow ? { overflow: true }                       : {}),
         }
       })
     : []

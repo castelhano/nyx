@@ -143,6 +143,7 @@ export interface ChildResourceDef {
   label:               string
   contextField:        string
   keybind?:            string
+  overflow?:           boolean
   privatePermissions?: boolean
 }
 
@@ -154,6 +155,7 @@ export interface BreadcrumbDef {
   nameField?:    string
   nameFirstWord?: boolean  // show only the first word of the name in the breadcrumb; default true
   keybind?:      string   // atalho do botão que o PAI renderiza para navegar até este filho
+  overflow?:     boolean  // força o botão do PAI para este filho a ir para o dropdown ⋯ do topbar
 }
 
 export interface DiscoveryResource {

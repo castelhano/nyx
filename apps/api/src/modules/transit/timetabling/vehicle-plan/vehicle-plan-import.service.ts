@@ -16,6 +16,7 @@ type ProductiveEntry = {
   kind:             'trip'
   id:               string
   routeId:          string
+  lineScheduleId:   string
   departureMinutes: number
   arrivalMinutes:   number
   km:               number
@@ -116,6 +117,14 @@ export class VehiclePlanImportService {
       }
     }
 
+    // Importing establishes a new, already-operating version of each touched line's
+    // schedule — auto-approved (supersedes the previous APPROVED one, if any) rather
+    // than left as DRAFT, since a re-sync represents the schedule as currently in force.
+    const lineScheduleByLineId = new Map<string, string>()
+    for (const line of transitLines as any[]) {
+      lineScheduleByLineId.set(line.id, await this.resolveApprovedLineSchedule(line.id, dayTypeId))
+    }
+
     const validLineIds = transitLines.map((l: any) => l.id)
 
     const routes = await (this.prisma as any).transitRoute.findMany({
@@ -172,7 +181,7 @@ export class VehiclePlanImportService {
       })
     }
 
-    const tripRows:      Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
+    const tripRows:      Array<{ id: string; routeId: string; dayTypeId: string; lineScheduleId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const deadrunRows:   Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
     const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
@@ -265,6 +274,7 @@ export class VehiclePlanImportService {
             kind:             'trip',
             id:               randomUUID(),
             routeId:          route.id,
+            lineScheduleId:   lineScheduleByLineId.get(line.id)!,
             departureMinutes,
             arrivalMinutes,
             km,
@@ -385,7 +395,7 @@ export class VehiclePlanImportService {
       let seqInBlock = 1
       for (const e of perBlockEntries) {
         if (e.kind === 'trip') {
-          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
+          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, lineScheduleId: e.lineScheduleId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
           blockTripRows.push({ vehicleBlockId: blockId, tripId: e.id, sequence: seqInBlock++ })
         } else {
           deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
@@ -401,6 +411,35 @@ export class VehiclePlanImportService {
     await this.vehiclePlanSvc.scorePlan(plan.id)
 
     return { created: blockRows.length, trips: tripRows.length, errors }
+  }
+
+  private async resolveApprovedLineSchedule(lineId: string, dayTypeId: string): Promise<string> {
+    const db = this.prisma as any
+
+    const previous = await db.lineSchedule.findFirst({
+      where:  { lineId, dayTypeId, status: 'APPROVED' },
+      select: { id: true },
+    })
+    const last = await db.lineSchedule.aggregate({
+      where: { lineId, dayTypeId },
+      _max:  { version: true },
+    })
+    const now     = new Date()
+    const created = await db.lineSchedule.create({
+      data: {
+        lineId, dayTypeId,
+        version:    (last._max.version ?? 0) + 1,
+        status:     'APPROVED',
+        validFrom:  now,
+        approvedAt: now,
+      },
+    })
+
+    if (previous) {
+      await db.lineSchedule.update({ where: { id: previous.id }, data: { status: 'SUPERSEDED', validTo: now } })
+    }
+
+    return created.id
   }
 
   private async clearLinesFromPlan(

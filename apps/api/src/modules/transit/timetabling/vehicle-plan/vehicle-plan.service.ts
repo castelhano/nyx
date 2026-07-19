@@ -58,7 +58,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const [trips, matrix, depotLocalities, generalCfg, globalPlanningCfg, existingBlocks] = await Promise.all([
       this.prisma.transitTrip.findMany({
-        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } } },
+        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } }, lineSchedule: { status: 'APPROVED' } },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } } },
       }),
       this.prisma.travelTimeMatrix.findMany(),
@@ -494,7 +494,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 sequence: true,
                 trip: {
                   select: {
-                    id: true, routeId: true, dayTypeId: true,
+                    id: true, routeId: true, dayTypeId: true, lineScheduleId: true,
                     departureMinutes: true, arrivalMinutes: true,
                     requiredVehicleType: true, constraints: true, notes: true,
                   },
@@ -552,6 +552,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 data: {
                   routeId:             bt.trip.routeId,
                   dayTypeId:           bt.trip.dayTypeId,
+                  lineScheduleId:      bt.trip.lineScheduleId,
                   departureMinutes:    bt.trip.departureMinutes,
                   arrivalMinutes:      bt.trip.arrivalMinutes,
                   requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
@@ -636,11 +637,21 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const db = this.prisma as any
 
+    const routeForSchedule = await db.transitRoute.findUnique({ where: { id: dto.routeId }, select: { lineId: true } })
+    if (!routeForSchedule) throw new NotFoundException('Route not found')
+
+    const lineSchedule = await db.lineSchedule.findFirst({
+      where:  { lineId: routeForSchedule.lineId, dayTypeId: plan.dayTypeId, status: 'APPROVED' },
+      select: { id: true },
+    })
+    if (!lineSchedule) throw new BadRequestException('Nenhum quadro de horários aprovado para esta linha e tipo de dia')
+
     await db.$transaction(async (tx: any) => {
       const trip = await tx.transitTrip.create({
         data: {
           dayTypeId:        plan.dayTypeId,
           routeId:          dto.routeId,
+          lineScheduleId:   lineSchedule.id,
           departureMinutes: dto.departureMinutes,
           arrivalMinutes:   dto.arrivalMinutes,
         },
