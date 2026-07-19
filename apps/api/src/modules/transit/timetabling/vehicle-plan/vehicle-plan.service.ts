@@ -58,7 +58,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const [trips, matrix, depotLocalities, generalCfg, globalPlanningCfg, existingBlocks] = await Promise.all([
       this.prisma.transitTrip.findMany({
-        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } }, lineSchedule: { status: 'APPROVED' } },
+        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } } },
         include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } } },
       }),
       this.prisma.travelTimeMatrix.findMany(),
@@ -486,7 +486,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
-        lines:  { select: { lineId: true } },
+        lines:  { select: { lineId: true, lineScheduleId: true } },
         blocks: {
           include: {
             blockTrips: {
@@ -494,7 +494,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 sequence: true,
                 trip: {
                   select: {
-                    id: true, routeId: true, dayTypeId: true, lineScheduleId: true,
+                    id: true, routeId: true, dayTypeId: true, lineDepartureId: true,
                     departureMinutes: true, arrivalMinutes: true,
                     requiredVehicleType: true, constraints: true, notes: true,
                   },
@@ -523,7 +523,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       if (plan.lines.length > 0) {
         await tx.vehiclePlanLine.createMany({
-          data: plan.lines.map((l: any) => ({ vehiclePlanId: newPlan.id, lineId: l.lineId })),
+          data: plan.lines.map((l: any) => ({ vehiclePlanId: newPlan.id, lineId: l.lineId, lineScheduleId: l.lineScheduleId ?? undefined })),
         })
       }
 
@@ -552,7 +552,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 data: {
                   routeId:             bt.trip.routeId,
                   dayTypeId:           bt.trip.dayTypeId,
-                  lineScheduleId:      bt.trip.lineScheduleId,
+                  lineDepartureId:     bt.trip.lineDepartureId ?? undefined,
                   departureMinutes:    bt.trip.departureMinutes,
                   arrivalMinutes:      bt.trip.arrivalMinutes,
                   requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
@@ -637,21 +637,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const db = this.prisma as any
 
-    const routeForSchedule = await db.transitRoute.findUnique({ where: { id: dto.routeId }, select: { lineId: true } })
-    if (!routeForSchedule) throw new NotFoundException('Route not found')
-
-    const lineSchedule = await db.lineSchedule.findFirst({
-      where:  { lineId: routeForSchedule.lineId, dayTypeId: plan.dayTypeId, status: 'APPROVED' },
-      select: { id: true },
-    })
-    if (!lineSchedule) throw new BadRequestException('Nenhum quadro de horários aprovado para esta linha e tipo de dia')
-
     await db.$transaction(async (tx: any) => {
       const trip = await tx.transitTrip.create({
         data: {
           dayTypeId:        plan.dayTypeId,
           routeId:          dto.routeId,
-          lineScheduleId:   lineSchedule.id,
           departureMinutes: dto.departureMinutes,
           arrivalMinutes:   dto.arrivalMinutes,
         },
@@ -816,7 +806,21 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   async addLine(planId: string, lineId: string): Promise<void> {
-    await this.prisma.vehiclePlanLine.create({ data: { vehiclePlanId: planId, lineId } })
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { dayTypeId: true } })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    // Pins whichever LineSchedule is currently APPROVED for this line+dayType — null
+    // ("em análise") when the line has no approved schedule yet. Does not follow
+    // later approvals automatically; stays traceable/stable against the OS it was
+    // built on until explicitly re-linked.
+    const approvedSchedule = await this.prisma.lineSchedule.findFirst({
+      where:  { lineId, dayTypeId: plan.dayTypeId, status: 'APPROVED' },
+      select: { id: true },
+    })
+
+    await this.prisma.vehiclePlanLine.create({
+      data: { vehiclePlanId: planId, lineId, lineScheduleId: approvedSchedule?.id },
+    })
   }
 
   async removeLine(planId: string, lineId: string): Promise<void> {

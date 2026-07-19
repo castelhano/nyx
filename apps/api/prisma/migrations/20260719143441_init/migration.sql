@@ -352,11 +352,25 @@ CREATE TABLE "transit_line_schedules" (
 );
 
 -- CreateTable
+CREATE TABLE "transit_line_departures" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "lineScheduleId" TEXT NOT NULL,
+    "routeId" TEXT NOT NULL,
+    "departureMinutes" INTEGER NOT NULL,
+    "requiredVehicleType" TEXT,
+    "notes" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_line_departures_lineScheduleId_fkey" FOREIGN KEY ("lineScheduleId") REFERENCES "transit_line_schedules" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_line_departures_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "routeId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
-    "lineScheduleId" TEXT NOT NULL,
+    "lineDepartureId" TEXT,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
     "requiredVehicleType" TEXT,
@@ -366,7 +380,7 @@ CREATE TABLE "transit_trips" (
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT "transit_trips_lineScheduleId_fkey" FOREIGN KEY ("lineScheduleId") REFERENCES "transit_line_schedules" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_trips_lineDepartureId_fkey" FOREIGN KEY ("lineDepartureId") REFERENCES "transit_line_departures" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -389,10 +403,12 @@ CREATE TABLE "transit_vehicle_plans" (
 CREATE TABLE "transit_vehicle_plan_lines" (
     "vehiclePlanId" TEXT NOT NULL,
     "lineId" TEXT NOT NULL,
+    "lineScheduleId" TEXT,
 
     PRIMARY KEY ("vehiclePlanId", "lineId"),
     CONSTRAINT "transit_vehicle_plan_lines_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "transit_vehicle_plan_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_vehicle_plan_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_vehicle_plan_lines_lineScheduleId_fkey" FOREIGN KEY ("lineScheduleId") REFERENCES "transit_line_schedules" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable

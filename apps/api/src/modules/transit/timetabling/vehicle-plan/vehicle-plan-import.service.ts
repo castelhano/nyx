@@ -16,7 +16,7 @@ type ProductiveEntry = {
   kind:             'trip'
   id:               string
   routeId:          string
-  lineScheduleId:   string
+  lineDepartureId:  string
   departureMinutes: number
   arrivalMinutes:   number
   km:               number
@@ -155,11 +155,12 @@ export class VehiclePlanImportService {
     if (planId) {
       await this.clearLinesFromPlan(planId, validLineIds, dayTypeId)
 
-      for (const line of transitLines) {
+      for (const line of transitLines as any[]) {
+        const lineScheduleId = lineScheduleByLineId.get(line.id)
         await (this.prisma as any).vehiclePlanLine.upsert({
           where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: line.id } },
-          create: { vehiclePlanId: planId, lineId: line.id },
-          update: {},
+          create: { vehiclePlanId: planId, lineId: line.id, lineScheduleId },
+          update: { lineScheduleId },
         })
       }
 
@@ -175,16 +176,17 @@ export class VehiclePlanImportService {
           dayTypeId,
           status: 'DRAFT',
           lines: {
-            create: transitLines.map((l: any) => ({ lineId: l.id })),
+            create: transitLines.map((l: any) => ({ lineId: l.id, lineScheduleId: lineScheduleByLineId.get(l.id) })),
           },
         },
       })
     }
 
-    const tripRows:      Array<{ id: string; routeId: string; dayTypeId: string; lineScheduleId: string; departureMinutes: number; arrivalMinutes: number }> = []
-    const deadrunRows:   Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
-    const blockRows:     Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
-    const blockTripRows: Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
+    const tripRows:          Array<{ id: string; routeId: string; dayTypeId: string; lineDepartureId: string; departureMinutes: number; arrivalMinutes: number }> = []
+    const lineDepartureRows: Array<{ id: string; lineScheduleId: string; routeId: string; departureMinutes: number }> = []
+    const deadrunRows:       Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
+    const blockRows:         Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
+    const blockTripRows:     Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
 
     for (const [, tabRows] of blockMap.entries()) {
       tabRows.sort((a, b) => {
@@ -270,11 +272,18 @@ export class VehiclePlanImportService {
         const km = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 
         if (row.isProductive) {
+          const lineDepartureId = randomUUID()
+          lineDepartureRows.push({
+            id:               lineDepartureId,
+            lineScheduleId:   lineScheduleByLineId.get(line.id)!,
+            routeId:          route.id,
+            departureMinutes,
+          })
           perBlockEntries.push({
             kind:             'trip',
             id:               randomUUID(),
             routeId:          route.id,
-            lineScheduleId:   lineScheduleByLineId.get(line.id)!,
+            lineDepartureId,
             departureMinutes,
             arrivalMinutes,
             km,
@@ -395,7 +404,7 @@ export class VehiclePlanImportService {
       let seqInBlock = 1
       for (const e of perBlockEntries) {
         if (e.kind === 'trip') {
-          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, lineScheduleId: e.lineScheduleId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
+          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, lineDepartureId: e.lineDepartureId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
           blockTripRows.push({ vehicleBlockId: blockId, tripId: e.id, sequence: seqInBlock++ })
         } else {
           deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
@@ -403,6 +412,7 @@ export class VehiclePlanImportService {
       }
     }
 
+    await (this.prisma as any).lineDeparture.createMany({ data: lineDepartureRows })
     await (this.prisma as any).transitTrip.createMany({ data: tripRows })
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })

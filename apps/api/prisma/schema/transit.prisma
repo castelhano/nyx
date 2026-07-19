@@ -111,6 +111,7 @@ model TransitRoute {
   destinationLocality TransitLocality @relation("RouteDestination", fields: [destinationLocalityId], references: [id])
   localities          RouteLocality[]
   trips               TransitTrip[]
+  lineDepartures      LineDeparture[]
 
   @@map("transit_routes")
 }
@@ -233,19 +234,44 @@ model LineSchedule {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
-  line    TransitLine   @relation(fields: [lineId], references: [id])
-  dayType DayType       @relation(fields: [dayTypeId], references: [id])
-  trips   TransitTrip[]
+  line             TransitLine       @relation(fields: [lineId], references: [id])
+  dayType          DayType           @relation(fields: [dayTypeId], references: [id])
+  departures       LineDeparture[]
+  vehiclePlanLines VehiclePlanLine[]
 
   @@unique([lineId, dayTypeId, version])
   @@map("transit_line_schedules")
+}
+
+// A single approved departure — sentido + horário (+ tipo de veículo quando o órgão
+// gestor já especifica na ordem de serviço). This is the actual "partida" that gets
+// approved; frozen once its LineSchedule leaves DRAFT.
+model LineDeparture {
+  id               String       @id @default(uuid())
+  lineScheduleId   String
+  routeId          String
+  departureMinutes Int
+  requiredVehicleType VehicleType?
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  lineSchedule LineSchedule  @relation(fields: [lineScheduleId], references: [id])
+  route        TransitRoute  @relation(fields: [routeId], references: [id])
+  trips        TransitTrip[]
+
+  @@map("transit_line_departures")
 }
 
 model TransitTrip {
   id                  String       @id @default(uuid())
   routeId             String
   dayTypeId           String
-  lineScheduleId      String
+  // optional traceability to the approved departure this trip originated from —
+  // null for free-standing/ad-hoc trips (e.g. reinforcement) never part of any
+  // LineSchedule. Drift between this trip's departureMinutes and the linked
+  // LineDeparture's is what should prompt a new-version-vs-override decision.
+  lineDepartureId     String?
   // minutes from operational day start; values > 1440 indicate overnight trips
   departureMinutes    Int
   arrivalMinutes      Int
@@ -256,10 +282,10 @@ model TransitTrip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  route        TransitRoute @relation(fields: [routeId], references: [id])
-  dayType      DayType      @relation(fields: [dayTypeId], references: [id])
-  lineSchedule LineSchedule @relation(fields: [lineScheduleId], references: [id])
-  blockTrips   BlockTrip[]
+  route         TransitRoute   @relation(fields: [routeId], references: [id])
+  dayType       DayType        @relation(fields: [dayTypeId], references: [id])
+  lineDeparture LineDeparture? @relation(fields: [lineDepartureId], references: [id])
+  blockTrips    BlockTrip[]
 
   @@map("transit_trips")
 }
@@ -290,9 +316,15 @@ model VehiclePlan {
 model VehiclePlanLine {
   vehiclePlanId String
   lineId        String
+  // pins which approved LineSchedule version governs this line within this specific
+  // plan — null while the line is still "em análise" (no approved schedule yet).
+  // Set automatically when the line is added; does not follow newer approvals
+  // silently, so the plan stays traceable/stable against the OS it was built on.
+  lineScheduleId String?
 
-  vehiclePlan VehiclePlan @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
-  line        TransitLine @relation(fields: [lineId], references: [id])
+  vehiclePlan  VehiclePlan   @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  line         TransitLine   @relation(fields: [lineId], references: [id])
+  lineSchedule LineSchedule? @relation(fields: [lineScheduleId], references: [id])
 
   @@id([vehiclePlanId, lineId])
   @@map("transit_vehicle_plan_lines")

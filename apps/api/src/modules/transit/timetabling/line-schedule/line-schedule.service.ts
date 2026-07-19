@@ -29,7 +29,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be deleted')
 
     await this.prisma.$transaction(async tx => {
-      await tx.transitTrip.deleteMany({ where: { lineScheduleId: id } })
+      await tx.lineDeparture.deleteMany({ where: { lineScheduleId: id } })
       await tx.lineSchedule.delete({ where: { id } })
     })
   }
@@ -37,7 +37,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
   async duplicate(id: string): Promise<LineSchedule> {
     const schedule = await this.prisma.lineSchedule.findUnique({
       where:   { id },
-      include: { trips: true },
+      include: { departures: true },
     })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
 
@@ -54,17 +54,14 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
         },
       })
 
-      if (schedule.trips.length > 0) {
-        await tx.transitTrip.createMany({
-          data: schedule.trips.map(t => ({
-            routeId:             t.routeId,
-            dayTypeId:           t.dayTypeId,
+      if (schedule.departures.length > 0) {
+        await tx.lineDeparture.createMany({
+          data: schedule.departures.map(d => ({
             lineScheduleId:      newSchedule.id,
-            departureMinutes:    t.departureMinutes,
-            arrivalMinutes:      t.arrivalMinutes,
-            requiredVehicleType: t.requiredVehicleType ?? undefined,
-            constraints:         t.constraints ?? undefined,
-            notes:               t.notes ?? undefined,
+            routeId:             d.routeId,
+            departureMinutes:    d.departureMinutes,
+            requiredVehicleType: d.requiredVehicleType ?? undefined,
+            notes:               d.notes ?? undefined,
           })),
         })
       }

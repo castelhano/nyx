@@ -32,14 +32,16 @@ export const tripSchema = withMeta(
       keybind:        'r',
     }),
 
-    // vincula a viagem à versão do quadro de horários da linha à qual ela pertence —
-    // só pode ser criada/editada enquanto essa versão estiver em DRAFT
-    lineScheduleId: z.uuid().meta({
-      label:          'Quadro de Horários',
+    // rastreio opcional da partida aprovada que originou esta viagem — null para
+    // viagens livres/ad-hoc (reforço) nunca vinculadas a um LineSchedule. Não trava
+    // edição nenhuma; divergência entre esta e a partida ligada é o que deve
+    // acionar a decisão de nova versão vs. alterar a aprovada.
+    lineDepartureId: z.uuid().optional().nullable().meta({
+      label:          'Partida Aprovada',
       widget:         'select',
-      resource:       'line-schedule',
+      resource:       'line-departure',
       domain:         'transit',
-      labelField:     'version',
+      labelField:     'departureMinutes',
       showInForm:     false,
       listVisibility: 'hidden',
     }),

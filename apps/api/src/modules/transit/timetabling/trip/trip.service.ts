@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { tripSchema, Trip, CreateTripDto, UpdateTripDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
@@ -20,29 +20,7 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
       : { OR: [{ departureMinutes: asNumber }, { arrivalMinutes: asNumber }] }
   }
 
-  // Trips can only be created/edited/removed while their LineSchedule version is
-  // still DRAFT — once approved, that version is frozen to preserve history.
-  private async assertScheduleIsDraft(lineScheduleId: string): Promise<void> {
-    const schedule = await this.prisma.lineSchedule.findUnique({
-      where:  { id: lineScheduleId },
-      select: { status: true },
-    })
-    if (!schedule) throw new NotFoundException('LineSchedule not found')
-    if (schedule.status !== 'DRAFT') {
-      throw new BadRequestException('Esta viagem pertence a um quadro de horários aprovado — crie uma nova versão para editá-la')
-    }
-  }
-
-  override async create(dto: CreateTripDto): Promise<Trip> {
-    await this.assertScheduleIsDraft(dto.lineScheduleId)
-    return super.create(dto)
-  }
-
   override async update(id: string, dto: UpdateTripDto): Promise<Trip> {
-    const existing = await this.prisma.transitTrip.findUnique({ where: { id }, select: { lineScheduleId: true } })
-    if (!existing) throw new NotFoundException('Trip not found')
-    await this.assertScheduleIsDraft(existing.lineScheduleId)
-
     const result = await super.update(id, dto)
     const timeFieldsChanged = dto.departureMinutes !== undefined || dto.arrivalMinutes !== undefined
     if (timeFieldsChanged) {
@@ -56,10 +34,6 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
 
   override async remove(id: string): Promise<void> {
     const db = this.prisma as any
-
-    const existing = await this.prisma.transitTrip.findUnique({ where: { id }, select: { lineScheduleId: true } })
-    if (!existing) throw new NotFoundException('Trip not found')
-    await this.assertScheduleIsDraft(existing.lineScheduleId)
 
     // Capture which blocks held this trip (and their plan IDs) before cascade-delete
     const rows: { vehicleBlockId: string; vehicleBlock: { vehiclePlanId: string | null } }[] =
