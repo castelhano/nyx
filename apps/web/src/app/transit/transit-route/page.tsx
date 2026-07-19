@@ -29,6 +29,11 @@ const MapCanvas = dynamic(() => import('./MapCanvas'), { ssr: false })
 type CanvasMode  = 'ruler' | 'map'
 type TopbarState = 'idle' | 'pending' | 'suggesting'
 
+// stable references so a still-loading/disabled query doesn't recreate a new
+// array identity every render (breaks memoization in useTopbarActions' deps)
+const EMPTY_ROUTES: TransitRoute[] = []
+const EMPTY_LOCALITIES: RouteLocality[] = []
+
 export default function TransitRoutePage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -62,14 +67,14 @@ export default function TransitRoutePage() {
     staleTime: 60_000,
   })
 
-  const { data: routes = [] } = useQuery<TransitRoute[]>({
+  const { data: routes = EMPTY_ROUTES } = useQuery<TransitRoute[]>({
     queryKey: ['transit', 'transit-route', { lineId }],
     queryFn:  () => apiFetch(`/transit/transit-route?lineId=${lineId}&pageSize=100&sortField=direction&sortOrder=desc`).then((r) => r.json().then((j: any) => j.data ?? [])),
     enabled:  !!lineId,
     staleTime: 30_000,
   })
 
-  const { data: selectedLocalities = [] } = useQuery<RouteLocality[]>({
+  const { data: selectedLocalities = EMPTY_LOCALITIES } = useQuery<RouteLocality[]>({
     queryKey: ['transit', 'trajectory', routeId],
     queryFn:  () => apiFetch(`/transit/transit-route/${routeId}/trajectory`).then((r) => r.json()),
     enabled:  !!routeId,

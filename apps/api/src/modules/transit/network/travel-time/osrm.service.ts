@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
 
 export type GeoJSONLineString = { type: 'LineString'; coordinates: [number, number][] }
@@ -44,7 +44,7 @@ export class OsrmService {
     } catch (err) {
       const msg = (err as Error).message ?? ''
       const isConn = msg === 'fetch failed' || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND')
-      throw new Error(isConn ? `Servidor OSRM não responde (${this.osrmUrl})` : msg)
+      throw new ServiceUnavailableException(isConn ? `Servidor OSRM não responde (${this.osrmUrl})` : msg)
     }
 
     const route = data.routes[0]
@@ -148,7 +148,7 @@ export class OsrmService {
       const msg = (err as Error).message ?? ''
       this.logger.warn(`OSRM matrix failed: ${msg}`)
       const isConnErr = msg === 'fetch failed' || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND')
-      throw new Error(isConnErr ? `Servidor OSRM não responde (${this.osrmUrl})` : msg)
+      throw new ServiceUnavailableException(isConnErr ? `Servidor OSRM não responde (${this.osrmUrl})` : msg)
     }
 
     // Persist snapInfo for each locality based on OSRM sources
