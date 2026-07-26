@@ -14,6 +14,7 @@ export interface VehiclesActionDeps {
   onDeleteInterval:    (tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) => void
   onAddAccess:         (blockTripId: string, blockId: string) => void
   onAddReturn:         (blockTripId: string, blockId: string) => void
+  onAddInterval:       (blockTripId: string, blockId: string) => void
 }
 
 export function createVehiclesActionSpec(
@@ -62,8 +63,9 @@ export function createVehiclesActionSpec(
 
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
-          ...(block && canAddAccess(bt, block) ? [makeAccessAction(bt.id, block.id, deps)] : []),
-          ...(block && canAddReturn(bt, block)  ? [makeReturnAction(bt.id, block.id, deps)] : []),
+          ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
+          ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
+          ...(block && canAddInterval(bt, block) ? [makeAddIntervalAction(bt.id, block.id, deps)] : []),
           makeDeleteAction([bt.trip.id], deps),
         ]
       }
@@ -200,6 +202,35 @@ function makeReturnAction(blockTripId: string, blockId: string, deps: VehiclesAc
     icon:    'Warehouse',
     variant: 'both',
     onClick: () => deps.onAddReturn(blockTripId, blockId),
+  }
+}
+
+// Same slot/occasion as "Recolhida" (right after the trip) — own-type check swapped
+// for blockIntervals instead of RETURN deadruns, same next-trip back-to-back gate.
+function canAddInterval(bt: GanttBlockTrip, block: GanttBlock): boolean {
+  const btArr = bt.trip.arrivalMinutes
+
+  // already has a break departing right after this trip
+  if (block.blockIntervals.some(
+    (bi: GanttBlockInterval) => bi.departureMinutes >= btArr && bi.departureMinutes - btArr <= BACK_TO_BACK_THRESHOLD,
+  )) return false
+
+  // next productive trip is back-to-back
+  const nextTrip = block.blockTrips
+    .filter(t => t.id !== bt.id && t.trip.departureMinutes >= btArr)
+    .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)[0]
+  if (nextTrip && nextTrip.trip.departureMinutes - btArr <= BACK_TO_BACK_THRESHOLD) return false
+
+  return true
+}
+
+function makeAddIntervalAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'add-interval',
+    label:   'Intervalo',
+    icon:    'Coffee',
+    variant: 'both',
+    onClick: () => deps.onAddInterval(blockTripId, blockId),
   }
 }
 

@@ -22,6 +22,8 @@ import { FrequencyPanel }    from './components/FrequencyPanel'
 import { TripSummaryPanel }  from './components/TripSummaryPanel'
 import { GenerateModal }         from './components/GenerateModal'
 import { AccessModal }           from './components/AccessModal'
+import { AddIntervalModal }      from './components/AddIntervalModal'
+import type { IntervalType }     from './components/AddIntervalModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from './components/AddTripModal'
@@ -365,6 +367,7 @@ export default function VehiclePlanPage() {
   const isNew = id === 'new'
 
   type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
+  type AddIntervalModalState = { blockTripId: string; blockId: string }
   type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
   type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
   type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
@@ -372,6 +375,7 @@ export default function VehiclePlanPage() {
 
   const [selection,             setSelection]             = useState<Selection | null>(null)
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
+  const [addIntervalModal,      setAddIntervalModal]      = useState<AddIntervalModalState | null>(null)
   const [moveTargetBlockId,     setMoveTargetBlockId]     = useState<string | null>(null)
   const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
@@ -1416,6 +1420,41 @@ export default function VehiclePlanPage() {
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
+  function handleAddInterval(blockTripId: string, blockId: string) {
+    setAddIntervalModal({ blockTripId, blockId })
+  }
+
+  // Always queued as a pending add — unlike access/return, an interval has no
+  // travel-time lookup to resolve, so there's nothing that requires an immediate
+  // API call even for trips that already exist server-side.
+  function handleConfirmAddInterval(intervalType: IntervalType) {
+    if (!addIntervalModal || !mergedPlottedData) return
+    const { blockTripId, blockId } = addIntervalModal
+    setAddIntervalModal(null)
+
+    const block = mergedPlottedData.blocks.find(b => b.id === blockId)
+    const bt    = block?.blockTrips.find(bt => bt.id === blockTripId)
+    if (!bt) return
+
+    const departureMinutes = bt.trip.arrivalMinutes + 1
+    const duration          = intervalType.minMinutes ?? 30
+    const arrivalMinutes    = departureMinutes + duration
+
+    handlePendingAdd({
+      _kind:            'break',
+      _tempId:          crypto.randomUUID(),
+      intervalTypeId:   intervalType.id,
+      intervalTypeCode: intervalType.code,
+      intervalTypeName: intervalType.name,
+      isPaid:           intervalType.isPaid,
+      minMinutes:       intervalType.minMinutes,
+      maxMinutes:       intervalType.maxMinutes,
+      departureMinutes,
+      arrivalMinutes,
+      blockId,
+    })
+  }
+
   function handleConfirmMove() {
     if (!selection || !moveTargetBlockId || !mergedPlottedData) return
 
@@ -1657,6 +1696,7 @@ export default function VehiclePlanPage() {
       onDeleteInterval:    handleDeleteInterval,
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
+      onAddInterval:       handleAddInterval,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -1833,7 +1873,12 @@ export default function VehiclePlanPage() {
     enabled: !isNew,
   })
 
-  useShortcut('contextmenu', () => {
+  // Bound to ctrl+enter instead of the physical ContextMenu key: Firefox refuses
+  // to let preventDefault() suppress its native menu when triggered via keyboard
+  // (Menu key / Shift+F10) — deliberate accessibility restriction, not a bug, and
+  // not something fixable from JS. ctrl+enter has no browser default action to
+  // fight, so it works identically everywhere.
+  useShortcut('ctrl+enter', () => {
     if (!focusedSegId) return
     const segs = ganttBoardRef.current?.getSegments() ?? []
     const seg  = segs.find(s => s.id === focusedSegId)
@@ -2056,6 +2101,27 @@ export default function VehiclePlanPage() {
   useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ enabled: isTripFocused, display: false })
   useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
   useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
+
+  // Direct shortcuts for context-bar actions on the focused trip — resolves and
+  // filters through the exact same vehiclesActionSpec the bar itself uses, so
+  // eligibility (canAddAccess/canAddReturn/canAddInterval) always matches what
+  // would actually be shown; outside that eligibility it's a silent no-op.
+  function triggerFocusedTripAction(actionId: string) {
+    if (!focusedSegId || !mergedPlottedData) return
+    const segs = ganttBoardRef.current?.getSegments() ?? []
+    const seg  = segs.find(s => s.id === focusedSegId)
+    if (!seg) return
+    const rows     = ganttBoardRef.current?.getRows() ?? []
+    const resolved = vehiclesActionSpec.resolveSelection(seg, null, { allSegments: segs, allRows: rows })
+    if (!resolved) return
+    const actions = vehiclesActionSpec.getActions(resolved, mergedPlottedData, () => {})
+    actions.find(a => a.id === actionId)?.onClick()
+  }
+
+  useShortcut('q+l', () => triggerFocusedTripAction('lock'),         { enabled: isTripFocused, display: false })
+  useShortcut('q+e', () => triggerFocusedTripAction('access'),       { enabled: isTripFocused, display: false })
+  useShortcut('q+r', () => triggerFocusedTripAction('return'),       { enabled: isTripFocused, display: false })
+  useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { enabled: isTripFocused, display: false })
 
   useShortcut('delete', () => {
     if (!mergedPlottedData) return
@@ -2283,6 +2349,13 @@ export default function VehiclePlanPage() {
           title={depotModal.kind === 'access' ? 'Adicionar Acesso' : 'Adicionar Recolhida'}
           onConfirm={handleConfirmDepotModal}
           onClose={() => setDepotModal(null)}
+        />
+      )}
+
+      {addIntervalModal && (
+        <AddIntervalModal
+          onConfirm={handleConfirmAddInterval}
+          onClose={() => setAddIntervalModal(null)}
         />
       )}
 
