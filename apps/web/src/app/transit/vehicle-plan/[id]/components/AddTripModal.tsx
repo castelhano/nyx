@@ -7,7 +7,8 @@ import { Icons }    from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { useShortcutContext } from '@/lib/keywatch'
-import type { GanttBlock, LineMetrics } from '../views/vehicles.view'
+import type { GanttBlock, GanttBlockTrip, LineMetrics } from '../views/vehicles.view'
+import { resolveCycleWindow } from '../views/vehicles.view'
 import { getTravelTime } from '../travel-time'
 
 // ── module-level cache — persists across modal opens within the session ────────
@@ -104,10 +105,19 @@ interface IntervalType {
   maxMinutes: number | null
 }
 
+// Prefill context: the trip to anchor the new (opposite-direction) trip off of,
+// and its block/vehicle — the focused trip itself, or, if focus is on a rest
+// break, the last productive trip before it (see page.tsx's addTripReference).
+export interface AddTripReference {
+  block:         GanttBlock
+  referenceTrip: GanttBlockTrip
+}
+
 interface Props {
   planId:        string
   plottedLines:  PlanLine[]
   plottedBlocks: GanttBlock[]
+  reference:     AddTripReference | null
   onClose:       () => void
   onPendingAdd:  (entry: PendingAddEntry) => void
 }
@@ -154,12 +164,18 @@ const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAdd }: Props) {
+export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, onPendingAdd }: Props) {
   const { toast } = useToast()
   useShortcutContext('modal')
 
+  // Only honored if the reference trip's line is itself plotted — the line select
+  // only lists plottedLines, so anything else can't be preselected.
+  const referenceLineId = reference?.referenceTrip.trip.route.line.id ?? null
+  const referenceEligible = !!referenceLineId && plottedLines.some(l => l.lineId === referenceLineId)
+  const appliedReferenceRef = useRef(false)
+
   const [tripType,     setTripType]     = useState<'productive' | 'deadrun' | 'interval'>('productive')
-  const [lineId,       setLineId]       = useState(plottedLines[0]?.lineId ?? '')
+  const [lineId,       setLineId]       = useState(referenceEligible ? referenceLineId! : (plottedLines[0]?.lineId ?? ''))
   const [routeId,      setRouteId]      = useState('')
   const [originId,     setOriginId]     = useState('')
   const [destinationId, setDestinationId] = useState('')
@@ -219,6 +235,51 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
 
   // Reset cycle when relevant inputs change
   useEffect(() => { setCycleMinutes('') }, [tripType, lineId, routeId, originId, destinationId])
+
+  // Prefill from the reference trip (focused trip, or last productive trip before a
+  // focused rest break): opposite direction of the reference (same direction if the
+  // line only has one), starting right after whatever's already in that gap — an
+  // existing rest break's end, or the line's per-window recovery time (intervalMinutes,
+  // falling back to 5min) when the gap is empty. Skipped entirely if there's no room.
+  useEffect(() => {
+    if (appliedReferenceRef.current) return
+    if (!reference || !referenceEligible) return
+    if (tripType !== 'productive' || lineId !== referenceLineId) return
+    if (routes.length === 0) return
+
+    appliedReferenceRef.current = true
+
+    const { block, referenceTrip } = reference
+    const refDirection      = referenceTrip.trip.route.direction
+    const oppositeDirection = refDirection === 'OUTBOUND' ? 'INBOUND' : refDirection === 'INBOUND' ? 'OUTBOUND' : refDirection
+    const candidateRoute    = routes.find(r => r.direction === oppositeDirection) ?? routes.find(r => r.direction === refDirection)
+    if (!candidateRoute) return
+
+    const lineMetrics = plottedLines.find(l => l.lineId === lineId)?.line.metrics ?? null
+
+    const nextBreak = [...block.blockIntervals]
+      .filter(bi => bi.departureMinutes > referenceTrip.trip.arrivalMinutes)
+      .sort((a, b) => a.departureMinutes - b.departureMinutes)[0]
+    const nextOther = [
+      ...block.blockTrips.map(bt => bt.trip.departureMinutes),
+      ...block.blockDeadruns.map(dr => dr.departureMinutes),
+    ].filter(dep => dep > referenceTrip.trip.arrivalMinutes).sort((a, b) => a - b)[0]
+
+    // an existing break only counts as "the gap" if nothing else sits between it and the trip
+    const startMinutes = nextBreak && (nextOther == null || nextBreak.departureMinutes < nextOther)
+      ? nextBreak.arrivalMinutes + 1
+      : referenceTrip.trip.arrivalMinutes + (resolveCycleWindow(lineMetrics, candidateRoute.direction, referenceTrip.trip.arrivalMinutes)?.intervalMinutes ?? 5)
+
+    // space check only when a metrics window gives a synchronous duration — otherwise
+    // let the async resolveCycle() + the submit-time overlap fallback handle it
+    const window = resolveCycleWindow(lineMetrics, candidateRoute.direction, startMinutes)
+    if (window && hasOverlap(block, startMinutes, startMinutes + window.minutes)) return
+
+    setRouteId(candidateRoute.id)
+    setDepHH(String(Math.floor(startMinutes / 60) % 24))
+    setDepMM(String(startMinutes % 60))
+    setBlockId(block.id)
+  }, [routes, reference, referenceEligible, referenceLineId, tripType, lineId, plottedLines])
 
   async function resolveCycle() {
     if (tripType === 'interval') return

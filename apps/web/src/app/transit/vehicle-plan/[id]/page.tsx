@@ -661,6 +661,32 @@ export default function VehiclePlanPage() {
     }
   }, [navBlocks, editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reference trip for the "add trip" modal prefill: the focused trip itself, or —
+  // when focus is on a rest break — the last productive trip before it in the same
+  // block/vehicle (see AddTripModal's `reference` prop).
+  const addTripReference = useMemo(() => {
+    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return null
+
+    if (focusedSegId.endsWith(':bk')) {
+      const breakId = focusedSegId.slice(0, -3)
+      for (const block of mergedPlottedData.blocks) {
+        const bi = block.blockIntervals.find(bi => bi.id === breakId)
+        if (!bi) continue
+        const referenceTrip = block.blockTrips
+          .filter(bt => bt.trip.arrivalMinutes <= bi.departureMinutes)
+          .sort((a, b) => b.trip.arrivalMinutes - a.trip.arrivalMinutes)[0]
+        return referenceTrip ? { block, referenceTrip } : null
+      }
+      return null
+    }
+
+    for (const block of mergedPlottedData.blocks) {
+      const referenceTrip = block.blockTrips.find(bt => bt.id === focusedSegId)
+      if (referenceTrip) return { block, referenceTrip }
+    }
+    return null
+  }, [mergedPlottedData, focusedSegId])
+
   // Full block order + source block index, used to navigate move targets
   // relative to the source block's own position (skipping the source itself).
   const moveTargetBlocks = useMemo(() => {
@@ -1444,6 +1470,12 @@ export default function VehiclePlanPage() {
       setPendingDeadrunDeletes(new Set())
       setPendingIntervalDeletes(new Set())
       setPendingMoves([])
+      // Persisted trips/breaks/deadruns get new server-generated ids, so whatever
+      // was focused/selected (by temp id) no longer resolves to anything — clear
+      // explicitly instead of letting it silently land on an unrelated segment.
+      setSelection(null)
+      setFocusedSegId(null)
+      shiftAnchorRef.current = null
       toast.success('Alterações salvas')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')
@@ -2463,6 +2495,7 @@ export default function VehiclePlanPage() {
           planId={id}
           plottedLines={plottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
           plottedBlocks={plottedData.blocks}
+          reference={addTripReference}
           onClose={() => setAddTripOpen(false)}
           onPendingAdd={handlePendingAdd}
         />
