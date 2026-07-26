@@ -1,6 +1,6 @@
 import type { GanttActionSpec, Selection, ActionItem, SplitMenuItem } from '../engine/gantt.types'
 import type { LayoutSegment }                                          from '../engine/layout/layout.types'
-import type { VehiclePlanGanttData, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, TripConstraints } from './vehicles.view'
+import type { VehiclePlanGanttData, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval, TripConstraints } from './vehicles.view'
 
 const ALL_LOCKED_FIELDS = ['departureMinutes', 'cycleTime']
 
@@ -8,7 +8,10 @@ export interface VehiclesActionDeps {
   onUpdateConstraints: (tripIds: string[], patches: TripConstraints | null | TripConstraints[]) => void
   onDeleteTrips:       (tripIds: string[]) => void
   onDeleteDeadruns:    (deadrunIds: string[], blockId: string) => void
-  onDeleteInterval:    (tripIds: string[], deadrunIds: string[], blockId: string) => void
+  onDeleteBreaks:      (breakIds: string[], blockId: string) => void
+  // deleta uma seleção em faixa (Selection.type === 'interval', UI de range — não
+  // confundir com o domínio "intervalo"/BlockInterval, ver breakIds abaixo)
+  onDeleteInterval:    (tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) => void
   onAddAccess:         (blockTripId: string, blockId: string) => void
   onAddReturn:         (blockTripId: string, blockId: string) => void
 }
@@ -20,8 +23,9 @@ export function createVehiclesActionSpec(
 
     resolveSelection(clicked, current, { allSegments }) {
       if (clicked.id.endsWith(':dead')) return current ?? null
-      // deadrun segments are selectable (single click only — excluded from intervals by buildInterval)
+      // deadrun/break segments are selectable (single click only — never anchor a range)
       if (clicked.id.endsWith(':dr')) return { type: 'trip', segment: clicked }
+      if (clicked.id.endsWith(':bk')) return { type: 'trip', segment: clicked }
 
       if (!current) return { type: 'trip', segment: clicked }
 
@@ -45,6 +49,14 @@ export function createVehiclesActionSpec(
           return block ? [makeDeleteDeadrunsAction([d.id], block.id, deps)] : []
         }
 
+        // break (intervalo) segment selected (single click only) — sem lock próprio,
+        // ver docs/proposal/vehicle-plan-block-intervals.md §7.2
+        if (selection.segment.id.endsWith(':bk')) {
+          const bi    = selection.segment.data as GanttBlockInterval
+          const block = data.blocks.find(b => b.id === selection.segment.rowId)
+          return block ? [makeDeleteBreaksAction([bi.id], block.id, deps)] : []
+        }
+
         const bt    = selection.segment.data as GanttBlockTrip
         const block = data.blocks.find(b => b.id === selection.segment.rowId)
 
@@ -56,17 +68,19 @@ export function createVehiclesActionSpec(
         ]
       }
 
-      // interval selection — may include both trips and deadruns
-      const tripSegs   = selection.segments.filter(s => !s.id.endsWith(':dr'))
+      // interval selection (range) — may include trips, deadruns and breaks
+      const tripSegs   = selection.segments.filter(s => !s.id.endsWith(':dr') && !s.id.endsWith(':bk'))
       const drSegs     = selection.segments.filter(s =>  s.id.endsWith(':dr'))
+      const bkSegs     = selection.segments.filter(s =>  s.id.endsWith(':bk'))
       const tripIds    = tripSegs.map(s => (s.data as GanttBlockTrip).trip.id)
       const deadrunIds = drSegs.map(s => (s.data as GanttBlockDeadrun).id)
+      const breakIds   = bkSegs.map(s => (s.data as GanttBlockInterval).id)
 
       const blockTripIds = tripSegs.map(s => (s.data as GanttBlockTrip).id)
 
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
-        makeDeleteIntervalAction(tripIds, deadrunIds, selection.rowId, deps),
+        makeDeleteIntervalAction(tripIds, deadrunIds, breakIds, selection.rowId, deps),
       ]
     },
   }
@@ -202,6 +216,17 @@ function makeDeleteDeadrunsAction(deadrunIds: string[], blockId: string, deps: V
   }
 }
 
+function makeDeleteBreaksAction(breakIds: string[], blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'delete-break',
+    label:   'Excluir intervalo',
+    icon:    'Trash2',
+    variant: 'both',
+    danger:  true,
+    onClick: () => deps.onDeleteBreaks(breakIds, blockId),
+  }
+}
+
 function makeDeleteAction(tripIds: string[], deps: VehiclesActionDeps): ActionItem {
   return {
     id:      'delete',
@@ -216,6 +241,7 @@ function makeDeleteAction(tripIds: string[], deps: VehiclesActionDeps): ActionIt
 function makeDeleteIntervalAction(
   tripIds:    string[],
   deadrunIds: string[],
+  breakIds:   string[],
   blockId:    string,
   deps:       VehiclesActionDeps,
 ): ActionItem {
@@ -225,7 +251,7 @@ function makeDeleteIntervalAction(
     icon:    'Trash2',
     variant: 'both',
     danger:  true,
-    onClick: () => deps.onDeleteInterval(tripIds, deadrunIds, blockId),
+    onClick: () => deps.onDeleteInterval(tripIds, deadrunIds, breakIds, blockId),
   }
 }
 

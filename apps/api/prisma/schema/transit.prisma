@@ -290,6 +290,46 @@ model TransitTrip {
   @@map("transit_trips")
 }
 
+// Cadastrado pelo usuário (não um enum fixo como DeadrunType) porque min/max e
+// remunerado variam por tipo. minMinutes/maxMinutes são informativos — nunca
+// bloqueiam o lançamento de um BlockInterval fora da faixa, só sinalizam
+// irregularidade na UI (ver docs/proposal/vehicle-plan-block-intervals.md).
+model IntervalType {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  name       String
+  isPaid     Boolean  @default(false)
+  minMinutes Int?
+  maxMinutes Int?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  blockIntervals BlockInterval[]
+
+  @@map("transit_interval_types")
+}
+
+// Parada dentro de um bloco (refeição, troca, aguardo...). Sem FK para a viagem
+// que a antecede — o vínculo é posicional (viagem produtiva mais próxima antes
+// dela na sequência do bloco). O gerador (solver) não mantém essa consistência:
+// ao regerar um plano os intervalos existentes somem via onDelete: Cascade junto
+// com os blocos recriados. Ver docs/proposal/vehicle-plan-block-intervals.md.
+model BlockInterval {
+  id               String   @id @default(uuid())
+  vehicleBlockId   String
+  intervalTypeId   String
+  departureMinutes Int
+  arrivalMinutes   Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  vehicleBlock VehicleBlock @relation(fields: [vehicleBlockId], references: [id], onDelete: Cascade)
+  intervalType IntervalType @relation(fields: [intervalTypeId], references: [id])
+
+  @@map("transit_block_intervals")
+}
+
 model VehiclePlan {
   id          String            @id @default(uuid())
   dayTypeId   String
@@ -355,8 +395,9 @@ model VehicleBlock {
   vehiclePlan   VehiclePlan     @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
   branch        Branch?         @relation("BranchVehicleBlocks", fields: [branchId], references: [id])
   depot         TransitLocality @relation(fields: [depotId], references: [id])
-  blockTrips    BlockTrip[]
-  blockDeadruns BlockDeadrun[]
+  blockTrips     BlockTrip[]
+  blockDeadruns  BlockDeadrun[]
+  blockIntervals BlockInterval[]
 
   @@unique([vehiclePlanId, blockNumber])
   @@map("transit_vehicle_blocks")

@@ -3,6 +3,7 @@ import { vehicleBlockSchema, VehicleBlock, CreateVehicleBlockDto, UpdateVehicleB
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { VehiclePlanService } from './vehicle-plan.service'
+import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 
 @Injectable()
 export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto> {
@@ -108,6 +109,52 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
+  // Unlike updateDeadruns/deleteDeadruns, missing ids are silently skipped rather
+  // than throwing: an interval can legitimately vanish between the client queueing
+  // this call and it landing — its anchor trip may have been deleted/moved in the
+  // same save batch, which cascade-deletes it server-side (see block-interval.utils.ts).
+  // The client doesn't try to sequence around that race, so this endpoint has to
+  // tolerate it instead.
+  async updateIntervals(
+    blockId: string,
+    updates: { id: string; departureMinutes: number; arrivalMinutes: number }[],
+  ): Promise<void> {
+    if (updates.length === 0) return
+    const db = this.prisma as any
+
+    const found = await db.blockInterval.findMany({
+      where:  { id: { in: updates.map(u => u.id) }, vehicleBlockId: blockId },
+      select: { id: true },
+    })
+    const foundIds = new Set(found.map((f: any) => f.id))
+    const existing = updates.filter(u => foundIds.has(u.id))
+    if (existing.length === 0) return
+
+    await db.$transaction(async (tx: any) => {
+      for (const u of existing) {
+        await tx.blockInterval.update({
+          where: { id: u.id },
+          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes },
+        })
+      }
+      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+    })
+  }
+
+  async deleteIntervals(blockId: string, ids: string[]): Promise<void> {
+    if (ids.length === 0) return
+    const db = this.prisma as any
+    const found = await db.blockInterval.findMany({
+      where:  { id: { in: ids }, vehicleBlockId: blockId },
+      select: { id: true },
+    })
+    if (found.length === 0) return
+    await db.$transaction(async (tx: any) => {
+      await tx.blockInterval.deleteMany({ where: { id: { in: found.map((f: any) => f.id) } } })
+      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+    })
+  }
+
   async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string): Promise<void> {
     if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
     if (!blockTripIds.length)      throw new BadRequestException('Nenhuma viagem informada')
@@ -121,7 +168,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
 
     const found = await db.blockTrip.findMany({
       where:  { id: { in: blockTripIds }, vehicleBlockId: blockId },
-      select: { id: true },
+      select: { id: true, tripId: true },
     })
     if (found.length !== blockTripIds.length) {
       throw new NotFoundException('Uma ou mais viagens não encontradas neste bloco')
@@ -139,12 +186,21 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
     let nextSequence = (maxSeq._max.sequence ?? 0) + 1
 
+    // Intervals live attached to the trip that precedes them (positional, no FK — see
+    // block-interval.utils.ts). Moving a trip to another block without also moving its
+    // interval leaves it orphaned, so it's dropped rather than left stranded in time.
+    const tripIds = found.map((f: any) => f.tripId)
+    const orphanedIntervalIds = await findIntervalIdsAnchoredToTrips(this.prisma, blockId, tripIds)
+
     await db.$transaction(async (tx: any) => {
       for (const btId of blockTripIds) {
         await tx.blockTrip.update({
           where: { id: btId },
           data:  { vehicleBlockId: targetBlockId, sequence: nextSequence++ },
         })
+      }
+      if (orphanedIntervalIds.length > 0) {
+        await tx.blockInterval.deleteMany({ where: { id: { in: orphanedIntervalIds } } })
       }
       await tx.vehicleBlock.update({ where: { id: blockId },       data: { isStale: true } })
       await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })

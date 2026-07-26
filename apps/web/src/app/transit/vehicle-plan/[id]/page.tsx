@@ -24,10 +24,10 @@ import { GenerateModal }         from './components/GenerateModal'
 import { AccessModal }           from './components/AccessModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
-import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun } from './components/AddTripModal'
+import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from './components/AddTripModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
-import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockTrip, GanttBlockDeadrun } from './views/vehicles.view'
+import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { resolveCycleWindow, computeHeadway }            from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection, RowHintEntry } from './engine/gantt.types'
@@ -63,6 +63,27 @@ function buildFakeAccessReturn(a: PendingAddTrip): GanttBlockDeadrun[] {
     })
   }
   return result
+}
+
+// A BlockInterval has no FK to the trip it belongs to — the link is positional
+// (nearest preceding productive trip in the block's chronological sequence).
+// Mirrors apps/api/.../vehicle-plan/block-interval.utils.ts on the backend.
+// See docs/proposal/vehicle-plan-block-intervals.md §2.2/§7.1.
+function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): string[] {
+  if (tripIds.length === 0 || block.blockIntervals.length === 0) return []
+  const tripIdSet = new Set(tripIds)
+  const sortedTrips = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+
+  const anchored: string[] = []
+  for (const bi of block.blockIntervals) {
+    let anchorTripId: string | null = null
+    for (const bt of sortedTrips) {
+      if (bt.trip.arrivalMinutes <= bi.departureMinutes) anchorTripId = bt.trip.id
+      else break
+    }
+    if (anchorTripId && tripIdSet.has(anchorTripId)) anchored.push(bi.id)
+  }
+  return anchored
 }
 
 // ── solver progress via SSE ───────────────────────────────────────────────────
@@ -346,6 +367,7 @@ export default function VehiclePlanPage() {
   type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
   type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
   type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
+  type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
   type PendingMove = { blockTripIds: string[]; fromBlockId: string; toBlockId: string }
 
   const [selection,             setSelection]             = useState<Selection | null>(null)
@@ -354,9 +376,11 @@ export default function VehiclePlanPage() {
   const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
   const [pendingDeadrunChanges, setPendingDeadrunChanges] = useState<Map<string, DeadrunPatch>>(new Map())
+  const [pendingIntervalChanges,setPendingIntervalChanges]= useState<Map<string, IntervalPatch>>(new Map())
   const [pendingAdds,           setPendingAdds]           = useState<PendingAddEntry[]>([])
   const [pendingDeletes,        setPendingDeletes]        = useState<Set<string>>(new Set())
   const [pendingDeadrunDeletes, setPendingDeadrunDeletes] = useState<Set<string>>(new Set())
+  const [pendingIntervalDeletes,setPendingIntervalDeletes]= useState<Set<string>>(new Set())
   const [isPending,             setIsPending]             = useState(false)
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
@@ -416,14 +440,15 @@ export default function VehiclePlanPage() {
   // Merges pending local overrides and additions into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return plottedData
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return plottedData
 
     const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
     let extraBlockCount  = 0
 
     let blocks = plottedData.blocks.map(b => {
-      const addTrips    = pendingAdds.filter((a): a is PendingAddTrip    => a._kind === 'trip'    && a.blockId === b.id)
-      const addDeadruns = pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.blockId === b.id)
+      const addTrips    = pendingAdds.filter((a): a is PendingAddTrip     => a._kind === 'trip'    && a.blockId === b.id)
+      const addDeadruns = pendingAdds.filter((a): a is PendingAddDeadrun  => a._kind === 'deadrun' && a.blockId === b.id)
+      const addBreaks   = pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break'   && a.blockId === b.id)
       return {
         ...b,
         blockTrips: [
@@ -466,6 +491,27 @@ export default function VehiclePlanPage() {
             arrivalMinutes:        a.arrivalMinutes,
           })),
           ...addTrips.flatMap(buildFakeAccessReturn),
+        ],
+        blockIntervals: [
+          ...b.blockIntervals.filter(bi => !pendingIntervalDeletes.has(bi.id)).map(bi => {
+            const patch = pendingIntervalChanges.get(bi.id)
+            if (!patch) return bi
+            return { ...bi, ...patch }
+          }),
+          ...addBreaks.map(a => ({
+            id:             a._tempId,
+            intervalTypeId: a.intervalTypeId,
+            intervalType: {
+              id:         a.intervalTypeId,
+              code:       a.intervalTypeCode,
+              name:       a.intervalTypeName,
+              isPaid:     a.isPaid,
+              minMinutes: a.minMinutes,
+              maxMinutes: a.maxMinutes,
+            },
+            departureMinutes: a.departureMinutes,
+            arrivalMinutes:   a.arrivalMinutes,
+          })),
         ],
       }
     })
@@ -511,7 +557,21 @@ export default function VehiclePlanPage() {
             destinationLocality:   a.destinationLocality,
             departureMinutes:      a.departureMinutes,
             arrivalMinutes:        a.arrivalMinutes,
-          }] : buildFakeAccessReturn(a as PendingAddTrip),
+          }] : a._kind === 'trip' ? buildFakeAccessReturn(a as PendingAddTrip) : [],
+          blockIntervals: a._kind === 'break' ? [{
+            id:             a._tempId,
+            intervalTypeId: a.intervalTypeId,
+            intervalType: {
+              id:         a.intervalTypeId,
+              code:       a.intervalTypeCode,
+              name:       a.intervalTypeName,
+              isPaid:     a.isPaid,
+              minMinutes: a.minMinutes,
+              maxMinutes: a.maxMinutes,
+            },
+            departureMinutes: a.departureMinutes,
+            arrivalMinutes:   a.arrivalMinutes,
+          }] : [],
         }
       })
 
@@ -542,7 +602,7 @@ export default function VehiclePlanPage() {
     }
 
     return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
-  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingMoves])
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
   const allTrips = useMemo(() => {
@@ -560,8 +620,9 @@ export default function VehiclePlanPage() {
   const navBlocks = useMemo(() => {
     if (!mergedPlottedData) return [] as Array<Array<{ segId: string; dep: number }>>
     return mergedPlottedData.blocks.map(block => [
-      ...block.blockTrips.map(bt   => ({ segId: bt.id,           dep: bt.trip.departureMinutes })),
-      ...block.blockDeadruns.map(dr => ({ segId: `${dr.id}:dr`,  dep: dr.departureMinutes })),
+      ...block.blockTrips.map(bt     => ({ segId: bt.id,           dep: bt.trip.departureMinutes })),
+      ...block.blockDeadruns.map(dr  => ({ segId: `${dr.id}:dr`,   dep: dr.departureMinutes })),
+      ...block.blockIntervals.map(bi => ({ segId: `${bi.id}:bk`,   dep: bi.departureMinutes })),
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
 
@@ -823,19 +884,22 @@ export default function VehiclePlanPage() {
 
     const overrides   = new Map<string, TripPatch>()
     const drOverrides = new Map<string, DeadrunPatch>()
+    const bkOverrides = new Map<string, IntervalPatch>()
     let tripsWithWindow = 0
 
     // Process per block: a block = one vehicle.
-    // Merge trips and deadruns into chronological order so deadruns shift automatically
-    // when the preceding trip's arrival extends.
+    // Merge trips, deadruns and breaks into chronological order so deadruns/breaks
+    // shift automatically when the preceding trip's arrival extends.
     for (const block of plottedData.blocks) {
       type TripItem    = { kind: 'trip';    dep: number; bt: typeof block.blockTrips[0] }
       type DrItem      = { kind: 'deadrun'; dep: number; dr: typeof block.blockDeadruns[0] }
-      type BlockItem   = TripItem | DrItem
+      type BkItem      = { kind: 'break';   dep: number; bi: typeof block.blockIntervals[0] }
+      type BlockItem   = TripItem | DrItem | BkItem
 
       const items: BlockItem[] = [
-        ...block.blockTrips.map(bt   => ({ kind: 'trip'    as const, dep: bt.trip.departureMinutes, bt })),
-        ...block.blockDeadruns.map(dr => ({ kind: 'deadrun' as const, dep: dr.departureMinutes,      dr })),
+        ...block.blockTrips.map(bt     => ({ kind: 'trip'    as const, dep: bt.trip.departureMinutes, bt })),
+        ...block.blockDeadruns.map(dr  => ({ kind: 'deadrun' as const, dep: dr.departureMinutes,      dr })),
+        ...block.blockIntervals.map(bi => ({ kind: 'break'   as const, dep: bi.departureMinutes,      bi })),
       ].sort((a, b) => a.dep - b.dep)
 
       let prevArrival     = -Infinity
@@ -869,7 +933,7 @@ export default function VehiclePlanPage() {
           // If next item is a deadrun, set interval=0 — the deadrun itself is the gap.
           pendingInterval = (nextItem?.kind === 'trip' && cycleWindow) ? cycleWindow.intervalMinutes : 0
 
-        } else {
+        } else if (item.kind === 'deadrun') {
           // Deadrun: always anchor to prevArrival (follows preceding trip in both directions),
           // preserving the original travel duration. Skip only when there is no preceding item.
           const { dr } = item
@@ -884,19 +948,37 @@ export default function VehiclePlanPage() {
 
           prevArrival     = newArr
           pendingInterval = 0  // next trip starts right after deadrun, no extra interval
+        } else {
+          // Break: same treatment as deadrun — lives attached to whatever trip
+          // precedes it, so it follows prevArrival and keeps its own duration.
+          const { bi } = item
+          const duration = bi.arrivalMinutes - bi.departureMinutes
+          const newDep   = prevArrival !== -Infinity ? prevArrival : bi.departureMinutes
+          const newArr   = newDep + duration
+
+          const bpatch: IntervalPatch = {}
+          if (newDep !== bi.departureMinutes) bpatch.departureMinutes = newDep
+          if (newArr !== bi.arrivalMinutes)   bpatch.arrivalMinutes   = newArr
+          if (Object.keys(bpatch).length > 0) bkOverrides.set(bi.id, bpatch)
+
+          prevArrival     = newArr
+          pendingInterval = 0
         }
       }
     }
 
     setPendingChanges(overrides)
     setPendingDeadrunChanges(drOverrides)
+    setPendingIntervalChanges(bkOverrides)
 
     const tripCount    = overrides.size
     const deadrunCount = drOverrides.size
-    if (tripCount > 0 || deadrunCount > 0) {
+    const breakCount   = bkOverrides.size
+    if (tripCount > 0 || deadrunCount > 0 || breakCount > 0) {
       const parts = [
-        tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`     : null,
-        deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}` : null,
+        tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`       : null,
+        deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}`   : null,
+        breakCount   > 0 ? `${breakCount} ${breakCount === 1 ? 'intervalo' : 'intervalos'}` : null,
       ].filter(Boolean).join(' e ')
       toast.success(`${parts} ajustados — use Salvar para persistir`)
     } else if (tripsWithWindow > 0) {
@@ -911,7 +993,7 @@ export default function VehiclePlanPage() {
   const handleTripTimingOp = useCallback((
     op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly',
   ) => {
-    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
+    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr') || focusedSegId.endsWith(':bk')) return
 
     let foundBlock: typeof mergedPlottedData.blocks[0]              | null = null
     let foundBt:    typeof mergedPlottedData.blocks[0]['blockTrips'][0] | null = null
@@ -929,7 +1011,8 @@ export default function VehiclePlanPage() {
 
     type TItem = { kind: 'trip';    id: string; tripId: string; dep: number; arr: number }
     type DItem = { kind: 'deadrun'; id: string; drId:  string;  dep: number; arr: number }
-    type Item  = TItem | DItem
+    type BItem = { kind: 'break';   id: string; bkId:  string;  dep: number; arr: number }
+    type Item  = TItem | DItem | BItem
 
     const items: Item[] = [
       ...foundBlock.blockTrips.map(bt => ({
@@ -939,6 +1022,10 @@ export default function VehiclePlanPage() {
       ...foundBlock.blockDeadruns.map(dr => ({
         kind: 'deadrun' as const, id: dr.id, drId: dr.id,
         dep: dr.departureMinutes, arr: dr.arrivalMinutes,
+      })),
+      ...foundBlock.blockIntervals.map(bi => ({
+        kind: 'break' as const, id: bi.id, bkId: bi.id,
+        dep: bi.departureMinutes, arr: bi.arrivalMinutes,
       })),
     ].sort((a, b) => a.dep - b.dep)
 
@@ -960,6 +1047,7 @@ export default function VehiclePlanPage() {
 
     const newTrips = new Map(pendingChanges)
     const newDrs   = new Map(pendingDeadrunChanges)
+    const newBks   = new Map(pendingIntervalChanges)
 
     function setTrip(tripId: string, dep: number, arr: number) {
       const orig = ganttData?.blocks.flatMap(b => b.blockTrips).find(bt => bt.trip.id === tripId)?.trip
@@ -979,17 +1067,28 @@ export default function VehiclePlanPage() {
       else newDrs.delete(drId)
     }
 
+    function setBk(bkId: string, dep: number, arr: number) {
+      const orig = ganttData?.blocks.flatMap(b => b.blockIntervals).find(bi => bi.id === bkId)
+      const patch: IntervalPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) newBks.set(bkId, patch)
+      else newBks.delete(bkId)
+    }
+
     function shiftSubsequent(delta: number) {
       for (const item of subsequent) {
-        if (item.kind === 'trip') setTrip((item as TItem).tripId, item.dep + delta, item.arr + delta)
-        else                      setDr((item as DItem).drId,    item.dep + delta, item.arr + delta)
+        if (item.kind === 'trip')        setTrip((item as TItem).tripId, item.dep + delta, item.arr + delta)
+        else if (item.kind === 'deadrun') setDr((item as DItem).drId,    item.dep + delta, item.arr + delta)
+        else                              setBk((item as BItem).bkId,    item.dep + delta, item.arr + delta)
       }
     }
 
-    // Push only deadruns that sit between the marked trip and the next productive trip
+    // Push only the deadruns/breaks that sit between the marked trip and the next productive trip
     function pushLeadingDeadruns(delta: number) {
       for (const item of subsequent) {
-        if (item.kind === 'deadrun') setDr((item as DItem).drId, item.dep + delta, item.arr + delta)
+        if (item.kind === 'deadrun')     setDr((item as DItem).drId, item.dep + delta, item.arr + delta)
+        else if (item.kind === 'break')  setBk((item as BItem).bkId, item.dep + delta, item.arr + delta)
         else break
       }
     }
@@ -1052,11 +1151,13 @@ export default function VehiclePlanPage() {
 
     setPendingChanges(newTrips)
     setPendingDeadrunChanges(newDrs)
-  }, [focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges])
+    setPendingIntervalChanges(newBks)
+  }, [focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges])
 
   function handleSelectionChange(sel: Selection | null) {
+    if (!editBarOpen) return
     setSelection(sel)
-    if (editBarOpen && sel?.type === 'trip') {
+    if (sel?.type === 'trip') {
       setFocusedSegId(sel.segment.id)
     }
   }
@@ -1068,9 +1169,11 @@ export default function VehiclePlanPage() {
   function clearAllPending() {
     setPendingChanges(new Map())
     setPendingDeadrunChanges(new Map())
+    setPendingIntervalChanges(new Map())
     setPendingAdds([])
     setPendingDeletes(new Set())
     setPendingDeadrunDeletes(new Set())
+    setPendingIntervalDeletes(new Set())
     setPendingMoves([])
   }
 
@@ -1095,7 +1198,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
     const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
     const ok = await confirm({
       title:        'Salvar alterações',
@@ -1108,7 +1211,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDiscardPendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
     const ok = await confirm({
       title:        'Descartar alterações',
       description:  'Todas as alterações pendentes serão removidas.',
@@ -1120,7 +1223,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePending() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingMoves.length === 0) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
     setIsPending(true)
     try {
       // Save trip patches
@@ -1156,6 +1259,29 @@ export default function VehiclePlanPage() {
         )
       }
 
+      // Save interval patches grouped by block
+      if (pendingIntervalChanges.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const updates = block.blockIntervals
+              .filter(bi => pendingIntervalChanges.has(bi.id))
+              .map(bi => {
+                const patch = pendingIntervalChanges.get(bi.id)!
+                return {
+                  id:               bi.id,
+                  departureMinutes: patch.departureMinutes ?? bi.departureMinutes,
+                  arrivalMinutes:   patch.arrivalMinutes   ?? bi.arrivalMinutes,
+                }
+              })
+            if (updates.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/intervals`, {
+              method: 'PATCH',
+              body:   JSON.stringify({ updates }),
+            })]
+          }),
+        )
+      }
+
       // Delete pending-deleted trips
       if (pendingDeletes.size > 0) {
         await Promise.all(
@@ -1174,6 +1300,23 @@ export default function VehiclePlanPage() {
               .map(dr => dr.id)
             if (ids.length === 0) return []
             return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
+              method:  'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ ids }),
+            })]
+          }),
+        )
+      }
+
+      // Delete pending-deleted intervals grouped by block
+      if (pendingIntervalDeletes.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const ids = block.blockIntervals
+              .filter(bi => pendingIntervalDeletes.has(bi.id))
+              .map(bi => bi.id)
+            if (ids.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/intervals`, {
               method:  'DELETE',
               headers: { 'Content-Type': 'application/json' },
               body:    JSON.stringify({ ids }),
@@ -1202,7 +1345,7 @@ export default function VehiclePlanPage() {
             const j = await res.json().catch(() => ({}))
             throw new Error(extractError(j))
           }
-        } else {
+        } else if (entry._kind === 'deadrun') {
           const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1212,6 +1355,21 @@ export default function VehiclePlanPage() {
               departureMinutes:      entry.departureMinutes,
               arrivalMinutes:        entry.arrivalMinutes,
               blockId:               resolvedBlockId,
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(extractError(j))
+          }
+        } else {
+          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-interval`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              intervalTypeId:   entry.intervalTypeId,
+              departureMinutes: entry.departureMinutes,
+              arrivalMinutes:   entry.arrivalMinutes,
+              blockId:          resolvedBlockId,
             }),
           })
           if (!res.ok) {
@@ -1236,9 +1394,11 @@ export default function VehiclePlanPage() {
       await refetchGantt()
       setPendingChanges(new Map())
       setPendingDeadrunChanges(new Map())
+      setPendingIntervalChanges(new Map())
       setPendingAdds([])
       setPendingDeletes(new Set())
       setPendingDeadrunDeletes(new Set())
+      setPendingIntervalDeletes(new Set())
       setPendingMoves([])
       toast.success('Alterações salvas')
     } catch (err) {
@@ -1265,8 +1425,8 @@ export default function VehiclePlanPage() {
     if (!sourceBlock || !targetBlock) return
 
     const blockTripIds = selection.type === 'trip'
-      ? (selection.segment.isDeadhead ? [] : [selection.segment.id])
-      : selection.segments.filter(s => !s.isDeadhead).map(s => s.id)
+      ? (selection.segment.kind === 'trip' ? [selection.segment.id] : [])
+      : selection.segments.filter(s => s.kind === 'trip').map(s => s.id)
 
     if (blockTripIds.length === 0) return
 
@@ -1294,6 +1454,27 @@ export default function VehiclePlanPage() {
       const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
       return [...filtered, { blockTripIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
     })
+
+    // Intervals live attached to the trip that precedes them (positional, no FK —
+    // see docs/proposal/vehicle-plan-block-intervals.md §7.1). Moving a trip to
+    // another block without its interval leaves it orphaned, so it's dropped.
+    const movedTripIds = blockTripIds
+      .map(btId => sourceBlock.blockTrips.find(bt => bt.id === btId)?.trip.id)
+      .filter((tid): tid is string => !!tid)
+    const orphanedBreakIds = findAnchoredBreakIds(sourceBlock, movedTripIds)
+    if (orphanedBreakIds.length > 0) {
+      setPendingIntervalDeletes(prev => new Set([...prev, ...orphanedBreakIds]))
+      setPendingIntervalChanges(prev => {
+        const next = new Map(prev)
+        for (const bkId of orphanedBreakIds) next.delete(bkId)
+        return next
+      })
+      toast.info(
+        orphanedBreakIds.length === 1
+          ? 'Intervalo anexado excluído — não foi incluído na movimentação'
+          : `${orphanedBreakIds.length} intervalos anexados excluídos — não foram incluídos na movimentação`,
+      )
+    }
 
     setSelection(null)
     setMoveTargetBlockId(null)
@@ -1367,12 +1548,39 @@ export default function VehiclePlanPage() {
     }
   }
 
-  async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], blockId: string) {
+  async function handleDeleteBreaks(breakIds: string[], blockId: string) {
+    const ok = await confirm({
+      title:        breakIds.length === 1 ? 'Excluir intervalo' : `Excluir ${breakIds.length} intervalos`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/intervals`, {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ids: breakIds }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir intervalo')
+    }
+  }
+
+  async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) {
     const tripCount    = tripIds.length
     const deadrunCount = deadrunIds.length
+    const breakCount   = breakIds.length
     const parts        = [
-      tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`  : null,
-      deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}` : null,
+      tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`      : null,
+      deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}`  : null,
+      breakCount   > 0 ? `${breakCount} ${breakCount === 1 ? 'intervalo' : 'intervalos'}` : null,
     ].filter(Boolean).join(' e ')
 
     const ok = await confirm({
@@ -1393,6 +1601,15 @@ export default function VehiclePlanPage() {
             method:  'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ ids: deadrunIds }),
+          }).then(async (res) => {
+            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
+          }),
+        ] : []),
+        ...(breakIds.length > 0 ? [
+          apiFetch(`/transit/vehicle-block/${blockId}/intervals`, {
+            method:  'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ ids: breakIds }),
           }).then(async (res) => {
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
           }),
@@ -1436,6 +1653,7 @@ export default function VehiclePlanPage() {
       onUpdateConstraints: handleUpdateConstraints,
       onDeleteTrips:       handleDeleteTrips,
       onDeleteDeadruns:    handleDeleteDeadruns,
+      onDeleteBreaks:      handleDeleteBreaks,
       onDeleteInterval:    handleDeleteInterval,
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
@@ -1452,7 +1670,7 @@ export default function VehiclePlanPage() {
   const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
     ? solverProgress.bestScenario.fleetCount - baselineSnapshot.fleetCount
     : null
-  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
+  const pendingCount     = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length
 
   useTopbarActions([
     // toggle barra de edição — sempre visível, alinhado à esquerda
@@ -1746,8 +1964,8 @@ export default function VehiclePlanPage() {
 
   const selectionHasTrips = selection
     ? (selection.type === 'trip'
-        ? !selection.segment.isDeadhead
-        : selection.segments.some(s => !s.isDeadhead))
+        ? selection.segment.kind === 'trip'
+        : selection.segments.some(s => s.kind === 'trip'))
     : false
 
   useShortcut('↑', () => {
@@ -1843,23 +2061,28 @@ export default function VehiclePlanPage() {
     if (!mergedPlottedData) return
 
     // Build list of segment references: prefer active selection, fall back to focusedSegId
-    type SegRef = { id: string; isDeadhead: boolean }
+    type SegKind = 'trip' | 'deadrun' | 'break'
+    type SegRef  = { id: string; kind: SegKind }
     let segRefs: SegRef[] = []
     if (selection) {
       const segs = selection.type === 'trip' ? [selection.segment] : selection.segments
-      segRefs = segs.map(s => ({ id: s.id, isDeadhead: s.isDeadhead }))
+      segRefs = segs.map(s => ({ id: s.id, kind: s.kind === 'deadhead' ? 'deadrun' : s.kind === 'break' ? 'break' : 'trip' }))
     } else if (focusedSegId) {
-      segRefs = [{ id: focusedSegId, isDeadhead: focusedSegId.endsWith(':dr') }]
+      const kind: SegKind = focusedSegId.endsWith(':dr') ? 'deadrun' : focusedSegId.endsWith(':bk') ? 'break' : 'trip'
+      segRefs = [{ id: focusedSegId, kind }]
     }
     if (segRefs.length === 0) return
 
     const tripIds:    string[] = []
     const tempIds:    string[] = []
     const deadrunIds: string[] = []
+    const breakIds:   string[] = []
 
-    for (const { id, isDeadhead } of segRefs) {
-      if (isDeadhead) {
+    for (const { id, kind } of segRefs) {
+      if (kind === 'deadrun') {
         deadrunIds.push(id.replace(/:dr$/, ''))
+      } else if (kind === 'break') {
+        breakIds.push(id.replace(/:bk$/, ''))
       } else {
         for (const block of mergedPlottedData.blocks) {
           const bt = block.blockTrips.find(bt => bt.id === id)
@@ -1873,12 +2096,23 @@ export default function VehiclePlanPage() {
       }
     }
 
+    // Trips being deleted take their attached interval (if any) along with them —
+    // positional link, no FK, see docs/proposal/vehicle-plan-block-intervals.md §7.1.
+    if (tripIds.length > 0) {
+      for (const block of mergedPlottedData.blocks) {
+        for (const bkId of findAnchoredBreakIds(block, tripIds)) {
+          if (!breakIds.includes(bkId)) breakIds.push(bkId)
+        }
+      }
+    }
+
     // Compute next focus before applying state
     let nextFocusId: string | null = null
     if (focusedSegId) {
       const deletedSegIds  = new Set(segRefs.map(r => r.id))
       const newTripDels    = new Set([...pendingDeletes,         ...tripIds])
       const newDrDels      = new Set([...pendingDeadrunDeletes,  ...deadrunIds])
+      const newBkDels      = new Set([...pendingIntervalDeletes, ...breakIds])
       for (const t of tempIds) deletedSegIds.add(t)  // pending-add blockTrip IDs
 
       let foundBlock: typeof mergedPlottedData.blocks[0] | null = null
@@ -1888,6 +2122,8 @@ export default function VehiclePlanPage() {
         if (bt) { foundBlock = block; focusedDep = bt.trip.departureMinutes; break }
         const dr = block.blockDeadruns.find(dr => `${dr.id}:dr` === focusedSegId)
         if (dr) { foundBlock = block; focusedDep = dr.departureMinutes; break }
+        const bi = block.blockIntervals.find(bi => `${bi.id}:bk` === focusedSegId)
+        if (bi) { foundBlock = block; focusedDep = bi.departureMinutes; break }
       }
 
       if (foundBlock) {
@@ -1898,6 +2134,9 @@ export default function VehiclePlanPage() {
           ...foundBlock.blockDeadruns
             .filter(dr => !deletedSegIds.has(`${dr.id}:dr`) && !newDrDels.has(dr.id))
             .map(dr => ({ id: `${dr.id}:dr`, dep: dr.departureMinutes })),
+          ...foundBlock.blockIntervals
+            .filter(bi => !deletedSegIds.has(`${bi.id}:bk`) && !newBkDels.has(bi.id))
+            .map(bi => ({ id: `${bi.id}:bk`, dep: bi.departureMinutes })),
         ]
 
         if (remaining.length > 0) {
@@ -1941,6 +2180,15 @@ export default function VehiclePlanPage() {
       })
     }
 
+    if (breakIds.length > 0) {
+      setPendingIntervalDeletes(prev => new Set([...prev, ...breakIds]))
+      setPendingIntervalChanges(prev => {
+        const next = new Map(prev)
+        for (const bkId of breakIds) next.delete(bkId)
+        return next
+      })
+    }
+
     setFocusedSegId(nextFocusId)
     setSelection(null)
   }, {
@@ -1964,14 +2212,21 @@ export default function VehiclePlanPage() {
 
   const summarySegId = selection ? groupAnchorSegIdRef.current : focusedSegId
 
-  let summaryTrip:    GanttBlockTrip    | null = null
-  let summaryDeadrun: GanttBlockDeadrun | null = null
+  let summaryTrip:    GanttBlockTrip     | null = null
+  let summaryDeadrun: GanttBlockDeadrun  | null = null
+  let summaryBreak:   GanttBlockInterval | null = null
   if (summarySegId && mergedPlottedData) {
     if (summarySegId.endsWith(':dr')) {
       const drId = summarySegId.slice(0, -3)
       for (const block of mergedPlottedData.blocks) {
         const dr = block.blockDeadruns.find(dr => dr.id === drId)
         if (dr) { summaryDeadrun = dr; break }
+      }
+    } else if (summarySegId.endsWith(':bk')) {
+      const bkId = summarySegId.slice(0, -3)
+      for (const block of mergedPlottedData.blocks) {
+        const bi = block.blockIntervals.find(bi => bi.id === bkId)
+        if (bi) { summaryBreak = bi; break }
       }
     } else {
       for (const block of mergedPlottedData.blocks) {
@@ -2135,8 +2390,8 @@ export default function VehiclePlanPage() {
           )}
         </div>
 
-        {editBarOpen && (summaryTrip || summaryDeadrun) && (
-          <TripSummaryPanel trip={summaryTrip} deadrun={summaryDeadrun} headway={summaryHeadway} />
+        {editBarOpen && (summaryTrip || summaryDeadrun || summaryBreak) && (
+          <TripSummaryPanel trip={summaryTrip} deadrun={summaryDeadrun} breakItem={summaryBreak} headway={summaryHeadway} />
         )}
       </div>
 
@@ -2150,9 +2405,9 @@ export default function VehiclePlanPage() {
                   ref={ganttBoardRef}
                   data={mergedPlottedData}
                   onViewportChange={setGanttVp}
-                  selection={selection}
+                  selection={editBarOpen ? selection : null}
                   onSelectionChange={handleSelectionChange}
-                  actionSpec={vehiclesActionSpec}
+                  actionSpec={editBarOpen ? vehiclesActionSpec : undefined}
                   onBlockUpdate={() => refetchGantt()}
                   focusedSegId={editBarOpen ? focusedSegId : null}
                   moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
@@ -2171,7 +2426,7 @@ export default function VehiclePlanPage() {
               </div>
             )}
 
-            {selection && mergedPlottedData && (
+            {editBarOpen && selection && mergedPlottedData && (
               <GanttActionBar
                 selection={selection}
                 actions={vehiclesActionSpec.getActions(selection, mergedPlottedData, () => setSelection(null))}

@@ -88,6 +88,15 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.addDeadrun(id, body)
   }
 
+  @Post(':id/add-interval')
+  @HttpCode(201)
+  addInterval(
+    @Param('id') id: string,
+    @Body() body: { intervalTypeId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string },
+  ) {
+    return this.vehiclePlanService.addInterval(id, body)
+  }
+
   @Post(':id/lines')
   @HttpCode(200)
   addLine(@Param('id') id: string, @Body('lineId') lineId: string) {

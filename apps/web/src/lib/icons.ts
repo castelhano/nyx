@@ -22,6 +22,7 @@ const iconNames = [
   'CheckSquare',
   'ChevronDown',
   'ClipboardList',
+  'Coffee',
   'Copy',
   'Download',
   'FileText',

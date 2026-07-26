@@ -33,6 +33,9 @@ export interface FieldMeta {
   defaultValue?: unknown
   min?: number
   max?: number
+  /** HTML minlength/maxlength on text inputs — a UI-only restriction, independent of the Zod string length validation (which stays the source of truth enforced server-side). */
+  minLength?: number
+  maxLength?: number
   mask?: 'cnpj' | 'cnpj-base' | 'cpf' | 'phone' | 'cep'
   className?: string
   resource?: string
@@ -68,6 +71,8 @@ export interface MetadataField {
   sortable: boolean
   min?: number
   max?: number
+  minLength?: number
+  maxLength?: number
   mask?: string
   widget?: string
   className?: string

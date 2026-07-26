@@ -358,6 +358,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               arrivalMinutes:        true,
             },
           },
+          blockIntervals: {
+            select: { departureMinutes: true, arrivalMinutes: true },
+          },
         },
       }),
       this.prisma.travelTimeMatrix.findMany(),
@@ -402,10 +405,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       const allDepartures = [
         ...block.blockTrips.map(bt => bt.trip.departureMinutes),
         ...block.blockDeadruns.map(dr => dr.departureMinutes),
+        ...block.blockIntervals.map(bi => bi.departureMinutes),
       ]
       const allArrivals = [
         ...block.blockTrips.map(bt => bt.trip.arrivalMinutes),
         ...block.blockDeadruns.map(dr => dr.arrivalMinutes),
+        ...block.blockIntervals.map(bi => bi.arrivalMinutes),
       ]
       const totalMinutes = Math.max(...allArrivals) - Math.min(...allDepartures)
 
@@ -501,7 +506,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 },
               },
             },
-            blockDeadruns: { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
+            blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
+            blockIntervals: { select: { intervalTypeId: true, departureMinutes: true, arrivalMinutes: true } },
           },
         },
       },
@@ -577,6 +583,17 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               destinationLocalityId: d.destinationLocalityId,
               departureMinutes:      d.departureMinutes,
               arrivalMinutes:        d.arrivalMinutes,
+            })),
+          })
+        }
+
+        if (block.blockIntervals.length > 0) {
+          await (tx as any).blockInterval.createMany({
+            data: block.blockIntervals.map((bi: any) => ({
+              vehicleBlockId:   newBlock.id,
+              intervalTypeId:   bi.intervalTypeId,
+              departureMinutes: bi.departureMinutes,
+              arrivalMinutes:   bi.arrivalMinutes,
             })),
           })
         }
@@ -805,6 +822,71 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     await this.scorePlan(planId)
   }
 
+  async addInterval(planId: string, dto: {
+    intervalTypeId:   string
+    departureMinutes: number
+    arrivalMinutes:   number
+    blockId?:        string
+  }): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, status: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+
+    const db = this.prisma as any
+
+    await db.$transaction(async (tx: any) => {
+      let blockId = dto.blockId
+
+      if (blockId) {
+        const block = await tx.vehicleBlock.findFirst({
+          where: { id: blockId, vehiclePlanId: planId },
+        })
+        if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
+      } else {
+        const lastBlock = await tx.vehicleBlock.findFirst({
+          where:   { vehiclePlanId: planId },
+          orderBy: { blockNumber: 'desc' },
+          select:  { blockNumber: true, depotId: true },
+        })
+
+        let depotId: string
+        if (lastBlock?.depotId) {
+          depotId = lastBlock.depotId
+        } else {
+          const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
+          if (!depot) throw new BadRequestException('No depot locality configured')
+          depotId = depot.id
+        }
+
+        const newBlock = await tx.vehicleBlock.create({
+          data: {
+            vehiclePlanId: planId,
+            blockNumber:   (lastBlock?.blockNumber ?? 0) + 1,
+            depotId,
+            vehicleType:   'STANDARD',
+          },
+        })
+        blockId = newBlock.id
+      }
+
+      await tx.blockInterval.create({
+        data: {
+          vehicleBlockId:   blockId,
+          intervalTypeId:   dto.intervalTypeId,
+          departureMinutes: dto.departureMinutes,
+          arrivalMinutes:   dto.arrivalMinutes,
+        },
+      })
+
+      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+    })
+
+    await this.scorePlan(planId)
+  }
+
   async addLine(planId: string, lineId: string): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { dayTypeId: true } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
@@ -976,6 +1058,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           include: {
             originLocality:      { select: { id: true, name: true } },
             destinationLocality: { select: { id: true, name: true } },
+          },
+        },
+        blockIntervals: {
+          orderBy: { departureMinutes: 'asc' },
+          include: {
+            intervalType: true,
           },
         },
       },

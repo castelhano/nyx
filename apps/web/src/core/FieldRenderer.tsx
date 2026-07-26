@@ -554,6 +554,8 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           {...register}
           rows={3}
           placeholder={field.placeholder}
+          minLength={field.minLength}
+          maxLength={field.maxLength}
           className={cn(fieldInputCls, field.keybind && 'md:pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} className="top-3 -translate-y-0" />}
@@ -570,6 +572,8 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           readOnly={readonly}
           {...register}
           step={inputType === 'number' ? 'any' : undefined}
+          minLength={field.type === 'string' ? field.minLength : undefined}
+          maxLength={field.type === 'string' ? field.maxLength : undefined}
           placeholder={field.placeholder}
           className={cn(fieldInputCls, field.keybind && 'md:pr-10', readonly && readonlyCls)}
         />

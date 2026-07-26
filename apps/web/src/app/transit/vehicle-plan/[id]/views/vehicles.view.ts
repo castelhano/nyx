@@ -92,18 +92,52 @@ export interface GanttBlockDeadrun {
   arrivalMinutes:        number
 }
 
+export interface GanttIntervalType {
+  id:         string
+  code:       string
+  name:       string
+  isPaid:     boolean
+  minMinutes: number | null
+  maxMinutes: number | null
+}
+
+export interface GanttBlockInterval {
+  id:               string
+  intervalTypeId:   string
+  intervalType:     GanttIntervalType
+  departureMinutes: number
+  arrivalMinutes:   number
+}
+
 export interface GanttBlock {
-  id:            string
-  blockNumber:   number
-  vehicleType:   string
-  branchId:      string | null
-  branch:        { id: string; name: string } | null
-  depotId:       string
-  depot:         { id: string; name: string }
-  constraints:   { locked?: true } | null
-  summary:       VehicleBlockSummary | null
-  blockTrips:    GanttBlockTrip[]
-  blockDeadruns: GanttBlockDeadrun[]
+  id:             string
+  blockNumber:    number
+  vehicleType:    string
+  branchId:       string | null
+  branch:         { id: string; name: string } | null
+  depotId:        string
+  depot:          { id: string; name: string }
+  constraints:    { locked?: true } | null
+  summary:        VehicleBlockSummary | null
+  blockTrips:     GanttBlockTrip[]
+  blockDeadruns:  GanttBlockDeadrun[]
+  blockIntervals: GanttBlockInterval[]
+}
+
+// Irregularidade é sempre informativa (nunca bloqueia) — ver
+// docs/proposal/vehicle-plan-block-intervals.md §5.3.
+export function computeIntervalIrregularity(
+  bi: GanttBlockInterval,
+): { severity: 'over' | 'under'; excessFromMinute?: number } | null {
+  const { minMinutes, maxMinutes } = bi.intervalType
+  const duration = bi.arrivalMinutes - bi.departureMinutes
+  if (maxMinutes != null && duration > maxMinutes) {
+    return { severity: 'over', excessFromMinute: bi.departureMinutes + maxMinutes }
+  }
+  if (minMinutes != null && duration < minMinutes) {
+    return { severity: 'under' }
+  }
+  return null
 }
 
 export interface VehiclePlanGanttData {
@@ -130,6 +164,7 @@ const PALETTE = [
   '#14b8a6', '#a855f7', '#f43f5e', '#0ea5e9', '#22c55e',
 ]
 const DEADHEAD_COLOR = '#d1d5db'
+const BREAK_COLOR    = '#64748b'
 
 function lightenHex(hex: string, amount = 0.45): string {
   const r  = parseInt(hex.slice(1, 3), 16)
@@ -180,7 +215,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         rowId:       row.id,
         startMinute: bt.trip.departureMinutes,
         endMinute:   bt.trip.arrivalMinutes,
-        isDeadhead:  false,
+        kind:        'trip',
         locked:      (c?.locked?.length ?? 0) > 0,
         label:       bt.trip.route.line.code,
         color:       segColor,
@@ -194,10 +229,26 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         rowId:       row.id,
         startMinute: d.departureMinutes,
         endMinute:   d.arrivalMinutes,
-        isDeadhead:  true,
+        kind:        'deadhead',
         label:       '',
         color:       DEADHEAD_COLOR,
         data:        d,
+      })
+    }
+
+    for (const bi of block.blockIntervals) {
+      segs.push({
+        id:          `${bi.id}:bk`,
+        rowId:       row.id,
+        startMinute: bi.departureMinutes,
+        endMinute:   bi.arrivalMinutes,
+        kind:        'break',
+        label:       bi.intervalType.code,
+        color:       BREAK_COLOR,
+        shape:       'pill',
+        fillStyle:   bi.intervalType.isPaid ? 'solid' : 'outline',
+        irregular:   computeIntervalIrregularity(bi),
+        data:        bi,
       })
     }
 

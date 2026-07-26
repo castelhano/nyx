@@ -1,6 +1,6 @@
 import { Icons } from '@/lib/icons'
-import { DIRECTION_LABELS } from '../views/vehicles.view'
-import type { GanttBlockTrip, GanttBlockDeadrun } from '../views/vehicles.view'
+import { DIRECTION_LABELS, computeIntervalIrregularity } from '../views/vehicles.view'
+import type { GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 
 const DEADRUN_TYPE_LABEL: Record<string, string> = {
   ACCESS:       'ACESSO',
@@ -9,9 +9,10 @@ const DEADRUN_TYPE_LABEL: Record<string, string> = {
 }
 
 interface Props {
-  trip?:    GanttBlockTrip    | null
-  deadrun?: GanttBlockDeadrun | null
-  headway:  number | null
+  trip?:      GanttBlockTrip     | null
+  deadrun?:   GanttBlockDeadrun  | null
+  breakItem?: GanttBlockInterval | null
+  headway:    number | null
 }
 
 function formatMinute(m: number): string {
@@ -20,22 +21,31 @@ function formatMinute(m: number): string {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
-export function TripSummaryPanel({ trip, deadrun, headway }: Props) {
-  if (!trip && !deadrun) return null
+export function TripSummaryPanel({ trip, deadrun, breakItem, headway }: Props) {
+  if (!trip && !deadrun && !breakItem) return null
 
-  const dep      = trip ? trip.trip.departureMinutes : deadrun!.departureMinutes
-  const arr      = trip ? trip.trip.arrivalMinutes   : deadrun!.arrivalMinutes
+  const dep      = trip ? trip.trip.departureMinutes : breakItem ? breakItem.departureMinutes : deadrun!.departureMinutes
+  const arr      = trip ? trip.trip.arrivalMinutes   : breakItem ? breakItem.arrivalMinutes   : deadrun!.arrivalMinutes
   const cycleMin = arr - dep
+  const irregular = breakItem ? computeIntervalIrregularity(breakItem) : null
 
   return (
     <div className="bg-popover border border-border rounded-lg shadow-lg px-3 py-2 text-sm">
-      {/* title row — same fixed height regardless of trip/deadrun content */}
+      {/* title row — same fixed height regardless of trip/deadrun/break content */}
       <div className="h-5 flex items-center gap-1.5">
         {deadrun ? (
           <>
             <Icons.Truck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
               Vazio — {DEADRUN_TYPE_LABEL[deadrun.type] ?? deadrun.type}
+            </span>
+          </>
+        ) : breakItem ? (
+          <>
+            <Icons.Coffee className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Intervalo — {breakItem.intervalType.name}
+              {!breakItem.intervalType.isPaid && ' (não remunerado)'}
             </span>
           </>
         ) : (
@@ -63,10 +73,18 @@ export function TripSummaryPanel({ trip, deadrun, headway }: Props) {
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide leading-none">Ciclo</div>
           <div className="text-base font-semibold tabular-nums leading-tight">{cycleMin}min</div>
         </div>
-        {!deadrun && headway != null && (
+        {!deadrun && !breakItem && headway != null && (
           <div className="text-base font-semibold tabular-nums leading-tight">{headway}&apos;</div>
         )}
       </div>
+
+      {irregular && (
+        <div className="mt-1 text-[11px] font-medium text-amber-500">
+          {irregular.severity === 'over'
+            ? `⚠ ${cycleMin - (breakItem!.intervalType.maxMinutes ?? 0)}min acima do máximo (${breakItem!.intervalType.maxMinutes}min)`
+            : `⚠ abaixo do mínimo (${breakItem!.intervalType.minMinutes}min)`}
+        </div>
+      )}
     </div>
   )
 }

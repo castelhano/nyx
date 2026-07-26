@@ -65,7 +65,21 @@ export interface PendingAddDeadrun {
   blockId:             string
 }
 
-export type PendingAddEntry = PendingAddTrip | PendingAddDeadrun
+export interface PendingAddInterval {
+  _kind:            'break'
+  _tempId:          string
+  intervalTypeId:   string
+  intervalTypeCode: string
+  intervalTypeName: string
+  isPaid:           boolean
+  minMinutes:       number | null
+  maxMinutes:       number | null
+  departureMinutes: number
+  arrivalMinutes:   number
+  blockId:          string
+}
+
+export type PendingAddEntry = PendingAddTrip | PendingAddDeadrun | PendingAddInterval
 
 interface Route {
   id:                    string
@@ -79,6 +93,15 @@ interface Locality {
   id:      string
   name:    string
   isDepot: boolean
+}
+
+interface IntervalType {
+  id:         string
+  code:       string
+  name:       string
+  isPaid:     boolean
+  minMinutes: number | null
+  maxMinutes: number | null
 }
 
 interface Props {
@@ -116,6 +139,9 @@ function hasOverlap(block: GanttBlock, dep: number, arr: number): boolean {
   for (const d of block.blockDeadruns) {
     if (dep < d.arrivalMinutes && arr > d.departureMinutes) return true
   }
+  for (const bi of block.blockIntervals) {
+    if (dep < bi.arrivalMinutes && arr > bi.departureMinutes) return true
+  }
   return false
 }
 
@@ -132,17 +158,36 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
   const { toast } = useToast()
   useShortcutContext('modal')
 
-  const [tripType,     setTripType]     = useState<'productive' | 'deadrun'>('productive')
+  const [tripType,     setTripType]     = useState<'productive' | 'deadrun' | 'interval'>('productive')
   const [lineId,       setLineId]       = useState(plottedLines[0]?.lineId ?? '')
   const [routeId,      setRouteId]      = useState('')
   const [originId,     setOriginId]     = useState('')
   const [destinationId, setDestinationId] = useState('')
+  const [intervalTypeId, setIntervalTypeId] = useState('')
   const [depHH,        setDepHH]        = useState('')
   const [depMM,        setDepMM]        = useState('')
   const [cycleMinutes, setCycleMinutes] = useState('')
   const [blockId,      setBlockId]      = useState<'new' | string>('new')
   const [isResolving,  setIsResolving]  = useState(false)
   const resolveRef = useRef(0)
+
+  const { data: intervalTypes = [] } = useQuery<IntervalType[]>({
+    queryKey: ['transit', 'interval-type', 'all'],
+    queryFn:  async () => {
+      const r = await apiFetch('/transit/interval-type?pageSize=999')
+      if (!r.ok) return []
+      const j = await r.json()
+      return j.data ?? []
+    },
+    enabled:   tripType === 'interval',
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    if (tripType === 'interval' && !intervalTypeId && intervalTypes.length > 0) {
+      setIntervalTypeId(intervalTypes[0].id)
+    }
+  }, [tripType, intervalTypes, intervalTypeId])
 
   const { data: routes = [] } = useQuery<Route[]>({
     queryKey: ['transit', 'transit-route', 'by-line', lineId],
@@ -176,6 +221,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
   useEffect(() => { setCycleMinutes('') }, [tripType, lineId, routeId, originId, destinationId])
 
   async function resolveCycle() {
+    if (tripType === 'interval') return
     const hh = parseInt(depHH, 10)
     if (isNaN(hh) || hh < 0) return
 
@@ -264,7 +310,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
         arrivalMinutes:      arrivalMin,
         blockId:             resolvedBlockId,
       })
-    } else {
+    } else if (tripType === 'deadrun') {
       if (!originId || !destinationId) return
       const originLoc = localities.find(l => l.id === originId)
       const destLoc   = localities.find(l => l.id === destinationId)
@@ -276,6 +322,22 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
         departureMinutes:    depMin,
         arrivalMinutes:      arrivalMin,
         blockId:             resolvedBlockId,
+      })
+    } else {
+      const intervalType = intervalTypes.find(t => t.id === intervalTypeId)
+      if (!intervalType) return
+      onPendingAdd({
+        _kind:            'break',
+        _tempId:          crypto.randomUUID(),
+        intervalTypeId:   intervalType.id,
+        intervalTypeCode: intervalType.code,
+        intervalTypeName: intervalType.name,
+        isPaid:           intervalType.isPaid,
+        minMinutes:       intervalType.minMinutes,
+        maxMinutes:       intervalType.maxMinutes,
+        departureMinutes: depMin,
+        arrivalMinutes:   arrivalMin,
+        blockId:          resolvedBlockId,
       })
     }
 
@@ -294,7 +356,9 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
 
   const depValid   = depHH !== '' && depMM !== '' && !isNaN(parseInt(depHH, 10)) && !isNaN(parseInt(depMM, 10))
   const cycleValid = !isNaN(cycleMin) && cycleMin > 0
-  const typeReady  = tripType === 'productive' ? !!routeId : (!!originId && !!destinationId)
+  const typeReady  = tripType === 'productive' ? !!routeId
+    : tripType === 'deadrun' ? (!!originId && !!destinationId)
+    : !!intervalTypeId
   const canSubmit  = typeReady && depValid && cycleValid && !isResolving
 
   return (
@@ -335,6 +399,17 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
               className="accent-primary"
             />
             <span className="text-sm">Dead run <span className="text-xs text-muted-foreground">(Deslocamento)</span></span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="radio"
+              name="tripType"
+              value="interval"
+              checked={tripType === 'interval'}
+              onChange={() => setTripType('interval')}
+              className="accent-primary"
+            />
+            <span className="text-sm">Intervalo</span>
           </label>
         </div>
 
@@ -400,6 +475,25 @@ export function AddTripModal({ plottedLines, plottedBlocks, onClose, onPendingAd
                 <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Intervalo: Tipo */}
+        {tripType === 'interval' && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Tipo de intervalo</label>
+            {intervalTypes.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic py-1.5">Nenhum tipo de intervalo cadastrado</p>
+            ) : (
+              <div className="relative">
+                <select value={intervalTypeId} onChange={e => setIntervalTypeId(e.target.value)} className={selectCls}>
+                  {intervalTypes.map(t => (
+                    <option key={t.id} value={t.id}>{t.code} — {t.name}</option>
+                  ))}
+                </select>
+                <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+            )}
           </div>
         )}
 

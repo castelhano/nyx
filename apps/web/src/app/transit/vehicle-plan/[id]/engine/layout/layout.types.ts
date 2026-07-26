@@ -1,4 +1,4 @@
-import type { GanttRow, GanttSegment } from '../gantt.types'
+import type { GanttRow, GanttSegment, SegmentKind, SegmentIrregularity } from '../gantt.types'
 
 export interface LayoutRow {
   id:     string
@@ -15,11 +15,14 @@ export interface LayoutSegment {
   laneIndex:   number
   startMinute: number
   endMinute:   number
-  isDeadhead:  boolean
+  kind:        SegmentKind
   locked?:     boolean
   label:       string
   color:       string
   data:        unknown
+  shape?:      'block' | 'pill'
+  fillStyle?:  'solid' | 'outline'
+  irregular?:  SegmentIrregularity | null
 }
 
 export interface LayoutResult {

@@ -52,6 +52,23 @@ export class VehicleBlockController extends BaseController<VehicleBlock, CreateV
     return this.vehicleBlockService.deleteDeadruns(blockId, ids)
   }
 
+  @Patch(':id/intervals')
+  @HttpCode(200)
+  updateIntervals(
+    @Param('id') blockId: string,
+    @Body('updates') updates: { id: string; departureMinutes: number; arrivalMinutes: number }[],
+  ) {
+    return this.vehicleBlockService.updateIntervals(blockId, updates)
+  }
+
+  @Delete(':id/intervals')
+  deleteIntervals(
+    @Param('id') blockId: string,
+    @Body('ids') ids: string[],
+  ) {
+    return this.vehicleBlockService.deleteIntervals(blockId, ids)
+  }
+
   @Post(':id/return')
   @HttpCode(200)
   addReturn(

@@ -117,6 +117,8 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
       ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
       ...(meta.min !== undefined ? { min: meta.min } : {}),
       ...(meta.max !== undefined ? { max: meta.max } : {}),
+      ...(meta.minLength !== undefined ? { minLength: meta.minLength } : {}),
+      ...(meta.maxLength !== undefined ? { maxLength: meta.maxLength } : {}),
     }
   })
 }
@@ -177,6 +179,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.widget              ? { widget:      meta.widget }               : {}),
       ...(meta.min !== undefined   ? { min:         meta.min }                  : {}),
       ...(meta.max !== undefined   ? { max:         meta.max }                  : {}),
+      ...(meta.minLength !== undefined ? { minLength: meta.minLength }          : {}),
+      ...(meta.maxLength !== undefined ? { maxLength: meta.maxLength }          : {}),
       ...(meta.className           ? { className:   meta.className }            : {}),
       ...(meta.resource                  ? { resource:             meta.resource             } : {}),
       ...(meta.domain                    ? { domain:               meta.domain               } : {}),

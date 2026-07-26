@@ -145,9 +145,9 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
           setTooltip({
             segment: state.hoveredSegment,
             rect,
-            headway: state.hoveredSegment.isDeadhead
-              ? null
-              : computeHeadway(state.hoveredSegment.data as GanttBlockTrip, dataRef.current?.blocks ?? []),
+            headway: state.hoveredSegment.kind === 'trip'
+              ? computeHeadway(state.hoveredSegment.data as GanttBlockTrip, dataRef.current?.blocks ?? [])
+              : null,
           })
         }
       } else {
@@ -167,9 +167,9 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
           setTooltip({
             segment: seg,
             rect,
-            headway: seg.isDeadhead
-              ? null
-              : computeHeadway(seg.data as GanttBlockTrip, dataRef.current?.blocks ?? []),
+            headway: seg.kind === 'trip'
+              ? computeHeadway(seg.data as GanttBlockTrip, dataRef.current?.blocks ?? [])
+              : null,
           })
         }
       }

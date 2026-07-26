@@ -1,6 +1,6 @@
 import type { LayoutSegment } from '../engine/layout/layout.types'
-import { DIRECTION_LABELS } from '../views/vehicles.view'
-import type { GanttBlockTrip, GanttBlockDeadrun } from '../views/vehicles.view'
+import { DIRECTION_LABELS, computeIntervalIrregularity } from '../views/vehicles.view'
+import type { GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 
 const DEADRUN_TYPE_LABEL: Record<string, string> = {
   ACCESS:       'ACESSO',
@@ -27,8 +27,8 @@ function formatMinute(m: number): string {
 }
 
 export function SegmentTooltip({ segment, rect, containerW, containerH, headway }: Props) {
-  const bt   = segment.data as GanttBlockTrip
-  const trip = bt.trip
+  const bt   = segment.kind === 'trip' ? (segment.data as GanttBlockTrip) : null
+  const trip = bt?.trip
 
   // vertical: prefer below the segment, flip above if not enough space
   const spaceBelow = containerH - (rect.bottom + GAP)
@@ -60,7 +60,7 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway 
       style={{ top, left, transform }}
     >
       <div className="bg-popover border border-border rounded-lg shadow-lg px-3 py-2 text-sm min-w-[160px]">
-        {segment.isDeadhead ? (
+        {segment.kind === 'deadhead' ? (
           <>
             <p className="font-medium text-muted-foreground">Dead run</p>
             {(() => {
@@ -75,14 +75,34 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway 
               )
             })()}
           </>
+        ) : segment.kind === 'break' ? (
+          (() => {
+            const bi = segment.data as GanttBlockInterval
+            const irregular = computeIntervalIrregularity(bi)
+            return (
+              <>
+                <p className="font-medium text-muted-foreground">
+                  Intervalo — {bi.intervalType.name}
+                  {!bi.intervalType.isPaid && ' (não remunerado)'}
+                </p>
+                {irregular && (
+                  <p className="text-xs mt-0.5 text-amber-500 font-medium">
+                    {irregular.severity === 'over'
+                      ? `⚠ acima do máximo (${bi.intervalType.maxMinutes}min)`
+                      : `⚠ abaixo do mínimo (${bi.intervalType.minMinutes}min)`}
+                  </p>
+                )}
+              </>
+            )
+          })()
         ) : (
           <>
-            <p className="font-semibold">{trip.route.line.code} — {trip.route.line.name}</p>
+            <p className="font-semibold">{trip!.route.line.code} — {trip!.route.line.name}</p>
             <p className="text-muted-foreground text-xs mt-0.5">
               <span className="font-medium text-foreground">
-                {DIRECTION_LABELS[trip.route.direction] ?? trip.route.direction}
+                {DIRECTION_LABELS[trip!.route.direction] ?? trip!.route.direction}
               </span>
-              {' '}{trip.route.originLocality.name} → {trip.route.destinationLocality.name}
+              {' '}{trip!.route.originLocality.name} → {trip!.route.destinationLocality.name}
             </p>
           </>
         )}
