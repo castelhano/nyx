@@ -155,7 +155,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
-  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string): Promise<void> {
+  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string, breakIds: string[] = []): Promise<void> {
     if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
     if (!blockTripIds.length)      throw new BadRequestException('Nenhuma viagem informada')
     const db = this.prisma as any
@@ -189,14 +189,24 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     // Intervals live attached to the trip that precedes them (positional, no FK — see
     // block-interval.utils.ts). Moving a trip to another block without also moving its
     // interval leaves it orphaned, so it's dropped rather than left stranded in time.
+    // If the caller explicitly included the interval in the move (breakIds), it's
+    // relocated to the target block alongside its anchor trip instead of discarded.
     const tripIds = found.map((f: any) => f.tripId)
-    const orphanedIntervalIds = await findIntervalIdsAnchoredToTrips(this.prisma, blockId, tripIds)
+    const anchoredIntervalIds = await findIntervalIdsAnchoredToTrips(this.prisma, blockId, tripIds)
+    const movedIntervalIds    = breakIds.filter(bid => anchoredIntervalIds.includes(bid))
+    const orphanedIntervalIds = anchoredIntervalIds.filter(bid => !movedIntervalIds.includes(bid))
 
     await db.$transaction(async (tx: any) => {
       for (const btId of blockTripIds) {
         await tx.blockTrip.update({
           where: { id: btId },
           data:  { vehicleBlockId: targetBlockId, sequence: nextSequence++ },
+        })
+      }
+      if (movedIntervalIds.length > 0) {
+        await tx.blockInterval.updateMany({
+          where: { id: { in: movedIntervalIds } },
+          data:  { vehicleBlockId: targetBlockId },
         })
       }
       if (orphanedIntervalIds.length > 0) {

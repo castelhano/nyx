@@ -371,7 +371,7 @@ export default function VehiclePlanPage() {
   type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
   type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
   type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
-  type PendingMove = { blockTripIds: string[]; fromBlockId: string; toBlockId: string }
+  type PendingMove = { blockTripIds: string[]; breakIds: string[]; fromBlockId: string; toBlockId: string }
 
   const [selection,             setSelection]             = useState<Selection | null>(null)
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
@@ -581,14 +581,18 @@ export default function VehiclePlanPage() {
 
     // Apply pending block moves
     if (pendingMoves.length > 0) {
-      const blockMap     = new Map(blocks.map(b => [b.id, b]))
-      const awayByBlock  = new Map<string, Set<string>>()
+      const blockMap          = new Map(blocks.map(b => [b.id, b]))
+      const awayByBlock       = new Map<string, Set<string>>()
+      const awayBreaksByBlock = new Map<string, Set<string>>()
       for (const move of pendingMoves) {
         if (!awayByBlock.has(move.fromBlockId)) awayByBlock.set(move.fromBlockId, new Set())
         for (const id of move.blockTripIds) awayByBlock.get(move.fromBlockId)!.add(id)
+        if (!awayBreaksByBlock.has(move.fromBlockId)) awayBreaksByBlock.set(move.fromBlockId, new Set())
+        for (const id of move.breakIds) awayBreaksByBlock.get(move.fromBlockId)!.add(id)
       }
       blocks = blocks.map(block => {
-        const awayIds = awayByBlock.get(block.id) ?? new Set<string>()
+        const awayIds      = awayByBlock.get(block.id) ?? new Set<string>()
+        const awayBreakIds = awayBreaksByBlock.get(block.id) ?? new Set<string>()
         const movedIn = pendingMoves
           .filter(m => m.toBlockId === block.id)
           .flatMap(m => {
@@ -598,9 +602,19 @@ export default function VehiclePlanPage() {
               .map(id => fromBlock.blockTrips.find(bt => bt.id === id))
               .filter((bt): bt is NonNullable<typeof bt> => bt != null)
           })
+        const movedInBreaks = pendingMoves
+          .filter(m => m.toBlockId === block.id)
+          .flatMap(m => {
+            const fromBlock = blockMap.get(m.fromBlockId)
+            if (!fromBlock) return []
+            return m.breakIds
+              .map(id => fromBlock.blockIntervals.find(bi => bi.id === id))
+              .filter((bi): bi is NonNullable<typeof bi> => bi != null)
+          })
         return {
           ...block,
-          blockTrips: [...block.blockTrips.filter(bt => !awayIds.has(bt.id)), ...movedIn],
+          blockTrips:     [...block.blockTrips.filter(bt => !awayIds.has(bt.id)), ...movedIn],
+          blockIntervals: [...block.blockIntervals.filter(bi => !awayBreakIds.has(bi.id)), ...movedInBreaks],
         }
       })
     }
@@ -1387,7 +1401,7 @@ export default function VehiclePlanPage() {
       for (const move of pendingMoves) {
         const res = await apiFetch(`/transit/vehicle-block/${move.fromBlockId}/move-trip`, {
           method: 'PATCH',
-          body:   JSON.stringify({ blockTripIds: move.blockTripIds, targetBlockId: move.toBlockId }),
+          body:   JSON.stringify({ blockTripIds: move.blockTripIds, targetBlockId: move.toBlockId, breakIds: move.breakIds }),
         })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
@@ -1455,6 +1469,30 @@ export default function VehiclePlanPage() {
     })
   }
 
+  // Pending (unsaved) breaks aren't real persisted ids — deleting them means removing
+  // the pendingAdds entry outright, not routing them through pendingIntervalDeletes
+  // (which only ever gets checked against real ids and is a no-op for temp ones).
+  function discardBreaks(ids: string[]) {
+    if (ids.length === 0) return
+    const tempBreakIds = new Set(
+      pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break').map(a => a._tempId),
+    )
+    const tempIds = ids.filter(id => tempBreakIds.has(id))
+    const realIds = ids.filter(id => !tempBreakIds.has(id))
+
+    if (tempIds.length > 0) {
+      setPendingAdds(prev => prev.filter(a => !(a._kind === 'break' && tempIds.includes(a._tempId))))
+    }
+    if (realIds.length > 0) {
+      setPendingIntervalDeletes(prev => new Set([...prev, ...realIds]))
+      setPendingIntervalChanges(prev => {
+        const next = new Map(prev)
+        for (const id of realIds) next.delete(id)
+        return next
+      })
+    }
+  }
+
   function handleConfirmMove() {
     if (!selection || !moveTargetBlockId || !mergedPlottedData) return
 
@@ -1489,25 +1527,50 @@ export default function VehiclePlanPage() {
       }
     }
 
-    setPendingMoves(prev => {
-      const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
-      return [...filtered, { blockTripIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
-    })
-
     // Intervals live attached to the trip that precedes them (positional, no FK —
-    // see docs/proposal/vehicle-plan-block-intervals.md §7.1). Moving a trip to
-    // another block without its interval leaves it orphaned, so it's dropped.
+    // see docs/proposal/vehicle-plan-block-intervals.md §7.1). If the user explicitly
+    // included the interval in the selection being moved, it travels with its anchor
+    // trip; otherwise it's left behind without an anchor, so it's dropped.
     const movedTripIds = blockTripIds
       .map(btId => sourceBlock.blockTrips.find(bt => bt.id === btId)?.trip.id)
       .filter((tid): tid is string => !!tid)
-    const orphanedBreakIds = findAnchoredBreakIds(sourceBlock, movedTripIds)
+    const anchoredBreakIds = findAnchoredBreakIds(sourceBlock, movedTripIds)
+
+    // Segment ids carry a ":bk" suffix for layout-engine uniqueness — the real
+    // BlockInterval id (matching findAnchoredBreakIds' output) lives in .data.id.
+    const selectedBreakIds = new Set(
+      selection.type === 'interval'
+        ? selection.segments.filter(s => s.kind === 'break').map(s => (s.data as GanttBlockInterval).id)
+        : [],
+    )
+    const movedBreakIds    = anchoredBreakIds.filter(id => selectedBreakIds.has(id))
+    const orphanedBreakIds = anchoredBreakIds.filter(id => !selectedBreakIds.has(id))
+
+    // Pending (unsaved) breaks aren't real persisted ids yet — relocate them by
+    // editing pendingAdds directly instead of routing them through pendingMoves,
+    // which only carries real ids the move-trip endpoint can act on.
+    const tempBreakIds = new Set(
+      pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break').map(a => a._tempId),
+    )
+    const movedRealBreakIds = movedBreakIds.filter(id => !tempBreakIds.has(id))
+    const movedTempBreakIds = movedBreakIds.filter(id => tempBreakIds.has(id))
+
+    setPendingMoves(prev => {
+      const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
+      return [...filtered, { blockTripIds, breakIds: movedRealBreakIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
+    })
+
+    if (movedTempBreakIds.length > 0) {
+      setPendingAdds(prev => prev.map(a =>
+        a._kind === 'break' && movedTempBreakIds.includes(a._tempId)
+          ? { ...a, blockId: moveTargetBlockId }
+          : a,
+      ))
+    }
+
+    discardBreaks(orphanedBreakIds)
+
     if (orphanedBreakIds.length > 0) {
-      setPendingIntervalDeletes(prev => new Set([...prev, ...orphanedBreakIds]))
-      setPendingIntervalChanges(prev => {
-        const next = new Map(prev)
-        for (const bkId of orphanedBreakIds) next.delete(bkId)
-        return next
-      })
       toast.info(
         orphanedBreakIds.length === 1
           ? 'Intervalo anexado excluído — não foi incluído na movimentação'
@@ -2246,14 +2309,7 @@ export default function VehiclePlanPage() {
       })
     }
 
-    if (breakIds.length > 0) {
-      setPendingIntervalDeletes(prev => new Set([...prev, ...breakIds]))
-      setPendingIntervalChanges(prev => {
-        const next = new Map(prev)
-        for (const bkId of breakIds) next.delete(bkId)
-        return next
-      })
-    }
+    discardBreaks(breakIds)
 
     setFocusedSegId(nextFocusId)
     setSelection(null)

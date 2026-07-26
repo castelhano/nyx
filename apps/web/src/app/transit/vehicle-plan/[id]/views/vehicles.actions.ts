@@ -250,7 +250,7 @@ function makeDeleteDeadrunsAction(deadrunIds: string[], blockId: string, deps: V
 function makeDeleteBreaksAction(breakIds: string[], blockId: string, deps: VehiclesActionDeps): ActionItem {
   return {
     id:      'delete-break',
-    label:   'Excluir intervalo',
+    label:   'Excluir',
     icon:    'Trash2',
     variant: 'both',
     danger:  true,
