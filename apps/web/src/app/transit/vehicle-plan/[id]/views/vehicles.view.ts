@@ -243,7 +243,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         startMinute: bi.departureMinutes,
         endMinute:   bi.arrivalMinutes,
         kind:        'break',
-        label:       bi.intervalType.code,
+        label:       `${bi.arrivalMinutes - bi.departureMinutes}'`,
         color:       BREAK_COLOR,
         shape:       'pill',
         fillStyle:   bi.intervalType.isPaid ? 'solid' : 'outline',

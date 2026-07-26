@@ -1,5 +1,5 @@
 import { Icons } from '@/lib/icons'
-import { DIRECTION_LABELS, computeIntervalIrregularity } from '../views/vehicles.view'
+import { DIRECTION_LABELS } from '../views/vehicles.view'
 import type { GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 
 const DEADRUN_TYPE_LABEL: Record<string, string> = {
@@ -27,7 +27,6 @@ export function TripSummaryPanel({ trip, deadrun, breakItem, headway }: Props) {
   const dep      = trip ? trip.trip.departureMinutes : breakItem ? breakItem.departureMinutes : deadrun!.departureMinutes
   const arr      = trip ? trip.trip.arrivalMinutes   : breakItem ? breakItem.arrivalMinutes   : deadrun!.arrivalMinutes
   const cycleMin = arr - dep
-  const irregular = breakItem ? computeIntervalIrregularity(breakItem) : null
 
   return (
     <div className="bg-popover border border-border rounded-lg shadow-lg px-3 py-2 text-sm">
@@ -77,14 +76,6 @@ export function TripSummaryPanel({ trip, deadrun, breakItem, headway }: Props) {
           <div className="text-base font-semibold tabular-nums leading-tight">{headway}&apos;</div>
         )}
       </div>
-
-      {irregular && (
-        <div className="mt-1 text-[11px] font-medium text-amber-500">
-          {irregular.severity === 'over'
-            ? `⚠ ${cycleMin - (breakItem!.intervalType.maxMinutes ?? 0)}min acima do máximo (${breakItem!.intervalType.maxMinutes}min)`
-            : `⚠ abaixo do mínimo (${breakItem!.intervalType.minMinutes}min)`}
-        </div>
-      )}
     </div>
   )
 }

@@ -1011,21 +1011,25 @@ export default function VehiclePlanPage() {
   const handleTripTimingOp = useCallback((
     op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly',
   ) => {
-    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr') || focusedSegId.endsWith(':bk')) return
+    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
 
-    let foundBlock: typeof mergedPlottedData.blocks[0]              | null = null
-    let foundBt:    typeof mergedPlottedData.blocks[0]['blockTrips'][0] | null = null
+    const isBreakFocus = focusedSegId.endsWith(':bk')
+    const breakId       = isBreakFocus ? focusedSegId.slice(0, -3) : null
+
+    let foundBlock: typeof mergedPlottedData.blocks[0] | null = null
     for (const block of mergedPlottedData.blocks) {
-      const bt = block.blockTrips.find(bt => bt.id === focusedSegId)
-      if (bt) { foundBlock = block; foundBt = bt; break }
+      const hasFocused = isBreakFocus
+        ? block.blockIntervals.some(bi => bi.id === breakId)
+        : block.blockTrips.some(bt => bt.id === focusedSegId)
+      if (hasFocused) { foundBlock = block; break }
     }
-    if (!foundBlock || !foundBt) return
+    if (!foundBlock) return
 
-    // Skip pending-add trips (not in ganttData — can't patch via pendingChanges map)
-    const isTempTrip = !ganttData?.blocks.some(b =>
-      b.blockTrips.some(bt => bt.trip.id === foundBt!.trip.id)
-    )
-    if (isTempTrip) return
+    // Skip pending-add trips/breaks (not in ganttData — can't patch via pending*Changes map)
+    const isTemp = isBreakFocus
+      ? !ganttData?.blocks.some(b => b.blockIntervals.some(bi => bi.id === breakId))
+      : !ganttData?.blocks.some(b => b.blockTrips.some(bt => bt.id === focusedSegId))
+    if (isTemp) return
 
     type TItem = { kind: 'trip';    id: string; tripId: string; dep: number; arr: number }
     type DItem = { kind: 'deadrun'; id: string; drId:  string;  dep: number; arr: number }
@@ -1047,7 +1051,9 @@ export default function VehiclePlanPage() {
       })),
     ].sort((a, b) => a.dep - b.dep)
 
-    const markedIdx = items.findIndex(i => i.kind === 'trip' && i.id === focusedSegId)
+    const markedIdx = isBreakFocus
+      ? items.findIndex(i => i.kind === 'break' && i.id === breakId)
+      : items.findIndex(i => i.kind === 'trip'  && i.id === focusedSegId)
     if (markedIdx === -1) return
     const marked = items[markedIdx]
 
@@ -1111,11 +1117,14 @@ export default function VehiclePlanPage() {
       }
     }
 
-    const tripId = foundBt.trip.id
+    function setMarked(dep: number, arr: number) {
+      if (marked.kind === 'trip')       setTrip((marked as TItem).tripId, dep, arr)
+      else if (marked.kind === 'break') setBk((marked as BItem).bkId,     dep, arr)
+    }
 
     switch (op) {
       case 'grow': {
-        setTrip(tripId, marked.dep, marked.arr + 1)
+        setMarked(marked.dep, marked.arr + 1)
         shiftSubsequent(1)
         break
       }
@@ -1123,12 +1132,12 @@ export default function VehiclePlanPage() {
         if (marked.arr - marked.dep <= 1) return
         if (!prevProd && itemBefore?.kind === 'deadrun')
           setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
-        setTrip(tripId, marked.dep, marked.arr - 1)
+        setMarked(marked.dep, marked.arr - 1)
         shiftSubsequent(-1)
         break
       }
       case 'push': {
-        setTrip(tripId, marked.dep + 1, marked.arr + 1)
+        setMarked(marked.dep + 1, marked.arr + 1)
         shiftSubsequent(1)
         break
       }
@@ -1136,33 +1145,33 @@ export default function VehiclePlanPage() {
         if (prevProd && marked.dep - prevProd.arr <= 1) return
         if (!prevProd && itemBefore?.kind === 'deadrun')
           setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
-        setTrip(tripId, marked.dep - 1, marked.arr - 1)
+        setMarked(marked.dep - 1, marked.arr - 1)
         shiftSubsequent(-1)
         break
       }
       case 'growOnly': {
         if (nextProd && nextProd.dep - marked.arr <= 1) return
         pushLeadingDeadruns(1)
-        setTrip(tripId, marked.dep, marked.arr + 1)
+        setMarked(marked.dep, marked.arr + 1)
         break
       }
       case 'shrinkOnly': {
         if (marked.arr - marked.dep <= 1) return
         if (prevProd && marked.dep - prevProd.arr <= 1) return
-        setTrip(tripId, marked.dep, marked.arr - 1)
+        setMarked(marked.dep, marked.arr - 1)
         break
       }
       case 'pushOnly': {
         if (nextProd && nextProd.dep - marked.arr <= 1) return
         pushLeadingDeadruns(1)
-        setTrip(tripId, marked.dep + 1, marked.arr + 1)
+        setMarked(marked.dep + 1, marked.arr + 1)
         break
       }
       case 'pullOnly': {
         if (prevProd && marked.dep - prevProd.arr <= 1) return
         if (!prevProd && itemBefore?.kind === 'deadrun')
           setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
-        setTrip(tripId, marked.dep - 1, marked.arr - 1)
+        setMarked(marked.dep - 1, marked.arr - 1)
         break
       }
     }
@@ -1451,8 +1460,25 @@ export default function VehiclePlanPage() {
     if (!bt) return
 
     const departureMinutes = bt.trip.arrivalMinutes + 1
-    const duration          = intervalType.minMinutes ?? 30
-    const arrivalMinutes    = departureMinutes + duration
+
+    // Occupies the full gap up to whatever comes next in the block (trip, deadrun
+    // or existing break), capped at the interval type's max — if the gap is smaller
+    // than the type's min, it's still created at the available size (flagged as
+    // irregular by computeIntervalIrregularity, never blocked, see docs/proposal
+    // /vehicle-plan-block-intervals.md §5.3).
+    const nextStarts = [
+      ...block!.blockTrips.filter(o => o.id !== bt.id).map(o => o.trip.departureMinutes),
+      ...block!.blockDeadruns.map(dr => dr.departureMinutes),
+      ...block!.blockIntervals.map(bi => bi.departureMinutes),
+    ].filter(dep => dep > bt.trip.arrivalMinutes)
+    const nextStart = nextStarts.length > 0 ? Math.min(...nextStarts) : null
+    // leaves the same 1min gap before the next item as the 1min gap right after the trip
+    const availableGap = nextStart != null ? nextStart - departureMinutes - 1 : null
+
+    const duration = availableGap != null
+      ? Math.max(0, intervalType.maxMinutes != null ? Math.min(availableGap, intervalType.maxMinutes) : availableGap)
+      : (intervalType.minMinutes ?? 30)
+    const arrivalMinutes = departureMinutes + duration
 
     handlePendingAdd({
       _kind:            'break',
