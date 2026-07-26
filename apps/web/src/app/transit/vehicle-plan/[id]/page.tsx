@@ -644,6 +644,23 @@ export default function VehiclePlanPage() {
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
 
+  // Focus/selection can go stale when the data underneath changes (e.g. a pending
+  // add gets discarded via alt+l) — without this, keyboard nav gets stuck since
+  // most arrow shortcuts require a valid focus and no dangling selection.
+  useEffect(() => {
+    if (!editBarOpen) return
+    const flatIds = new Set(navBlocks.flatMap(block => block.map(i => i.segId)))
+
+    if (focusedSegId && !flatIds.has(focusedSegId)) {
+      setFocusedSegId(navBlocks.find(block => block.length > 0)?.[0]?.segId ?? null)
+    }
+
+    if (selection) {
+      const selIds = selection.type === 'trip' ? [selection.segment.id] : selection.segments.map(s => s.id)
+      if (selIds.some(id => !flatIds.has(id))) setSelection(null)
+    }
+  }, [navBlocks, editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Full block order + source block index, used to navigate move targets
   // relative to the source block's own position (skipping the source itself).
   const moveTargetBlocks = useMemo(() => {
