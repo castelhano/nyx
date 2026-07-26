@@ -1869,6 +1869,7 @@ export default function VehiclePlanPage() {
         size:     'sm' as const,
         variant:  'ghost' as const,
         onClick:  () => setAddTripOpen(true),
+        keybind:  'alt+n',
       },
       { label: '', separator: true },
       {
@@ -2000,6 +2001,13 @@ export default function VehiclePlanPage() {
     icon:    Icons.Undo2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen,
+  })
+
+  useShortcut('alt+n', () => setAddTripOpen(true), {
+    desc:    'Adicionar viagem',
+    icon:    Icons.Plus,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && selectedLineIds.size > 0,
   })
 
   useShortcut('f9', () => handleToggleEditBar(), {

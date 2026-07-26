@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery }  from '@tanstack/react-query'
 import { Button }    from '@/components/ui/button'
 import { Icons }     from '@/lib/icons'
@@ -22,6 +22,14 @@ interface Props {
 export function AccessModal({ title, onConfirm, onClose }: Props) {
   const [depotId, setDepotId] = useState('')
   useShortcutContext('modal')
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   const { data: depots = [], isLoading } = useQuery<Depot[]>({
     queryKey: ['transit', 'transit-locality', 'depots'],

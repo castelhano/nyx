@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useShortcutContext } from '@/lib/keywatch'
 
@@ -40,6 +41,15 @@ function fmtKm(val: number): string {
 
 export function SolverProposalDialog({ baseline, proposal, proposalCount, isPending, canDiscard, onClose, onAssume, onDiscard }: Props) {
   useShortcutContext('modal')
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   const fleetDelta      = baseline != null && proposal != null ? proposal.fleetCount   - baseline.fleetCount   : null
   const deadrunDelta    = baseline != null && proposal != null ? proposal.deadrunKm    - baseline.deadrunKm    : null
   const productiveDelta = baseline != null && proposal != null ? proposal.productiveKm - baseline.productiveKm : null
@@ -149,7 +159,7 @@ export function SolverProposalDialog({ baseline, proposal, proposalCount, isPend
             <Button type="button" variant="cancel" size="sm" onClick={onDiscard} disabled={isPending || !canDiscard}>
               Descartar
             </Button>
-            <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose} disabled={isPending}>
+            <Button type="button" variant="cancel" size="sm" autoFocus onClick={onClose} disabled={isPending}>
               Fechar
             </Button>
           </div>

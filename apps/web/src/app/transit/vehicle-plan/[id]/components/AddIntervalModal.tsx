@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery }  from '@tanstack/react-query'
 import { Button }    from '@/components/ui/button'
 import { Icons }     from '@/lib/icons'
@@ -24,6 +24,14 @@ interface Props {
 export function AddIntervalModal({ onConfirm, onClose }: Props) {
   const [intervalTypeId, setIntervalTypeId] = useState('')
   useShortcutContext('modal')
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   const { data: intervalTypes = [], isLoading } = useQuery<IntervalType[]>({
     queryKey: ['transit', 'interval-type', 'all'],

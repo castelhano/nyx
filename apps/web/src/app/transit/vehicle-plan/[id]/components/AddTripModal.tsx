@@ -187,6 +187,14 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
   const [isResolving,  setIsResolving]  = useState(false)
   const resolveRef = useRef(0)
 
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   const { data: intervalTypes = [] } = useQuery<IntervalType[]>({
     queryKey: ['transit', 'interval-type', 'all'],
     queryFn:  async () => {
@@ -454,6 +462,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
               value="productive"
               checked={tripType === 'productive'}
               onChange={() => setTripType('productive')}
+              autoFocus
               className="accent-primary"
             />
             <span className="text-sm">Produtiva</span>

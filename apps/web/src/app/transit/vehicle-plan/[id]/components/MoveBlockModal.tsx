@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Button }            from '@/components/ui/button'
 import { Icons }             from '@/lib/icons'
 import { useShortcutContext } from '@/lib/keywatch'
@@ -34,6 +34,14 @@ function findConflicts(moving: GanttBlockTrip[], targetBlock: GanttBlock): Gantt
 export function MoveBlockModal({ blockTrips, currentBlockId, blocks, onConfirm, onClose }: Props) {
   const [targetBlockId, setTargetBlockId] = useState('')
   useShortcutContext('modal')
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   const otherBlocks = blocks.filter(b => b.id !== currentBlockId)
   const isSingle    = blockTrips.length === 1

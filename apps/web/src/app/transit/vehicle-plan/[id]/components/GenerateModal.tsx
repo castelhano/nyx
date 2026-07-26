@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useShortcutContext } from '@/lib/keywatch'
 
@@ -30,6 +30,14 @@ interface Props {
 export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onClose }: Props) {
   const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS)
   useShortcutContext('modal')
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   function set<K extends keyof SolverParams>(key: K, value: SolverParams[K]) {
     setParams(p => ({ ...p, [key]: value }))
@@ -71,6 +79,7 @@ export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onC
                   value={opt.value}
                   checked={params.mode === opt.value}
                   onChange={() => set('mode', opt.value)}
+                  autoFocus={opt.value === 'quick'}
                   className="sr-only"
                 />
                 <span className="text-sm font-medium">{opt.label}</span>
