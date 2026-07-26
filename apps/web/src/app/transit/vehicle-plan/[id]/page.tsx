@@ -1471,11 +1471,9 @@ export default function VehiclePlanPage() {
       setPendingIntervalDeletes(new Set())
       setPendingMoves([])
       // Persisted trips/breaks/deadruns get new server-generated ids, so whatever
-      // was focused/selected (by temp id) no longer resolves to anything — clear
-      // explicitly instead of letting it silently land on an unrelated segment.
-      setSelection(null)
-      setFocusedSegId(null)
-      shiftAnchorRef.current = null
+      // was focused/selected (by temp id) no longer resolves to anything — the
+      // stale-focus recovery effect (keyed off navBlocks) picks a fallback segment
+      // once the refetched data lands, same as after a discard.
       toast.success('Alterações salvas')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')

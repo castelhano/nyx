@@ -230,8 +230,16 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
     staleTime: 300_000,
   })
 
-  // Reset route when line changes
-  useEffect(() => { setRouteId('') }, [lineId])
+  // Reset route only on a genuine line change — a ref-tracked "previous value"
+  // guard keeps this from firing destructively on React StrictMode's dev-only
+  // double-invoke of the same commit, which would otherwise clobber whatever
+  // the reference prefill just (synchronously) set.
+  const prevLineIdRef = useRef(lineId)
+  useEffect(() => {
+    if (prevLineIdRef.current === lineId) return
+    prevLineIdRef.current = lineId
+    setRouteId('')
+  }, [lineId])
 
   // Reset cycle when relevant inputs change
   useEffect(() => { setCycleMinutes('') }, [tripType, lineId, routeId, originId, destinationId])
