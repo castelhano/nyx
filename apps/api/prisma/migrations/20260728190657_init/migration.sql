@@ -384,6 +384,32 @@ CREATE TABLE "transit_trips" (
 );
 
 -- CreateTable
+CREATE TABLE "transit_interval_types" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "isPaid" BOOLEAN NOT NULL DEFAULT false,
+    "minMinutes" INTEGER,
+    "maxMinutes" INTEGER,
+    "notes" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "transit_block_intervals" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "vehicleBlockId" TEXT NOT NULL,
+    "intervalTypeId" TEXT NOT NULL,
+    "departureMinutes" INTEGER NOT NULL,
+    "arrivalMinutes" INTEGER NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_block_intervals_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_block_intervals_intervalTypeId_fkey" FOREIGN KEY ("intervalTypeId") REFERENCES "transit_interval_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "transit_vehicle_plans" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "dayTypeId" TEXT NOT NULL,
@@ -404,6 +430,7 @@ CREATE TABLE "transit_vehicle_plan_lines" (
     "vehiclePlanId" TEXT NOT NULL,
     "lineId" TEXT NOT NULL,
     "lineScheduleId" TEXT,
+    "isDrifted" BOOLEAN NOT NULL DEFAULT false,
 
     PRIMARY KEY ("vehiclePlanId", "lineId"),
     CONSTRAINT "transit_vehicle_plan_lines_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -537,6 +564,9 @@ CREATE UNIQUE INDEX "transit_day_types_code_key" ON "transit_day_types"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_line_schedules_lineId_dayTypeId_version_key" ON "transit_line_schedules"("lineId", "dayTypeId", "version");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_interval_types_code_key" ON "transit_interval_types"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_vehicle_blocks_vehiclePlanId_blockNumber_key" ON "transit_vehicle_blocks"("vehiclePlanId", "blockNumber");

@@ -34,7 +34,7 @@ export class CycleEngine {
   private cuts:          Set<number>                = new Set()
 
   private hoveredDot:    { hour: number; idx: number } | null = null
-  private dragCut:       { original: number; boundary: number } | null = null
+  private dragCut:       { original: number; boundary: number; downX: number; downY: number } | null = null
   private marqueeDown:   { x: number; y: number } | null = null
   private marqueeRect:   { x0: number; y0: number; x1: number; y1: number } | null = null
   private confirmedSelection: MarqueeItem[] | null = null
@@ -445,7 +445,7 @@ export class CycleEngine {
     const cut = this.hitCut(x, y)
     if (cut !== null) {
       const boundary = this.hours.indexOf(cut) + 1
-      this.dragCut   = { original: cut, boundary }
+      this.dragCut   = { original: cut, boundary, downX: x, downY: y }
       this.canvas.style.cursor = 'ew-resize'
       e.preventDefault()
       return
@@ -505,20 +505,26 @@ export class CycleEngine {
 
   private onMouseUp = (e: MouseEvent): void => {
     if (this.dragCut) {
-      const { original, boundary } = this.dragCut
+      const { original, boundary, downX, downY } = this.dragCut
       this.dragCut = null
       this.canvas.style.cursor = ''
       this.suppressNextClick = true
 
-      // remove old cut, add at new position
-      const newCut = boundary > 0 && boundary < this.hours.length
-        ? this.hours[boundary - 1]
-        : null
+      const moved = Math.hypot(e.offsetX - downX, e.offsetY - downY) > MARQUEE_MIN_DRAG
+      const next  = new Set(this.cuts)
 
-      const next = new Set(this.cuts)
-      next.delete(original)
-      if (newCut !== null && newCut !== original) next.add(newCut)
-      else next.add(original) // didn't move enough — keep original
+      if (!moved) {
+        // plain click on a cut, no drag → remove it
+        next.delete(original)
+      } else {
+        // remove old cut, add at new position
+        const newCut = boundary > 0 && boundary < this.hours.length
+          ? this.hours[boundary - 1]
+          : null
+        next.delete(original)
+        if (newCut !== null && newCut !== original) next.add(newCut)
+        else next.add(original) // didn't cross a boundary — keep original
+      }
 
       this.cuts = next
       this.onCutsChange?.([...this.cuts])
@@ -585,19 +591,9 @@ export class CycleEngine {
       return
     }
 
-    // cut zone (bottom strip) or cut line hit → toggle cut
+    // cut zone (bottom strip) → add cut
+    // (clicks on an existing cut are handled by the mousedown/mouseup drag-or-remove path above)
     const isInCutZone = y > H - PAD.bottom - 4
-    const existingCut = this.hitCut(x, y)
-
-    if (existingCut !== null) {
-      // remove
-      const next = new Set(this.cuts)
-      next.delete(existingCut)
-      this.cuts = next
-      this.onCutsChange?.([...this.cuts])
-      this.requestDraw()
-      return
-    }
 
     if (isInCutZone) {
       // add at nearest boundary
