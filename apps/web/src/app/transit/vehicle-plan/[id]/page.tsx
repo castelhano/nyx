@@ -30,7 +30,7 @@ import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInte
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
-import { resolveCycleWindow, resolveCycleMinutes, computeHeadway } from './views/vehicles.view'
+import { resolveCycleWindow, computeHeadway } from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
 import type { ViewportSnapshot, Selection, RowHintEntry } from './engine/gantt.types'
 import type { SolverParams }         from './components/GenerateModal'
@@ -979,7 +979,7 @@ export default function VehiclePlanPage() {
             minDep,
           )
           const cycleWindow  = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
-          const cycleMinutes = resolveCycleMinutes(trip.route.line.metrics, trip.route.direction, effectiveDep)
+          const cycleMinutes = cycleWindow?.minutes ?? null
           if (cycleWindow) tripsWithWindow++
           const newArrival = cycleMinutes != null
             ? effectiveDep + cycleMinutes

@@ -18,7 +18,6 @@ import { buildHourClusters, suggestCuts, computeWindows } from './cycle-utils'
 import type { Window }                   from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
 import type { CsvData, Direction, DotCluster } from './types'
-import { title } from 'process'
 
 const DIRECTIONS: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
 
@@ -304,10 +303,7 @@ export default function CycleMapPage() {
               const cuts            = suggestCuts(trips)
               const existingWindows = lineRec.metrics?.windows?.[dir]
               const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
-              // 30min sub-cuts aren't restored from a previous save — the window
-      // shape alone can't reliably tell a real sub-cut apart from an
-      // ordinary single-hour window, so reprocessing always starts fresh
-      const subCuts: number[] = []
+              const subCuts: number[] = []   // see loadLineData — not restored from a previous save
               const w = computeWindows(hc, cuts, subCuts, intervalMinutes)
               if (w.length > 0) windows[dir] = w
             }

@@ -395,13 +395,7 @@ export class CycleEngine {
     )
 
     for (const h of this.hours) {
-      const clusters = this.hourClusters.get(h)
-      if (!clusters) continue
-      const colIdx = this.hours.indexOf(h)
-
-      for (let i = 0; i < clusters.length; i++) {
-        const c   = clusters[i]
-        const cx  = this.dotX(colIdx, i, clusters.length)
+      for (const { cluster: c, idx: i, cx } of this.layoutDotsForHour(h)) {
         const cy  = this.minutesToY(c.minutes, yMin, yMax)
         const r   = this.dotRadius(c.count)
         const hov = this.hoveredDot?.hour === h && this.hoveredDot.idx === i
@@ -475,13 +469,57 @@ export class CycleEngine {
 
   // ── coordinate helpers ────────────────────────────────────────────────────
 
-  private dotX(colIdx: number, dotIdx: number, total: number): number {
+  // `half` constrains the spread to one side of the column (0 = left/first
+  // half, 1 = right/second half) when the hour has an active 30min sub-cut;
+  // null spreads across the whole column, as when there's no sub-cut
+  private dotX(colIdx: number, dotIdx: number, total: number, half: 0 | 1 | null): number {
     const cW      = this.colWidth()
     const colLeft = PAD.left + colIdx * cW
-    if (total === 1) return colLeft + cW / 2
-    const margin  = Math.max(DOT_MAX_R + 2, cW * 0.1)
-    const usable  = Math.max(0, cW - 2 * margin)
-    return colLeft + margin + (dotIdx / (total - 1)) * usable
+    const segW    = half === null ? cW : cW / 2
+    const segLeft = colLeft + (half === 1 ? cW / 2 : 0)
+    if (total === 1) return segLeft + segW / 2
+    const margin  = Math.max(DOT_MAX_R + 2, segW * 0.1)
+    const usable  = Math.max(0, segW - 2 * margin)
+    return segLeft + margin + (dotIdx / (total - 1)) * usable
+  }
+
+  // a cluster can mix trips from both halves of the hour (it's grouped by
+  // similar cycle time, not by departure time) — majority side wins for
+  // where its dot gets positioned
+  private clusterHalf(cluster: DotCluster): 0 | 1 {
+    let first = 0, second = 0
+    for (const t of cluster.trips) {
+      const minute = parseInt(t.departureTime.split(':')[1] ?? '0', 10) || 0
+      if (minute >= 30) second++; else first++
+    }
+    return second > first ? 1 : 0
+  }
+
+  // positions every dot for an hour in one place, so drawing and hit-testing
+  // can never drift apart. `idx` is always the cluster's index in the
+  // original hourClusters array (not the position within its half-group) —
+  // that's what hover/toggle/marquee state keys off.
+  private layoutDotsForHour(h: number): { cluster: DotCluster; idx: number; cx: number }[] {
+    const clusters = this.hourClusters.get(h)
+    if (!clusters) return []
+    const colIdx = this.hours.indexOf(h)
+
+    if (!this.subCuts.has(h)) {
+      return clusters.map((cluster, idx) => ({ cluster, idx, cx: this.dotX(colIdx, idx, clusters.length, null) }))
+    }
+
+    const firstIdx:  number[] = []
+    const secondIdx: number[] = []
+    clusters.forEach((c, i) => (this.clusterHalf(c) === 1 ? secondIdx : firstIdx).push(i))
+
+    const result: { cluster: DotCluster; idx: number; cx: number }[] = []
+    firstIdx.forEach((origIdx, gi) => result.push({
+      cluster: clusters[origIdx], idx: origIdx, cx: this.dotX(colIdx, gi, firstIdx.length, 0),
+    }))
+    secondIdx.forEach((origIdx, gi) => result.push({
+      cluster: clusters[origIdx], idx: origIdx, cx: this.dotX(colIdx, gi, secondIdx.length, 1),
+    }))
+    return result
   }
 
   private colWidth(): number {
@@ -721,16 +759,12 @@ export class CycleEngine {
     let best: { hour: number; idx: number; cluster: DotCluster; cx: number; dist: number } | null = null
 
     for (const h of this.hours) {
-      const cs     = this.hourClusters.get(h)
-      if (!cs) continue
-      const colIdx = this.hours.indexOf(h)
-      for (let i = 0; i < cs.length; i++) {
-        const cx   = this.dotX(colIdx, i, cs.length)
-        const cy   = this.minutesToY(cs[i].minutes, yMin, yMax)
-        const r    = this.dotRadius(cs[i].count) + DOT_HIT_PAD
+      for (const { cluster, idx: i, cx } of this.layoutDotsForHour(h)) {
+        const cy   = this.minutesToY(cluster.minutes, yMin, yMax)
+        const r    = this.dotRadius(cluster.count) + DOT_HIT_PAD
         const dist = Math.hypot(mx - cx, my - cy)
         if (dist <= r && (!best || dist < best.dist)) {
-          best = { hour: h, idx: i, cluster: cs[i], cx, dist }
+          best = { hour: h, idx: i, cluster, cx, dist }
         }
       }
     }
@@ -746,14 +780,10 @@ export class CycleEngine {
     const found: MarqueeItem[] = []
 
     for (const h of this.hours) {
-      const cs = this.hourClusters.get(h)
-      if (!cs) continue
-      const colIdx = this.hours.indexOf(h)
-      for (let i = 0; i < cs.length; i++) {
-        const cx = this.dotX(colIdx, i, cs.length)
-        const cy = this.minutesToY(cs[i].minutes, yMin, yMax)
+      for (const { cluster, idx: i, cx } of this.layoutDotsForHour(h)) {
+        const cy = this.minutesToY(cluster.minutes, yMin, yMax)
         if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
-          found.push({ hour: h, idx: i, cluster: cs[i] })
+          found.push({ hour: h, idx: i, cluster })
         }
       }
     }

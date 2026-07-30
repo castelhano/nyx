@@ -156,6 +156,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `N` | New incognito / private window |
 | `O` | Open bookmarks manager |
 | `R` | Hard reload (bypass cache) |
+| `P` | New incognito / private window on Firefox |
 | `T` | Reopen last closed tab |
 | `W` | Close window |
 | `Z` | Redo (some OS/browser combinations) |
@@ -169,7 +170,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `M` | Guest profile switcher in some Chrome versions |
 | `U` | Unicode input on Linux; safe on Windows |
 
-**Confirmed safe:** `D` `E` `F` `G` `K` `L` `P` `Q` `S` `U` `V` `X` `Y`
+**Confirmed safe:** `D` `E` `F` `G` `K` `L` `Q` `S` `U` `V` `X` `Y`
 
 ---
 ### Standard combinations

@@ -193,9 +193,8 @@ export function CycleMapCanvas({
 
       {/* cut zone hint */}
       <p className="text-[10px] text-muted-foreground/60 px-1">
-        Clique perto da borda da coluna para corte cheio (arraste para mover, clique de novo para remover) ·
-        Clique no centro da coluna para alternar o <span className="text-violet-600 font-medium">corte de 30min</span> ·
-        Arraste sobre os pontos para selecionar vários
+        Clique perto da borda da coluna para corte (arraste para mover, clique de novo para remover)
+        Arraste sobre os pontos para selecionar vários.
       </p>
     </div>
   )
