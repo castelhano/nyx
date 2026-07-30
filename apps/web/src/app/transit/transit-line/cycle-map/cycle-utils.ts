@@ -113,33 +113,141 @@ export function calcWindowAverage(clusters: DotCluster[]): number {
   return Math.round(totalMin / totalCount)
 }
 
-type Window = { from: number; to: number; minutes: number; intervalMinutes: number; isDerived?: boolean }
+function minuteOfTrip(t: RawTrip): number {
+  return parseInt(t.departureTime.split(':')[1] ?? '0', 10) || 0
+}
+
+function clusterWeightedSum(clusters: DotCluster[]): { total: number; count: number } {
+  const active = clusters.filter(c => !c.isOutlier && !c.isDisabled)
+  return {
+    total: active.reduce((s, c) => s + c.minutes * c.count, 0),
+    count: active.reduce((s, c) => s + c.count, 0),
+  }
+}
+
+function halfWeightedSum(clusters: DotCluster[], wantSecondHalf: boolean): { total: number; count: number } {
+  const active = clusters.filter(c => !c.isOutlier && !c.isDisabled)
+  let total = 0, count = 0
+  for (const c of active) {
+    for (const t of c.trips) {
+      if ((minuteOfTrip(t) >= 30) === wantSecondHalf) { total += c.minutes; count++ }
+    }
+  }
+  return { total, count }
+}
+
+/** Split an hour's active trips at the 30min mark and average each half
+ *  separately (same cluster-center weighting as calcWindowAverage). Used by
+ *  the canvas to preview what a 30min sub-cut would look like. */
+export function calcHalfWindowAverages(clusters: DotCluster[]): { first: number; second: number } {
+  const first  = halfWeightedSum(clusters, false)
+  const second = halfWeightedSum(clusters, true)
+  return {
+    first:  first.count  > 0 ? Math.round(first.total  / first.count)  : 0,
+    second: second.count > 0 ? Math.round(second.total / second.count) : 0,
+  }
+}
+
+export type Window = {
+  from:            number
+  to:              number
+  minutes:         number
+  intervalMinutes: number
+  isDerived?:      boolean
+}
+
+type Candidate = { from: number; to: number; minutes: number }
+
+/** Builds the raw (pre-fill) window candidates from hour clusters, full cuts
+ *  and 30min sub-cuts. `to` always marks the last half-hour slot included:
+ *  a whole, un-split hour extends `to` by 0.5 (e.g. hour 7 fully included →
+ *  to=7.5); a sub-cut truncates it at the bare hour instead (to=6 means "up
+ *  to but not including 6:30"), and the other half starts a new candidate at
+ *  from=6.5. This is shared by computeWindows() (persisted) and the canvas
+ *  live preview so both always agree. */
+export function buildRawWindowCandidates(
+  hourClusters: Map<number, DotCluster[]>,
+  cuts:         number[],
+  subCuts:      number[],
+): Candidate[] {
+  const hours = Array.from(hourClusters.keys()).sort((a, b) => a - b)
+  if (hours.length === 0) return []
+
+  const minH      = hours[0]
+  const maxH      = hours[hours.length - 1]
+  const sortedCuts = [...cuts].filter(c => c >= minH && c < maxH).sort((a, b) => a - b)
+  const groupBounds = [minH, ...sortedCuts.map(c => c + 1), maxH + 1]
+  const subCutSet  = new Set(subCuts.filter(h => h >= minH && h <= maxH))
+
+  const candidates: Candidate[] = []
+
+  for (let i = 0; i < groupBounds.length - 1; i++) {
+    const groupFrom = groupBounds[i]
+    const groupTo   = groupBounds[i + 1] - 1
+
+    let runFrom: number | null = null
+    let runTotal = 0
+    let runCount = 0
+    let runEnd   = groupFrom
+
+    const flush = () => {
+      if (runFrom === null) return
+      candidates.push({ from: runFrom, to: runEnd, minutes: runCount > 0 ? Math.round(runTotal / runCount) : 0 })
+      runFrom = null
+      runTotal = 0
+      runCount = 0
+    }
+
+    for (let h = groupFrom; h <= groupTo; h++) {
+      // an hour with zero trips has no column on the canvas at all — it must
+      // never become a run boundary (from/to), or the pill ends up pointing
+      // at an hour that doesn't exist and gets mispositioned; skip it as if
+      // it simply weren't part of the range
+      if (!hourClusters.has(h)) continue
+      const cs = hourClusters.get(h)!
+
+      if (subCutSet.has(h)) {
+        // first half extends whatever run was already in progress, then hard-breaks
+        if (runFrom === null) runFrom = h
+        const firstSum = halfWeightedSum(cs, false)
+        runTotal += firstSum.total
+        runCount += firstSum.count
+        runEnd    = h
+        flush()
+
+        // second half always starts a fresh run
+        const secondSum = halfWeightedSum(cs, true)
+        runFrom  = h + 0.5
+        runTotal = secondSum.total
+        runCount = secondSum.count
+        runEnd   = h + 0.5
+      } else {
+        if (runFrom === null) runFrom = h
+        const { total, count } = clusterWeightedSum(cs)
+        runTotal += total
+        runCount += count
+        runEnd    = h + 0.5
+      }
+    }
+    flush()
+  }
+
+  return candidates
+}
 
 export function computeWindows(
   hourClusters: Map<number, DotCluster[]>,
   cuts: number[],
+  subCuts: number[],
   intervalMinutes: number,
 ): Window[] {
   const hours = Array.from(hourClusters.keys()).sort((a, b) => a - b)
   if (hours.length === 0) return []
 
-  const minH   = hours[0]
-  const maxH   = hours[hours.length - 1]
-  const sorted = [...cuts].filter(c => c >= minH && c < maxH).sort((a, b) => a - b)
-  const bounds = [minH, ...sorted.map(c => c + 1), maxH + 1]
+  const minH = hours[0]
+  const maxH = hours[hours.length - 1]
 
-  const candidates: { from: number; to: number; minutes: number }[] = []
-  for (let i = 0; i < bounds.length - 1; i++) {
-    const from = bounds[i]
-    const to   = bounds[i + 1] - 1
-    const all: DotCluster[] = []
-    for (let h = from; h <= to; h++) {
-      const cs = hourClusters.get(h)
-      if (cs) all.push(...cs)
-    }
-    candidates.push({ from, to, minutes: calcWindowAverage(all) })
-  }
-
+  const candidates = buildRawWindowCandidates(hourClusters, cuts, subCuts)
   if (candidates.every(c => c.minutes === 0)) return []
 
   // measured windows keep their average; windows with no data (e.g. a cut
@@ -163,10 +271,10 @@ export function computeWindows(
   // hours outside the measured range (before the first / after the last
   // hour with data) become their own derived windows covering the full day
   if (minH > 0) {
-    result.unshift({ from: 0, to: minH - 1, minutes: result[0].minutes, intervalMinutes, isDerived: true })
+    result.unshift({ from: 0, to: minH - 0.5, minutes: result[0].minutes, intervalMinutes, isDerived: true })
   }
   if (maxH < 23) {
-    result.push({ from: maxH + 1, to: 23, minutes: result[result.length - 1].minutes, intervalMinutes, isDerived: true })
+    result.push({ from: maxH + 1, to: 23.5, minutes: result[result.length - 1].minutes, intervalMinutes, isDerived: true })
   }
 
   return result

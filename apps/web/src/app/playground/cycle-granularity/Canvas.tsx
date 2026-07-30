@@ -1,56 +1,47 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { CycleEngine }   from './cycle-engine'
-import { markOutliers }  from './cycle-utils'
-import type { Direction, DotCluster, DotClickInfo, MarqueeSelection } from './types'
-
-const DIR_LABEL: Record<Direction, string> = {
-  OUTBOUND: 'IDA',
-  INBOUND:  'VOLTA',
-  CIRCULAR: 'ÚNICO',
-}
+import { CycleEngineProto } from './engine'
+import { markOutliers }     from './data'
+import type { DotCluster }  from './data'
+import type { DotClickInfo, MarqueeSelection } from './engine'
 
 interface Props {
-  direction:      Direction
-  hourClusters:   Map<number, DotCluster[]>
+  slotClusters:   Map<number, DotCluster[]>
   cuts:           number[]
   subCuts:        number[]
   onCutsChange:   (cuts: number[]) => void
   onSubCutsChange: (subCuts: number[]) => void
-  onHourClustersChange: (updated: Map<number, DotCluster[]>) => void
+  onSlotClustersChange: (updated: Map<number, DotCluster[]>) => void
 }
 
 interface DetailPopup {
   cluster: DotCluster
-  hour:    number
+  slot:    number
   x:       number
   y:       number
 }
 
-export function CycleMapCanvas({
-  direction,
-  hourClusters,
+export function CycleCanvasProto({
+  slotClusters,
   cuts,
   subCuts,
   onCutsChange,
   onSubCutsChange,
-  onHourClustersChange,
+  onSlotClustersChange,
 }: Props) {
-  const canvasRef   = useRef<HTMLCanvasElement>(null)
-  const wrapRef     = useRef<HTMLDivElement>(null)
-  const engineRef   = useRef<CycleEngine | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const wrapRef   = useRef<HTMLDivElement>(null)
+  const engineRef = useRef<CycleEngineProto | null>(null)
   const [detail, setDetail]   = useState<DetailPopup | null>(null)
   const [marquee, setMarquee] = useState<MarqueeSelection | null>(null)
-
-  // ── engine lifecycle ──────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current
     const wrap   = wrapRef.current
     if (!canvas || !wrap) return
 
-    const engine      = new CycleEngine()
+    const engine      = new CycleEngineProto()
     engineRef.current = engine
     let initialized   = false
 
@@ -66,12 +57,12 @@ export function CycleMapCanvas({
     })
     ro.observe(wrap)
 
-    engine.onCutsChange     = (c)   => onCutsChange(c)
-    engine.onSubCutsChange  = (c)   => onSubCutsChange(c)
-    engine.onDotClick       = (info) => {
-      setDetail({ cluster: info.cluster, hour: info.hour, x: info.canvasX, y: info.canvasY })
+    engine.onCutsChange    = (c) => onCutsChange(c)
+    engine.onSubCutsChange = (c) => onSubCutsChange(c)
+    engine.onDotClick      = (info) => {
+      setDetail({ cluster: info.cluster, slot: info.slot, x: info.canvasX, y: info.canvasY })
     }
-    engine.onMarqueeSelect  = (sel) => setMarquee(sel)
+    engine.onMarqueeSelect = (sel) => setMarquee(sel)
 
     return () => {
       ro.disconnect()
@@ -80,7 +71,6 @@ export function CycleMapCanvas({
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // keep callbacks fresh without re-running engine lifecycle
   useEffect(() => {
     const e = engineRef.current
     if (!e) return
@@ -88,62 +78,51 @@ export function CycleMapCanvas({
     e.onSubCutsChange = onSubCutsChange
   }, [onCutsChange, onSubCutsChange])
 
-  // sync data to engine when props change
   useEffect(() => {
-    engineRef.current?.setData(hourClusters, cuts, subCuts)
+    engineRef.current?.setData(slotClusters, cuts, subCuts)
     setMarquee(null)
     engineRef.current?.clearSelection()
-  }, [hourClusters, cuts, subCuts])
+  }, [slotClusters, cuts, subCuts])
 
-  // ── dot toggle ────────────────────────────────────────────────────────────
-
-  function handleToggle(hour: number, clusterIdx: number) {
-    const next = new Map(hourClusters)
-    const cs   = [...(next.get(hour) ?? [])]
+  function handleToggle(slot: number, clusterIdx: number) {
+    const next = new Map(slotClusters)
+    const cs   = [...(next.get(slot) ?? [])]
     if (!cs[clusterIdx]) return
     cs[clusterIdx] = { ...cs[clusterIdx], isDisabled: !cs[clusterIdx].isDisabled }
-    next.set(hour, markOutliers(cs))
-    onHourClustersChange(next)
+    next.set(slot, markOutliers(cs))
+    onSlotClustersChange(next)
     setDetail(null)
   }
-
-  // ── marquee bulk toggle ──────────────────────────────────────────────────
 
   function closeMarquee() {
     engineRef.current?.clearSelection()
     setMarquee(null)
   }
 
-  function handleBulkToggle(items: { hour: number; idx: number }[], disabled: boolean) {
+  function handleBulkToggle(items: { slot: number; idx: number }[], disabled: boolean) {
     if (items.length > 0) {
-      const next    = new Map(hourClusters)
-      const byHour  = new Map<number, number[]>()
+      const next   = new Map(slotClusters)
+      const bySlot = new Map<number, number[]>()
       for (const it of items) {
-        byHour.set(it.hour, [...(byHour.get(it.hour) ?? []), it.idx])
+        bySlot.set(it.slot, [...(bySlot.get(it.slot) ?? []), it.idx])
       }
-      for (const [hour, idxs] of byHour) {
-        const cs = [...(next.get(hour) ?? [])]
+      for (const [slot, idxs] of bySlot) {
+        const cs = [...(next.get(slot) ?? [])]
         for (const idx of idxs) {
           if (!cs[idx]) continue
           cs[idx] = { ...cs[idx], isDisabled: disabled }
         }
-        next.set(hour, markOutliers(cs))
+        next.set(slot, markOutliers(cs))
       }
-      onHourClustersChange(next)
+      onSlotClustersChange(next)
     }
     closeMarquee()
   }
 
-  // ── render ────────────────────────────────────────────────────────────────
-
-  const hasData = hourClusters.size > 0
+  const hasData = slotClusters.size > 0
 
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">
-        {DIR_LABEL[direction]}
-      </p>
-
       <div
         ref={wrapRef}
         className="relative w-full bg-background border border-border rounded-sm"
@@ -151,39 +130,34 @@ export function CycleMapCanvas({
       >
         {!hasData && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-            Sem dados para esta direção
+            Sem dados
           </div>
         )}
 
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
-        />
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-        {/* detail popup */}
         {detail && (
           <DotDetail
             cluster={detail.cluster}
-            hour={detail.hour}
+            slot={detail.slot}
             canvasX={detail.x}
             canvasY={detail.y}
             containerH={320}
-            onToggle={() => handleToggle(detail.hour, hourClusters.get(detail.hour)?.indexOf(detail.cluster) ?? -1)}
+            onToggle={() => handleToggle(detail.slot, slotClusters.get(detail.slot)?.indexOf(detail.cluster) ?? -1)}
             onClose={() => setDetail(null)}
           />
         )}
 
-        {/* marquee selection popup */}
         {marquee && (
           <MarqueeConfirm
             selection={marquee}
             containerH={320}
             onDeactivate={() => handleBulkToggle(
-              marquee.items.filter(i => !i.cluster.isDisabled).map(i => ({ hour: i.hour, idx: i.idx })),
+              marquee.items.filter(i => !i.cluster.isDisabled).map(i => ({ slot: i.slot, idx: i.idx })),
               true,
             )}
             onActivate={() => handleBulkToggle(
-              marquee.items.filter(i => i.cluster.isDisabled).map(i => ({ hour: i.hour, idx: i.idx })),
+              marquee.items.filter(i => i.cluster.isDisabled).map(i => ({ slot: i.slot, idx: i.idx })),
               false,
             )}
             onClose={closeMarquee}
@@ -191,21 +165,24 @@ export function CycleMapCanvas({
         )}
       </div>
 
-      {/* cut zone hint */}
       <p className="text-[10px] text-muted-foreground/60 px-1">
         Clique perto da borda da coluna para corte cheio (arraste para mover, clique de novo para remover) ·
-        Clique no centro da coluna para alternar o <span className="text-violet-600 font-medium">corte de 30min</span> ·
+        Clique no <span className="text-violet-600 font-medium">centro da coluna</span> para alternar o corte de 30min ·
         Arraste sobre os pontos para selecionar vários
       </p>
     </div>
   )
 }
 
-// ── detail popup ─────────────────────────────────────────────────────────────
+function formatSlotLabel(slot: number): string {
+  const h = Math.floor(slot)
+  const m = Math.round((slot - h) * 60)
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
+}
 
 interface DotDetailProps {
   cluster:    DotCluster
-  hour:       number
+  slot:       number
   canvasX:    number
   canvasY:    number
   containerH: number
@@ -213,8 +190,8 @@ interface DotDetailProps {
   onClose:    () => void
 }
 
-function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onClose }: DotDetailProps) {
-  const H      = 200  // popup height estimate
+function DotDetail({ cluster, slot, canvasX, canvasY, containerH, onToggle, onClose }: DotDetailProps) {
+  const H      = 200
   const topRaw = canvasY + H > containerH ? canvasY - H - 8 : canvasY + 12
   const top    = Math.max(4, topRaw)
   const left   = Math.max(8, Math.min(canvasX - 120, 400))
@@ -226,15 +203,9 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
     >
       <div className="flex items-center justify-between mb-2">
         <span className="font-medium">
-          Faixa {hour}h · {cluster.minutes} min
+          Faixa {formatSlotLabel(slot)} · {cluster.minutes} min
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          ✕
-        </button>
+        <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
       </div>
 
       <div className="flex gap-1.5 mb-3 text-xs flex-wrap">
@@ -246,9 +217,7 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
           {cluster.isOutlier ? 'Outlier' : cluster.isDisabled ? 'Desativado' : 'Ativo'}
         </span>
         {cluster.hasEdited && (
-          <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
-            Contém editadas
-          </span>
+          <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">Contém editadas</span>
         )}
         <span className="px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
           {cluster.count} viagem{cluster.count !== 1 ? 's' : ''}
@@ -258,7 +227,7 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
       <div className="max-h-[120px] overflow-y-auto space-y-1 mb-3 pr-2">
         {cluster.trips.map((t, i) => (
           <div key={i} className="text-xs text-muted-foreground flex justify-between gap-2">
-            <span>{t.date} {t.departureTime}</span>
+            <span>{t.time}</span>
             <span className="font-medium text-foreground">{t.cycleMinutes}min</span>
             <span className="truncate max-w-[80px]">{t.vehicle}</span>
           </div>
@@ -269,9 +238,7 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
         type="button"
         onClick={onToggle}
         className={`w-full text-xs rounded px-2 py-1.5 font-medium transition-colors ${
-          cluster.isDisabled
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
-            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+          cluster.isDisabled ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-muted text-muted-foreground hover:bg-muted/80'
         }`}
       >
         {cluster.isDisabled ? 'Reativar ponto' : 'Desativar ponto'}
@@ -279,8 +246,6 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
     </div>
   )
 }
-
-// ── marquee confirm popup ──────────────────────────────────────────────────────
 
 interface MarqueeConfirmProps {
   selection:    MarqueeSelection
@@ -309,7 +274,7 @@ function MarqueeConfirm({ selection, containerH, onActivate, onDeactivate, onClo
     return () => window.removeEventListener('pointerdown', onPointer)
   }, [onClose])
 
-  const H      = 90  // popup height estimate
+  const H      = 90
   const topRaw = selection.y + H > containerH ? selection.y - H - 8 : selection.y + 12
   const top    = Math.max(4, topRaw)
   const left   = Math.max(8, Math.min(selection.x - 90, 400))
@@ -321,16 +286,8 @@ function MarqueeConfirm({ selection, containerH, onActivate, onDeactivate, onClo
       style={{ top, left }}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className="font-medium">
-          {selection.items.length} ponto{selection.items.length !== 1 ? 's' : ''}
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          ✕
-        </button>
+        <span className="font-medium">{selection.items.length} ponto{selection.items.length !== 1 ? 's' : ''}</span>
+        <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
       </div>
 
       <div className="flex gap-2">

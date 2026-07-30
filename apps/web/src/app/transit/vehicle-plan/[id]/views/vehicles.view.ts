@@ -21,7 +21,10 @@ export interface LineMetrics {
 }
 
 /** Returns the full cycle window for a trip given the line metrics, direction,
- *  and departure time. Falls back to OUTBOUND when direction has no windows. */
+ *  and departure time. Falls back to OUTBOUND when direction has no windows.
+ *  `to` marks the last half-hour slot included (whole hour → +0.5, truncated
+ *  by a 30min sub-cut → bare hour), so departure time is compared at the same
+ *  half-hour resolution rather than truncated to the hour. */
 export function resolveCycleWindow(
   metrics:          LineMetrics | null | undefined,
   direction:        string,
@@ -29,8 +32,8 @@ export function resolveCycleWindow(
 ): CycleWindow | null {
   if (!metrics?.windows) return null
   const windows = metrics.windows[direction] ?? metrics.windows['OUTBOUND'] ?? []
-  const hour    = Math.floor(departureMinutes / 60) % 24
-  return windows.find(w => hour >= w.from && hour <= w.to) ?? null
+  const slot    = Math.floor(departureMinutes / 30) / 2 % 24
+  return windows.find(w => slot >= w.from && slot <= w.to) ?? null
 }
 
 export function resolveCycleMinutes(

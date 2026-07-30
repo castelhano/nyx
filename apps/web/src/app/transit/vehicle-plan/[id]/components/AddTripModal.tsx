@@ -8,7 +8,7 @@ import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { useShortcutContext } from '@/lib/keywatch'
 import type { GanttBlock, GanttBlockTrip, LineMetrics } from '../views/vehicles.view'
-import { resolveCycleWindow } from '../views/vehicles.view'
+import { resolveCycleWindow, resolveCycleMinutes } from '../views/vehicles.view'
 import { getTravelTime } from '../travel-time'
 
 // ── module-level cache — persists across modal opens within the session ────────
@@ -313,12 +313,9 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
         const metrics = await getLineMetrics(lineId)
         if (token !== resolveRef.current) return
 
-        if (metrics?.windows) {
-          const hour       = hh % 24
-          const dirWindows = metrics.windows[route.direction as 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'] ?? []
-          const win        = dirWindows.find(w => hour >= w.from && hour <= w.to)
-          if (win) { setCycleMinutes(String(win.minutes)); return }
-        }
+        const mm = parseInt(depMM, 10) || 0
+        const cycleMinutes = resolveCycleMinutes(metrics, route.direction, hh * 60 + mm)
+        if (cycleMinutes != null) { setCycleMinutes(String(cycleMinutes)); return }
 
         const travelMin = await getTravelTime(route.originLocalityId, route.destinationLocalityId)
         if (token !== resolveRef.current) return

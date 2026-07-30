@@ -1,9 +1,41 @@
-import { markOutliers, buildRawWindowCandidates } from './cycle-utils'
-import type { DotCluster, DotClickInfo, CycleEngineState, MarqueeItem, MarqueeSelection } from './types'
+// Cópia adaptada de transit-line/cycle-map/cycle-engine.ts para prototipagem
+// isolada. Pontos continuam agrupados por hora cheia, igual à produção — o
+// eixo X sempre mostra rótulos de hora cheia (5 | 6 | 7). A novidade é um
+// segundo tipo de corte ("subCut"): um marcador fixo no meio da coluna,
+// representando um corte de 30min dentro daquela hora, visualmente distinto
+// (cor + forma) e posicionado logo acima do rótulo da faixa, sem entrar na
+// área de plotagem dos pontos. A zona de clique da faixa inferior é dividida
+// em três: ~25% perto de cada borda (corte cheio, como hoje) e o ~50% central
+// (corte de 30min) — nunca competem entre si nem com os pontos.
+import { markOutliers } from './data'
+import type { DotCluster } from './data'
 
-const PAD   = { left: 52, right: 20, bottom: 44 }
-const MIN_TOP_PAD = 44
-const PILL_ROW_H   = 22   // vertical spacing between stacked avg-pill rows when they'd otherwise overlap
+export interface DotClickInfo {
+  cluster:    DotCluster
+  slot:       number
+  clusterIdx: number
+  canvasX:    number
+  canvasY:    number
+}
+
+export interface MarqueeItem {
+  slot:    number
+  idx:     number
+  cluster: DotCluster
+}
+
+export interface MarqueeSelection {
+  items: MarqueeItem[]
+  x:     number
+  y:     number
+}
+
+export interface CycleEngineState {
+  width:  number
+  height: number
+}
+
+const PAD   = { left: 52, right: 20, top: 44, bottom: 44 }
 const COLORS = {
   normal:   '#3b82f6',
   outlier:  '#ef4444',
@@ -19,14 +51,14 @@ const COLORS = {
   avgLine:  'rgba(59,130,246,0.35)',
   band:     'rgba(0,0,0,0.02)',
 }
-const CUT_HIT     = 7   // px tolerance to hit a cut line
-const SUBCUT_ZONE = 0.25  // fraction of column width, from its center, that counts as the 30min cut click zone
-const DOT_HIT_PAD = 4   // extra px around dot radius
+const CUT_HIT       = 7
+const SUBCUT_ZONE   = 0.25  // fração da largura da coluna, a partir do centro, que conta como zona do corte de 30min
+const DOT_HIT_PAD = 4
 const DOT_MIN_R   = 5
 const DOT_MAX_R   = 18
-const MARQUEE_MIN_DRAG = 4  // px before a mousedown-drag counts as a marquee, not a click
+const MARQUEE_MIN_DRAG = 4
 
-export class CycleEngine {
+export class CycleEngineProto {
   private canvas!:       HTMLCanvasElement
   private ctx!:          CanvasRenderingContext2D
   private rafPending     = false
@@ -34,15 +66,12 @@ export class CycleEngine {
   private width          = 0
   private height         = 0
 
-  private hourClusters:  Map<number, DotCluster[]> = new Map()
-  private hours:         number[]                   = []
+  private slotClusters:  Map<number, DotCluster[]> = new Map()
+  private slots:         number[]                   = []
   private cuts:          Set<number>                = new Set()
   private subCuts:       Set<number>                = new Set()
-  // grows past MIN_TOP_PAD when avg pills need to stack into extra rows —
-  // recomputed at the start of every draw() so it never falls out of sync
-  private topPad:        number                      = MIN_TOP_PAD
 
-  private hoveredDot:    { hour: number; idx: number } | null = null
+  private hoveredDot:    { slot: number; idx: number } | null = null
   private dragCut:       { original: number; boundary: number; downX: number; downY: number } | null = null
   private marqueeDown:   { x: number; y: number } | null = null
   private marqueeRect:   { x0: number; y0: number; x1: number; y1: number } | null = null
@@ -50,15 +79,11 @@ export class CycleEngine {
   private suppressNextClick = false
   private handlers:      { el: EventTarget; type: string; fn: EventListener }[] = []
 
-  onStateChange?:    (s: CycleEngineState) => void
   onCutsChange?:     (cuts: number[]) => void
   onSubCutsChange?:  (subCuts: number[]) => void
-  onDotToggle?:      (hour: number, clusterIdx: number) => void
   onDotClick?:       (info: DotClickInfo) => void
   onHoverChange?:    (info: DotClickInfo | null) => void
   onMarqueeSelect?:  (sel: MarqueeSelection | null) => void
-
-  // ── lifecycle ─────────────────────────────────────────────────────────────
 
   init(canvas: HTMLCanvasElement): void {
     this.canvas = canvas
@@ -68,7 +93,6 @@ export class CycleEngine {
     this.ready  = true
     this.applyDpr()
     this.attach()
-    this.notify()
     this.requestDraw()
   }
 
@@ -82,20 +106,18 @@ export class CycleEngine {
     this.height = h
     if (this.ready) {
       this.applyDpr()
-      this.notify()
       this.requestDraw()
     }
   }
 
-  setData(hourClusters: Map<number, DotCluster[]>, cuts: number[], subCuts: number[]): void {
-    this.hourClusters = hourClusters
-    this.hours        = Array.from(hourClusters.keys()).sort((a, b) => a - b)
-    this.cuts         = new Set(cuts)
-    this.subCuts      = new Set(subCuts)
+  setData(slotClusters: Map<number, DotCluster[]>, cuts: number[], subCuts: number[]): void {
+    this.slotClusters = slotClusters
+    this.slots         = Array.from(slotClusters.keys()).sort((a, b) => a - b)
+    this.cuts          = new Set(cuts)
+    this.subCuts       = new Set(subCuts)
     this.requestDraw()
   }
 
-  // drop any pending marquee confirmation (e.g. React closed the popup, or data changed underneath it)
   clearSelection(): void {
     if (!this.confirmedSelection) return
     this.confirmedSelection = null
@@ -111,35 +133,24 @@ export class CycleEngine {
     })
   }
 
-  // ── drawing ────────────────────────────────────────────────────────────────
-
   private draw(): void {
     const { ctx, width: W, height: H } = this
     ctx.clearRect(0, 0, W, H)
-    if (this.hours.length === 0) return
-
-    // avg pills are laid out first — they decide how tall the top margin
-    // needs to be this frame (grows when narrow 30min-cut windows force
-    // them to stack into extra rows), so everything else below reads it
-    // off this.topPad instead of a fixed constant
-    const avg = this.computeAvgPills()
-    this.topPad = avg.topPad
+    if (this.slots.length === 0) return
 
     const { min: yMin, max: yMax } = this.yRange()
     const cW  = this.colWidth()
-    const cH  = H - this.topPad - PAD.bottom
+    const cH  = H - PAD.top - PAD.bottom
 
-    // column bands
     ctx.save()
-    for (let i = 0; i < this.hours.length; i++) {
+    for (let i = 0; i < this.slots.length; i++) {
       if (i % 2 === 0) {
         ctx.fillStyle = COLORS.band
-        ctx.fillRect(PAD.left + i * cW, this.topPad, cW, cH)
+        ctx.fillRect(PAD.left + i * cW, PAD.top, cW, cH)
       }
     }
     ctx.restore()
 
-    // horizontal grid lines + Y axis labels
     ctx.save()
     ctx.font         = '11px Inter, system-ui, sans-serif'
     ctx.textBaseline = 'middle'
@@ -159,34 +170,23 @@ export class CycleEngine {
     }
     ctx.restore()
 
-    // X axis labels
     ctx.save()
     ctx.font         = '11px Inter, system-ui, sans-serif'
     ctx.textBaseline = 'top'
     ctx.textAlign    = 'center'
     ctx.fillStyle    = COLORS.axisText
-    for (let i = 0; i < this.hours.length; i++) {
+    for (let i = 0; i < this.slots.length; i++) {
       const x = PAD.left + (i + 0.5) * cW
-      ctx.fillText(String(this.hours[i]), x, H - PAD.bottom + 8)
+      ctx.fillText(String(this.slots[i]), x, H - PAD.bottom + 11)
     }
     ctx.restore()
 
-    // average lines per window
-    this.drawAvgLines(avg, yMin, yMax)
-
-    // cut lines
+    this.drawAvgLines(yMin, yMax)
     this.drawCuts(yMin, yMax)
-
-    // 30min sub-cut lines
     this.drawSubCuts()
-
-    // dots
     this.drawDots(yMin, yMax)
-
-    // marquee selection rectangle (live drag)
     this.drawMarquee()
 
-    // X axis baseline
     ctx.save()
     ctx.strokeStyle = 'rgba(0,0,0,0.15)'
     ctx.lineWidth   = 1
@@ -194,72 +194,39 @@ export class CycleEngine {
     ctx.moveTo(PAD.left, H - PAD.bottom)
     ctx.lineTo(W - PAD.right, H - PAD.bottom)
     ctx.stroke()
-    // Y axis baseline
     ctx.beginPath()
-    ctx.moveTo(PAD.left, this.topPad)
+    ctx.moveTo(PAD.left, PAD.top)
     ctx.lineTo(PAD.left, H - PAD.bottom)
     ctx.stroke()
     ctx.restore()
   }
 
-  // lays out (but doesn't draw) the avg pills, and derives how tall the top
-  // margin needs to be this frame — called once at the start of draw(),
-  // before the margin-dependent geometry (minutesToY etc.) is settled
-  private computeAvgPills(): {
-    pills: { c: { from: number; to: number; minutes: number }; x1: number; x2: number; midX: number; pw: number; label: string }[]
-    rows: number[]
-    topPad: number
-  } {
+  private drawAvgLines(yMin: number, yMax: number): void {
     const { ctx, width: W } = this
-    const candidates = buildRawWindowCandidates(this.hourClusters, [...this.cuts], [...this.subCuts])
-      .filter(c => c.minutes > 0)
+    const cuts = [...this.cuts].sort((a, b) => a - b)
+    const minS = this.slots[0]
+    const maxS = this.slots[this.slots.length - 1]
+    const bounds = [minS, ...cuts.filter(c => c >= minS && c < maxS).map(c => c + 1), maxS + 1]
 
-    ctx.save()
-    ctx.font = 'bold 11px Inter, system-ui, sans-serif'
-    // "'" instead of "min" keeps the pill narrow enough for short windows —
-    // a 30min sub-cut can produce a window as narrow as half a column
-    const pills = candidates.map(c => {
-      const x1    = Math.max(PAD.left,      this.slotToX(c.from, 'from'))
-      const x2    = Math.min(W - PAD.right, this.slotToX(c.to,   'to'))
-      const label = `${c.minutes}'`
-      const pw    = ctx.measureText(label).width + 12
-      const midX  = (x1 + x2) / 2
-      return { c, x1, x2, midX, pw, label }
-    })
-    ctx.restore()
-
-    // stack pills into rows when adjacent ones would otherwise overlap —
-    // narrow windows from a 30min sub-cut sit close enough to their
-    // neighbor that a single fixed row isn't always enough room
-    const rowRightEdge: number[] = []
-    const rows = pills.map(p => {
-      const left = p.midX - p.pw / 2
-      for (let r = 0; r < rowRightEdge.length; r++) {
-        if (left > rowRightEdge[r] + 4) { rowRightEdge[r] = p.midX + p.pw / 2; return r }
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const from = bounds[i]
+      const to   = bounds[i + 1] - 1
+      const all: DotCluster[] = []
+      const slotsInWindow = this.slots.filter(h => h >= from && h <= to)
+      for (const h of slotsInWindow) {
+        const cs = this.slotClusters.get(h)
+        if (cs) all.push(...cs)
       }
-      rowRightEdge.push(p.midX + p.pw / 2)
-      return rowRightEdge.length - 1
-    })
+      const active = all.filter(c => !c.isOutlier && !c.isDisabled)
+      if (active.length === 0 || slotsInWindow.length === 0) continue
+      const total = active.reduce((s, c) => s + c.minutes * c.count, 0)
+      const cnt   = active.reduce((s, c) => s + c.count, 0)
+      const avg   = total / cnt
+      const rounded = Math.round(avg)
+      const y     = Math.round(this.minutesToY(avg, yMin, yMax)) + 0.5
+      const x1    = Math.max(PAD.left,        this.slotToX(slotsInWindow[0])! - this.colWidth() * 0.5)
+      const x2    = Math.min(W - PAD.right,   this.slotToX(slotsInWindow[slotsInWindow.length - 1])! + this.colWidth() * 0.5)
 
-    const rowCount = rowRightEdge.length
-    const topPad   = rowCount > 0 ? Math.max(MIN_TOP_PAD, 12 + rowCount * PILL_ROW_H + 10) : MIN_TOP_PAD
-
-    return { pills, rows, topPad }
-  }
-
-  private drawAvgLines(
-    avg: ReturnType<CycleEngine['computeAvgPills']>,
-    yMin: number,
-    yMax: number,
-  ): void {
-    const { ctx } = this
-    const { pills, rows } = avg
-
-    for (let i = 0; i < pills.length; i++) {
-      const { c, x1, x2, midX, pw, label } = pills[i]
-      const y = Math.round(this.minutesToY(c.minutes, yMin, yMax)) + 0.5
-
-      // dashed avg line
       ctx.save()
       ctx.strokeStyle = COLORS.avgLine
       ctx.lineWidth   = 2
@@ -270,13 +237,16 @@ export class CycleEngine {
       ctx.stroke()
       ctx.restore()
 
-      // pill label pinned to the reserved top strip (above chart area)
+      const label  = `${rounded}min`
       ctx.save()
       ctx.font         = 'bold 11px Inter, system-ui, sans-serif'
       ctx.textAlign    = 'center'
       ctx.textBaseline = 'middle'
-      const ph        = 18
-      const stripMidY = 12 + rows[i] * PILL_ROW_H
+      const midX  = (x1 + x2) / 2
+      const tw    = ctx.measureText(label).width
+      const ph    = 18
+      const pw    = tw + 12
+      const stripMidY = PAD.top / 2
       const pillY     = stripMidY - ph / 2
       ctx.fillStyle   = 'rgba(255,255,255,0.92)'
       ctx.strokeStyle = COLORS.avgLine
@@ -292,19 +262,6 @@ export class CycleEngine {
     }
   }
 
-  // maps a candidate's from/to (whole hour, or hour+0.5 from a 30min sub-cut)
-  // to an x position: as a start it's the column's left edge (or midpoint for
-  // a .5 value); as an end it's the column's right edge (or midpoint if the
-  // value is a bare hour, meaning the window was truncated mid-column)
-  private slotToX(v: number, role: 'from' | 'to'): number {
-    const h    = Math.floor(v)
-    const half = v - h === 0.5
-    const mid  = this.hourToX(h) ?? PAD.left
-    const cW   = this.colWidth()
-    if (role === 'from') return half ? mid : mid - cW / 2
-    return half ? mid + cW / 2 : mid
-  }
-
   private drawCuts(yMin: number, yMax: number): void {
     const { ctx, height: H } = this
     ctx.save()
@@ -312,19 +269,18 @@ export class CycleEngine {
     const cW = this.colWidth()
 
     for (const cut of this.cuts) {
-      const idx = this.hours.indexOf(cut)
-      if (idx < 0 || idx >= this.hours.length - 1) continue
+      const idx = this.slots.indexOf(cut)
+      if (idx < 0 || idx >= this.slots.length - 1) continue
       const x       = Math.round(PAD.left + (idx + 1) * cW) + 0.5
       const isHover = this.dragCut?.original === cut || this.dragCut?.boundary === idx + 1
 
       ctx.strokeStyle = isHover ? COLORS.cutHover : COLORS.cut
       ctx.setLineDash([5, 4])
       ctx.beginPath()
-      ctx.moveTo(x, this.topPad)
+      ctx.moveTo(x, PAD.top)
       ctx.lineTo(x, H - PAD.bottom)
       ctx.stroke()
 
-      // drag handle
       ctx.setLineDash([])
       ctx.fillStyle = isHover ? COLORS.cutHover : COLORS.cut
       ctx.beginPath()
@@ -332,52 +288,19 @@ export class CycleEngine {
       ctx.fill()
     }
 
-    // preview ghost while dragging
     if (this.dragCut) {
       const { boundary } = this.dragCut
-      if (boundary > 0 && boundary < this.hours.length) {
+      if (boundary > 0 && boundary < this.slots.length) {
         const x = Math.round(PAD.left + boundary * cW) + 0.5
         ctx.strokeStyle = COLORS.cutHover
         ctx.globalAlpha = 0.4
         ctx.setLineDash([5, 4])
         ctx.beginPath()
-        ctx.moveTo(x, this.topPad)
+        ctx.moveTo(x, PAD.top)
         ctx.lineTo(x, H - PAD.bottom)
         ctx.stroke()
         ctx.globalAlpha = 1
       }
-    }
-    ctx.restore()
-  }
-
-  private drawSubCuts(): void {
-    const { ctx, height: H } = this
-    ctx.save()
-    ctx.lineWidth = 1   // thinner than the full cut's line, to read as a lighter/secondary mark
-
-    for (const subCut of this.subCuts) {
-      const x = this.hourToX(subCut)
-      if (x === null) continue
-      const rx = Math.round(x) + 0.5
-
-      ctx.strokeStyle = COLORS.subCut
-      ctx.setLineDash([5, 4])
-      ctx.beginPath()
-      ctx.moveTo(rx, this.topPad)
-      ctx.lineTo(rx, H - PAD.bottom)
-      ctx.stroke()
-
-      // diamond handle, sitting above the X axis hour label instead of on top of it
-      ctx.setLineDash([])
-      ctx.fillStyle = COLORS.subCut
-      const hy = H - PAD.bottom + 4
-      ctx.beginPath()
-      ctx.moveTo(rx,     hy - 3)
-      ctx.lineTo(rx + 3, hy)
-      ctx.lineTo(rx,     hy + 3)
-      ctx.lineTo(rx - 3, hy)
-      ctx.closePath()
-      ctx.fill()
     }
     ctx.restore()
   }
@@ -391,25 +314,24 @@ export class CycleEngine {
 
     const liveSelection = this.marqueeRect ? this.dotsInRect(this.marqueeRect) : null
     const selectedKeys  = new Set(
-      (this.confirmedSelection ?? liveSelection ?? []).map(s => `${s.hour}:${s.idx}`),
+      (this.confirmedSelection ?? liveSelection ?? []).map(s => `${s.slot}:${s.idx}`),
     )
 
-    for (const h of this.hours) {
-      const clusters = this.hourClusters.get(h)
+    for (const h of this.slots) {
+      const clusters = this.slotClusters.get(h)
       if (!clusters) continue
-      const colIdx = this.hours.indexOf(h)
+      const colIdx = this.slots.indexOf(h)
 
       for (let i = 0; i < clusters.length; i++) {
         const c   = clusters[i]
         const cx  = this.dotX(colIdx, i, clusters.length)
         const cy  = this.minutesToY(c.minutes, yMin, yMax)
         const r   = this.dotRadius(c.count)
-        const hov = this.hoveredDot?.hour === h && this.hoveredDot.idx === i
+        const hov = this.hoveredDot?.slot === h && this.hoveredDot.idx === i
         const sel = selectedKeys.has(`${h}:${i}`)
 
         ctx.globalAlpha = c.isDisabled ? 0.35 : 1
 
-        // fill
         ctx.fillStyle = c.isDisabled ? COLORS.disabled
           : c.isOutlier              ? COLORS.outlier
           : COLORS.normal
@@ -417,14 +339,12 @@ export class CycleEngine {
         ctx.arc(cx, cy, r, 0, Math.PI * 2)
         ctx.fill()
 
-        // edited stroke
         if (c.hasEdited && !c.isDisabled) {
           ctx.strokeStyle = COLORS.edited
           ctx.lineWidth   = 2
           ctx.stroke()
         }
 
-        // hover ring
         if (hov) {
           ctx.globalAlpha = 1
           ctx.strokeStyle = 'rgba(255,255,255,0.9)'
@@ -432,7 +352,6 @@ export class CycleEngine {
           ctx.stroke()
         }
 
-        // marquee selection ring
         if (sel) {
           ctx.globalAlpha = 1
           ctx.strokeStyle = '#f59e0b'
@@ -444,7 +363,6 @@ export class CycleEngine {
 
         ctx.globalAlpha = 1
 
-        // count label
         if (c.count > 1 && r >= 10) {
           ctx.fillStyle = '#fff'
           ctx.fillText(String(c.count), cx, cy)
@@ -473,7 +391,26 @@ export class CycleEngine {
     ctx.restore()
   }
 
-  // ── coordinate helpers ────────────────────────────────────────────────────
+  private drawSubCuts(): void {
+    const { ctx, height: H } = this
+    const cW = this.colWidth()
+    ctx.save()
+    for (const subCut of this.subCuts) {
+      const idx = this.slots.indexOf(subCut)
+      if (idx < 0) continue
+      const x = Math.round(PAD.left + (idx + 0.5) * cW) + 0.5
+      const y = H - PAD.bottom + 5
+      ctx.fillStyle = COLORS.subCut
+      ctx.beginPath()
+      ctx.moveTo(x, y - 4)
+      ctx.lineTo(x + 4, y)
+      ctx.lineTo(x, y + 4)
+      ctx.lineTo(x - 4, y)
+      ctx.closePath()
+      ctx.fill()
+    }
+    ctx.restore()
+  }
 
   private dotX(colIdx: number, dotIdx: number, total: number): number {
     const cW      = this.colWidth()
@@ -485,24 +422,24 @@ export class CycleEngine {
   }
 
   private colWidth(): number {
-    if (this.hours.length === 0) return 1
-    return (this.width - PAD.left - PAD.right) / this.hours.length
+    if (this.slots.length === 0) return 1
+    return (this.width - PAD.left - PAD.right) / this.slots.length
   }
 
-  private hourToX(h: number): number | null {
-    const idx = this.hours.indexOf(h)
+  private slotToX(h: number): number | null {
+    const idx = this.slots.indexOf(h)
     if (idx < 0) return null
     return PAD.left + (idx + 0.5) * this.colWidth()
   }
 
   private minutesToY(m: number, yMin: number, yMax: number): number {
-    const chartH = this.height - this.topPad - PAD.bottom
-    return this.topPad + (1 - (m - yMin) / (yMax - yMin)) * chartH
+    const chartH = this.height - PAD.top - PAD.bottom
+    return PAD.top + (1 - (m - yMin) / (yMax - yMin)) * chartH
   }
 
   private yRange(): { min: number; max: number } {
     let lo = Infinity, hi = -Infinity
-    for (const cs of this.hourClusters.values()) {
+    for (const cs of this.slotClusters.values()) {
       for (const c of cs) {
         if (c.minutes < lo) lo = c.minutes
         if (c.minutes > hi) hi = c.minutes
@@ -516,8 +453,6 @@ export class CycleEngine {
   private dotRadius(count: number): number {
     return DOT_MIN_R + Math.min(count - 1, 8) * ((DOT_MAX_R - DOT_MIN_R) / 8)
   }
-
-  // ── mouse events ──────────────────────────────────────────────────────────
 
   private on(el: EventTarget, type: string, fn: EventListener): void {
     el.addEventListener(type, fn, { passive: false } as AddEventListenerOptions)
@@ -536,14 +471,13 @@ export class CycleEngine {
     const { offsetX: x, offsetY: y } = e
     const cut = this.hitCut(x, y)
     if (cut !== null) {
-      const boundary = this.hours.indexOf(cut) + 1
+      const boundary = this.slots.indexOf(cut) + 1
       this.dragCut   = { original: cut, boundary, downX: x, downY: y }
       this.canvas.style.cursor = 'ew-resize'
       e.preventDefault()
       return
     }
 
-    // starting any new interaction dismisses a pending marquee confirmation
     if (this.confirmedSelection) {
       this.confirmedSelection = null
       this.onMarqueeSelect?.(null)
@@ -576,17 +510,16 @@ export class CycleEngine {
       return
     }
 
-    // hover
     const dot = this.hitDot(x, y)
     const prev = this.hoveredDot
-    this.hoveredDot = dot ? { hour: dot.hour, idx: dot.idx } : null
+    this.hoveredDot = dot ? { slot: dot.slot, idx: dot.idx } : null
 
-    const changed = prev?.hour !== this.hoveredDot?.hour || prev?.idx !== this.hoveredDot?.idx
+    const changed = prev?.slot !== this.hoveredDot?.slot || prev?.idx !== this.hoveredDot?.idx
     if (changed) {
       this.canvas.style.cursor = dot ? 'pointer' : this.hitCut(x, y) !== null ? 'ew-resize' : ''
       this.onHoverChange?.(dot ? {
         cluster:    dot.cluster,
-        hour:       dot.hour,
+        slot:       dot.slot,
         clusterIdx: dot.idx,
         canvasX:    dot.cx,
         canvasY:    y,
@@ -606,16 +539,14 @@ export class CycleEngine {
       const next  = new Set(this.cuts)
 
       if (!moved) {
-        // plain click on a cut, no drag → remove it
         next.delete(original)
       } else {
-        // remove old cut, add at new position
-        const newCut = boundary > 0 && boundary < this.hours.length
-          ? this.hours[boundary - 1]
+        const newCut = boundary > 0 && boundary < this.slots.length
+          ? this.slots[boundary - 1]
           : null
         next.delete(original)
         if (newCut !== null && newCut !== original) next.add(newCut)
-        else next.add(original) // didn't cross a boundary — keep original
+        else next.add(original)
       }
 
       this.cuts = next
@@ -643,7 +574,6 @@ export class CycleEngine {
 
   private onMouseLeave = (): void => {
     if (this.dragCut) {
-      // cancel drag
       this.dragCut = null
       this.canvas.style.cursor = ''
       this.requestDraw()
@@ -670,12 +600,11 @@ export class CycleEngine {
     const { offsetX: x, offsetY: y } = e
     const H = this.height
 
-    // check dot toggle
     const dot = this.hitDot(x, y)
     if (dot) {
       this.onDotClick?.({
         cluster:    dot.cluster,
-        hour:       dot.hour,
+        slot:       dot.slot,
         clusterIdx: dot.idx,
         canvasX:    dot.cx,
         canvasY:    y,
@@ -683,26 +612,23 @@ export class CycleEngine {
       return
     }
 
-    // cut zone (bottom strip) → add cut
-    // (clicks on an existing cut are handled by the mousedown/mouseup drag-or-remove path above)
     const isInCutZone = y > H - PAD.bottom - 4
-
     if (isInCutZone) {
-      // center band of the column → 30min sub-cut, toggle on/off
-      const subHour = this.xToMidpointHour(x)
-      if (subHour !== null) {
+      // zona central da coluna (metade do meio) → corte de 30min; toggle
+      const sub = this.xToMidpointSlot(x)
+      if (sub !== null) {
         const next = new Set(this.subCuts)
-        if (next.has(subHour)) next.delete(subHour); else next.add(subHour)
+        if (next.has(sub)) next.delete(sub); else next.add(sub)
         this.subCuts = next
         this.onSubCutsChange?.([...this.subCuts])
         this.requestDraw()
         return
       }
 
-      // rest of the strip (near a column boundary) → full cut, as before
+      // resto da faixa (perto das bordas da coluna) → corte cheio, como hoje
       const b = this.xToBoundary(x)
-      if (b !== null && b > 0 && b < this.hours.length) {
-        const cut = this.hours[b - 1]
+      if (b !== null && b > 0 && b < this.slots.length) {
+        const cut = this.slots[b - 1]
         const next = new Set(this.cuts)
         next.add(cut)
         this.cuts = next
@@ -712,25 +638,23 @@ export class CycleEngine {
     }
   }
 
-  // ── hit testing ───────────────────────────────────────────────────────────
-
   private hitDot(
     mx: number, my: number,
-  ): { hour: number; idx: number; cluster: DotCluster; cx: number } | null {
+  ): { slot: number; idx: number; cluster: DotCluster; cx: number } | null {
     const { min: yMin, max: yMax } = this.yRange()
-    let best: { hour: number; idx: number; cluster: DotCluster; cx: number; dist: number } | null = null
+    let best: { slot: number; idx: number; cluster: DotCluster; cx: number; dist: number } | null = null
 
-    for (const h of this.hours) {
-      const cs     = this.hourClusters.get(h)
+    for (const h of this.slots) {
+      const cs     = this.slotClusters.get(h)
       if (!cs) continue
-      const colIdx = this.hours.indexOf(h)
+      const colIdx = this.slots.indexOf(h)
       for (let i = 0; i < cs.length; i++) {
         const cx   = this.dotX(colIdx, i, cs.length)
         const cy   = this.minutesToY(cs[i].minutes, yMin, yMax)
         const r    = this.dotRadius(cs[i].count) + DOT_HIT_PAD
         const dist = Math.hypot(mx - cx, my - cy)
         if (dist <= r && (!best || dist < best.dist)) {
-          best = { hour: h, idx: i, cluster: cs[i], cx, dist }
+          best = { slot: h, idx: i, cluster: cs[i], cx, dist }
         }
       }
     }
@@ -745,15 +669,15 @@ export class CycleEngine {
     const bottom = Math.max(rect.y0, rect.y1)
     const found: MarqueeItem[] = []
 
-    for (const h of this.hours) {
-      const cs = this.hourClusters.get(h)
+    for (const h of this.slots) {
+      const cs = this.slotClusters.get(h)
       if (!cs) continue
-      const colIdx = this.hours.indexOf(h)
+      const colIdx = this.slots.indexOf(h)
       for (let i = 0; i < cs.length; i++) {
         const cx = this.dotX(colIdx, i, cs.length)
         const cy = this.minutesToY(cs[i].minutes, yMin, yMax)
         if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
-          found.push({ hour: h, idx: i, cluster: cs[i] })
+          found.push({ slot: h, idx: i, cluster: cs[i] })
         }
       }
     }
@@ -761,10 +685,10 @@ export class CycleEngine {
   }
 
   private hitCut(x: number, y: number): number | null {
-    if (y > this.height - PAD.bottom + 14) return null  // below handle area
+    if (y > this.height - PAD.bottom + 14) return null
     const cW = this.colWidth()
     for (const cut of this.cuts) {
-      const idx = this.hours.indexOf(cut)
+      const idx = this.slots.indexOf(cut)
       if (idx < 0) continue
       const cx = PAD.left + (idx + 1) * cW
       if (Math.abs(x - cx) <= CUT_HIT) return cut
@@ -775,26 +699,20 @@ export class CycleEngine {
   private xToBoundary(x: number): number | null {
     const cW = this.colWidth()
     const b  = Math.round((x - PAD.left) / cW)
-    if (b < 0 || b > this.hours.length) return null
+    if (b < 0 || b > this.slots.length) return null
     return b
   }
 
-  // returns the hour whose column x falls in the center band (SUBCUT_ZONE) of,
-  // or null if x is close enough to a boundary to be a full-cut click instead
-  private xToMidpointHour(x: number): number | null {
+  // retorna a hora da coluna se x cair na faixa central (SUBCUT_ZONE) dela,
+  // ou null se estiver perto o bastante de uma borda para ser corte cheio
+  private xToMidpointSlot(x: number): number | null {
     const cW = this.colWidth()
     const rel = (x - PAD.left) / cW
     const colIdx = Math.floor(rel)
-    if (colIdx < 0 || colIdx >= this.hours.length) return null
+    if (colIdx < 0 || colIdx >= this.slots.length) return null
     const fracInCol = rel - colIdx
-    if (Math.abs(fracInCol - 0.5) <= SUBCUT_ZONE) return this.hours[colIdx]
+    if (Math.abs(fracInCol - 0.5) <= SUBCUT_ZONE) return this.slots[colIdx]
     return null
-  }
-
-  // ── internals ─────────────────────────────────────────────────────────────
-
-  private notify(): void {
-    this.onStateChange?.({ width: this.width, height: this.height })
   }
 
   private applyDpr(): void {
@@ -804,14 +722,12 @@ export class CycleEngine {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   }
 
-  // allow engine to recalculate outliers after external toggle
-  toggleDot(hour: number, clusterIdx: number): void {
-    const cs = this.hourClusters.get(hour)
+  toggleDot(slot: number, clusterIdx: number): void {
+    const cs = this.slotClusters.get(slot)
     if (!cs || !cs[clusterIdx]) return
     cs[clusterIdx] = { ...cs[clusterIdx], isDisabled: !cs[clusterIdx].isDisabled }
-    // recalculate outliers for this hour
     const updated = markOutliers(cs)
-    this.hourClusters.set(hour, updated)
+    this.slotClusters.set(slot, updated)
     this.requestDraw()
   }
 }

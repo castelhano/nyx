@@ -15,6 +15,7 @@ import { apiFetch }                      from '@/lib/auth'
 import { useToast }                      from '@/lib/toast-context'
 import { parseCsv }                      from './csv-parser'
 import { buildHourClusters, suggestCuts, computeWindows } from './cycle-utils'
+import type { Window }                   from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
 import type { CsvData, Direction, DotCluster } from './types'
 import { title } from 'process'
@@ -30,6 +31,7 @@ const DEFAULT_INTERVAL: Record<Direction, number> = {
 interface DirState {
   hourClusters:    Map<number, DotCluster[]>
   cuts:            number[]
+  subCuts:         number[]
   intervalMinutes: number
 }
 
@@ -38,7 +40,7 @@ interface LineRecord {
   code:    string
   metrics: {
     extensionKm?: Record<string, number>
-    windows?:     Record<Direction, Array<{ intervalMinutes: number }>>
+    windows?:     Record<Direction, Window[]>
   } | null
 }
 
@@ -154,8 +156,12 @@ export default function CycleMapPage() {
       const cuts            = suggestCuts(trips)
       const existingWindows = existing?.metrics?.windows?.[dir]
       const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
+      // 30min sub-cuts aren't restored from a previous save — the window
+      // shape alone can't reliably tell a real sub-cut apart from an
+      // ordinary single-hour window, so reprocessing always starts fresh
+      const subCuts: number[] = []
 
-      next.set(dir, { hourClusters: hc, cuts, intervalMinutes })
+      next.set(dir, { hourClusters: hc, cuts, subCuts, intervalMinutes })
     }
     setDirStates(next)
   }
@@ -226,9 +232,9 @@ export default function CycleMapPage() {
 
     setSaving(true)
     try {
-      const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number; isDerived?: boolean }>> = {}
+      const windows: Record<string, Window[]> = {}
       for (const [dir, state] of dirStates) {
-        const w = computeWindows(state.hourClusters, state.cuts, state.intervalMinutes)
+        const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes)
         if (w.length > 0) windows[dir] = w
       }
 
@@ -281,11 +287,11 @@ export default function CycleMapPage() {
       }
 
       try {
-        const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number; isDerived?: boolean }>> = {}
+        const windows: Record<string, Window[]> = {}
 
         if (i === lineIndex) {
           for (const [dir, state] of dirStates) {
-            const w = computeWindows(state.hourClusters, state.cuts, state.intervalMinutes)
+            const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes)
             if (w.length > 0) windows[dir] = w
           }
         } else {
@@ -298,7 +304,11 @@ export default function CycleMapPage() {
               const cuts            = suggestCuts(trips)
               const existingWindows = lineRec.metrics?.windows?.[dir]
               const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
-              const w = computeWindows(hc, cuts, intervalMinutes)
+              // 30min sub-cuts aren't restored from a previous save — the window
+      // shape alone can't reliably tell a real sub-cut apart from an
+      // ordinary single-hour window, so reprocessing always starts fresh
+      const subCuts: number[] = []
+              const w = computeWindows(hc, cuts, subCuts, intervalMinutes)
               if (w.length > 0) windows[dir] = w
             }
           }
@@ -337,6 +347,15 @@ export default function CycleMapPage() {
       const next = new Map(prev)
       const s    = next.get(dir)
       if (s) next.set(dir, { ...s, cuts })
+      return next
+    })
+  }, [])
+
+  const handleSubCutsChange = useCallback((dir: Direction, subCuts: number[]) => {
+    setDirStates(prev => {
+      const next = new Map(prev)
+      const s    = next.get(dir)
+      if (s) next.set(dir, { ...s, subCuts })
       return next
     })
   }, [])
@@ -456,7 +475,9 @@ export default function CycleMapPage() {
                     direction={dir}
                     hourClusters={state.hourClusters}
                     cuts={state.cuts}
+                    subCuts={state.subCuts}
                     onCutsChange={cuts => handleCutsChange(dir, cuts)}
+                    onSubCutsChange={subCuts => handleSubCutsChange(dir, subCuts)}
                     onHourClustersChange={hc => handleHourClustersChange(dir, hc)}
                   />
                   <div className="flex items-center gap-2 pl-1">
