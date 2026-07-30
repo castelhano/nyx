@@ -40,8 +40,9 @@ export function CycleMapCanvas({
   const canvasRef   = useRef<HTMLCanvasElement>(null)
   const wrapRef     = useRef<HTMLDivElement>(null)
   const engineRef   = useRef<CycleEngine | null>(null)
-  const [detail, setDetail]   = useState<DetailPopup | null>(null)
-  const [marquee, setMarquee] = useState<MarqueeSelection | null>(null)
+  const [detail, setDetail]     = useState<DetailPopup | null>(null)
+  const [marquee, setMarquee]   = useState<MarqueeSelection | null>(null)
+  const [containerW, setContainerW] = useState(0)
 
   // ── engine lifecycle ──────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ export function CycleMapCanvas({
 
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
+      setContainerW(width)
       if (!initialized) {
         engine.resize(width, height)
         engine.init(canvas)
@@ -107,6 +109,16 @@ export function CycleMapCanvas({
     setDetail(null)
   }
 
+  function handleRemove(hour: number, clusterIdx: number) {
+    const next = new Map(hourClusters)
+    const cs   = [...(next.get(hour) ?? [])]
+    if (!cs[clusterIdx]) return
+    cs.splice(clusterIdx, 1)
+    next.set(hour, markOutliers(cs))
+    onHourClustersChange(next)
+    setDetail(null)
+  }
+
   // ── marquee bulk toggle ──────────────────────────────────────────────────
 
   function closeMarquee() {
@@ -128,6 +140,23 @@ export function CycleMapCanvas({
           cs[idx] = { ...cs[idx], isDisabled: disabled }
         }
         next.set(hour, markOutliers(cs))
+      }
+      onHourClustersChange(next)
+    }
+    closeMarquee()
+  }
+
+  function handleBulkRemove(items: { hour: number; idx: number }[]) {
+    if (items.length > 0) {
+      const next   = new Map(hourClusters)
+      const byHour = new Map<number, number[]>()
+      for (const it of items) {
+        byHour.set(it.hour, [...(byHour.get(it.hour) ?? []), it.idx])
+      }
+      for (const [hour, idxs] of byHour) {
+        const cs      = next.get(hour) ?? []
+        const removed = new Set(idxs)
+        next.set(hour, markOutliers(cs.filter((_, i) => !removed.has(i))))
       }
       onHourClustersChange(next)
     }
@@ -167,8 +196,10 @@ export function CycleMapCanvas({
             hour={detail.hour}
             canvasX={detail.x}
             canvasY={detail.y}
+            containerW={containerW}
             containerH={320}
             onToggle={() => handleToggle(detail.hour, hourClusters.get(detail.hour)?.indexOf(detail.cluster) ?? -1)}
+            onRemove={() => handleRemove(detail.hour, hourClusters.get(detail.hour)?.indexOf(detail.cluster) ?? -1)}
             onClose={() => setDetail(null)}
           />
         )}
@@ -177,6 +208,7 @@ export function CycleMapCanvas({
         {marquee && (
           <MarqueeConfirm
             selection={marquee}
+            containerW={containerW}
             containerH={320}
             onDeactivate={() => handleBulkToggle(
               marquee.items.filter(i => !i.cluster.isDisabled).map(i => ({ hour: i.hour, idx: i.idx })),
@@ -186,6 +218,7 @@ export function CycleMapCanvas({
               marquee.items.filter(i => i.cluster.isDisabled).map(i => ({ hour: i.hour, idx: i.idx })),
               false,
             )}
+            onRemove={() => handleBulkRemove(marquee.items.map(i => ({ hour: i.hour, idx: i.idx })))}
             onClose={closeMarquee}
           />
         )}
@@ -207,16 +240,20 @@ interface DotDetailProps {
   hour:       number
   canvasX:    number
   canvasY:    number
+  containerW: number
   containerH: number
   onToggle:   () => void
+  onRemove:   () => void
   onClose:    () => void
 }
 
-function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onClose }: DotDetailProps) {
+function DotDetail({ cluster, hour, canvasX, canvasY, containerW, containerH, onToggle, onRemove, onClose }: DotDetailProps) {
   const H      = 200  // popup height estimate
+  const W      = 240  // popup width estimate (min-w-[220px] + padding)
   const topRaw = canvasY + H > containerH ? canvasY - H - 8 : canvasY + 12
   const top    = Math.max(4, topRaw)
-  const left   = Math.max(8, Math.min(canvasX - 120, 400))
+  const maxLeft = Math.max(8, containerW - W - 8)
+  const left   = Math.max(8, Math.min(canvasX - W / 2, maxLeft))
 
   return (
     <div
@@ -264,17 +301,26 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
         ))}
       </div>
 
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`w-full text-xs rounded px-2 py-1.5 font-medium transition-colors ${
-          cluster.isDisabled
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
-            : 'bg-muted text-muted-foreground hover:bg-muted/80'
-        }`}
-      >
-        {cluster.isDisabled ? 'Reativar ponto' : 'Desativar ponto'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`flex-1 text-xs rounded px-2 py-1.5 font-medium transition-colors cursor-pointer ${
+            cluster.isDisabled
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+          }`}
+        >
+          {cluster.isDisabled ? 'Reativar' : 'Desativar'}
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex-1 text-xs rounded px-2 py-1.5 font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors cursor-pointer"
+        >
+          Remover
+        </button>
+      </div>
     </div>
   )
 }
@@ -283,13 +329,15 @@ function DotDetail({ cluster, hour, canvasX, canvasY, containerH, onToggle, onCl
 
 interface MarqueeConfirmProps {
   selection:    MarqueeSelection
+  containerW:   number
   containerH:   number
   onActivate:   () => void
   onDeactivate: () => void
+  onRemove:     () => void
   onClose:      () => void
 }
 
-function MarqueeConfirm({ selection, containerH, onActivate, onDeactivate, onClose }: MarqueeConfirmProps) {
+function MarqueeConfirm({ selection, containerW, containerH, onActivate, onDeactivate, onRemove, onClose }: MarqueeConfirmProps) {
   const hasActive   = selection.items.some(i => !i.cluster.isDisabled)
   const hasDisabled = selection.items.some(i => i.cluster.isDisabled)
 
@@ -308,10 +356,12 @@ function MarqueeConfirm({ selection, containerH, onActivate, onDeactivate, onClo
     return () => window.removeEventListener('pointerdown', onPointer)
   }, [onClose])
 
-  const H      = 90  // popup height estimate
+  const H      = 90   // popup height estimate
+  const W      = 220  // popup width estimate (min-w-[200px] + padding)
   const topRaw = selection.y + H > containerH ? selection.y - H - 8 : selection.y + 12
   const top    = Math.max(4, topRaw)
-  const left   = Math.max(8, Math.min(selection.x - 90, 400))
+  const maxLeft = Math.max(8, containerW - W - 8)
+  const left   = Math.max(8, Math.min(selection.x - W / 2, maxLeft))
 
   return (
     <div
@@ -337,7 +387,7 @@ function MarqueeConfirm({ selection, containerH, onActivate, onDeactivate, onClo
           <button
             type="button"
             onClick={onDeactivate}
-            className="flex-1 text-xs rounded px-2 py-1.5 font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            className="flex-1 text-xs rounded px-2 py-1.5 font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer"
           >
             Desativar
           </button>
@@ -346,11 +396,18 @@ function MarqueeConfirm({ selection, containerH, onActivate, onDeactivate, onClo
           <button
             type="button"
             onClick={onActivate}
-            className="flex-1 text-xs rounded px-2 py-1.5 font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            className="flex-1 text-xs rounded px-2 py-1.5 font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer"
           >
             Ativar
           </button>
         )}
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex-1 text-xs rounded px-2 py-1.5 font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors cursor-pointer"
+        >
+          Remover
+        </button>
       </div>
     </div>
   )
