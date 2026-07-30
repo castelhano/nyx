@@ -396,8 +396,29 @@ function RelationMultiSelect({
             selected.includes(id) ? selected.filter(v => v !== id) : [...selected, id],
           )
         }
+        const allIds = options.map((opt: Record<string, unknown>) => String(opt.id))
         return (
-          <div className="flex flex-wrap gap-2">
+          <div className="space-y-2">
+            {!readonly && (
+              <div className="flex items-center gap-3 text-xs">
+                Selecionar:
+                <button
+                  type="button"
+                  onClick={() => ctrl.onChange(allIds)}
+                  className="font-bold text-muted-foreground hover:cursor-pointer hover:text-foreground"
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => ctrl.onChange([])}
+                  className="font-bold text-muted-foreground hover:cursor-pointer hover:text-foreground"
+                >
+                  Nenhum
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
             {options.map((opt: Record<string, unknown>) => {
               const id      = String(opt.id)
               const checked = selected.includes(id)
@@ -419,6 +440,7 @@ function RelationMultiSelect({
                 </button>
               )
             })}
+            </div>
           </div>
         )
       }}
