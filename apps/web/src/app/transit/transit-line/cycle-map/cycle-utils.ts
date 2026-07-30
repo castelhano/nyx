@@ -113,21 +113,22 @@ export function calcWindowAverage(clusters: DotCluster[]): number {
   return Math.round(totalMin / totalCount)
 }
 
+type Window = { from: number; to: number; minutes: number; intervalMinutes: number; isDerived?: boolean }
+
 export function computeWindows(
   hourClusters: Map<number, DotCluster[]>,
   cuts: number[],
   intervalMinutes: number,
-): { from: number; to: number; minutes: number; intervalMinutes: number }[] {
+): Window[] {
   const hours = Array.from(hourClusters.keys()).sort((a, b) => a - b)
   if (hours.length === 0) return []
 
   const minH   = hours[0]
   const maxH   = hours[hours.length - 1]
   const sorted = [...cuts].filter(c => c >= minH && c < maxH).sort((a, b) => a - b)
-
   const bounds = [minH, ...sorted.map(c => c + 1), maxH + 1]
-  const result: { from: number; to: number; minutes: number; intervalMinutes: number }[] = []
 
+  const candidates: { from: number; to: number; minutes: number }[] = []
   for (let i = 0; i < bounds.length - 1; i++) {
     const from = bounds[i]
     const to   = bounds[i + 1] - 1
@@ -136,8 +137,37 @@ export function computeWindows(
       const cs = hourClusters.get(h)
       if (cs) all.push(...cs)
     }
-    const avg = calcWindowAverage(all)
-    if (avg > 0) result.push({ from, to, minutes: avg, intervalMinutes })
+    candidates.push({ from, to, minutes: calcWindowAverage(all) })
   }
+
+  if (candidates.every(c => c.minutes === 0)) return []
+
+  // measured windows keep their average; windows with no data (e.g. a cut
+  // isolating an hour with zero trips) borrow the average of the nearest
+  // measured neighbor and are flagged isDerived so real data is never lost
+  const result: Window[] = candidates.map((c, i) => {
+    if (c.minutes > 0) return { from: c.from, to: c.to, minutes: c.minutes, intervalMinutes }
+
+    let left = i - 1
+    while (left >= 0 && candidates[left].minutes === 0) left--
+    let right = i + 1
+    while (right < candidates.length && candidates[right].minutes === 0) right++
+
+    const leftDist  = left  >= 0                  ? c.from - candidates[left].to   : Infinity
+    const rightDist = right < candidates.length   ? candidates[right].from - c.to  : Infinity
+    const source    = rightDist < leftDist ? candidates[right] : candidates[left]
+
+    return { from: c.from, to: c.to, minutes: source.minutes, intervalMinutes, isDerived: true }
+  })
+
+  // hours outside the measured range (before the first / after the last
+  // hour with data) become their own derived windows covering the full day
+  if (minH > 0) {
+    result.unshift({ from: 0, to: minH - 1, minutes: result[0].minutes, intervalMinutes, isDerived: true })
+  }
+  if (maxH < 23) {
+    result.push({ from: maxH + 1, to: 23, minutes: result[result.length - 1].minutes, intervalMinutes, isDerived: true })
+  }
+
   return result
 }

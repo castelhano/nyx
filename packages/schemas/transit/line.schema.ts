@@ -56,18 +56,21 @@ export const lineSchema = withMeta(
           to:              z.number().min(0).max(23).default(23).meta({ label: 'Até',            min: 0, max: 23 }),
           minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
           intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+          isDerived:       z.boolean().optional().meta({ label: 'Inferida' }),
         })).optional().meta({ label: 'Ida' }),
         INBOUND: z.array(z.object({
           from:            z.number().min(0).max(23).default(0).meta({ label: 'De',             min: 0, max: 23 }),
           to:              z.number().min(0).max(23).default(23).meta({ label: 'Até',            min: 0, max: 23 }),
           minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
           intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+          isDerived:       z.boolean().optional().meta({ label: 'Inferida' }),
         })).optional().meta({ label: 'Volta' }),
         CIRCULAR: z.array(z.object({
           from:            z.number().min(0).max(23).default(0).meta({ label: 'De',             min: 0, max: 23 }),
           to:              z.number().min(0).max(23).default(23).meta({ label: 'Até',            min: 0, max: 23 }),
           minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
           intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+          isDerived:       z.boolean().optional().meta({ label: 'Inferida' }),
         })).optional().meta({ label: 'Circular' }),
       }).optional().meta({ label: 'Janelas de Ciclo' }),
     }).optional().meta({

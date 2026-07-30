@@ -12,6 +12,7 @@ export interface CycleWindow {
   to:              number
   minutes:         number
   intervalMinutes: number
+  isDerived?:      boolean
 }
 
 export interface LineMetrics {

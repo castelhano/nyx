@@ -226,7 +226,7 @@ export default function CycleMapPage() {
 
     setSaving(true)
     try {
-      const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>> = {}
+      const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number; isDerived?: boolean }>> = {}
       for (const [dir, state] of dirStates) {
         const w = computeWindows(state.hourClusters, state.cuts, state.intervalMinutes)
         if (w.length > 0) windows[dir] = w
@@ -281,7 +281,7 @@ export default function CycleMapPage() {
       }
 
       try {
-        const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>> = {}
+        const windows: Record<string, Array<{ from: number; to: number; minutes: number; intervalMinutes: number; isDerived?: boolean }>> = {}
 
         if (i === lineIndex) {
           for (const [dir, state] of dirStates) {
