@@ -117,12 +117,20 @@ export class VehiclePlanImportService {
       }
     }
 
+    const approvalRefByLineCode = new Map<string, string>()
+    for (const row of rows) {
+      if (row.blockCode && !approvalRefByLineCode.has(row.lineCode)) {
+        approvalRefByLineCode.set(row.lineCode, row.blockCode)
+      }
+    }
+
     // Importing establishes a new, already-operating version of each touched line's
     // schedule — auto-approved (supersedes the previous APPROVED one, if any) rather
     // than left as DRAFT, since a re-sync represents the schedule as currently in force.
     const lineScheduleByLineId = new Map<string, string>()
     for (const line of transitLines as any[]) {
-      lineScheduleByLineId.set(line.id, await this.resolveApprovedLineSchedule(line.id, dayTypeId))
+      const approvalRef = approvalRefByLineCode.get(line.code)
+      lineScheduleByLineId.set(line.id, await this.resolveApprovedLineSchedule(line.id, dayTypeId, approvalRef))
     }
 
     const validLineIds = transitLines.map((l: any) => l.id)
@@ -423,7 +431,7 @@ export class VehiclePlanImportService {
     return { created: blockRows.length, trips: tripRows.length, errors }
   }
 
-  private async resolveApprovedLineSchedule(lineId: string, dayTypeId: string): Promise<string> {
+  private async resolveApprovedLineSchedule(lineId: string, dayTypeId: string, approvalRef?: string): Promise<string> {
     const db = this.prisma as any
 
     const previous = await db.lineSchedule.findFirst({
@@ -437,7 +445,7 @@ export class VehiclePlanImportService {
     const now     = new Date()
     const created = await db.lineSchedule.create({
       data: {
-        lineId, dayTypeId,
+        lineId, dayTypeId, approvalRef,
         version:    (last._max.version ?? 0) + 1,
         status:     'APPROVED',
         validFrom:  now,
