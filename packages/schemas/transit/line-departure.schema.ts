@@ -60,7 +60,7 @@ export const lineDepartureSchema = withMeta(
     icon:        'Timer',
     defaultSort: { field: 'departureMinutes', order: 'asc' },
     breadcrumb:  [
-      { resource: 'line-schedule', contextField: 'lineScheduleId', listLabel: 'Partidas', nameField: 'version', keybind: 'f9' },
+      { resource: 'line-schedule', contextField: 'lineScheduleId', listLabel: 'Partidas', nameField: 'approvalRef', keybind: 'f9' },
     ],
   },
 )

@@ -11,16 +11,21 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
 
   override async create(dto: CreateLineScheduleDto): Promise<LineSchedule> {
     const data = this.sanitizeDto(dto as Record<string, unknown>)
-    const version = await this.nextVersion(data.lineId as string, data.dayTypeId as string)
-    return this.model.create({ data: { ...data, version, status: 'DRAFT' } })
+    return this.model.create({ data: { ...data, status: 'DRAFT' } })
   }
 
-  private async nextVersion(lineId: string, dayTypeId: string): Promise<number> {
-    const last = await this.prisma.lineSchedule.aggregate({
-      where: { lineId, dayTypeId },
-      _max:  { version: true },
+  // Placeholder approvalRef for schedules created via "Nova Versão" — user renames it
+  // before/at approval time. Not gapless (renaming/deleting a DRAFT-000N frees the number).
+  private async generateDraftRef(lineId: string, dayTypeId: string): Promise<string> {
+    const existing = await this.prisma.lineSchedule.findMany({
+      where:  { lineId, dayTypeId, approvalRef: { startsWith: 'DRAFT-' } },
+      select: { approvalRef: true },
     })
-    return (last._max.version ?? 0) + 1
+    const maxSuffix = existing.reduce((max, s) => {
+      const n = parseInt(s.approvalRef.slice('DRAFT-'.length), 10)
+      return isNaN(n) ? max : Math.max(max, n)
+    }, 0)
+    return `DRAFT-${String(maxSuffix + 1).padStart(4, '0')}`
   }
 
   override async remove(id: string): Promise<void> {
@@ -41,14 +46,14 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
 
-    const version = await this.nextVersion(schedule.lineId, schedule.dayTypeId)
+    const approvalRef = await this.generateDraftRef(schedule.lineId, schedule.dayTypeId)
 
     return this.prisma.$transaction(async tx => {
       const newSchedule = await tx.lineSchedule.create({
         data: {
           lineId:    schedule.lineId,
           dayTypeId: schedule.dayTypeId,
-          version,
+          approvalRef,
           status:    'DRAFT',
           notes:     schedule.notes ?? undefined,
         },
@@ -70,14 +75,14 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     })
   }
 
-  async approve(id: string, force = false): Promise<{ conflict: { id: string; version: number } } | null> {
+  async approve(id: string, force = false): Promise<{ conflict: { id: string; approvalRef: string } } | null> {
     const schedule = await this.prisma.lineSchedule.findUnique({ where: { id } })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
     if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be approved')
 
     const conflict = await this.prisma.lineSchedule.findFirst({
       where:  { id: { not: id }, lineId: schedule.lineId, dayTypeId: schedule.dayTypeId, status: 'APPROVED' },
-      select: { id: true, version: true },
+      select: { id: true, approvalRef: true },
     })
 
     if (conflict && !force) {

@@ -517,6 +517,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return this.prisma.$transaction(async tx => {
       const newPlan = await tx.vehiclePlan.create({
         data: {
+          scopeId:     plan.scopeId,
           dayTypeId:   plan.dayTypeId,
           description: plan.description ?? undefined,
           status:      'DRAFT',
@@ -887,28 +888,19 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     await this.scorePlan(planId)
   }
 
-  async addLine(planId: string, lineId: string): Promise<void> {
-    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { dayTypeId: true } })
+  // "Limpa" uma linha do plano: remove os blocos/viagens materializados (dayType-scoped)
+  // e o registro de VehiclePlanLine, se existir. A linha continua disponível pra
+  // materializar de novo mais tarde — pertencer ao plano depende só do Scope agora.
+  async clearLine(planId: string, lineId: string): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, dayTypeId: true, status: true },
+    })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
 
-    // Pins whichever LineSchedule is currently APPROVED for this line+dayType — null
-    // ("em análise") when the line has no approved schedule yet. Does not follow
-    // later approvals automatically; stays traceable/stable against the OS it was
-    // built on until explicitly re-linked.
-    const approvedSchedule = await this.prisma.lineSchedule.findFirst({
-      where:  { lineId, dayTypeId: plan.dayTypeId, status: 'APPROVED' },
-      select: { id: true },
-    })
-
-    await this.prisma.vehiclePlanLine.create({
-      data: { vehiclePlanId: planId, lineId, lineScheduleId: approvedSchedule?.id },
-    })
-  }
-
-  async removeLine(planId: string, lineId: string): Promise<void> {
-    await this.prisma.vehiclePlanLine.delete({
-      where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-    })
+    await this.clearLinesFromPlan(planId, [lineId], plan.dayTypeId)
+    await this.prisma.vehiclePlanLine.deleteMany({ where: { vehiclePlanId: planId, lineId } })
   }
 
   // Removes this plan's blocks/trips for the given lines (dayType-scoped) — used both
@@ -962,15 +954,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   async switchLineSchedule(planId: string, lineId: string, lineScheduleId: string): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
-      select: { id: true, dayTypeId: true, status: true },
+      select: { id: true, scopeId: true, dayTypeId: true, status: true },
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
 
-    const planLine = await this.prisma.vehiclePlanLine.findUnique({
-      where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-    })
-    if (!planLine) throw new NotFoundException('Line not found in this plan')
+    const line = await this.prisma.transitLine.findUnique({ where: { id: lineId }, select: { scopeId: true } })
+    if (!line || line.scopeId !== plan.scopeId) throw new BadRequestException('Linha não pertence ao escopo deste planejamento')
 
     const schedule = await (this.prisma as any).lineSchedule.findUnique({
       where:   { id: lineScheduleId },
@@ -1009,9 +999,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       await (this.prisma as any).transitTrip.createMany({ data: tripRows })
     }
 
-    await this.prisma.vehiclePlanLine.update({
-      where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-      data:  { lineScheduleId, isDrifted: false },
+    await this.prisma.vehiclePlanLine.upsert({
+      where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+      create: { vehiclePlanId: planId, lineId, lineScheduleId, isDrifted: false },
+      update: { lineScheduleId, isDrifted: false },
     })
   }
 
@@ -1020,16 +1011,34 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       where:   { id: planId },
       include: {
         dayType: { select: { id: true, name: true, code: true } },
-        lines: {
-          orderBy: { line: { code: 'asc' } },
+        scope: {
           include: {
-            line:         { select: { id: true, name: true, code: true, metrics: true } },
-            lineSchedule: { select: { id: true, version: true, status: true, approvalRef: true } },
+            lines: { orderBy: { code: 'asc' }, select: { id: true, name: true, code: true, metrics: true } },
+          },
+        },
+        lines: {
+          include: {
+            lineSchedule: { select: { id: true, status: true, approvalRef: true } },
           },
         },
       },
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    // Universo de linhas vem do Scope; VehiclePlanLine só existe pras já materializadas
+    // neste plano (lineScheduleId/isDrifted) — mesmo shape que o frontend já consome.
+    const materializedByLineId = new Map(plan.lines.map(l => [l.lineId, l]))
+    const lines = plan.scope.lines.map(line => {
+      const materialized = materializedByLineId.get(line.id)
+      return {
+        lineId:         line.id,
+        line,
+        lineScheduleId: materialized?.lineScheduleId ?? null,
+        lineSchedule:   materialized?.lineSchedule ?? null,
+        isDrifted:      materialized?.isDrifted ?? false,
+      }
+    })
+    const planWithLines = { ...plan, lines }
 
     const blocks = await (this.prisma as any).vehicleBlock.findMany({
       where:   { vehiclePlanId: planId },
@@ -1069,20 +1078,16 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       },
     })
 
-    return { plan, blocks }
+    return { plan: planWithLines, blocks }
   }
 
   async activate(planId: string, force = false): Promise<{ conflict: { id: string; description: string | null } } | null> {
-    const plan = await this.prisma.vehiclePlan.findUnique({
-      where:   { id: planId },
-      include: { lines: { select: { lineId: true } } },
-    })
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status === 'ACTIVE') throw new BadRequestException('Plan is already active')
 
-    const lineIds  = plan.lines.map(l => l.lineId)
     const conflict = await this.prisma.vehiclePlan.findFirst({
-      where:  { id: { not: planId }, dayTypeId: plan.dayTypeId, status: 'ACTIVE', lines: { some: { lineId: { in: lineIds } } } },
+      where:  { id: { not: planId }, scopeId: plan.scopeId, dayTypeId: plan.dayTypeId, status: 'ACTIVE' },
       select: { id: true, description: true },
     })
 

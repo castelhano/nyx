@@ -26,6 +26,17 @@ export const vehiclePlanSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
 
+    scopeId: z.uuid().meta({
+      label:          'Escopo',
+      widget:         'select',
+      resource:       'scope',
+      domain:         'transit',
+      labelField:     'name',
+      listVisibility: 'visible',
+      filter:         { type: 'relation', endpoint: 'transit/scope', labelField: 'name' },
+      keybind:        'c',
+    }),
+
     dayTypeId: z.uuid().meta({
       label:          'Tipo de Dia',
       widget:         'select',

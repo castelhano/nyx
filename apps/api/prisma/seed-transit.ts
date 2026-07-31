@@ -62,6 +62,16 @@ const LOCALITIES: Array<{
   { code: '1034', name: 'Aguacu',           abbr: 'AGUACU', lat: -15.278967681551400, lng: -56.12290340530900   },
 ]
 
+// ── scope ─────────────────────────────────────────────────────────────────────
+// Requer que prisma/seed-core.ts já tenha rodado (busca as filiais por taxId).
+
+const SCOPE_NAME = 'Urbano Cuiaba'
+
+const SCOPE_OPERATORS: Array<{ branchTaxId: string; abbr: string; share: number }> = [
+  { branchTaxId: '35.835.010/0001-21', abbr: 'VPAR',   share: 29.50 },
+  { branchTaxId: '33.813.869/0001-04', abbr: 'RAPIDO', share: 24.50 },
+]
+
 // ── day types ─────────────────────────────────────────────────────────────────
 
 const DAY_TYPES: Array<{ code: string; name: string; pattern?: object; priority: number; sortOrder: number }> = [
@@ -240,14 +250,35 @@ async function main() {
   }
   console.log(`  ✓ day types (${DAY_TYPES.length})`)
 
+  // ── scope ───────────────────────────────────────────────────────────────────
+
+  let scope = await prisma.scope.findFirst({ where: { name: SCOPE_NAME } })
+  if (!scope) {
+    scope = await prisma.scope.create({ data: { name: SCOPE_NAME } })
+  }
+
+  for (const op of SCOPE_OPERATORS) {
+    const branch = await prisma.branch.findUnique({ where: { taxId: op.branchTaxId } })
+    if (!branch) {
+      console.warn(`  ! filial ${op.branchTaxId} não encontrada — rode prisma/seed-core.ts antes`)
+      continue
+    }
+    await prisma.scopeOperator.upsert({
+      where:  { scopeId_branchId: { scopeId: scope.id, branchId: branch.id } },
+      update: { abbr: op.abbr, share: op.share },
+      create: { scopeId: scope.id, branchId: branch.id, abbr: op.abbr, share: op.share },
+    })
+  }
+  console.log(`  ✓ scope "${SCOPE_NAME}" (${SCOPE_OPERATORS.length} operadores)`)
+
   // ── lines ───────────────────────────────────────────────────────────────────
 
   const lineMap = new Map<string, string>()
   for (const line of LINES) {
     const record = await prisma.transitLine.upsert({
       where:  { code: line.code },
-      update: { name: line.name, type: line.type as any, metrics: line.metrics, isActive: true },
-      create: { code: line.code, name: line.name, type: line.type as any, metrics: line.metrics, isActive: true },
+      update: { name: line.name, type: line.type as any, metrics: line.metrics, isActive: true, scopeId: scope.id },
+      create: { code: line.code, name: line.name, type: line.type as any, metrics: line.metrics, isActive: true, scopeId: scope.id },
     })
     lineMap.set(line.code, record.id)
   }

@@ -44,6 +44,16 @@ export const lineSchema = withMeta(
       keybind:        'a',
     }),
 
+    scopeId: z.uuid().optional().meta({
+      label:          'Escopo',
+      widget:         'select',
+      resource:       'scope',
+      domain:         'transit',
+      labelField:     'name',
+      listVisibility: 'visible',
+      filter:         { type: 'relation', endpoint: 'transit/scope', labelField: 'name' },
+    }),
+
     metrics: z.object({
       extensionKm: z.object({
         OUTBOUND:  z.number().positive().optional().meta({ label: 'Ida (km)' }),

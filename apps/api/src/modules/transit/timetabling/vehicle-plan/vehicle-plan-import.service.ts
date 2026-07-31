@@ -47,6 +47,7 @@ export class VehiclePlanImportService {
   async import(
     file:         Express.Multer.File,
     branchId:     string,
+    scopeId:      string,
     dayTypeId:    string,
     depotId:      string,
     userId:       string,
@@ -61,10 +62,10 @@ export class VehiclePlanImportService {
       domain:      'transit',
       resource:    'vehicle-plan',
       createdById: userId,
-      input:       { filename: file.originalname, branchId, dayTypeId, depotId, setupMinutes, normalize, planId },
+      input:       { filename: file.originalname, branchId, scopeId, dayTypeId, depotId, setupMinutes, normalize, planId },
     })
 
-    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, dayTypeId, depotId, setupMinutes, normalize, planId))
+    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, scopeId, dayTypeId, depotId, setupMinutes, normalize, planId))
 
     return { jobId: job.id }
   }
@@ -72,6 +73,7 @@ export class VehiclePlanImportService {
   private async execute(
     buffer:       Buffer,
     branchId:     string,
+    scopeId:      string,
     dayTypeId:    string,
     depotId:      string,
     setupMinutes: number = 0,
@@ -81,9 +83,10 @@ export class VehiclePlanImportService {
     if (planId) {
       const existing = await (this.prisma as any).vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { dayTypeId: true },
+        select: { scopeId: true, dayTypeId: true },
       })
       if (!existing) throw new Error('Planejamento não encontrado')
+      scopeId   = existing.scopeId
       dayTypeId = existing.dayTypeId
     }
 
@@ -108,11 +111,17 @@ export class VehiclePlanImportService {
     const transitLines = await (this.prisma as any).transitLine.findMany({
       where: { code: { in: lineCodes } },
     })
-    const lineByCode = new Map<string, { id: string; code: string; metrics: any }>(
-      transitLines.map((l: any) => [l.code, l]),
-    )
+
+    const inScopeLines: any[] = []
+    for (const line of transitLines as any[]) {
+      if (line.scopeId !== scopeId) {
+        errors.push({ line: 0, record: line.code, message: `Linha ${line.code} não pertence ao escopo deste planejamento` })
+        continue
+      }
+      inScopeLines.push(line)
+    }
     for (const code of lineCodes) {
-      if (!lineByCode.has(code)) {
+      if (!transitLines.some((l: any) => l.code === code)) {
         errors.push({ line: 0, record: code, message: `Linha ${code} não encontrada no cadastro` })
       }
     }
@@ -127,13 +136,25 @@ export class VehiclePlanImportService {
     // Importing establishes a new, already-operating version of each touched line's
     // schedule — auto-approved (supersedes the previous APPROVED one, if any) rather
     // than left as DRAFT, since a re-sync represents the schedule as currently in force.
-    const lineScheduleByLineId = new Map<string, string>()
-    for (const line of transitLines as any[]) {
+    // Reimporting a schedule whose approvalRef already exists for this line+dayType
+    // reuses that record as-is (idempotent) instead of creating a duplicate/superseding.
+    const lineScheduleByLineId = new Map<string, { id: string; reused: boolean }>()
+    const resolvedLines: any[] = []
+    for (const line of inScopeLines) {
       const approvalRef = approvalRefByLineCode.get(line.code)
+      if (!approvalRef) {
+        errors.push({ line: 0, record: line.code, message: `Linha ${line.code} sem referência de OSO no arquivo` })
+        continue
+      }
       lineScheduleByLineId.set(line.id, await this.resolveApprovedLineSchedule(line.id, dayTypeId, approvalRef))
+      resolvedLines.push(line)
     }
 
-    const validLineIds = transitLines.map((l: any) => l.id)
+    const lineByCode = new Map<string, { id: string; code: string; metrics: any }>(
+      resolvedLines.map((l: any) => [l.code, l]),
+    )
+
+    const validLineIds = resolvedLines.map((l: any) => l.id)
 
     const routes = await (this.prisma as any).transitRoute.findMany({
       where:  { lineId: { in: validLineIds } },
@@ -142,6 +163,18 @@ export class VehiclePlanImportService {
     const routeByKey = new Map<string, { id: string; originLocalityId: string; destinationLocalityId: string }>(
       routes.map((r: any) => [`${r.lineId}:${r.direction}`, r]),
     )
+
+    const reusedScheduleIds = [...lineScheduleByLineId.values()].filter(s => s.reused).map(s => s.id)
+    const existingDeparturesByKey = new Map<string, string>()
+    if (reusedScheduleIds.length > 0) {
+      const existingDepartures = await (this.prisma as any).lineDeparture.findMany({
+        where:  { lineScheduleId: { in: reusedScheduleIds } },
+        select: { id: true, lineScheduleId: true, routeId: true, departureMinutes: true },
+      })
+      for (const d of existingDepartures as any[]) {
+        existingDeparturesByKey.set(`${d.lineScheduleId}:${d.routeId}:${d.departureMinutes}`, d.id)
+      }
+    }
 
     let matrixMap: Record<string, { minutes: number; km: number }> = {}
     let idealIntervalMin = 5
@@ -163,8 +196,8 @@ export class VehiclePlanImportService {
     if (planId) {
       await this.vehiclePlanSvc.clearLinesFromPlan(planId, validLineIds, dayTypeId)
 
-      for (const line of transitLines as any[]) {
-        const lineScheduleId = lineScheduleByLineId.get(line.id)
+      for (const line of resolvedLines) {
+        const lineScheduleId = lineScheduleByLineId.get(line.id)!.id
         await (this.prisma as any).vehiclePlanLine.upsert({
           where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: line.id } },
           create: { vehiclePlanId: planId, lineId: line.id, lineScheduleId },
@@ -181,10 +214,11 @@ export class VehiclePlanImportService {
     } else {
       plan = await (this.prisma as any).vehiclePlan.create({
         data: {
+          scopeId,
           dayTypeId,
           status: 'DRAFT',
           lines: {
-            create: transitLines.map((l: any) => ({ lineId: l.id, lineScheduleId: lineScheduleByLineId.get(l.id) })),
+            create: resolvedLines.map((l: any) => ({ lineId: l.id, lineScheduleId: lineScheduleByLineId.get(l.id)!.id })),
           },
         },
       })
@@ -280,13 +314,31 @@ export class VehiclePlanImportService {
         const km = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 
         if (row.isProductive) {
-          const lineDepartureId = randomUUID()
-          lineDepartureRows.push({
-            id:               lineDepartureId,
-            lineScheduleId:   lineScheduleByLineId.get(line.id)!,
-            routeId:          route.id,
-            departureMinutes,
-          })
+          const scheduleInfo = lineScheduleByLineId.get(line.id)!
+          let lineDepartureId: string
+
+          if (scheduleInfo.reused) {
+            const key       = `${scheduleInfo.id}:${route.id}:${departureMinutes}`
+            const existing  = existingDeparturesByKey.get(key)
+            if (!existing) {
+              errors.push({
+                line:    row._lineNum,
+                record:  `${row.lineCode} tab ${row.tabId}`,
+                message: `Partida não encontrada na OSO já cadastrada para ${row.lineCode} — arquivo diverge do quadro aprovado`,
+              })
+              continue
+            }
+            lineDepartureId = existing
+          } else {
+            lineDepartureId = randomUUID()
+            lineDepartureRows.push({
+              id:               lineDepartureId,
+              lineScheduleId:   scheduleInfo.id,
+              routeId:          route.id,
+              departureMinutes,
+            })
+          }
+
           perBlockEntries.push({
             kind:             'trip',
             id:               randomUUID(),
@@ -431,22 +483,25 @@ export class VehiclePlanImportService {
     return { created: blockRows.length, trips: tripRows.length, errors }
   }
 
-  private async resolveApprovedLineSchedule(lineId: string, dayTypeId: string, approvalRef?: string): Promise<string> {
+  private async resolveApprovedLineSchedule(
+    lineId: string, dayTypeId: string, approvalRef: string,
+  ): Promise<{ id: string; reused: boolean }> {
     const db = this.prisma as any
+
+    const existing = await db.lineSchedule.findUnique({
+      where:  { lineId_dayTypeId_approvalRef: { lineId, dayTypeId, approvalRef } },
+      select: { id: true },
+    })
+    if (existing) return { id: existing.id, reused: true }
 
     const previous = await db.lineSchedule.findFirst({
       where:  { lineId, dayTypeId, status: 'APPROVED' },
       select: { id: true },
     })
-    const last = await db.lineSchedule.aggregate({
-      where: { lineId, dayTypeId },
-      _max:  { version: true },
-    })
     const now     = new Date()
     const created = await db.lineSchedule.create({
       data: {
         lineId, dayTypeId, approvalRef,
-        version:    (last._max.version ?? 0) + 1,
         status:     'APPROVED',
         validFrom:  now,
         approvedAt: now,
@@ -457,7 +512,7 @@ export class VehiclePlanImportService {
       await db.lineSchedule.update({ where: { id: previous.id }, data: { status: 'SUPERSEDED', validTo: now } })
     }
 
-    return created.id
+    return { id: created.id, reused: false }
   }
 
 }

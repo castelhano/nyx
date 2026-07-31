@@ -26,6 +26,8 @@ export default function VehiclePlanListPage() {
   const [importPlanId,    setImportPlanId]    = useState<string | null>(null)
   const [importDayTypeId, setImportDayTypeId] = useState<string | null>(null)
   const [importDayTypeName, setImportDayTypeName] = useState<string | null>(null)
+  const [importScopeId,   setImportScopeId]   = useState<string | null>(null)
+  const [importScopeName, setImportScopeName] = useState<string | null>(null)
 
   const { guardNode, meta } = usePageGuard('transit', 'vehicle-plan')
   if (guardNode) return guardNode
@@ -61,6 +63,8 @@ export default function VehiclePlanListPage() {
       setImportPlanId(row.id as string)
       setImportDayTypeId(row.dayTypeId as string | null)
       setImportDayTypeName((row as any).dayType?.name ?? null)
+      setImportScopeId(row.scopeId as string | null)
+      setImportScopeName((row as any).scope?.name ?? null)
       setImportOpen(true)
       return
     }
@@ -107,12 +111,15 @@ export default function VehiclePlanListPage() {
           extraBody={importPlanId ? { planId: importPlanId } : undefined}
           readonlyFields={importPlanId && importDayTypeId ? {
             dayTypeId: { value: importDayTypeId, displayLabel: importDayTypeName ?? importDayTypeId },
+            ...(importScopeId ? { scopeId: { value: importScopeId, displayLabel: importScopeName ?? importScopeId } } : {}),
           } : undefined}
           onClose={() => {
             setImportOpen(false)
             setImportPlanId(null)
             setImportDayTypeId(null)
             setImportDayTypeName(null)
+            setImportScopeId(null)
+            setImportScopeName(null)
           }}
         />
       )}

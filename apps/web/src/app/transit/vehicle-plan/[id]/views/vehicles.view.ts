@@ -153,8 +153,9 @@ export interface VehiclePlanGanttData {
     lines:   Array<{
       lineId:         string
       lineScheduleId: string | null
+      isDrifted:      boolean
       line:         { id: string; code: string; name: string; metrics: LineMetrics | null }
-      lineSchedule: { id: string; version: number; status: string; approvalRef: string | null } | null
+      lineSchedule: { id: string; status: string; approvalRef: string | null } | null
     }>
   }
   blocks: GanttBlock[]

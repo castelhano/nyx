@@ -197,13 +197,26 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
 // ── creation form (shown when id === 'new') ───────────────────────────────────
 
 interface DayType { id: string; name: string; code: string }
+interface ScopeOption { id: string; name: string }
 
 function NewPlanForm() {
   const router    = useRouter()
   const { toast } = useToast()
 
+  const [scopeId,   setScopeId]   = useState('')
   const [dayTypeId, setDayTypeId] = useState('')
   const [isPending, setIsPending] = useState(false)
+
+  const { data: scopes = [] } = useQuery<ScopeOption[]>({
+    queryKey: ['transit', 'scope', 'list'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/scope')
+      if (!res.ok) throw new Error('Erro ao carregar escopos')
+      const json = await res.json()
+      return json.data ?? json
+    },
+    staleTime: 60_000,
+  })
 
   const { data: dayTypes = [] } = useQuery<DayType[]>({
     queryKey: ['transit', 'day-type', 'list'],
@@ -217,17 +230,21 @@ function NewPlanForm() {
   })
 
   useEffect(() => {
+    if (!scopeId && scopes.length > 0) setScopeId(scopes[0].id)
+  }, [scopes, scopeId])
+
+  useEffect(() => {
     if (!dayTypeId && dayTypes.length > 0) setDayTypeId(dayTypes[0].id)
   }, [dayTypes, dayTypeId])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!dayTypeId) return
+    if (!scopeId || !dayTypeId) return
     setIsPending(true)
     try {
       const res = await apiFetch('/transit/vehicle-plan', {
         method: 'POST',
-        body:   JSON.stringify({ dayTypeId }),
+        body:   JSON.stringify({ scopeId, dayTypeId }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -250,8 +267,29 @@ function NewPlanForm() {
         <div>
           <h2 className="text-base font-semibold mb-2">Novo Planejamento</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Selecione o tipo de dia para iniciar.
+            Selecione o escopo e o tipo de dia para iniciar.
           </p>
+        </div>
+
+        <div>
+          <label htmlFor="scopeId" className="text-sm font-medium">
+            Escopo <span className="ps-1">*</span>
+          </label>
+          <div className="relative mt-2">
+            <select
+              id="scopeId"
+              value={scopeId}
+              onChange={e => setScopeId(e.target.value)}
+              required
+              autoFocus
+              className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+            >
+              {scopes.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          </div>
         </div>
 
         <div>
@@ -264,7 +302,6 @@ function NewPlanForm() {
               value={dayTypeId}
               onChange={e => setDayTypeId(e.target.value)}
               required
-              autoFocus
               className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
             >
               {dayTypes.map(dt => (
@@ -275,7 +312,7 @@ function NewPlanForm() {
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button type="submit" disabled={isPending || !dayTypeId} className="w-full" size="default">
+          <Button type="submit" disabled={isPending || !scopeId || !dayTypeId} className="w-full" size="default">
           {isPending ? 'Criando…' : 'Criar Planejamento'}
           </Button>
           <Button type="button" className="w-full" size="default" variant='cancel' onClick={ () => router.push('/transit/vehicle-plan') }>
@@ -2654,10 +2691,13 @@ export default function VehiclePlanPage() {
 
         {linesPanelOpen && (
           <LinesPanel
+            planId={id}
             planLines={ganttData?.plan?.lines ?? []}
             selectedLineIds={selectedLineIds}
             onSelectionChange={setSelectedLineIds}
             onClose={() => setLinesPanelOpen(false)}
+            onLineCleared={() => refetchGantt()}
+            canClear={canUpdate && (record as any)?.status === 'DRAFT'}
           />
         )}
       </div>

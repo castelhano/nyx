@@ -24,12 +24,6 @@ export const lineScheduleSchema = withMeta(
       className:      'md:w-1/3',
     }),
 
-    version: z.number().int().meta({
-      label:          'Versão',
-      showInForm:     false,
-      listVisibility: 'visible',
-    }),
-
     // gerenciado via ações "Nova Versão" / "Aprovar" — não editável em massa pelo form,
     // para preservar a transação de supersessão (só uma APPROVED por linha+dayType)
     status: z.enum(['DRAFT', 'APPROVED', 'SUPERSEDED', 'ARCHIVED']).default('DRAFT').meta({
@@ -57,7 +51,7 @@ export const lineScheduleSchema = withMeta(
       listVisibility: 'visible',
     }),
 
-    approvalRef: z.string().optional().meta({
+    approvalRef: z.string().min(1).meta({
       label:          'OSO',
       placeholder:    'No do processo',
       listVisibility: 'visible',
@@ -83,7 +77,7 @@ export const lineScheduleSchema = withMeta(
   {
     label:       'OSO',
     labelPlural: 'OSOs',
-    nameField:   'version',
+    nameField:   'approvalRef',
     icon:        'CalendarSync',
     defaultSort: { field: 'createdAt', order: 'desc' },
     breadcrumb:  [

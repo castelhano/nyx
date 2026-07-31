@@ -97,15 +97,9 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.addInterval(id, body)
   }
 
-  @Post(':id/lines')
-  @HttpCode(200)
-  addLine(@Param('id') id: string, @Body('lineId') lineId: string) {
-    return this.vehiclePlanService.addLine(id, lineId)
-  }
-
   @Delete(':id/lines/:lineId')
-  removeLine(@Param('id') id: string, @Param('lineId') lineId: string) {
-    return this.vehiclePlanService.removeLine(id, lineId)
+  clearLine(@Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.vehiclePlanService.clearLine(id, lineId)
   }
 
   @Post(':id/lines/:lineId/switch-schedule')

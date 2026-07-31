@@ -45,6 +45,19 @@ export class VehiclePlanImportController {
         dependsOn:      'companyId',
       },
       {
+        name:           'scopeId',
+        label:          'Escopo',
+        type:           'relation',
+        required:       true,
+        listVisibility: 'never',
+        showInForm:     true,
+        sortable:       false,
+        widget:         'select',
+        resource:       'scope',
+        domain:         'transit',
+        labelField:     'name',
+      },
+      {
         name:           'dayTypeId',
         label:          'Tipo de Dia',
         type:           'relation',
@@ -102,6 +115,7 @@ export class VehiclePlanImportController {
   async import(
     @UploadedFile() file: Express.Multer.File,
     @Body('branchId')      branchId:        string,
+    @Body('scopeId')       scopeId:         string,
     @Body('dayTypeId')     dayTypeId:       string,
     @Body('depotId')       depotId:         string,
     @Body('setupMinutes')  setupMinutesRaw: string | undefined,
@@ -111,12 +125,13 @@ export class VehiclePlanImportController {
   ) {
     if (!file)                   throw new BadRequestException('Arquivo não enviado')
     if (!branchId)               throw new BadRequestException('Filial obrigatória')
+    if (!planId && !scopeId)     throw new BadRequestException('Escopo obrigatório')
     if (!planId && !dayTypeId)   throw new BadRequestException('Tipo de dia obrigatório')
     if (!depotId)                throw new BadRequestException('Garagem obrigatória')
 
     const setupMinutes = parseInt(setupMinutesRaw ?? '0', 10) || 0
     const normalize    = normalizeRaw === 'true'
 
-    return this.importService.import(file, branchId, dayTypeId, depotId, req.user.id, setupMinutes, normalize, planId || undefined)
+    return this.importService.import(file, branchId, scopeId, dayTypeId, depotId, req.user.id, setupMinutes, normalize, planId || undefined)
   }
 }

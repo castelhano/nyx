@@ -3,11 +3,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
+import { extractError } from '@/lib/utils'
+import { useToast } from '@/lib/toast-context'
+import { useConfirm } from '@/lib/confirm-context'
 import { Icons }    from '@/lib/icons'
 
 interface PlanLine {
-  lineId: string
-  line:   { id: string; code: string; name: string }
+  lineId:         string
+  line:           { id: string; code: string; name: string }
+  lineScheduleId?: string | null
+  isDrifted?:      boolean
 }
 
 interface LineGroup {
@@ -17,17 +22,47 @@ interface LineGroup {
 }
 
 interface Props {
+  planId:            string
   planLines:         PlanLine[]
   selectedLineIds:   Set<string>
   onSelectionChange: (ids: Set<string>) => void
   onClose:           () => void
+  onLineCleared?:    () => void
+  canClear?:         boolean
 }
 
-export function LinesPanel({ planLines, selectedLineIds, onSelectionChange, onClose }: Props) {
+export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChange, onClose, onLineCleared, canClear }: Props) {
   const [search,   setSearch]   = useState('')
   const [groupId,  setGroupId]  = useState('')
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [clearingId, setClearingId] = useState<string | null>(null)
   const bulkRef = useRef<HTMLDivElement>(null)
+  const { toast }  = useToast()
+  const confirm    = useConfirm()
+
+  async function handleClearLine(lineId: string, lineCode: string) {
+    const ok = await confirm({
+      title:        'Limpar linha do plano',
+      description:  `As viagens e blocos de "${lineCode}" materializados neste plano serão removidos. A linha continua disponível no escopo para carregar de novo depois.`,
+      confirmLabel: 'Limpar',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    setClearingId(lineId)
+    try {
+      const res = await apiFetch(`/transit/vehicle-plan/${planId}/lines/${lineId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json, 'Erro ao limpar linha'))
+      }
+      toast.success('Linha removida do plano')
+      onLineCleared?.()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao limpar linha')
+    } finally {
+      setClearingId(null)
+    }
+  }
 
   useEffect(() => {
     if (!bulkOpen) return
@@ -176,7 +211,7 @@ export function LinesPanel({ planLines, selectedLineIds, onSelectionChange, onCl
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
         {planLines.length === 0 && (
           <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-            Nenhuma linha no plano
+            Nenhuma linha no escopo
           </p>
         )}
         {visibleLines.length === 0 && planLines.length > 0 && (
@@ -184,22 +219,40 @@ export function LinesPanel({ planLines, selectedLineIds, onSelectionChange, onCl
             Nenhum resultado
           </p>
         )}
-        {visibleLines.map(({ lineId, line }) => {
-          const checked = selectedLineIds.has(lineId)
+        {visibleLines.map(({ lineId, line, lineScheduleId, isDrifted }) => {
+          const checked      = selectedLineIds.has(lineId)
+          const materialized = lineScheduleId != null || isDrifted
           return (
-            <label
+            <div
               key={lineId}
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer select-none"
+              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent select-none group"
             >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggleLine(lineId)}
-                className="w-3.5 h-3.5 accent-primary shrink-0"
-              />
-              <span className="text-xs font-mono font-medium">{line.code}</span>
-              <span className="text-xs text-muted-foreground truncate flex-1">{line.name}</span>
-            </label>
+              <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleLine(lineId)}
+                  className="w-3.5 h-3.5 accent-primary shrink-0"
+                />
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${materialized ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
+                  title={materialized ? 'Com viagens neste plano' : 'Ainda não carregada neste plano'}
+                />
+                <span className="text-xs font-mono font-medium">{line.code}</span>
+                <span className="text-xs text-muted-foreground truncate flex-1">{line.name}</span>
+              </label>
+              {canClear && materialized && (
+                <button
+                  type="button"
+                  onClick={() => handleClearLine(lineId, line.code)}
+                  disabled={clearingId === lineId}
+                  title="Limpar linha do plano"
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity shrink-0 disabled:opacity-50"
+                >
+                  <Icons.Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           )
         })}
       </div>

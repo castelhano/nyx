@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, BadRequestException } from '@nestjs/common'
 import { lineSchema, Line, CreateLineDto, UpdateLineDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
@@ -35,10 +35,20 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
   }
 
   override async update(id: string, dto: UpdateLineDto): Promise<Line> {
-    if (dto.metrics === undefined) return super.update(id, dto)
+    if (dto.scopeId === undefined && dto.metrics === undefined) return super.update(id, dto)
 
     const current = await this.findOne(id)
-    const merged  = { ...(current.metrics as object ?? {}), ...dto.metrics }
+
+    if (dto.scopeId !== undefined && (dto.scopeId ?? null) !== ((current as any).scopeId ?? null)) {
+      const materialized = await this.prisma.vehiclePlanLine.count({ where: { lineId: id } })
+      if (materialized > 0) {
+        throw new BadRequestException('Linha possui planejamento(s) com viagens materializadas — não é possível alterar o escopo')
+      }
+    }
+
+    if (dto.metrics === undefined) return super.update(id, dto)
+
+    const merged = { ...(current.metrics as object ?? {}), ...dto.metrics }
     return this.model.update({
       where: { id },
       data:  this.sanitizeDto({ ...dto, metrics: merged } as Record<string, unknown>),

@@ -67,6 +67,7 @@ model TransitLine {
   name      String
   type      LineType
   isActive  Boolean  @default(true)
+  scopeId   String?
   notes     String?
   /* metrics shape
    {
@@ -82,6 +83,7 @@ model TransitLine {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  scope      Scope?           @relation(fields: [scopeId], references: [id], onDelete: Restrict)
   routes     TransitRoute[]
   planLines  VehiclePlanLine[]
   exceptions LineCalendarExceptionLine[]
@@ -215,20 +217,20 @@ model LineCalendarExceptionLine {
 
 // A line's officially planned service — the sequence of departures per direction
 // that the line operates under, as agreed with the granting authority (orgao gestor).
-// Versioned per (line, dayType): at most one APPROVED version at a time; approving
-// a new version supersedes the previous one, which is kept for history.
+// Identified per (line, dayType) by approvalRef (a OSO number issued by the orgao
+// gestor): at most one APPROVED version at a time; approving a new one supersedes
+// the previous APPROVED record, which is kept for history.
 model LineSchedule {
   id          String             @id @default(uuid())
   lineId      String
   dayTypeId   String
-  version     Int
   status      LineScheduleStatus @default(DRAFT)
   // vigencia — set when the version is approved
   validFrom   DateTime?
   // set when superseded by a newer approved version
   validTo     DateTime?
-  // n do processo/portaria do orgao gestor — optional, may be filled in after the fact
-  approvalRef String?
+  // n do processo/portaria do orgao gestor — business identity of this record
+  approvalRef String
   approvedAt  DateTime?
   notes       String?
   createdAt   DateTime           @default(now())
@@ -239,7 +241,7 @@ model LineSchedule {
   departures       LineDeparture[]
   vehiclePlanLines VehiclePlanLine[]
 
-  @@unique([lineId, dayTypeId, version])
+  @@unique([lineId, dayTypeId, approvalRef])
   @@map("transit_line_schedules")
 }
 
@@ -332,6 +334,7 @@ model BlockInterval {
 
 model VehiclePlan {
   id          String            @id @default(uuid())
+  scopeId     String
   dayTypeId   String
   description String?
   status      VehiclePlanStatus @default(DRAFT)
@@ -346,11 +349,47 @@ model VehiclePlan {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
+  scope   Scope             @relation(fields: [scopeId], references: [id], onDelete: Restrict)
   dayType DayType           @relation(fields: [dayTypeId], references: [id])
   lines   VehiclePlanLine[]
   blocks  VehicleBlock[]
 
   @@map("transit_vehicle_plans")
+}
+
+// Universo de linhas + operadores de um projeto — todo VehiclePlan pertence a
+// exatamente um Scope, que define quais linhas podem ser materializadas nele.
+// Uso futuro: base para composição de escala de motoristas (ScopeOperator.share).
+model Scope {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lines        TransitLine[]
+  operators    ScopeOperator[]
+  vehiclePlans VehiclePlan[]
+
+  @@map("transit_scopes")
+}
+
+// Filial que opera dentro de um Scope — abbr/share reservados para uso futuro
+// (composição de escala de motoristas).
+model ScopeOperator {
+  id        String   @id @default(uuid())
+  scopeId   String
+  branchId  String
+  abbr      String
+  share     Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scope  Scope  @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  branch Branch @relation("BranchScopeOperators", fields: [branchId], references: [id])
+
+  @@unique([scopeId, branchId])
+  @@map("transit_scope_operators")
 }
 
 model VehiclePlanLine {
