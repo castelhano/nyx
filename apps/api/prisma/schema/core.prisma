@@ -151,7 +151,7 @@ model Job {
   @@map("jobs")
 }
 
-// Configurações do app
+// Configuracoes do app
 model Settings {
   key       String
   scope     String   @default("global") // 'global' | branchId
