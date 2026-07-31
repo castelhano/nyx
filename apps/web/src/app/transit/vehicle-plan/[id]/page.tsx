@@ -1090,7 +1090,7 @@ export default function VehiclePlanPage() {
   // ── trip timing keyboard ops (edit bar, single-trip focus) ─────────────────
 
   const handleTripTimingOp = useCallback((
-    op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly',
+    op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext',
   ) => {
     if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
 
@@ -1105,12 +1105,6 @@ export default function VehiclePlanPage() {
       if (hasFocused) { foundBlock = block; break }
     }
     if (!foundBlock) return
-
-    // Skip pending-add trips/breaks (not in ganttData — can't patch via pending*Changes map)
-    const isTemp = isBreakFocus
-      ? !ganttData?.blocks.some(b => b.blockIntervals.some(bi => bi.id === breakId))
-      : !ganttData?.blocks.some(b => b.blockTrips.some(bt => bt.id === focusedSegId))
-    if (isTemp) return
 
     type TItem = { kind: 'trip';    id: string; tripId: string; dep: number; arr: number }
     type DItem = { kind: 'deadrun'; id: string; drId:  string;  dep: number; arr: number }
@@ -1148,13 +1142,29 @@ export default function VehiclePlanPage() {
     }
 
     const itemBefore = markedIdx > 0 ? items[markedIdx - 1] : null
+    const nextItem    = markedIdx + 1 < items.length ? items[markedIdx + 1] : null
     const subsequent = items.slice(markedIdx + 1)
 
     const newTrips = new Map(pendingChanges)
     const newDrs   = new Map(pendingDeadrunChanges)
     const newBks   = new Map(pendingIntervalChanges)
 
+    // Pending (not-yet-persisted) trips/deadruns/breaks have no counterpart in
+    // ganttData to diff/patch against — they live as full objects in pendingAdds
+    // instead, so timing ops write straight into that array for them.
+    const tempTripIds    = new Set(pendingAdds.filter(a => a._kind === 'trip').map(a => `${a._tempId}:trip`))
+    const tempDeadrunIds = new Set(pendingAdds.filter(a => a._kind === 'deadrun').map(a => a._tempId))
+    const tempBreakIds   = new Set(pendingAdds.filter(a => a._kind === 'break').map(a => a._tempId))
+
+    const tempTripUpdates    = new Map<string, { dep: number; arr: number }>()
+    const tempDeadrunUpdates = new Map<string, { dep: number; arr: number }>()
+    const tempBreakUpdates   = new Map<string, { dep: number; arr: number }>()
+
     function setTrip(tripId: string, dep: number, arr: number) {
+      if (tempTripIds.has(tripId)) {
+        tempTripUpdates.set(tripId.slice(0, -':trip'.length), { dep, arr })
+        return
+      }
       const orig = ganttData?.blocks.flatMap(b => b.blockTrips).find(bt => bt.trip.id === tripId)?.trip
       const patch: TripPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
@@ -1164,6 +1174,14 @@ export default function VehiclePlanPage() {
     }
 
     function setDr(drId: string, dep: number, arr: number) {
+      if (tempDeadrunIds.has(drId)) {
+        tempDeadrunUpdates.set(drId, { dep, arr })
+        return
+      }
+      // Access/return deadruns synthesized for a pending trip (buildFakeAccessReturn)
+      // have no independent existence — they're recomputed from the trip's own
+      // departure/arrival every render, so shifting the trip is enough.
+      if (drId.endsWith(':access') || drId.endsWith(':return')) return
       const orig = ganttData?.blocks.flatMap(b => b.blockDeadruns).find(dr => dr.id === drId)
       const patch: DeadrunPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
@@ -1173,6 +1191,10 @@ export default function VehiclePlanPage() {
     }
 
     function setBk(bkId: string, dep: number, arr: number) {
+      if (tempBreakIds.has(bkId)) {
+        tempBreakUpdates.set(bkId, { dep, arr })
+        return
+      }
       const orig = ganttData?.blocks.flatMap(b => b.blockIntervals).find(bi => bi.id === bkId)
       const patch: IntervalPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
@@ -1255,12 +1277,49 @@ export default function VehiclePlanPage() {
         setMarked(marked.dep - 1, marked.arr - 1)
         break
       }
+      case 'extendToNext': {
+        if (marked.kind !== 'break') return
+        const bi         = foundBlock.blockIntervals.find(bi => bi.id === (marked as BItem).bkId)
+        const maxMinutes = bi?.intervalType.maxMinutes ?? null
+
+        // Already over the type's cap (e.g. after the type changed) — trim back to
+        // maxMinutes regardless of what's next; doesn't touch neighboring segments.
+        if (maxMinutes != null && marked.arr - marked.dep > maxMinutes) {
+          setBk((marked as BItem).bkId, marked.dep, marked.dep + maxMinutes)
+          break
+        }
+
+        if (!nextItem) return
+        const maxArr    = maxMinutes != null ? marked.dep + maxMinutes : Infinity
+        const targetArr = Math.min(nextItem.dep - 1, maxArr)
+        if (targetArr <= marked.arr) return
+        setBk((marked as BItem).bkId, marked.dep, targetArr)
+        break
+      }
     }
 
     setPendingChanges(newTrips)
     setPendingDeadrunChanges(newDrs)
     setPendingIntervalChanges(newBks)
-  }, [focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges])
+
+    if (tempTripUpdates.size > 0 || tempDeadrunUpdates.size > 0 || tempBreakUpdates.size > 0) {
+      setPendingAdds(prev => prev.map(a => {
+        if (a._kind === 'trip'     && tempTripUpdates.has(a._tempId)) {
+          const u = tempTripUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        if (a._kind === 'deadrun'  && tempDeadrunUpdates.has(a._tempId)) {
+          const u = tempDeadrunUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        if (a._kind === 'break'    && tempBreakUpdates.has(a._tempId)) {
+          const u = tempBreakUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        return a
+      }))
+    }
+  }, [focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
 
   function handleSelectionChange(sel: Selection | null) {
     if (!editBarOpen) return
@@ -2273,7 +2332,8 @@ export default function VehiclePlanPage() {
   }, { enabled: editBarOpen && !selection, display: false })
 
   // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
-  const isTripFocused = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
+  const isTripFocused  = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
+  const isBreakFocused = editBarOpen && !!focusedSegId && focusedSegId.endsWith(':bk')
 
   useShortcut('+',              () => handleTripTimingOp('grow'),      { enabled: isTripFocused, display: false })
   useShortcut('-',              () => handleTripTimingOp('shrink'),    { enabled: isTripFocused, display: false })
@@ -2283,6 +2343,10 @@ export default function VehiclePlanPage() {
   useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ enabled: isTripFocused, display: false })
   useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
   useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
+
+  // Extends the focused break up to the next item in the block (trip, deadrun or
+  // another break), minus 1min, capped at its IntervalType.maxMinutes.
+  useShortcut('q+ ', () => handleTripTimingOp('extendToNext'), { enabled: isBreakFocused, display: false, preventDefault: true })
 
   // Direct shortcuts for context-bar actions on the focused trip — resolves and
   // filters through the exact same vehiclesActionSpec the bar itself uses, so
