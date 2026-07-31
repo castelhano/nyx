@@ -35,15 +35,6 @@ export const lineSchema = withMeta(
       },
     }),
 
-    isActive: z.boolean().default(true).meta({
-      label:          'Ativo',
-      widget:         'switch',
-      listVisibility: 'visible',
-      filter:         true,
-      defaultValue:   'true',
-      keybind:        'a',
-    }),
-
     scopeId: z.uuid().optional().meta({
       label:          'Escopo',
       widget:         'select',
@@ -52,8 +43,17 @@ export const lineSchema = withMeta(
       labelField:     'name',
       listVisibility: 'visible',
       filter:         { type: 'relation', endpoint: 'transit/scope', labelField: 'name' },
+      className:      'md:w-1/4',
     }),
 
+    isActive: z.boolean().default(true).meta({
+      label:          'Ativo',
+      widget:         'switch',
+      listVisibility: 'visible',
+      filter:         true,
+      defaultValue:   'true',
+      keybind:        'a',
+    }),
     metrics: z.object({
       extensionKm: z.object({
         OUTBOUND:  z.number().positive().optional().meta({ label: 'Ida (km)' }),

@@ -11,6 +11,7 @@ import { Icons }    from '@/lib/icons'
 interface PlanLine {
   lineId:         string
   line:           { id: string; code: string; name: string }
+  inPlan?:         boolean
   lineScheduleId?: string | null
   isDrifted?:      boolean
 }
@@ -219,9 +220,20 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
             Nenhum resultado
           </p>
         )}
-        {visibleLines.map(({ lineId, line, lineScheduleId, isDrifted }) => {
-          const checked      = selectedLineIds.has(lineId)
-          const materialized = lineScheduleId != null || isDrifted
+        {visibleLines.map(({ lineId, line, inPlan, lineScheduleId, isDrifted }) => {
+          const checked = selectedLineIds.has(lineId)
+          // apagado: linha nunca tocada neste plano · laranja: no plano mas sem
+          // LineSchedule pinada (viagem avulsa) ou com viagens divergentes (isDrifted)
+          // · verde: no plano e corretamente associada a uma LineSchedule
+          const dotStatus: 'off' | 'orange' | 'green' = !inPlan
+            ? 'off'
+            : (lineScheduleId != null && !isDrifted) ? 'green' : 'orange'
+          const dotClass = dotStatus === 'green' ? 'bg-emerald-500' : dotStatus === 'orange' ? 'bg-amber-500' : 'bg-muted-foreground/30'
+          const dotTitle = dotStatus === 'green'
+            ? 'No plano — associada a um quadro de horários aprovado'
+            : dotStatus === 'orange'
+              ? 'No plano — sem quadro de horários associado (ou viagens divergentes)'
+              : 'Ainda não carregada neste plano'
           return (
             <div
               key={lineId}
@@ -234,14 +246,11 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
                   onChange={() => toggleLine(lineId)}
                   className="w-3.5 h-3.5 accent-primary shrink-0"
                 />
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${materialized ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
-                  title={materialized ? 'Com viagens neste plano' : 'Ainda não carregada neste plano'}
-                />
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} title={dotTitle} />
                 <span className="text-xs font-mono font-medium">{line.code}</span>
                 <span className="text-xs text-muted-foreground truncate flex-1">{line.name}</span>
               </label>
-              {canClear && materialized && (
+              {canClear && inPlan && (
                 <button
                   type="button"
                   onClick={() => handleClearLine(lineId, line.code)}

@@ -19,20 +19,20 @@ export const scopeOperatorSchema = withMeta(
       domain:         'core',
       labelField:     'name',
       listVisibility: 'visible',
+      className:      'md:w-1/3',
       filter:         { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
     }),
 
     abbr: z.string().min(1).max(10).meta({
-      label:          'Sigla',
+      label:          'Abreviado',
       listVisibility: 'visible',
-      className:      'md:w-32',
-      keybind:        'a',
+      className:      'md:w-42',
     }),
 
     share: z.number().min(0).max(100).optional().meta({
       label:          'Participação (%)',
       listVisibility: 'visible',
-      className:      'md:w-32',
+      className:      'md:w-42',
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

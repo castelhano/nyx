@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
+import { extractError } from '@/lib/utils'
 import { useToast } from '@/lib/toast-context'
 import { useConfirm } from '@/lib/confirm-context'
 import { useShortcutContext } from '@/lib/keywatch'
@@ -27,6 +28,7 @@ export interface PlanLineInfo {
 interface Props {
   planId:            string
   dayTypeId:         string
+  dayTypeName?:      string
   lines:             PlanLineInfo[]
   hasPendingChanges: boolean
   onClose:           () => void
@@ -46,15 +48,24 @@ const STATUS_CLASSES: Record<string, string> = {
 
 const ANALISE_CLASSES = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
 
-export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingChanges, onClose, onApplied }: Props) {
+export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines, hasPendingChanges, onClose, onApplied }: Props) {
   useShortcutContext('modal')
-  const { toast } = useToast()
-  const confirm   = useConfirm()
+  const { toast }    = useToast()
+  const confirm       = useConfirm()
+  const queryClient  = useQueryClient()
 
   const [selections,   setSelections]   = useState<Map<string, string | null>>(
     () => new Map(lines.map(l => [l.lineId, l.lineScheduleId])),
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // "Nova OSO" inline creation — badge dropdown (só para linhas "Em análise") → form → Gravar
+  const [openMenuLineId, setOpenMenuLineId] = useState<string | null>(null)
+  const [creatingLineId, setCreatingLineId] = useState<string | null>(null)
+  const [draftRefByLine,   setDraftRefByLine]   = useState<Map<string, string>>(new Map())
+  const [draftNotesByLine, setDraftNotesByLine] = useState<Map<string, string>>(new Map())
+  const [savingLineId,     setSavingLineId]     = useState<string | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -63,6 +74,15 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
+
+  useEffect(() => {
+    if (!openMenuLineId) return
+    function onOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpenMenuLineId(null)
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [openMenuLineId])
 
   const historyQueries = useQueries({
     queries: lines.map(l => ({
@@ -88,6 +108,46 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
 
   function findSchedule(history: LineScheduleRow[], id: string | null): LineScheduleRow | undefined {
     return id ? history.find(h => h.id === id) : undefined
+  }
+
+  function startCreating(lineId: string) {
+    setOpenMenuLineId(null)
+    setCreatingLineId(lineId)
+  }
+
+  function cancelCreating(lineId: string) {
+    setCreatingLineId(null)
+    setDraftRefByLine(prev => { const next = new Map(prev); next.delete(lineId); return next })
+    setDraftNotesByLine(prev => { const next = new Map(prev); next.delete(lineId); return next })
+  }
+
+  async function handleCreateSchedule(lineId: string) {
+    const approvalRef = (draftRefByLine.get(lineId) ?? '').trim()
+    if (!approvalRef || savingLineId) return
+
+    setSavingLineId(lineId)
+    try {
+      const res = await apiFetch(`/transit/vehicle-plan/${planId}/lines/${lineId}/schedules`, {
+        method: 'POST',
+        body:   JSON.stringify({
+          approvalRef,
+          notes: (draftNotesByLine.get(lineId) ?? '').trim() || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json, 'Erro ao criar OSO'))
+      }
+      const created = await res.json()
+      setSelections(prev => new Map(prev).set(lineId, created.id))
+      await queryClient.invalidateQueries({ queryKey: ['transit', 'line-schedule', 'history', lineId, dayTypeId] })
+      cancelCreating(lineId)
+      toast.success(`OSO ${approvalRef} criada`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar OSO')
+    } finally {
+      setSavingLineId(null)
+    }
   }
 
   async function handleApply() {
@@ -158,6 +218,8 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
             const history = historyQueries[idx].data ?? []
             const loading = historyQueries[idx].isLoading
             const selectedId = selections.get(l.lineId) ?? null
+            const isCreating  = creatingLineId === l.lineId
+            const isSaving    = savingLineId === l.lineId
 
             return (
               <div key={l.lineId} className="rounded-md border border-border bg-muted/40 p-3 space-y-2.5">
@@ -171,13 +233,70 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, lines, hasPendingCh
                       {l.lineSchedule.approvalRef} - {STATUS_LABELS[l.lineSchedule.status]}
                     </span>
                   ) : (
-                    <span className={`text-xs rounded-full border px-2 py-0.5 ${ANALISE_CLASSES}`}>
-                      Em análise
-                    </span>
+                    <div className="relative" ref={openMenuLineId === l.lineId ? menuRef : undefined}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenuLineId(v => v === l.lineId ? null : l.lineId)}
+                        className={`flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 hover:brightness-95 transition-[filter] ${ANALISE_CLASSES}`}
+                      >
+                        Em análise
+                        <Icons.ChevronDown className="w-3 h-3" />
+                      </button>
+                      {openMenuLineId === l.lineId && (
+                        <div className="absolute right-0 top-full mt-1 w-32 bg-background border border-border rounded shadow-md z-10 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => startCreating(l.lineId)}
+                            className="w-full text-left px-3 py-1.5 hover:bg-accent transition-colors"
+                          >
+                            Nova OSO
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                {loading ? (
+                {isCreating ? (
+                  <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">
+                    {dayTypeName && (
+                      <p className="text-[11px] text-muted-foreground">Tipo de dia: <span className="font-medium">{dayTypeName}</span></p>
+                    )}
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">OSO <span className="text-destructive">*</span></label>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={draftRefByLine.get(l.lineId) ?? ''}
+                        onChange={e => setDraftRefByLine(prev => new Map(prev).set(l.lineId, e.target.value))}
+                        placeholder="No do processo"
+                        className="w-full mt-0.5 text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Observações</label>
+                      <textarea
+                        value={draftNotesByLine.get(l.lineId) ?? ''}
+                        onChange={e => setDraftNotesByLine(prev => new Map(prev).set(l.lineId, e.target.value))}
+                        rows={2}
+                        className="w-full mt-0.5 text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-0.5">
+                      <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={() => cancelCreating(l.lineId)}>
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!(draftRefByLine.get(l.lineId) ?? '').trim() || isSaving}
+                        onClick={() => handleCreateSchedule(l.lineId)}
+                      >
+                        {isSaving ? 'Gravando…' : 'Gravar'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : loading ? (
                   <p className="text-xs text-muted-foreground">Carregando histórico…</p>
                 ) : history.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Nenhuma OSO disponível para esta linha</p>

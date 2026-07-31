@@ -2512,6 +2512,7 @@ export default function VehiclePlanPage() {
         <SwitchLineScheduleModal
           planId={id}
           dayTypeId={ganttData.plan.dayType.id}
+          dayTypeName={ganttData.plan.dayType.name}
           lines={planLines.filter(l => selectedLineIds.has(l.lineId))}
           hasPendingChanges={pendingCount > 0}
           onApplied={() => refetchGantt()}

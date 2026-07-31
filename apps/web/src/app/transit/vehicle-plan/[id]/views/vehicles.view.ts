@@ -152,6 +152,7 @@ export interface VehiclePlanGanttData {
     dayType: { id: string; name: string; code: string } | null
     lines:   Array<{
       lineId:         string
+      inPlan:         boolean
       lineScheduleId: string | null
       isDrifted:      boolean
       line:         { id: string; code: string; name: string; metrics: LineMetrics | null }

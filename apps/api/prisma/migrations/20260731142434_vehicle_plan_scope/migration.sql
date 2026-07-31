@@ -28,9 +28,11 @@ CREATE TABLE "transit_scope_operators" (
 CREATE UNIQUE INDEX "transit_scope_operators_scopeId_branchId_key" ON "transit_scope_operators"("scopeId", "branchId");
 
 -- Backfill: default Scope covering all VehiclePlan/TransitLine data that predates
--- the Scope model — dev-only, no equivalent needed once real scopes are created by hand.
+-- the Scope model — only created if there's actually a pre-existing VehiclePlan to
+-- backfill (a fresh/empty database has nothing to migrate, so this is a no-op then).
 INSERT INTO "transit_scopes" ("id", "name", "description", "createdAt", "updatedAt")
-VALUES ('4206e46c-7357-4a81-90ee-223bb314c5d8', 'Escopo padrão (migração)', 'Criado automaticamente ao introduzir o modelo Scope — associa os planos e linhas já existentes.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+SELECT '4206e46c-7357-4a81-90ee-223bb314c5d8', 'Escopo padrão (migração)', 'Criado automaticamente ao introduzir o modelo Scope — associa os planos e linhas já existentes.', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE EXISTS (SELECT 1 FROM "transit_vehicle_plans");
 
 -- RedefineTables
 PRAGMA defer_foreign_keys=ON;

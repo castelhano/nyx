@@ -102,6 +102,16 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.clearLine(id, lineId)
   }
 
+  @Post(':id/lines/:lineId/schedules')
+  @HttpCode(201)
+  createLineSchedule(
+    @Param('id')     id:     string,
+    @Param('lineId') lineId: string,
+    @Body() body: { approvalRef: string; notes?: string },
+  ) {
+    return this.vehiclePlanService.createLineSchedule(id, lineId, body)
+  }
+
   @Post(':id/lines/:lineId/switch-schedule')
   @HttpCode(200)
   switchSchedule(
