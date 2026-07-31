@@ -936,10 +936,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // anywhere references it anymore; otherwise it's left in place for whoever else
   // still uses it. A block left empty is deleted (cascades blockDeadruns); a block
   // that still has other trips is just flagged stale.
-  private async removeTripsFromPlan(planId: string, tripIds: string[]): Promise<void> {
+  // Accepts an optional transaction client so callers that need this to participate
+  // in a larger atomic operation (e.g. switchLineSchedule) can pass their `tx`.
+  private async removeTripsFromPlan(planId: string, tripIds: string[], db: any = this.prisma): Promise<void> {
     if (tripIds.length === 0) return
 
-    const affected = await (this.prisma as any).blockTrip.findMany({
+    const affected = await db.blockTrip.findMany({
       where:  { tripId: { in: tripIds }, vehicleBlock: { vehiclePlanId: planId } },
       select: { id: true, vehicleBlockId: true },
     })
@@ -948,18 +950,18 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const blockTripIds = affected.map((bt: any) => bt.id)
     const blockIds      = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
 
-    await (this.prisma as any).blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
+    await db.blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
 
     for (const blockId of blockIds) {
-      const remaining = await (this.prisma as any).blockTrip.count({ where: { vehicleBlockId: blockId } })
+      const remaining = await db.blockTrip.count({ where: { vehicleBlockId: blockId } })
       if (remaining === 0) {
-        await (this.prisma as any).vehicleBlock.delete({ where: { id: blockId } })
+        await db.vehicleBlock.delete({ where: { id: blockId } })
       } else {
-        await (this.prisma as any).vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+        await db.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
       }
     }
 
-    await (this.prisma as any).transitTrip.deleteMany({
+    await db.transitTrip.deleteMany({
       where: { id: { in: tripIds }, blockTrips: { none: {} } },
     })
   }
@@ -1124,24 +1126,25 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }
     }
 
-    await this.removeTripsFromPlan(planId, unmatchedTripIds)
+    // Tudo daqui pra baixo é uma unidade só: remover as viagens que sobraram, religar
+    // as reaproveitadas, materializar as novas e fixar o VehiclePlanLine — ou tudo,
+    // ou nada, sem estado parcial se cair no meio.
+    await this.prisma.$transaction(async (tx) => {
+      await this.removeTripsFromPlan(planId, unmatchedTripIds, tx)
 
-    if (reuseUpdates.length > 0) {
-      await this.prisma.$transaction(
-        reuseUpdates.map(u =>
-          (this.prisma as any).transitTrip.update({ where: { id: u.tripId }, data: { lineDepartureId: u.lineDepartureId } }),
-        ),
-      )
-    }
+      for (const u of reuseUpdates) {
+        await (tx as any).transitTrip.update({ where: { id: u.tripId }, data: { lineDepartureId: u.lineDepartureId } })
+      }
 
-    if (tripRows.length > 0) {
-      await (this.prisma as any).transitTrip.createMany({ data: tripRows })
-    }
+      if (tripRows.length > 0) {
+        await (tx as any).transitTrip.createMany({ data: tripRows })
+      }
 
-    await this.prisma.vehiclePlanLine.upsert({
-      where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-      create: { vehiclePlanId: planId, lineId, lineScheduleId, isDrifted: false },
-      update: { lineScheduleId, isDrifted: false },
+      await (tx as any).vehiclePlanLine.upsert({
+        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+        create: { vehiclePlanId: planId, lineId, lineScheduleId, isDrifted: false },
+        update: { lineScheduleId, isDrifted: false },
+      })
     })
   }
 

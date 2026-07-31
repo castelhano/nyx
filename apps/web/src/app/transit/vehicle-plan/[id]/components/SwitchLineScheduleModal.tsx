@@ -50,9 +50,9 @@ const ANALISE_CLASSES = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-am
 
 export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines, hasPendingChanges, onClose, onApplied }: Props) {
   useShortcutContext('modal')
-  const { toast }    = useToast()
-  const confirm       = useConfirm()
-  const queryClient  = useQueryClient()
+  const { toast }   = useToast()
+  const confirm     = useConfirm()
+  const queryClient = useQueryClient()
 
   const [selections,   setSelections]   = useState<Map<string, string | null>>(
     () => new Map(lines.map(l => [l.lineId, l.lineScheduleId])),
