@@ -6,7 +6,7 @@ import { Button }   from '@/components/ui/button'
 import { Icons }    from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
-import { useShortcutContext } from '@/lib/keywatch'
+import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { GanttBlock, GanttBlockTrip, LineMetrics } from '../views/vehicles.view'
 import { resolveCycleWindow, resolveCycleMinutes } from '../views/vehicles.view'
 import { getTravelTime } from '../travel-time'
@@ -88,6 +88,7 @@ interface Route {
   name:                  string
   originLocalityId:      string
   destinationLocalityId: string
+  isPrimary:             boolean
 }
 
 interface Locality {
@@ -142,7 +143,12 @@ function fmtMinutes(m: number): string {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
-function hasOverlap(block: GanttBlock, dep: number, arr: number): boolean {
+// Narrower than GanttBlock — lets hasOverlap check a locally-accumulated batch
+// (real block items + entries generated earlier in the same submit) without a
+// full GanttBlock (e.g. blockNumber, depot) existing yet.
+type OverlapSource = Pick<GanttBlock, 'blockTrips' | 'blockDeadruns' | 'blockIntervals'>
+
+function hasOverlap(block: OverlapSource, dep: number, arr: number): boolean {
   for (const bt of block.blockTrips) {
     if (dep < bt.trip.arrivalMinutes && arr > bt.trip.departureMinutes) return true
   }
@@ -184,8 +190,12 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
   const [depMM,        setDepMM]        = useState('')
   const [cycleMinutes, setCycleMinutes] = useState('')
   const [blockId,      setBlockId]      = useState<'new' | string>('new')
+  const [tripsCount,   setTripsCount]   = useState('1')
   const [isResolving,  setIsResolving]  = useState(false)
-  const resolveRef = useRef(0)
+  const resolveRef  = useRef(0)
+  const formRef     = useRef<HTMLFormElement>(null)
+  const mmInputRef   = useRef<HTMLInputElement>(null)
+  const durationRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -347,7 +357,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
   const cycleMin  = parseInt(cycleMinutes, 10)
   const arrivalMin = (!isNaN(depMin) && !isNaN(cycleMin) && cycleMin > 0) ? depMin + cycleMin : null
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     const hh = parseInt(depHH, 10)
@@ -365,54 +375,179 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
       }
     }
 
+    const requestedCount = Math.max(1, Math.min(10, parseInt(tripsCount, 10) || 1))
+
+    // Local mirror of the target block's contents — grows as each entry in the
+    // batch is accepted, since onPendingAdd's state update won't be reflected
+    // in `plottedBlocks` until the next render.
+    const existingBlock = resolvedBlockId !== 'new' ? plottedBlocks.find(b => b.id === resolvedBlockId) : null
+    const virtual: OverlapSource = {
+      blockTrips:     existingBlock ? [...existingBlock.blockTrips]     : [],
+      blockDeadruns:  existingBlock ? [...existingBlock.blockDeadruns]  : [],
+      blockIntervals: existingBlock ? [...existingBlock.blockIntervals] : [],
+    }
+
+    const entries: PendingAddEntry[] = []
+    // tempId of the batch's own fresh block, once the first entry creates it —
+    // every subsequent entry in this batch joins that same block instead of
+    // spawning one each (see page.tsx's fakeGroups grouping by `pending:<id>`).
+    let batchAnchorId: string | null = null
+    const nextBlockId = () =>
+      resolvedBlockId !== 'new' ? resolvedBlockId : (batchAnchorId ? `pending:${batchAnchorId}` : 'new')
+
     if (tripType === 'productive') {
-      const route    = routes.find(r => r.id === routeId)
+      const route = routes.find(r => r.id === routeId)
       if (!route) return
-      const planLine = plottedLines.find(l => l.lineId === lineId)
-      onPendingAdd({
-        _kind:               'trip',
-        _tempId:             crypto.randomUUID(),
-        routeId,
-        direction:           route.direction,
-        lineId,
-        lineCode:            planLine?.line.code ?? '',
-        lineName:            planLine?.line.name ?? '',
-        lineMetrics:         planLine?.line.metrics ?? null,
-        originLocality:      { id: route.originLocalityId, name: '' },
-        destinationLocality: { id: route.destinationLocalityId, name: '' },
-        departureMinutes:    depMin,
-        arrivalMinutes:      arrivalMin,
-        blockId:             resolvedBlockId,
-      })
+      const planLine    = plottedLines.find(l => l.lineId === lineId)
+      const lineCode    = planLine?.line.code ?? ''
+      const lineName    = planLine?.line.name ?? ''
+      const lineMetrics = planLine?.line.metrics ?? null
+
+      // Alternation is only allowed between the line's two official (isPrimary)
+      // directions, and only when the selected route is itself one of them —
+      // otherwise every generated trip reuses the selected route (no turning).
+      const primaryOutbound = routes.find(r => r.isPrimary && r.direction === 'OUTBOUND')
+      const primaryInbound  = routes.find(r => r.isPrimary && r.direction === 'INBOUND')
+      const canAlternate    = route.isPrimary && !!primaryOutbound && !!primaryInbound
+      const flip = (r: Route): Route =>
+        canAlternate ? (r.id === primaryOutbound!.id ? primaryInbound! : primaryOutbound!) : r
+
+      let curRoute  = route
+      let curDep    = depMin
+      let curDur    = arrivalMin - depMin // trip 1 always honors the form's own Duração field
+      let curWindow = resolveCycleWindow(lineMetrics, curRoute.direction, curDep)
+
+      for (let i = 0; i < requestedCount; i++) {
+        const curArr = curDep + curDur
+        if (hasOverlap(virtual, curDep, curArr)) break
+
+        const tempId = crypto.randomUUID()
+        const originLocality      = { id: curRoute.originLocalityId,      name: '' }
+        const destinationLocality = { id: curRoute.destinationLocalityId, name: '' }
+        entries.push({
+          _kind:               'trip',
+          _tempId:             tempId,
+          routeId:             curRoute.id,
+          direction:           curRoute.direction,
+          lineId,
+          lineCode,
+          lineName,
+          lineMetrics,
+          originLocality,
+          destinationLocality,
+          departureMinutes:    curDep,
+          arrivalMinutes:      curArr,
+          blockId:             nextBlockId(),
+        })
+        virtual.blockTrips.push({
+          id: tempId, sequence: 0,
+          trip: {
+            id: `${tempId}:trip`, departureMinutes: curDep, arrivalMinutes: curArr, constraints: null,
+            route: { direction: curRoute.direction, line: { id: lineId, code: lineCode, name: lineName, metrics: lineMetrics }, originLocality, destinationLocality },
+          },
+        })
+        if (resolvedBlockId === 'new' && !batchAnchorId) batchAnchorId = tempId
+
+        if (i === requestedCount - 1) break
+
+        // Next trip starts after this one's recovery gap, in the opposite
+        // primary direction if alternating — else same route, back to back.
+        const nextRoute  = flip(curRoute)
+        const nextDep    = curArr + (curWindow?.intervalMinutes ?? 0)
+        const nextWindow = resolveCycleWindow(lineMetrics, nextRoute.direction, nextDep)
+        const nextDur    = nextWindow?.minutes
+          ?? await getTravelTime(nextRoute.originLocalityId, nextRoute.destinationLocalityId)
+        if (nextDur == null) break // no way to size the next trip — stop the batch here
+
+        curRoute  = nextRoute
+        curDep    = nextDep
+        curDur    = nextDur
+        curWindow = nextWindow
+      }
+
+      if (entries.length === 0) {
+        toast.info('Não foi possível inserir: conflito com outra viagem no bloco informado')
+        return
+      }
     } else if (tripType === 'deadrun') {
       if (!originId || !destinationId) return
       const originLoc = localities.find(l => l.id === originId)
       const destLoc   = localities.find(l => l.id === destinationId)
-      onPendingAdd({
-        _kind:               'deadrun',
-        _tempId:             crypto.randomUUID(),
-        originLocality:      { id: originId,      name: originLoc?.name ?? '' },
-        destinationLocality: { id: destinationId, name: destLoc?.name   ?? '' },
-        departureMinutes:    depMin,
-        arrivalMinutes:      arrivalMin,
-        blockId:             resolvedBlockId,
-      })
+      const duration  = arrivalMin - depMin
+
+      let curDep = depMin
+      for (let i = 0; i < requestedCount; i++) {
+        const curArr = curDep + duration
+        if (hasOverlap(virtual, curDep, curArr)) break
+
+        const tempId = crypto.randomUUID()
+        const originLocality      = { id: originId,      name: originLoc?.name ?? '' }
+        const destinationLocality = { id: destinationId, name: destLoc?.name   ?? '' }
+        entries.push({
+          _kind: 'deadrun', _tempId: tempId,
+          originLocality, destinationLocality,
+          departureMinutes: curDep, arrivalMinutes: curArr,
+          blockId: nextBlockId(),
+        })
+        virtual.blockDeadruns.push({
+          id: tempId, type: 'DISPLACEMENT',
+          originLocalityId: originId, destinationLocalityId: destinationId,
+          originLocality, destinationLocality,
+          departureMinutes: curDep, arrivalMinutes: curArr,
+        })
+        if (resolvedBlockId === 'new' && !batchAnchorId) batchAnchorId = tempId
+        curDep = curArr
+      }
+
+      if (entries.length === 0) {
+        toast.info('Não foi possível inserir: conflito com outra viagem no bloco informado')
+        return
+      }
     } else {
       const intervalType = intervalTypes.find(t => t.id === intervalTypeId)
       if (!intervalType) return
-      onPendingAdd({
-        _kind:            'break',
-        _tempId:          crypto.randomUUID(),
-        intervalTypeId:   intervalType.id,
-        intervalTypeCode: intervalType.code,
-        intervalTypeName: intervalType.name,
-        isPaid:           intervalType.isPaid,
-        minMinutes:       intervalType.minMinutes,
-        maxMinutes:       intervalType.maxMinutes,
-        departureMinutes: depMin,
-        arrivalMinutes:   arrivalMin,
-        blockId:          resolvedBlockId,
-      })
+      const duration = arrivalMin - depMin
+
+      let curDep = depMin
+      for (let i = 0; i < requestedCount; i++) {
+        const curArr = curDep + duration
+        if (hasOverlap(virtual, curDep, curArr)) break
+
+        const tempId = crypto.randomUUID()
+        entries.push({
+          _kind:            'break',
+          _tempId:          tempId,
+          intervalTypeId:   intervalType.id,
+          intervalTypeCode: intervalType.code,
+          intervalTypeName: intervalType.name,
+          isPaid:           intervalType.isPaid,
+          minMinutes:       intervalType.minMinutes,
+          maxMinutes:       intervalType.maxMinutes,
+          departureMinutes: curDep,
+          arrivalMinutes:   curArr,
+          blockId:          nextBlockId(),
+        })
+        virtual.blockIntervals.push({
+          id: tempId, intervalTypeId: intervalType.id,
+          intervalType: {
+            id: intervalType.id, code: intervalType.code, name: intervalType.name,
+            isPaid: intervalType.isPaid, minMinutes: intervalType.minMinutes, maxMinutes: intervalType.maxMinutes,
+          },
+          departureMinutes: curDep, arrivalMinutes: curArr,
+        })
+        if (resolvedBlockId === 'new' && !batchAnchorId) batchAnchorId = tempId
+        curDep = curArr
+      }
+
+      if (entries.length === 0) {
+        toast.info('Não foi possível inserir: conflito com outra viagem no bloco informado')
+        return
+      }
+    }
+
+    for (const entry of entries) onPendingAdd(entry)
+    if (entries.length < requestedCount) {
+      toast.info(`${entries.length} de ${requestedCount} viagens inseridas — conflito com outra entrada no bloco`)
     }
 
     onClose()
@@ -435,10 +570,18 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
     : !!intervalTypeId
   const canSubmit  = typeReady && depValid && cycleValid && !isResolving
 
+  useShortcut('alt+g', () => formRef.current?.requestSubmit(), {
+    desc:    'Confirmar inclusão',
+    context: 'modal',
+    enabled: canSubmit,
+    display: false,
+  })
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <form
+        ref={formRef}
         onSubmit={handleSubmit}
         className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 p-5 space-y-4"
       >
@@ -459,7 +602,6 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
               value="productive"
               checked={tripType === 'productive'}
               onChange={() => setTripType('productive')}
-              autoFocus
               className="accent-primary"
             />
             <span className="text-sm">Produtiva</span>
@@ -494,7 +636,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Linha</label>
               <div className="relative">
-                <select value={lineId} onChange={e => setLineId(e.target.value)} className={selectCls}>
+                <select value={lineId} onChange={e => setLineId(e.target.value)} autoFocus className={selectCls}>
                   {plottedLines.map(({ lineId: lid, line }) => (
                     <option key={lid} value={lid}>{line.code} — {line.name}</option>
                   ))}
@@ -572,8 +714,8 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
           </div>
         )}
 
-        {/* Partida + Duração + Chegada */}
-        <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
+        {/* Partida + Duração + Chegada + Viagens */}
+        <div className="grid grid-cols-[auto_1fr_auto_auto] gap-3 items-end">
           {/* Partida */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Partida</label>
@@ -583,17 +725,37 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
                 min={0} max={47}
                 placeholder="HH"
                 value={depHH}
-                onChange={e => setDepHH(e.target.value)}
+                onChange={e => {
+                  const raw = e.target.value
+                  setDepHH(raw)
+                  // Jump to MM as soon as the digit alone can't extend to a valid
+                  // hour anymore (3-9), or once two digits have been typed.
+                  if (raw.length >= 2 || (raw.length === 1 && parseInt(raw, 10) >= 3)) {
+                    mmInputRef.current?.focus()
+                    mmInputRef.current?.select()
+                  }
+                }}
                 onBlur={resolveCycle}
                 className="w-14 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
               />
               <span className="text-muted-foreground font-semibold select-none">:</span>
               <input
+                ref={mmInputRef}
                 type="number"
                 min={0} max={59}
                 placeholder="MM"
                 value={depMM}
-                onChange={e => setDepMM(e.target.value)}
+                onChange={e => {
+                  const raw = e.target.value
+                  const hadTwoDigits = raw.length >= 2
+                  const clamped = raw === '' ? '' : String(Math.max(0, Math.min(59, parseInt(raw, 10) || 0)))
+                  setDepMM(clamped)
+                  if (hadTwoDigits) {
+                    durationRef.current?.focus()
+                    durationRef.current?.select()
+                  }
+                }}
+                onBlur={resolveCycle}
                 className="w-14 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
@@ -602,9 +764,10 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
           {/* Duração */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              {isResolving ? 'Calculando…' : 'Duração (min)'}
+              {isResolving ? 'Calculando…' : 'Ciclo'}
             </label>
             <input
+              ref={durationRef}
               type="number"
               min={1}
               placeholder="min"
@@ -623,6 +786,21 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
                 : <span className="text-xs text-muted-foreground">—</span>
               }
             </div>
+          </div>
+
+          {/* Viagens */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Viagens</label>
+            <input
+              type="number"
+              min={1} max={10}
+              value={tripsCount}
+              onChange={e => {
+                const raw = e.target.value
+                setTripsCount(raw === '' ? '' : String(Math.max(1, Math.min(10, parseInt(raw, 10) || 1))))
+              }}
+              className="block w-14 text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 text-center focus:outline-none focus:ring-1 focus:ring-ring"
+            />
           </div>
         </div>
 
