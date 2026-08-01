@@ -557,39 +557,52 @@ export default function VehiclePlanPage() {
       }
     })
 
-    // Fake blocks for pending adds targeting a new block
-    const firstBlock  = plottedData.blocks[0]
-    const fakeBlocks: GanttBlock[] = pendingAdds
-      .filter(a => a.blockId === 'new')
-      .map(a => {
-        extraBlockCount++
-        return {
-          id:          `pending:${a._tempId}`,
-          blockNumber: maxBlockNumber + extraBlockCount,
-          vehicleType: firstBlock?.vehicleType ?? '',
-          branchId:    firstBlock?.branchId    ?? null,
-          branch:      firstBlock?.branch      ?? null,
-          depotId:     firstBlock?.depotId     ?? '',
-          depot:       firstBlock?.depot       ?? { id: '', name: '' },
-          constraints: null,
-          summary:     null,
-          blockTrips: a._kind === 'trip' ? [{
-            id:       a._tempId,
-            sequence: 0,
-            trip: {
-              id:               `${a._tempId}:trip`,
-              departureMinutes: a.departureMinutes,
-              arrivalMinutes:   a.arrivalMinutes,
-              constraints:      null,
-              route: {
-                direction:           a.direction,
-                line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
-                originLocality:      a.originLocality,
-                destinationLocality: a.destinationLocality,
-              },
+    // Fake blocks for pending adds targeting a new block. blockId is either 'new'
+    // (spawn a fresh block, keyed by its own tempId) or `pending:<key>` (join a
+    // fake block created by an earlier 'new' add — picked from the Bloco select).
+    const firstBlock = plottedData.blocks[0]
+    const fakeGroups = new Map<string, PendingAddEntry[]>()
+    for (const a of pendingAdds) {
+      if (a.blockId === 'new') {
+        fakeGroups.set(a._tempId, [a])
+      } else if (a.blockId.startsWith('pending:')) {
+        fakeGroups.get(a.blockId.slice('pending:'.length))?.push(a)
+      }
+    }
+
+    const fakeBlocks: GanttBlock[] = Array.from(fakeGroups.entries()).map(([key, entries]) => {
+      extraBlockCount++
+      const addTrips    = entries.filter((a): a is PendingAddTrip     => a._kind === 'trip')
+      const addDeadruns = entries.filter((a): a is PendingAddDeadrun  => a._kind === 'deadrun')
+      const addBreaks   = entries.filter((a): a is PendingAddInterval => a._kind === 'break')
+      return {
+        id:          `pending:${key}`,
+        blockNumber: maxBlockNumber + extraBlockCount,
+        vehicleType: firstBlock?.vehicleType ?? '',
+        branchId:    firstBlock?.branchId    ?? null,
+        branch:      firstBlock?.branch      ?? null,
+        depotId:     firstBlock?.depotId     ?? '',
+        depot:       firstBlock?.depot       ?? { id: '', name: '' },
+        constraints: null,
+        summary:     null,
+        blockTrips: addTrips.map(a => ({
+          id:       a._tempId,
+          sequence: 0,
+          trip: {
+            id:               `${a._tempId}:trip`,
+            departureMinutes: a.departureMinutes,
+            arrivalMinutes:   a.arrivalMinutes,
+            constraints:      null,
+            route: {
+              direction:           a.direction,
+              line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
+              originLocality:      a.originLocality,
+              destinationLocality: a.destinationLocality,
             },
-          }] : [],
-          blockDeadruns: a._kind === 'deadrun' ? [{
+          },
+        })),
+        blockDeadruns: [
+          ...addDeadruns.map(a => ({
             id:                    a._tempId,
             type:                  'DISPLACEMENT' as const,
             originLocalityId:      a.originLocality.id,
@@ -598,23 +611,25 @@ export default function VehiclePlanPage() {
             destinationLocality:   a.destinationLocality,
             departureMinutes:      a.departureMinutes,
             arrivalMinutes:        a.arrivalMinutes,
-          }] : a._kind === 'trip' ? buildFakeAccessReturn(a as PendingAddTrip) : [],
-          blockIntervals: a._kind === 'break' ? [{
-            id:             a._tempId,
-            intervalTypeId: a.intervalTypeId,
-            intervalType: {
-              id:         a.intervalTypeId,
-              code:       a.intervalTypeCode,
-              name:       a.intervalTypeName,
-              isPaid:     a.isPaid,
-              minMinutes: a.minMinutes,
-              maxMinutes: a.maxMinutes,
-            },
-            departureMinutes: a.departureMinutes,
-            arrivalMinutes:   a.arrivalMinutes,
-          }] : [],
-        }
-      })
+          })),
+          ...addTrips.flatMap(buildFakeAccessReturn),
+        ],
+        blockIntervals: addBreaks.map(a => ({
+          id:             a._tempId,
+          intervalTypeId: a.intervalTypeId,
+          intervalType: {
+            id:         a.intervalTypeId,
+            code:       a.intervalTypeCode,
+            name:       a.intervalTypeName,
+            isPaid:     a.isPaid,
+            minMinutes: a.minMinutes,
+            maxMinutes: a.maxMinutes,
+          },
+          departureMinutes: a.departureMinutes,
+          arrivalMinutes:   a.arrivalMinutes,
+        })),
+      }
+    })
 
     // Apply pending block moves
     if (pendingMoves.length > 0) {
@@ -2129,8 +2144,12 @@ export default function VehiclePlanPage() {
   }, { enabled: editBarOpen && !selection && !!focusedSegId, display: false })
 
   useShortcut('←', () => {
-    if (!focusedSegId) return
     setSelection(null); shiftAnchorRef.current = null
+    if (!focusedSegId) {
+      const first = navBlocks.find(block => block.length > 0)?.[0]
+      if (first) setFocusedSegId(first.segId)
+      return
+    }
     for (const block of navBlocks) {
       const idx = block.findIndex(i => i.segId === focusedSegId)
       if (idx > 0) { setFocusedSegId(block[idx - 1].segId); break }
@@ -2139,8 +2158,12 @@ export default function VehiclePlanPage() {
   }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('→', () => {
-    if (!focusedSegId) return
     setSelection(null); shiftAnchorRef.current = null
+    if (!focusedSegId) {
+      const first = navBlocks.find(block => block.length > 0)?.[0]
+      if (first) setFocusedSegId(first.segId)
+      return
+    }
     for (const block of navBlocks) {
       const idx = block.findIndex(i => i.segId === focusedSegId)
       if (idx !== -1 && idx < block.length - 1) { setFocusedSegId(block[idx + 1].segId); break }
@@ -2599,11 +2622,11 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {addTripOpen && plottedData && selectedLineIds.size > 0 && (
+      {addTripOpen && mergedPlottedData && selectedLineIds.size > 0 && (
         <AddTripModal
           planId={id}
-          plottedLines={plottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
-          plottedBlocks={plottedData.blocks}
+          plottedLines={mergedPlottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
+          plottedBlocks={mergedPlottedData.blocks}
           reference={addTripReference}
           onClose={() => setAddTripOpen(false)}
           onPendingAdd={handlePendingAdd}

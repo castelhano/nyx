@@ -239,10 +239,12 @@ CREATE TABLE "transit_lines" (
     "name" TEXT NOT NULL,
     "type" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "scopeId" TEXT,
     "notes" TEXT,
     "metrics" JSONB,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_lines_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "transit_scopes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -338,11 +340,10 @@ CREATE TABLE "transit_line_schedules" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "lineId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
-    "version" INTEGER NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "validFrom" DATETIME,
     "validTo" DATETIME,
-    "approvalRef" TEXT,
+    "approvalRef" TEXT NOT NULL,
     "approvedAt" DATETIME,
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -412,6 +413,7 @@ CREATE TABLE "transit_block_intervals" (
 -- CreateTable
 CREATE TABLE "transit_vehicle_plans" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "scopeId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
     "description" TEXT,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
@@ -422,7 +424,30 @@ CREATE TABLE "transit_vehicle_plans" (
     "notes" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_vehicle_plans_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "transit_scopes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "transit_vehicle_plans_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "transit_scopes" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "transit_scope_operators" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "scopeId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+    "abbr" TEXT NOT NULL,
+    "share" REAL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "transit_scope_operators_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "transit_scopes" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "transit_scope_operators_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -563,10 +588,13 @@ CREATE UNIQUE INDEX "transit_travel_times_originId_destinationId_key" ON "transi
 CREATE UNIQUE INDEX "transit_day_types_code_key" ON "transit_day_types"("code");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "transit_line_schedules_lineId_dayTypeId_version_key" ON "transit_line_schedules"("lineId", "dayTypeId", "version");
+CREATE UNIQUE INDEX "transit_line_schedules_lineId_dayTypeId_approvalRef_key" ON "transit_line_schedules"("lineId", "dayTypeId", "approvalRef");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_interval_types_code_key" ON "transit_interval_types"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_scope_operators_scopeId_branchId_key" ON "transit_scope_operators"("scopeId", "branchId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_vehicle_blocks_vehiclePlanId_blockNumber_key" ON "transit_vehicle_blocks"("vehiclePlanId", "blockNumber");
