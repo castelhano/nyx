@@ -162,6 +162,7 @@ export function computeOfertaSeries(
       result[dir]![hour]    = Math.round(tripsPerHour * capacityPerTrip)
     }
   }
+
   return result
 }
 

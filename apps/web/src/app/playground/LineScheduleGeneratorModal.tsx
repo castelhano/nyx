@@ -47,6 +47,7 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
   const [opEnd,               setOpEnd]               = useState(1410) // 23:30
   const [vehicleCapacity,     setVehicleCapacity]      = useState(80)
   const [renewalIndex,        setRenewalIndex]         = useState<Partial<Record<Direction, number>>>(line.renewalIndex)
+  const [smoothTransition,    setSmoothTransition]     = useState(true)
   const [includeAccessReturn, setIncludeAccessReturn]  = useState(false)
   const [insertInterval,      setInsertInterval]       = useState(true)
   const [intervalTypeId,      setIntervalTypeId]       = useState(MOCK_INTERVAL_TYPES[0].id)
@@ -362,6 +363,19 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
               </span>
               <span />
 
+              {/* row: transição suavizada — affects only the real generation
+                  algorithm (Phase 2), not this tab's oferta×demanda preview;
+                  deliberately not wired into computeOfertaSeries */}
+              <Switch checked={smoothTransition} onToggle={() => setSmoothTransition(v => !v)} />
+              <span
+                className="text-sm cursor-pointer select-none"
+                onClick={() => setSmoothTransition(v => !v)}
+                title="Aplicada na geração — não afeta o gráfico de prévia"
+              >
+                Transição suavizada
+              </span>
+              <span />
+
               {/* rows: índice de renovação — one per route the line actually has (1 to 3
                   directions), driven by line.routes rather than a fixed OUTBOUND/INBOUND pair.
                   Control column holds the input, same alignment as the switches above. */}
@@ -387,71 +401,73 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
           )}
 
           {activeTab === 'frota' && (
-            <section className="space-y-3">
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Frota &amp; Depósitos</h3>
+            <div className="grid grid-cols-2 gap-8">
 
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm">
-                  Capacidade/veículo
+              {/* left: capacidade e futuras configurações da frota — same
+                  control-column width as the Ajuste tab, for the same reason:
+                  future fields here follow the same [controle][rótulo] row shape */}
+              <section className="space-y-3">
+                <div className="grid grid-cols-[6rem_1fr] gap-x-4 gap-y-3 items-center">
                   <input
                     type="number" min={1}
                     value={vehicleCapacity}
                     onChange={e => setVehicleCapacity(Number(e.target.value) || 0)}
-                    className="w-20 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-14 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                   />
-                </label>
-                <span className="text-xs text-muted-foreground">
-                  Pico da frota: <strong className="text-foreground">{peakFleet}</strong> veículos
-                </span>
-              </div>
+                  <span className="text-sm">Capacidade por veículo</span>
+                </div>
+              </section>
 
-              <p className="text-xs text-muted-foreground">
-                Distribuição da frota por depósito (única empresa/garagem, ou dividida entre várias).
-              </p>
+              {/* right: frota por garagem */}
+              <section className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Frota por Garagem
+                </h4>
 
-              <div className="space-y-1.5 max-w-md">
-                {depotAllocations.map(d => (
-                  <div key={d.id} className="flex items-center gap-1.5">
-                    <select
-                      value={d.depotId}
-                      onChange={e => updateDepotRow(d.id, { depotId: e.target.value })}
-                      className="flex-1 appearance-none text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      {MOCK_DEPOTS.map(dep => <option key={dep.id} value={dep.id}>{dep.name}</option>)}
-                    </select>
-                    <input
-                      type="number" min={0}
-                      value={d.count}
-                      onChange={e => updateDepotRow(d.id, { count: Number(e.target.value) || 0 })}
-                      className="w-16 text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <button
-                      type="button"
-                      disabled={depotAllocations.length === 1}
-                      onClick={() => removeDepotRow(d.id)}
-                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:pointer-events-none"
-                    >
-                      <Icons.Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addDepotRow}
-                  disabled={depotAllocations.length >= MOCK_DEPOTS.length}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
-                >
-                  <Icons.Plus className="w-3 h-3" /> Adicionar depósito
-                </button>
-              </div>
+                <div className="space-y-1.5">
+                  {depotAllocations.map(d => (
+                    <div key={d.id} className="flex items-center gap-1.5">
+                      <select
+                        value={d.depotId}
+                        onChange={e => updateDepotRow(d.id, { depotId: e.target.value })}
+                        className="flex-1 appearance-none text-sm rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {MOCK_DEPOTS.map(dep => <option key={dep.id} value={dep.id}>{dep.name}</option>)}
+                      </select>
+                      <input
+                        type="number" min={0}
+                        value={d.count}
+                        onChange={e => updateDepotRow(d.id, { count: Number(e.target.value) || 0 })}
+                        className="w-16 text-sm rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      <button
+                        type="button"
+                        disabled={depotAllocations.length === 1}
+                        onClick={() => removeDepotRow(d.id)}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <Icons.Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addDepotRow}
+                    disabled={depotAllocations.length >= MOCK_DEPOTS.length}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    <Icons.Plus className="w-3 h-3" /> Adicionar depósito
+                  </button>
+                </div>
 
-              <div className={`text-xs ${depotMismatch ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                {depotSum} / {peakFleet} veículos alocados
-                {includeAccessReturn && (
-                  <span className="ml-1">— obrigatório (acesso/recolhida ligado na aba Ajuste)</span>
-                )}
-              </div>
-            </section>
+                <div className={`text-xs ${depotMismatch ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                  {depotSum} / {peakFleet} veículos alocados (pico da frota)
+                  {includeAccessReturn && (
+                    <span className="ml-1">— obrigatório (acesso/recolhida ligado na aba Ajuste)</span>
+                  )}
+                </div>
+              </section>
+            </div>
           )}
 
           {activeTab === 'oferta' && (
