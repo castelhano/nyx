@@ -3,7 +3,7 @@
 // scope/line data; shapes mirror TransitLine.metrics (windows/demand) so the
 // prototype can graduate to real data with minimal changes.
 
-export type Direction = 'OUTBOUND' | 'INBOUND'
+export type Direction = 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
 
 export interface CycleWindow {
   from:    number // decimal hour, 0–23.5, half-hour resolution — mirrors line.schema.ts
@@ -11,13 +11,24 @@ export interface CycleWindow {
   minutes: number
 }
 
+export interface MockRoute {
+  direction:       Direction
+  originName:      string
+  destinationName: string
+}
+
 export interface MockLine {
   code:         string
   name:         string
   dayTypeCode:  string
-  windows:      Record<Direction, CycleWindow[]>
-  demand:       Record<Direction, Record<number, number>> // hour → avg pax
-  renewalIndex: Record<Direction, number>                  // % turnover along the route
+  // A line has one route per direction it actually operates — 1 to 3 of
+  // OUTBOUND/INBOUND/CIRCULAR. This is the source of truth for which
+  // directions the rest of the form (renewal index rows, etc.) iterates over;
+  // never assume OUTBOUND+INBOUND are both present.
+  routes:       MockRoute[]
+  windows:      Partial<Record<Direction, CycleWindow[]>>
+  demand:       Partial<Record<Direction, Record<number, number>>> // hour → avg pax
+  renewalIndex: Partial<Record<Direction, number>>                  // % turnover along the route
 }
 
 export interface Depot {
@@ -49,6 +60,11 @@ export const MOCK_LINE: MockLine = {
   code:        '1203',
   name:        'Vila Nova / Centro',
   dayTypeCode: 'U',
+
+  routes: [
+    { direction: 'OUTBOUND', originName: 'Vila Nova', destinationName: 'Centro'    },
+    { direction: 'INBOUND',  originName: 'Centro',     destinationName: 'Vila Nova' },
+  ],
 
   // Deliberately misaligned between directions — the generator has to unify
   // these into one merged timeline (see generator-logic.ts#buildUnifiedWindows).

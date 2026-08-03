@@ -143,11 +143,11 @@ function windowCoveringHour(rows: GenWindow[], hour: number): GenWindow | undefi
 export function computeOfertaSeries(
   rows:             GenWindow[],
   vehicleCapacity:  number,
-  renewalIndex:     Record<Direction, number>,
+  renewalIndex:     Partial<Record<Direction, number>>,
   opStartMinutes:   number,
   opEndMinutes:     number,
-): Record<Direction, Record<number, number>> {
-  const result: Record<Direction, Record<number, number>> = { OUTBOUND: {}, INBOUND: {} }
+): Partial<Record<Direction, Record<number, number>>> {
+  const result: Partial<Record<Direction, Record<number, number>>> = { OUTBOUND: {}, INBOUND: {} }
 
   for (let hour = 0; hour < 24; hour++) {
     const hourMidMinutes = hour * 60 + 30
@@ -155,11 +155,11 @@ export function computeOfertaSeries(
     const w              = windowCoveringHour(rows, hour + 0.5)
 
     for (const dir of ['OUTBOUND', 'INBOUND'] as Direction[]) {
-      if (!inOperation || !w) { result[dir][hour] = 0; continue }
+      if (!inOperation || !w) { result[dir]![hour] = 0; continue }
       const cycleTotal      = totalCycleMinutes(w)
       const tripsPerHour    = cycleTotal > 0 ? (w.fleetCount * 60) / cycleTotal : 0
       const capacityPerTrip = vehicleCapacity * (1 + (renewalIndex[dir] ?? 0) / 100)
-      result[dir][hour]     = Math.round(tripsPerHour * capacityPerTrip)
+      result[dir]![hour]    = Math.round(tripsPerHour * capacityPerTrip)
     }
   }
   return result

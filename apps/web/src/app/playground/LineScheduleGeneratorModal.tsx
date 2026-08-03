@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
   Tooltip, Legend, CartesianGrid,
 } from 'recharts'
 import { Button }              from '@/components/ui/button'
+import { Switch }               from '@/components/ui/switch'
 import { Icons }                from '@/lib/icons'
 import { useShortcutContext }   from '@/lib/keywatch'
 import {
@@ -17,7 +18,7 @@ import {
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour, type GenWindow,
 } from './generator-logic'
 
-const DIR_LABEL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta' }
+const DIR_LABEL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 
 const TABS = [
   { key: 'janelas', label: 'Janelas' },
@@ -40,12 +41,12 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('janelas')
 
   const [windows, setWindows] = useState<GenWindow[]>(
-    () => buildUnifiedWindows(line.windows.OUTBOUND, line.windows.INBOUND),
+    () => buildUnifiedWindows(line.windows.OUTBOUND ?? [], line.windows.INBOUND ?? []),
   )
   const [opStart,             setOpStart]             = useState(240)  // 04:00
   const [opEnd,               setOpEnd]               = useState(1410) // 23:30
   const [vehicleCapacity,     setVehicleCapacity]      = useState(80)
-  const [renewalIndex,        setRenewalIndex]         = useState<Record<Direction, number>>(line.renewalIndex)
+  const [renewalIndex,        setRenewalIndex]         = useState<Partial<Record<Direction, number>>>(line.renewalIndex)
   const [includeAccessReturn, setIncludeAccessReturn]  = useState(false)
   const [insertInterval,      setInsertInterval]       = useState(true)
   const [intervalTypeId,      setIntervalTypeId]       = useState(MOCK_INTERVAL_TYPES[0].id)
@@ -79,8 +80,8 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
 
   const chartData = useMemo(() => Array.from({ length: 24 }, (_, hour) => ({
     hour:    hourToLabel(hour),
-    oferta:  ofertaSeries[activeDir][hour] ?? 0,
-    demanda: line.demand[activeDir][hour]  ?? 0,
+    oferta:  ofertaSeries[activeDir]?.[hour] ?? 0,
+    demanda: line.demand[activeDir]?.[hour]  ?? 0,
   })), [ofertaSeries, activeDir, line])
 
   function updateWindow(index: number, patch: Partial<GenWindow>) {
@@ -105,7 +106,7 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
   }
   function resetWindows() {
     setResult(null)
-    setWindows(buildUnifiedWindows(line.windows.OUTBOUND, line.windows.INBOUND))
+    setWindows(buildUnifiedWindows(line.windows.OUTBOUND ?? [], line.windows.INBOUND ?? []))
   }
   function addDepotRow() {
     const used = new Set(depotAllocations.map(d => d.depotId))
@@ -330,68 +331,58 @@ export function LineScheduleGeneratorModal({ onClose }: Props) {
           )}
 
           {activeTab === 'ajuste' && (
-            <div className="grid grid-cols-2 gap-6">
-              <section className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Intervalo</h3>
-                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={insertInterval}
-                    onChange={e => setInsertInterval(e.target.checked)}
-                    className="rounded border-input w-4 h-4 accent-ring"
-                  />
-                  Inserir intervalo entre ciclos
-                </label>
-                {insertInterval && (
-                  <select
-                    value={intervalTypeId}
-                    onChange={e => setIntervalTypeId(e.target.value)}
-                    className="w-full appearance-none text-xs rounded-sm border border-input bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-                  >
-                    {MOCK_INTERVAL_TYPES.map(it => (
-                      <option key={it.id} value={it.id}>{it.name} ({it.code}) — {it.isPaid ? 'pago' : 'não pago'}</option>
-                    ))}
-                  </select>
-                )}
-              </section>
+            <div className="grid grid-cols-[6rem_1fr_14rem] gap-x-4 gap-y-4 items-center max-w-3xl">
 
-              <section className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Acesso &amp; Recolhida</h3>
-                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includeAccessReturn}
-                    onChange={e => setIncludeAccessReturn(e.target.checked)}
-                    className="rounded border-input w-4 h-4 accent-ring"
-                  />
-                  Incluir acesso e recolhida
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Insere acesso antes da primeira viagem e recolhida depois da última de cada veículo, a partir do
-                  depósito alocado na aba Frota. {includeAccessReturn && 'A alocação por depósito passa a ser obrigatória.'}
-                </p>
-              </section>
+              {/* row: intervalo — control column holds the switch */}
+              <Switch checked={insertInterval} onToggle={() => setInsertInterval(v => !v)} />
+              <span
+                className="text-sm cursor-pointer select-none"
+                onClick={() => setInsertInterval(v => !v)}
+              >
+                Inserir intervalo entre ciclos
+              </span>
+              <select
+                value={intervalTypeId}
+                onChange={e => setIntervalTypeId(e.target.value)}
+                disabled={!insertInterval}
+                className="w-full appearance-none text-sm rounded-sm border border-input bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+              >
+                {MOCK_INTERVAL_TYPES.map(it => (
+                  <option key={it.id} value={it.id}>{it.name} ({it.code}) — {it.isPaid ? 'pago' : 'não pago'}</option>
+                ))}
+              </select>
 
-              <section className="space-y-1.5 col-span-2">
-                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Índice de Renovação (%)</h3>
-                <p className="text-xs text-muted-foreground">
-                  Percentual de renovação de passageiros ao longo do percurso (embarque/desembarque intermediário),
-                  por sentido — impacta a oferta calculada.
-                </p>
-                <div className="flex items-center gap-4">
-                  {(['OUTBOUND', 'INBOUND'] as Direction[]).map(dir => (
-                    <label key={dir} className="flex items-center gap-2 text-sm">
-                      {DIR_LABEL[dir]}
-                      <input
-                        type="number" min={0}
-                        value={renewalIndex[dir]}
-                        onChange={e => setRenewalIndex(r => ({ ...r, [dir]: Number(e.target.value) || 0 }))}
-                        className="w-16 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      />
-                    </label>
-                  ))}
-                </div>
-              </section>
+              {/* row: acesso e recolhida */}
+              <Switch checked={includeAccessReturn} onToggle={() => setIncludeAccessReturn(v => !v)} />
+              <span
+                className="text-sm cursor-pointer select-none"
+                onClick={() => setIncludeAccessReturn(v => !v)}
+              >
+                Incluir acesso e recolhida
+              </span>
+              <span />
+
+              {/* rows: índice de renovação — one per route the line actually has (1 to 3
+                  directions), driven by line.routes rather than a fixed OUTBOUND/INBOUND pair.
+                  Control column holds the input, same alignment as the switches above. */}
+              {line.routes.map(route => (
+                <Fragment key={route.direction}>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number" min={0}
+                      value={renewalIndex[route.direction] ?? 0}
+                      onChange={e => setRenewalIndex(r => ({ ...r, [route.direction]: Number(e.target.value) || 0 }))}
+                      className="w-14 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                  <span className="text-sm">
+                    Índice de renovação {DIR_LABEL[route.direction]}{' '}
+                    <span className="text-muted-foreground">({route.originName} x {route.destinationName})</span>
+                  </span>
+                  <span />
+                </Fragment>
+              ))}
             </div>
           )}
 
