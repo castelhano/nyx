@@ -14,7 +14,7 @@ import { useShortcutContext }   from '@/lib/keywatch'
 import type { CycleWindow }     from '../views/vehicles.view'
 import {
   buildUnifiedWindows, absorbPartialGaps, mergeByTolerance, estimateFleetCounts,
-  mergeWithNext, splitWindow, closeFrequency, totalCycleMinutes,
+  updateWindowBoundary, computeBoundaryFlags, mergeWithNext, splitWindow, closeFrequency, totalCycleMinutes,
   computeOfertaSeries, estimateGeneration,
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour,
   TOLERANCE_MINUTES, TOLERANCE_LABELS,
@@ -234,6 +234,7 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const boundaryFlags = useMemo(() => computeBoundaryFlags(windows), [windows])
   const peakFleet = useMemo(() => windows.reduce((m, w) => Math.max(m, w.fleetCount), 0), [windows])
   const depotSum  = useMemo(() => depotAllocations.reduce((s, d) => s + d.count, 0), [depotAllocations])
 
@@ -260,8 +261,14 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     setResult(null)
     setWindows(rows => rows.map((r, i) => i === index ? { ...r, ...patch } : r))
   }
+  function updateBoundary(index: number, field: 'from' | 'to', value: number) {
+    setResult(null)
+    setWindows(rows => updateWindowBoundary(rows, index, field, value))
+  }
   function removeWindow(index: number) {
     setResult(null)
+    // may open a gap between the rows that become adjacent — surfaced via
+    // computeBoundaryFlags rather than guessed shut here
     setWindows(rows => rows.length > 1 ? rows.filter((_, i) => i !== index) : rows)
   }
   function doMerge(index: number) {
@@ -282,12 +289,19 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
   }
   function addBlankWindow() {
     setResult(null)
-    setWindows(rows => [...rows, {
-      id: crypto.randomUUID(), from: 0, to: 23.5,
-      outboundMinutes: 60, outboundKnown: true, outboundInterval: 1,
-      inboundMinutes:  60, inboundKnown:  true, inboundInterval:  1,
-      fleetCount: 1,
-    }])
+    setWindows(rows => {
+      if (rows.length === 0) {
+        return [{
+          id: crypto.randomUUID(), from: 0, to: 24,
+          outboundMinutes: 60, outboundKnown: true, outboundInterval: 1,
+          inboundMinutes:  60, inboundKnown:  true, inboundInterval:  1,
+          fleetCount: 1,
+        }]
+      }
+      // splits the last row in two rather than appending — appending would
+      // either duplicate the 0–24 span or leave the day boundary broken
+      return splitWindow(rows, rows.length - 1)
+    })
   }
   function addDepotRow() {
     const used = new Set(depotAllocations.map(d => d.depotId))
@@ -364,7 +378,6 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                 <>
                   {/* operation window */}
                   <section className="space-y-2">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Janela de Operação</h3>
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2 text-sm">
                         Início
@@ -453,20 +466,44 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                               return (
                                 <tr key={w.id} className="hover:bg-muted/20">
                                   <td className="px-2 py-2">
-                                    <input
-                                      type="time"
-                                      value={hourToLabel(w.from)}
-                                      onChange={e => updateWindow(i, { from: labelToHour(e.target.value) })}
-                                      className="w-24 rounded-sm border border-input bg-input-bg px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-                                    />
+                                    {i === 0 && !boundaryFlags[i].fromMismatch ? (
+                                      <div
+                                        title="Início do dia — fixo"
+                                        className="w-24 rounded-sm border border-input bg-muted/30 px-1.5 py-1 text-muted-foreground"
+                                      >
+                                        00:00
+                                      </div>
+                                    ) : (
+                                      <input
+                                        type="time"
+                                        value={hourToLabel(w.from)}
+                                        onChange={e => updateBoundary(i, 'from', labelToHour(e.target.value))}
+                                        title={boundaryFlags[i].fromMismatch ? 'Possível lacuna ou sobreposição com a faixa anterior' : undefined}
+                                        className={`w-24 rounded-sm border px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring ${
+                                          boundaryFlags[i].fromMismatch ? 'border-amber-500/60 bg-amber-500/10' : 'border-input bg-input-bg'
+                                        }`}
+                                      />
+                                    )}
                                   </td>
                                   <td className="px-2 py-2">
-                                    <input
-                                      type="time"
-                                      value={hourToLabel(w.to)}
-                                      onChange={e => updateWindow(i, { to: labelToHour(e.target.value) })}
-                                      className="w-24 rounded-sm border border-input bg-input-bg px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
-                                    />
+                                    {i === windows.length - 1 && !boundaryFlags[i].toMismatch ? (
+                                      <div
+                                        title="Fim do dia — fixo"
+                                        className="w-24 rounded-sm border border-input bg-muted/30 px-1.5 py-1 text-muted-foreground"
+                                      >
+                                        24:00
+                                      </div>
+                                    ) : (
+                                      <input
+                                        type="time"
+                                        value={hourToLabel(w.to)}
+                                        onChange={e => updateBoundary(i, 'to', labelToHour(e.target.value))}
+                                        title={boundaryFlags[i].toMismatch ? 'Possível lacuna ou sobreposição com a próxima faixa' : undefined}
+                                        className={`w-24 rounded-sm border px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring ${
+                                          boundaryFlags[i].toMismatch ? 'border-amber-500/60 bg-amber-500/10' : 'border-input bg-input-bg'
+                                        }`}
+                                      />
+                                    )}
                                   </td>
                                   <td className="px-2 py-2">
                                     <div

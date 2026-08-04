@@ -267,6 +267,62 @@ export function estimateFleetCounts(
   })
 }
 
+/** Updates a single row's `from` or `to`, pushing the touching boundary of
+ *  its immediate neighbor to match (increasing this row's `to` past the next
+ *  row's `from` moves the next row's `from` forward too — that's the only
+ *  way two adjacent rows share an edge). Rejected (no-op) whenever it would
+ *  invert a row — this row's own `to` going below its own `from` (or vice
+ *  versa for `from`), or the push inverting the neighbor it touches. That's
+ *  a merge, not a boundary drag — callers should use mergeWithNext /
+ *  splitWindow for that instead of dragging a whole window out of
+ *  existence. Only ever touches the edited row and its one neighbor; never
+ *  cascades further than that. */
+export function updateWindowBoundary(
+  rows:     GenWindow[],
+  index:    number,
+  field:    'from' | 'to',
+  rawValue: number,
+): GenWindow[] {
+  const row = rows[index]
+  if (!row) return rows
+
+  if (field === 'to') {
+    if (rawValue < row.from) return rows
+    const next = rows[index + 1]
+    if (next && rawValue > next.to) return rows
+    const result = rows.map(r => ({ ...r }))
+    result[index] = { ...row, to: rawValue }
+    if (next) result[index + 1] = { ...next, from: rawValue }
+    return result
+  } else {
+    if (rawValue > row.to) return rows
+    const prev = rows[index - 1]
+    if (prev && rawValue < prev.from) return rows
+    const result = rows.map(r => ({ ...r }))
+    result[index] = { ...row, from: rawValue }
+    if (prev) result[index - 1] = { ...prev, to: rawValue }
+    return result
+  }
+}
+
+/** Per-row flags for whether its `from`/`to` cleanly touches its neighbor
+ *  (or, for the first/last row, the fixed day boundary at 0/24). Deleting a
+ *  window can open a gap between what's now-adjacent rows — rather than
+ *  guessing how to close it, the UI surfaces it here so the planner can fix
+ *  it deliberately (drag a boundary, or re-split/merge). */
+export interface BoundaryFlags { fromMismatch: boolean; toMismatch: boolean }
+
+export function computeBoundaryFlags(rows: GenWindow[]): BoundaryFlags[] {
+  return rows.map((row, i) => {
+    const prev = rows[i - 1]
+    const next = rows[i + 1]
+    return {
+      fromMismatch: i === 0               ? row.from !== 0  : row.from !== prev.to,
+      toMismatch:   i === rows.length - 1 ? row.to   !== 24 : row.to   !== next.from,
+    }
+  })
+}
+
 /** Merge a row with the next one. Default cycle times become the max of the
  *  two (never silently shrink a window's assumed duration); fleet count keeps
  *  the first row's value — both stay user-editable after the merge. A side is
