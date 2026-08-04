@@ -283,6 +283,14 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     setResult(null)
     setWindows(rows => closeFrequency(rows, index))
   }
+  function doCloseFrequencyAll() {
+    setResult(null)
+    setWindows(rows => {
+      let acc = rows
+      for (let i = 0; i < acc.length; i++) acc = closeFrequency(acc, i)
+      return acc
+    })
+  }
   function resetWindows() {
     setResult(null)
     setWindows(seedWindows(line, mergeTolerance))
@@ -430,6 +438,14 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                         >
                           <Icons.Plus className="w-3 h-3" /> Adicionar janela
+                        </button>
+                        <button
+                          type="button"
+                          title="Arredonda a frequência de todas as janelas"
+                          onClick={doCloseFrequencyAll}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Icons.Sparkles className="w-3 h-3" /> Arredondar todas
                         </button>
                         <button
                           type="button"
@@ -614,7 +630,7 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                     className="text-sm cursor-pointer select-none"
                     onClick={() => setInsertInterval(v => !v)}
                   >
-                    Inserir intervalo entre ciclos
+                    Inserir intervalo de descanso
                   </span>
                   <select
                     value={intervalTypeId}

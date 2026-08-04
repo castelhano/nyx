@@ -176,37 +176,49 @@ function rideCycleMinutes(w: GenWindow): number {
 
 /** Groups consecutive, fully-known rows whose ride cycle (ida+volta only —
  *  stop/turnback intervals don't count) stays within `toleranceMinutes` of
- *  the group's anchor: the ride cycle of whichever row started the group,
- *  fixed for the group's whole lifetime. This bounds every member to within
- *  the stated tolerance of the anchor — comparing instead against a running
- *  "furthest point reached so far" would let a sequence of small steps chain
- *  into a much larger drift than the label promises. The group's final value
- *  is the member with the largest ride cycle, taken whole (never mixes ida
- *  from one row with volta from another). Rows with any unknown side never
- *  start or join a group — a tolerance match against a 0 placeholder isn't a
- *  real match. */
+ *  every other member already in the group: a row joins only if the group's
+ *  resulting max−min ride-cycle span (including the row) would still fit
+ *  within the tolerance. Comparing against a single frozen "anchor" (e.g.
+ *  whichever row started the group) isn't enough — pulling one more row into
+ *  an earlier group can change which row starts the *next* group, which can
+ *  make a larger tolerance produce *more* groups than a smaller one for the
+ *  same input. Bounding by the whole group's span avoids that: a group valid
+ *  at a given tolerance stays valid at any larger tolerance, so raising the
+ *  tolerance never increases the group count. It also still rules out the
+ *  creep a running "furthest point reached so far" comparison would allow —
+ *  a chain of small steps can't drift the group past the stated tolerance
+ *  either. The group's final value is the member with the largest ride
+ *  cycle, taken whole (never mixes ida from one row with volta from
+ *  another). Rows with any unknown side never start or join a group — a
+ *  tolerance match against a 0 placeholder isn't a real match. */
 export function mergeByTolerance(rows: GenWindow[], toleranceMinutes: number): GenWindow[] {
   if (toleranceMinutes <= 0) return rows
 
   const merged: GenWindow[] = []
-  let anchor = NaN
+  let groupMin = NaN
+  let groupMax = NaN
 
   for (const row of rows) {
     const bothKnown     = row.outboundKnown && row.inboundKnown
     const last          = merged[merged.length - 1]
     const lastBothKnown = !!last && last.outboundKnown && last.inboundKnown
+    const rideCycle      = rideCycleMinutes(row)
+    const nextMin         = Math.min(groupMin, rideCycle)
+    const nextMax         = Math.max(groupMax, rideCycle)
 
-    if (bothKnown && lastBothKnown && Math.abs(rideCycleMinutes(row) - anchor) <= toleranceMinutes) {
-      if (rideCycleMinutes(row) > rideCycleMinutes(last)) {
+    if (bothKnown && lastBothKnown && nextMax - nextMin <= toleranceMinutes) {
+      if (rideCycle > rideCycleMinutes(last)) {
         merged[merged.length - 1] = { ...row, from: last.from, to: row.to }
       } else {
         last.to = row.to
       }
+      groupMin = nextMin
+      groupMax = nextMax
       continue
     }
 
     merged.push({ ...row })
-    if (bothKnown) anchor = rideCycleMinutes(row)
+    if (bothKnown) { groupMin = rideCycle; groupMax = rideCycle }
   }
 
   return merged
