@@ -563,7 +563,7 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                                   <td className="px-2 py-2">
                                     <div className="flex items-center justify-end gap-1">
                                       <button
-                                        type="button" title="Fechar frequência (ajusta o ciclo de volta até fechar)"
+                                        type="button" title="Arredondar frequência"
                                         onClick={() => doCloseFrequency(i)}
                                         className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
                                       >

@@ -22,7 +22,7 @@ export interface TopbarAction {
   separator?: boolean
   // menu: quando presente, o botão vira um split-button — clique principal mantém
   // onClick normal, e um chevron ao lado abre um dropdown com estes itens
-  menu?: { label: string; icon?: React.ElementType; onClick: () => void }[]
+  menu?: { label: string; icon?: React.ElementType; onClick: () => void; disabled?: boolean }[]
 }
 
 interface TopbarActionsContextValue {

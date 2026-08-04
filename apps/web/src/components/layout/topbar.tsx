@@ -31,8 +31,18 @@ function ActionButton({ action }: { action: TopbarAction }) {
 // Split-button — mesmo botão de ação principal + um chevron que abre um dropdown
 // com itens extras (action.menu). Usado quando uma ação de topbar precisa oferecer
 // opções relacionadas sem virar vários botões separados.
+// Espelha o mapeamento de tamanho→fonte do Button (sizes.sm/default/lg em button.tsx)
+// para que os itens do dropdown herdem o mesmo tamanho de texto do botão que os abre.
+const menuTextSize: Record<NonNullable<TopbarAction['size']>, string> = {
+  sm:      'text-xs',
+  default: 'text-sm',
+  lg:      'text-sm',
+  icon:    'text-xs',
+}
+
 function SplitActionButton({ action }: { action: TopbarAction }) {
   const Icon = action.icon
+  const itemTextSize = menuTextSize[action.size ?? 'sm']
   return (
     <div className="inline-flex items-stretch rounded-md overflow-hidden">
       <Button
@@ -56,7 +66,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
             type="button"
             variant={action.variant ?? 'default'}
             size={action.size ?? 'sm'}
-            disabled={action.disabled}
+            disabled={action.menu!.every((item) => item.disabled)}
             className="rounded-l-none border-l border-background/20 px-1.5"
             aria-label="Mais opções"
           >
@@ -67,7 +77,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
         {action.menu!.map((item, i) => {
           const ItemIcon = item.icon
           return (
-            <DropdownItem key={i} onClick={item.onClick}>
+            <DropdownItem key={i} onClick={item.onClick} disabled={item.disabled} className={itemTextSize}>
               {ItemIcon && <ItemIcon className="w-4 h-4" />}
               {item.label}
             </DropdownItem>

@@ -1987,24 +1987,23 @@ export default function VehiclePlanPage() {
       },
       { label: '', separator: true },
       {
-        label:    'Ajustar Ciclo',
-        icon:     Icons.Timer,
-        size:     'sm' as const,
-        onClick:  handleAdjustCycle,
-        disabled: isPending,
-        variant:  'ghost' as const,
-      },
-      { label: '', separator: true },
-      {
         // Gera uma proposta de atendimento (janelas/frota/oferta×demanda) para a
         // linha selecionada em "Linhas" — sem relação com o "Gerar" do solver
         // (esse só aparece fora do modo edição, ver bloco "modo normal" abaixo).
         label:    'Gerar',
-        icon:     Icons.Sparkles,
+        icon:     Icons.Play,
         size:     'sm' as const,
         variant:  'ghost' as const,
         onClick:  () => setGenerateLineModal({ lineId: [...selectedLineIds][0] }),
         disabled: selectedLineIds.size !== 1,
+        menu: [
+          {
+            label:    'Ajustar Ciclo',
+            icon:     Icons.Timer,
+            onClick:  handleAdjustCycle,
+            disabled: isPending,
+          },
+        ],
       },
       { label: '', separator: true },
       {
