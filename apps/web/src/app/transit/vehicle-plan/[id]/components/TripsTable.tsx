@@ -171,6 +171,7 @@ export function TripsTable({ groups, focus, range, onCellClick }: Props) {
                     {di === 0 && (
                       <td
                         rowSpan={group.directions.length}
+                        title={group.lineName}
                         style={colWidth(LABEL_COL_1_PX)}
                         className="sticky left-0 bg-card px-1 py-1 text-xs font-medium align-middle border-r border-border/30 overflow-hidden whitespace-nowrap"
                       >
