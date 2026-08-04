@@ -237,9 +237,9 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
           return (
             <div
               key={lineId}
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent select-none group"
+              className="flex items-center gap-2 rounded hover:bg-accent select-none group"
             >
-              <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+              <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer px-2 py-1.5">
                 <input
                   type="checkbox"
                   checked={checked}
@@ -256,7 +256,7 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
                   onClick={() => handleClearLine(lineId, line.code)}
                   disabled={clearingId === lineId}
                   title="Limpar linha do plano"
-                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity shrink-0 disabled:opacity-50"
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity shrink-0 disabled:opacity-50 me-2"
                 >
                   <Icons.Trash2 className="w-3.5 h-3.5" />
                 </button>

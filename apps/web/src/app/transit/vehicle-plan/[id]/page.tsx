@@ -457,6 +457,11 @@ export default function VehiclePlanPage() {
     'transit', 'vehicle-plan', isNew, recordError ?? undefined,
   )
 
+  const status = record?.status as string | undefined
+  // Edit bar stays reachable on active plans for navigation/inspection (trip detail
+  // panel, keyboard nav) — only mutating actions require DRAFT + canUpdate.
+  const canEdit = canUpdate && status === 'DRAFT'
+
   const { data: ganttData, refetch: refetchGantt } = useQuery<VehiclePlanGanttData>({
     queryKey: ['transit', 'vehicle-plan', id, 'gantt'],
     queryFn:  async () => {
@@ -961,6 +966,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleUpdateConstraints(tripIds: string[], patches: TripConstraints | null | TripConstraints[]) {
+    if (!canEdit) return
     try {
       await Promise.all(
         tripIds.map((tripId, i) => {
@@ -995,7 +1001,7 @@ export default function VehiclePlanPage() {
   }
 
   function handleAdjustCycle() {
-    if (!plottedData) return
+    if (!plottedData || !canEdit) return
 
     const overrides   = new Map<string, TripPatch>()
     const drOverrides = new Map<string, DeadrunPatch>()
@@ -1109,7 +1115,7 @@ export default function VehiclePlanPage() {
   const handleTripTimingOp = useCallback((
     op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext',
   ) => {
-    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
+    if (!canEdit || !mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
 
     const isBreakFocus = focusedSegId.endsWith(':bk')
     const breakId       = isBreakFocus ? focusedSegId.slice(0, -3) : null
@@ -1336,7 +1342,7 @@ export default function VehiclePlanPage() {
         return a
       }))
     }
-  }, [focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
+  }, [canEdit, focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
 
   function handleSelectionChange(sel: Selection | null) {
     if (!editBarOpen) return
@@ -1347,6 +1353,7 @@ export default function VehiclePlanPage() {
   }
 
   function handlePendingAdd(entry: PendingAddEntry) {
+    if (!canEdit) return
     setPendingAdds(prev => [...prev, entry])
   }
 
@@ -1382,6 +1389,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePendingWithConfirm() {
+    if (!canEdit) return
     if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
     const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
     const ok = await confirm({
@@ -1407,6 +1415,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleSavePending() {
+    if (!canEdit) return
     if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
     setIsPending(true)
     try {
@@ -1597,14 +1606,17 @@ export default function VehiclePlanPage() {
   }
 
   function handleAddAccess(blockTripId: string, blockId: string) {
+    if (!canEdit) return
     setDepotModal({ kind: 'access', blockTripId, blockId })
   }
 
   function handleAddReturn(blockTripId: string, blockId: string) {
+    if (!canEdit) return
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
   function handleAddInterval(blockTripId: string, blockId: string) {
+    if (!canEdit) return
     setAddIntervalModal({ blockTripId, blockId })
   }
 
@@ -1612,7 +1624,7 @@ export default function VehiclePlanPage() {
   // travel-time lookup to resolve, so there's nothing that requires an immediate
   // API call even for trips that already exist server-side.
   function handleConfirmAddInterval(intervalType: IntervalType) {
-    if (!addIntervalModal || !mergedPlottedData) return
+    if (!canEdit || !addIntervalModal || !mergedPlottedData) return
     const { blockTripId, blockId } = addIntervalModal
     setAddIntervalModal(null)
 
@@ -1681,7 +1693,7 @@ export default function VehiclePlanPage() {
   }
 
   function handleConfirmMove() {
-    if (!selection || !moveTargetBlockId || !mergedPlottedData) return
+    if (!canEdit || !selection || !moveTargetBlockId || !mergedPlottedData) return
 
     const sourceBlockId = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
     const sourceBlock   = mergedPlottedData.blocks.find(b => b.id === sourceBlockId)
@@ -1770,7 +1782,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleConfirmDepotModal(depotLocalityId: string) {
-    if (!depotModal) return
+    if (!canEdit || !depotModal) return
     const { kind, blockTripId, blockId } = depotModal
     setDepotModal(null)
 
@@ -1813,6 +1825,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDeleteDeadruns(deadrunIds: string[], blockId: string) {
+    if (!canEdit) return
     const ok = await confirm({
       title:        deadrunIds.length === 1 ? 'Excluir vazio' : `Excluir ${deadrunIds.length} vazios`,
       description:  'Esta ação não pode ser desfeita.',
@@ -1838,6 +1851,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDeleteBreaks(breakIds: string[], blockId: string) {
+    if (!canEdit) return
     const ok = await confirm({
       title:        breakIds.length === 1 ? 'Excluir intervalo' : `Excluir ${breakIds.length} intervalos`,
       description:  'Esta ação não pode ser desfeita.',
@@ -1863,6 +1877,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) {
+    if (!canEdit) return
     const tripCount    = tripIds.length
     const deadrunCount = deadrunIds.length
     const breakCount   = breakIds.length
@@ -1912,6 +1927,7 @@ export default function VehiclePlanPage() {
   }
 
   async function handleDeleteTrips(tripIds: string[]) {
+    if (!canEdit) return
     const count = tripIds.length
     const ok = await confirm({
       title:        count === 1 ? 'Excluir viagem' : `Excluir ${count} viagens`,
@@ -1947,14 +1963,13 @@ export default function VehiclePlanPage() {
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
       onAddInterval:       handleAddInterval,
-    }),
+    }, canEdit),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [canEdit],
   )
 
   // ── topbar ───────────────────────────────────────────────────────────────────
 
-  const status           = record?.status as string | undefined
   const planLines        = ganttData?.plan?.lines ?? []
   const hasCustomMetrics = !!( (record as Record<string, unknown> | undefined)?.metrics )
   const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
@@ -1976,53 +1991,57 @@ export default function VehiclePlanPage() {
     }] : []),
 
     // ── modo edição ────────────────────────────────────────────────────────────
+    // Navegação/inspeção fica disponível mesmo em planos ativos; ações que
+    // gravam alterações (viagem, gerar, salvar, limpar) exigem canEdit (DRAFT).
     ...(editBarOpen ? [
-      {
-        label:    'Viagem',
-        icon:     Icons.Plus,
-        size:     'sm' as const,
-        variant:  'ghost' as const,
-        onClick:  () => setAddTripOpen(true),
-        keybind:  'alt+n',
-      },
-      { label: '', separator: true },
-      {
-        // Gera uma proposta de atendimento (janelas/frota/oferta×demanda) para a
-        // linha selecionada em "Linhas" — sem relação com o "Gerar" do solver
-        // (esse só aparece fora do modo edição, ver bloco "modo normal" abaixo).
-        label:    'Gerar',
-        icon:     Icons.Play,
-        size:     'sm' as const,
-        variant:  'ghost' as const,
-        onClick:  () => setGenerateLineModal({ lineId: [...selectedLineIds][0] }),
-        disabled: selectedLineIds.size !== 1,
-        menu: [
-          {
-            label:    'Ajustar Ciclo',
-            icon:     Icons.Timer,
-            onClick:  handleAdjustCycle,
-            disabled: isPending,
-          },
-        ],
-      },
-      { label: '', separator: true },
-      {
-        label:    pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
-        icon:     Icons.Save,
-        size:     'sm' as const,
-        onClick:  handleSavePendingWithConfirm,
-        disabled: isPending || pendingCount === 0,
-        keybind:  'Alt+G',
-      },
-      {
-        label:    'Limpar',
-        icon:     Icons.Undo2,
-        size:     'sm' as const,
-        onClick:  handleDiscardPendingWithConfirm,
-        disabled: isPending || pendingCount === 0,
-        variant:  'destructive' as const,
-        keybind:  'Alt+L',
-      },
+      ...(canEdit ? [
+        {
+          label:    'Viagem',
+          icon:     Icons.Plus,
+          size:     'sm' as const,
+          variant:  'ghost' as const,
+          onClick:  () => setAddTripOpen(true),
+          keybind:  'alt+n',
+        },
+        { label: '', separator: true },
+        {
+          // Gera uma proposta de atendimento (janelas/frota/oferta×demanda) para a
+          // linha selecionada em "Linhas" — sem relação com o "Gerar" do solver
+          // (esse só aparece fora do modo edição, ver bloco "modo normal" abaixo).
+          label:    'Gerar',
+          icon:     Icons.Play,
+          size:     'sm' as const,
+          variant:  'ghost' as const,
+          onClick:  () => setGenerateLineModal({ lineId: [...selectedLineIds][0] }),
+          disabled: selectedLineIds.size !== 1,
+          menu: [
+            {
+              label:    'Ajustar Ciclo',
+              icon:     Icons.Timer,
+              onClick:  handleAdjustCycle,
+              disabled: isPending,
+            },
+          ],
+        },
+        { label: '', separator: true },
+        {
+          label:    pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
+          icon:     Icons.Save,
+          size:     'sm' as const,
+          onClick:  handleSavePendingWithConfirm,
+          disabled: isPending || pendingCount === 0,
+          keybind:  'Alt+G',
+        },
+        {
+          label:    'Limpar',
+          icon:     Icons.Undo2,
+          size:     'sm' as const,
+          onClick:  handleDiscardPendingWithConfirm,
+          disabled: isPending || pendingCount === 0,
+          variant:  'destructive' as const,
+          keybind:  'Alt+L',
+        },
+      ] : []),
     ] : [
     // ── modo normal ────────────────────────────────────────────────────────────
       // lines panel toggle
@@ -2045,14 +2064,14 @@ export default function VehiclePlanPage() {
         disabled: isPending,
       }] : []),
       // generate
-      ...((!activeJobId || isSolverDone) && canUpdate && status === 'DRAFT' ? [{
+      ...((!activeJobId || isSolverDone) && canEdit ? [{
         label:    isPending ? 'Gerando…' : 'Gerar',
         icon:     Icons.Play,
         onClick:  () => setGenerateModalOpen(true),
         disabled: isPending,
       }] : []),
       // activate
-      ...(!activeJobId && canUpdate && status === 'DRAFT' ? [{
+      ...(!activeJobId && canEdit ? [{
         label:    isPending ? 'Ativando…' : 'Ativar',
         icon:     Icons.CheckCircle,
         onClick:  handleActivate,
@@ -2060,7 +2079,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
       // delete
-      ...(!activeJobId && canUpdate && status === 'DRAFT' ? [{
+      ...(!activeJobId && canEdit ? [{
         label:    'Excluir',
         icon:     Icons.Trash2,
         onClick:  handleDelete,
@@ -2069,7 +2088,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, selectedLineIds, editBarOpen, pendingCount])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount])
 
   // ── keyboard nav focus ────────────────────────────────────────────────────
 
@@ -2132,7 +2151,7 @@ export default function VehiclePlanPage() {
     desc:    'Adicionar viagem',
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && selectedLineIds.size > 0,
+    enabled: editBarOpen && canEdit && selectedLineIds.size > 0,
   })
 
   useShortcut('f9', () => handleToggleEditBar(), {
@@ -2406,7 +2425,7 @@ export default function VehiclePlanPage() {
   useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { enabled: isTripFocused, display: false })
 
   useShortcut('delete', () => {
-    if (!mergedPlottedData) return
+    if (!canEdit || !mergedPlottedData) return
 
     // Build list of segment references: prefer active selection, fall back to focusedSegId
     type SegKind = 'trip' | 'deadrun' | 'break'
@@ -2798,7 +2817,7 @@ export default function VehiclePlanPage() {
             onSelectionChange={setSelectedLineIds}
             onClose={() => setLinesPanelOpen(false)}
             onLineCleared={() => refetchGantt()}
-            canClear={canUpdate && (record as any)?.status === 'DRAFT'}
+            canClear={canEdit}
           />
         )}
 

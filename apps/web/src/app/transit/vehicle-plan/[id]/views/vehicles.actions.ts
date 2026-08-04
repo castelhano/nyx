@@ -19,6 +19,7 @@ export interface VehiclesActionDeps {
 
 export function createVehiclesActionSpec(
   deps: VehiclesActionDeps,
+  canEdit: boolean,
 ): GanttActionSpec<VehiclePlanGanttData> {
   return {
 
@@ -42,6 +43,10 @@ export function createVehiclesActionSpec(
     },
 
     getActions(selection, data, onClose): ActionItem[] {
+      // every action here mutates the plan (lock, access/return/interval, delete) —
+      // none apply when the plan isn't editable
+      if (!canEdit) return []
+
       if (selection.type === 'trip') {
         // deadrun segment selected (single click only)
         if (selection.segment.id.endsWith(':dr')) {
