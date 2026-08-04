@@ -149,6 +149,17 @@ const LINES: Array<{ code: string; name: string; type: string; metrics?: object 
   { code: 'R03',  name: 'Coxipo Acu x Est Alencastro',     type: 'RURAL',   metrics: { extensionKm: { OUTBOUND: 39.5,    INBOUND: 39.5    }, windows: biWindows(170) } },
 ]
 
+// child code → parent code — variant lines that share the parent's OSO (approvalRef).
+// Note A22B is itself the parent of A22C (not a child of A22).
+const LINE_PARENTS: Record<string, string> = {
+  '206B': '206',
+  '308B': '308',
+  '309B': '309',
+  '311B': '311',
+  'A06B': 'A06',
+  'A22C': 'A22B',
+}
+
 // ── routes ────────────────────────────────────────────────────────────────────
 
 type RouteSeed = { lineCode: string; direction: string; name: string; originCode: string; destinationCode: string }
@@ -282,7 +293,14 @@ async function main() {
     })
     lineMap.set(line.code, record.id)
   }
-  console.log(`  ✓ lines (${LINES.length})`)
+
+  for (const [childCode, parentCode] of Object.entries(LINE_PARENTS)) {
+    const childId  = lineMap.get(childCode)
+    const parentId = lineMap.get(parentCode)
+    if (!childId || !parentId) continue
+    await prisma.transitLine.update({ where: { id: childId }, data: { parentLineId: parentId } })
+  }
+  console.log(`  ✓ lines (${LINES.length}, ${Object.keys(LINE_PARENTS).length} com linha-mãe)`)
 
   // ── localities id map (needed for routes/travel-times) ──────────────────────
 

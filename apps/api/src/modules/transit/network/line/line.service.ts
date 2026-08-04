@@ -34,7 +34,14 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     super(prisma, 'transitLine', lineSchema, 'transit')
   }
 
+  override async create(dto: CreateLineDto): Promise<Line> {
+    if (dto.parentLineId) await this.validateParentLine(null, dto.parentLineId)
+    return super.create(dto)
+  }
+
   override async update(id: string, dto: UpdateLineDto): Promise<Line> {
+    if (dto.parentLineId) await this.validateParentLine(id, dto.parentLineId)
+
     if (dto.scopeId === undefined && dto.metrics === undefined) return super.update(id, dto)
 
     const current = await this.findOne(id)
@@ -53,6 +60,33 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
       where: { id },
       data:  this.sanitizeDto({ ...dto, metrics: merged } as Record<string, unknown>),
     }) as Promise<Line>
+  }
+
+  // enforces max chain depth of 1: a line can only derive from a line that is itself
+  // not derived, and a line that already has children cannot become a child
+  private async validateParentLine(id: string | null, parentLineId: string): Promise<void> {
+    if (parentLineId === id) {
+      throw new BadRequestException('Uma linha não pode ser derivada de si mesma')
+    }
+
+    const parent = await this.prisma.transitLine.findUnique({
+      where:  { id: parentLineId },
+      select: { parentLineId: true },
+    })
+    if (!parent) throw new BadRequestException('Linha-base não encontrada')
+    if (parent.parentLineId) {
+      throw new BadRequestException('A linha base informada já é derivada de outra linha — encadeamento não é permitido')
+    }
+
+    if (id) {
+      const hasChildren = await this.prisma.transitLine.findFirst({
+        where:  { parentLineId: id },
+        select: { id: true },
+      })
+      if (hasChildren) {
+        throw new BadRequestException('Esta linha já é linha base de outra(s) linha(s) — encadeamento não é permitido')
+      }
+    }
   }
 
   protected buildSearchWhere(search: string) {

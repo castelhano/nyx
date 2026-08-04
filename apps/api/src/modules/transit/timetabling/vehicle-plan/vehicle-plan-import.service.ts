@@ -133,6 +133,29 @@ export class VehiclePlanImportService {
       }
     }
 
+    // Some ERPs omit the OSO code for a variant line whose trips are recorded under the
+    // parent line's own OSO (e.g. "308B" rows with a blank blockCode, alongside "308"
+    // rows carrying "308U08") — inherit it via the cadastro relationship instead of
+    // failing the line. Falls back to the parent's currently APPROVED schedule when the
+    // parent itself isn't present in this file (e.g. a re-sync scoped to the variant only).
+    const transitLineById = new Map<string, any>((transitLines as any[]).map(l => [l.id, l]))
+    for (const line of transitLines as any[]) {
+      if (approvalRefByLineCode.has(line.code) || !line.parentLineId) continue
+
+      const parent = transitLineById.get(line.parentLineId)
+      const parentApprovalRef = parent ? approvalRefByLineCode.get(parent.code) : undefined
+      if (parentApprovalRef) {
+        approvalRefByLineCode.set(line.code, parentApprovalRef)
+        continue
+      }
+
+      const parentSchedule = await (this.prisma as any).lineSchedule.findFirst({
+        where:  { lineId: line.parentLineId, dayTypeId, status: 'APPROVED' },
+        select: { approvalRef: true },
+      })
+      if (parentSchedule) approvalRefByLineCode.set(line.code, parentSchedule.approvalRef)
+    }
+
     // Importing establishes a new, already-operating version of each touched line's
     // schedule — auto-approved (supersedes the previous APPROVED one, if any) rather
     // than left as DRAFT, since a re-sync represents the schedule as currently in force.

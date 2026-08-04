@@ -46,6 +46,19 @@ export const lineSchema = withMeta(
       className:      'md:w-1/4',
     }),
 
+    // marks this line as a variant of another (e.g. "308B" derived from "308") — see
+    // LineService for the "no chains" invariant enforced when this is set
+    parentLineId: z.uuid().optional().meta({
+      label:          'Linha base',
+      widget:         'select',
+      resource:       'transit-line',
+      domain:         'transit',
+      labelField:     'code',
+      listVisibility: 'hidden',
+      filter:         { type: 'relation', endpoint: 'transit/transit-line', labelField: 'code' },
+      className:      'md:w-1/4',
+    }),
+
     isActive: z.boolean().default(true).meta({
       label:          'Ativo',
       widget:         'switch',

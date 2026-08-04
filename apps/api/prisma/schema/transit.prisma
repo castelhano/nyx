@@ -68,6 +68,11 @@ model TransitLine {
   type      LineType
   isActive  Boolean  @default(true)
   scopeId   String?
+  // marks this line as a variant/derivative of another (e.g. "308B" of "308") — shares
+  // the parent's OSO (approvalRef) and is used for family-wide demand/km aggregation.
+  // A line with a parentLineId cannot itself be a parent (enforced in LineService), so
+  // the chain depth is always at most 1.
+  parentLineId String?
   notes     String?
   /* metrics shape
    {
@@ -84,6 +89,8 @@ model TransitLine {
   updatedAt DateTime @updatedAt
 
   scope      Scope?           @relation(fields: [scopeId], references: [id], onDelete: Restrict)
+  parentLine TransitLine?     @relation("LineVariants", fields: [parentLineId], references: [id])
+  childLines TransitLine[]    @relation("LineVariants")
   routes     TransitRoute[]
   planLines  VehiclePlanLine[]
   exceptions LineCalendarExceptionLine[]

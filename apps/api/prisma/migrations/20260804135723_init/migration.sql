@@ -240,11 +240,13 @@ CREATE TABLE "transit_lines" (
     "type" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "scopeId" TEXT,
+    "parentLineId" TEXT,
     "notes" TEXT,
     "metrics" JSONB,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "transit_lines_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "transit_scopes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "transit_lines_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "transit_scopes" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "transit_lines_parentLineId_fkey" FOREIGN KEY ("parentLineId") REFERENCES "transit_lines" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
