@@ -94,3 +94,37 @@ export const MOCK_LINE: MockLine = {
 
   renewalIndex: { OUTBOUND: 35, INBOUND: 20 },
 }
+
+// Second line — only used by the trips-grid prototype (TripsGridPrototype.tsx)
+// to validate multiple lines stacked in one running-schedule table.
+export const MOCK_LINE_2: MockLine = {
+  code:        '1204',
+  name:        'Jardim Sul / Terminal',
+  dayTypeCode: 'U',
+
+  routes: [
+    { direction: 'OUTBOUND', originName: 'Jardim Sul', destinationName: 'Terminal'   },
+    { direction: 'INBOUND',  originName: 'Terminal',   destinationName: 'Jardim Sul' },
+  ],
+
+  windows: {
+    OUTBOUND: [
+      { from: 0,    to: 5,    minutes: 55 },
+      { from: 5,    to: 8,    minutes: 90 },
+      { from: 8,    to: 17,   minutes: 65 },
+      { from: 17,   to: 20,   minutes: 95 },
+      { from: 20,   to: 23.5, minutes: 60 },
+    ],
+    INBOUND: [
+      { from: 0,    to: 5.5,  minutes: 50  },
+      { from: 5.5,  to: 8.5,  minutes: 85  },
+      { from: 8.5,  to: 17.5, minutes: 62  },
+      { from: 17.5, to: 20.5, minutes: 100 },
+      { from: 20.5, to: 23.5, minutes: 58  },
+    ],
+  },
+
+  demand: {},
+
+  renewalIndex: { OUTBOUND: 25, INBOUND: 15 },
+}

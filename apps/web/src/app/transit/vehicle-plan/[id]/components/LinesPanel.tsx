@@ -37,9 +37,17 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
   const [groupId,  setGroupId]  = useState('')
   const [bulkOpen, setBulkOpen] = useState(false)
   const [clearingId, setClearingId] = useState<string | null>(null)
-  const bulkRef = useRef<HTMLDivElement>(null)
+  const bulkRef        = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { toast }  = useToast()
   const confirm    = useConfirm()
+
+  // Panel only mounts while open, so this fires exactly on open — covers both
+  // the topbar toggle and the F6 shortcut without page.tsx needing a ref into
+  // this component.
+  useEffect(() => {
+    searchInputRef.current?.focus()
+  }, [])
 
   async function handleClearLine(lineId: string, lineCode: string) {
     const ok = await confirm({
@@ -93,6 +101,17 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
   const allChecked  = planLines.length > 0 && planLines.every(l => selectedLineIds.has(l.lineId))
   const someChecked = !allChecked && planLines.some(l => selectedLineIds.has(l.lineId))
 
+  // Enter with search narrowed down to exactly one line loads it straight
+  // away instead of making the user reach for the checkbox — the common case
+  // for F6 is "find this one line and go", not browsing a filtered list.
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || visibleLines.length !== 1) return
+    const next = new Set(selectedLineIds)
+    next.add(visibleLines[0].lineId)
+    onSelectionChange(next)
+    onClose()
+  }
+
   function toggleLine(lineId: string) {
     const next = new Set(selectedLineIds)
     if (next.has(lineId)) next.delete(lineId)
@@ -143,9 +162,11 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
       {/* search */}
       <div className="px-2 pt-2 pb-0 border-b border-border">
         <input
+          ref={searchInputRef}
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
           placeholder="Buscar linha…"
           className="w-full text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring mb-2"
         />
