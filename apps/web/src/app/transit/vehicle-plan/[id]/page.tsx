@@ -27,6 +27,7 @@ import type { IntervalType }     from './components/AddIntervalModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from './components/AddTripModal'
+import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
 import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
@@ -430,6 +431,7 @@ export default function VehiclePlanPage() {
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
+  const [generateLineModal, setGenerateLineModal] = useState<{ lineId: string } | null>(null)
   const [detailsOpen,       setDetailsOpen]       = useState(false)
   const [baselineSnapshot,  setBaselineSnapshot]  = useState<SolverBaseline | null>(null)
   const [editBarOpen,       setEditBarOpen]       = useState(false)
@@ -1994,6 +1996,18 @@ export default function VehiclePlanPage() {
       },
       { label: '', separator: true },
       {
+        // Gera uma proposta de atendimento (janelas/frota/oferta×demanda) para a
+        // linha selecionada em "Linhas" — sem relação com o "Gerar" do solver
+        // (esse só aparece fora do modo edição, ver bloco "modo normal" abaixo).
+        label:    'Gerar',
+        icon:     Icons.Sparkles,
+        size:     'sm' as const,
+        variant:  'ghost' as const,
+        onClick:  () => setGenerateLineModal({ lineId: [...selectedLineIds][0] }),
+        disabled: selectedLineIds.size !== 1,
+      },
+      { label: '', separator: true },
+      {
         label:    pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
         icon:     Icons.Save,
         size:     'sm' as const,
@@ -2056,7 +2070,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, selectedLineIds.size, editBarOpen, pendingCount])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, status, isNew, selectedLineIds, editBarOpen, pendingCount])
 
   // ── keyboard nav focus ────────────────────────────────────────────────────
 
@@ -2786,6 +2800,15 @@ export default function VehiclePlanPage() {
             onClose={() => setLinesPanelOpen(false)}
             onLineCleared={() => refetchGantt()}
             canClear={canUpdate && (record as any)?.status === 'DRAFT'}
+          />
+        )}
+
+        {generateLineModal && (
+          <LineScheduleGeneratorModal
+            planId={id}
+            lineId={generateLineModal.lineId}
+            dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
+            onClose={() => setGenerateLineModal(null)}
           />
         )}
       </div>
