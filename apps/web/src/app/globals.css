@@ -112,7 +112,7 @@
     --muted:                  210 5% 22%;     /* superfície desabilitada, ghost           */
     --muted-foreground:       210 0% 70%;     /* texto secundário, placeholder            */
 
-    --destructive:            10 38% 28%;      /* botão ação destrutiva                    */
+    --destructive:            0 65% 58%;       /* ação destrutiva — claro o bastante p/ texto sobre fundo escuro */
     --destructive-foreground: 210 40% 98%;     /* texto ícone sobre --destructive          */
 
     /* ── Controles de formulário ─────────────────────────────────────────── */
