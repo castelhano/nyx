@@ -16,9 +16,8 @@ import { extractError }      from '@/lib/utils'
 import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
-import { TripsTable }        from './components/TripsTable'
-import type { TripsFocus, TripsRange } from './components/TripsTable'
-import { groupTripsByLine }  from './views/trips-table.view'
+import { LineFreqPanel }     from './components/LineFreqPanel'
+import { buildLineFreqIndex } from './views/line-freq.view'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
@@ -441,13 +440,9 @@ export default function VehiclePlanPage() {
   const [addTripOpen,       setAddTripOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
 
-  // ── viagens (running-schedule table) view — independent of the blocks/Gantt
-  // focus+selection above; nav only ever walks trip cells (headway rows are
-  // never focusable), see TripsTable.tsx
-  const [viewMode,      setViewMode]      = useState<'blocks' | 'trips'>('blocks')
-  const [tripsFocus,    setTripsFocus]    = useState<TripsFocus | null>(null)
-  const [tripsRange,    setTripsRange]    = useState<TripsRange | null>(null)
-  const tripsShiftAnchorRef = useRef<number | null>(null)
+  // ── painel lateral de frequência — espelho somente-leitura da viagem focada
+  // no Gantt (ver LineFreqPanel.tsx), sem foco/seleção próprios
+  const [lineFreqOpen,  setLineFreqOpen]  = useState(false)
 
   const ganttBoardRef       = useRef<GanttBoardHandle>(null)
   const shiftAnchorRef      = useRef<string | null>(null)
@@ -714,40 +709,14 @@ export default function VehiclePlanPage() {
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
 
-  // Viagens view — same in-memory data as the Gantt, regrouped by line/direction
-  // (see trips-table.view.ts). tripsNavRows flattens that into the ordered
-  // per-row trip-id lists ←/→/↑/↓ walk; headway rows never appear here.
-  //
-  // plottedData keeps a whole block if ANY of its trips belong to a selected
-  // line — that's the right call for the Gantt (block view, so the vehicle's
-  // whole day should show), but it means blockTrips can include trips from
-  // lines the user never selected. The Gantt shows those; this table
-  // shouldn't — filter down to selectedLineIds after grouping.
-  const lineTripGroups = useMemo(
-    () => mergedPlottedData
-      ? groupTripsByLine(mergedPlottedData).filter(g => selectedLineIds.has(g.lineId))
-      : [],
-    [mergedPlottedData, selectedLineIds],
+  // Índice pro LineFreqPanel — mesmos dados do Gantt, agrupados por linha/sentido
+  // com headway pré-computado numa única passada (ver line-freq.view.ts). O
+  // painel é só-leitura: localiza a linha/sentido/posição do focusedSegId em
+  // O(1) via segIndex, sem estado de foco/seleção próprio.
+  const freqIndex = useMemo(
+    () => mergedPlottedData ? buildLineFreqIndex(mergedPlottedData) : null,
+    [mergedPlottedData],
   )
-  const tripsNavRows = useMemo(
-    () => lineTripGroups.flatMap(g => g.directions.map(d => ({ key: `${g.lineId}:${d.direction}`, count: d.trips.length }))),
-    [lineTripGroups],
-  )
-
-  function handleTripCellClick(rowKey: string, idx: number) {
-    setTripsFocus({ rowKey, idx })
-    setTripsRange(null)
-    tripsShiftAnchorRef.current = idx
-  }
-
-  useEffect(() => {
-    if (viewMode !== 'trips') {
-      setTripsFocus(null); setTripsRange(null); tripsShiftAnchorRef.current = null
-      return
-    }
-    const first = tripsNavRows.find(r => r.count > 0)
-    if (first) setTripsFocus({ rowKey: first.key, idx: 0 })
-  }, [viewMode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus/selection can go stale when the data underneath changes (e.g. a pending
   // add gets discarded via alt+l) — without this, keyboard nav gets stuck since
@@ -2036,13 +2005,13 @@ export default function VehiclePlanPage() {
       position: 'start' as const,
     }] : []),
 
-    // toggle blocos/viagens — visível em qualquer modo, mesma linha da barra de edição
+    // toggle painel de frequência da linha — visível em qualquer modo, mesma linha da barra de edição
     {
-      label:    'Alterna Visão',
+      label:    'Frequência',
       icon:     Icons.LayoutList,
       size:     'icon' as const,
-      onClick:  () => setViewMode(v => v === 'trips' ? 'blocks' : 'trips'),
-      variant:  (viewMode === 'trips' ? 'default' : 'ghost') as 'default' | 'ghost',
+      onClick:  () => setLineFreqOpen(v => !v),
+      variant:  (lineFreqOpen ? 'default' : 'ghost') as 'default' | 'ghost',
       position: 'start' as const,
     },
 
@@ -2144,7 +2113,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, viewMode])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, lineFreqOpen])
 
   // ── keyboard nav focus ────────────────────────────────────────────────────
 
@@ -2217,8 +2186,8 @@ export default function VehiclePlanPage() {
     enabled: !isNew,
   })
 
-  useShortcut('f10', () => setViewMode(v => v === 'trips' ? 'blocks' : 'trips'), {
-    desc:    'Altera visão Gantt x Viagens corridas',
+  useShortcut('f10', () => setLineFreqOpen(v => !v), {
+    desc:    'Exibir/ocultar painel de frequência da linha',
     icon:    Icons.LayoutList,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
   })
@@ -2256,7 +2225,7 @@ export default function VehiclePlanPage() {
       if (idx > 0) { setFocusedSegId(block[idx - 1].segId); break }
       if (idx === 0) break
     }
-  }, { enabled: viewMode === 'blocks' && editBarOpen && !selection, display: false })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('→', () => {
     setSelection(null); shiftAnchorRef.current = null
@@ -2270,7 +2239,7 @@ export default function VehiclePlanPage() {
       if (idx !== -1 && idx < block.length - 1) { setFocusedSegId(block[idx + 1].segId); break }
       if (idx === block.length - 1) break
     }
-  }, { enabled: viewMode === 'blocks' && editBarOpen && !selection, display: false })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('↑', () => {
     if (!focusedSegId) return
@@ -2287,7 +2256,7 @@ export default function VehiclePlanPage() {
       setFocusedSegId(nearest.segId)
       break
     }
-  }, { enabled: viewMode === 'blocks' && editBarOpen && !selection, display: false })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('↓', () => {
     if (!focusedSegId) return
@@ -2304,7 +2273,7 @@ export default function VehiclePlanPage() {
       setFocusedSegId(nearest.segId)
       break
     }
-  }, { enabled: viewMode === 'blocks' && editBarOpen && !selection, display: false })
+  }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('shift+←', () => {
     if (!focusedSegId) return
@@ -2336,7 +2305,7 @@ export default function VehiclePlanPage() {
         segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
       })
     }
-  }, { enabled: viewMode === 'blocks' && editBarOpen, display: false })
+  }, { enabled: editBarOpen, display: false })
 
   useShortcut('shift+→', () => {
     if (!focusedSegId) return
@@ -2368,71 +2337,7 @@ export default function VehiclePlanPage() {
         segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
       })
     }
-  }, { enabled: viewMode === 'blocks' && editBarOpen, display: false })
-
-  // ── viagens nav (arrows walk trip cells only, shift+arrow selects a range
-  // within one line/direction row — headway rows are never part of this) ─────
-
-  useShortcut('←', () => {
-    setTripsRange(null); tripsShiftAnchorRef.current = null
-    if (!tripsFocus) {
-      const first = tripsNavRows.find(r => r.count > 0)
-      if (first) setTripsFocus({ rowKey: first.key, idx: 0 })
-      return
-    }
-    if (tripsFocus.idx > 0) setTripsFocus({ ...tripsFocus, idx: tripsFocus.idx - 1 })
-  }, { enabled: viewMode === 'trips', display: false })
-
-  useShortcut('→', () => {
-    setTripsRange(null); tripsShiftAnchorRef.current = null
-    if (!tripsFocus) {
-      const first = tripsNavRows.find(r => r.count > 0)
-      if (first) setTripsFocus({ rowKey: first.key, idx: 0 })
-      return
-    }
-    const row = tripsNavRows.find(r => r.key === tripsFocus.rowKey)
-    if (row && tripsFocus.idx < row.count - 1) setTripsFocus({ ...tripsFocus, idx: tripsFocus.idx + 1 })
-  }, { enabled: viewMode === 'trips', display: false })
-
-  useShortcut('↑', () => {
-    if (!tripsFocus) return
-    setTripsRange(null); tripsShiftAnchorRef.current = null
-    const i = tripsNavRows.findIndex(r => r.key === tripsFocus.rowKey)
-    for (let bi = i - 1; bi >= 0; bi--) {
-      if (tripsNavRows[bi].count === 0) continue
-      setTripsFocus({ rowKey: tripsNavRows[bi].key, idx: Math.min(tripsFocus.idx, tripsNavRows[bi].count - 1) })
-      break
-    }
-  }, { enabled: viewMode === 'trips', display: false })
-
-  useShortcut('↓', () => {
-    if (!tripsFocus) return
-    setTripsRange(null); tripsShiftAnchorRef.current = null
-    const i = tripsNavRows.findIndex(r => r.key === tripsFocus.rowKey)
-    for (let bi = i + 1; bi < tripsNavRows.length; bi++) {
-      if (tripsNavRows[bi].count === 0) continue
-      setTripsFocus({ rowKey: tripsNavRows[bi].key, idx: Math.min(tripsFocus.idx, tripsNavRows[bi].count - 1) })
-      break
-    }
-  }, { enabled: viewMode === 'trips', display: false })
-
-  useShortcut('shift+←', () => {
-    if (!tripsFocus) return
-    if (tripsShiftAnchorRef.current === null) tripsShiftAnchorRef.current = tripsFocus.idx
-    const nextIdx = Math.max(0, tripsFocus.idx - 1)
-    setTripsFocus({ ...tripsFocus, idx: nextIdx })
-    setTripsRange({ rowKey: tripsFocus.rowKey, from: tripsShiftAnchorRef.current, to: nextIdx })
-  }, { enabled: viewMode === 'trips', display: false })
-
-  useShortcut('shift+→', () => {
-    if (!tripsFocus) return
-    if (tripsShiftAnchorRef.current === null) tripsShiftAnchorRef.current = tripsFocus.idx
-    const row = tripsNavRows.find(r => r.key === tripsFocus.rowKey)
-    if (!row) return
-    const nextIdx = Math.min(row.count - 1, tripsFocus.idx + 1)
-    setTripsFocus({ ...tripsFocus, idx: nextIdx })
-    setTripsRange({ rowKey: tripsFocus.rowKey, from: tripsShiftAnchorRef.current, to: nextIdx })
-  }, { enabled: viewMode === 'trips', display: false })
+  }, { enabled: editBarOpen, display: false })
 
   // ── move-target navigation (Up/Down with active selection) ──────────────────
 
@@ -2903,27 +2808,18 @@ export default function VehiclePlanPage() {
           <div className="flex-1 min-h-0 relative">
             {mergedPlottedData ? (
               mergedPlottedData.blocks.length > 0 ? (
-                viewMode === 'trips' ? (
-                  <TripsTable
-                    groups={lineTripGroups}
-                    focus={tripsFocus}
-                    range={tripsRange}
-                    onCellClick={handleTripCellClick}
-                  />
-                ) : (
-                  <GanttBoard
-                    ref={ganttBoardRef}
-                    data={mergedPlottedData}
-                    onViewportChange={setGanttVp}
-                    selection={editBarOpen ? selection : null}
-                    onSelectionChange={handleSelectionChange}
-                    actionSpec={editBarOpen ? vehiclesActionSpec : undefined}
-                    onBlockUpdate={() => refetchGantt()}
-                    focusedSegId={editBarOpen ? focusedSegId : null}
-                    moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
-                    moveTargetHints={moveTargetHints}
-                  />
-                )
+                <GanttBoard
+                  ref={ganttBoardRef}
+                  data={mergedPlottedData}
+                  onViewportChange={setGanttVp}
+                  selection={editBarOpen ? selection : null}
+                  onSelectionChange={handleSelectionChange}
+                  actionSpec={editBarOpen ? vehiclesActionSpec : undefined}
+                  onBlockUpdate={() => refetchGantt()}
+                  focusedSegId={editBarOpen ? focusedSegId : null}
+                  moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
+                  moveTargetHints={moveTargetHints}
+                />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   {selectedLineIds.size === 0
@@ -2942,6 +2838,14 @@ export default function VehiclePlanPage() {
                 selection={selection}
                 actions={vehiclesActionSpec.getActions(selection, mergedPlottedData, () => setSelection(null))}
                 onDismiss={() => setSelection(null)}
+              />
+            )}
+
+            {lineFreqOpen && editBarOpen && freqIndex && (
+              <LineFreqPanel
+                index={freqIndex}
+                focusedSegId={focusedSegId}
+                onFocusChange={setFocusedSegId}
               />
             )}
           </div>
