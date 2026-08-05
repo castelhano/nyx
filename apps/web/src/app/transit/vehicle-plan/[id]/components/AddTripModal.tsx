@@ -573,8 +573,9 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
   useShortcut('alt+g', () => formRef.current?.requestSubmit(), {
     desc:    'Confirmar inclusão',
     context: 'modal',
-    enabled: canSubmit,
-    display: false,
+    icon:    Icons.Save,
+    order:   4,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/components/AddTripModal.tsx',
   })
 
   return (
