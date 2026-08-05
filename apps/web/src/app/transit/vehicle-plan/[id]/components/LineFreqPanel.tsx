@@ -18,6 +18,7 @@ interface Props {
   index:         LineFreqIndex
   focusedSegId:  string | null
   onFocusChange: (segId: string) => void
+  rangeSegIds?:  Set<string> | null
 }
 
 const PANEL_WIDTH = 176
@@ -41,7 +42,7 @@ function firstTripId(group: FreqLineGroup): string | null {
   return group.outbound[0]?.id ?? group.inbound[0]?.id ?? null
 }
 
-export function LineFreqPanel({ index, focusedSegId, onFocusChange }: Props) {
+export function LineFreqPanel({ index, focusedSegId, onFocusChange, rangeSegIds }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null)
   const [bodyHeight, setBodyHeight] = useState(0)
 
@@ -86,6 +87,7 @@ export function LineFreqPanel({ index, focusedSegId, onFocusChange }: Props) {
 
   function timeCell(t: FreqTrip | undefined, idx: number, dir: 'outbound' | 'inbound', key: string) {
     const focused = !!location && location.direction === dir && location.idx === idx
+    const inRange = !focused && !!t && !!rangeSegIds?.has(t.id)
     return (
       <td
         key={key}
@@ -93,6 +95,7 @@ export function LineFreqPanel({ index, focusedSegId, onFocusChange }: Props) {
         className={[
           'text-center text-xs font-mono py-0.5',
           focused ? 'bg-ring/20 ring-1 ring-inset ring-ring rounded-sm' : '',
+          inRange ? 'bg-ring/20' : '',
         ].join(' ')}
       >
         {t ? formatMinute(t.dep) : ''}

@@ -444,6 +444,12 @@ export default function VehiclePlanPage() {
   // no Gantt (ver LineFreqPanel.tsx), sem foco/seleção próprios
   const [lineFreqOpen,  setLineFreqOpen]  = useState(false)
 
+  // ── seleção de sequência (shift+pagedown/pageup) — âncora + foco atual formam
+  // um range sobre allTrips filtrado por sentido (mesma travessia do pagedown
+  // simples), cruzando blocos livremente. Independente de `selection`, que só
+  // forma range dentro da mesma row/bloco — ver discussão em docs/TODO.md.
+  const [tripSeqAnchor, setTripSeqAnchor] = useState<string | null>(null)
+
   const ganttBoardRef       = useRef<GanttBoardHandle>(null)
   const shiftAnchorRef      = useRef<string | null>(null)
   const groupAnchorSegIdRef = useRef<string | null>(null)
@@ -709,6 +715,24 @@ export default function VehiclePlanPage() {
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
 
+  // Range de shift+pagedown/pageup: janela [âncora, foco] sobre allTrips,
+  // restrita ao sentido da âncora — mesma travessia (todas as linhas) que o
+  // pagedown simples já faz, só que materializada como conjunto pra highlight.
+  const tripSeqRangeIds = useMemo(() => {
+    if (!tripSeqAnchor || !focusedSegId) return null
+    const anchorIdx = allTrips.findIndex(t => t.segId === tripSeqAnchor)
+    const focusIdx   = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (anchorIdx === -1 || focusIdx === -1) return null
+    const dir = allTrips[anchorIdx].direction
+    const lo = Math.min(anchorIdx, focusIdx)
+    const hi = Math.max(anchorIdx, focusIdx)
+    const ids = new Set<string>()
+    for (let i = lo; i <= hi; i++) {
+      if (allTrips[i].direction === dir) ids.add(allTrips[i].segId)
+    }
+    return ids
+  }, [tripSeqAnchor, focusedSegId, allTrips])
+
   // Índice pro LineFreqPanel — mesmos dados do Gantt, agrupados por linha/sentido
   // com headway pré-computado numa única passada (ver line-freq.view.ts). O
   // painel é só-leitura: localiza a linha/sentido/posição do focusedSegId em
@@ -728,6 +752,8 @@ export default function VehiclePlanPage() {
     if (focusedSegId && !flatIds.has(focusedSegId)) {
       setFocusedSegId(navBlocks.find(block => block.length > 0)?.[0]?.segId ?? null)
     }
+
+    if (tripSeqAnchor && !flatIds.has(tripSeqAnchor)) setTripSeqAnchor(null)
 
     if (selection) {
       const selIds = selection.type === 'trip' ? [selection.segment.id] : selection.segments.map(s => s.id)
@@ -1362,6 +1388,7 @@ export default function VehiclePlanPage() {
   function handleSelectionChange(sel: Selection | null) {
     if (!editBarOpen) return
     setSelection(sel)
+    setTripSeqAnchor(null)
     if (sel?.type === 'trip') {
       setFocusedSegId(sel.segment.id)
     }
@@ -2005,16 +2032,6 @@ export default function VehiclePlanPage() {
       position: 'start' as const,
     }] : []),
 
-    // toggle painel de frequência da linha — visível em qualquer modo, mesma linha da barra de edição
-    {
-      label:    'Frequência',
-      icon:     Icons.LayoutList,
-      size:     'icon' as const,
-      onClick:  () => setLineFreqOpen(v => !v),
-      variant:  (lineFreqOpen ? 'default' : 'ghost') as 'default' | 'ghost',
-      position: 'start' as const,
-    },
-
     // ── modo edição ────────────────────────────────────────────────────────────
     // Navegação/inspeção fica disponível mesmo em planos ativos; ações que
     // gravam alterações (viagem, gerar, salvar, limpar) exigem canEdit (DRAFT).
@@ -2113,7 +2130,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, lineFreqOpen])
+  ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount])
 
   // ── keyboard nav focus ────────────────────────────────────────────────────
 
@@ -2186,8 +2203,8 @@ export default function VehiclePlanPage() {
     enabled: !isNew,
   })
 
-  useShortcut('f10', () => setLineFreqOpen(v => !v), {
-    desc:    'Exibir/ocultar painel de frequência da linha',
+  useShortcut('ctrl+.', () => setLineFreqOpen(v => !v), {
+    desc:    'Painel de frequência da linha',
     icon:    Icons.LayoutList,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
   })
@@ -2214,7 +2231,7 @@ export default function VehiclePlanPage() {
   }, { enabled: editBarOpen && !selection && !!focusedSegId, display: false })
 
   useShortcut('←', () => {
-    setSelection(null); shiftAnchorRef.current = null
+    setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
     if (!focusedSegId) {
       const first = navBlocks.find(block => block.length > 0)?.[0]
       if (first) setFocusedSegId(first.segId)
@@ -2228,7 +2245,7 @@ export default function VehiclePlanPage() {
   }, { enabled: editBarOpen && !selection, display: false })
 
   useShortcut('→', () => {
-    setSelection(null); shiftAnchorRef.current = null
+    setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
     if (!focusedSegId) {
       const first = navBlocks.find(block => block.length > 0)?.[0]
       if (first) setFocusedSegId(first.segId)
@@ -2243,7 +2260,7 @@ export default function VehiclePlanPage() {
 
   useShortcut('↑', () => {
     if (!focusedSegId) return
-    setSelection(null); shiftAnchorRef.current = null
+    setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
     for (let bi = 1; bi < navBlocks.length; bi++) {
       const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
       if (idx === -1) continue
@@ -2260,7 +2277,7 @@ export default function VehiclePlanPage() {
 
   useShortcut('↓', () => {
     if (!focusedSegId) return
-    setSelection(null); shiftAnchorRef.current = null
+    setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
     for (let bi = 0; bi < navBlocks.length - 1; bi++) {
       const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
       if (idx === -1) continue
@@ -2339,6 +2356,18 @@ export default function VehiclePlanPage() {
     }
   }, { enabled: editBarOpen, display: false })
 
+  // `selection` já é limpa pelo Escape nativo do GanttActionBar (só montado
+  // quando há selection) — aqui só cuida do que mais nada trata: a âncora do
+  // range de sequência (shift+pagedown/pageup), pra não duplicar o dismiss.
+  useShortcut('esc', () => {
+    setTripSeqAnchor(null)
+  }, {
+    desc:    'Limpar seleção de sequência',
+    icon:    Icons.X,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && tripSeqAnchor != null,
+  })
+
   // ── move-target navigation (Up/Down with active selection) ──────────────────
 
   const selectionHasTrips = selection
@@ -2349,11 +2378,13 @@ export default function VehiclePlanPage() {
 
   useShortcut('↑', () => {
     if (!moveTargetBlocks) return
+    setTripSeqAnchor(null)
     setMoveTargetBlockId(prev => stepMoveTarget(prev, -1))
   }, { enabled: editBarOpen && selectionHasTrips, display: false })
 
   useShortcut('↓', () => {
     if (!moveTargetBlocks) return
+    setTripSeqAnchor(null)
     setMoveTargetBlockId(prev => stepMoveTarget(prev, 1))
   }, { enabled: editBarOpen && selectionHasTrips, display: false })
 
@@ -2366,6 +2397,7 @@ export default function VehiclePlanPage() {
 
   useShortcut('pagedown', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    setTripSeqAnchor(null)
     const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
     const dir = allTrips[curIdx].direction
@@ -2379,8 +2411,25 @@ export default function VehiclePlanPage() {
     enabled: editBarOpen && !selection,
   })
 
+  useShortcut('shift+pagedown', () => {
+    if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    if (tripSeqAnchor == null) setTripSeqAnchor(focusedSegId)
+    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (curIdx === -1) return
+    const dir = allTrips[curIdx].direction
+    for (let i = curIdx + 1; i < allTrips.length; i++) {
+      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    }
+  }, {
+    desc:    'Estende seleção até próxima viagem mesmo sentido',
+    icon:    Icons.ArrowDown,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+  })
+
   useShortcut('pageup', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    setTripSeqAnchor(null)
     const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
     const dir = allTrips[curIdx].direction
@@ -2389,6 +2438,22 @@ export default function VehiclePlanPage() {
     }
   }, {
     desc:    'Viagem anterior mesmo sentido',
+    icon:    Icons.ArrowUp,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+  })
+
+  useShortcut('shift+pageup', () => {
+    if (!focusedSegId || focusedSegId.endsWith(':dr')) return
+    if (tripSeqAnchor == null) setTripSeqAnchor(focusedSegId)
+    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (curIdx === -1) return
+    const dir = allTrips[curIdx].direction
+    for (let i = curIdx - 1; i >= 0; i--) {
+      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    }
+  }, {
+    desc:    'Estende seleção até viagem anterior mesmo sentido',
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -2819,6 +2884,7 @@ export default function VehiclePlanPage() {
                   focusedSegId={editBarOpen ? focusedSegId : null}
                   moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
                   moveTargetHints={moveTargetHints}
+                  highlightedSegIds={editBarOpen ? tripSeqRangeIds : null}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -2845,7 +2911,8 @@ export default function VehiclePlanPage() {
               <LineFreqPanel
                 index={freqIndex}
                 focusedSegId={focusedSegId}
-                onFocusChange={setFocusedSegId}
+                onFocusChange={(segId) => { setTripSeqAnchor(null); setFocusedSegId(segId) }}
+                rangeSegIds={tripSeqRangeIds}
               />
             )}
           </div>

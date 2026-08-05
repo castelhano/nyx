@@ -33,6 +33,7 @@ interface Props {
   focusedSegId?:      string | null
   moveTargetBlockId?: string | null
   moveTargetHints?:   RowHintEntry[]
+  highlightedSegIds?: Set<string> | null
 }
 
 interface TooltipState {
@@ -67,7 +68,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
 }
 
 export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoard(
-  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS }: Props,
+  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS, highlightedSegIds }: Props,
   ref,
 ) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
@@ -187,25 +188,26 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
   useEffect(() => {
     const engine = engineRef.current
     if (!engine) return
-    if (!selection) {
-      engine.setSelectedSegIds(new Set())
-      return
+
+    const ids = new Set<string>()
+    if (highlightedSegIds) for (const id of highlightedSegIds) ids.add(id)
+
+    if (selection) {
+      if (selection.type === 'trip') {
+        ids.add(selection.segment.id)
+      } else {
+        // interval: highlight all segs in the row within the time span (incl. deadheads)
+        const { rowId, from, to } = selection
+        const spanStart = Math.min(from.startMinute, to.startMinute)
+        const spanEnd   = Math.max(from.endMinute,   to.endMinute)
+        for (const s of engine.getLayoutSegments()) {
+          if (s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd) ids.add(s.id)
+        }
+      }
     }
-    if (selection.type === 'trip') {
-      engine.setSelectedSegIds(new Set([selection.segment.id]))
-      return
-    }
-    // interval: highlight all segs in the row within the time span (incl. deadheads)
-    const { rowId, from, to } = selection
-    const spanStart = Math.min(from.startMinute, to.startMinute)
-    const spanEnd   = Math.max(from.endMinute,   to.endMinute)
-    const ids = new Set(
-      engine.getLayoutSegments()
-        .filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd)
-        .map(s => s.id)
-    )
+
     engine.setSelectedSegIds(ids)
-  }, [selection])
+  }, [selection, highlightedSegIds])
 
   // ── sync focused segment (keyboard nav) ────────────────────────────────────
 

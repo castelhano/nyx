@@ -17,7 +17,7 @@ export function BlockSelectionHint({ rect, hints }: Props) {
 
   return (
     <div
-      className="absolute z-30 pointer-events-none flex flex-col items-end gap-1"
+      className="absolute z-0 pointer-events-none flex flex-col items-end gap-1"
       style={{ top: rect.y + 4, left: rect.x + rect.width - 8, transform: 'translateX(-100%)' }}
     >
       {hints.map((hint, i) => (
