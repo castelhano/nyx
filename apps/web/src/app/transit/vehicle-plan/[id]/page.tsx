@@ -17,6 +17,7 @@ import { extractError }      from '@/lib/utils'
 import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
+import { HeadwayRangeBar }   from './components/HeadwayRangeBar'
 import { LineFreqPanel }     from './components/LineFreqPanel'
 import { buildLineFreqIndex } from './views/line-freq.view'
 import { LinesPanel }        from './components/LinesPanel'
@@ -45,15 +46,15 @@ const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 
 // ── seções da modal de atalhos (ver docs/TODO.md) ────────────────────────────
 const SEC_GERAL:   ShortcutSection = { label: 'Geral' } // sem hint — mesmo bucket do fallback "sem seção" em qualquer página
 const SEC_PAINEIS: ShortcutSection = { label: 'Painéis', hint: 'Mostra/oculta painéis auxiliares do Gantt' }
-const SEC_NAV_BLOCO:   ShortcutSection = { label: 'Navegação — bloco', hint: 'Anda por posição de horário dentro do bloco focado' }
-const SEC_NAV_SENTIDO: ShortcutSection = { label: 'Navegação — sentido', hint: 'Anda pela sequência de viagens do mesmo sentido, cruzando todos os blocos do dia' }
+const SEC_NAV_BLOCO:   ShortcutSection = { label: 'Navegação base', hint: 'Navegação entre viagens' }
+const SEC_NAV_SENTIDO: ShortcutSection = { label: 'Navegação — sentido', hint: 'Navegação de viagens no mesmo sentido' }
 const SEC_SELECAO: ShortcutSection = { label: 'Seleção de viagem', hint: 'Ações habilitadas quando existe seleção de viagens' }
 const SEC_MOVER:   ShortcutSection = { label: 'Movimentação de bloco', hint: 'Só aparece com uma seleção de viagens ativa' }
 const SEC_EDICAO:  ShortcutSection = {
   label: 'Edição de horário',
-  hint:  'Ajusta o horário da viagem/intervalo focado — variantes "Only" não empurram os itens seguintes do bloco',
+  hint:  'Operações sob viagens e blocos',
 }
-const SEC_ACOES: ShortcutSection = { label: 'Ações rápidas', hint: 'Atalhos de contexto pra viagem focada — equivalentes aos botões da barra de ação' }
+const SEC_ACOES: ShortcutSection = { label: 'Ações rápidas', hint: 'Atalhos de contexto pra viagem focada' }
 
 function buildFakeAccessReturn(a: PendingAddTrip): GanttBlockDeadrun[] {
   const result: GanttBlockDeadrun[] = []
@@ -747,6 +748,33 @@ export default function VehiclePlanPage() {
     return ids
   }, [tripSeqAnchor, focusedSegId, allTrips])
 
+  // Viagens do tripSeqRangeIds materializadas com dados pra distribuição de
+  // headway (q+space): só opera sobre uma única linha — o conceito de headway
+  // (ver computeHeadway/LineFreqPanel) é por linha+sentido, então misturar
+  // linhas aqui produziria um espaçamento sem sentido operacional.
+  const headwayRangeInfo = useMemo(() => {
+    if (!mergedPlottedData || !tripSeqRangeIds || tripSeqRangeIds.size < 3) return null
+    const trips: Array<{ segId: string; tripId: string; lineId: string; blockId: string; dep: number; arr: number }> = []
+    for (const block of mergedPlottedData.blocks) {
+      for (const bt of block.blockTrips) {
+        if (tripSeqRangeIds.has(bt.id)) {
+          trips.push({
+            segId:   bt.id,
+            tripId:  bt.trip.id,
+            lineId:  bt.trip.route.line.id,
+            blockId: block.id,
+            dep:     bt.trip.departureMinutes,
+            arr:     bt.trip.arrivalMinutes,
+          })
+        }
+      }
+    }
+    if (trips.length < 3) return null
+    trips.sort((a, b) => a.dep - b.dep)
+    const singleLine = new Set(trips.map(t => t.lineId)).size === 1
+    return { trips, singleLine }
+  }, [mergedPlottedData, tripSeqRangeIds])
+
   // Índice pro LineFreqPanel — mesmos dados do Gantt, agrupados por linha/sentido
   // com headway pré-computado numa única passada (ver line-freq.view.ts). O
   // painel é só-leitura: localiza a linha/sentido/posição do focusedSegId em
@@ -1163,6 +1191,81 @@ export default function VehiclePlanPage() {
     } else {
       toast.error('Nenhuma viagem com ciclo configurado encontrada')
     }
+  }
+
+  // Distribui uniformemente o headway das viagens do intervalo selecionado
+  // (shift+pagedown/pageup), mantendo fixas a primeira e a última viagem do
+  // intervalo como âncoras. Não mexe no tempo de ciclo (duração dep→arr de
+  // cada viagem é preservada, só desloca o par inteiro) — no futuro um
+  // setting vai liberar uma margem pra essa função também ajustar o ciclo.
+  //
+  // Simplificação aceita: os limites de cada viagem vêm dos vizinhos atuais
+  // do seu próprio bloco (vazio/intervalo/outra viagem), sem considerar que
+  // esse vizinho também pode ser outra viagem do intervalo que já moveu —
+  // caso raro (duas viagens do mesmo intervalo dificilmente são adjacentes
+  // no mesmo veículo, já que alternam sentido a cada viagem produtiva).
+  function handleDistributeHeadway() {
+    if (!canEdit || !mergedPlottedData || !headwayRangeInfo) return
+
+    if (!headwayRangeInfo.singleLine) {
+      toast.error('O intervalo selecionado mistura mais de uma linha — distribua o headway com um intervalo de uma única linha')
+      return
+    }
+
+    const rangeTrips = headwayRangeInfo.trips
+    const tempTripIds = new Set(pendingAdds.filter(a => a._kind === 'trip').map(a => a._tempId))
+    if (rangeTrips.some(t => tempTripIds.has(t.segId))) {
+      toast.error('Salve as viagens novas do intervalo antes de distribuir o headway')
+      return
+    }
+
+    const n        = rangeTrips.length
+    const firstDep = rangeTrips[0].dep
+    const lastDep  = rangeTrips[n - 1].dep
+    const idealGap = (lastDep - firstDep) / (n - 1)
+
+    function blockTimeline(blockId: string) {
+      const block = mergedPlottedData!.blocks.find(b => b.id === blockId)!
+      return [
+        ...block.blockTrips.map(bt     => ({ kind: 'trip' as const,    id: bt.id, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })),
+        ...block.blockDeadruns.map(dr  => ({ kind: 'deadrun' as const, id: dr.id, dep: dr.departureMinutes,      arr: dr.arrivalMinutes })),
+        ...block.blockIntervals.map(bi => ({ kind: 'break' as const,   id: bi.id, dep: bi.departureMinutes,     arr: bi.arrivalMinutes })),
+      ].sort((a, b) => a.dep - b.dep)
+    }
+
+    const overrides = new Map(pendingChanges)
+    let movedCount    = 0
+    let strandedCount = 0
+
+    for (let i = 1; i < n - 1; i++) {
+      const rt       = rangeTrips[i]
+      const duration = rt.arr - rt.dep
+      const idealDep = Math.round(firstDep + i * idealGap)
+
+      const timeline = blockTimeline(rt.blockId)
+      const ownIdx   = timeline.findIndex(it => it.kind === 'trip' && it.id === rt.segId)
+      // Mantém 1min de folga contra o vizinho — não pode encostar (fim == início do próximo).
+      const lowerBound = ownIdx > 0                      ? timeline[ownIdx - 1].arr + 1             : -Infinity
+      const upperBound = ownIdx < timeline.length - 1    ? timeline[ownIdx + 1].dep - duration - 1   : Infinity
+
+      if (lowerBound > upperBound) { strandedCount++; continue }
+
+      const newDep = Math.min(Math.max(idealDep, lowerBound), upperBound)
+      if (newDep === rt.dep) continue
+
+      movedCount++
+      overrides.set(rt.tripId, { ...overrides.get(rt.tripId), departureMinutes: newDep, arrivalMinutes: newDep + duration })
+    }
+
+    if (movedCount === 0) {
+      toast.success(strandedCount > 0
+        ? 'Nenhuma viagem pôde ser movida — sem espaço entre os vizinhos de bloco'
+        : 'Headway já está uniforme neste intervalo — nenhuma alteração necessária')
+      return
+    }
+
+    setPendingChanges(overrides)
+    toast.success('Viagens distribuídas')
   }
 
   // ── trip timing keyboard ops (edit bar, single-trip focus) ─────────────────
@@ -2230,7 +2333,7 @@ export default function VehiclePlanPage() {
     section: SEC_PAINEIS,
   })
 
-  useShortcut('f6', () => setLinesPanelOpen(true), {
+  useShortcut('f6', () => setLinesPanelOpen(v => !v), {
     desc:    'Painel de linhas',
     icon:    Icons.List,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
@@ -2426,7 +2529,7 @@ export default function VehiclePlanPage() {
   useShortcut('esc', () => {
     setTripSeqAnchor(null)
   }, {
-    desc:    'Limpar seleção de sequência',
+    desc:    'Limpa seleção de sequência',
     icon:    Icons.X,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && tripSeqAnchor != null,
@@ -2483,7 +2586,7 @@ export default function VehiclePlanPage() {
       if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
     }
   }, {
-    desc:    'Próxima viagem mesmo sentido',
+    desc:    'Próxima viagem sentido',
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -2538,6 +2641,15 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
+    section: SEC_SELECAO,
+  })
+
+  useShortcut('q+ ', () => handleDistributeHeadway(), {
+    desc:    'Distribuir frequência viagens',
+    icon:    Icons.AlignHorizontalDistributeCenter,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && canEdit && !selection,
+    preventDefault: true,
     section: SEC_SELECAO,
   })
 
@@ -3013,6 +3125,14 @@ export default function VehiclePlanPage() {
                 selection={selection}
                 actions={vehiclesActionSpec.getActions(selection, mergedPlottedData, () => setSelection(null))}
                 onDismiss={() => setSelection(null)}
+              />
+            )}
+
+            {editBarOpen && !selection && headwayRangeInfo && (
+              <HeadwayRangeBar
+                count={headwayRangeInfo.trips.length}
+                singleLine={headwayRangeInfo.singleLine}
+                onDistribute={handleDistributeHeadway}
               />
             )}
 

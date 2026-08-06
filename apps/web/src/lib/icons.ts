@@ -3,6 +3,7 @@ export type { LucideIcon } from 'lucide-react'
 
 const iconNames = [
   'AlertCircle',
+  'AlignHorizontalDistributeCenter',
   'ArrowDown',
   'ArrowLeft',
   'ArrowRight',
