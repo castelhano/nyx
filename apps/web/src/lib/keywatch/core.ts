@@ -6,6 +6,15 @@
 
 export type ShortcutIcon = unknown
 
+/** Agrupamento visual na modal de atalhos (independente de `group`, que é
+ *  usado internamente pra cleanup de ciclo de vida — ver useShortcut). Passe
+ *  o mesmo objeto (referência compartilhada, ex. um const no topo da página)
+ *  em todo atalho da mesma seção pra não duplicar o texto do hint. */
+export interface ShortcutSection {
+  label: string
+  hint?: string
+}
+
 export interface HandlerOptions {
   context?:        string
   desc?:           string
@@ -14,6 +23,7 @@ export interface HandlerOptions {
   keydown?:        boolean
   keyup?:          boolean
   group?:          string | null
+  section?:        ShortcutSection | null
   display?:        boolean
   order?:          number
   preventDefault?: boolean
@@ -30,6 +40,7 @@ export interface HandlerEntry {
   keydown:         boolean
   keyup:           boolean
   group:           string | null
+  section:         ShortcutSection | null
   display:         boolean
   order:           number
   preventDefault:  boolean
@@ -110,6 +121,7 @@ export class KeywatchCore {
     keydown:        true,
     keyup:          false,
     group:          null,
+    section:        null,
     display:        true,
     order:          5,
     preventDefault: true,
@@ -336,18 +348,30 @@ export class KeywatchCore {
   // ── Dados para o modal ────────────────────────────────────────────────────
 
   getVisibleHandlers(): HandlerEntry[] {
-    const seen    = new Set<symbol>()
-    const visible: HandlerEntry[] = []
+    return this._collectHandlers(h => h.display)
+  }
+
+  /** Mesma coleta de getVisibleHandlers, mas ignora `display` — usado pela
+   *  modal quando o usuário liga "mostrar ocultos" (atalhos com
+   *  `display:false` continuam funcionando normalmente, só não aparecem por
+   *  padrão pra não poluir a lista). */
+  getAllHandlers(): HandlerEntry[] {
+    return this._collectHandlers(() => true)
+  }
+
+  private _collectHandlers(predicate: (h: HandlerEntry) => boolean): HandlerEntry[] {
+    const seen  = new Set<symbol>()
+    const found: HandlerEntry[] = []
 
     for (const type in this.handlers)
       for (const ctx in this.handlers[type]) {
         if (this.shortcutMaplistOnlyContextActive && ctx !== this.context && ctx !== 'all') continue
         for (const scope in this.handlers[type][ctx])
           for (const h of this.handlers[type][ctx][scope])
-            if (h.display && !seen.has(h.id)) { seen.add(h.id); visible.push(h) }
+            if (predicate(h) && !seen.has(h.id)) { seen.add(h.id); found.push(h) }
       }
 
-    return visible.sort((a, b) => a.order - b.order)
+    return found.sort((a, b) => a.order - b.order)
   }
 
   /** Converte schema ('ctrl+s;alt+s') em arrays de keys para exibição: [['ctrl','s'], ['alt','s']] */

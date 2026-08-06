@@ -7,12 +7,15 @@ import { Icons }    from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
+import type { ShortcutSection } from '@/lib/keywatch'
 import type { GanttBlock, GanttBlockTrip, LineMetrics } from '../views/vehicles.view'
 import { resolveCycleWindow, resolveCycleMinutes } from '../views/vehicles.view'
 import { getTravelTime } from '../travel-time'
 
 // ── module-level cache — persists across modal opens within the session ────────
 const lineMetricsCache = new Map<string, LineMetrics | null>()
+
+const SEC_FORM: ShortcutSection = { label: 'Formulário — Nova viagem' }
 
 async function getLineMetrics(lineId: string): Promise<LineMetrics | null> {
   if (lineMetricsCache.has(lineId)) return lineMetricsCache.get(lineId)!
@@ -576,6 +579,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
     icon:    Icons.Save,
     order:   4,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/components/AddTripModal.tsx',
+    section: SEC_FORM,
   })
 
   return (

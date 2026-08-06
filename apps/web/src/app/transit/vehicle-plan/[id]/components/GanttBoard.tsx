@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { useShortcut } from '@/lib/keywatch'
+import type { ShortcutSection } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
 import { GanttEngine, type EngineState } from '../engine/gantt-engine'
 import { vehiclesView, computeHeadway, type VehiclePlanGanttData, type GanttBlock, type GanttBlockTrip } from '../views/vehicles.view'
@@ -20,6 +21,8 @@ export interface GanttBoardHandle {
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
 export const LABEL_WIDTH  = 160  // px — matches RowList width
+
+const SEC_ZOOM: ShortcutSection = { label: 'Zoom / Grid do Gantt' }
 
 const EMPTY_HINTS: RowHintEntry[] = []
 
@@ -296,7 +299,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
     e.viewport.scrollXTo(e.viewport.scrollX - 80)
     e.notify()
     e.requestDraw()
-  }, { desc: 'Mover grid para esquerda', icon: Icons.ArrowLeft,  origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+  }, { desc: 'Mover grid para esquerda', icon: Icons.ArrowLeft,  origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard', section: SEC_ZOOM })
 
   useShortcut('ctrl+→', () => {
     const e = engineRef.current
@@ -304,7 +307,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
     e.viewport.scrollXTo(e.viewport.scrollX + 80)
     e.notify()
     e.requestDraw()
-  }, { desc: 'Mover grid para direita', icon: Icons.ArrowRight, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+  }, { desc: 'Mover grid para direita', icon: Icons.ArrowRight, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard', section: SEC_ZOOM })
 
   useShortcut('ctrl++', () => {
     const e = engineRef.current
@@ -312,7 +315,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
     e.viewport.zoom(1.15, e.viewport.width / 2)
     e.notify()
     e.requestDraw()
-  }, { desc: 'Zoom in', icon: Icons.ZoomIn,  origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+  }, { desc: 'Zoom in', icon: Icons.ZoomIn,  origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard', section: SEC_ZOOM })
 
   useShortcut('ctrl+-', () => {
     const e = engineRef.current
@@ -320,7 +323,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
     e.viewport.zoom(1 / 1.15, e.viewport.width / 2)
     e.notify()
     e.requestDraw()
-  }, { desc: 'Zoom out', icon: Icons.ZoomOut, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+  }, { desc: 'Zoom out', icon: Icons.ZoomOut, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard', section: SEC_ZOOM })
 
   useShortcut('ctrl+0', () => {
     const e = engineRef.current
@@ -329,7 +332,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
     e.viewport.scrollXTo(e.viewport.scrollX)
     e.notify()
     e.requestDraw()
-  }, { desc: 'Zoom padrão', icon: Icons.ZoomIn, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard' })
+  }, { desc: 'Zoom padrão', icon: Icons.ZoomIn, origin: 'apps/web/src/app/transit/vehicle-plan/[id]/components/GanttBoard', section: SEC_ZOOM })
 
   // ── block detail popover ────────────────────────────────────────────────────
 

@@ -9,6 +9,7 @@ import { usePageGuard }      from '@/core/usePageGuard'
 import { useRecordQuery }    from '@/core/useRecordQuery'
 import { useTopbarActions }  from '@/components/layout/topbar-actions-context'
 import { useShortcut }       from '@/lib/keywatch'
+import type { ShortcutSection } from '@/lib/keywatch'
 import { apiFetch, getToken } from '@/lib/auth'
 import { useConfirm }         from '@/lib/confirm-context'
 import { useToast }          from '@/lib/toast-context'
@@ -40,6 +41,19 @@ import type { SolverParams }         from './components/GenerateModal'
 import { getTravelTime }             from './travel-time'
 
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
+
+// ── seções da modal de atalhos (ver docs/TODO.md) ────────────────────────────
+const SEC_GERAL:   ShortcutSection = { label: 'Geral' } // sem hint — mesmo bucket do fallback "sem seção" em qualquer página
+const SEC_PAINEIS: ShortcutSection = { label: 'Painéis', hint: 'Mostra/oculta painéis auxiliares do Gantt' }
+const SEC_NAV_BLOCO:   ShortcutSection = { label: 'Navegação — bloco', hint: 'Anda por posição de horário dentro do bloco focado' }
+const SEC_NAV_SENTIDO: ShortcutSection = { label: 'Navegação — sentido', hint: 'Anda pela sequência de viagens do mesmo sentido, cruzando todos os blocos do dia' }
+const SEC_SELECAO: ShortcutSection = { label: 'Seleção de viagem', hint: 'Ações habilitadas quando existe seleção de viagens' }
+const SEC_MOVER:   ShortcutSection = { label: 'Movimentação de bloco', hint: 'Só aparece com uma seleção de viagens ativa' }
+const SEC_EDICAO:  ShortcutSection = {
+  label: 'Edição de horário',
+  hint:  'Ajusta o horário da viagem/intervalo focado — variantes "Only" não empurram os itens seguintes do bloco',
+}
+const SEC_ACOES: ShortcutSection = { label: 'Ações rápidas', hint: 'Atalhos de contexto pra viagem focada — equivalentes aos botões da barra de ação' }
 
 function buildFakeAccessReturn(a: PendingAddTrip): GanttBlockDeadrun[] {
   const result: GanttBlockDeadrun[] = []
@@ -2167,12 +2181,14 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowLeft,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     context: 'all',
+    section: SEC_GERAL,
   })
 
   useShortcut('ctrl+;', () => setFreqPanelOpen(v => !v), {
     desc:   'Frequência de atendimento',
     icon:   Icons.BarChart2,
     origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    section: SEC_PAINEIS,
   })
 
   useShortcut('alt+g', () => handleSavePendingWithConfirm(), {
@@ -2180,6 +2196,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.Save,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen,
+    section: SEC_GERAL,
   })
 
   useShortcut('alt+l', () => handleDiscardPendingWithConfirm(), {
@@ -2187,6 +2204,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.Undo2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen,
+    section: SEC_GERAL,
   })
 
   useShortcut('alt+n', () => setAddTripOpen(true), {
@@ -2194,6 +2212,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit && selectedLineIds.size > 0,
+    section: SEC_GERAL,
   })
 
   useShortcut('f9', () => handleToggleEditBar(), {
@@ -2201,12 +2220,14 @@ export default function VehiclePlanPage() {
     icon:    Icons.SlidersHorizontal,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: !isNew,
+    section: SEC_GERAL,
   })
 
   useShortcut('ctrl+.', () => setLineFreqOpen(v => !v), {
     desc:    'Painel de frequência da linha',
     icon:    Icons.LayoutList,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    section: SEC_PAINEIS,
   })
 
   useShortcut('f6', () => setLinesPanelOpen(true), {
@@ -2214,6 +2235,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.List,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: !isNew,
+    section: SEC_PAINEIS,
   })
 
   // Bound to ctrl+enter instead of the physical ContextMenu key: Firefox refuses
@@ -2228,7 +2250,13 @@ export default function VehiclePlanPage() {
     if (!seg) return
     const rows = ganttBoardRef.current?.getRows() ?? []
     handleSelectionChange(vehiclesActionSpec.resolveSelection(seg, selection, { allSegments: segs, allRows: rows }))
-  }, { enabled: editBarOpen && !selection && !!focusedSegId, display: false })
+  }, {
+    desc:    'Selecionar viagem focada',
+    icon:    Icons.CheckSquare,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection && !!focusedSegId,
+    section: SEC_SELECAO,
+  })
 
   useShortcut('←', () => {
     setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
@@ -2242,7 +2270,13 @@ export default function VehiclePlanPage() {
       if (idx > 0) { setFocusedSegId(block[idx - 1].segId); break }
       if (idx === 0) break
     }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Viagem anterior no bloco',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_BLOCO,
+  })
 
   useShortcut('→', () => {
     setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
@@ -2256,7 +2290,13 @@ export default function VehiclePlanPage() {
       if (idx !== -1 && idx < block.length - 1) { setFocusedSegId(block[idx + 1].segId); break }
       if (idx === block.length - 1) break
     }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Próxima viagem no bloco',
+    icon:    Icons.ArrowRight,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_BLOCO,
+  })
 
   useShortcut('↑', () => {
     if (!focusedSegId) return
@@ -2273,7 +2313,13 @@ export default function VehiclePlanPage() {
       setFocusedSegId(nearest.segId)
       break
     }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Bloco anterior (mesmo horário aproximado)',
+    icon:    Icons.ArrowUp,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_BLOCO,
+  })
 
   useShortcut('↓', () => {
     if (!focusedSegId) return
@@ -2290,7 +2336,13 @@ export default function VehiclePlanPage() {
       setFocusedSegId(nearest.segId)
       break
     }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Próximo bloco (mesmo horário aproximado)',
+    icon:    Icons.ArrowDown,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_BLOCO,
+  })
 
   useShortcut('shift+←', () => {
     if (!focusedSegId) return
@@ -2322,7 +2374,13 @@ export default function VehiclePlanPage() {
         segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
       })
     }
-  }, { enabled: editBarOpen, display: false })
+  }, {
+    desc:    'Estender seleção (bloco/intervalo)',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+    section: SEC_SELECAO,
+  })
 
   useShortcut('shift+→', () => {
     if (!focusedSegId) return
@@ -2354,7 +2412,13 @@ export default function VehiclePlanPage() {
         segments: segs.filter(s => s.rowId === rowId && s.endMinute > spanStart && s.startMinute < spanEnd),
       })
     }
-  }, { enabled: editBarOpen, display: false })
+  }, {
+    desc:    'Estender seleção (bloco/intervalo)',
+    icon:    Icons.ArrowRight,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen,
+    section: SEC_SELECAO,
+  })
 
   // `selection` já é limpa pelo Escape nativo do GanttActionBar (só montado
   // quando há selection) — aqui só cuida do que mais nada trata: a âncora do
@@ -2366,6 +2430,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.X,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && tripSeqAnchor != null,
+    section: SEC_SELECAO,
   })
 
   // ── move-target navigation (Up/Down with active selection) ──────────────────
@@ -2380,19 +2445,32 @@ export default function VehiclePlanPage() {
     if (!moveTargetBlocks) return
     setTripSeqAnchor(null)
     setMoveTargetBlockId(prev => stepMoveTarget(prev, -1))
-  }, { enabled: editBarOpen && selectionHasTrips, display: false })
+  }, {
+    desc:    'Bloco alvo anterior',
+    icon:    Icons.ArrowUp,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && selectionHasTrips,
+    section: SEC_MOVER,
+  })
 
   useShortcut('↓', () => {
     if (!moveTargetBlocks) return
     setTripSeqAnchor(null)
     setMoveTargetBlockId(prev => stepMoveTarget(prev, 1))
-  }, { enabled: editBarOpen && selectionHasTrips, display: false })
+  }, {
+    desc:    'Próximo bloco alvo',
+    icon:    Icons.ArrowDown,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && selectionHasTrips,
+    section: SEC_MOVER,
+  })
 
   useShortcut('q+m', () => handleConfirmMove(), {
     desc:    'Mover viagens para bloco alvo',
     icon:    Icons.ArrowRightLeft,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && selectionHasTrips && !!moveTargetBlockId,
+    section: SEC_MOVER,
   })
 
   useShortcut('pagedown', () => {
@@ -2409,6 +2487,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
+    section: SEC_NAV_SENTIDO,
   })
 
   useShortcut('shift+pagedown', () => {
@@ -2425,6 +2504,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
+    section: SEC_SELECAO,
   })
 
   useShortcut('pageup', () => {
@@ -2441,6 +2521,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
+    section: SEC_NAV_SENTIDO,
   })
 
   useShortcut('shift+pageup', () => {
@@ -2457,18 +2538,31 @@ export default function VehiclePlanPage() {
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
+    section: SEC_SELECAO,
   })
 
   useShortcut('home', () => {
     const first = navBlocks[0]?.[0]
     if (first) { setFocusedSegId(first.segId); setSelection(null); shiftAnchorRef.current = null }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Primeiro item do dia (por bloco)',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_BLOCO,
+  })
 
   useShortcut('end', () => {
     const lastBlock = navBlocks[navBlocks.length - 1]
     const last = lastBlock?.[lastBlock.length - 1]
     if (last) { setFocusedSegId(last.segId); setSelection(null); shiftAnchorRef.current = null }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Último item do dia (por bloco)',
+    icon:    Icons.ArrowRight,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_BLOCO,
+  })
 
   useShortcut('shift+home', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
@@ -2477,7 +2571,13 @@ export default function VehiclePlanPage() {
     const dir = allTrips[curIdx].direction
     const first = allTrips.find(t => t.direction === dir)
     if (first) setFocusedSegId(first.segId)
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Primeira viagem do sentido',
+    icon:    Icons.ArrowLeft,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_SENTIDO,
+  })
 
   useShortcut('shift+end', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
@@ -2487,24 +2587,31 @@ export default function VehiclePlanPage() {
     for (let i = allTrips.length - 1; i >= 0; i--) {
       if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
     }
-  }, { enabled: editBarOpen && !selection, display: false })
+  }, {
+    desc:    'Última viagem do sentido',
+    icon:    Icons.ArrowRight,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && !selection,
+    section: SEC_NAV_SENTIDO,
+  })
 
   // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
   const isTripFocused  = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
   const isBreakFocused = editBarOpen && !!focusedSegId && focusedSegId.endsWith(':bk')
 
-  useShortcut('+',              () => handleTripTimingOp('grow'),      { enabled: isTripFocused, display: false })
-  useShortcut('-',              () => handleTripTimingOp('shrink'),    { enabled: isTripFocused, display: false })
-  useShortcut(' ',              () => handleTripTimingOp('push'),      { enabled: isTripFocused, display: false, preventDefault: true })
-  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { enabled: isTripFocused, display: false, preventDefault: true })
-  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { enabled: isTripFocused, display: false })
-  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ enabled: isTripFocused, display: false })
-  useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
-  useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { enabled: isTripFocused, display: false, preventDefault: true })
+  const editOrigin = 'apps/web/src/app/transit/vehicle-plan/[id]/page'
+  useShortcut('+',              () => handleTripTimingOp('grow'),      { desc: 'Crescer viagem (fim)',                          icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut('-',              () => handleTripTimingOp('shrink'),    { desc: 'Encolher viagem (fim)',                         icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut(' ',              () => handleTripTimingOp('push'),      { desc: 'Empurrar viagem (início e fim)',                icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { desc: 'Puxar viagem (início e fim)',                   icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { desc: 'Crescer viagem sem empurrar subsequentes',      icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ desc: 'Encolher viagem sem empurrar subsequentes',     icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { desc: 'Empurrar só o início',                          icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { desc: 'Puxar só o início',                             icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
 
   // Extends the focused break up to the next item in the block (trip, deadrun or
   // another break), minus 1min, capped at its IntervalType.maxMinutes.
-  useShortcut('q+ ', () => handleTripTimingOp('extendToNext'), { enabled: isBreakFocused, display: false, preventDefault: true })
+  useShortcut('q+ ', () => handleTripTimingOp('extendToNext'), { desc: 'Estender intervalo até o próximo item', icon: Icons.Coffee, origin: editOrigin, enabled: isBreakFocused, preventDefault: true, section: SEC_EDICAO })
 
   // Direct shortcuts for context-bar actions on the focused trip — resolves and
   // filters through the exact same vehiclesActionSpec the bar itself uses, so
@@ -2522,10 +2629,10 @@ export default function VehiclePlanPage() {
     actions.find(a => a.id === actionId)?.onClick()
   }
 
-  useShortcut('q+l', () => triggerFocusedTripAction('lock'),         { enabled: isTripFocused, display: false })
-  useShortcut('q+e', () => triggerFocusedTripAction('access'),       { enabled: isTripFocused, display: false })
-  useShortcut('q+r', () => triggerFocusedTripAction('return'),       { enabled: isTripFocused, display: false })
-  useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { enabled: isTripFocused, display: false })
+  useShortcut('q+l', () => triggerFocusedTripAction('lock'),         { desc: 'Bloquear/desbloquear viagem', icon: Icons.Lock,   origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
+  useShortcut('q+e', () => triggerFocusedTripAction('access'),       { desc: 'Adicionar acesso',            icon: Icons.MapPin, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
+  useShortcut('q+r', () => triggerFocusedTripAction('return'),       { desc: 'Adicionar recolhida',         icon: Icons.Truck,  origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
+  useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { desc: 'Adicionar intervalo',         icon: Icons.Coffee, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
 
   useShortcut('delete', () => {
     if (!canEdit || !mergedPlottedData) return
@@ -2655,10 +2762,12 @@ export default function VehiclePlanPage() {
     setFocusedSegId(nextFocusId)
     setSelection(null)
   }, {
+    desc:    'Excluir viagem/recolhida/intervalo selecionado (ou focado)',
+    icon:    Icons.Trash2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && (!!selection || !!focusedSegId),
-    display: false,
     preventDefault: true,
+    section: SEC_GERAL,
   })
 
   // ── trip summary panel ────────────────────────────────────────────────────
