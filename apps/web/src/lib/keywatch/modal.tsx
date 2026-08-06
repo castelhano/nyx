@@ -77,11 +77,11 @@ function MetaPanel({ h }: { h: HandlerEntry }) {
         className="grid gap-x-3 gap-y-0.5 p-2 rounded-md bg-background/60 border border-border/60"
         style={{ gridTemplateColumns: 'auto 1fr' }}
       >
-        <MetaRow label="contexto" value={h.context} />
+        <MetaRow label="context" value={h.context} />
         <MetaRow label="event"    value={events || '—'} />
         <MetaRow label="origin"   value={h.origin  || <span className="opacity-30">—</span>} />
         <MetaRow label="group"    value={h.group   || <span className="opacity-30">—</span>} />
-        <MetaRow label="ordem"    value={h.order} />
+        <MetaRow label="order"    value={h.order} />
         <MetaRow label="composed" value={h.composed       ? 'sim' : 'não'} />
         <MetaRow label="prevent"  value={h.preventDefault ? 'sim' : 'não'} />
         <MetaRow label="capture"  value={h.useCapture     ? 'sim' : 'não'} />

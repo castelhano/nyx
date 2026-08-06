@@ -51,7 +51,7 @@ const SEC_NAV_SENTIDO: ShortcutSection = { label: 'Navegação — sentido', hin
 const SEC_SELECAO: ShortcutSection = { label: 'Seleção de viagem', hint: 'Ações habilitadas quando existe seleção de viagens' }
 const SEC_MOVER:   ShortcutSection = { label: 'Movimentação de bloco', hint: 'Só aparece com uma seleção de viagens ativa' }
 const SEC_EDICAO:  ShortcutSection = {
-  label: 'Edição de horário',
+  label: 'Edição de viagens',
   hint:  'Operações sob viagens e blocos',
 }
 const SEC_ACOES: ShortcutSection = { label: 'Ações rápidas', hint: 'Atalhos de contexto pra viagem focada' }
@@ -2315,7 +2315,7 @@ export default function VehiclePlanPage() {
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit && selectedLineIds.size > 0,
-    section: SEC_GERAL,
+    section: SEC_EDICAO,
   })
 
   useShortcut('f9', () => handleToggleEditBar(), {
@@ -2712,12 +2712,12 @@ export default function VehiclePlanPage() {
   const isBreakFocused = editBarOpen && !!focusedSegId && focusedSegId.endsWith(':bk')
 
   const editOrigin = 'apps/web/src/app/transit/vehicle-plan/[id]/page'
-  useShortcut('+',              () => handleTripTimingOp('grow'),      { desc: 'Crescer viagem (fim)',                          icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut('-',              () => handleTripTimingOp('shrink'),    { desc: 'Encolher viagem (fim)',                         icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut(' ',              () => handleTripTimingOp('push'),      { desc: 'Empurrar viagem (início e fim)',                icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
-  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { desc: 'Puxar viagem (início e fim)',                   icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
-  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { desc: 'Crescer viagem sem empurrar subsequentes',      icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ desc: 'Encolher viagem sem empurrar subsequentes',     icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut('+',              () => handleTripTimingOp('grow'),      { desc: 'Crescer viagem (propaga)',                      icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut('-',              () => handleTripTimingOp('shrink'),    { desc: 'Encolher viagem  (propaga)',                    icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut(' ',              () => handleTripTimingOp('push'),      { desc: 'Empurrar viagem (propaga)',                     icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { desc: 'Puxar viagem (propaga)',                        icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { desc: 'Crescer viagem',                                icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
+  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ desc: 'Encolher viagem',                               icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
   useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { desc: 'Empurrar só o início',                          icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
   useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { desc: 'Puxar só o início',                             icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
 
@@ -2874,12 +2874,12 @@ export default function VehiclePlanPage() {
     setFocusedSegId(nextFocusId)
     setSelection(null)
   }, {
-    desc:    'Excluir viagem/recolhida/intervalo selecionado (ou focado)',
+    desc:    'Excluir',
     icon:    Icons.Trash2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && (!!selection || !!focusedSegId),
     preventDefault: true,
-    section: SEC_GERAL,
+    section: SEC_EDICAO,
   })
 
   // ── trip summary panel ────────────────────────────────────────────────────
