@@ -3128,7 +3128,7 @@ export default function VehiclePlanPage() {
               />
             )}
 
-            {editBarOpen && !selection && headwayRangeInfo && (
+            {editBarOpen && canEdit && !selection && headwayRangeInfo && (
               <HeadwayRangeBar
                 count={headwayRangeInfo.trips.length}
                 singleLine={headwayRangeInfo.singleLine}

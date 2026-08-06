@@ -189,6 +189,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.relatedWhere              ? { relatedWhere:         meta.relatedWhere         } : {}),
       ...(meta.keybind             ? { keybind:     meta.keybind }              : {}),
       ...(meta.optionLabels        ? { optionLabels: meta.optionLabels }         : {}),
+      ...(meta.optionColors        ? { optionColors: meta.optionColors }         : {}),
       ...(meta.virtual             ? { virtual:     true }                      : {}),
       ...(meta.dependsOn           ? { dependsOn:   meta.dependsOn }            : {}),
       ...(meta.lazyEdit            ? { lazyEdit:    true }                      : {}),

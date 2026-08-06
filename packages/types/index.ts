@@ -29,7 +29,7 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select'
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge'
   defaultValue?: unknown
   min?: number
   max?: number
@@ -46,6 +46,8 @@ export interface FieldMeta {
   keybind?: string
   filter?: boolean | FilterDef
   optionLabels?: Record<string, string>
+  /** For `widget: 'badge'` on enum fields — maps option value to a badge color. Defaults to 'muted'. */
+  optionColors?: Record<string, 'success' | 'warning' | 'destructive' | 'info' | 'muted'>
   /** Field exists in the form for UX purposes but is excluded from API payloads on submit. */
   virtual?: boolean
   /** Re-fetches select options using `?f_<dependsOn>=<value>` when the named sibling field changes. Clears own value when parent changes. */
@@ -85,6 +87,7 @@ export interface MetadataField {
   group?: string
   filter?: FilterDef
   optionLabels?: Record<string, string>
+  optionColors?: Record<string, 'success' | 'warning' | 'destructive' | 'info' | 'muted'>
   virtual?: boolean
   dependsOn?: string
   lazyEdit?: boolean

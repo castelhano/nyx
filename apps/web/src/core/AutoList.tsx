@@ -216,6 +216,22 @@ function SortIcon({ state }: { state: false | 'asc' | 'desc' }) {
   return                      <ChevronDown    className="w-3 h-3 text-ring" />
 }
 
+const BADGE_COLOR_CLS: Record<string, string> = {
+  success:     'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  warning:     'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400',
+  destructive: 'bg-destructive/15 text-destructive',
+  info:        'bg-sky-500/15 text-sky-600 dark:text-sky-400',
+  muted:       'bg-muted text-muted-foreground',
+}
+
+function Badge({ label, color }: { label: string; color?: string }) {
+  return (
+    <span className={cn('flex w-full items-center justify-center rounded-sm px-2 py-0.5 text-xs font-medium', BADGE_COLOR_CLS[color ?? 'muted'])}>
+      {label}
+    </span>
+  )
+}
+
 function formatDate(val: unknown, format: string): string {
   if (!val) return ''
   const d = new Date(val as string)
@@ -268,6 +284,9 @@ function buildColumns(
         const val = getValue()
         if (val === null || val === undefined) return ''
         if (typeof val === 'boolean') return val ? 'Sim' : 'Não'
+        if (col.widget === 'badge' && typeof val === 'string') {
+          return <Badge label={col.optionLabels?.[val] ?? val} color={col.optionColors?.[val]} />
+        }
         if (col.type === 'enum' && col.optionLabels && typeof val === 'string') return col.optionLabels[val] ?? val
         if (col.type === 'date') return formatDate(val, dateFormat)
         if (col.widget === 'currency') {

@@ -62,9 +62,13 @@ export const vehiclePlanSchema = withMeta(
       className:      'md:w-44',
       defaultValue:   'DRAFT',
       keybind:        's',
+      widget:         'badge',
       optionLabels: {
         DRAFT:  'Rascunho',
         ACTIVE: 'Ativo',
+      },
+      optionColors: {
+        ACTIVE: 'success',
       },
     }),
 
