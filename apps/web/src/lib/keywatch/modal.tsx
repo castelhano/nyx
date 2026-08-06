@@ -15,7 +15,7 @@ function Key({ label }: { label: string }) {
       'inline-flex items-center justify-center min-w-[1.8em]',
       'rounded border border-b-2 border-border',
       'bg-muted px-1.5 py-0.5',
-      'font-mono text-[11px] text-foreground/80',
+      'font-mono text-[10px] text-foreground/80',
     )}>
       {label.toUpperCase()}
     </kbd>
@@ -173,7 +173,7 @@ function packColumns(sections: SectionGroup[], cols: number): SectionGroup[][] {
   return columns
 }
 
-const COL_WIDTH_PX = 300 // largura fixa de cada coluna — a caixa da modal (w-fit) é quem se adapta a isso, não o contrário
+const COL_WIDTH_PX = 390 // largura fixa de cada coluna — a caixa da modal (w-fit) é quem se adapta a isso, não o contrário
 
 /** Quantas colunas cabem na largura da janela (não do container — medir o
  *  container aqui seria circular, já que a largura da caixa passou a depender
@@ -307,7 +307,7 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
         aria-label="Atalhos de teclado"
         className={cn(
           'fixed z-50 left-1/2 top-12 -translate-x-1/2',
-          'flex flex-col w-fit min-w-[332px] max-w-[92vw] lg:max-w-6xl max-h-[88vh]',
+          'flex flex-col w-fit min-w-[332px] max-w-[92vw] lg:max-w-[1300px] max-h-[88vh]',
           'rounded-lg border border-border bg-popover text-popover-foreground shadow-xl',
           'overflow-hidden',
         )}
@@ -367,11 +367,13 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
         </div>
 
         {/* Hint */}
-        <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border/50 shrink-0 bg-muted/30">
-          <Info className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-          <span className="text-[11px] text-muted-foreground/50">
-            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Ctrl+Shift+[tecla]</kbd> navega em campos do form
-          </span>
+        <div className="px-4 pt-3 shrink-0">
+          <div className="flex items-center gap-1.5 rounded-md bg-muted/30 px-3 py-1.5">
+            <Info className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+            <span className="text-[11px] text-muted-foreground/50">
+              <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Ctrl+Shift+[tecla]</kbd> navega em campos do form
+            </span>
+          </div>
         </div>
 
         {/* Lista */}
