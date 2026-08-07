@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DIR_COLOR, REPOSITION_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
+import { DIR_COLOR, DIR_MARK_COLOR, REPOSITION_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
+import { DirectionArrows } from './DirectionArrows'
 
 // Leaflet icons broken in webpack — fix the default icon
 import L from 'leaflet'
@@ -88,8 +89,9 @@ export default function MapCanvas({
         {routes.map((route) => {
           const lls      = localities[route.id] ?? []
           const isSelected = route.id === selectedRouteId
-          const color    = DIR_COLOR[route.direction]
-          const opacity  = selectedRouteId ? (isSelected ? 1 : 0.3) : 0.8
+          const color     = DIR_COLOR[route.direction]
+          const markColor = DIR_MARK_COLOR[route.direction]
+          const opacity   = selectedRouteId ? (isSelected ? 1 : 0.3) : 0.8
 
           // collect leg geometries, keeping the owning RouteLocality so we can key by it
           const legs = lls.filter((rl) => rl.geometry != null)
@@ -102,15 +104,17 @@ export default function MapCanvas({
           return (
             <span key={route.id}>
               {legs.map((rl) => (
-                <GeoJSON
-                  // react-leaflet's GeoJSON only builds the layer once at mount and never
-                  // diffs the `data` prop on re-render — key by updatedAt so a changed
-                  // geometry (after Gravar/Reprocessar) forces a remount instead of showing stale shape
-                  key={`${rl.id}-${rl.updatedAt}`}
-                  data={rl.geometry as any}
-                  style={{ color, weight: isSelected ? 4 : 2, opacity }}
-                  eventHandlers={{ click: () => onSelectRoute(route.id) }}
-                />
+                <span key={`${rl.id}-${rl.updatedAt}`}>
+                  <GeoJSON
+                    // react-leaflet's GeoJSON only builds the layer once at mount and never
+                    // diffs the `data` prop on re-render — key by updatedAt so a changed
+                    // geometry (after Gravar/Reprocessar) forces a remount instead of showing stale shape
+                    data={rl.geometry as any}
+                    style={{ color, weight: isSelected ? 4 : 2, opacity }}
+                    eventHandlers={{ click: () => onSelectRoute(route.id) }}
+                  />
+                  <DirectionArrows coordinates={rl.geometry!.coordinates} color={markColor} opacity={opacity} />
+                </span>
               ))}
 
               {lls.map((rl) => {
@@ -141,7 +145,7 @@ export default function MapCanvas({
                       position={[c.lat, c.lng]}
                       opacity={opacity}
                       icon={L.divIcon({
-                        html:       stopGlyphMarkup(isOrigin ? 'origin' : 'destination', isPicked ? REPOSITION_COLOR : color, size),
+                        html:       stopGlyphMarkup(isOrigin ? 'origin' : 'destination', isPicked ? REPOSITION_COLOR : markColor, size),
                         className:  isPicked ? 'animate-pulse' : '',
                         iconSize:   [size, size],
                         iconAnchor: [size / 2, size / 2],
@@ -164,7 +168,7 @@ export default function MapCanvas({
                       position={[c.lat, c.lng]}
                       opacity={opacity}
                       icon={L.divIcon({
-                        html:       stopGlyphMarkup('waypoint', isPicked ? REPOSITION_COLOR : color, size),
+                        html:       stopGlyphMarkup('waypoint', isPicked ? REPOSITION_COLOR : markColor, size),
                         className:  isPicked ? 'animate-pulse' : '',
                         iconSize:   [size, size],
                         iconAnchor: [size / 2, size / 2],
@@ -185,8 +189,8 @@ export default function MapCanvas({
                     center={[c.lat, c.lng]}
                     radius={isPicked ? 8 : 5}
                     pathOptions={{
-                      color:       isPicked ? REPOSITION_COLOR : color,
-                      fillColor:   isPicked ? REPOSITION_COLOR : color,
+                      color:       isPicked ? REPOSITION_COLOR : '#fff',
+                      fillColor:   isPicked ? REPOSITION_COLOR : markColor,
                       fillOpacity: opacity,
                       opacity,
                       weight:      isPicked ? 3 : 2,

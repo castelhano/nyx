@@ -79,6 +79,14 @@ export const DIR_LABEL: Record<RouteDirection, string> = {
   CIRCULAR: 'Circular',
 }
 
+// darker shade of DIR_COLOR used for points/waypoints/arrows on the map — same hue as
+// the trace so it still reads as "this route", but distinct enough to stand out over it
+export const DIR_MARK_COLOR: Record<RouteDirection, string> = {
+  OUTBOUND: '#1d4ed8',
+  INBOUND:  '#b91c1c',
+  CIRCULAR: '#15803d',
+}
+
 // highlight color for a point selected for repositioning — same amber used for pending points
 export const REPOSITION_COLOR = '#f59e0b'
 
