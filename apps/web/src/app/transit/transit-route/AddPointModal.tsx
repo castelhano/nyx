@@ -191,7 +191,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
                   value={abbr}
                   onChange={(e) => setAbbr(e.target.value)}
                   placeholder="Opcional"
-                  maxLength={10}
+                  maxLength={16}
                 />
               </div>
             </div>
