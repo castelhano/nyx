@@ -18,6 +18,7 @@ export const lineSchema = withMeta(
       label:          'Nome',
       listVisibility: 'visible',
       className: 'md:w-1/2',
+      keybind:        'g',
       filter: true
     }),
 
@@ -26,7 +27,7 @@ export const lineSchema = withMeta(
       listVisibility: 'visible',
       filter:         true,
       className:      'md:w-1/4',
-      keybind:        'p',
+      keybind:        'y',
       optionLabels: {
         URBAN:        'Urbano',
         METROPOLITAN: 'Metropolitano',
@@ -55,7 +56,6 @@ export const lineSchema = withMeta(
       domain:         'transit',
       labelField:     'code',
       listVisibility: 'hidden',
-      filter:         { type: 'relation', endpoint: 'transit/transit-line', labelField: 'code' },
       className:      'md:w-1/4',
     }),
 

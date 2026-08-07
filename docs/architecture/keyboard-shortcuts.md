@@ -149,7 +149,6 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 
 | Letter | Browser action |
 |--------|---------------|
-| `A` | Search open tabs (Chrome 87+) |
 | `B` | Toggle bookmarks bar |
 | `I` | Open DevTools |
 | `J` | Open Downloads panel |
@@ -165,17 +164,16 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 
 | Letter | Risk |
 |--------|------|
-| `C` | Inspect element (DevTools) |
 | `H` | Opens History in Edge (Ctrl+Shift+H); safe in Chrome |
 | `M` | Guest profile switcher in some Chrome versions |
 | `U` | Unicode input on Linux; safe on Windows |
 
-**Confirmed safe:** `D` `E` `F` `G` `K` `L` `Q` `S` `U` `V` `X` `Y`
+**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `Q` `S` `U` `V` `X` `Y`
 
 ---
 ### Standard combinations
 
-| Letter | Browser action |
+| Letter | Role |
 |--------|---------------|
 | `C` | Code, unique identifier |
 | `G` | Name, main descriptive identifier |
