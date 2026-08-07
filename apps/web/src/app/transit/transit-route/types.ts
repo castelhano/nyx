@@ -79,6 +79,9 @@ export const DIR_LABEL: Record<RouteDirection, string> = {
   CIRCULAR: 'Circular',
 }
 
+// highlight color for a point selected for repositioning — same amber used for pending points
+export const REPOSITION_COLOR = '#f59e0b'
+
 export function getCoord(rl: RouteLocality): { lat: number; lng: number } | null {
   if (rl.localityId && rl.locality?.lat != null && rl.locality?.lng != null) {
     return { lat: rl.locality.lat, lng: rl.locality.lng }

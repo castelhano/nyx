@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DIR_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
+import { DIR_COLOR, REPOSITION_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
 
@@ -27,22 +27,31 @@ function ClickCapture({ onMapClick }: { onMapClick?: (lat: number, lng: number) 
   return null
 }
 
+// returns true when the click carries the ctrl+shift "select for reposition" modifier
+function isRepositionSelectClick(e: LeafletMouseEvent): boolean {
+  return e.originalEvent.ctrlKey && e.originalEvent.shiftKey
+}
+
 // ─── Props ──────────────────────────────────────────────────────────────────
 interface Props {
-  routes:          TransitRoute[]
-  localities:      Record<string, RouteLocality[]>
-  selectedRouteId: string | null
-  pendingPoints:   PendingPoint[]
-  addPointMode:    boolean
-  onMapClick?:     (lat: number, lng: number) => void
-  onSelectRoute:   (id: string) => void
+  routes:              TransitRoute[]
+  localities:          Record<string, RouteLocality[]>
+  selectedRouteId:     string | null
+  pendingPoints:       PendingPoint[]
+  addPointMode:        boolean
+  repositionKey:       string | null   // RouteLocality.id or pending._pendingId awaiting a destination click
+  onMapClick?:         (lat: number, lng: number) => void
+  onSelectRoute:       (id: string) => void
+  onSelectForReposition: (key: string) => void
 }
 
 const CUIABA_CENTER: [number, number] = [-15.601, -56.097]
 
 export default function MapCanvas({
-  routes, localities, selectedRouteId, pendingPoints, addPointMode, onMapClick, onSelectRoute,
+  routes, localities, selectedRouteId, pendingPoints, addPointMode, repositionKey,
+  onMapClick, onSelectRoute, onSelectForReposition,
 }: Props) {
+  const awaitingDestination = repositionKey != null
   const mapRef = useRef<LeafletMap | null>(null)
   const [, forceRender] = useState(0)
 
@@ -61,7 +70,7 @@ export default function MapCanvas({
   }, [selectedRouteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`flex-1 relative isolate ${addPointMode ? 'cursor-crosshair' : ''}`}>
+    <div className={`flex-1 relative isolate ${addPointMode || awaitingDestination ? 'cursor-crosshair' : ''}`}>
       <MapContainer
         center={CUIABA_CENTER}
         zoom={12}
@@ -74,7 +83,7 @@ export default function MapCanvas({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <ClickCapture onMapClick={addPointMode ? onMapClick : undefined} />
+        <ClickCapture onMapClick={addPointMode || awaitingDestination ? onMapClick : undefined} />
 
         {routes.map((route) => {
           const lls      = localities[route.id] ?? []
@@ -111,19 +120,33 @@ export default function MapCanvas({
                 const isOrigin      = rl.localityId === route.originLocalityId
                 const isDestination = rl.localityId === route.destinationLocalityId
                 const position      = pointIndex.get(rl.id) ?? null
+                const isPicked      = isSelected && rl.id === repositionKey
+
+                // only the currently selected route's points are pickable —
+                // other routes stay dimmed background context
+                const pickHandler = {
+                  click: (e: LeafletMouseEvent) => {
+                    if (!isSelected || !isRepositionSelectClick(e)) return
+                    L.DomEvent.stop(e)
+                    onSelectForReposition(rl.id)
+                    e.target.closePopup()
+                  },
+                }
 
                 if (isOrigin || isDestination) {
+                  const size = isPicked ? 24 : 18
                   return (
                     <Marker
                       key={rl.id}
                       position={[c.lat, c.lng]}
                       opacity={opacity}
                       icon={L.divIcon({
-                        html:       stopGlyphMarkup(isOrigin ? 'origin' : 'destination', color, 18),
-                        className:  '',
-                        iconSize:   [18, 18],
-                        iconAnchor: [9, 9],
+                        html:       stopGlyphMarkup(isOrigin ? 'origin' : 'destination', isPicked ? REPOSITION_COLOR : color, size),
+                        className:  isPicked ? 'animate-pulse' : '',
+                        iconSize:   [size, size],
+                        iconAnchor: [size / 2, size / 2],
                       })}
+                      eventHandlers={pickHandler}
                     >
                       <Tooltip permanent direction="top" offset={[0, -10]} className="!py-0 !px-1 !text-[10px] !leading-tight">
                         {position}
@@ -134,17 +157,19 @@ export default function MapCanvas({
                 }
 
                 if (isWaypoint) {
+                  const size = isPicked ? 20 : 14
                   return (
                     <Marker
                       key={rl.id}
                       position={[c.lat, c.lng]}
                       opacity={opacity}
                       icon={L.divIcon({
-                        html:       stopGlyphMarkup('waypoint', color, 14),
-                        className:  '',
-                        iconSize:   [14, 14],
-                        iconAnchor: [7, 7],
+                        html:       stopGlyphMarkup('waypoint', isPicked ? REPOSITION_COLOR : color, size),
+                        className:  isPicked ? 'animate-pulse' : '',
+                        iconSize:   [size, size],
+                        iconAnchor: [size / 2, size / 2],
                       })}
+                      eventHandlers={pickHandler}
                     >
                       <Tooltip permanent direction="top" offset={[0, -8]} className="!py-0 !px-1 !text-[10px] !leading-tight">
                         {position}
@@ -158,14 +183,17 @@ export default function MapCanvas({
                   <CircleMarker
                     key={rl.id}
                     center={[c.lat, c.lng]}
-                    radius={5}
+                    radius={isPicked ? 8 : 5}
                     pathOptions={{
-                      color:       color,
-                      fillColor:   color,
+                      color:       isPicked ? REPOSITION_COLOR : color,
+                      fillColor:   isPicked ? REPOSITION_COLOR : color,
                       fillOpacity: opacity,
                       opacity,
-                      weight:      2,
+                      weight:      isPicked ? 3 : 2,
+                      dashArray:   isPicked ? '3,3' : undefined,
+                      className:   isPicked ? 'animate-pulse' : undefined,
                     }}
+                    eventHandlers={pickHandler}
                   >
                     <Tooltip permanent direction="top" offset={[0, -6]} className="!py-0 !px-1 !text-[10px] !leading-tight">
                       {position}
@@ -179,25 +207,38 @@ export default function MapCanvas({
         })}
 
         {/* pending points — shown outside the line */}
-        {pendingPoints.map((p) => (
-          <CircleMarker
-            key={p._pendingId}
-            center={[p.lat, p.lng]}
-            radius={6}
-            pathOptions={{
-              color:       '#f59e0b',
-              fillColor:   '#f59e0b',
-              fillOpacity: 0.6,
-              weight:      2,
-              dashArray:   '4,4',
-            }}
-          />
-        ))}
+        {pendingPoints.map((p) => {
+          const isPicked = p._pendingId === repositionKey
+          return (
+            <CircleMarker
+              key={p._pendingId}
+              center={[p.lat, p.lng]}
+              radius={isPicked ? 9 : 6}
+              pathOptions={{
+                color:       '#f59e0b',
+                fillColor:   '#f59e0b',
+                fillOpacity: 0.6,
+                weight:      isPicked ? 3 : 2,
+                dashArray:   '4,4',
+                className:   isPicked ? 'animate-pulse' : undefined,
+              }}
+              eventHandlers={{
+                click: (e: LeafletMouseEvent) => {
+                  if (!isRepositionSelectClick(e)) return
+                  L.DomEvent.stop(e)
+                  onSelectForReposition(p._pendingId)
+                },
+              }}
+            />
+          )
+        })}
       </MapContainer>
 
-      {addPointMode && (
+      {(addPointMode || awaitingDestination) && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1001] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md">
-          Clique no mapa para posicionar o ponto
+          {awaitingDestination
+            ? 'Clique no mapa para reposicionar o ponto selecionado (Esc cancela)'
+            : 'Clique no mapa para posicionar o ponto'}
         </div>
       )}
     </div>

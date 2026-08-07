@@ -50,6 +50,9 @@ export default function TransitRoutePage() {
   const [addPointMode,  setAddPointMode]  = useState(false)
   const [mapClickPos,   setMapClickPos]   = useState<{ lat: number; lng: number } | null>(null)
   const [pendingPoints, setPendingPoints] = useState<PendingPoint[]>([])
+  // RouteLocality.id or a pending point's _pendingId, selected via ctrl+shift+click,
+  // awaiting the next map click to receive its new position
+  const [repositionKey, setRepositionKey] = useState<string | null>(null)
   const [suggestions,   setSuggestions]  = useState<SuggestedLocality[] | null>(null)
   const [isSaving,      setIsSaving]     = useState(false)
   const [isReprocessing,setIsReprocessing] = useState(false)
@@ -93,6 +96,7 @@ export default function TransitRoutePage() {
     router.replace(`/transit/transit-route?${params}`)
     setPendingPoints([])
     setSuggestions(null)
+    setRepositionKey(null)
   }
 
   function handleCreated(route: { id: string }) {
@@ -112,6 +116,71 @@ export default function TransitRoutePage() {
   function discardPending() {
     setPendingPoints([])
     setSuggestions(null)
+    setRepositionKey(null)
+  }
+
+  // ── reposition (ctrl+shift+click select, then click map for new position) ──
+
+  function selectForReposition(key: string) {
+    const isPending = pendingPoints.some((p) => p._pendingId === key)
+    if (!isPending && pendingPoints.length > 0) {
+      toast.error('Grave os pontos pendentes antes de reposicionar pontos existentes')
+      return
+    }
+    setAddPointMode(false)
+    setMapClickPos(null)
+    setRepositionKey((prev) => (prev === key ? null : key))
+  }
+
+  async function applyReposition(lat: number, lng: number) {
+    const key = repositionKey
+    setRepositionKey(null)
+    if (!key) return
+
+    const pending = pendingPoints.find((p) => p._pendingId === key)
+    if (pending) {
+      if (pending.localityId) {
+        toast.error('Este ponto usa uma localidade existente — a posição vem do cadastro de Localidade')
+        return
+      }
+      setPendingPoints((prev) => prev.map((p) => (p._pendingId === key ? { ...p, lat, lng } : p)))
+      return
+    }
+
+    const rl = selectedLocalities.find((r) => r.id === key)
+    if (!rl) return
+
+    if (rl.localityId) {
+      const ok = await confirm({
+        title:       'Mover parada compartilhada?',
+        description: `"${rl.locality?.name ?? 'Este ponto'}" é uma localidade usada por outras rotas/linhas, que também serão reposicionadas. Deseja continuar?`,
+        variant:      'destructive',
+      })
+      if (!ok) return
+      try {
+        await apiPatch(`/transit/transit-locality/${rl.localityId}`, { lat, lng })
+        await apiPost(`/transit/transit-route/${routeId}/reprocess`)
+        queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
+        toast.success('Parada reposicionada e trajetória reprocessada')
+      } catch (err) {
+        toast.error(extractError(err as Record<string, unknown>, 'Erro ao reposicionar parada'))
+      }
+      return
+    }
+
+    try {
+      await apiPatch(`/transit/route-locality/${rl.id}`, { lat, lng })
+      await apiPost(`/transit/transit-route/${routeId}/reprocess`)
+      queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
+      toast.success('Waypoint reposicionado e trajetória reprocessada')
+    } catch (err) {
+      toast.error(extractError(err as Record<string, unknown>, 'Erro ao reposicionar waypoint'))
+    }
+  }
+
+  function handleCanvasClick(lat: number, lng: number) {
+    if (repositionKey) { applyReposition(lat, lng); return }
+    setMapClickPos({ lat, lng })
   }
 
   // ── save (gravar) ─────────────────────────────────────────────────────────
@@ -268,7 +337,7 @@ export default function TransitRoutePage() {
     !routeId ? [] : topbarState === 'pending' ? [
       { label: isSaving ? 'Gravando…' : 'Gravar', icon: Icons.Save, onClick: handleSave, disabled: isSaving, primary: true },
       { label: 'Descartar pendentes', icon: Icons.Undo2, onClick: discardPending, variant: 'ghost' as const },
-      { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => setAddPointMode(true), variant: 'ghost' as const },
+      { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => { setRepositionKey(null); setAddPointMode(true) }, variant: 'ghost' as const },
     ] : topbarState === 'suggesting' ? [
       { label: 'Cancelar sugestão', icon: Icons.X, onClick: () => setSuggestions(null), variant: 'ghost' as const },
     ] : [
@@ -281,7 +350,7 @@ export default function TransitRoutePage() {
         title:    !hasGeometry ? 'Gere a trajetória primeiro' : undefined,
         overflow: true,
       } as any,
-      { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => setAddPointMode(true), variant: 'ghost' as const },
+      { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => { setRepositionKey(null); setAddPointMode(true) }, variant: 'ghost' as const },
       { label: isDeleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDeleteRoute, disabled: isDeleting, overflow: true },
     ],
     [routeId, topbarState, isSaving, isReprocessing, isSuggesting, isDeleting, hasGeometry, pendingPoints, selectedLocalities],
@@ -302,16 +371,16 @@ export default function TransitRoutePage() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [pendingPoints.length])
 
-  // Esc cancels "adicionar ponto" — covers both waiting for the map click
-  // (crosshair, no modal yet) and the modal already being open
+  // Esc cancels "adicionar ponto" (covers both waiting for the map click and the
+  // modal already open) and "reposicionar ponto" (point selected, awaiting destination click)
   useEffect(() => {
-    if (!addPointMode) return
+    if (!addPointMode && !repositionKey) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setAddPointMode(false); setMapClickPos(null) }
+      if (e.key === 'Escape') { setAddPointMode(false); setMapClickPos(null); setRepositionKey(null) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [addPointMode])
+  }, [addPointMode, repositionKey])
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -397,8 +466,10 @@ export default function TransitRoutePage() {
               selectedRouteId={routeId || null}
               pendingPoints={pendingPoints}
               addPointMode={addPointMode}
-              onMapClick={(lat, lng) => setMapClickPos({ lat, lng })}
+              repositionKey={repositionKey}
+              onMapClick={handleCanvasClick}
               onSelectRoute={selectRoute}
+              onSelectForReposition={selectForReposition}
             />
           )}
         </div>
