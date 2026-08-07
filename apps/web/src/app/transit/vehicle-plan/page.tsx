@@ -11,6 +11,7 @@ import { usePageGuard } from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
+import { downloadCsv } from '@/lib/csv'
 import { extractError } from '@/lib/utils'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
@@ -37,6 +38,15 @@ export default function VehiclePlanListPage() {
     if (!key.startsWith('_')) filters[key] = value
   }
 
+  async function handleDownloadCsv() {
+    if (!meta) return
+    const params = new URLSearchParams({ page: '1', pageSize: '9999', ...filters })
+    const res = await apiFetch(`/transit/vehicle-plan?${params}`)
+    if (!res.ok) return
+    const { data } = await res.json()
+    downloadCsv(data, meta.fields, meta.labelPlural)
+  }
+
   useTopbarActions([
     ...(meta?.permissions?.create !== false
       ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push('/transit/vehicle-plan/new'), primary: true }]
@@ -44,17 +54,24 @@ export default function VehiclePlanListPage() {
     ...(meta?.permissions?.create !== false
       ? [{ label: 'Importar', icon: Icons.Upload, onClick: () => { setImportPlanId(null); setImportOpen(true) }, variant: 'ghost' as const }]
       : []),
-  ], [meta?.permissions?.create])
+    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: handleDownloadCsv, variant: 'ghost' as const }] : []),
+  ], [meta?.permissions?.create, meta?.allowCsv])
 
   useShortcut('alt+v', () => router.push('/transit'), {
     desc:   'Voltar',
     icon:   Icons.ArrowLeft,
     origin: 'app/transit/vehicle-plan/page',
   })
-  
+
   useShortcut('alt+n', () => router.push('/transit/vehicle-plan/new'), {
     desc:   'Novo',
     icon:   Icons.Plus,
+    origin: 'app/transit/vehicle-plan/page',
+  })
+
+  useShortcut('alt+d', handleDownloadCsv, {
+    desc:   'Baixar dados em CSV',
+    icon:   Icons.Download,
     origin: 'app/transit/vehicle-plan/page',
   })
 

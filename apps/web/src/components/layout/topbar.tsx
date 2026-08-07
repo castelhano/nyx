@@ -4,7 +4,7 @@ import { PanelLeft, Bell, Sun, Moon, MoreHorizontal, ChevronDown } from 'lucide-
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown'
 import { useSidebar } from './sidebar-context'
 import { useTopbarActionsContext, type TopbarAction } from './topbar-actions-context'
 
@@ -88,6 +88,28 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
   )
 }
 
+// Um mesmo action.separator se adapta ao contexto onde é renderizado: barra
+// vertical numa fileira de botões (desktop inline, ícones do mobile), traço
+// horizontal dentro de uma lista de dropdown (overflow ou menu secundário do
+// mobile) — o autor da página declara uma vez só, sem se preocupar com tela.
+function renderRowAction(action: TopbarAction, key: number) {
+  if (action.separator) return <div key={key} className="w-px h-5 bg-border shrink-0" />
+  return action.menu
+    ? <SplitActionButton key={key} action={action} />
+    : <ActionButton key={key} action={action} />
+}
+
+function renderListAction(action: TopbarAction, key: number) {
+  if (action.separator) return <DropdownSeparator key={key} />
+  const Icon = action.icon
+  return (
+    <DropdownItem key={key} onClick={action.onClick} disabled={action.disabled}>
+      {Icon && <Icon className="w-4 h-4" />}
+      {action.label}
+    </DropdownItem>
+  )
+}
+
 export function Topbar() {
   const { toggle } = useSidebar()
   const { theme, setTheme } = useTheme()
@@ -123,7 +145,7 @@ export function Topbar() {
         {startActions.length > 0 && (
           <>
             <div className="flex items-center gap-1">
-              {startActions.map((action, i) => <ActionButton key={i} action={action} />)}
+              {startActions.map((action, i) => renderRowAction(action, i))}
             </div>
             <div className="w-px h-5 bg-border shrink-0" />
           </>
@@ -131,13 +153,7 @@ export function Topbar() {
 
         {/* End zone — desktop: inline + overflow dropdown */}
         <div className="hidden md:flex flex-1 items-center justify-end gap-2">
-          {endInline.map((action, i) =>
-            action.separator
-              ? <div key={i} className="w-px h-5 bg-border shrink-0" />
-              : action.menu
-                ? <SplitActionButton key={i} action={action} />
-                : <ActionButton key={i} action={action} />
-          )}
+          {endInline.map((action, i) => renderRowAction(action, i))}
 
           {overflow.length > 0 && (
             <Dropdown
@@ -149,22 +165,14 @@ export function Topbar() {
                 </Button>
               }
             >
-              {overflow.map((action, i) => {
-                const Icon = action.icon
-                return (
-                  <DropdownItem key={i} onClick={action.onClick} disabled={action.disabled}>
-                    {Icon && <Icon className="w-4 h-4" />}
-                    {action.label}
-                  </DropdownItem>
-                )
-              })}
+              {overflow.map((action, i) => renderListAction(action, i))}
             </Dropdown>
           )}
         </div>
 
         {/* Mobile: primários (ícone-only) + dropdown ⋯ para secundários e overflow */}
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
-          {mobilePrimary.map((action, i) => <ActionButton key={i} action={action} />)}
+          {mobilePrimary.map((action, i) => renderRowAction(action, i))}
 
           {mobileSecondary.length > 0 && (
             <Dropdown
@@ -176,15 +184,7 @@ export function Topbar() {
                 </Button>
               }
             >
-              {mobileSecondary.map((action, i) => {
-                const Icon = action.icon
-                return (
-                  <DropdownItem key={i} onClick={action.onClick} disabled={action.disabled}>
-                    {Icon && <Icon className="w-4 h-4" />}
-                    {action.label}
-                  </DropdownItem>
-                )
-              })}
+              {mobileSecondary.map((action, i) => renderListAction(action, i))}
             </Dropdown>
           )}
         </div>

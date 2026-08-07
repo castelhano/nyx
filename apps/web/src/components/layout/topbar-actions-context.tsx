@@ -3,7 +3,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode, type DependencyList } from 'react'
 
 export interface TopbarAction {
-  label:     string
+  // opcional só para { separator: true } — todo botão real precisa de label
+  label?:    string
   icon?:     React.ElementType
   onClick?:  () => void
   type?:     'submit'
@@ -18,7 +19,8 @@ export interface TopbarAction {
   overflow?: boolean
   // position: 'start' alinha à esquerda antes do separador; 'end' (padrão) agrupa à direita
   position?: 'start' | 'end'
-  // separator: renderiza um divisor vertical no lugar do botão (demais campos ignorados)
+  // separator: divisor entre grupos — vertical numa fileira de botões, horizontal
+  // dentro de um dropdown; a mesma declaração se adapta ao contexto (ver topbar.tsx)
   separator?: boolean
   // menu: quando presente, o botão vira um split-button — clique principal mantém
   // onClick normal, e um chevron ao lado abre um dropdown com estes itens

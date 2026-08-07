@@ -108,10 +108,10 @@ export function Sidebar() {
             'flex h-12 shrink-0 items-center border-b border-sidebar-border',
             isOpen ? 'gap-2 px-4' : 'justify-center px-2',
           )}>
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-sm">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground font-bold text-sm">
               N
             </div>
-            {isOpen && <span className="font-semibold text-sm">Nyx <span className="text-fuchsia-400">app</span></span>}
+            {isOpen && <span className="font-semibold text-sm">Nyx <span className="text-fuchsia-900 dark:text-fuchsia-400">app</span></span>}
           </div>
 
           {/* Navigation */}
