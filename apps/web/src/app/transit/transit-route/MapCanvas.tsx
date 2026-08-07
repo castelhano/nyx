@@ -85,10 +85,10 @@ export default function MapCanvas({
           // collect leg geometries, keeping the owning RouteLocality so we can key by it
           const legs = lls.filter((rl) => rl.geometry != null)
 
-          // sequence number shown next to each point is the 0-indexed position among
-          // real stops only (origin = 0) — waypoints are routing-only and stay unnumbered
-          const stops     = lls.filter((rl) => rl.localityId !== null)
-          const stopIndex = new Map(stops.map((rl, i) => [rl.id, i]))
+          // sequence number shown next to each point is its 0-indexed position among
+          // ALL points on the route (origin = 0) — stops and waypoints share one
+          // continuous numbering so it matches the route's real order
+          const pointIndex = new Map(lls.map((rl, i) => [rl.id, i]))
 
           return (
             <span key={route.id}>
@@ -110,7 +110,7 @@ export default function MapCanvas({
                 const isWaypoint    = rl.localityId === null
                 const isOrigin      = rl.localityId === route.originLocalityId
                 const isDestination = rl.localityId === route.destinationLocalityId
-                const position      = stopIndex.get(rl.id) ?? null
+                const position      = pointIndex.get(rl.id) ?? null
 
                 if (isOrigin || isDestination) {
                   return (
@@ -133,25 +133,43 @@ export default function MapCanvas({
                   )
                 }
 
+                if (isWaypoint) {
+                  return (
+                    <Marker
+                      key={rl.id}
+                      position={[c.lat, c.lng]}
+                      opacity={opacity}
+                      icon={L.divIcon({
+                        html:       stopGlyphMarkup('waypoint', color, 14),
+                        className:  '',
+                        iconSize:   [14, 14],
+                        iconAnchor: [7, 7],
+                      })}
+                    >
+                      <Tooltip permanent direction="top" offset={[0, -8]} className="!py-0 !px-1 !text-[10px] !leading-tight">
+                        {position}
+                      </Tooltip>
+                      <Popup><PointDetails rl={rl} position={position} /></Popup>
+                    </Marker>
+                  )
+                }
+
                 return (
                   <CircleMarker
                     key={rl.id}
                     center={[c.lat, c.lng]}
-                    radius={isWaypoint ? 3 : 5}
+                    radius={5}
                     pathOptions={{
-                      color:       isWaypoint ? '#94a3b8' : color,
-                      fillColor:   isWaypoint ? '#94a3b8' : color,
+                      color:       color,
+                      fillColor:   color,
                       fillOpacity: opacity,
                       opacity,
-                      weight:      isWaypoint ? 1 : 2,
-                      dashArray:   isWaypoint ? '3,3' : undefined,
+                      weight:      2,
                     }}
                   >
-                    {!isWaypoint && (
-                      <Tooltip permanent direction="top" offset={[0, -6]} className="!py-0 !px-1 !text-[10px] !leading-tight">
-                        {position}
-                      </Tooltip>
-                    )}
+                    <Tooltip permanent direction="top" offset={[0, -6]} className="!py-0 !px-1 !text-[10px] !leading-tight">
+                      {position}
+                    </Tooltip>
                     <Popup><PointDetails rl={rl} position={position} /></Popup>
                   </CircleMarker>
                 )
