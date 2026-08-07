@@ -1,3 +1,5 @@
+import { useQuery } from '@tanstack/react-query'
+import { apiFetch } from '@/lib/auth'
 import type { RouteLocality } from './types'
 
 interface Props {
@@ -5,8 +7,31 @@ interface Props {
   position: number | null  // 0-indexed among stops (0 = origin); null for waypoints
 }
 
+interface LocalityRoute {
+  route: { line: { id: string; code: string } }
+}
+
 function fmt(n: number | null, unit: string): string {
   return n == null ? '—' : `${n}${unit}`
+}
+
+// react-leaflet only mounts a Popup's children once it's actually opened, so this
+// query fires on demand per point clicked — never eagerly for every marker on the map
+function LinesRow({ localityId }: { localityId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['transit', 'transit-locality', localityId, 'routes'],
+    queryFn:  () => apiFetch(`/transit/transit-locality/${localityId}/routes`).then((r) => r.json() as Promise<LocalityRoute[]>),
+    staleTime: 60_000,
+  })
+
+  const codes = data ? [...new Map(data.map((r) => [r.route.line.id, r.route.line.code])).values()] : []
+
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">Linhas</dt>
+      <dd className="font-medium text-right">{isLoading ? '…' : codes.length > 0 ? codes.join(', ') : '—'}</dd>
+    </div>
+  )
 }
 
 export function PointDetails({ rl, position }: Props) {
@@ -33,6 +58,7 @@ export function PointDetails({ rl, position }: Props) {
           <dd className="font-medium text-right">{v}</dd>
         </div>
       ))}
+      {rl.localityId != null && <LinesRow localityId={rl.localityId} />}
     </dl>
   )
 }
