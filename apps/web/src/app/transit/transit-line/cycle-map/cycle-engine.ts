@@ -247,6 +247,10 @@ export class CycleEngine {
     return { pills, rows, topPad }
   }
 
+  private isDark(): boolean {
+    return typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  }
+
   private drawAvgLines(
     avg: ReturnType<CycleEngine['computeAvgPills']>,
     yMin: number,
@@ -278,7 +282,8 @@ export class CycleEngine {
       const ph        = 18
       const stripMidY = 12 + rows[i] * PILL_ROW_H
       const pillY     = stripMidY - ph / 2
-      ctx.fillStyle   = 'rgba(255,255,255,0.92)'
+      const dark      = this.isDark()
+      ctx.fillStyle   = dark ? 'rgba(30,41,59,0.92)' : 'rgba(255,255,255,0.92)'
       ctx.strokeStyle = COLORS.avgLine
       ctx.lineWidth   = 1
       ctx.setLineDash([])
@@ -286,7 +291,7 @@ export class CycleEngine {
       ctx.roundRect(midX - pw / 2, pillY, pw, ph, 5)
       ctx.fill()
       ctx.stroke()
-      ctx.fillStyle = '#3b82f6'
+      ctx.fillStyle = dark ? '#93c5fd' : '#3b82f6'
       ctx.fillText(label, midX, stripMidY)
       ctx.restore()
     }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useTheme }      from 'next-themes'
 import { CycleEngine }   from './cycle-engine'
 import { markOutliers }  from './cycle-utils'
 import type { Direction, DotCluster, DotClickInfo, MarqueeSelection } from './types'
@@ -43,6 +44,7 @@ export function CycleMapCanvas({
   const [detail, setDetail]     = useState<DetailPopup | null>(null)
   const [marquee, setMarquee]   = useState<MarqueeSelection | null>(null)
   const [containerW, setContainerW] = useState(0)
+  const { resolvedTheme } = useTheme()
 
   // ── engine lifecycle ──────────────────────────────────────────────────────
 
@@ -96,6 +98,13 @@ export function CycleMapCanvas({
     setMarquee(null)
     engineRef.current?.clearSelection()
   }, [hourClusters, cuts, subCuts])
+
+  // avg pill colors are read from the DOM at draw time — force a redraw
+  // when the theme actually changes so they don't stay stuck on whichever
+  // mode was active on mount
+  useEffect(() => {
+    engineRef.current?.requestDraw()
+  }, [resolvedTheme])
 
   // ── dot toggle ────────────────────────────────────────────────────────────
 
