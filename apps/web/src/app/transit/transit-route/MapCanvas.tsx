@@ -8,6 +8,7 @@ import { DIR_COLOR, DIR_MARK_COLOR, REPOSITION_COLOR, getCoord, type PendingPoin
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
 import { DirectionArrows } from './DirectionArrows'
+import { Icons } from '@/lib/icons'
 
 // Leaflet icons broken in webpack — fix the default icon
 import L from 'leaflet'
@@ -28,11 +29,6 @@ function ClickCapture({ onMapClick }: { onMapClick?: (lat: number, lng: number) 
   return null
 }
 
-// returns true when the click carries the ctrl+shift "select for reposition" modifier
-function isRepositionSelectClick(e: LeafletMouseEvent): boolean {
-  return e.originalEvent.ctrlKey && e.originalEvent.shiftKey
-}
-
 // ─── Props ──────────────────────────────────────────────────────────────────
 interface Props {
   routes:              TransitRoute[]
@@ -44,13 +40,14 @@ interface Props {
   onMapClick?:         (lat: number, lng: number) => void
   onSelectRoute:       (id: string) => void
   onSelectForReposition: (key: string) => void
+  onAddPointClick?:    () => void
 }
 
 const CUIABA_CENTER: [number, number] = [-15.601, -56.097]
 
 export default function MapCanvas({
   routes, localities, selectedRouteId, pendingPoints, addPointMode, repositionKey,
-  onMapClick, onSelectRoute, onSelectForReposition,
+  onMapClick, onSelectRoute, onSelectForReposition, onAddPointClick,
 }: Props) {
   const awaitingDestination = repositionKey != null
   const mapRef = useRef<LeafletMap | null>(null)
@@ -127,10 +124,12 @@ export default function MapCanvas({
                 const isPicked      = isSelected && rl.id === repositionKey
 
                 // only the currently selected route's points are pickable —
-                // other routes stay dimmed background context
+                // other routes stay dimmed background context. dblclick stops
+                // propagation so it doesn't also trigger the map's own
+                // doubleClickZoom (see MapContainer default)
                 const pickHandler = {
-                  click: (e: LeafletMouseEvent) => {
-                    if (!isSelected || !isRepositionSelectClick(e)) return
+                  dblclick: (e: LeafletMouseEvent) => {
+                    if (!isSelected) return
                     L.DomEvent.stop(e)
                     onSelectForReposition(rl.id)
                     e.target.closePopup()
@@ -227,8 +226,7 @@ export default function MapCanvas({
                 className:   isPicked ? 'animate-pulse' : undefined,
               }}
               eventHandlers={{
-                click: (e: LeafletMouseEvent) => {
-                  if (!isRepositionSelectClick(e)) return
+                dblclick: (e: LeafletMouseEvent) => {
                   L.DomEvent.stop(e)
                   onSelectForReposition(p._pendingId)
                 },
@@ -244,6 +242,18 @@ export default function MapCanvas({
             ? 'Clique no mapa para reposicionar o ponto selecionado (Esc cancela)'
             : 'Clique no mapa para posicionar o ponto'}
         </div>
+      )}
+
+      {onAddPointClick && (
+        <button
+          type="button"
+          title="Apontar ponto no mapa (q m)"
+          disabled={addPointMode || awaitingDestination}
+          onClick={onAddPointClick}
+          className={`absolute top-3 right-3 z-[1001] w-8 h-8 flex items-center justify-center rounded-sm border border-border shadow-md transition-colors disabled:opacity-50 disabled:pointer-events-none ${addPointMode ? 'bg-accent text-accent-foreground' : 'bg-background/90 hover:bg-accent hover:text-accent-foreground'}`}
+        >
+          <Icons.MapPinPlus className="w-4 h-4" />
+        </button>
       )}
     </div>
   )

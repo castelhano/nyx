@@ -46,6 +46,7 @@ const iconNames = [
   'RefreshCw',
   'Map',
   'MapPinPlus',
+  'MousePointerClick',
   'Play',
   'Route',
   'Save',

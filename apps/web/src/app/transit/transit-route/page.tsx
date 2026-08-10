@@ -9,6 +9,7 @@ import { apiFetch }                          from '@/lib/auth'
 import { useToast }                          from '@/lib/toast-context'
 import { useConfirm }                        from '@/lib/confirm-context'
 import { useShortcut }                       from '@/lib/keywatch'
+import type { ShortcutSection }               from '@/lib/keywatch'
 import { useTopbarActions }                  from '@/components/layout/topbar-actions-context'
 import { Breadcrumb }                        from '@/components/ui/breadcrumb'
 import { Button }                            from '@/components/ui/button'
@@ -34,6 +35,8 @@ type TopbarState = 'idle' | 'pending' | 'suggesting'
 const EMPTY_ROUTES: TransitRoute[] = []
 const EMPTY_LOCALITIES: RouteLocality[] = []
 
+const SEC_MAPA: ShortcutSection = { label: 'Visão de Mapa' }
+
 export default function TransitRoutePage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -49,9 +52,10 @@ export default function TransitRoutePage() {
   const [showSeq,       setShowSeq]       = useState(false)
   const [addPointMode,  setAddPointMode]  = useState(false)
   const [mapClickPos,   setMapClickPos]   = useState<{ lat: number; lng: number } | null>(null)
+  const [showAddPointModal, setShowAddPointModal] = useState(false)
   const [pendingPoints, setPendingPoints] = useState<PendingPoint[]>([])
-  // RouteLocality.id or a pending point's _pendingId, selected via ctrl+shift+click,
-  // awaiting the next map click to receive its new position
+  // RouteLocality.id or a pending point's _pendingId, selected via a double
+  // click, awaiting the next map click to receive its new position
   const [repositionKey, setRepositionKey] = useState<string | null>(null)
   const [suggestions,   setSuggestions]  = useState<SuggestedLocality[] | null>(null)
   const [isSaving,      setIsSaving]     = useState(false)
@@ -107,10 +111,22 @@ export default function TransitRoutePage() {
 
   // ── pending points ────────────────────────────────────────────────────────
 
+  function activateAddPoint() {
+    setRepositionKey(null)
+    setAddPointMode(true)
+  }
+
+  // opens AddPointModal directly, skipping the "click the map to position" step
+  function openAddPointModal() {
+    setRepositionKey(null)
+    setShowAddPointModal(true)
+  }
+
   function addPendingPoint(point: PendingPoint) {
     setPendingPoints((prev) => [...prev, point])
     setAddPointMode(false)
     setMapClickPos(null)
+    setShowAddPointModal(false)
   }
 
   function discardPending() {
@@ -119,7 +135,7 @@ export default function TransitRoutePage() {
     setRepositionKey(null)
   }
 
-  // ── reposition (ctrl+shift+click select, then click map for new position) ──
+  // ── reposition (double click to select, then click map for new position) ──
 
   function selectForReposition(key: string) {
     const isPending = pendingPoints.some((p) => p._pendingId === key)
@@ -337,7 +353,7 @@ export default function TransitRoutePage() {
     !routeId ? [] : topbarState === 'pending' ? [
       { label: isSaving ? 'Gravando…' : 'Gravar', icon: Icons.Save, onClick: handleSave, disabled: isSaving, primary: true },
       { label: 'Descartar pendentes', icon: Icons.Undo2, onClick: discardPending, variant: 'ghost' as const },
-      { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => { setRepositionKey(null); setAddPointMode(true) }, variant: 'ghost' as const },
+      { label: 'Ponto', icon: Icons.Plus, onClick: openAddPointModal, variant: 'ghost' as const },
     ] : topbarState === 'suggesting' ? [
       { label: 'Cancelar sugestão', icon: Icons.X, onClick: () => setSuggestions(null), variant: 'ghost' as const },
     ] : [
@@ -350,7 +366,7 @@ export default function TransitRoutePage() {
         title:    !hasGeometry ? 'Gere a trajetória primeiro' : undefined,
         overflow: true,
       } as any,
-      { label: 'Adicionar ponto', icon: Icons.MapPinPlus, onClick: () => { setRepositionKey(null); setAddPointMode(true) }, variant: 'ghost' as const },
+      { label: 'Ponto', icon: Icons.Plus, onClick: openAddPointModal, variant: 'ghost' as const },
       { label: isDeleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDeleteRoute, disabled: isDeleting, overflow: true },
     ],
     [routeId, topbarState, isSaving, isReprocessing, isSuggesting, isDeleting, hasGeometry, pendingPoints, selectedLocalities],
@@ -363,6 +379,33 @@ export default function TransitRoutePage() {
     context: 'all' as any,
   })
 
+  useShortcut('alt+n', openAddPointModal, {
+    desc:    'Adicionar ponto',
+    icon:    Icons.Plus,
+    origin:  'transit/transit-route/page',
+    enabled: !!routeId,
+  })
+
+  useShortcut('q+m', activateAddPoint, {
+    desc:    'Apontar ponto no mapa',
+    icon:    Icons.MapPinPlus,
+    origin:  'transit/transit-route/page',
+    enabled: !!routeId && canvasMode === 'map',
+    section: SEC_MAPA,
+  })
+
+  // 'dblclick' isn't a real keyboard shortcut — no KeyboardEvent ever carries
+  // key:'dblclick', so this handler never fires. The actual selection is a
+  // double click on the point, handled in MapCanvas (eventHandlers.dblclick).
+  // Registered only so the interaction shows up in the shortcuts modal.
+  useShortcut('dblclick', () => {}, {
+    desc:    'Reposicionar ponto',
+    icon:    Icons.MousePointerClick,
+    origin:  'transit/transit-route/page',
+    enabled: !!routeId && canvasMode === 'map',
+    section: SEC_MAPA,
+  })
+
   // warn on navigate with pending
   useEffect(() => {
     if (pendingPoints.length === 0) return
@@ -372,15 +415,18 @@ export default function TransitRoutePage() {
   }, [pendingPoints.length])
 
   // Esc cancels "adicionar ponto" (covers both waiting for the map click and the
-  // modal already open) and "reposicionar ponto" (point selected, awaiting destination click)
+  // modal already open) and "reposicionar ponto" (point selected, awaiting destination click).
+  // Capture phase: Leaflet's own Map.Keyboard handler binds keydown on `document`
+  // (bubble phase) and calls stopPropagation() when Esc closes a marker popup —
+  // that would otherwise swallow the key before it reaches a bubble-phase listener here.
   useEffect(() => {
-    if (!addPointMode && !repositionKey) return
+    if (!addPointMode && !repositionKey && !showAddPointModal) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setAddPointMode(false); setMapClickPos(null); setRepositionKey(null) }
+      if (e.key === 'Escape') { setAddPointMode(false); setMapClickPos(null); setRepositionKey(null); setShowAddPointModal(false) }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [addPointMode, repositionKey])
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [addPointMode, repositionKey, showAddPointModal])
 
   // ── render ────────────────────────────────────────────────────────────────
 
@@ -470,6 +516,7 @@ export default function TransitRoutePage() {
               onMapClick={handleCanvasClick}
               onSelectRoute={selectRoute}
               onSelectForReposition={selectForReposition}
+              onAddPointClick={routeId ? activateAddPoint : undefined}
             />
           )}
         </div>
@@ -480,14 +527,14 @@ export default function TransitRoutePage() {
         <CreateRouteModal lineId={lineId} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
       )}
 
-      {(addPointMode && canvasMode === 'ruler') || (mapClickPos) ? (
+      {mapClickPos || showAddPointModal ? (
         <AddPointModal
           existing={selectedLocalities}
           pending={pendingPoints}
           prefillLat={mapClickPos?.lat}
           prefillLng={mapClickPos?.lng}
           onAdd={addPendingPoint}
-          onClose={() => { setAddPointMode(false); setMapClickPos(null) }}
+          onClose={() => { setAddPointMode(false); setMapClickPos(null); setShowAddPointModal(false) }}
         />
       ) : null}
 
