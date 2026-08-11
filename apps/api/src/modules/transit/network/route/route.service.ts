@@ -225,14 +225,20 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
 
     const existingLocalityIds = new Set(localities.map((rl) => rl.localityId).filter(Boolean))
 
-    // bounding box prefilter
+    const threshold = Number(process.env.OSRM_SUGGEST_THRESHOLD_M ?? 50)
+
+    // bounding box prefilter — margin must cover the configured threshold in degrees;
+    // a degree of longitude shrinks with latitude, so convert each axis separately
     const lngs = coords.map((c) => c[0])
     const lats  = coords.map((c) => c[1])
-    const MARGIN = 0.001  // ~100m in degrees
-    const minLat = Math.min(...lats) - MARGIN
-    const maxLat = Math.max(...lats) + MARGIN
-    const minLng = Math.min(...lngs) - MARGIN
-    const maxLng = Math.max(...lngs) + MARGIN
+    const METERS_PER_DEGREE_LAT = 111_320
+    const avgLatRad = (Math.min(...lats) + Math.max(...lats)) / 2 * Math.PI / 180
+    const latMargin = threshold / METERS_PER_DEGREE_LAT
+    const lngMargin = threshold / (METERS_PER_DEGREE_LAT * Math.cos(avgLatRad))
+    const minLat = Math.min(...lats) - latMargin
+    const maxLat = Math.max(...lats) + latMargin
+    const minLng = Math.min(...lngs) - lngMargin
+    const maxLng = Math.max(...lngs) + lngMargin
 
     const candidates = await this.prisma.transitLocality.findMany({
       where: {
@@ -242,8 +248,6 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
       },
       select: { id: true, name: true, code: true, lat: true, lng: true },
     })
-
-    const threshold = Number(process.env.OSRM_SUGGEST_THRESHOLD_M ?? 50)
 
     // Turf — dynamically imported to keep the module tree clean
     // eslint-disable-next-line @typescript-eslint/no-require-imports

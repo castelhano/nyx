@@ -383,7 +383,7 @@ export default function TransitRoutePage() {
       { label: 'Descartar pendentes', icon: Icons.Undo2, onClick: discardPending, variant: 'ghost' as const },
       { label: 'Ponto', icon: Icons.Plus, onClick: openAddPointModal, variant: 'ghost' as const },
     ] : topbarState === 'suggesting' ? [
-      { label: 'Cancelar sugestão', icon: Icons.X, onClick: cancelSuggesting, variant: 'ghost' as const },
+      { label: 'Cancelar', icon: Icons.X, onClick: cancelSuggesting, variant: 'ghost' as const },
     ] : [
       { label: isReprocessing ? 'Reprocessando…' : 'Reprocessar', icon: Icons.RefreshCw, onClick: handleReprocess, disabled: isReprocessing || !routeId, overflow: true },
       {
@@ -420,11 +420,11 @@ export default function TransitRoutePage() {
     origin:  'transit/transit-route/page',
   })
 
-  useShortcut('alt+u', handleSuggest, {
-    desc:    'Sugerir pontos',
+  useShortcut('alt+u', () => (suggestions !== null ? cancelSuggesting() : handleSuggest()), {
+    desc:    'Sugerir / cancelar sugestão de pontos',
     icon:    Icons.Sparkles,
     origin:  'transit/transit-route/page',
-    enabled: !!routeId && hasGeometry && !isSuggesting,
+    enabled: !!routeId && (suggestions !== null || (hasGeometry && !isSuggesting)),
     section: SEC_MAPA,
   })
 

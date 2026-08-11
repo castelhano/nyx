@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
+import { useShortcutContext } from '@/lib/keywatch'
 import { useToast } from '@/lib/toast-context'
 import { extractError } from '@/lib/utils'
 import { apiPost, apiPatch, apiDelete } from './api'
@@ -48,6 +49,16 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
     return base
   })
   const [saving,  setSaving]  = useState(false)
+
+  useShortcutContext('modal')
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const lastIdx     = draft.length - 1
   const hasChanges  = draft.length !== localities.length || draft.some((rl, i) => rl.id !== localities[i].id)
