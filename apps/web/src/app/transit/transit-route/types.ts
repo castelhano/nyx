@@ -90,6 +90,9 @@ export const DIR_MARK_COLOR: Record<RouteDirection, string> = {
 // highlight color for a point selected for repositioning — same amber used for pending points
 export const REPOSITION_COLOR = '#f59e0b'
 
+// color for suggested-but-not-yet-persisted points plotted on the map
+export const SUGGEST_COLOR = '#8b5cf6'
+
 export function getCoord(rl: RouteLocality): { lat: number; lng: number } | null {
   if (rl.localityId && rl.locality?.lat != null && rl.locality?.lng != null) {
     return { lat: rl.locality.lat, lng: rl.locality.lng }

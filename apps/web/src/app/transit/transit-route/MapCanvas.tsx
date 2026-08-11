@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DIR_COLOR, DIR_MARK_COLOR, REPOSITION_COLOR, getCoord, type PendingPoint, type RouteLocality, type TransitRoute } from './types'
+import { DIR_COLOR, DIR_MARK_COLOR, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
 import { DirectionArrows } from './DirectionArrows'
@@ -35,19 +35,21 @@ interface Props {
   localities:          Record<string, RouteLocality[]>
   selectedRouteId:     string | null
   pendingPoints:       PendingPoint[]
+  suggestions:         SuggestedLocality[] | null
   addPointMode:        boolean
   repositionKey:       string | null   // RouteLocality.id or pending._pendingId awaiting a destination click
   onMapClick?:         (lat: number, lng: number) => void
   onSelectRoute:       (id: string) => void
   onSelectForReposition: (key: string) => void
   onAddPointClick?:    () => void
+  onSuggestionClick?: (s: SuggestedLocality) => void
 }
 
 const CUIABA_CENTER: [number, number] = [-15.601, -56.097]
 
 export default function MapCanvas({
-  routes, localities, selectedRouteId, pendingPoints, addPointMode, repositionKey,
-  onMapClick, onSelectRoute, onSelectForReposition, onAddPointClick,
+  routes, localities, selectedRouteId, pendingPoints, suggestions, addPointMode, repositionKey,
+  onMapClick, onSelectRoute, onSelectForReposition, onAddPointClick, onSuggestionClick,
 }: Props) {
   const awaitingDestination = repositionKey != null
   const mapRef = useRef<LeafletMap | null>(null)
@@ -234,6 +236,32 @@ export default function MapCanvas({
             />
           )
         })}
+
+        {/* suggested points — click to insert into the sequence */}
+        {suggestions?.map((s) => (
+          <CircleMarker
+            key={s.id}
+            center={[s.lat, s.lng]}
+            radius={7}
+            pathOptions={{
+              color:       SUGGEST_COLOR,
+              fillColor:   SUGGEST_COLOR,
+              fillOpacity: 0.55,
+              weight:      2,
+              dashArray:   '2,4',
+            }}
+            eventHandlers={{
+              click: (e: LeafletMouseEvent) => {
+                L.DomEvent.stop(e)
+                onSuggestionClick?.(s)
+              },
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -8]} className="!py-0 !px-1 !text-[10px] !leading-tight">
+              {s.name} · {s.distanceM}m
+            </Tooltip>
+          </CircleMarker>
+        ))}
       </MapContainer>
 
       {(addPointMode || awaitingDestination) && (
@@ -241,6 +269,12 @@ export default function MapCanvas({
           {awaitingDestination
             ? 'Clique no mapa para reposicionar o ponto selecionado (Esc cancela)'
             : 'Clique no mapa para posicionar o ponto'}
+        </div>
+      )}
+
+      {suggestions != null && suggestions.length > 0 && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1001] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md">
+          Clique num ponto sugerido para inseri-lo na sequência
         </div>
       )}
 

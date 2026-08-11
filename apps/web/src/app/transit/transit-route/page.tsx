@@ -17,7 +17,6 @@ import { RoutePanel }                        from './RoutePanel'
 import { RulerCanvas }                       from './RulerCanvas'
 import { CreateRouteModal }                  from './CreateRouteModal'
 import { AddPointModal }                     from './AddPointModal'
-import { SuggestModal }                      from './SuggestModal'
 import { SeqModal }                          from './SeqModal'
 import { apiPost, apiPatch, apiDelete }      from './api'
 import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } from './types'
@@ -58,6 +57,8 @@ export default function TransitRoutePage() {
   // click, awaiting the next map click to receive its new position
   const [repositionKey, setRepositionKey] = useState<string | null>(null)
   const [suggestions,   setSuggestions]  = useState<SuggestedLocality[] | null>(null)
+  // suggested point clicked on the map, awaiting position confirmation via SeqModal
+  const [suggestTarget, setSuggestTarget] = useState<SuggestedLocality | null>(null)
   const [isSaving,      setIsSaving]     = useState(false)
   const [isReprocessing,setIsReprocessing] = useState(false)
   const [isSuggesting,  setIsSuggesting]  = useState(false)
@@ -120,6 +121,7 @@ export default function TransitRoutePage() {
     router.replace(`/transit/transit-route?${params}`)
     setPendingPoints([])
     setSuggestions(null)
+    setSuggestTarget(null)
     setRepositionKey(null)
   }
 
@@ -341,8 +343,11 @@ export default function TransitRoutePage() {
 
   // ── suggest ───────────────────────────────────────────────────────────────
 
+  // plots candidates on the map instead of a checkbox list — clicking one opens
+  // SeqModal to position and persist it, one at a time (see handleSuggestionSaved)
   async function handleSuggest() {
     if (!routeId) return
+    setCanvasMode('map')
     setIsSuggesting(true)
     try {
       const data = await apiPost(`/transit/transit-route/${routeId}/suggest-localities`) as SuggestedLocality[]
@@ -354,24 +359,18 @@ export default function TransitRoutePage() {
     }
   }
 
-  async function handleConfirmSuggestions(selected: SuggestedLocality[]) {
-    if (!routeId || selected.length === 0) { setSuggestions(null); return }
-    // add selected as pending points — suggestions anchor to an existing
-    // stop's sequence number, resolve it to that stop's id
-    const newPending: PendingPoint[] = selected.map((s) => ({
-      _pendingId:       crypto.randomUUID(),
-      localityId:       s.id,
-      localityName:     s.name,
-      code:             null,
-      abbr:             null,
-      lat:              s.lat,
-      lng:              s.lng,
-      isWaypoint:       false,
-      allowsCrewChange: false,
-      insertAfterKey:   selectedLocalities.find((rl) => rl.sequence === s.insertAfterSequence)?.id ?? null,
-    }))
-    setPendingPoints((prev) => [...prev, ...newPending])
+  function cancelSuggesting() {
     setSuggestions(null)
+    setSuggestTarget(null)
+  }
+
+  // after persisting a suggested point, sequences shifted — re-fetch so the
+  // remaining candidates' insertAfterSequence stays accurate
+  function handleSuggestionSaved() {
+    setSuggestTarget(null)
+    queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
+    toast.success('Ponto inserido na sequência')
+    handleSuggest()
   }
 
   // ── topbar ────────────────────────────────────────────────────────────────
@@ -384,7 +383,7 @@ export default function TransitRoutePage() {
       { label: 'Descartar pendentes', icon: Icons.Undo2, onClick: discardPending, variant: 'ghost' as const },
       { label: 'Ponto', icon: Icons.Plus, onClick: openAddPointModal, variant: 'ghost' as const },
     ] : topbarState === 'suggesting' ? [
-      { label: 'Cancelar sugestão', icon: Icons.X, onClick: () => setSuggestions(null), variant: 'ghost' as const },
+      { label: 'Cancelar sugestão', icon: Icons.X, onClick: cancelSuggesting, variant: 'ghost' as const },
     ] : [
       { label: isReprocessing ? 'Reprocessando…' : 'Reprocessar', icon: Icons.RefreshCw, onClick: handleReprocess, disabled: isReprocessing || !routeId, overflow: true },
       {
@@ -413,6 +412,20 @@ export default function TransitRoutePage() {
     icon:    Icons.Plus,
     origin:  'transit/transit-route/page',
     enabled: !!routeId,
+  })
+
+  useShortcut('q+[space]', () => setCanvasMode((prev) => (prev === 'ruler' ? 'map' : 'ruler')), {
+    desc:    'Alternar Régua/Mapa',
+    icon:    Icons.Map,
+    origin:  'transit/transit-route/page',
+  })
+
+  useShortcut('alt+u', handleSuggest, {
+    desc:    'Sugerir pontos',
+    icon:    Icons.Sparkles,
+    origin:  'transit/transit-route/page',
+    enabled: !!routeId && hasGeometry && !isSuggesting,
+    section: SEC_MAPA,
   })
 
   useShortcut('q+m', activateAddPoint, {
@@ -541,12 +554,14 @@ export default function TransitRoutePage() {
               localities={localitiesMap}
               selectedRouteId={routeId || null}
               pendingPoints={pendingPoints}
+              suggestions={suggestions}
               addPointMode={addPointMode}
               repositionKey={repositionKey}
               onMapClick={handleCanvasClick}
               onSelectRoute={selectRoute}
               onSelectForReposition={selectForReposition}
               onAddPointClick={routeId ? activateAddPoint : undefined}
+              onSuggestionClick={setSuggestTarget}
             />
           )}
         </div>
@@ -568,22 +583,15 @@ export default function TransitRoutePage() {
         />
       ) : null}
 
-      {suggestions !== null && (
-        <SuggestModal
-          suggestions={suggestions}
-          onConfirm={handleConfirmSuggestions}
-          onClose={() => setSuggestions(null)}
-        />
-      )}
-
-      {showSeq && routeId && (
+      {(showSeq || suggestTarget) && routeId && (
         <SeqModal
           routeId={routeId}
           localities={selectedLocalities}
           color={DIR_COLOR[routes.find((r) => r.id === routeId)?.direction ?? 'OUTBOUND']}
           disabled={pendingPoints.length > 0}
-          onClose={() => setShowSeq(false)}
-          onSaved={() => {
+          insertTarget={suggestTarget}
+          onClose={() => { setShowSeq(false); setSuggestTarget(null) }}
+          onSaved={suggestTarget ? handleSuggestionSaved : () => {
             queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
             toast.success('Sequência atualizada')
           }}

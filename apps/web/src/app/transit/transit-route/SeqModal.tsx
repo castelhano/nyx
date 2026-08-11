@@ -7,24 +7,46 @@ import { useToast } from '@/lib/toast-context'
 import { extractError } from '@/lib/utils'
 import { apiPost, apiPatch, apiDelete } from './api'
 import { StopGlyph } from './StopGlyph'
-import type { RouteLocality } from './types'
+import { SUGGEST_COLOR, type RouteLocality, type SuggestedLocality } from './types'
+
+// client-only id for a suggested point spliced into the draft, not yet persisted
+const NEW_ID = '__new__'
 
 interface Props {
   routeId: string
   localities: RouteLocality[]  // already sorted by sequence — first = origin, last = destination
   color: string
   disabled: boolean            // true while there are unsaved pending points on the main screen
+  insertTarget?: SuggestedLocality | null  // suggested point to pre-insert and let the user position before saving
   onClose: () => void
   onSaved: () => void
 }
 
 function label(rl: RouteLocality): string {
+  if (rl.id === NEW_ID) return rl.locality?.name ?? 'Novo ponto'
   return rl.locality?.abbr || rl.locality?.name || (rl.localityId ? `Ponto ${rl.sequence}` : 'Waypoint')
 }
 
-export function SeqModal({ routeId, localities, color, disabled, onClose, onSaved }: Props) {
+function targetRow(s: SuggestedLocality): RouteLocality {
+  return {
+    id: NEW_ID, routeId: '', localityId: s.id, lat: null, lng: null, sequence: -1,
+    deltaMinutes: null, deltaKm: null, deltaSource: 'OSRM', geometry: null,
+    allowsCrewChange: false, updatedAt: '',
+    locality: { id: s.id, name: s.name, code: s.code, abbr: null, lat: s.lat, lng: s.lng },
+  }
+}
+
+export function SeqModal({ routeId, localities, color, disabled, insertTarget, onClose, onSaved }: Props) {
   const { toast } = useToast()
-  const [draft,   setDraft]   = useState<RouteLocality[]>(() => [...localities])
+  const [draft,   setDraft]   = useState<RouteLocality[]>(() => {
+    const base = [...localities]
+    if (!insertTarget) return base
+    // anchor after the given stop, clamped so origin/destination stay first/last
+    const anchorIdx = base.findIndex((rl) => rl.sequence === insertTarget.insertAfterSequence)
+    const insertAt  = Math.min(Math.max(anchorIdx === -1 ? 1 : anchorIdx + 1, 1), base.length - 1)
+    base.splice(insertAt, 0, targetRow(insertTarget))
+    return base
+  })
   const [saving,  setSaving]  = useState(false)
 
   const lastIdx     = draft.length - 1
@@ -75,15 +97,25 @@ export function SeqModal({ routeId, localities, color, disabled, onClose, onSave
       await Promise.all(deletedIds.map((id) => apiDelete(`/transit/route-locality/${id}`)))
 
       const withSeq = draft.map((rl, i) => ({ rl, seq: i + 1 }))
-      const changed = withSeq.filter(({ rl, seq }) => rl.sequence !== seq)
+      const newRow  = withSeq.find(({ rl }) => rl.id === NEW_ID)
+      const changed = withSeq.filter(({ rl, seq }) => rl.id !== NEW_ID && rl.sequence !== seq)
 
       if (changed.length > 0) {
+        // wave 1 — move existing rows out of the way before the new row (if any)
+        // lands on its final sequence, avoiding a @@unique([routeId, sequence]) collision
         const OFFSET = 1_000_000
         await Promise.all(changed.map(({ rl, seq }) => apiPatch(`/transit/route-locality/${rl.id}`, { sequence: seq + OFFSET })))
+      }
+      if (newRow) {
+        await apiPost('/transit/route-locality', {
+          routeId, localityId: newRow.rl.localityId, sequence: newRow.seq, allowsCrewChange: false,
+        })
+      }
+      if (changed.length > 0) {
         await Promise.all(changed.map(({ rl, seq }) => apiPatch(`/transit/route-locality/${rl.id}`, { sequence: seq })))
       }
 
-      if (hasDeletion || changed.length > 0) {
+      if (hasDeletion || changed.length > 0 || newRow) {
         // deletion merges legs — force a full recompute, overriding MANUAL overrides on the affected legs
         await apiPost(`/transit/transit-route/${routeId}/reprocess`, hasDeletion ? { forceAll: true } : undefined)
       }
@@ -101,6 +133,11 @@ export function SeqModal({ routeId, localities, color, disabled, onClose, onSave
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background border border-border rounded-md shadow-lg w-full max-w-lg p-6 space-y-4">
         <h2 className="text-lg font-semibold">Sequência de pontos</h2>
+        {insertTarget && (
+          <p className="text-xs text-muted-foreground -mt-2">
+            Posicione <strong>{insertTarget.name}</strong> na sequência antes de salvar
+          </p>
+        )}
 
         {disabled && (
           <div className="px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-sm text-xs text-amber-700 dark:text-amber-400">
@@ -113,19 +150,25 @@ export function SeqModal({ routeId, localities, color, disabled, onClose, onSave
             const isOrigin = idx === 0
             const isDest   = idx === lastIdx
             const isLocked = isOrigin || isDest
+            const isNew    = rl.id === NEW_ID
 
             return (
               <div
                 key={rl.id}
-                className="flex items-center gap-2 px-3 py-2 border-b border-border last:border-0"
+                className={`flex items-center gap-2 px-3 py-2 border-b border-border last:border-0 ${isNew ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}
               >
                 <StopGlyph
                   kind={isOrigin ? 'origin' : isDest ? 'destination' : rl.localityId ? 'stop' : 'waypoint'}
-                  color={color}
+                  color={isNew ? SUGGEST_COLOR : color}
                   size={16}
                 />
                 <span className="w-6 text-xs text-muted-foreground text-center shrink-0">{idx}</span>
                 <span className="flex-1 text-sm truncate">{label(rl)}</span>
+                {isNew && (
+                  <span className="text-[10px] text-violet-600 dark:text-violet-400 uppercase shrink-0 px-1.5 font-medium">
+                    Novo
+                  </span>
+                )}
 
                 {isLocked ? (
                   <span className="text-[10px] text-muted-foreground uppercase shrink-0 px-1.5">
