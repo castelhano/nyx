@@ -282,6 +282,15 @@ export default function TransitRoutePage() {
     }
   }
 
+  async function handleToggleActive(route: TransitRoute) {
+    try {
+      await apiPatch(`/transit/transit-route/${route.id}`, { isActive: !route.isActive })
+      queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
+    } catch (err) {
+      toast.error(extractError(err as Record<string, unknown>, 'Erro ao alterar situação do sentido'))
+    }
+  }
+
   // ── delete route ───────────────────────────────────────────────────────────
 
   async function handleDeleteRoute() {
@@ -495,6 +504,7 @@ export default function TransitRoutePage() {
           onSelect={selectRoute}
           onAddRoute={() => setShowCreate(true)}
           onTogglePrimary={handleTogglePrimary}
+          onToggleActive={handleToggleActive}
         />
 
         <div className="flex-1 flex min-w-0">
