@@ -22,10 +22,11 @@ export const localitySchema = withMeta(
       filter: true
     }),
 
-    abbr: z.string().max(10).optional().meta({
+    abbr: z.string().max(16).optional().meta({
       label:          'Abreviação',
-      listVisibility: 'hidden',
-      className:      'md:w-36',
+      listVisibility: 'visible',
+      className:      'md:w-48',
+      maxLength:      16,
       keybind:        'f',
     }),
 
