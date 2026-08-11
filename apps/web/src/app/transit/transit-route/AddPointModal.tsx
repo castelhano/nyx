@@ -4,6 +4,8 @@ import { useState, useEffect }  from 'react'
 import { Button }               from '@/components/ui/button'
 import { useFieldOptions }      from '@/core/useFieldOptions'
 import { apiFetch }        from '@/lib/auth'
+import { Icons }           from '@/lib/icons'
+import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { PendingPoint, RouteLocality } from './types'
 import { resolveOrder }         from './order'
 
@@ -47,8 +49,17 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
 
   const isNewLocality = mode === 'stop' && !localityId
 
+  useShortcutContext('modal')
+
   const { options: rawLocalities } = useFieldOptions({ resource: 'transit-locality', domain: 'transit' })
   const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
+
+  // an existing stop's coordinates come from its own record, not the (hidden) lat/lng
+  // inputs — those only render for waypoints/new localities
+  const selectedRaw = mode === 'stop' && localityId ? rawLocalities.find((o) => String(o.id ?? '') === localityId) : null
+  const resolvedLat = selectedRaw ? (selectedRaw.lat != null ? Number(selectedRaw.lat) : NaN) : parseFloat(latStr)
+  const resolvedLng = selectedRaw ? (selectedRaw.lng != null ? Number(selectedRaw.lng) : NaN) : parseFloat(lngStr)
+  const hasValidCoords = !isNaN(resolvedLat) && !isNaN(resolvedLng)
 
   // suggest the next free locality code once on mount — user can still overwrite it.
   // the server only knows about persisted codes, so bump past any code already
@@ -77,9 +88,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleAdd() {
-    const lat = parseFloat(latStr)
-    const lng = parseFloat(lngStr)
-    if ((mode === 'waypoint' || isNewLocality) && (isNaN(lat) || isNaN(lng))) return
+    if (!hasValidCoords) return
     if (isNewLocality && (!code.trim() || !name.trim())) return
 
     const selectedLocality = localityOptions.find((o) => o.value === localityId)
@@ -89,14 +98,24 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
       localityName:        mode === 'stop' ? (selectedLocality?.label ?? (name || null)) : null,
       code:                isNewLocality ? code.trim() : null,
       abbr:                isNewLocality && abbr.trim() ? abbr.trim() : null,
-      lat,
-      lng,
+      lat:                 resolvedLat,
+      lng:                 resolvedLng,
       isWaypoint:          mode === 'waypoint',
       allowsCrewChange:    mode === 'stop' && allowsCrewChange,
       insertAfterKey:      afterKey,
     })
     onClose()
   }
+
+  const canSubmit = hasValidCoords && !(isNewLocality && (!code.trim() || !name.trim()))
+
+  useShortcut('alt+g', handleAdd, {
+    desc:    'Adicionar ponto',
+    icon:    Icons.Save,
+    context: 'modal',
+    origin:  'apps/web/src/app/transit/transit-route/AddPointModal.tsx',
+    enabled: !snapping && canSubmit,
+  })
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -224,7 +243,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="cancel" onClick={onClose}>Cancelar</Button>
-          <Button type="button" onClick={handleAdd} disabled={snapping || (isNewLocality && (!code.trim() || !name.trim()))}>
+          <Button type="button" onClick={handleAdd} disabled={snapping || !canSubmit}>
             Adicionar
           </Button>
         </div>

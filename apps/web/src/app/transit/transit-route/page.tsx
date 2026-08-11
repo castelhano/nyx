@@ -63,8 +63,19 @@ export default function TransitRoutePage() {
   const [isReprocessing,setIsReprocessing] = useState(false)
   const [isSuggesting,  setIsSuggesting]  = useState(false)
   const [isDeleting,    setIsDeleting]    = useState(false)
+  // routes hidden from the map by the user (background context only — the
+  // selected route always stays visible regardless of this set)
+  const [hiddenRouteIds, setHiddenRouteIds] = useState<Set<string>>(new Set())
 
   const topbarState: TopbarState = suggestions !== null ? 'suggesting' : pendingPoints.length > 0 ? 'pending' : 'idle'
+
+  function toggleRouteVisibility(id: string) {
+    setHiddenRouteIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   // ── queries ────────────────────────────────────────────────────────────────
 
@@ -564,11 +575,13 @@ export default function TransitRoutePage() {
               suggestions={suggestions}
               addPointMode={addPointMode}
               repositionKey={repositionKey}
+              hiddenRouteIds={hiddenRouteIds}
               onMapClick={handleCanvasClick}
               onSelectRoute={selectRoute}
               onSelectForReposition={selectForReposition}
               onAddPointClick={routeId ? activateAddPoint : undefined}
               onSuggestionClick={setSuggestTarget}
+              onToggleRouteVisibility={toggleRouteVisibility}
             />
           )}
         </div>

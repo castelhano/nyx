@@ -29,6 +29,8 @@ const iconNames = [
   'Copy',
   'Download',
   'EllipsisVertical',
+  'Eye',
+  'EyeOff',
   'FileText',
   'GitBranch',
   'Info',

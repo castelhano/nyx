@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DIR_COLOR, DIR_MARK_COLOR, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
+import { DIR_COLOR, DIR_LABEL, DIR_MARK_COLOR, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
 import { DirectionArrows } from './DirectionArrows'
+import { Dropdown, DropdownLabel, DropdownSeparator } from '@/components/ui/dropdown'
 import { Icons } from '@/lib/icons'
 
 // Leaflet icons broken in webpack — fix the default icon
@@ -38,18 +39,20 @@ interface Props {
   suggestions:         SuggestedLocality[] | null
   addPointMode:        boolean
   repositionKey:       string | null   // RouteLocality.id or pending._pendingId awaiting a destination click
+  hiddenRouteIds:      Set<string>
   onMapClick?:         (lat: number, lng: number) => void
   onSelectRoute:       (id: string) => void
   onSelectForReposition: (key: string) => void
   onAddPointClick?:    () => void
   onSuggestionClick?: (s: SuggestedLocality) => void
+  onToggleRouteVisibility: (id: string) => void
 }
 
 const CUIABA_CENTER: [number, number] = [-15.601, -56.097]
 
 export default function MapCanvas({
-  routes, localities, selectedRouteId, pendingPoints, suggestions, addPointMode, repositionKey,
-  onMapClick, onSelectRoute, onSelectForReposition, onAddPointClick, onSuggestionClick,
+  routes, localities, selectedRouteId, pendingPoints, suggestions, addPointMode, repositionKey, hiddenRouteIds,
+  onMapClick, onSelectRoute, onSelectForReposition, onAddPointClick, onSuggestionClick, onToggleRouteVisibility,
 }: Props) {
   const awaitingDestination = repositionKey != null
   const mapRef = useRef<LeafletMap | null>(null)
@@ -86,8 +89,10 @@ export default function MapCanvas({
         <ClickCapture onMapClick={addPointMode || awaitingDestination ? onMapClick : undefined} />
 
         {routes.map((route) => {
-          const lls      = localities[route.id] ?? []
           const isSelected = route.id === selectedRouteId
+          if (hiddenRouteIds.has(route.id) && !isSelected) return null
+
+          const lls      = localities[route.id] ?? []
           const color     = DIR_COLOR[route.direction]
           const markColor = DIR_MARK_COLOR[route.direction]
           const opacity   = selectedRouteId ? (isSelected ? 1 : 0.6) : 0.8
@@ -288,6 +293,47 @@ export default function MapCanvas({
         >
           <Icons.MapPinPlus className="w-4 h-4" />
         </button>
+      )}
+
+      {routes.length > 0 && (
+        <div className="absolute top-14 right-3 z-[1001]">
+          <Dropdown
+            side="bottom"
+            align="end"
+            trigger={
+              <button
+                type="button"
+                title="Mostrar/ocultar sentidos"
+                className="w-8 h-8 flex items-center justify-center rounded-sm border border-border shadow-md bg-background/90 hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <Icons.Eye className="w-4 h-4" />
+              </button>
+            }
+          >
+            <DropdownLabel>Sentidos no mapa</DropdownLabel>
+            <DropdownSeparator />
+            {routes.map((route) => {
+              const isSelected = route.id === selectedRouteId
+              const isHidden   = hiddenRouteIds.has(route.id) && !isSelected
+              return (
+                <button
+                  key={route.id}
+                  type="button"
+                  disabled={isSelected}
+                  title={isSelected ? 'Sentido selecionado — sempre visível' : undefined}
+                  onClick={(e) => { e.stopPropagation(); onToggleRouteVisibility(route.id) }}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isHidden
+                    ? <Icons.EyeOff className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                    : <Icons.Eye className="w-3.5 h-3.5 shrink-0" style={{ color: DIR_COLOR[route.direction] }} />}
+                  <span className="flex-1 truncate">{route.name}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{DIR_LABEL[route.direction]}</span>
+                </button>
+              )
+            })}
+          </Dropdown>
+        </div>
       )}
     </div>
   )
