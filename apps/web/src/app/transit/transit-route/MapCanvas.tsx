@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Tooltip, Popup, useMapEvents } from 'react-leaflet'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Polyline, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { DIR_COLOR, DIR_LABEL, DIR_MARK_COLOR, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
@@ -28,6 +28,23 @@ function ClickCapture({ onMapClick }: { onMapClick?: (lat: number, lng: number) 
     },
   })
   return null
+}
+
+// ─── Ruler ──────────────────────────────────────────────────────────────────
+const RULER_COLOR = '#0ea5e9'
+
+function RulerLayer({ onPoint }: { onPoint: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e: LeafletMouseEvent) {
+      L.DomEvent.stop(e)
+      onPoint(e.latlng.lat, e.latlng.lng)
+    },
+  })
+  return null
+}
+
+function formatDistance(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`
 }
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -58,6 +75,36 @@ export default function MapCanvas({
   const mapRef = useRef<LeafletMap | null>(null)
   const [, forceRender] = useState(0)
 
+  const [rulerActive, setRulerActive] = useState(false)
+  const [rulerPoints, setRulerPoints] = useState<{ lat: number; lng: number }[]>([])
+
+  function toggleRuler() {
+    setRulerActive((prev) => !prev)
+    setRulerPoints([])
+  }
+
+  function addRulerPoint(lat: number, lng: number) {
+    setRulerPoints((prev) => [...prev, { lat, lng }])
+  }
+
+  const rulerTotalM = useMemo(() => {
+    let total = 0
+    for (let i = 1; i < rulerPoints.length; i++) {
+      total += L.latLng(rulerPoints[i - 1]).distanceTo(L.latLng(rulerPoints[i]))
+    }
+    return total
+  }, [rulerPoints])
+
+  // Esc exits ruler mode (mirrors the addPointMode/reposition Esc handling in the parent page)
+  useEffect(() => {
+    if (!rulerActive) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setRulerActive(false); setRulerPoints([]) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [rulerActive])
+
   // fit bounds to selected route when it changes
   useEffect(() => {
     if (!selectedRouteId || !mapRef.current) return
@@ -73,7 +120,7 @@ export default function MapCanvas({
   }, [selectedRouteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`flex-1 relative isolate ${addPointMode || awaitingDestination ? 'cursor-crosshair' : ''}`}>
+    <div className={`flex-1 relative isolate ${addPointMode || awaitingDestination || rulerActive ? 'cursor-crosshair' : ''}`}>
       <MapContainer
         center={CUIABA_CENTER}
         zoom={12}
@@ -87,6 +134,7 @@ export default function MapCanvas({
         />
 
         <ClickCapture onMapClick={addPointMode || awaitingDestination ? onMapClick : undefined} />
+        {rulerActive && <RulerLayer onPoint={addRulerPoint} />}
 
         {routes.map((route) => {
           const isSelected = route.id === selectedRouteId
@@ -267,36 +315,64 @@ export default function MapCanvas({
             </Tooltip>
           </CircleMarker>
         ))}
+
+        {/* ruler — dashed line + a marker per clicked point, running total shown in the badge below */}
+        {rulerPoints.length > 0 && (
+          <Polyline
+            positions={rulerPoints.map((p) => [p.lat, p.lng])}
+            pathOptions={{ color: RULER_COLOR, weight: 2, dashArray: '6,6' }}
+          />
+        )}
+        {rulerPoints.map((p, i) => (
+          <CircleMarker
+            key={i}
+            center={[p.lat, p.lng]}
+            radius={4}
+            pathOptions={{ color: RULER_COLOR, fillColor: RULER_COLOR, fillOpacity: 1, weight: 2 }}
+          />
+        ))}
       </MapContainer>
 
-      {(addPointMode || awaitingDestination) && (
+      {/* single-slot status banner — priority: point placement > ruler > suggestions */}
+      {(addPointMode || awaitingDestination) ? (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1001] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md">
           {awaitingDestination
             ? 'Clique no mapa para reposicionar o ponto selecionado (Esc cancela)'
             : 'Clique no mapa para posicionar o ponto'}
         </div>
-      )}
-
-      {suggestions != null && suggestions.length > 0 && (
+      ) : rulerActive ? (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1001] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md flex items-center gap-2">
+          <span>
+            {rulerPoints.length === 0
+              ? 'Clique no mapa para começar a medir (Esc cancela)'
+              : `${formatDistance(rulerTotalM)} · clique para continuar`}
+          </span>
+          {rulerPoints.length > 0 && (
+            <button type="button" title="Limpar régua" onClick={() => setRulerPoints([])} className="text-muted-foreground hover:text-foreground">
+              <Icons.X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      ) : suggestions != null && suggestions.length > 0 ? (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1001] bg-background/90 border border-border rounded-sm px-3 py-1.5 text-xs shadow-md">
           Clique num ponto sugerido para inseri-lo na sequência
         </div>
-      )}
+      ) : null}
 
-      {onAddPointClick && (
-        <button
-          type="button"
-          title="Apontar ponto no mapa (q m)"
-          disabled={addPointMode || awaitingDestination}
-          onClick={onAddPointClick}
-          className={`absolute top-3 right-3 z-[1001] w-8 h-8 flex items-center justify-center rounded-sm border border-border shadow-md transition-colors disabled:opacity-50 disabled:pointer-events-none ${addPointMode ? 'bg-accent text-accent-foreground' : 'bg-background/90 hover:bg-accent hover:text-accent-foreground'}`}
-        >
-          <Icons.MapPinPlus className="w-4 h-4" />
-        </button>
-      )}
+      <div className="absolute top-3 right-3 z-[1001] flex flex-col gap-2">
+        {onAddPointClick && (
+          <button
+            type="button"
+            title="Apontar ponto no mapa (q m)"
+            disabled={addPointMode || awaitingDestination || rulerActive}
+            onClick={onAddPointClick}
+            className={`w-8 h-8 flex items-center justify-center rounded-sm border border-border shadow-md transition-colors disabled:opacity-50 disabled:pointer-events-none ${addPointMode ? 'bg-accent text-accent-foreground' : 'bg-background/90 hover:bg-accent hover:text-accent-foreground'}`}
+          >
+            <Icons.MapPinPlus className="w-4 h-4" />
+          </button>
+        )}
 
-      {routes.length > 0 && (
-        <div className="absolute top-14 right-3 z-[1001]">
+        {routes.length > 0 && (
           <Dropdown
             side="bottom"
             align="end"
@@ -333,8 +409,18 @@ export default function MapCanvas({
               )
             })}
           </Dropdown>
-        </div>
-      )}
+        )}
+
+        <button
+          type="button"
+          title="Medir distância no mapa"
+          disabled={addPointMode || awaitingDestination}
+          onClick={toggleRuler}
+          className={`w-8 h-8 flex items-center justify-center rounded-sm border border-border shadow-md transition-colors disabled:opacity-50 disabled:pointer-events-none ${rulerActive ? 'bg-accent text-accent-foreground' : 'bg-background/90 hover:bg-accent hover:text-accent-foreground'}`}
+        >
+          <Icons.Ruler className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   )
 }

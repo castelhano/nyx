@@ -93,6 +93,13 @@ export default function TransitRoutePage() {
     staleTime: 30_000,
   })
 
+  // only changes on an API restart (env var) — safe to treat as effectively static
+  const { data: suggestThreshold } = useQuery<{ thresholdM: number }>({
+    queryKey: ['transit', 'transit-route', 'suggest-threshold'],
+    queryFn:  () => apiFetch('/transit/transit-route/suggest-threshold').then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  })
+
   const { data: selectedLocalities = EMPTY_LOCALITIES } = useQuery<RouteLocality[]>({
     queryKey: ['transit', 'trajectory', routeId],
     queryFn:  () => apiFetch(`/transit/transit-route/${routeId}/trajectory`).then((r) => r.json()),
@@ -439,7 +446,7 @@ export default function TransitRoutePage() {
   })
 
   useShortcut('alt+u', () => (suggestions !== null ? cancelSuggesting() : handleSuggest()), {
-    desc:    'Sugerir / cancelar sugestão de pontos',
+    desc:    `Sugestão de pontos${suggestThreshold ? ` (${suggestThreshold.thresholdM} mts)` : ''}`,
     icon:    Icons.Sparkles,
     origin:  'transit/transit-route/page',
     enabled: !!routeId && (suggestions !== null || (hasGeometry && !isSuggesting)),

@@ -45,4 +45,9 @@ export class RouteController extends BaseController<Route, CreateRouteDto, Updat
   suggestLocalities(@Param('id') id: string) {
     return this.routeService.suggestLocalities(id)
   }
+
+  @Get('suggest-threshold')
+  getSuggestThreshold() {
+    return { thresholdM: Number(process.env.OSRM_SUGGEST_THRESHOLD_M ?? 50) }
+  }
 }

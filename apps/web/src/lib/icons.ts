@@ -54,6 +54,7 @@ const iconNames = [
   'MousePointerClick',
   'Play',
   'Route',
+  'Ruler',
   'Save',
   'Scissors',
   'Settings',
