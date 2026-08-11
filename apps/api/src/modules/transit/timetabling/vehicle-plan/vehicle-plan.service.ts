@@ -645,7 +645,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     blockId?:               string
     accessDepotLocalityId?: string
     returnDepotLocalityId?: string
-  }): Promise<void> {
+  }): Promise<{ blockId: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
       select: { id: true, dayTypeId: true, status: true },
@@ -655,7 +655,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const db = this.prisma as any
 
-    await db.$transaction(async (tx: any) => {
+    const result = await db.$transaction(async (tx: any) => {
       const route = await tx.transitRoute.findUnique({
         where:  { id: dto.routeId },
         select: { lineId: true, originLocalityId: true, destinationLocalityId: true },
@@ -759,9 +759,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
         await tx.vehicleBlock.update({ where: { id: resolvedBlockId }, data: { isStale: true } })
       }
+
+      return { blockId: resolvedBlockId }
     })
 
     await this.scorePlan(planId)
+    return result
   }
 
   async addDeadrun(planId: string, dto: {
@@ -770,7 +773,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     departureMinutes:      number
     arrivalMinutes:        number
     blockId?:             string
-  }): Promise<void> {
+  }): Promise<{ blockId: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
       select: { id: true, status: true },
@@ -780,7 +783,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const db = this.prisma as any
 
-    await db.$transaction(async (tx: any) => {
+    const result = await db.$transaction(async (tx: any) => {
       let blockId = dto.blockId
 
       if (blockId) {
@@ -827,9 +830,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       })
 
       await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+
+      return { blockId }
     })
 
     await this.scorePlan(planId)
+    return result
   }
 
   async addInterval(planId: string, dto: {
@@ -837,7 +843,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     departureMinutes: number
     arrivalMinutes:   number
     blockId?:        string
-  }): Promise<void> {
+  }): Promise<{ blockId: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
       select: { id: true, status: true },
@@ -847,7 +853,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const db = this.prisma as any
 
-    await db.$transaction(async (tx: any) => {
+    const result = await db.$transaction(async (tx: any) => {
       let blockId = dto.blockId
 
       if (blockId) {
@@ -892,9 +898,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       })
 
       await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+
+      return { blockId }
     })
 
     await this.scorePlan(planId)
+    return result
   }
 
   // "Limpa" uma linha do plano: remove os blocos/viagens materializados (dayType-scoped)

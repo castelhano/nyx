@@ -14,6 +14,8 @@ import { apiFetch, getToken } from '@/lib/auth'
 import { useConfirm }         from '@/lib/confirm-context'
 import { useToast }          from '@/lib/toast-context'
 import { extractError }      from '@/lib/utils'
+import { NewPlanForm }       from './components/NewPlanForm'
+import { InlineDescription } from './components/InlineDescription'
 import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
@@ -33,7 +35,6 @@ import { AddTripModal }          from './components/AddTripModal'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
 import type { SolverScenario, SolverBaseline } from './components/SolverProposalDialog'
-import { Button }            from '@/components/ui/button'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { resolveCycleWindow, computeHeadway } from './views/vehicles.view'
 import { createVehiclesActionSpec }                     from './views/vehicles.actions'
@@ -210,204 +211,6 @@ function useSolverStream(planId: string, jobId: string | null, onDone: () => voi
   }, [planId, jobId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return state
-}
-
-// ── creation form (shown when id === 'new') ───────────────────────────────────
-
-interface DayType { id: string; name: string; code: string }
-interface ScopeOption { id: string; name: string }
-
-function NewPlanForm() {
-  const router    = useRouter()
-  const { toast } = useToast()
-
-  const [scopeId,   setScopeId]   = useState('')
-  const [dayTypeId, setDayTypeId] = useState('')
-  const [isPending, setIsPending] = useState(false)
-
-  const { data: scopes = [] } = useQuery<ScopeOption[]>({
-    queryKey: ['transit', 'scope', 'list'],
-    queryFn:  async () => {
-      const res = await apiFetch('/transit/scope')
-      if (!res.ok) throw new Error('Erro ao carregar escopos')
-      const json = await res.json()
-      return json.data ?? json
-    },
-    staleTime: 60_000,
-  })
-
-  const { data: dayTypes = [] } = useQuery<DayType[]>({
-    queryKey: ['transit', 'day-type', 'list'],
-    queryFn:  async () => {
-      const res = await apiFetch('/transit/day-type')
-      if (!res.ok) throw new Error('Erro ao carregar tipos de dia')
-      const json = await res.json()
-      return json.data ?? json
-    },
-    staleTime: 60_000,
-  })
-
-  useEffect(() => {
-    if (!scopeId && scopes.length > 0) setScopeId(scopes[0].id)
-  }, [scopes, scopeId])
-
-  useEffect(() => {
-    if (!dayTypeId && dayTypes.length > 0) setDayTypeId(dayTypes[0].id)
-  }, [dayTypes, dayTypeId])
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
-    if (!scopeId || !dayTypeId) return
-    setIsPending(true)
-    try {
-      const res = await apiFetch('/transit/vehicle-plan', {
-        method: 'POST',
-        body:   JSON.stringify({ scopeId, dayTypeId }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(extractError(json))
-      }
-      const created = await res.json()
-      router.push(`/transit/vehicle-plan/${created.id}`)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao criar planejamento')
-      setIsPending(false)
-    }
-  }
-
-  return (
-    <div className="flex flex justify-center p-8">
-      <form
-        onSubmit={handleCreate}
-        className="w-full max-w-sm space-y-4 border border-border rounded-md p-6 bg-card"
-      >
-        <div>
-          <h2 className="text-base font-semibold mb-2">Novo Planejamento</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Selecione o escopo e o tipo de dia para iniciar.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="scopeId" className="text-sm font-medium">
-            Escopo <span className="ps-1">*</span>
-          </label>
-          <div className="relative mt-2">
-            <select
-              id="scopeId"
-              value={scopeId}
-              onChange={e => setScopeId(e.target.value)}
-              required
-              autoFocus
-              className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
-            >
-              {scopes.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor="dayTypeId" className="text-sm font-medium">
-            Tipo de Dia <span className="ps-1">*</span>
-          </label>
-          <div className="relative mt-2">
-            <select
-              id="dayTypeId"
-              value={dayTypeId}
-              onChange={e => setDayTypeId(e.target.value)}
-              required
-              className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
-            >
-              {dayTypes.map(dt => (
-                <option key={dt.id} value={dt.id}>{dt.name}</option>
-              ))}
-            </select>
-            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          </div>
-        </div>
-        <div className="flex justify-end space-x-4">
-          <Button type="submit" disabled={isPending || !scopeId || !dayTypeId} className="w-full" size="default">
-          {isPending ? 'Criando…' : 'Criar Planejamento'}
-          </Button>
-          <Button type="button" className="w-full" size="default" variant='cancel' onClick={ () => router.push('/transit/vehicle-plan') }>
-            Voltar
-          </Button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-// ── inline description editor ─────────────────────────────────────────────────
-
-function InlineDescription({
-  value,
-  disabled,
-  onSave,
-}: {
-  value?:   string
-  disabled?: boolean
-  onSave:   (val: string) => Promise<void>
-}) {
-  const { toast }            = useToast()
-  const [editing, setEditing] = useState(false)
-  const [draft,   setDraft]   = useState('')
-  const inputRef              = useRef<HTMLInputElement>(null)
-
-  function startEdit() {
-    if (disabled) return
-    setDraft(value ?? '')
-    setEditing(true)
-    setTimeout(() => inputRef.current?.select(), 0)
-  }
-
-  async function commit() {
-    setEditing(false)
-    const trimmed = draft.trim()
-    if (trimmed === (value ?? '').trim()) return
-    try {
-      await onSave(trimmed)
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao salvar descrição')
-    }
-  }
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        autoFocus
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Enter') { e.preventDefault(); inputRef.current?.blur() }
-          if (e.key === 'Escape') { setEditing(false) }
-        }}
-        className="text-sm border-b border-border bg-transparent focus:outline-none focus:border-ring min-w-32 max-w-64"
-      />
-    )
-  }
-
-  return (
-    <span>
-      <Icons.Option className="inline w-4 h-4 me-1 text-cyan-700" />
-      <span
-      onDoubleClick={startEdit}
-      title={disabled ? undefined : 'Duplo clique para editar'}
-      className={disabled ? undefined : 'cursor-text'}
-      >
-      {value
-        ? <span className="text-foreground  uppercase">{value}</span>
-        : <span className="italic text-muted-foreground/60">Descrição</span>
-      }
-      </span>
-    </span>    
-  )
 }
 
 // ── page ──────────────────────────────────────────────────────────────────────
@@ -665,9 +468,14 @@ export default function VehiclePlanPage() {
       }
     })
 
-    // Apply pending block moves
+    // Apply pending block moves. Runs over blocks + fakeBlocks together — a move's
+    // toBlockId (or, after a chained re-move, fromBlockId) can point at a still-
+    // pending 'pending:<tempId>' fake block, so fakeBlocks must be reachable here
+    // too or a move into/out of an unsaved new block silently loses the trip.
+    let allBlocks = [...blocks, ...fakeBlocks]
+
     if (pendingMoves.length > 0) {
-      const blockMap          = new Map(blocks.map(b => [b.id, b]))
+      const blockMap          = new Map(allBlocks.map(b => [b.id, b]))
       const awayByBlock       = new Map<string, Set<string>>()
       const awayBreaksByBlock = new Map<string, Set<string>>()
       for (const move of pendingMoves) {
@@ -676,7 +484,7 @@ export default function VehiclePlanPage() {
         if (!awayBreaksByBlock.has(move.fromBlockId)) awayBreaksByBlock.set(move.fromBlockId, new Set())
         for (const id of move.breakIds) awayBreaksByBlock.get(move.fromBlockId)!.add(id)
       }
-      blocks = blocks.map(block => {
+      allBlocks = allBlocks.map(block => {
         const awayIds      = awayByBlock.get(block.id) ?? new Set<string>()
         const awayBreakIds = awayBreaksByBlock.get(block.id) ?? new Set<string>()
         const movedIn = pendingMoves
@@ -705,7 +513,7 @@ export default function VehiclePlanPage() {
       })
     }
 
-    return { ...plottedData, blocks: [...blocks, ...fakeBlocks] }
+    return { ...plottedData, blocks: allBlocks }
   }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
@@ -1677,9 +1485,21 @@ export default function VehiclePlanPage() {
         )
       }
 
-      // Persist pending adds
+      // Persist pending adds. blockId 'new' spawns a fresh block (server-resolved);
+      // 'pending:<tempId>' joins a fake block created earlier in this same batch by
+      // a 'new' entry — resolve it to that entry's server-assigned block id, captured
+      // below as each add response comes back. pendingAdds is walked in insertion
+      // order via a sequential for-of, so the 'new' entry for a group always lands
+      // before any 'pending:<tempId>' entry that references it.
+      const newBlockIds = new Map<string, string>()
       for (const entry of pendingAdds) {
-        const resolvedBlockId = entry.blockId === 'new' ? undefined : entry.blockId
+        const resolvedBlockId = entry.blockId === 'new'
+          ? undefined
+          : entry.blockId.startsWith('pending:')
+            ? newBlockIds.get(entry.blockId.slice('pending:'.length))
+            : entry.blockId
+
+        let blockId: string
         if (entry._kind === 'trip') {
           const res = await apiFetch(`/transit/vehicle-plan/${id}/add-trip`, {
             method:  'POST',
@@ -1697,6 +1517,7 @@ export default function VehiclePlanPage() {
             const j = await res.json().catch(() => ({}))
             throw new Error(extractError(j))
           }
+          blockId = (await res.json()).blockId
         } else if (entry._kind === 'deadrun') {
           const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
             method:  'POST',
@@ -1713,6 +1534,7 @@ export default function VehiclePlanPage() {
             const j = await res.json().catch(() => ({}))
             throw new Error(extractError(j))
           }
+          blockId = (await res.json()).blockId
         } else {
           const res = await apiFetch(`/transit/vehicle-plan/${id}/add-interval`, {
             method:  'POST',
@@ -1728,14 +1550,39 @@ export default function VehiclePlanPage() {
             const j = await res.json().catch(() => ({}))
             throw new Error(extractError(j))
           }
+          blockId = (await res.json()).blockId
         }
+
+        if (entry.blockId === 'new') newBlockIds.set(entry._tempId, blockId)
       }
 
-      // Persist pending moves
+      // Persist pending moves. fromBlockId/toBlockId may be a 'pending:<tempId>' fake
+      // block spawned by a 'new' add above — resolve it to the real id created for
+      // that group (same newBlockIds map the adds loop just populated) before calling.
+      const resolveMoveBlockRef = (ref: string) =>
+        ref.startsWith('pending:') ? (newBlockIds.get(ref.slice('pending:'.length)) ?? ref) : ref
+
+      // A moved trip may also be pending-deleted (deletes are persisted above, before
+      // moves) — its BlockTrip row is already gone by cascade at this point, so the
+      // move endpoint's ownership check would 404 on it. Deleting wins: drop it from
+      // the move instead of sending a stale id.
+      const tripIdByBlockTripId = new Map<string, string>()
+      for (const block of ganttData?.blocks ?? []) {
+        for (const bt of block.blockTrips) tripIdByBlockTripId.set(bt.id, bt.trip.id)
+      }
+
       for (const move of pendingMoves) {
-        const res = await apiFetch(`/transit/vehicle-block/${move.fromBlockId}/move-trip`, {
+        const blockTripIds = move.blockTripIds.filter(btId => {
+          const tripId = tripIdByBlockTripId.get(btId)
+          return !tripId || !pendingDeletes.has(tripId)
+        })
+        if (blockTripIds.length === 0) continue
+
+        const fromBlockId = resolveMoveBlockRef(move.fromBlockId)
+        const toBlockId   = resolveMoveBlockRef(move.toBlockId)
+        const res = await apiFetch(`/transit/vehicle-block/${fromBlockId}/move-trip`, {
           method: 'PATCH',
-          body:   JSON.stringify({ blockTripIds: move.blockTripIds, targetBlockId: move.toBlockId, breakIds: move.breakIds }),
+          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds }),
         })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
