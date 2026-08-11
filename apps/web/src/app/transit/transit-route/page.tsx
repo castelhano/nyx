@@ -414,6 +414,13 @@ export default function TransitRoutePage() {
     enabled: !!routeId,
   })
 
+  useShortcut('alt+g', handleSave, {
+    desc:    'Salvar registro',
+    icon:    Icons.Save,
+    origin:  'transit/transit-route/page',
+    enabled: !!routeId && pendingPoints.length > 0 && !isSaving,
+  })
+
   useShortcut('q+[space]', () => setCanvasMode((prev) => (prev === 'ruler' ? 'map' : 'ruler')), {
     desc:    'Alternar Régua/Mapa',
     icon:    Icons.Map,
