@@ -512,7 +512,7 @@ export default function TransitSettingsPage() {
                 max={6}
                 disabled={!general}
               />
-              <span className="text-sm text-muted-foreground w-4">h</span>
+              <span className="text-sm text-muted-foreground w-6">h</span>
             </div>
           </div>
           <div className="flex items-center justify-between gap-6 px-4 py-3">
@@ -531,6 +531,26 @@ export default function TransitSettingsPage() {
                 step={0.1}
                 disabled={!general}
               />
+              <span className="text-sm text-muted-foreground w-6"></span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Distância de Sugestão de Pontos</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Raio de busca por localidades próximas à trajetória ao sugerir pontos de parada
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <NumberInput
+                value={general?.suggestThresholdM ?? 50}
+                onChange={(v) => setGeneral((prev) => prev ? { ...prev, suggestThresholdM: v } : null)}
+                min={1}
+                max={1000}
+                step={1}
+                disabled={!general}
+              />
+              <span className="text-sm text-muted-foreground w-6">m</span>
             </div>
           </div>
           <div className="flex items-center justify-between gap-6 px-4 py-3">

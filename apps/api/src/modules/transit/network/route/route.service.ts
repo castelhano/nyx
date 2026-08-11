@@ -225,7 +225,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
 
     const existingLocalityIds = new Set(localities.map((rl) => rl.localityId).filter(Boolean))
 
-    const threshold = Number(process.env.OSRM_SUGGEST_THRESHOLD_M ?? 50)
+    const { suggestThresholdM: threshold } = await this.generalConfig.get()
 
     // bounding box prefilter — margin must cover the configured threshold in degrees;
     // a degree of longitude shrinks with latitude, so convert each axis separately

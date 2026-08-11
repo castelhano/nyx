@@ -300,7 +300,7 @@ async function main() {
     if (!childId || !parentId) continue
     await prisma.transitLine.update({ where: { id: childId }, data: { parentLineId: parentId } })
   }
-  console.log(`  ✓ lines (${LINES.length}, ${Object.keys(LINE_PARENTS).length} com linha-mãe)`)
+  console.log(`  ✓ lines (${LINES.length}, ${Object.keys(LINE_PARENTS).length} com linha-parent)`)
 
   // ── localities id map (needed for routes/travel-times) ──────────────────────
 
