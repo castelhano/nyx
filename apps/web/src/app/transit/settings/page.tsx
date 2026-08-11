@@ -533,6 +533,19 @@ export default function TransitSettingsPage() {
               />
             </div>
           </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Propagar Extensão para o Sentido Principal</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Ao reprocessar ou promover uma rota a principal, atualiza automaticamente a extensão oficial da linha (metrics.extensionKm) no sentido correspondente
+              </p>
+            </div>
+            <Switch
+              checked={general?.propagateExtensionToOfficialKm ?? true}
+              onToggle={() => setGeneral((prev) => prev ? { ...prev, propagateExtensionToOfficialKm: !prev.propagateExtensionToOfficialKm } : null)}
+              disabled={!general}
+            />
+          </div>
         </div>
       </section>
 

@@ -5,6 +5,8 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { stringContains } from '../../../../core/db.utils'
 import { OsrmService } from '../travel-time/osrm.service'
+import { LineService } from '../line/line.service'
+import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 
 export interface RouteLocalityWithLocality {
   id: string
@@ -38,6 +40,8 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
   constructor(
     prisma: PrismaService,
     private readonly osrm: OsrmService,
+    private readonly lineService: LineService,
+    private readonly generalConfig: TransitGeneralConfigService,
   ) {
     super(prisma, 'transitRoute', routeSchema, 'transit')
   }
@@ -62,13 +66,45 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
   override async update(id: string, dto: UpdateRouteDto): Promise<Route> {
     if (!dto.isPrimary) return super.update(id, dto)
     const current = await this.findOne(id)
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       await tx.transitRoute.updateMany({
         where: { lineId: current.lineId, direction: dto.direction ?? current.direction, isPrimary: true, id: { not: id } },
         data:  { isPrimary: false },
       })
       return tx.transitRoute.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedUpdateInput }) as unknown as Route
     })
+    // route just became (or remained) primary — sync the line's official extension
+    // right away rather than waiting for the next reprocess
+    await this.syncOfficialExtension(id)
+    return updated
+  }
+
+  // when the route is primary and propagateExtensionToOfficialKm is on, mirrors its
+  // computed extension into TransitLine.metrics.extensionKm for the direction — the
+  // same comparison LineService.reviewExtensions() uses to flag divergences, kept in
+  // sync automatically here instead of via the manual review/apply flow
+  private async syncOfficialExtension(routeId: string): Promise<void> {
+    const route = await this.prisma.transitRoute.findUnique({
+      where:  { id: routeId },
+      select: {
+        lineId:     true,
+        direction:  true,
+        isPrimary:  true,
+        localities: { orderBy: { sequence: 'asc' }, select: { sequence: true, deltaKm: true } },
+      },
+    })
+    if (!route?.isPrimary) return
+
+    const { propagateExtensionToOfficialKm } = await this.generalConfig.get()
+    if (!propagateExtensionToOfficialKm) return
+
+    // sequence 1 is the origin and carries no incoming leg — every other stop must
+    // have a computed deltaKm or the trajectory isn't fully generated yet
+    const legs = route.localities.filter((rl) => rl.sequence > 1)
+    if (legs.length === 0 || legs.some((rl) => rl.deltaKm == null)) return
+
+    const computedKm = legs.reduce((sum, rl) => sum + rl.deltaKm!, 0)
+    await this.lineService.applyExtensions([{ lineId: route.lineId, direction: route.direction, computedKm }])
   }
 
   async getTrajectory(routeId: string): Promise<RouteLocalityWithLocality[]> {
@@ -117,6 +153,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
         return this.prisma.routeLocality.update({ where: { id: rl.id }, data: updates })
       }),
     )
+    await this.syncOfficialExtension(routeId)
   }
 
   async reprocessLegs(routeId: string, affectedSequences: number[]): Promise<void> {
@@ -168,6 +205,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
         await this.prisma.routeLocality.update({ where: { id: toRl.id }, data: updates })
       }),
     )
+    await this.syncOfficialExtension(routeId)
   }
 
   async suggestLocalities(routeId: string): Promise<SuggestedLocality[]> {
