@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams }        from 'next/navigation'
 import dynamic                               from 'next/dynamic'
-import { useQuery, useQueryClient }          from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icons }                             from '@/lib/icons'
 import { apiFetch }                          from '@/lib/auth'
 import { useToast }                          from '@/lib/toast-context'
@@ -88,9 +88,29 @@ export default function TransitRoutePage() {
     staleTime: 0,
   })
 
-  // trajectories for all routes (ruler + map background)
+  // background trajectories for every other *active* sentido, so Régua/Mapa can
+  // show them as context — inactive sentidos only load if directly selected
+  // (covered by selectedLocalities above, regardless of their isActive status)
+  const backgroundRouteIds = routes.filter((r) => r.isActive && r.id !== routeId).map((r) => r.id)
+
+  const backgroundTrajectoryQueries = useQueries({
+    queries: backgroundRouteIds.map((id) => ({
+      queryKey:  ['transit', 'trajectory', id],
+      queryFn:   () => apiFetch(`/transit/transit-route/${id}/trajectory`).then((r) => r.json()) as Promise<RouteLocality[]>,
+      staleTime: 30_000,
+    })),
+  })
+
+  // trajectories for all visible routes (ruler + map)
   const localitiesMap: Record<string, RouteLocality[]> = {}
   if (routeId) localitiesMap[routeId] = selectedLocalities
+  backgroundRouteIds.forEach((id, i) => {
+    const data = backgroundTrajectoryQueries[i]?.data
+    if (data) localitiesMap[id] = data
+  })
+
+  // sentidos plotados na Régua/Mapa: ativos, mais o selecionado mesmo se inativo
+  const visibleRoutes = routes.filter((r) => r.isActive || r.id === routeId)
 
   // ── navigation ────────────────────────────────────────────────────────────
 
@@ -510,14 +530,14 @@ export default function TransitRoutePage() {
         <div className="flex-1 flex min-w-0">
           {canvasMode === 'ruler' ? (
             <RulerCanvas
-              routes={routes}
+              routes={visibleRoutes}
               localities={localitiesMap}
               selectedRouteId={routeId || null}
               onSelectRoute={selectRoute}
             />
           ) : (
             <MapCanvas
-              routes={routes}
+              routes={visibleRoutes}
               localities={localitiesMap}
               selectedRouteId={routeId || null}
               pendingPoints={pendingPoints}

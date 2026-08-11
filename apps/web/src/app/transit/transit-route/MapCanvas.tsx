@@ -88,7 +88,7 @@ export default function MapCanvas({
           const isSelected = route.id === selectedRouteId
           const color     = DIR_COLOR[route.direction]
           const markColor = DIR_MARK_COLOR[route.direction]
-          const opacity   = selectedRouteId ? (isSelected ? 1 : 0.3) : 0.8
+          const opacity   = selectedRouteId ? (isSelected ? 1 : 0.6) : 0.8
 
           // collect leg geometries, keeping the owning RouteLocality so we can key by it
           const legs = lls.filter((rl) => rl.geometry != null)
@@ -107,7 +107,7 @@ export default function MapCanvas({
                     // diffs the `data` prop on re-render — key by updatedAt so a changed
                     // geometry (after Gravar/Reprocessar) forces a remount instead of showing stale shape
                     data={rl.geometry as any}
-                    style={{ color, weight: isSelected ? 4 : 2, opacity }}
+                    style={{ color, weight: isSelected ? 4 : 3, opacity }}
                     eventHandlers={{ click: () => onSelectRoute(route.id) }}
                   />
                   <DirectionArrows coordinates={rl.geometry!.coordinates} color={markColor} opacity={opacity} />
