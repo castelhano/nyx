@@ -536,6 +536,25 @@ export default function TransitSettingsPage() {
           </div>
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div>
+              <p className="text-sm font-medium">Fator de Velocidade Base</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Multiplicador aplicado aos tempos retornados pelo OSRM ao gerar a matriz de tempos. Não afeta pares já gerados.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <NumberInput
+                value={general?.baseSpeedRatio ?? 1.1}
+                onChange={(v) => setGeneral((prev) => prev ? { ...prev, baseSpeedRatio: v } : null)}
+                min={0.5}
+                max={3.0}
+                step={0.1}
+                disabled={!general}
+              />
+              <span className="text-sm text-muted-foreground w-6"></span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
               <p className="text-sm font-medium">Distância de Sugestão de Pontos</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Raio de busca por localidades próximas à trajetória ao sugerir pontos de parada

@@ -8,6 +8,9 @@ export const generalSettingsSchema = z.object({
   // for that direction — skipping the manual review/apply flow
   propagateExtensionToOfficialKm: z.boolean().default(true),
   suggestThresholdM:              z.number().int().min(1).max(1000).default(300),
+  // multiplier applied to OSRM-reported durations when (re)generating the travel-time
+  // matrix — compensates for OSRM's free-flow estimate running faster than real traffic
+  baseSpeedRatio:                 z.number().min(0.5).max(3.0).default(1.1),
 })
 
 export type GeneralSettings = z.infer<typeof generalSettingsSchema>

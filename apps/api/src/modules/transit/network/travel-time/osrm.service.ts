@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
+import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 
 export type GeoJSONLineString = { type: 'LineString'; coordinates: [number, number][] }
 
@@ -25,7 +26,10 @@ export class OsrmService {
   private readonly logger = new Logger(OsrmService.name)
   private readonly osrmUrl = process.env.OSRM_URL ?? 'http://localhost:5000'
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly generalConfig: TransitGeneralConfigService,
+  ) {}
 
   async getRoute(coords: { lat: number; lng: number }[]): Promise<OsrmRouteResult> {
     if (coords.length < 2) throw new Error('At least 2 coordinates required for route')
@@ -86,6 +90,7 @@ export class OsrmService {
    */
   async generateMatrix(opts: { source?: 'OSRM' | 'MANUAL' } = {}): Promise<{ generated: number; skipped: number }> {
     const entrySource = opts.source ?? 'OSRM'
+    const { baseSpeedRatio } = await this.generalConfig.get()
     const [routes, routeLocalityIds] = await Promise.all([
       this.prisma.transitRoute.findMany({
         select: { originLocalityId: true, destinationLocalityId: true },
@@ -190,7 +195,7 @@ export class OsrmService {
     }
 
     // Build all new entries — skip manual pairs (OSRM mode only) and OSRM null responses
-    type MatrixRow = { originId: string; destinationId: string; baseMinutes: number; distanceKm: number; source: 'OSRM' | 'MANUAL' }
+    type MatrixRow = { originId: string; destinationId: string; baseMinutes: number; distanceKm: number; speedRatio: number; source: 'OSRM' | 'MANUAL' }
     const insertData: MatrixRow[] = []
     let nullPairs = 0
 
@@ -215,6 +220,7 @@ export class OsrmService {
           destinationId: destination.id,
           baseMinutes:   Math.ceil(rawDuration / 60),
           distanceKm:    Math.round(rawDistance / 10) / 100,
+          speedRatio:    baseSpeedRatio,
           source:        entrySource,
         })
       }
