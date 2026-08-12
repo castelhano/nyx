@@ -485,7 +485,7 @@ export default function VehiclePlanPage() {
                   selection={editBarOpen ? selection : null}
                   onSelectionChange={handleSelectionChange}
                   actionSpec={editBarOpen ? vehiclesActionSpec : undefined}
-                  onBlockUpdate={() => refetchGantt()}
+                  onBlockUpdate={refetchGantt}
                   focusedSegId={editBarOpen ? focusedSegId : null}
                   moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
                   moveTargetHints={moveTargetHints}

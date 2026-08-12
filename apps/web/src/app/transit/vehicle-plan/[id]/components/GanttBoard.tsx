@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle } from 'react'
+import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle, memo } from 'react'
 import { useShortcut } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
@@ -70,7 +70,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
   return { ...sel, from: freshFrom, to: freshTo, segments: freshSegments }
 }
 
-export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoard(
+export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function GanttBoard(
   { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS, highlightedSegIds }: Props,
   ref,
 ) {
@@ -419,4 +419,4 @@ export const GanttBoard = forwardRef<GanttBoardHandle, Props>(function GanttBoar
 
     </div>
   )
-})
+}))

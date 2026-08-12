@@ -942,14 +942,14 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     }
   }, [canEdit, focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
 
-  function handleSelectionChange(sel: Selection | null) {
+  const handleSelectionChange = useCallback((sel: Selection | null) => {
     if (!editBarOpen) return
     setSelection(sel)
     setTripSeqAnchor(null)
     if (sel?.type === 'trip') {
       setFocusedSegId(sel.segment.id)
     }
-  }
+  }, [editBarOpen])
 
   function handlePendingAdd(entry: PendingAddEntry) {
     if (!canEdit) return
