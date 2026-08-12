@@ -32,8 +32,9 @@ export class VehicleBlockController extends BaseController<VehicleBlock, CreateV
     @Body('blockTripIds') blockTripIds: string[],
     @Body('targetBlockId') targetBlockId: string,
     @Body('breakIds') breakIds?: string[],
+    @Body('deadrunIds') deadrunIds?: string[],
   ) {
-    return this.vehicleBlockService.moveTrip(blockId, blockTripIds, targetBlockId, breakIds ?? [])
+    return this.vehicleBlockService.moveTrip(blockId, blockTripIds, targetBlockId, breakIds ?? [], deadrunIds ?? [])
   }
 
   @Patch(':id/deadruns')

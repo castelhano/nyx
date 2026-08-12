@@ -76,16 +76,19 @@ export default function VehiclePlanPage() {
     staleTime: 10_000,
   })
 
+  // Editing state/logic (pending changes, selection, keyboard nav) lives in
+  // useGanttEditor; useVehiclePlanShortcuts below just binds keys to its handlers,
+  // so it must run after this call — it destructures values (selection,
+  // focusedSegId, mergedPlottedData, ...) straight out of `editor`.
   const editor = useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPending })
   const {
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
     moveTargetBlockId, setMoveTargetBlockId,
-    pendingMoves, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
-    editBarOpen, setEditBarOpen,
+    editBarOpen,
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
@@ -96,9 +99,8 @@ export default function VehiclePlanPage() {
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
-    handleAddAccess, handleAddReturn, handleAddInterval, handleConfirmAddInterval, discardBreaks,
+    handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
-    handleDeleteDeadruns, handleDeleteBreaks, handleDeleteInterval, handleDeleteTrips,
     vehiclesActionSpec,
     handleAdjustCycle, handleDistributeHeadway, handleTripTimingOp,
   } = editor
@@ -110,8 +112,8 @@ export default function VehiclePlanPage() {
   const [generateLineModal, setGenerateLineModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
 
-  // ── painel lateral de frequência — espelho somente-leitura da viagem focada
-  // no Gantt (ver LineFreqPanel.tsx), sem foco/seleção próprios
+  // ── side frequency panel — read-only mirror of the focused trip in the
+  // Gantt (see LineFreqPanel.tsx), no focus/selection of its own
   const [lineFreqOpen,  setLineFreqOpen]  = useState(false)
 
   const ganttBoardRef       = useRef<GanttBoardHandle>(null)
@@ -152,7 +154,7 @@ export default function VehiclePlanPage() {
     : null
 
   useTopbarActions([
-    // toggle barra de edição — sempre visível, alinhado à esquerda
+    // edit-bar toggle — always visible, aligned to the start
     ...(!isNew ? [{
       label:    'Barra Edição',
       icon:     Icons.SlidersHorizontal,
@@ -164,9 +166,9 @@ export default function VehiclePlanPage() {
       position: 'start' as const,
     }] : []),
 
-    // ── modo edição ────────────────────────────────────────────────────────────
-    // Navegação/inspeção fica disponível mesmo em planos ativos; ações que
-    // gravam alterações (viagem, gerar, salvar, limpar) exigem canEdit (DRAFT).
+    // ── edit mode ──────────────────────────────────────────────────────────────
+    // Navigation/inspection stays available even on active plans; actions that
+    // write changes (trip, generate, save, clear) require canEdit (DRAFT).
     ...(editBarOpen ? [
       ...(canEdit ? [
         {
@@ -179,9 +181,9 @@ export default function VehiclePlanPage() {
         },
         { label: '', separator: true },
         {
-          // Gera uma proposta de atendimento (janelas/frota/oferta×demanda) para a
-          // linha selecionada em "Linhas" — sem relação com o "Gerar" do solver
-          // (esse só aparece fora do modo edição, ver bloco "modo normal" abaixo).
+          // Generates a service proposal (windows/fleet/supply×demand) for the
+          // line selected in "Linhas" — unrelated to the solver's "Gerar"
+          // (that one only appears outside edit mode, see "normal mode" block below).
           label:    'Gerar',
           icon:     Icons.Play,
           size:     'sm' as const,
@@ -217,7 +219,7 @@ export default function VehiclePlanPage() {
         },
       ] : []),
     ] : [
-    // ── modo normal ────────────────────────────────────────────────────────────
+    // ── normal mode ────────────────────────────────────────────────────────────
       // lines panel toggle
       ...(!isNew ? [{
         label:   'Linhas',
@@ -230,7 +232,7 @@ export default function VehiclePlanPage() {
           } },
         ],
       }] : []),
-      // parar: only while stream is open
+      // stop: only while stream is open
       ...(activeJobId && !isSolverDone ? [{
         label:    'Parar',
         icon:     Icons.Square,
@@ -263,7 +265,6 @@ export default function VehiclePlanPage() {
       }] : []),
     ]),
   ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount])
-
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused

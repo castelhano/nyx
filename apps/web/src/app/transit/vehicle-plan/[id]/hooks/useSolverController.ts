@@ -181,6 +181,8 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
   }
 
   async function handleActivate(force: boolean = false) {
+    // Passed directly as a topbar button's onClick (page.tsx), which may invoke it
+    // with a click event as the first arg instead of a boolean — guard against that.
     if (typeof force !== 'boolean') force = false
     if (!canUpdate) return
     setIsPending(true)

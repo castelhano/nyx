@@ -155,7 +155,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
-  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string, breakIds: string[] = []): Promise<void> {
+  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string, breakIds: string[] = [], deadrunIds: string[] = []): Promise<void> {
     if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
     if (!blockTripIds.length)      throw new BadRequestException('Nenhuma viagem informada')
     const db = this.prisma as any
@@ -211,6 +211,16 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       }
       if (orphanedIntervalIds.length > 0) {
         await tx.blockInterval.deleteMany({ where: { id: { in: orphanedIntervalIds } } })
+      }
+      // Deadruns have no anchor concept (unlike intervals) — they're never implied,
+      // only moved when the caller explicitly selected them, so there's no orphaned
+      // set to clean up here. Scoped to blockId so a stray id from another block is
+      // silently ignored rather than moved.
+      if (deadrunIds.length > 0) {
+        await tx.blockDeadrun.updateMany({
+          where: { id: { in: deadrunIds }, vehicleBlockId: blockId },
+          data:  { vehicleBlockId: targetBlockId },
+        })
       }
       await tx.vehicleBlock.update({ where: { id: blockId },       data: { isStale: true } })
       await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })

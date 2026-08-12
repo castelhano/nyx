@@ -67,10 +67,10 @@ export function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): stri
 
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { blockTripId: string; blockId: string }
-type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
-type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
+export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
+export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
-type PendingMove = { blockTripIds: string[]; breakIds: string[]; fromBlockId: string; toBlockId: string }
+type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
 
 interface UseGanttEditorParams {
   id:           string
@@ -100,10 +100,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const [editBarOpen,       setEditBarOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
 
-  // ── seleção de sequência (shift+pagedown/pageup) — âncora + foco atual formam
-  // um range sobre allTrips filtrado por sentido (mesma travessia do pagedown
-  // simples), cruzando blocos livremente. Independente de `selection`, que só
-  // forma range dentro da mesma row/bloco — ver discussão em docs/TODO.md.
+  // ── trip-sequence selection (shift+pagedown/pageup) — anchor + current focus
+  // form a range over allTrips filtered by direction (same traversal as plain
+  // pagedown), crossing blocks freely. Independent of `selection`, which only
+  // forms a range within the same row/block — see discussion in docs/TODO.md.
   const [tripSeqAnchor, setTripSeqAnchor] = useState<string | null>(null)
 
   // Lines selection for display — checked lines are plotted immediately
@@ -284,15 +284,19 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       const blockMap          = new Map(allBlocks.map(b => [b.id, b]))
       const awayByBlock       = new Map<string, Set<string>>()
       const awayBreaksByBlock = new Map<string, Set<string>>()
+      const awayDeadrunsByBlock = new Map<string, Set<string>>()
       for (const move of pendingMoves) {
         if (!awayByBlock.has(move.fromBlockId)) awayByBlock.set(move.fromBlockId, new Set())
         for (const id of move.blockTripIds) awayByBlock.get(move.fromBlockId)!.add(id)
         if (!awayBreaksByBlock.has(move.fromBlockId)) awayBreaksByBlock.set(move.fromBlockId, new Set())
         for (const id of move.breakIds) awayBreaksByBlock.get(move.fromBlockId)!.add(id)
+        if (!awayDeadrunsByBlock.has(move.fromBlockId)) awayDeadrunsByBlock.set(move.fromBlockId, new Set())
+        for (const id of move.deadrunIds) awayDeadrunsByBlock.get(move.fromBlockId)!.add(id)
       }
       allBlocks = allBlocks.map(block => {
         const awayIds      = awayByBlock.get(block.id) ?? new Set<string>()
         const awayBreakIds = awayBreaksByBlock.get(block.id) ?? new Set<string>()
+        const awayDeadrunIds = awayDeadrunsByBlock.get(block.id) ?? new Set<string>()
         const movedIn = pendingMoves
           .filter(m => m.toBlockId === block.id)
           .flatMap(m => {
@@ -311,10 +315,20 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
               .map(id => fromBlock.blockIntervals.find(bi => bi.id === id))
               .filter((bi): bi is NonNullable<typeof bi> => bi != null)
           })
+        const movedInDeadruns = pendingMoves
+          .filter(m => m.toBlockId === block.id)
+          .flatMap(m => {
+            const fromBlock = blockMap.get(m.fromBlockId)
+            if (!fromBlock) return []
+            return m.deadrunIds
+              .map(id => fromBlock.blockDeadruns.find(dr => dr.id === id))
+              .filter((dr): dr is NonNullable<typeof dr> => dr != null)
+          })
         return {
           ...block,
           blockTrips:     [...block.blockTrips.filter(bt => !awayIds.has(bt.id)), ...movedIn],
           blockIntervals: [...block.blockIntervals.filter(bi => !awayBreakIds.has(bi.id)), ...movedInBreaks],
+          blockDeadruns:  [...block.blockDeadruns.filter(dr => !awayDeadrunIds.has(dr.id)), ...movedInDeadruns],
         }
       })
     }
@@ -344,9 +358,9 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
 
-  // Range de shift+pagedown/pageup: janela [âncora, foco] sobre allTrips,
-  // restrita ao sentido da âncora — mesma travessia (todas as linhas) que o
-  // pagedown simples já faz, só que materializada como conjunto pra highlight.
+  // shift+pagedown/pageup range: window [anchor, focus] over allTrips,
+  // restricted to the anchor's direction — same traversal (all lines) plain
+  // pagedown already does, just materialized as a set for highlighting.
   const tripSeqRangeIds = useMemo(() => {
     if (!tripSeqAnchor || !focusedSegId) return null
     const anchorIdx = allTrips.findIndex(t => t.segId === tripSeqAnchor)
@@ -362,10 +376,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     return ids
   }, [tripSeqAnchor, focusedSegId, allTrips])
 
-  // Viagens do tripSeqRangeIds materializadas com dados pra distribuição de
-  // headway (q+space): só opera sobre uma única linha — o conceito de headway
-  // (ver computeHeadway/LineFreqPanel) é por linha+sentido, então misturar
-  // linhas aqui produziria um espaçamento sem sentido operacional.
+  // tripSeqRangeIds trips materialized with data for headway distribution
+  // (q+space): only operates over a single line — the headway concept
+  // (see computeHeadway/LineFreqPanel) is per line+direction, so mixing
+  // lines here would produce an operationally meaningless spacing.
   const headwayRangeInfo = useMemo(() => {
     if (!mergedPlottedData || !tripSeqRangeIds || tripSeqRangeIds.size < 3) return null
     const trips: Array<{ segId: string; tripId: string; lineId: string; blockId: string; dep: number; arr: number }> = []
@@ -389,10 +403,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     return { trips, singleLine }
   }, [mergedPlottedData, tripSeqRangeIds])
 
-  // Índice pro LineFreqPanel — mesmos dados do Gantt, agrupados por linha/sentido
-  // com headway pré-computado numa única passada (ver line-freq.view.ts). O
-  // painel é só-leitura: localiza a linha/sentido/posição do focusedSegId em
-  // O(1) via segIndex, sem estado de foco/seleção próprio.
+  // Index for LineFreqPanel — same Gantt data, grouped by line/direction with
+  // headway pre-computed in a single pass (see line-freq.view.ts). The panel
+  // is read-only: it locates the focusedSegId's line/direction/position in
+  // O(1) via segIndex, with no focus/selection state of its own.
   const freqIndex = useMemo(
     () => mergedPlottedData ? buildLineFreqIndex(mergedPlottedData) : null,
     [mergedPlottedData],
@@ -621,17 +635,17 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     }
   }
 
-  // Distribui uniformemente o headway das viagens do intervalo selecionado
-  // (shift+pagedown/pageup), mantendo fixas a primeira e a última viagem do
-  // intervalo como âncoras. Não mexe no tempo de ciclo (duração dep→arr de
-  // cada viagem é preservada, só desloca o par inteiro) — no futuro um
-  // setting vai liberar uma margem pra essa função também ajustar o ciclo.
+  // Evenly distributes the headway of the trips in the selected range
+  // (shift+pagedown/pageup), keeping the range's first and last trip fixed
+  // as anchors. Doesn't touch cycle time (each trip's dep→arr duration is
+  // preserved, only the whole pair shifts) — a future setting will allow
+  // this function some margin to also adjust the cycle.
   //
-  // Simplificação aceita: os limites de cada viagem vêm dos vizinhos atuais
-  // do seu próprio bloco (vazio/intervalo/outra viagem), sem considerar que
-  // esse vizinho também pode ser outra viagem do intervalo que já moveu —
-  // caso raro (duas viagens do mesmo intervalo dificilmente são adjacentes
-  // no mesmo veículo, já que alternam sentido a cada viagem produtiva).
+  // Accepted simplification: each trip's bounds come from its own block's
+  // current neighbors (deadrun/break/other trip), without accounting for
+  // that neighbor possibly being another trip from the range that already
+  // moved — a rare case (two trips from the same range are unlikely to be
+  // adjacent on the same vehicle, since direction alternates every productive trip).
   function handleDistributeHeadway() {
     if (!canEdit || !mergedPlottedData || !headwayRangeInfo) return
 
@@ -672,7 +686,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
       const timeline = blockTimeline(rt.blockId)
       const ownIdx   = timeline.findIndex(it => it.kind === 'trip' && it.id === rt.segId)
-      // Mantém 1min de folga contra o vizinho — não pode encostar (fim == início do próximo).
+      // Keeps a 1min gap against the neighbor — can't touch (end == next's start).
       const lowerBound = ownIdx > 0                      ? timeline[ownIdx - 1].arr + 1             : -Infinity
       const upperBound = ownIdx < timeline.length - 1    ? timeline[ownIdx + 1].dep - duration - 1   : Infinity
 
@@ -1196,11 +1210,15 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
         })
         if (blockTripIds.length === 0) continue
 
+        // Same "deleting wins" precedence as trips above — a moved deadrun that's
+        // also pending-deleted is already gone by the delete step run above.
+        const deadrunIds = move.deadrunIds.filter(id => !pendingDeadrunDeletes.has(id))
+
         const fromBlockId = resolveMoveBlockRef(move.fromBlockId)
         const toBlockId   = resolveMoveBlockRef(move.toBlockId)
         const res = await apiFetch(`/transit/vehicle-block/${fromBlockId}/move-trip`, {
           method: 'PATCH',
-          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds }),
+          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds, deadrunIds }),
         })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
@@ -1369,26 +1387,53 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     const movedBreakIds    = anchoredBreakIds.filter(id => selectedBreakIds.has(id))
     const orphanedBreakIds = anchoredBreakIds.filter(id => !selectedBreakIds.has(id))
 
-    // Pending (unsaved) breaks aren't real persisted ids yet — relocate them by
-    // editing pendingAdds directly instead of routing them through pendingMoves,
-    // which only carries real ids the move-trip endpoint can act on.
+    // Deadruns have no anchor concept (unlike breaks) — they're never implied by a
+    // neighboring trip, so only ones explicitly included in the selection move; there's
+    // no "orphaned" set to drop. Access/return deadruns synthesized for a pending trip
+    // (buildFakeAccessReturn) have no independent existence, so they're excluded here —
+    // they follow automatically once their trip's own blockId/timing moves.
+    const selectedDeadrunIds = selection.type === 'interval'
+      ? selection.segments
+          .filter(s => s.kind === 'deadhead')
+          .map(s => (s.data as GanttBlockDeadrun).id)
+          .filter(id => !id.endsWith(':access') && !id.endsWith(':return'))
+      : []
+
+    // Pending (unsaved) trips/breaks/deadruns aren't real persisted ids yet — relocate
+    // them by editing pendingAdds directly instead of routing them through pendingMoves,
+    // which only carries real ids the move-trip endpoint can act on (it 404s on a temp id).
+    const tempTripIds = new Set(
+      pendingAdds.filter((a): a is PendingAddTrip => a._kind === 'trip').map(a => a._tempId),
+    )
+    const movedRealTripIds = blockTripIds.filter(id => !tempTripIds.has(id))
+    const movedTempTripIds = blockTripIds.filter(id => tempTripIds.has(id))
+
     const tempBreakIds = new Set(
       pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break').map(a => a._tempId),
     )
     const movedRealBreakIds = movedBreakIds.filter(id => !tempBreakIds.has(id))
     const movedTempBreakIds = movedBreakIds.filter(id => tempBreakIds.has(id))
 
-    setPendingMoves(prev => {
-      const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
-      return [...filtered, { blockTripIds, breakIds: movedRealBreakIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
-    })
+    const tempDeadrunIds = new Set(
+      pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun').map(a => a._tempId),
+    )
+    const movedRealDeadrunIds = selectedDeadrunIds.filter(id => !tempDeadrunIds.has(id))
+    const movedTempDeadrunIds = selectedDeadrunIds.filter(id => tempDeadrunIds.has(id))
 
-    if (movedTempBreakIds.length > 0) {
-      setPendingAdds(prev => prev.map(a =>
-        a._kind === 'break' && movedTempBreakIds.includes(a._tempId)
-          ? { ...a, blockId: moveTargetBlockId }
-          : a,
-      ))
+    if (movedRealTripIds.length > 0) {
+      setPendingMoves(prev => {
+        const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
+        return [...filtered, { blockTripIds: movedRealTripIds, breakIds: movedRealBreakIds, deadrunIds: movedRealDeadrunIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
+      })
+    }
+
+    if (movedTempTripIds.length > 0 || movedTempBreakIds.length > 0 || movedTempDeadrunIds.length > 0) {
+      setPendingAdds(prev => prev.map(a => {
+        if (a._kind === 'trip'    && movedTempTripIds.includes(a._tempId))    return { ...a, blockId: moveTargetBlockId }
+        if (a._kind === 'break'   && movedTempBreakIds.includes(a._tempId))   return { ...a, blockId: moveTargetBlockId }
+        if (a._kind === 'deadrun' && movedTempDeadrunIds.includes(a._tempId)) return { ...a, blockId: moveTargetBlockId }
+        return a
+      }))
     }
 
     discardBreaks(orphanedBreakIds)
@@ -1592,15 +1637,18 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     [canEdit],
   )
 
+  // onAddAccess/onAddReturn/onAddInterval/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
+  // onDeleteInterval/onUpdateConstraints and the raw handleSavePending aren't returned —
+  // they're only ever reached through vehiclesActionSpec or the *WithConfirm wrappers,
+  // both already exposed below. Add them back if a future caller needs direct access.
   return {
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
     moveTargetBlockId, setMoveTargetBlockId,
-    pendingMoves, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
-    editBarOpen, setEditBarOpen,
+    editBarOpen,
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
@@ -1610,11 +1658,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     pendingCount,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
-    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleSavePending,
-    handleAddAccess, handleAddReturn, handleAddInterval, handleConfirmAddInterval, discardBreaks,
+    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
+    handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
-    handleDeleteDeadruns, handleDeleteBreaks, handleDeleteInterval, handleDeleteTrips,
     vehiclesActionSpec,
-    handleUpdateConstraints, handleAdjustCycle, handleDistributeHeadway, handleTripTimingOp,
+    handleAdjustCycle, handleDistributeHeadway, handleTripTimingOp,
   }
 }

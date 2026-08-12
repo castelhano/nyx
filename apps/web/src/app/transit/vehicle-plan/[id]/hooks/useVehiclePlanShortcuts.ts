@@ -1,19 +1,19 @@
 'use client'
 
-import { useEffect, type RefObject } from 'react'
+import { useEffect, type RefObject, type Dispatch, type SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { useShortcut } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
 import { useConfirm } from '@/lib/confirm-context'
-import { findAnchoredBreakIds } from './useGanttEditor'
+import { findAnchoredBreakIds, type TripPatch, type DeadrunPatch } from './useGanttEditor'
 import type { GanttBoardHandle } from '../components/GanttBoard'
 import type { PendingAddEntry } from '../components/AddTripModal'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
-import type { Selection } from '../engine/gantt.types'
+import type { Selection, GanttActionSpec } from '../engine/gantt.types'
 
-// ── seções da modal de atalhos (ver docs/TODO.md) ────────────────────────────
-const SEC_GERAL:   ShortcutSection = { label: 'Geral' } // sem hint — mesmo bucket do fallback "sem seção" em qualquer página
+// ── shortcut modal sections (see docs/TODO.md) ───────────────────────────────
+const SEC_GERAL:   ShortcutSection = { label: 'Geral' } // no hint — same bucket as the "no section" fallback on any page
 const SEC_PAINEIS: ShortcutSection = { label: 'Painéis', hint: 'Mostra/oculta painéis auxiliares do Gantt' }
 const SEC_NAV_BLOCO:   ShortcutSection = { label: 'Navegação base', hint: 'Navegação entre viagens' }
 const SEC_NAV_SENTIDO: ShortcutSection = { label: 'Navegação — sentido', hint: 'Navegação de viagens no mesmo sentido' }
@@ -35,13 +35,13 @@ interface UseVehiclePlanShortcutsParams {
   shiftAnchorRef:       RefObject<string | null>
 
   selection:            Selection | null
-  setSelection:         (sel: Selection | null) => void
+  setSelection:         Dispatch<SetStateAction<Selection | null>>
   focusedSegId:         string | null
-  setFocusedSegId:      (id: string | null) => void
+  setFocusedSegId:      Dispatch<SetStateAction<string | null>>
   tripSeqAnchor:        string | null
-  setTripSeqAnchor:     (id: string | null) => void
+  setTripSeqAnchor:     Dispatch<SetStateAction<string | null>>
   moveTargetBlockId:    string | null
-  setMoveTargetBlockId: (updater: (prev: string | null) => string | null) => void
+  setMoveTargetBlockId: Dispatch<SetStateAction<string | null>>
   editBarOpen:          boolean
   selectedLineIds:      Set<string>
   navBlocks:            NavItem[][]
@@ -52,24 +52,24 @@ interface UseVehiclePlanShortcutsParams {
   pendingDeletes:       Set<string>
   pendingDeadrunDeletes: Set<string>
   pendingIntervalDeletes: Set<string>
-  setPendingAdds:        (updater: (prev: PendingAddEntry[]) => PendingAddEntry[]) => void
-  setPendingDeletes:     (updater: (prev: Set<string>) => Set<string>) => void
-  setPendingChanges:     (updater: (prev: Map<string, any>) => Map<string, any>) => void
-  setPendingDeadrunDeletes: (updater: (prev: Set<string>) => Set<string>) => void
-  setPendingDeadrunChanges: (updater: (prev: Map<string, any>) => Map<string, any>) => void
+  setPendingAdds:        Dispatch<SetStateAction<PendingAddEntry[]>>
+  setPendingDeletes:     Dispatch<SetStateAction<Set<string>>>
+  setPendingChanges:     Dispatch<SetStateAction<Map<string, TripPatch>>>
+  setPendingDeadrunDeletes: Dispatch<SetStateAction<Set<string>>>
+  setPendingDeadrunChanges: Dispatch<SetStateAction<Map<string, DeadrunPatch>>>
   pendingCount:         number
 
-  setFreqPanelOpen:     (updater: (prev: boolean) => boolean) => void
-  setAddTripOpen:       (v: boolean) => void
-  setLineFreqOpen:      (updater: (prev: boolean) => boolean) => void
-  setLinesPanelOpen:    (updater: (prev: boolean) => boolean) => void
+  setFreqPanelOpen:     Dispatch<SetStateAction<boolean>>
+  setAddTripOpen:       Dispatch<SetStateAction<boolean>>
+  setLineFreqOpen:      Dispatch<SetStateAction<boolean>>
+  setLinesPanelOpen:    Dispatch<SetStateAction<boolean>>
 
   clearAllPending:            () => void
   handleSavePendingWithConfirm:    () => void
   handleDiscardPendingWithConfirm: () => void
   handleToggleEditBar:        () => void
   handleSelectionChange:      (sel: Selection | null) => void
-  vehiclesActionSpec:          any
+  vehiclesActionSpec:          GanttActionSpec<VehiclePlanGanttData>
   stepMoveTarget:              (prev: string | null, dir: 1 | -1) => string | null
   handleConfirmMove:           () => void
   handleDistributeHeadway:     () => void
@@ -365,9 +365,10 @@ export function useVehiclePlanShortcuts({
     section: SEC_SELECAO,
   })
 
-  // `selection` já é limpa pelo Escape nativo do GanttActionBar (só montado
-  // quando há selection) — aqui só cuida do que mais nada trata: a âncora do
-  // range de sequência (shift+pagedown/pageup), pra não duplicar o dismiss.
+  // `selection` is already cleared by GanttActionBar's native Escape (only
+  // mounted when there's a selection) — this only handles what nothing else
+  // does: the trip-sequence range anchor (shift+pagedown/pageup), to avoid
+  // duplicating the dismiss.
   useShortcut('esc', () => {
     setTripSeqAnchor(null)
   }, {
@@ -580,7 +581,7 @@ export function useVehiclePlanShortcuts({
     const resolved = vehiclesActionSpec.resolveSelection(seg, null, { allSegments: segs, allRows: rows })
     if (!resolved) return
     const actions = vehiclesActionSpec.getActions(resolved, mergedPlottedData, () => {})
-    actions.find((a: any) => a.id === actionId)?.onClick()
+    actions.find(a => a.id === actionId)?.onClick()
   }
 
   useShortcut('q+l', () => triggerFocusedTripAction('lock'),         { desc: 'Bloquear/desbloquear viagem', icon: Icons.Lock,   origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
