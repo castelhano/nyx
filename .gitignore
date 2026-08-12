@@ -14,6 +14,9 @@ dist
 *.db-shm
 *.db-wal
 
+# local pg_dump safety snapshots (ad-hoc, not the sync mechanism — see prisma/fixtures/)
+apps/api/prisma/backup_pre_reset_*.sql
+
 # environment files
 .env
 .env.*.local

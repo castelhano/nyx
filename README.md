@@ -7,7 +7,7 @@ Full-stack monorepo with NestJS (API) and Next.js (Web), managed via pnpm worksp
 ```
 nyx/
 ├── apps/
-│   ├── api/        # NestJS + Prisma 7 + SQLite (backend)
+│   ├── api/        # NestJS + Prisma 7 + PostgreSQL (backend)
 │   └── web/        # Next.js 14 + Tailwind (frontend)
 ├── packages/
 │   ├── schemas/    # Shared Zod schemas
@@ -19,6 +19,7 @@ nyx/
 
 - [Node.js](https://nodejs.org/) >= 22.12 — required by Prisma 7
 - [pnpm](https://pnpm.io/) >= 10 — install with `npm install -g pnpm`
+- [Docker](https://docs.docker.com/get-docker/) — runs the local PostgreSQL & OSRM instances
 
 ## First-time setup
 
@@ -34,10 +35,10 @@ pnpm install
 cp apps/api/.env.example apps/api/.env
 ```
 
-Edit `apps/api/.env`:
+Edit `apps/api/.env` to use the PostgreSQL connection (the committed schema's provider — see [Database](#database--postgresql)):
 
 ```env
-DATABASE_URL="file:./dev.db"        # SQLite file path (development)
+DATABASE_URL="postgresql://nyx:nyx@localhost:5432/nyx"
 JWT_SECRET="change-in-production"   # secret used to sign JWT tokens
 ```
 
@@ -49,7 +50,13 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 > **Important:** never commit `.env`. It is already listed in `.gitignore`.
 
-### 3. Apply migrations and generate the Prisma client
+### 3. Start PostgreSQL
+
+```bash
+docker compose -f docker-compose.pg.yml up -d
+```
+
+### 4. Apply migrations and generate the Prisma client
 
 ```bash
 cd apps/api
@@ -57,17 +64,17 @@ pnpm db:migrate
 ```
 
 > `db:migrate` runs `prisma migrate dev && prisma generate`. The generated client (`src/generated/prisma/`) is gitignored and must always be built locally — it is never committed to the repository.
->
-> In Prisma 7, `migrate dev` no longer runs the seed automatically. You must seed manually (step 4).
 
-### 4. Seed the database
+### 5. Seed the database
 
 ```bash
 cd apps/api
-pnpm db:seed
+pnpm db:seed             # creates the default admin account
+pnpm db:seed-core        # sample companies/branches
+pnpm db:import-transit   # restores the transit payload fixture, if apps/api/prisma/fixtures/transit.json exists
 ```
 
-This creates the default administrator account:
+The admin account created by `db:seed`:
 
 | Field    | Value     |
 |----------|-----------|
@@ -76,7 +83,7 @@ This creates the default administrator account:
 
 > Change the password after the first login.
 
-### 5. Start the development environment
+### 6. Start the development environment
 
 From the monorepo root:
 
@@ -95,94 +102,138 @@ Turbo starts both apps in parallel:
 
 ## Setting up on another machine / after a major upgrade
 
-> **Recommended approach: clone fresh.** The SQLite database is gitignored and recreated by the seed, so there is nothing to lose by starting clean.
-
-### 1. Prerequisites
-
-Ensure **Node.js >= 22.12** is installed (required by Prisma 7). To upgrade on Ubuntu/Debian:
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs
-node --version   # should print v22.x.x
-```
-
-### 2. Clone and set up
+### Fresh clone
 
 ```bash
 git clone <repository-url>
 cd nyx
 pnpm install
-cp apps/api/.env.example apps/api/.env   # then edit DATABASE_URL and JWT_SECRET
+cp apps/api/.env.example apps/api/.env   # then edit DATABASE_URL and JWT_SECRET, see step 2 above
+docker compose -f docker-compose.pg.yml up -d
 cd apps/api
-pnpm db:migrate   # creates the database, applies migrations, generates Prisma client
-pnpm db:seed      # creates the admin user
+pnpm db:migrate         # creates the database, applies migrations, generates Prisma client
+pnpm db:seed            # admin user
+pnpm db:seed-core       # companies/branches
+pnpm db:import-transit  # transit cadastro data, if apps/api/prisma/fixtures/transit.json exists
 ```
 
-### If you prefer to update an existing clone
+### Updating an existing clone
 
 ```bash
 git pull
-pnpm install          # picks up new dependencies (Prisma 7, libsql adapter, etc.)
+pnpm install          # picks up new dependencies
 cd apps/api
 pnpm db:migrate       # applies any new migrations and regenerates the client
 ```
+
+> If the pull included a migration squash (see below), `db:migrate` won't work — your local `_prisma_migrations` history will have diverged from the new single baseline migration. Use `pnpm db:reset` instead; it's built for exactly this case.
 
 > The generated Prisma client (`src/generated/prisma/`) is gitignored — `db:migrate` always rebuilds it. Never copy it manually between machines.
 
 ---
 
-## Database — SQLite (dev) and PostgreSQL
+## Database — PostgreSQL
 
-By default the project runs on **SQLite via LibSQL** (zero-setup, file at `apps/api/dev.db`). PostgreSQL is also supported without code changes — `PrismaService` and all seed files select the correct adapter based on the `DATABASE_URL` prefix automatically.
+The project runs on PostgreSQL, both in development (via the `docker-compose.pg.yml` container) and in production. `PrismaService` and all seed/fixture scripts pick the right Prisma adapter automatically from the `DATABASE_URL` prefix, so the same code also works against SQLite if you ever need it locally (see below) — but the committed schema (`apps/api/prisma/schema/_base.prisma`) currently declares `provider = "postgresql"`, and the migration history was generated against it.
 
-### Switching to PostgreSQL
+The container persists data in a Docker volume (`nyx_pg_data`). Stop it with `docker compose -f docker-compose.pg.yml down` and remove the volume with `docker volume rm nyx_pg_data` when no longer needed.
 
-Requires [Docker](https://docs.docker.com/get-docker/).
+### Using SQLite instead
 
-**1. Edit two files** to switch the provider and connection URL:
+Only useful for fully offline/local experiments — the checked-in migrations target PostgreSQL, so switching providers means starting a fresh migration history.
 
-`apps/api/prisma/schema/_base.prisma`:
+**1.** Edit `apps/api/prisma/schema/_base.prisma`:
 ```prisma
 datasource db {
-  // provider = "sqlite"
-  provider = "postgresql"
+  provider = "sqlite"
+  // provider = "postgresql"
 }
 ```
 
-`apps/api/.env`:
+**2.** Edit `apps/api/.env`:
 ```env
-# DATABASE_URL="file:./dev.db"
-DATABASE_URL="postgresql://nyx:nyx@localhost:5432/nyx"
+DATABASE_URL="file:./dev.db"
+# DATABASE_URL="postgresql://nyx:nyx@localhost:5432/nyx"
 ```
 
-**2. Start the PostgreSQL container** (from project root):
-```bash
-docker compose -f docker-compose.pg.yml up -d
-```
-
-**3. Push the schema** (`db:migrate` doesn't work when switching provider):
+**3.** Push the schema (`db:migrate` won't work across a provider change — `migration_lock.toml` records the current provider and Prisma blocks it):
 ```bash
 cd apps/api && pnpm db:push
 ```
 
-**4. Seed:**
+To go back to PostgreSQL, revert both files and run `pnpm db:generate`.
+
+---
+
+## Syncing payload data between machines
+
+The transit payload (localities, lines, routes, route trajectories, day types, scope/operators) is edited live through the app, not through the seed scripts — so it needs its own sync path, separate from schema migrations. Only one machine is ever the "active" writer at a time, so there's no merge/conflict logic: whichever fixture was exported and pushed last is authoritative.
+
+### Day-to-day sync (no schema change)
+
+**Source machine** (has the up-to-date data):
 ```bash
-pnpm db:seed       # admin user
-pnpm db:seed-core  # optional: sample companies/branches
+cd apps/api
+pnpm db:export-transit
+git add prisma/fixtures/transit.json
+git commit -m "sync: transit fixture"
+git push
 ```
 
-> **Why `db:push` and not `db:migrate`:** `prisma/migrations/migration_lock.toml` records the `sqlite` provider. Prisma blocks `migrate dev` when the provider changes. `db:push` syncs the schema directly without a migration history — suitable for testing. To maintain a proper PostgreSQL migration history, delete `prisma/migrations/` and start fresh with `db:migrate`.
-
-### Switching back to SQLite
-
-Revert both files (uncomment SQLite lines, comment out PostgreSQL lines), then regenerate the client:
-
+**Destination machine:**
 ```bash
-cd apps/api && pnpm db:generate
+git pull
+cd apps/api
+pnpm db:import-transit
 ```
 
-The PostgreSQL container (`nyx-postgres`) persists data in a Docker volume (`nyx_nyx_pg_data`). Stop it with `docker compose -f docker-compose.pg.yml down` and remove the volume with `docker volume rm nyx_nyx_pg_data` when no longer needed.
+`db:export-transit` / `db:import-transit` read and write `apps/api/prisma/fixtures/transit.json`, keyed by natural keys (locality/line codes, route direction) rather than database ids — so it survives a `migrate reset` and imports cleanly regardless of which machine generated the ids. Both scripts are safe to re-run (upsert-based).
+
+`db:import-transit` requires `db:seed-core` to have already run at least once (it resolves `ScopeOperator` branches by tax id).
+
+### Periodic migration squash
+
+1. **Export the current data**
+   ```bash
+   cd apps/api
+   pnpm db:export-transit
+   ```
+
+2. **Delete the old migrations** — keep `migration_lock.toml`
+   ```bash
+   rm -rf apps/api/prisma/migrations/*/
+   ```
+
+3. **Wipe the database**
+   `--skip-seed` avoids Prisma's automatic seed hook would otherwise try to run against a schema that doesn't exist yet
+   ```bash
+   pnpm exec prisma migrate reset --force --skip-seed
+   ```
+
+4. **Generate the new single migration** — diffs `schema.prisma` against the now-empty database
+   ```bash
+   pnpm exec prisma migrate dev --name init
+   ```
+
+5. **Restore the saved data**
+   ```bash
+   pnpm db:seed-core && pnpm db:import-transit
+   ```
+
+6. **Commit and push** — the new migration and the fixture must travel together; that's what the other machine pulls in the next step
+   ```bash
+   git add apps/api/prisma/migrations apps/api/prisma/fixtures/transit.json
+   git commit -m "chore: squash migrations"
+   git push
+   ```
+
+### Picking up a squash on another machine
+
+```bash
+git pull
+cd apps/api
+pnpm db:reset   # migrate reset --force + db:seed + db:seed-core + db:import-transit, in one shot
+```
 
 ---
 
@@ -248,13 +299,17 @@ Once OSRM is running, open the **Matriz de Tempos** list in the app and click **
 
 Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
 
-| Command           | Description                                          |
-|-------------------|------------------------------------------------------|
-| `pnpm db:migrate` | Apply pending migrations and regenerate Prisma client |
-| `pnpm db:push`    | Push schema changes without a migration file (prototyping only) |
-| `pnpm db:generate`| Regenerate the Prisma client after manual schema edits |
-| `pnpm db:seed`    | Populate the database with initial data              |
-| `pnpm build`      | Compile NestJS for production                        |
+| Command                 | Description                                              |
+|--------------------------|-----------------------------------------------------------|
+| `pnpm db:migrate`        | Apply pending migrations and regenerate Prisma client      |
+| `pnpm db:push`           | Push schema changes without a migration file (prototyping/provider switch only) |
+| `pnpm db:generate`       | Regenerate the Prisma client after manual schema edits      |
+| `pnpm db:seed`           | Create the default admin account                           |
+| `pnpm db:seed-core`      | Create sample companies/branches                            |
+| `pnpm db:export-transit` | Export the transit cadastro tables to `prisma/fixtures/transit.json` |
+| `pnpm db:import-transit` | Import `prisma/fixtures/transit.json` back into the database |
+| `pnpm db:reset`          | Destructive: wipe the database, reapply migrations, and restore all seed data + the transit fixture |
+| `pnpm build`             | Compile NestJS for production                               |
 
 > `db:migrate` chains `prisma migrate dev && prisma generate` because Prisma 7 no longer runs `generate` automatically after migrations.
 
@@ -262,6 +317,6 @@ Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
 
 ## Tech stack
 
-- **Backend:** NestJS · Prisma ORM 7 · SQLite/LibSQL (dev) · PostgreSQL (prod/test) · JWT · CASL (authorization)
+- **Backend:** NestJS · Prisma ORM 7 · PostgreSQL · JWT · CASL (authorization)
 - **Frontend:** Next.js 14 · React 18 · Tailwind CSS · TanStack Query/Table · React Hook Form · Zod
 - **Tooling:** pnpm workspaces · Turborepo · TypeScript 5
