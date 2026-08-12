@@ -1,0 +1,1620 @@
+'use client'
+
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { apiFetch } from '@/lib/auth'
+import { useConfirm } from '@/lib/confirm-context'
+import { useToast } from '@/lib/toast-context'
+import { extractError } from '@/lib/utils'
+import { buildLineFreqIndex } from '../views/line-freq.view'
+import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from '../components/AddTripModal'
+import type { IntervalType } from '../components/AddIntervalModal'
+import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
+import { resolveCycleWindow } from '../views/vehicles.view'
+import { createVehiclesActionSpec } from '../views/vehicles.actions'
+import type { Selection, RowHintEntry } from '../engine/gantt.types'
+import { getTravelTime } from '../travel-time'
+
+function buildFakeAccessReturn(a: PendingAddTrip): GanttBlockDeadrun[] {
+  const result: GanttBlockDeadrun[] = []
+  if (a.access) {
+    result.push({
+      id:                    `${a._tempId}:access`,
+      type:                  'ACCESS',
+      originLocalityId:      a.access.localityId,
+      destinationLocalityId: a.originLocality.id,
+      originLocality:        { id: a.access.localityId, name: '' },
+      destinationLocality:   a.originLocality,
+      departureMinutes:      a.departureMinutes - a.access.travelMinutes - 1,
+      arrivalMinutes:        a.departureMinutes - 1,
+    })
+  }
+  if (a.return) {
+    result.push({
+      id:                    `${a._tempId}:return`,
+      type:                  'RETURN',
+      originLocalityId:      a.destinationLocality.id,
+      destinationLocalityId: a.return.localityId,
+      originLocality:        a.destinationLocality,
+      destinationLocality:   { id: a.return.localityId, name: '' },
+      departureMinutes:      a.arrivalMinutes + 1,
+      arrivalMinutes:        a.arrivalMinutes + a.return.travelMinutes + 1,
+    })
+  }
+  return result
+}
+
+// A BlockInterval has no FK to the trip it belongs to — the link is positional
+// (nearest preceding productive trip in the block's chronological sequence).
+// Mirrors apps/api/.../vehicle-plan/block-interval.utils.ts on the backend.
+// See docs/proposal/vehicle-plan-block-intervals.md §2.2/§7.1.
+export function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): string[] {
+  if (tripIds.length === 0 || block.blockIntervals.length === 0) return []
+  const tripIdSet = new Set(tripIds)
+  const sortedTrips = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+
+  const anchored: string[] = []
+  for (const bi of block.blockIntervals) {
+    let anchorTripId: string | null = null
+    for (const bt of sortedTrips) {
+      if (bt.trip.arrivalMinutes <= bi.departureMinutes) anchorTripId = bt.trip.id
+      else break
+    }
+    if (anchorTripId && tripIdSet.has(anchorTripId)) anchored.push(bi.id)
+  }
+  return anchored
+}
+
+export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
+export type AddIntervalModalState = { blockTripId: string; blockId: string }
+type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
+type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
+type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
+type PendingMove = { blockTripIds: string[]; breakIds: string[]; fromBlockId: string; toBlockId: string }
+
+interface UseGanttEditorParams {
+  id:           string
+  canEdit:      boolean
+  ganttData:    VehiclePlanGanttData | undefined
+  refetchGantt: () => Promise<unknown>
+  setIsPending: (v: boolean) => void
+}
+
+export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPending }: UseGanttEditorParams) {
+  const queryClient = useQueryClient()
+  const { toast }    = useToast()
+  const confirm      = useConfirm()
+
+  const [selection,             setSelection]             = useState<Selection | null>(null)
+  const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
+  const [addIntervalModal,      setAddIntervalModal]      = useState<AddIntervalModalState | null>(null)
+  const [moveTargetBlockId,     setMoveTargetBlockId]     = useState<string | null>(null)
+  const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
+  const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
+  const [pendingDeadrunChanges, setPendingDeadrunChanges] = useState<Map<string, DeadrunPatch>>(new Map())
+  const [pendingIntervalChanges,setPendingIntervalChanges]= useState<Map<string, IntervalPatch>>(new Map())
+  const [pendingAdds,           setPendingAdds]           = useState<PendingAddEntry[]>([])
+  const [pendingDeletes,        setPendingDeletes]        = useState<Set<string>>(new Set())
+  const [pendingDeadrunDeletes, setPendingDeadrunDeletes] = useState<Set<string>>(new Set())
+  const [pendingIntervalDeletes,setPendingIntervalDeletes]= useState<Set<string>>(new Set())
+  const [editBarOpen,       setEditBarOpen]       = useState(false)
+  const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
+
+  // ── seleção de sequência (shift+pagedown/pageup) — âncora + foco atual formam
+  // um range sobre allTrips filtrado por sentido (mesma travessia do pagedown
+  // simples), cruzando blocos livremente. Independente de `selection`, que só
+  // forma range dentro da mesma row/bloco — ver discussão em docs/TODO.md.
+  const [tripSeqAnchor, setTripSeqAnchor] = useState<string | null>(null)
+
+  // Lines selection for display — checked lines are plotted immediately
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
+
+  // Filtered data: only blocks that have at least one productive trip from a selected line
+  const plottedData = useMemo<VehiclePlanGanttData | null>(() => {
+    if (!ganttData) return null
+    if (selectedLineIds.size === 0) return { ...ganttData, blocks: [] }
+    return {
+      ...ganttData,
+      blocks: ganttData.blocks.filter(b =>
+        b.blockTrips.some(bt => selectedLineIds.has(bt.trip.route.line.id))
+      ),
+    }
+  }, [ganttData, selectedLineIds])
+
+  // Merges pending local overrides and additions into the plotted data before rendering
+  const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
+    if (!plottedData) return null
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return plottedData
+
+    const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
+    let extraBlockCount  = 0
+
+    let blocks = plottedData.blocks.map(b => {
+      const addTrips    = pendingAdds.filter((a): a is PendingAddTrip     => a._kind === 'trip'    && a.blockId === b.id)
+      const addDeadruns = pendingAdds.filter((a): a is PendingAddDeadrun  => a._kind === 'deadrun' && a.blockId === b.id)
+      const addBreaks   = pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break'   && a.blockId === b.id)
+      return {
+        ...b,
+        blockTrips: [
+          ...b.blockTrips.filter(bt => !pendingDeletes.has(bt.trip.id)).map(bt => {
+            const patch = pendingChanges.get(bt.trip.id)
+            if (!patch) return bt
+            return { ...bt, trip: { ...bt.trip, ...patch } }
+          }),
+          ...addTrips.map(a => ({
+            id:       a._tempId,
+            sequence: 99,
+            trip: {
+              id:               `${a._tempId}:trip`,
+              departureMinutes: a.departureMinutes,
+              arrivalMinutes:   a.arrivalMinutes,
+              constraints:      null,
+              route: {
+                direction:           a.direction,
+                line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
+                originLocality:      a.originLocality,
+                destinationLocality: a.destinationLocality,
+              },
+            },
+          })),
+        ],
+        blockDeadruns: [
+          ...b.blockDeadruns.filter(dr => !pendingDeadrunDeletes.has(dr.id)).map(dr => {
+            const patch = pendingDeadrunChanges.get(dr.id)
+            if (!patch) return dr
+            return { ...dr, ...patch }
+          }),
+          ...addDeadruns.map(a => ({
+            id:                    a._tempId,
+            type:                  'DISPLACEMENT' as const,
+            originLocalityId:      a.originLocality.id,
+            destinationLocalityId: a.destinationLocality.id,
+            originLocality:        a.originLocality,
+            destinationLocality:   a.destinationLocality,
+            departureMinutes:      a.departureMinutes,
+            arrivalMinutes:        a.arrivalMinutes,
+          })),
+          ...addTrips.flatMap(buildFakeAccessReturn),
+        ],
+        blockIntervals: [
+          ...b.blockIntervals.filter(bi => !pendingIntervalDeletes.has(bi.id)).map(bi => {
+            const patch = pendingIntervalChanges.get(bi.id)
+            if (!patch) return bi
+            return { ...bi, ...patch }
+          }),
+          ...addBreaks.map(a => ({
+            id:             a._tempId,
+            intervalTypeId: a.intervalTypeId,
+            intervalType: {
+              id:         a.intervalTypeId,
+              code:       a.intervalTypeCode,
+              name:       a.intervalTypeName,
+              isPaid:     a.isPaid,
+              minMinutes: a.minMinutes,
+              maxMinutes: a.maxMinutes,
+            },
+            departureMinutes: a.departureMinutes,
+            arrivalMinutes:   a.arrivalMinutes,
+          })),
+        ],
+      }
+    })
+
+    // Fake blocks for pending adds targeting a new block. blockId is either 'new'
+    // (spawn a fresh block, keyed by its own tempId) or `pending:<key>` (join a
+    // fake block created by an earlier 'new' add — picked from the Bloco select).
+    const firstBlock = plottedData.blocks[0]
+    const fakeGroups = new Map<string, PendingAddEntry[]>()
+    for (const a of pendingAdds) {
+      if (a.blockId === 'new') {
+        fakeGroups.set(a._tempId, [a])
+      } else if (a.blockId.startsWith('pending:')) {
+        fakeGroups.get(a.blockId.slice('pending:'.length))?.push(a)
+      }
+    }
+
+    const fakeBlocks: GanttBlock[] = Array.from(fakeGroups.entries()).map(([key, entries]) => {
+      extraBlockCount++
+      const addTrips    = entries.filter((a): a is PendingAddTrip     => a._kind === 'trip')
+      const addDeadruns = entries.filter((a): a is PendingAddDeadrun  => a._kind === 'deadrun')
+      const addBreaks   = entries.filter((a): a is PendingAddInterval => a._kind === 'break')
+      return {
+        id:          `pending:${key}`,
+        blockNumber: maxBlockNumber + extraBlockCount,
+        vehicleType: firstBlock?.vehicleType ?? '',
+        branchId:    firstBlock?.branchId    ?? null,
+        branch:      firstBlock?.branch      ?? null,
+        depotId:     firstBlock?.depotId     ?? '',
+        depot:       firstBlock?.depot       ?? { id: '', name: '' },
+        constraints: null,
+        summary:     null,
+        blockTrips: addTrips.map(a => ({
+          id:       a._tempId,
+          sequence: 0,
+          trip: {
+            id:               `${a._tempId}:trip`,
+            departureMinutes: a.departureMinutes,
+            arrivalMinutes:   a.arrivalMinutes,
+            constraints:      null,
+            route: {
+              direction:           a.direction,
+              line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
+              originLocality:      a.originLocality,
+              destinationLocality: a.destinationLocality,
+            },
+          },
+        })),
+        blockDeadruns: [
+          ...addDeadruns.map(a => ({
+            id:                    a._tempId,
+            type:                  'DISPLACEMENT' as const,
+            originLocalityId:      a.originLocality.id,
+            destinationLocalityId: a.destinationLocality.id,
+            originLocality:        a.originLocality,
+            destinationLocality:   a.destinationLocality,
+            departureMinutes:      a.departureMinutes,
+            arrivalMinutes:        a.arrivalMinutes,
+          })),
+          ...addTrips.flatMap(buildFakeAccessReturn),
+        ],
+        blockIntervals: addBreaks.map(a => ({
+          id:             a._tempId,
+          intervalTypeId: a.intervalTypeId,
+          intervalType: {
+            id:         a.intervalTypeId,
+            code:       a.intervalTypeCode,
+            name:       a.intervalTypeName,
+            isPaid:     a.isPaid,
+            minMinutes: a.minMinutes,
+            maxMinutes: a.maxMinutes,
+          },
+          departureMinutes: a.departureMinutes,
+          arrivalMinutes:   a.arrivalMinutes,
+        })),
+      }
+    })
+
+    // Apply pending block moves. Runs over blocks + fakeBlocks together — a move's
+    // toBlockId (or, after a chained re-move, fromBlockId) can point at a still-
+    // pending 'pending:<tempId>' fake block, so fakeBlocks must be reachable here
+    // too or a move into/out of an unsaved new block silently loses the trip.
+    let allBlocks = [...blocks, ...fakeBlocks]
+
+    if (pendingMoves.length > 0) {
+      const blockMap          = new Map(allBlocks.map(b => [b.id, b]))
+      const awayByBlock       = new Map<string, Set<string>>()
+      const awayBreaksByBlock = new Map<string, Set<string>>()
+      for (const move of pendingMoves) {
+        if (!awayByBlock.has(move.fromBlockId)) awayByBlock.set(move.fromBlockId, new Set())
+        for (const id of move.blockTripIds) awayByBlock.get(move.fromBlockId)!.add(id)
+        if (!awayBreaksByBlock.has(move.fromBlockId)) awayBreaksByBlock.set(move.fromBlockId, new Set())
+        for (const id of move.breakIds) awayBreaksByBlock.get(move.fromBlockId)!.add(id)
+      }
+      allBlocks = allBlocks.map(block => {
+        const awayIds      = awayByBlock.get(block.id) ?? new Set<string>()
+        const awayBreakIds = awayBreaksByBlock.get(block.id) ?? new Set<string>()
+        const movedIn = pendingMoves
+          .filter(m => m.toBlockId === block.id)
+          .flatMap(m => {
+            const fromBlock = blockMap.get(m.fromBlockId)
+            if (!fromBlock) return []
+            return m.blockTripIds
+              .map(id => fromBlock.blockTrips.find(bt => bt.id === id))
+              .filter((bt): bt is NonNullable<typeof bt> => bt != null)
+          })
+        const movedInBreaks = pendingMoves
+          .filter(m => m.toBlockId === block.id)
+          .flatMap(m => {
+            const fromBlock = blockMap.get(m.fromBlockId)
+            if (!fromBlock) return []
+            return m.breakIds
+              .map(id => fromBlock.blockIntervals.find(bi => bi.id === id))
+              .filter((bi): bi is NonNullable<typeof bi> => bi != null)
+          })
+        return {
+          ...block,
+          blockTrips:     [...block.blockTrips.filter(bt => !awayIds.has(bt.id)), ...movedIn],
+          blockIntervals: [...block.blockIntervals.filter(bi => !awayBreakIds.has(bi.id)), ...movedInBreaks],
+        }
+      })
+    }
+
+    return { ...plottedData, blocks: allBlocks }
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves])
+
+  // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
+  const allTrips = useMemo(() => {
+    if (!mergedPlottedData) return [] as Array<{ segId: string; dep: number; direction: string }>
+    return mergedPlottedData.blocks.flatMap(block =>
+      block.blockTrips.map(bt => ({
+        segId:     bt.id,
+        dep:       bt.trip.departureMinutes,
+        direction: bt.trip.route.direction,
+      }))
+    ).sort((a, b) => a.dep - b.dep)
+  }, [mergedPlottedData])
+
+  // Flat per-block item lists for keyboard navigation (trips + deadruns by dep)
+  const navBlocks = useMemo(() => {
+    if (!mergedPlottedData) return [] as Array<Array<{ segId: string; dep: number }>>
+    return mergedPlottedData.blocks.map(block => [
+      ...block.blockTrips.map(bt     => ({ segId: bt.id,           dep: bt.trip.departureMinutes })),
+      ...block.blockDeadruns.map(dr  => ({ segId: `${dr.id}:dr`,   dep: dr.departureMinutes })),
+      ...block.blockIntervals.map(bi => ({ segId: `${bi.id}:bk`,   dep: bi.departureMinutes })),
+    ].sort((a, b) => a.dep - b.dep))
+  }, [mergedPlottedData])
+
+  // Range de shift+pagedown/pageup: janela [âncora, foco] sobre allTrips,
+  // restrita ao sentido da âncora — mesma travessia (todas as linhas) que o
+  // pagedown simples já faz, só que materializada como conjunto pra highlight.
+  const tripSeqRangeIds = useMemo(() => {
+    if (!tripSeqAnchor || !focusedSegId) return null
+    const anchorIdx = allTrips.findIndex(t => t.segId === tripSeqAnchor)
+    const focusIdx   = allTrips.findIndex(t => t.segId === focusedSegId)
+    if (anchorIdx === -1 || focusIdx === -1) return null
+    const dir = allTrips[anchorIdx].direction
+    const lo = Math.min(anchorIdx, focusIdx)
+    const hi = Math.max(anchorIdx, focusIdx)
+    const ids = new Set<string>()
+    for (let i = lo; i <= hi; i++) {
+      if (allTrips[i].direction === dir) ids.add(allTrips[i].segId)
+    }
+    return ids
+  }, [tripSeqAnchor, focusedSegId, allTrips])
+
+  // Viagens do tripSeqRangeIds materializadas com dados pra distribuição de
+  // headway (q+space): só opera sobre uma única linha — o conceito de headway
+  // (ver computeHeadway/LineFreqPanel) é por linha+sentido, então misturar
+  // linhas aqui produziria um espaçamento sem sentido operacional.
+  const headwayRangeInfo = useMemo(() => {
+    if (!mergedPlottedData || !tripSeqRangeIds || tripSeqRangeIds.size < 3) return null
+    const trips: Array<{ segId: string; tripId: string; lineId: string; blockId: string; dep: number; arr: number }> = []
+    for (const block of mergedPlottedData.blocks) {
+      for (const bt of block.blockTrips) {
+        if (tripSeqRangeIds.has(bt.id)) {
+          trips.push({
+            segId:   bt.id,
+            tripId:  bt.trip.id,
+            lineId:  bt.trip.route.line.id,
+            blockId: block.id,
+            dep:     bt.trip.departureMinutes,
+            arr:     bt.trip.arrivalMinutes,
+          })
+        }
+      }
+    }
+    if (trips.length < 3) return null
+    trips.sort((a, b) => a.dep - b.dep)
+    const singleLine = new Set(trips.map(t => t.lineId)).size === 1
+    return { trips, singleLine }
+  }, [mergedPlottedData, tripSeqRangeIds])
+
+  // Índice pro LineFreqPanel — mesmos dados do Gantt, agrupados por linha/sentido
+  // com headway pré-computado numa única passada (ver line-freq.view.ts). O
+  // painel é só-leitura: localiza a linha/sentido/posição do focusedSegId em
+  // O(1) via segIndex, sem estado de foco/seleção próprio.
+  const freqIndex = useMemo(
+    () => mergedPlottedData ? buildLineFreqIndex(mergedPlottedData) : null,
+    [mergedPlottedData],
+  )
+
+  // Focus/selection can go stale when the data underneath changes (e.g. a pending
+  // add gets discarded via alt+l) — without this, keyboard nav gets stuck since
+  // most arrow shortcuts require a valid focus and no dangling selection.
+  useEffect(() => {
+    if (!editBarOpen) return
+    const flatIds = new Set(navBlocks.flatMap(block => block.map(i => i.segId)))
+
+    if (focusedSegId && !flatIds.has(focusedSegId)) {
+      setFocusedSegId(navBlocks.find(block => block.length > 0)?.[0]?.segId ?? null)
+    }
+
+    if (tripSeqAnchor && !flatIds.has(tripSeqAnchor)) setTripSeqAnchor(null)
+
+    if (selection) {
+      const selIds = selection.type === 'trip' ? [selection.segment.id] : selection.segments.map(s => s.id)
+      if (selIds.some(id => !flatIds.has(id))) setSelection(null)
+    }
+  }, [navBlocks, editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reference trip for the "add trip" modal prefill: the focused trip itself, or —
+  // when focus is on a rest break — the last productive trip before it in the same
+  // block/vehicle (see AddTripModal's `reference` prop).
+  const addTripReference = useMemo(() => {
+    if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return null
+
+    if (focusedSegId.endsWith(':bk')) {
+      const breakId = focusedSegId.slice(0, -3)
+      for (const block of mergedPlottedData.blocks) {
+        const bi = block.blockIntervals.find(bi => bi.id === breakId)
+        if (!bi) continue
+        const referenceTrip = block.blockTrips
+          .filter(bt => bt.trip.arrivalMinutes <= bi.departureMinutes)
+          .sort((a, b) => b.trip.arrivalMinutes - a.trip.arrivalMinutes)[0]
+        return referenceTrip ? { block, referenceTrip } : null
+      }
+      return null
+    }
+
+    for (const block of mergedPlottedData.blocks) {
+      const referenceTrip = block.blockTrips.find(bt => bt.id === focusedSegId)
+      if (referenceTrip) return { block, referenceTrip }
+    }
+    return null
+  }, [mergedPlottedData, focusedSegId])
+
+  // Full block order + source block index, used to navigate move targets
+  // relative to the source block's own position (skipping the source itself).
+  const moveTargetBlocks = useMemo(() => {
+    if (!mergedPlottedData || !selection) return null
+    const sourceId     = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
+    const allBlockIds  = mergedPlottedData.blocks.map(b => b.id)
+    const sourceIndex  = allBlockIds.indexOf(sourceId)
+    if (sourceIndex === -1) return null
+    return { allBlockIds, sourceIndex }
+  }, [mergedPlottedData, selection])
+
+  // Step the move-target cursor by ±1, skipping over the source block and
+  // clamping (not wrapping) at the array boundaries.
+  function stepMoveTarget(prev: string | null, dir: 1 | -1): string | null {
+    if (!moveTargetBlocks) return prev
+    const { allBlockIds, sourceIndex } = moveTargetBlocks
+    const curIdx = prev ? allBlockIds.indexOf(prev) : sourceIndex
+    let next = curIdx + dir
+    if (next === sourceIndex) next += dir
+    if (next < 0 || next >= allBlockIds.length) return prev
+    return allBlockIds[next]
+  }
+
+  // Reset move target whenever selection changes
+  useEffect(() => { setMoveTargetBlockId(null) }, [selection])
+
+  // Shortcut hints shown alongside the move-target row highlight
+  const moveTargetHints = useMemo<RowHintEntry[]>(() => (
+    moveTargetBlockId ? [{ keys: ['Q', 'M'], label: 'Mover' }] : []
+  ), [moveTargetBlockId])
+
+  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length
+
+  async function handleUpdateConstraints(tripIds: string[], patches: TripConstraints | null | TripConstraints[]) {
+    if (!canEdit) return
+    try {
+      await Promise.all(
+        tripIds.map((tripId, i) => {
+          const constraints = Array.isArray(patches) ? patches[i] : patches
+          return apiFetch(`/transit/transit-trip/${tripId}`, {
+            method: 'PATCH',
+            body:   JSON.stringify({ constraints }),
+          })
+        })
+      )
+      queryClient.setQueryData(
+        ['transit', 'vehicle-plan', id, 'gantt'],
+        (old: VehiclePlanGanttData | undefined) => {
+          if (!old) return old
+          return {
+            ...old,
+            blocks: old.blocks.map(b => ({
+              ...b,
+              blockTrips: b.blockTrips.map(bt => {
+                const idx = tripIds.indexOf(bt.trip.id)
+                if (idx === -1) return bt
+                const constraints = Array.isArray(patches) ? patches[idx] : patches
+                return { ...bt, trip: { ...bt.trip, constraints } }
+              }),
+            })),
+          }
+        },
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar restrições')
+    }
+  }
+
+  function handleAdjustCycle() {
+    if (!plottedData || !canEdit) return
+
+    const overrides   = new Map<string, TripPatch>()
+    const drOverrides = new Map<string, DeadrunPatch>()
+    const bkOverrides = new Map<string, IntervalPatch>()
+    let tripsWithWindow = 0
+
+    // Process per block: a block = one vehicle.
+    // Merge trips, deadruns and breaks into chronological order so deadruns/breaks
+    // shift automatically when the preceding trip's arrival extends.
+    for (const block of plottedData.blocks) {
+      type TripItem    = { kind: 'trip';    dep: number; bt: typeof block.blockTrips[0] }
+      type DrItem      = { kind: 'deadrun'; dep: number; dr: typeof block.blockDeadruns[0] }
+      type BkItem      = { kind: 'break';   dep: number; bi: typeof block.blockIntervals[0] }
+      type BlockItem   = TripItem | DrItem | BkItem
+
+      const items: BlockItem[] = [
+        ...block.blockTrips.map(bt     => ({ kind: 'trip'    as const, dep: bt.trip.departureMinutes, bt })),
+        ...block.blockDeadruns.map(dr  => ({ kind: 'deadrun' as const, dep: dr.departureMinutes,      dr })),
+        ...block.blockIntervals.map(bi => ({ kind: 'break'   as const, dep: bi.departureMinutes,      bi })),
+      ].sort((a, b) => a.dep - b.dep)
+
+      let prevArrival     = -Infinity
+      let pendingInterval = 0  // interval to apply before the next trip (0 after a deadrun)
+
+      for (let i = 0; i < items.length; i++) {
+        const item     = items[i]
+        const nextItem = items[i + 1]
+
+        if (item.kind === 'trip') {
+          const { trip } = item.bt
+
+          const minDep      = prevArrival === -Infinity ? -Infinity : prevArrival + pendingInterval
+          const effectiveDep = Math.max(
+            overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes,
+            minDep,
+          )
+          const cycleWindow  = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
+          const cycleMinutes = cycleWindow?.minutes ?? null
+          if (cycleWindow) tripsWithWindow++
+          const newArrival = cycleMinutes != null
+            ? effectiveDep + cycleMinutes
+            : effectiveDep + (trip.arrivalMinutes - trip.departureMinutes)
+
+          const patch: TripPatch = {}
+          if (effectiveDep !== trip.departureMinutes) patch.departureMinutes = effectiveDep
+          if (newArrival   !== trip.arrivalMinutes)   patch.arrivalMinutes   = newArrival
+          if (Object.keys(patch).length > 0) overrides.set(trip.id, { ...overrides.get(trip.id), ...patch })
+
+          prevArrival = newArrival
+          // If next item is another trip (no deadrun between them), enforce the route headway.
+          // If next item is a deadrun, set interval=0 — the deadrun itself is the gap.
+          pendingInterval = (nextItem?.kind === 'trip' && cycleWindow) ? cycleWindow.intervalMinutes : 0
+
+        } else if (item.kind === 'deadrun') {
+          // Deadrun: always anchor to prevArrival (follows preceding trip in both directions),
+          // preserving the original travel duration. Skip only when there is no preceding item.
+          const { dr } = item
+          const duration = dr.arrivalMinutes - dr.departureMinutes
+          const newDep   = prevArrival !== -Infinity ? prevArrival : dr.departureMinutes
+          const newArr   = newDep + duration
+
+          const dpatch: DeadrunPatch = {}
+          if (newDep !== dr.departureMinutes) dpatch.departureMinutes = newDep
+          if (newArr !== dr.arrivalMinutes)   dpatch.arrivalMinutes   = newArr
+          if (Object.keys(dpatch).length > 0) drOverrides.set(dr.id, dpatch)
+
+          prevArrival     = newArr
+          pendingInterval = 0  // next trip starts right after deadrun, no extra interval
+        } else {
+          // Break: same treatment as deadrun — lives attached to whatever trip
+          // precedes it, so it follows prevArrival and keeps its own duration.
+          const { bi } = item
+          const duration = bi.arrivalMinutes - bi.departureMinutes
+          const newDep   = prevArrival !== -Infinity ? prevArrival : bi.departureMinutes
+          const newArr   = newDep + duration
+
+          const bpatch: IntervalPatch = {}
+          if (newDep !== bi.departureMinutes) bpatch.departureMinutes = newDep
+          if (newArr !== bi.arrivalMinutes)   bpatch.arrivalMinutes   = newArr
+          if (Object.keys(bpatch).length > 0) bkOverrides.set(bi.id, bpatch)
+
+          prevArrival     = newArr
+          pendingInterval = 0
+        }
+      }
+    }
+
+    setPendingChanges(overrides)
+    setPendingDeadrunChanges(drOverrides)
+    setPendingIntervalChanges(bkOverrides)
+
+    const tripCount    = overrides.size
+    const deadrunCount = drOverrides.size
+    const breakCount   = bkOverrides.size
+    if (tripCount > 0 || deadrunCount > 0 || breakCount > 0) {
+      const parts = [
+        tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`       : null,
+        deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}`   : null,
+        breakCount   > 0 ? `${breakCount} ${breakCount === 1 ? 'intervalo' : 'intervalos'}` : null,
+      ].filter(Boolean).join(' e ')
+      toast.success(`${parts} ajustados — use Salvar para persistir`)
+    } else if (tripsWithWindow > 0) {
+      toast.success('Ciclo já está correto em todas as viagens — nenhuma alteração realizada')
+    } else {
+      toast.error('Nenhuma viagem com ciclo configurado encontrada')
+    }
+  }
+
+  // Distribui uniformemente o headway das viagens do intervalo selecionado
+  // (shift+pagedown/pageup), mantendo fixas a primeira e a última viagem do
+  // intervalo como âncoras. Não mexe no tempo de ciclo (duração dep→arr de
+  // cada viagem é preservada, só desloca o par inteiro) — no futuro um
+  // setting vai liberar uma margem pra essa função também ajustar o ciclo.
+  //
+  // Simplificação aceita: os limites de cada viagem vêm dos vizinhos atuais
+  // do seu próprio bloco (vazio/intervalo/outra viagem), sem considerar que
+  // esse vizinho também pode ser outra viagem do intervalo que já moveu —
+  // caso raro (duas viagens do mesmo intervalo dificilmente são adjacentes
+  // no mesmo veículo, já que alternam sentido a cada viagem produtiva).
+  function handleDistributeHeadway() {
+    if (!canEdit || !mergedPlottedData || !headwayRangeInfo) return
+
+    if (!headwayRangeInfo.singleLine) {
+      toast.error('O intervalo selecionado mistura mais de uma linha — distribua o headway com um intervalo de uma única linha')
+      return
+    }
+
+    const rangeTrips = headwayRangeInfo.trips
+    const tempTripIds = new Set(pendingAdds.filter(a => a._kind === 'trip').map(a => a._tempId))
+    if (rangeTrips.some(t => tempTripIds.has(t.segId))) {
+      toast.error('Salve as viagens novas do intervalo antes de distribuir o headway')
+      return
+    }
+
+    const n        = rangeTrips.length
+    const firstDep = rangeTrips[0].dep
+    const lastDep  = rangeTrips[n - 1].dep
+    const idealGap = (lastDep - firstDep) / (n - 1)
+
+    function blockTimeline(blockId: string) {
+      const block = mergedPlottedData!.blocks.find(b => b.id === blockId)!
+      return [
+        ...block.blockTrips.map(bt     => ({ kind: 'trip' as const,    id: bt.id, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })),
+        ...block.blockDeadruns.map(dr  => ({ kind: 'deadrun' as const, id: dr.id, dep: dr.departureMinutes,      arr: dr.arrivalMinutes })),
+        ...block.blockIntervals.map(bi => ({ kind: 'break' as const,   id: bi.id, dep: bi.departureMinutes,     arr: bi.arrivalMinutes })),
+      ].sort((a, b) => a.dep - b.dep)
+    }
+
+    const overrides = new Map(pendingChanges)
+    let movedCount    = 0
+    let strandedCount = 0
+
+    for (let i = 1; i < n - 1; i++) {
+      const rt       = rangeTrips[i]
+      const duration = rt.arr - rt.dep
+      const idealDep = Math.round(firstDep + i * idealGap)
+
+      const timeline = blockTimeline(rt.blockId)
+      const ownIdx   = timeline.findIndex(it => it.kind === 'trip' && it.id === rt.segId)
+      // Mantém 1min de folga contra o vizinho — não pode encostar (fim == início do próximo).
+      const lowerBound = ownIdx > 0                      ? timeline[ownIdx - 1].arr + 1             : -Infinity
+      const upperBound = ownIdx < timeline.length - 1    ? timeline[ownIdx + 1].dep - duration - 1   : Infinity
+
+      if (lowerBound > upperBound) { strandedCount++; continue }
+
+      const newDep = Math.min(Math.max(idealDep, lowerBound), upperBound)
+      if (newDep === rt.dep) continue
+
+      movedCount++
+      overrides.set(rt.tripId, { ...overrides.get(rt.tripId), departureMinutes: newDep, arrivalMinutes: newDep + duration })
+    }
+
+    if (movedCount === 0) {
+      toast.success(strandedCount > 0
+        ? 'Nenhuma viagem pôde ser movida — sem espaço entre os vizinhos de bloco'
+        : 'Headway já está uniforme neste intervalo — nenhuma alteração necessária')
+      return
+    }
+
+    setPendingChanges(overrides)
+    toast.success('Viagens distribuídas')
+  }
+
+  const handleTripTimingOp = useCallback((
+    op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext',
+  ) => {
+    if (!canEdit || !mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
+
+    const isBreakFocus = focusedSegId.endsWith(':bk')
+    const breakId       = isBreakFocus ? focusedSegId.slice(0, -3) : null
+
+    let foundBlock: typeof mergedPlottedData.blocks[0] | null = null
+    for (const block of mergedPlottedData.blocks) {
+      const hasFocused = isBreakFocus
+        ? block.blockIntervals.some(bi => bi.id === breakId)
+        : block.blockTrips.some(bt => bt.id === focusedSegId)
+      if (hasFocused) { foundBlock = block; break }
+    }
+    if (!foundBlock) return
+
+    type TItem = { kind: 'trip';    id: string; tripId: string; dep: number; arr: number }
+    type DItem = { kind: 'deadrun'; id: string; drId:  string;  dep: number; arr: number }
+    type BItem = { kind: 'break';   id: string; bkId:  string;  dep: number; arr: number }
+    type Item  = TItem | DItem | BItem
+
+    const items: Item[] = [
+      ...foundBlock.blockTrips.map(bt => ({
+        kind: 'trip' as const, id: bt.id, tripId: bt.trip.id,
+        dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes,
+      })),
+      ...foundBlock.blockDeadruns.map(dr => ({
+        kind: 'deadrun' as const, id: dr.id, drId: dr.id,
+        dep: dr.departureMinutes, arr: dr.arrivalMinutes,
+      })),
+      ...foundBlock.blockIntervals.map(bi => ({
+        kind: 'break' as const, id: bi.id, bkId: bi.id,
+        dep: bi.departureMinutes, arr: bi.arrivalMinutes,
+      })),
+    ].sort((a, b) => a.dep - b.dep)
+
+    const markedIdx = isBreakFocus
+      ? items.findIndex(i => i.kind === 'break' && i.id === breakId)
+      : items.findIndex(i => i.kind === 'trip'  && i.id === focusedSegId)
+    if (markedIdx === -1) return
+    const marked = items[markedIdx]
+
+    let prevProd: Item | null = null
+    for (let i = markedIdx - 1; i >= 0; i--) {
+      if (items[i].kind === 'trip') { prevProd = items[i]; break }
+    }
+    let nextProd: Item | null = null
+    for (let i = markedIdx + 1; i < items.length; i++) {
+      if (items[i].kind === 'trip') { nextProd = items[i]; break }
+    }
+
+    const itemBefore = markedIdx > 0 ? items[markedIdx - 1] : null
+    const nextItem    = markedIdx + 1 < items.length ? items[markedIdx + 1] : null
+    const subsequent = items.slice(markedIdx + 1)
+
+    const newTrips = new Map(pendingChanges)
+    const newDrs   = new Map(pendingDeadrunChanges)
+    const newBks   = new Map(pendingIntervalChanges)
+
+    // Pending (not-yet-persisted) trips/deadruns/breaks have no counterpart in
+    // ganttData to diff/patch against — they live as full objects in pendingAdds
+    // instead, so timing ops write straight into that array for them.
+    const tempTripIds    = new Set(pendingAdds.filter(a => a._kind === 'trip').map(a => `${a._tempId}:trip`))
+    const tempDeadrunIds = new Set(pendingAdds.filter(a => a._kind === 'deadrun').map(a => a._tempId))
+    const tempBreakIds   = new Set(pendingAdds.filter(a => a._kind === 'break').map(a => a._tempId))
+
+    const tempTripUpdates    = new Map<string, { dep: number; arr: number }>()
+    const tempDeadrunUpdates = new Map<string, { dep: number; arr: number }>()
+    const tempBreakUpdates   = new Map<string, { dep: number; arr: number }>()
+
+    function setTrip(tripId: string, dep: number, arr: number) {
+      if (tempTripIds.has(tripId)) {
+        tempTripUpdates.set(tripId.slice(0, -':trip'.length), { dep, arr })
+        return
+      }
+      const orig = ganttData?.blocks.flatMap(b => b.blockTrips).find(bt => bt.trip.id === tripId)?.trip
+      const patch: TripPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) newTrips.set(tripId, patch)
+      else newTrips.delete(tripId)
+    }
+
+    function setDr(drId: string, dep: number, arr: number) {
+      if (tempDeadrunIds.has(drId)) {
+        tempDeadrunUpdates.set(drId, { dep, arr })
+        return
+      }
+      // Access/return deadruns synthesized for a pending trip (buildFakeAccessReturn)
+      // have no independent existence — they're recomputed from the trip's own
+      // departure/arrival every render, so shifting the trip is enough.
+      if (drId.endsWith(':access') || drId.endsWith(':return')) return
+      const orig = ganttData?.blocks.flatMap(b => b.blockDeadruns).find(dr => dr.id === drId)
+      const patch: DeadrunPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) newDrs.set(drId, patch)
+      else newDrs.delete(drId)
+    }
+
+    function setBk(bkId: string, dep: number, arr: number) {
+      if (tempBreakIds.has(bkId)) {
+        tempBreakUpdates.set(bkId, { dep, arr })
+        return
+      }
+      const orig = ganttData?.blocks.flatMap(b => b.blockIntervals).find(bi => bi.id === bkId)
+      const patch: IntervalPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) newBks.set(bkId, patch)
+      else newBks.delete(bkId)
+    }
+
+    function shiftSubsequent(delta: number) {
+      for (const item of subsequent) {
+        if (item.kind === 'trip')        setTrip((item as TItem).tripId, item.dep + delta, item.arr + delta)
+        else if (item.kind === 'deadrun') setDr((item as DItem).drId,    item.dep + delta, item.arr + delta)
+        else                              setBk((item as BItem).bkId,    item.dep + delta, item.arr + delta)
+      }
+    }
+
+    // Push only the deadruns/breaks that sit between the marked trip and the next productive trip
+    function pushLeadingDeadruns(delta: number) {
+      for (const item of subsequent) {
+        if (item.kind === 'deadrun')     setDr((item as DItem).drId, item.dep + delta, item.arr + delta)
+        else if (item.kind === 'break')  setBk((item as BItem).bkId, item.dep + delta, item.arr + delta)
+        else break
+      }
+    }
+
+    function setMarked(dep: number, arr: number) {
+      if (marked.kind === 'trip')       setTrip((marked as TItem).tripId, dep, arr)
+      else if (marked.kind === 'break') setBk((marked as BItem).bkId,     dep, arr)
+    }
+
+    switch (op) {
+      case 'grow': {
+        setMarked(marked.dep, marked.arr + 1)
+        shiftSubsequent(1)
+        break
+      }
+      case 'shrink': {
+        if (marked.arr - marked.dep <= 1) return
+        if (!prevProd && itemBefore?.kind === 'deadrun')
+          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        setMarked(marked.dep, marked.arr - 1)
+        shiftSubsequent(-1)
+        break
+      }
+      case 'push': {
+        setMarked(marked.dep + 1, marked.arr + 1)
+        shiftSubsequent(1)
+        break
+      }
+      case 'pull': {
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        if (!prevProd && itemBefore?.kind === 'deadrun')
+          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        setMarked(marked.dep - 1, marked.arr - 1)
+        shiftSubsequent(-1)
+        break
+      }
+      case 'growOnly': {
+        if (nextProd && nextProd.dep - marked.arr <= 1) return
+        pushLeadingDeadruns(1)
+        setMarked(marked.dep, marked.arr + 1)
+        break
+      }
+      case 'shrinkOnly': {
+        if (marked.arr - marked.dep <= 1) return
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        setMarked(marked.dep, marked.arr - 1)
+        break
+      }
+      case 'pushOnly': {
+        if (nextProd && nextProd.dep - marked.arr <= 1) return
+        pushLeadingDeadruns(1)
+        setMarked(marked.dep + 1, marked.arr + 1)
+        break
+      }
+      case 'pullOnly': {
+        if (prevProd && marked.dep - prevProd.arr <= 1) return
+        if (!prevProd && itemBefore?.kind === 'deadrun')
+          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        setMarked(marked.dep - 1, marked.arr - 1)
+        break
+      }
+      case 'extendToNext': {
+        if (marked.kind !== 'break') return
+        const bi         = foundBlock.blockIntervals.find(bi => bi.id === (marked as BItem).bkId)
+        const maxMinutes = bi?.intervalType.maxMinutes ?? null
+
+        // Already over the type's cap (e.g. after the type changed) — trim back to
+        // maxMinutes regardless of what's next; doesn't touch neighboring segments.
+        if (maxMinutes != null && marked.arr - marked.dep > maxMinutes) {
+          setBk((marked as BItem).bkId, marked.dep, marked.dep + maxMinutes)
+          break
+        }
+
+        if (!nextItem) return
+        const maxArr    = maxMinutes != null ? marked.dep + maxMinutes : Infinity
+        const targetArr = Math.min(nextItem.dep - 1, maxArr)
+        if (targetArr <= marked.arr) return
+        setBk((marked as BItem).bkId, marked.dep, targetArr)
+        break
+      }
+    }
+
+    setPendingChanges(newTrips)
+    setPendingDeadrunChanges(newDrs)
+    setPendingIntervalChanges(newBks)
+
+    if (tempTripUpdates.size > 0 || tempDeadrunUpdates.size > 0 || tempBreakUpdates.size > 0) {
+      setPendingAdds(prev => prev.map(a => {
+        if (a._kind === 'trip'     && tempTripUpdates.has(a._tempId)) {
+          const u = tempTripUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        if (a._kind === 'deadrun'  && tempDeadrunUpdates.has(a._tempId)) {
+          const u = tempDeadrunUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        if (a._kind === 'break'    && tempBreakUpdates.has(a._tempId)) {
+          const u = tempBreakUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        return a
+      }))
+    }
+  }, [canEdit, focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
+
+  function handleSelectionChange(sel: Selection | null) {
+    if (!editBarOpen) return
+    setSelection(sel)
+    setTripSeqAnchor(null)
+    if (sel?.type === 'trip') {
+      setFocusedSegId(sel.segment.id)
+    }
+  }
+
+  function handlePendingAdd(entry: PendingAddEntry) {
+    if (!canEdit) return
+    setPendingAdds(prev => [...prev, entry])
+  }
+
+  function clearAllPending() {
+    setPendingChanges(new Map())
+    setPendingDeadrunChanges(new Map())
+    setPendingIntervalChanges(new Map())
+    setPendingAdds([])
+    setPendingDeletes(new Set())
+    setPendingDeadrunDeletes(new Set())
+    setPendingIntervalDeletes(new Set())
+    setPendingMoves([])
+  }
+
+  async function handleToggleEditBar() {
+    if (editBarOpen && pendingCount > 0) {
+      const ok = await confirm({
+        title:        'Fechar modo de edição',
+        description:  'Existem alterações pendentes que serão descartadas.',
+        confirmLabel: 'Fechar e descartar',
+        variant:      'destructive',
+      })
+      if (!ok) return
+      clearAllPending()
+      setSelection(null)
+      setFocusedSegId(null)
+      setEditBarOpen(false)
+    } else if (!editBarOpen && selectedLineIds.size === 0) {
+      return
+    } else {
+      setEditBarOpen(v => !v)
+    }
+  }
+
+  async function handleSavePendingWithConfirm() {
+    if (!canEdit) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
+    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
+    const ok = await confirm({
+      title:        'Salvar alterações',
+      description:  `Confirmar o salvamento de ${total} alteração(ões) pendente(s)?`,
+      confirmLabel: 'Salvar',
+      variant:      'safeConfirm',
+    })
+    if (!ok) return
+    await handleSavePending()
+  }
+
+  async function handleDiscardPendingWithConfirm() {
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
+    const ok = await confirm({
+      title:        'Descartar alterações',
+      description:  'Todas as alterações pendentes serão removidas.',
+      confirmLabel: 'Descartar',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    clearAllPending()
+  }
+
+  async function handleSavePending() {
+    if (!canEdit) return
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
+    setIsPending(true)
+    try {
+      // Save trip patches
+      await Promise.all(
+        Array.from(pendingChanges.entries()).map(([tripId, patch]) =>
+          apiFetch(`/transit/transit-trip/${tripId}`, {
+            method: 'PATCH',
+            body:   JSON.stringify(patch),
+          }),
+        ),
+      )
+
+      // Save deadrun patches grouped by block (endpoint requires block ownership)
+      if (pendingDeadrunChanges.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const updates = block.blockDeadruns
+              .filter(dr => pendingDeadrunChanges.has(dr.id))
+              .map(dr => {
+                const patch = pendingDeadrunChanges.get(dr.id)!
+                return {
+                  id:               dr.id,
+                  departureMinutes: patch.departureMinutes ?? dr.departureMinutes,
+                  arrivalMinutes:   patch.arrivalMinutes   ?? dr.arrivalMinutes,
+                }
+              })
+            if (updates.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
+              method: 'PATCH',
+              body:   JSON.stringify({ updates }),
+            })]
+          }),
+        )
+      }
+
+      // Save interval patches grouped by block
+      if (pendingIntervalChanges.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const updates = block.blockIntervals
+              .filter(bi => pendingIntervalChanges.has(bi.id))
+              .map(bi => {
+                const patch = pendingIntervalChanges.get(bi.id)!
+                return {
+                  id:               bi.id,
+                  departureMinutes: patch.departureMinutes ?? bi.departureMinutes,
+                  arrivalMinutes:   patch.arrivalMinutes   ?? bi.arrivalMinutes,
+                }
+              })
+            if (updates.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/intervals`, {
+              method: 'PATCH',
+              body:   JSON.stringify({ updates }),
+            })]
+          }),
+        )
+      }
+
+      // Delete pending-deleted trips
+      if (pendingDeletes.size > 0) {
+        await Promise.all(
+          Array.from(pendingDeletes).map(tripId =>
+            apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+          ),
+        )
+      }
+
+      // Delete pending-deleted deadruns grouped by block
+      if (pendingDeadrunDeletes.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const ids = block.blockDeadruns
+              .filter(dr => pendingDeadrunDeletes.has(dr.id))
+              .map(dr => dr.id)
+            if (ids.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
+              method:  'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ ids }),
+            })]
+          }),
+        )
+      }
+
+      // Delete pending-deleted intervals grouped by block
+      if (pendingIntervalDeletes.size > 0 && plottedData) {
+        await Promise.all(
+          plottedData.blocks.flatMap(block => {
+            const ids = block.blockIntervals
+              .filter(bi => pendingIntervalDeletes.has(bi.id))
+              .map(bi => bi.id)
+            if (ids.length === 0) return []
+            return [apiFetch(`/transit/vehicle-block/${block.id}/intervals`, {
+              method:  'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ ids }),
+            })]
+          }),
+        )
+      }
+
+      // Persist pending adds. blockId 'new' spawns a fresh block (server-resolved);
+      // 'pending:<tempId>' joins a fake block created earlier in this same batch by
+      // a 'new' entry — resolve it to that entry's server-assigned block id, captured
+      // below as each add response comes back. pendingAdds is walked in insertion
+      // order via a sequential for-of, so the 'new' entry for a group always lands
+      // before any 'pending:<tempId>' entry that references it.
+      const newBlockIds = new Map<string, string>()
+      for (const entry of pendingAdds) {
+        const resolvedBlockId = entry.blockId === 'new'
+          ? undefined
+          : entry.blockId.startsWith('pending:')
+            ? newBlockIds.get(entry.blockId.slice('pending:'.length))
+            : entry.blockId
+
+        let blockId: string
+        if (entry._kind === 'trip') {
+          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-trip`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              routeId:                entry.routeId,
+              departureMinutes:       entry.departureMinutes,
+              arrivalMinutes:         entry.arrivalMinutes,
+              blockId:                resolvedBlockId,
+              ...(entry.access && { accessDepotLocalityId: entry.access.localityId }),
+              ...(entry.return && { returnDepotLocalityId: entry.return.localityId }),
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(extractError(j))
+          }
+          blockId = (await res.json()).blockId
+        } else if (entry._kind === 'deadrun') {
+          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              originLocalityId:      entry.originLocality.id,
+              destinationLocalityId: entry.destinationLocality.id,
+              departureMinutes:      entry.departureMinutes,
+              arrivalMinutes:        entry.arrivalMinutes,
+              blockId:               resolvedBlockId,
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(extractError(j))
+          }
+          blockId = (await res.json()).blockId
+        } else {
+          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-interval`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              intervalTypeId:   entry.intervalTypeId,
+              departureMinutes: entry.departureMinutes,
+              arrivalMinutes:   entry.arrivalMinutes,
+              blockId:          resolvedBlockId,
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(extractError(j))
+          }
+          blockId = (await res.json()).blockId
+        }
+
+        if (entry.blockId === 'new') newBlockIds.set(entry._tempId, blockId)
+      }
+
+      // Persist pending moves. fromBlockId/toBlockId may be a 'pending:<tempId>' fake
+      // block spawned by a 'new' add above — resolve it to the real id created for
+      // that group (same newBlockIds map the adds loop just populated) before calling.
+      const resolveMoveBlockRef = (ref: string) =>
+        ref.startsWith('pending:') ? (newBlockIds.get(ref.slice('pending:'.length)) ?? ref) : ref
+
+      // A moved trip may also be pending-deleted (deletes are persisted above, before
+      // moves) — its BlockTrip row is already gone by cascade at this point, so the
+      // move endpoint's ownership check would 404 on it. Deleting wins: drop it from
+      // the move instead of sending a stale id.
+      const tripIdByBlockTripId = new Map<string, string>()
+      for (const block of ganttData?.blocks ?? []) {
+        for (const bt of block.blockTrips) tripIdByBlockTripId.set(bt.id, bt.trip.id)
+      }
+
+      for (const move of pendingMoves) {
+        const blockTripIds = move.blockTripIds.filter(btId => {
+          const tripId = tripIdByBlockTripId.get(btId)
+          return !tripId || !pendingDeletes.has(tripId)
+        })
+        if (blockTripIds.length === 0) continue
+
+        const fromBlockId = resolveMoveBlockRef(move.fromBlockId)
+        const toBlockId   = resolveMoveBlockRef(move.toBlockId)
+        const res = await apiFetch(`/transit/vehicle-block/${fromBlockId}/move-trip`, {
+          method: 'PATCH',
+          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds }),
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(extractError(j))
+        }
+      }
+
+      await refetchGantt()
+      setPendingChanges(new Map())
+      setPendingDeadrunChanges(new Map())
+      setPendingIntervalChanges(new Map())
+      setPendingAdds([])
+      setPendingDeletes(new Set())
+      setPendingDeadrunDeletes(new Set())
+      setPendingIntervalDeletes(new Set())
+      setPendingMoves([])
+      // Persisted trips/breaks/deadruns get new server-generated ids, so whatever
+      // was focused/selected (by temp id) no longer resolves to anything — the
+      // stale-focus recovery effect (keyed off navBlocks) picks a fallback segment
+      // once the refetched data lands, same as after a discard.
+      toast.success('Alterações salvas')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')
+    } finally {
+      setIsPending(false)
+    }
+  }
+
+  function handleAddAccess(blockTripId: string, blockId: string) {
+    if (!canEdit) return
+    setDepotModal({ kind: 'access', blockTripId, blockId })
+  }
+
+  function handleAddReturn(blockTripId: string, blockId: string) {
+    if (!canEdit) return
+    setDepotModal({ kind: 'return', blockTripId, blockId })
+  }
+
+  function handleAddInterval(blockTripId: string, blockId: string) {
+    if (!canEdit) return
+    setAddIntervalModal({ blockTripId, blockId })
+  }
+
+  // Always queued as a pending add — unlike access/return, an interval has no
+  // travel-time lookup to resolve, so there's nothing that requires an immediate
+  // API call even for trips that already exist server-side.
+  function handleConfirmAddInterval(intervalType: IntervalType) {
+    if (!canEdit || !addIntervalModal || !mergedPlottedData) return
+    const { blockTripId, blockId } = addIntervalModal
+    setAddIntervalModal(null)
+
+    const block = mergedPlottedData.blocks.find(b => b.id === blockId)
+    const bt    = block?.blockTrips.find(bt => bt.id === blockTripId)
+    if (!bt) return
+
+    const departureMinutes = bt.trip.arrivalMinutes + 1
+
+    // Occupies the full gap up to whatever comes next in the block (trip, deadrun
+    // or existing break), capped at the interval type's max — if the gap is smaller
+    // than the type's min, it's still created at the available size (flagged as
+    // irregular by computeIntervalIrregularity, never blocked, see docs/proposal
+    // /vehicle-plan-block-intervals.md §5.3).
+    const nextStarts = [
+      ...block!.blockTrips.filter(o => o.id !== bt.id).map(o => o.trip.departureMinutes),
+      ...block!.blockDeadruns.map(dr => dr.departureMinutes),
+      ...block!.blockIntervals.map(bi => bi.departureMinutes),
+    ].filter(dep => dep > bt.trip.arrivalMinutes)
+    const nextStart = nextStarts.length > 0 ? Math.min(...nextStarts) : null
+    // leaves the same 1min gap before the next item as the 1min gap right after the trip
+    const availableGap = nextStart != null ? nextStart - departureMinutes - 1 : null
+
+    const duration = availableGap != null
+      ? Math.max(0, intervalType.maxMinutes != null ? Math.min(availableGap, intervalType.maxMinutes) : availableGap)
+      : (intervalType.minMinutes ?? 30)
+    const arrivalMinutes = departureMinutes + duration
+
+    handlePendingAdd({
+      _kind:            'break',
+      _tempId:          crypto.randomUUID(),
+      intervalTypeId:   intervalType.id,
+      intervalTypeCode: intervalType.code,
+      intervalTypeName: intervalType.name,
+      isPaid:           intervalType.isPaid,
+      minMinutes:       intervalType.minMinutes,
+      maxMinutes:       intervalType.maxMinutes,
+      departureMinutes,
+      arrivalMinutes,
+      blockId,
+    })
+  }
+
+  // Pending (unsaved) breaks aren't real persisted ids — deleting them means removing
+  // the pendingAdds entry outright, not routing them through pendingIntervalDeletes
+  // (which only ever gets checked against real ids and is a no-op for temp ones).
+  function discardBreaks(ids: string[]) {
+    if (ids.length === 0) return
+    const tempBreakIds = new Set(
+      pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break').map(a => a._tempId),
+    )
+    const tempIds = ids.filter(id => tempBreakIds.has(id))
+    const realIds = ids.filter(id => !tempBreakIds.has(id))
+
+    if (tempIds.length > 0) {
+      setPendingAdds(prev => prev.filter(a => !(a._kind === 'break' && tempIds.includes(a._tempId))))
+    }
+    if (realIds.length > 0) {
+      setPendingIntervalDeletes(prev => new Set([...prev, ...realIds]))
+      setPendingIntervalChanges(prev => {
+        const next = new Map(prev)
+        for (const id of realIds) next.delete(id)
+        return next
+      })
+    }
+  }
+
+  function handleConfirmMove() {
+    if (!canEdit || !selection || !moveTargetBlockId || !mergedPlottedData) return
+
+    const sourceBlockId = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
+    const sourceBlock   = mergedPlottedData.blocks.find(b => b.id === sourceBlockId)
+    const targetBlock   = mergedPlottedData.blocks.find(b => b.id === moveTargetBlockId)
+    if (!sourceBlock || !targetBlock) return
+
+    const blockTripIds = selection.type === 'trip'
+      ? (selection.segment.kind === 'trip' ? [selection.segment.id] : [])
+      : selection.segments.filter(s => s.kind === 'trip').map(s => s.id)
+
+    if (blockTripIds.length === 0) return
+
+    const movedTrips = blockTripIds.map(btId => {
+      const bt = sourceBlock.blockTrips.find(bt => bt.id === btId)
+      if (!bt) return null
+      return { dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes }
+    }).filter((t): t is { dep: number; arr: number } => t != null)
+
+    const targetTrips = targetBlock.blockTrips.map(bt => ({
+      dep: bt.trip.departureMinutes,
+      arr: bt.trip.arrivalMinutes,
+    }))
+
+    for (const moved of movedTrips) {
+      for (const existing of targetTrips) {
+        if (moved.dep < existing.arr && moved.arr > existing.dep) {
+          toast.error('Conflito: sobreposição de horários no bloco de destino')
+          return
+        }
+      }
+    }
+
+    // Intervals live attached to the trip that precedes them (positional, no FK —
+    // see docs/proposal/vehicle-plan-block-intervals.md §7.1). If the user explicitly
+    // included the interval in the selection being moved, it travels with its anchor
+    // trip; otherwise it's left behind without an anchor, so it's dropped.
+    const movedTripIds = blockTripIds
+      .map(btId => sourceBlock.blockTrips.find(bt => bt.id === btId)?.trip.id)
+      .filter((tid): tid is string => !!tid)
+    const anchoredBreakIds = findAnchoredBreakIds(sourceBlock, movedTripIds)
+
+    // Segment ids carry a ":bk" suffix for layout-engine uniqueness — the real
+    // BlockInterval id (matching findAnchoredBreakIds' output) lives in .data.id.
+    const selectedBreakIds = new Set(
+      selection.type === 'interval'
+        ? selection.segments.filter(s => s.kind === 'break').map(s => (s.data as GanttBlockInterval).id)
+        : [],
+    )
+    const movedBreakIds    = anchoredBreakIds.filter(id => selectedBreakIds.has(id))
+    const orphanedBreakIds = anchoredBreakIds.filter(id => !selectedBreakIds.has(id))
+
+    // Pending (unsaved) breaks aren't real persisted ids yet — relocate them by
+    // editing pendingAdds directly instead of routing them through pendingMoves,
+    // which only carries real ids the move-trip endpoint can act on.
+    const tempBreakIds = new Set(
+      pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break').map(a => a._tempId),
+    )
+    const movedRealBreakIds = movedBreakIds.filter(id => !tempBreakIds.has(id))
+    const movedTempBreakIds = movedBreakIds.filter(id => tempBreakIds.has(id))
+
+    setPendingMoves(prev => {
+      const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
+      return [...filtered, { blockTripIds, breakIds: movedRealBreakIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
+    })
+
+    if (movedTempBreakIds.length > 0) {
+      setPendingAdds(prev => prev.map(a =>
+        a._kind === 'break' && movedTempBreakIds.includes(a._tempId)
+          ? { ...a, blockId: moveTargetBlockId }
+          : a,
+      ))
+    }
+
+    discardBreaks(orphanedBreakIds)
+
+    if (orphanedBreakIds.length > 0) {
+      toast.info(
+        orphanedBreakIds.length === 1
+          ? 'Intervalo anexado excluído — não foi incluído na movimentação'
+          : `${orphanedBreakIds.length} intervalos anexados excluídos — não foram incluídos na movimentação`,
+      )
+    }
+
+    setSelection(null)
+    setMoveTargetBlockId(null)
+  }
+
+  async function handleConfirmDepotModal(depotLocalityId: string) {
+    if (!canEdit || !depotModal) return
+    const { kind, blockTripId, blockId } = depotModal
+    setDepotModal(null)
+
+    // Intercept pending trips: bundle access/return into the pending entry
+    const pendingIdx = pendingAdds.findIndex(a => a._kind === 'trip' && a._tempId === blockTripId)
+    if (pendingIdx !== -1) {
+      const entry    = pendingAdds[pendingIdx] as PendingAddTrip
+      const originId = kind === 'access' ? depotLocalityId         : entry.destinationLocality.id
+      const destId   = kind === 'access' ? entry.originLocality.id : depotLocalityId
+      const travelMinutes = await getTravelTime(originId, destId)
+      if (travelMinutes === null) {
+        toast.error('Mapeamento não localizado na matriz entre os pontos informados')
+        return
+      }
+      setPendingAdds(prev => prev.map((a, i) => {
+        if (i !== pendingIdx || a._kind !== 'trip') return a
+        return kind === 'access'
+          ? { ...a, access: { localityId: depotLocalityId, travelMinutes } }
+          : { ...a, return: { localityId: depotLocalityId, travelMinutes } }
+      }))
+      setSelection(null)
+      return
+    }
+
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/${kind}`, {
+        method: 'POST',
+        body:   JSON.stringify({ blockTripId, depotLocalityId }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      const label = kind === 'access' ? 'acesso' : 'recolhida'
+      toast.error(err instanceof Error ? err.message : `Erro ao adicionar ${label}`)
+    }
+  }
+
+  async function handleDeleteDeadruns(deadrunIds: string[], blockId: string) {
+    if (!canEdit) return
+    const ok = await confirm({
+      title:        deadrunIds.length === 1 ? 'Excluir vazio' : `Excluir ${deadrunIds.length} vazios`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/deadruns`, {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ids: deadrunIds }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir vazio')
+    }
+  }
+
+  async function handleDeleteBreaks(breakIds: string[], blockId: string) {
+    if (!canEdit) return
+    const ok = await confirm({
+      title:        breakIds.length === 1 ? 'Excluir intervalo' : `Excluir ${breakIds.length} intervalos`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      const res = await apiFetch(`/transit/vehicle-block/${blockId}/intervals`, {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ids: breakIds }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir intervalo')
+    }
+  }
+
+  async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) {
+    if (!canEdit) return
+    const tripCount    = tripIds.length
+    const deadrunCount = deadrunIds.length
+    const breakCount   = breakIds.length
+    const parts        = [
+      tripCount    > 0 ? `${tripCount} ${tripCount === 1 ? 'viagem' : 'viagens'}`      : null,
+      deadrunCount > 0 ? `${deadrunCount} ${deadrunCount === 1 ? 'vazio' : 'vazios'}`  : null,
+      breakCount   > 0 ? `${breakCount} ${breakCount === 1 ? 'intervalo' : 'intervalos'}` : null,
+    ].filter(Boolean).join(' e ')
+
+    const ok = await confirm({
+      title:        `Excluir ${parts}`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      await Promise.all([
+        ...tripIds.map(async (tripId) => {
+          const res = await apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+          if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
+        }),
+        ...(deadrunIds.length > 0 ? [
+          apiFetch(`/transit/vehicle-block/${blockId}/deadruns`, {
+            method:  'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ ids: deadrunIds }),
+          }).then(async (res) => {
+            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
+          }),
+        ] : []),
+        ...(breakIds.length > 0 ? [
+          apiFetch(`/transit/vehicle-block/${blockId}/intervals`, {
+            method:  'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ ids: breakIds }),
+          }).then(async (res) => {
+            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
+          }),
+        ] : []),
+      ])
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir seleção')
+    }
+  }
+
+  async function handleDeleteTrips(tripIds: string[]) {
+    if (!canEdit) return
+    const count = tripIds.length
+    const ok = await confirm({
+      title:        count === 1 ? 'Excluir viagem' : `Excluir ${count} viagens`,
+      description:  'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      await Promise.all(
+        tripIds.map(async (tripId) => {
+          const res = await apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+          if (!res.ok) {
+            const json = await res.json().catch(() => ({}))
+            throw new Error(extractError(json))
+          }
+        })
+      )
+      setSelection(null)
+      await refetchGantt()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir viagens')
+    }
+  }
+
+  const vehiclesActionSpec = useMemo(
+    () => createVehiclesActionSpec({
+      onUpdateConstraints: handleUpdateConstraints,
+      onDeleteTrips:       handleDeleteTrips,
+      onDeleteDeadruns:    handleDeleteDeadruns,
+      onDeleteBreaks:      handleDeleteBreaks,
+      onDeleteInterval:    handleDeleteInterval,
+      onAddAccess:         handleAddAccess,
+      onAddReturn:         handleAddReturn,
+      onAddInterval:       handleAddInterval,
+    }, canEdit),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canEdit],
+  )
+
+  return {
+    selection, setSelection,
+    depotModal, setDepotModal,
+    addIntervalModal, setAddIntervalModal,
+    moveTargetBlockId, setMoveTargetBlockId,
+    pendingMoves, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges,
+    pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
+    setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
+    editBarOpen, setEditBarOpen,
+    focusedSegId, setFocusedSegId,
+    tripSeqAnchor, setTripSeqAnchor,
+    selectedLineIds, setSelectedLineIds,
+    plottedData, mergedPlottedData,
+    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex,
+    addTripReference, moveTargetBlocks, moveTargetHints,
+    pendingCount,
+    stepMoveTarget,
+    handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
+    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleSavePending,
+    handleAddAccess, handleAddReturn, handleAddInterval, handleConfirmAddInterval, discardBreaks,
+    handleConfirmMove, handleConfirmDepotModal,
+    handleDeleteDeadruns, handleDeleteBreaks, handleDeleteInterval, handleDeleteTrips,
+    vehiclesActionSpec,
+    handleUpdateConstraints, handleAdjustCycle, handleDistributeHeadway, handleTripTimingOp,
+  }
+}
