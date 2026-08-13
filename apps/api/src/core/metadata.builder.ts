@@ -193,6 +193,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.virtual             ? { virtual:     true }                      : {}),
       ...(meta.dependsOn           ? { dependsOn:   meta.dependsOn }            : {}),
       ...(meta.lazyEdit            ? { lazyEdit:    true }                      : {}),
+      ...(meta.pairField           ? { pairField:   meta.pairField }            : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
       ...(resolveFilterDef(field, meta.filter) ? { filter: resolveFilterDef(field, meta.filter) } : {}),
       ...(meta.widget === 'object-editor' && inner instanceof ZodObject

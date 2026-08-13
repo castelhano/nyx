@@ -38,6 +38,16 @@ export class LocalityController extends BaseController<Locality, CreateLocalityD
     return { display_name: data.display_name ?? '', address: data.address }
   }
 
+  @Get('geocode')
+  async geocode(@Query('q') q: string) {
+    if (!q?.trim()) return { results: [] }
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=br&limit=5`
+    const res = await fetch(url, { headers: { 'User-Agent': 'nyx-transit/1.0' } })
+    if (!res.ok) return { results: [] }
+    const data = await res.json() as { display_name: string; lat: string; lon: string }[]
+    return { results: data.map((r) => ({ displayName: r.display_name, lat: Number(r.lat), lng: Number(r.lon) })) }
+  }
+
   @Get(':id/routes')
   async localityRoutes(@Param('id') id: string) {
     return this.localityService.findRoutesForLocality(id)

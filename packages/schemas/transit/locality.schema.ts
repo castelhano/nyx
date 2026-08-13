@@ -34,7 +34,8 @@ export const localitySchema = withMeta(
       label:          'Nome',
       listVisibility: 'visible',
       filter:         true,
-      className:      'md:w-1/2',
+      // matches the width of the lat input in the map-picker row below: (100% - button 36px - 2 gaps of 8px) / 2
+      className:      'md:w-[calc(50%_-_26px)]',
       keybind:        'd',
     }),
 
@@ -43,13 +44,14 @@ export const localitySchema = withMeta(
       listVisibility: 'hidden',
       className:      'md:w-70',
       keybind:        'a',
+      widget:         'map-picker',
+      pairField:      'lng',
     }),
 
     lng: z.number().optional().meta({
       label:          'Longitude',
       listVisibility: 'hidden',
-      className:      'md:w-70',
-      keybind:        'o',
+      showInForm:     false,
     }),
 
     isDepot: z.boolean().default(false).meta({

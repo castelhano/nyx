@@ -29,7 +29,7 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge'
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge' | 'map-picker'
   defaultValue?: unknown
   min?: number
   max?: number
@@ -54,6 +54,8 @@ export interface FieldMeta {
   dependsOn?: string
   /** In edit mode, shows the related record label as locked text with an edit button instead of loading all options up front. Fetches only the current record by ID until the user unlocks the field. */
   lazyEdit?: boolean
+  /** For `widget: 'map-picker'` — name of the sibling field holding the paired coordinate (e.g. lat's pairField is 'lng'). */
+  pairField?: string
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -91,6 +93,7 @@ export interface MetadataField {
   virtual?: boolean
   dependsOn?: string
   lazyEdit?: boolean
+  pairField?: string
   fields?: MetadataField[]
   itemFields?: MetadataField[]
 }

@@ -58,6 +58,7 @@ const iconNames = [
   'Ruler',
   'Save',
   'Scissors',
+  'Search',
   'Settings',
   'Settings2',
   'Shield',

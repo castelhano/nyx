@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { Controller, useWatch, useFormContext, type Control } from 'react-hook-form'
 import { useQuery } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
@@ -11,8 +12,15 @@ import type { UseFormRegisterReturn } from 'react-hook-form'
 import { inputBaseCls, selectBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { apiFetch } from '@/lib/auth'
+import { Icons } from '@/lib/icons'
 import { useFieldOptions } from './useFieldOptions'
 import { ObjectEditorWidget } from './ObjectEditorWidget'
+
+// react-leaflet touches `window` at import time — must stay client-only
+const MapPickerModal = dynamic(
+  () => import('./MapPickerModal').then((m) => m.MapPickerModal),
+  { ssr: false },
+)
 
 interface Props {
   field:       MetadataField
@@ -448,7 +456,81 @@ function RelationMultiSelect({
   )
 }
 
+function MapPickerFieldWidget({
+  field, control, autoFocus, readonly,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; readonly?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const { setValue }    = useFormContext()
+  const pairName        = field.pairField ?? 'lng'
+
+  const latValue = useWatch({ control, name: field.name }) as number | undefined
+  const lngValue = useWatch({ control, name: pairName }) as number | undefined
+
+  return (
+    <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+      <input
+        id={field.name}
+        type="number"
+        step="any"
+        autoFocus={autoFocus}
+        readOnly={readonly}
+        value={latValue ?? ''}
+        onChange={(e) => setValue(field.name, e.target.value === '' ? undefined : Number(e.target.value), { shouldDirty: true })}
+        placeholder="Latitude"
+        className={cn(fieldInputCls, readonly && readonlyCls)}
+      />
+      <input
+        type="number"
+        step="any"
+        readOnly={readonly}
+        value={lngValue ?? ''}
+        onChange={(e) => setValue(pairName, e.target.value === '' ? undefined : Number(e.target.value), { shouldDirty: true })}
+        placeholder="Longitude"
+        className={cn(fieldInputCls, readonly && readonlyCls)}
+      />
+      {!readonly && (
+        <button
+          type="button"
+          title="Selecionar no mapa"
+          onClick={() => setOpen(true)}
+          tabIndex={-1}
+          className="h-9 w-9 flex items-center justify-center rounded-sm border border-input bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+        >
+          <Icons.MapPin className="w-4 h-4" />
+        </button>
+      )}
+      {open && (
+        <MapPickerModal
+          initialLat={latValue}
+          initialLng={lngValue}
+          onConfirm={(lat, lng) => {
+            setValue(field.name, lat, { shouldDirty: true })
+            setValue(pairName, lng, { shouldDirty: true })
+          }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
 export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
+  if (field.widget === 'map-picker' && control) {
+    return (
+      <>
+        <label className="text-sm font-medium pt-2">{field.label}</label>
+        <div className="space-y-1">
+          <MapPickerFieldWidget field={field} control={control} autoFocus={autoFocus} readonly={readonly} />
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      </>
+    )
+  }
+
+
   if (field.widget === 'multi-select' && field.resource && control) {
     return (
       <>
