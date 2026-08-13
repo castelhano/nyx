@@ -1,10 +1,12 @@
 'use client'
 
-import { useState }        from 'react'
+import { useEffect, useState } from 'react'
 import { Button }          from '@/components/ui/button'
 import { useFieldOptions } from '@/core/useFieldOptions'
 import { apiFetch }        from '@/lib/auth'
 import { extractError }    from '@/lib/utils'
+import { Icons }           from '@/lib/icons'
+import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import { DIR_LABEL, type RouteDirection, type TransitRoute } from './types'
 
 interface Props {
@@ -33,8 +35,17 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
 
   const isCircular = direction === 'CIRCULAR'
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  useShortcutContext('modal')
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !isPending) onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose, isPending])
+
+  async function submit() {
     if (!originId || (!isCircular && !destId) || !name.trim()) { setError('Preencha todos os campos'); return }
     setIsPending(true)
     setError(null)
@@ -58,10 +69,18 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
     }
   }
 
+  useShortcut('alt+g', submit, {
+    desc:    'Gravar',
+    icon:    Icons.Save,
+    context: 'modal',
+    origin:  'apps/web/src/app/transit/transit-route/CreateRouteModal.tsx',
+    enabled: !isPending && !localitiesLoading,
+  })
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => { e.preventDefault(); submit() }}
         className="bg-background border border-border rounded-md shadow-lg w-full max-w-md p-6 space-y-4"
       >
         <h2 className="text-lg font-semibold">{isEditing ? 'Editar Sentido' : 'Novo Sentido'}</h2>
@@ -137,7 +156,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="cancel" tabIndex={-1} onClick={onClose} disabled={isPending}>Cancelar</Button>
           <Button type="submit" disabled={isPending || localitiesLoading}>
-            {isEditing ? (isPending ? 'Salvando…' : 'Salvar') : (isPending ? 'Criando…' : 'Criar Sentido')}
+            {isPending ? 'Gravando…' : 'Gravar'}
           </Button>
         </div>
       </form>
