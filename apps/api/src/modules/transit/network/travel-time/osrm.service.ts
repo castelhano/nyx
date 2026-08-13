@@ -84,7 +84,7 @@ export class OsrmService {
    *
    *   • depots            — dead-run origin/destination
    *   • route endpoints   — TransitRoute.originLocalityId / destinationLocalityId
-   *   • route waypoints   — RouteLocality points (deltaMinutes fallback)
+   *   • crew-change stops — RouteLocality points with allowsCrewChange (deltaMinutes fallback)
    *
    * Entries with source = MANUAL are never overwritten.
    */
@@ -96,6 +96,7 @@ export class OsrmService {
         select: { originLocalityId: true, destinationLocalityId: true },
       }),
       this.prisma.routeLocality.findMany({
+        where:  { allowsCrewChange: true },
         select: { localityId: true },
       }),
     ])

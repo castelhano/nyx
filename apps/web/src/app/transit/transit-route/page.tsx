@@ -48,6 +48,7 @@ export default function TransitRoutePage() {
 
   const [canvasMode,    setCanvasMode]    = useState<CanvasMode>('ruler')
   const [showCreate,    setShowCreate]    = useState(false)
+  const [editingRoute,  setEditingRoute]  = useState<TransitRoute | null>(null)
   const [showSeq,       setShowSeq]       = useState(false)
   const [addPointMode,  setAddPointMode]  = useState(false)
   const [mapClickPos,   setMapClickPos]   = useState<{ lat: number; lng: number } | null>(null)
@@ -146,6 +147,12 @@ export default function TransitRoutePage() {
     setShowCreate(false)
     queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
     selectRoute(route.id)
+  }
+
+  function handleRouteEdited(route: { id: string }) {
+    setEditingRoute(null)
+    queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
+    queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', route.id] })
   }
 
   // ── pending points ────────────────────────────────────────────────────────
@@ -560,6 +567,7 @@ export default function TransitRoutePage() {
           selectedRouteId={routeId || null}
           onSelect={selectRoute}
           onAddRoute={() => setShowCreate(true)}
+          onEdit={setEditingRoute}
           onTogglePrimary={handleTogglePrimary}
           onToggleActive={handleToggleActive}
         />
@@ -583,7 +591,6 @@ export default function TransitRoutePage() {
               repositionKey={repositionKey}
               hiddenRouteIds={hiddenRouteIds}
               onMapClick={handleCanvasClick}
-              onSelectRoute={selectRoute}
               onSelectForReposition={selectForReposition}
               onAddPointClick={routeId ? activateAddPoint : undefined}
               onSuggestionClick={setSuggestTarget}
@@ -595,7 +602,16 @@ export default function TransitRoutePage() {
 
       {/* modals */}
       {showCreate && lineId && (
-        <CreateRouteModal lineId={lineId} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+        <CreateRouteModal lineId={lineId} onClose={() => setShowCreate(false)} onSaved={handleCreated} />
+      )}
+
+      {editingRoute && lineId && (
+        <CreateRouteModal
+          lineId={lineId}
+          route={editingRoute}
+          onClose={() => setEditingRoute(null)}
+          onSaved={handleRouteEdited}
+        />
       )}
 
       {mapClickPos || showAddPointModal ? (

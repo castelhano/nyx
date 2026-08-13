@@ -58,7 +58,6 @@ interface Props {
   repositionKey:       string | null   // RouteLocality.id or pending._pendingId awaiting a destination click
   hiddenRouteIds:      Set<string>
   onMapClick?:         (lat: number, lng: number) => void
-  onSelectRoute:       (id: string) => void
   onSelectForReposition: (key: string) => void
   onAddPointClick?:    () => void
   onSuggestionClick?: (s: SuggestedLocality) => void
@@ -69,7 +68,7 @@ const CUIABA_CENTER: [number, number] = [-15.601, -56.097]
 
 export default function MapCanvas({
   routes, localities, selectedRouteId, pendingPoints, suggestions, addPointMode, repositionKey, hiddenRouteIds,
-  onMapClick, onSelectRoute, onSelectForReposition, onAddPointClick, onSuggestionClick, onToggleRouteVisibility,
+  onMapClick, onSelectForReposition, onAddPointClick, onSuggestionClick, onToggleRouteVisibility,
 }: Props) {
   const awaitingDestination = repositionKey != null
   const mapRef = useRef<LeafletMap | null>(null)
@@ -163,7 +162,6 @@ export default function MapCanvas({
                     // geometry (after Gravar/Reprocessar) forces a remount instead of showing stale shape
                     data={rl.geometry as any}
                     style={{ color, weight: isSelected ? 4 : 3, opacity }}
-                    eventHandlers={{ click: () => onSelectRoute(route.id) }}
                   />
                   <DirectionArrows coordinates={rl.geometry!.coordinates} color={markColor} opacity={opacity} />
                 </span>

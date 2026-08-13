@@ -217,7 +217,7 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="cancel" onClick={onClose} disabled={saving}>Cancelar</Button>
+          <Button type="button" variant="cancel" tabIndex={-1} onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button type="button" onClick={handleSave} disabled={disabled || !hasChanges || saving}>
             {saving ? 'Salvando…' : 'Salvar'}
           </Button>

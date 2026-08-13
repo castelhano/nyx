@@ -5,21 +5,23 @@ import { Button }          from '@/components/ui/button'
 import { useFieldOptions } from '@/core/useFieldOptions'
 import { apiFetch }        from '@/lib/auth'
 import { extractError }    from '@/lib/utils'
-import { DIR_LABEL, type RouteDirection } from './types'
+import { DIR_LABEL, type RouteDirection, type TransitRoute } from './types'
 
 interface Props {
   lineId: string
+  route?: TransitRoute | null
   onClose: () => void
-  onCreated: (route: { id: string; originLocalityId: string; destinationLocalityId: string }) => void
+  onSaved: (route: { id: string; originLocalityId: string; destinationLocalityId: string }) => void
 }
 
 const DIRECTIONS: RouteDirection[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
 
-export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
-  const [direction,   setDirection]   = useState<RouteDirection>('OUTBOUND')
-  const [name,        setName]        = useState('')
-  const [originId,    setOriginId]    = useState('')
-  const [destId,      setDestId]      = useState('')
+export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
+  const isEditing = !!route
+  const [direction,   setDirection]   = useState<RouteDirection>(route?.direction ?? 'OUTBOUND')
+  const [name,        setName]        = useState(route?.name ?? '')
+  const [originId,    setOriginId]    = useState(route?.originLocalityId ?? '')
+  const [destId,      setDestId]      = useState(route && route.direction !== 'CIRCULAR' ? route.destinationLocalityId : '')
   const [isPending,   setIsPending]   = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
@@ -37,20 +39,21 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
     setIsPending(true)
     setError(null)
     try {
-      const res = await apiFetch('/transit/transit-route', {
-        method: 'POST',
-        body: JSON.stringify({
-          lineId, direction, name: name.trim(),
-          originLocalityId:      originId,
-          destinationLocalityId: isCircular ? originId : destId,
-          isActive: true,
-        }),
+      const body: Record<string, unknown> = {
+        lineId, direction, name: name.trim(),
+        originLocalityId:      originId,
+        destinationLocalityId: isCircular ? originId : destId,
+      }
+      if (!isEditing) body.isActive = true
+      const res = await apiFetch(route ? `/transit/transit-route/${route.id}` : '/transit/transit-route', {
+        method: isEditing ? 'PATCH' : 'POST',
+        body:   JSON.stringify(body),
       })
-      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j as Record<string, unknown>, 'Erro ao criar sentido')) }
-      const route = await res.json()
-      onCreated(route)
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j as Record<string, unknown>, isEditing ? 'Erro ao editar sentido' : 'Erro ao criar sentido')) }
+      const saved = await res.json()
+      onSaved(saved)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao criar sentido')
+      setError(err instanceof Error ? err.message : (isEditing ? 'Erro ao editar sentido' : 'Erro ao criar sentido'))
       setIsPending(false)
     }
   }
@@ -61,7 +64,7 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
         onSubmit={handleSubmit}
         className="bg-background border border-border rounded-md shadow-lg w-full max-w-md p-6 space-y-4"
       >
-        <h2 className="text-lg font-semibold">Novo Sentido</h2>
+        <h2 className="text-lg font-semibold">{isEditing ? 'Editar Sentido' : 'Novo Sentido'}</h2>
 
         <div className="space-y-1">
           <label className="text-sm font-medium">Sentido</label>
@@ -132,9 +135,9 @@ export function CreateRouteModal({ lineId, onClose, onCreated }: Props) {
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="cancel" onClick={onClose} disabled={isPending}>Cancelar</Button>
+          <Button type="button" variant="cancel" tabIndex={-1} onClick={onClose} disabled={isPending}>Cancelar</Button>
           <Button type="submit" disabled={isPending || localitiesLoading}>
-            {isPending ? 'Criando…' : 'Criar Sentido'}
+            {isEditing ? (isPending ? 'Salvando…' : 'Salvar') : (isPending ? 'Criando…' : 'Criar Sentido')}
           </Button>
         </div>
       </form>

@@ -46,6 +46,7 @@ const iconNames = [
   'Option',
   'Package',
   'Palette',
+  'Pencil',
   'Play',
   'Plus',
   'RefreshCw',

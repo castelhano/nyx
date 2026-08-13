@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect }  from 'react'
+import { useState, useEffect, useRef }  from 'react'
 import { Button }               from '@/components/ui/button'
 import { useFieldOptions }      from '@/core/useFieldOptions'
 import { apiFetch }        from '@/lib/auth'
@@ -36,7 +36,11 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
     value: item.key,
   }))
 
-  const [mode,       setMode]       = useState<Mode>('stop')
+  // a point added by clicking the map is almost always a waypoint (route passage),
+  // not a bus stop tied to an existing/new locality
+  const fromMapClick = prefillLat != null && prefillLng != null
+  const [mode,       setMode]       = useState<Mode>(fromMapClick ? 'waypoint' : 'stop')
+  const addButtonRef = useRef<HTMLButtonElement>(null)
   const [localityId, setLocalityId] = useState('')
   const [latStr,     setLatStr]     = useState(prefillLat?.toFixed(6) ?? '')
   const [lngStr,     setLngStr]     = useState(prefillLng?.toFixed(6) ?? '')
@@ -86,6 +90,10 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
       if (!prefillName && geo.display_name) setName(String(geo.display_name).split(',')[0].trim())
     }).catch(() => {}).finally(() => setSnapping(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (fromMapClick && !snapping) addButtonRef.current?.focus()
+  }, [fromMapClick, snapping])
 
   function handleAdd() {
     if (!hasValidCoords) return
@@ -242,8 +250,8 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="cancel" onClick={onClose}>Cancelar</Button>
-          <Button type="button" onClick={handleAdd} disabled={snapping || !canSubmit}>
+          <Button type="button" variant="cancel" tabIndex={-1} onClick={onClose}>Cancelar</Button>
+          <Button ref={addButtonRef} type="button" onClick={handleAdd} disabled={snapping || !canSubmit}>
             Adicionar
           </Button>
         </div>

@@ -12,11 +12,12 @@ interface Props {
   selectedRouteId: string | null
   onSelect:        (id: string) => void
   onAddRoute:      () => void
+  onEdit:          (route: TransitRoute) => void
   onTogglePrimary: (route: TransitRoute) => void
   onToggleActive:  (route: TransitRoute) => void
 }
 
-export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute, onTogglePrimary, onToggleActive }: Props) {
+export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute, onEdit, onTogglePrimary, onToggleActive }: Props) {
   const activeRoutes   = routes.filter((r) => r.isActive)
   const inactiveRoutes = routes.filter((r) => !r.isActive)
 
@@ -47,6 +48,7 @@ export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute, onTo
                 route={route}
                 selected={route.id === selectedRouteId}
                 onSelect={onSelect}
+                onEdit={onEdit}
                 onTogglePrimary={onTogglePrimary}
                 onToggleActive={onToggleActive}
               />
@@ -67,6 +69,7 @@ export function RoutePanel({ routes, selectedRouteId, onSelect, onAddRoute, onTo
                 selected={route.id === selectedRouteId}
                 muted
                 onSelect={onSelect}
+                onEdit={onEdit}
                 onTogglePrimary={onTogglePrimary}
                 onToggleActive={onToggleActive}
               />
@@ -83,11 +86,12 @@ interface RouteRowProps {
   selected:        boolean
   muted?:          boolean
   onSelect:        (id: string) => void
+  onEdit:          (route: TransitRoute) => void
   onTogglePrimary: (route: TransitRoute) => void
   onToggleActive:  (route: TransitRoute) => void
 }
 
-function RouteRow({ route, selected, muted, onSelect, onTogglePrimary, onToggleActive }: RouteRowProps) {
+function RouteRow({ route, selected, muted, onSelect, onEdit, onTogglePrimary, onToggleActive }: RouteRowProps) {
   const [detailsLoaded, setDetailsLoaded] = useState(false)
 
   const { data: localities } = useQuery<RouteLocality[]>({
@@ -151,6 +155,10 @@ function RouteRow({ route, selected, muted, onSelect, onTogglePrimary, onToggleA
             </div>
           </DropdownLabel>
           <DropdownSeparator />
+          <DropdownItem onClick={() => onEdit(route)}>
+            <Icons.Pencil className="w-3.5 h-3.5" />
+            Editar
+          </DropdownItem>
           <DropdownItem onClick={() => onTogglePrimary(route)}>
             <Icons.CheckCheck className={`w-3.5 h-3.5 ${route.isPrimary ? 'text-amber-500' : ''}`} />
             Principal

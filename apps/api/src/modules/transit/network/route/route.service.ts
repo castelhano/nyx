@@ -64,19 +64,58 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
   }
 
   override async update(id: string, dto: UpdateRouteDto): Promise<Route> {
-    if (!dto.isPrimary) return super.update(id, dto)
     const current = await this.findOne(id)
-    const updated = await this.prisma.$transaction(async (tx) => {
-      await tx.transitRoute.updateMany({
-        where: { lineId: current.lineId, direction: dto.direction ?? current.direction, isPrimary: true, id: { not: id } },
-        data:  { isPrimary: false },
-      })
-      return tx.transitRoute.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedUpdateInput }) as unknown as Route
-    })
-    // route just became (or remained) primary — sync the line's official extension
-    // right away rather than waiting for the next reprocess
-    await this.syncOfficialExtension(id)
+
+    const updated = dto.isPrimary
+      ? await this.prisma.$transaction(async (tx) => {
+          await tx.transitRoute.updateMany({
+            where: { lineId: current.lineId, direction: dto.direction ?? current.direction, isPrimary: true, id: { not: id } },
+            data:  { isPrimary: false },
+          })
+          return tx.transitRoute.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedUpdateInput }) as unknown as Route
+        })
+      : await super.update(id, dto)
+
+    if (dto.isPrimary) {
+      // route just became (or remained) primary — sync the line's official extension
+      // right away rather than waiting for the next reprocess
+      await this.syncOfficialExtension(id)
+    }
+
+    await this.syncEndpoints(id, current, dto)
+
     return updated
+  }
+
+  // the edit form can change which locality anchors the route's first/last stop —
+  // rewire those RouteLocality rows to match and reprocess only the touched leg(s),
+  // preserving MANUAL overrides on the rest of the trajectory
+  private async syncEndpoints(routeId: string, current: Route, dto: UpdateRouteDto): Promise<void> {
+    const newOrigin = dto.originLocalityId
+    const newDest   = dto.destinationLocalityId
+    const originChanged = newOrigin != null && newOrigin !== current.originLocalityId
+    const destChanged   = newDest != null && newDest !== current.destinationLocalityId
+    if (!originChanged && !destChanged) return
+
+    const localities = await this.getTrajectory(routeId)
+    if (localities.length < 2) return
+
+    const first = localities[0]
+    const last  = localities[localities.length - 1]
+    const affectedSequences: number[] = []
+
+    if (originChanged) {
+      await this.prisma.routeLocality.update({ where: { id: first.id }, data: { localityId: newOrigin, lat: null, lng: null } })
+      affectedSequences.push(localities[1].sequence)
+    }
+    if (destChanged) {
+      await this.prisma.routeLocality.update({ where: { id: last.id }, data: { localityId: newDest, lat: null, lng: null } })
+      affectedSequences.push(last.sequence)
+    }
+
+    // the endpoint's identity changed outright, so any MANUAL override on the
+    // touched leg(s) no longer applies to the new coordinates
+    await this.reprocessLegs(routeId, affectedSequences, { forceAll: true })
   }
 
   // when the route is primary and propagateExtensionToOfficialKm is on, mirrors its
@@ -156,7 +195,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     await this.syncOfficialExtension(routeId)
   }
 
-  async reprocessLegs(routeId: string, affectedSequences: number[]): Promise<void> {
+  async reprocessLegs(routeId: string, affectedSequences: number[], opts: { forceAll?: boolean } = {}): Promise<void> {
     const allLocalities = await this.getTrajectory(routeId)
     if (allLocalities.length < 2) return
 
@@ -198,9 +237,10 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
         const result = await this.osrm.getRoute([fromCoords, toCoords])
         const leg    = result.legs[0]
         const updates: Record<string, unknown> = { geometry: leg.geometry as unknown }
-        if (toRl.deltaSource !== 'MANUAL') {
+        if (opts.forceAll || toRl.deltaSource !== 'MANUAL') {
           updates.deltaMinutes = Math.ceil(leg.duration / 60)
           updates.deltaKm      = Math.round(leg.distance / 10) / 100
+          if (opts.forceAll) updates.deltaSource = 'OSRM'
         }
         await this.prisma.routeLocality.update({ where: { id: toRl.id }, data: updates })
       }),
