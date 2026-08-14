@@ -214,9 +214,10 @@ export default function TransitRoutePage() {
 
     if (rl.localityId) {
       const ok = await confirm({
-        title:       'Mover parada compartilhada?',
-        description: `"${rl.locality?.name ?? 'Este ponto'}" é uma localidade usada por outras rotas/linhas, que também serão reposicionadas. Deseja continuar?`,
-        variant:      'destructive',
+        title:        'Mover parada compartilhada?',
+        description:  `"${rl.locality?.name ?? 'Este ponto'}" é uma localidade usada por outras rotas/linhas, que também serão reposicionadas. Deseja continuar?`,
+        confirmLabel: 'Mover',
+        variant:      'safeConfirm',
       })
       if (!ok) return
       try {
