@@ -283,6 +283,24 @@ Once OSRM is running, open the **Matriz de Tempos** list in the app and click **
 
 > The `car.lua` profile (car speeds) is a good approximation for urban bus planning. The matrix generation also triggers automatically whenever a locality is created or updated.
 
+### Checking for updates
+
+Geofabrik republishes each regional extract periodically (roughly weekly). To check whether the `.osm.pbf` in `osrm/data/` is current, resolve the region's `-latest.osm.pbf` redirect and compare the dated filename it points to against your local file:
+
+```bash
+curl -sI https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf | grep -i location
+```
+
+The `Location` header shows the current filename, e.g. `centro-oeste-260813.osm.pbf` — the `YYMMDD` suffix is the extract date. If that date is newer than the one in your local file's name, an update is available. Swap the URL path if you're using a different region/extract.
+
+### Updating the map
+
+1. Download the new extract into `osrm/data/` (same command as step 1 in setup above).
+2. Remove the old `.osm.pbf` and its processed `.osrm*` artifacts from `osrm/data/` — `osrm-prepare` skips processing whenever a `.osrm.mldgr` file already exists, so stale data is never regenerated automatically.
+3. Re-run `docker compose -f docker-compose.osrm.yml up osrm-prepare` to process the new extract.
+4. Restart `osrm-routed`: `docker compose -f docker-compose.osrm.yml up -d`.
+5. Re-generate the travel-time matrix from the UI (**Matriz de Tempos** → **Gerar Matriz**) so it reflects the updated road network.
+
 ---
 
 ## Available scripts
