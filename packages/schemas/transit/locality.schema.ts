@@ -75,7 +75,7 @@ export const localitySchema = withMeta(
   {
     label:       'Localidade',
     labelPlural: 'Localidades',
-    nameField:   'name',
+    nameField:   'code',
     icon:        'MapPin',
     defaultSort: { field: 'name', order: 'asc' },
   },
