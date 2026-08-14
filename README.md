@@ -295,11 +295,23 @@ The `Location` header shows the current filename, e.g. `centro-oeste-260813.osm.
 
 ### Updating the map
 
-1. Download the new extract into `osrm/data/` (same command as step 1 in setup above).
-2. Remove the old `.osm.pbf` and its processed `.osrm*` artifacts from `osrm/data/` — `osrm-prepare` skips processing whenever a `.osrm.mldgr` file already exists, so stale data is never regenerated automatically.
-3. Re-run `docker compose -f docker-compose.osrm.yml up osrm-prepare` to process the new extract.
-4. Restart `osrm-routed`: `docker compose -f docker-compose.osrm.yml up -d`.
-5. Re-generate the travel-time matrix from the UI (**Matriz de Tempos** → **Gerar Matriz**) so it reflects the updated road network.
+`osrm/update-map.sh` wipes `osrm/data/` (keeping `.gitkeep`) and downloads the latest extract for a region:
+
+```bash
+sh osrm/update-map.sh                          # defaults to south-america/brazil/centro-oeste
+sh osrm/update-map.sh south-america/brazil      # or pass a different Geofabrik region path
+```
+
+Then reprocess and restart:
+
+```bash
+docker compose -f docker-compose.osrm.yml up osrm-prepare   # re-runs extract/partition/customize
+docker compose -f docker-compose.osrm.yml up -d              # (re)start osrm-routed
+```
+
+Finally, re-generate the travel-time matrix from the UI (**Matriz de Tempos** → **Gerar Matriz**) so it reflects the updated road network.
+
+> Deleting the old `.osm.pbf` and `.osrm*` artifacts is required — `osrm-prepare` skips processing whenever a `.osrm.mldgr` file already exists, so stale data is never regenerated automatically.
 
 ---
 
