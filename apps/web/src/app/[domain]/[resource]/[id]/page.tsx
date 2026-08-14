@@ -197,6 +197,7 @@ export default function ResourceDetailPage() {
         defaultValues={isNew ? newRecordDefaults : record}
         readonlyFields={readonlyFields}
         readOnly={!isNew && !canUpdate}
+        isNew={isNew}
         onSubmit={handleSubmit}
         formId={FORM_ID}
         resetSignal={resetSignal}

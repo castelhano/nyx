@@ -56,6 +56,8 @@ export interface FieldMeta {
   lazyEdit?: boolean
   /** For `widget: 'map-picker'` — name of the sibling field holding the paired coordinate (e.g. lat's pairField is 'lng'). */
   pairField?: string
+  /** On create-only forms, GET this endpoint once on mount and prefill the field with `response[fieldName]` if the field has no value yet. */
+  suggestEndpoint?: string
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -94,6 +96,7 @@ export interface MetadataField {
   dependsOn?: string
   lazyEdit?: boolean
   pairField?: string
+  suggestEndpoint?: string
   fields?: MetadataField[]
   itemFields?: MetadataField[]
 }

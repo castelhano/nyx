@@ -6,7 +6,7 @@ import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
 import { useKeywatch } from '@/lib/keywatch/context'
-import { uploadFile } from '@/lib/auth'
+import { apiFetch, uploadFile } from '@/lib/auth'
 import type { MetadataField } from '@nyx/types'
 
 interface Props {
@@ -15,13 +15,14 @@ interface Props {
   defaultValues?:  Record<string, unknown>
   readonlyFields?: string[]
   readOnly?:       boolean
+  isNew?:          boolean
   onSubmit:        (data: Record<string, unknown>) => Promise<void>
   formId?:         string
   resetSignal?:    number
   groupSlots?:     Record<string, ReactNode>
 }
 
-export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, onSubmit, formId, resetSignal, groupSlots }: Props) {
+export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, isNew, onSubmit, formId, resetSignal, groupSlots }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { coreRef }  = useKeywatch()
   const keybindGroup = useRef(`autoform-${resource}`)
@@ -79,7 +80,20 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
   // `values` (RHF 7.31+): sincroniza o form com dados externos via deep-equal,
   // eliminando os useEffects manuais de reset que havia antes.
   const methods = useForm({ values: mergedValues })
-  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = methods
+  const { register, control, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = methods
+
+  // Em registros novos, campos com suggestEndpoint buscam um valor sugerido uma vez
+  // (ex: próximo código livre) e preenchem o form sem sobrescrever valor já presente.
+  useEffect(() => {
+    if (!isNew || !meta) return
+    const fields = meta.fields.filter((f) => f.suggestEndpoint && !mergedValues[f.name])
+    for (const field of fields) {
+      apiFetch(field.suggestEndpoint!).then((r) => r.json()).then((data) => {
+        const suggested = data?.[field.name]
+        if (suggested !== undefined) setValue(field.name, suggested)
+      }).catch(() => {})
+    }
+  }, [isNew, meta?.resource]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset explícito apenas quando o sinal de reset muda (alt+l)
   useEffect(() => {

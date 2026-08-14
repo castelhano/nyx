@@ -51,8 +51,18 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
   }
 
   // at most one primary route per (lineId, direction) — used to pick which
-  // trajectory represents the line's official extension for that direction
+  // trajectory represents the line's official extension for that direction.
+  // The first route created for a (lineId, direction) is auto-promoted to
+  // primary, since a sentido without one would have no official trajectory.
   override async create(dto: CreateRouteDto): Promise<Route> {
+    if (!dto.isPrimary) {
+      const hasPrimary = await this.prisma.transitRoute.findFirst({
+        where:  { lineId: dto.lineId, direction: dto.direction, isPrimary: true },
+        select: { id: true },
+      })
+      if (!hasPrimary) dto = { ...dto, isPrimary: true }
+    }
+
     if (!dto.isPrimary) return super.create(dto)
     return this.prisma.$transaction(async (tx) => {
       await tx.transitRoute.updateMany({

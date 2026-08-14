@@ -15,11 +15,12 @@ export const localitySchema = withMeta(
     id: z.uuid().meta({listVisibility: 'hidden'}),
 
     code: z.string().min(1).max(10).meta({
-      label:          'Código',
-      listVisibility: 'visible',
-      className:      'md:w-36',
-      keybind:        'c',
-      filter: true
+      label:           'Código',
+      listVisibility:  'visible',
+      className:       'md:w-36',
+      keybind:         'c',
+      filter:          true,
+      suggestEndpoint: '/transit/transit-locality/next-code',
     }),
 
     abbr: z.string().max(16).optional().meta({
