@@ -22,6 +22,9 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, Be
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
+import { useComboboxSearch } from './useComboboxSearch'
+import { useRelationLabel } from './useRelationLabel'
 import { cn, extractError } from '@/lib/utils'
 import type { FilterDef, MetadataField, PaginatedResult, RowActionDef } from '@nyx/types'
 import { RowActionsCell } from './RowActionsCell'
@@ -70,18 +73,18 @@ function RelationFilter({
   wrapperClassName?: string
   id?:               string
 }) {
-  const { data: options = [] } = useQuery<{ id: string; [k: string]: unknown }[]>({
-    queryKey: ['filter-options', filterDef.endpoint, parentValue],
-    queryFn: async () => {
-      const params = new URLSearchParams({ pageSize: '999' })
-      if (filterDef.dependsOn && parentValue) params.set(filterDef.dependsOn, parentValue)
-      const res = await apiFetch(`/${filterDef.endpoint}?${params}`)
-      if (!res.ok) return []
-      const json = await res.json()
-      return json.data ?? []
-    },
-    staleTime: 60_000,
-  })
+  const [domain, resource] = filterDef.endpoint.split('/')
+
+  const extraParams: Record<string, string> = {}
+  if (filterDef.dependsOn && parentValue) extraParams[filterDef.dependsOn] = parentValue
+
+  const { search, setSearch, rows, isLoading } = useComboboxSearch(domain, resource, extraParams)
+  const options: ComboboxOption[] = rows.map((o) => ({
+    id:    String(o.id),
+    label: String(o[filterDef.labelField] ?? o.id),
+  }))
+
+  const currentLabel = useRelationLabel(domain, resource, value || null, filterDef.labelField)
 
   const prevParentRef = useRef(parentValue)
   useEffect(() => {
@@ -93,12 +96,25 @@ function RelationFilter({
   }, [parentValue])
 
   return (
-    <Select id={id} size="sm" value={value} onChange={(e) => onChange(e.target.value)} wrapperClassName={wrapperClassName} keybind={field.keybind}>
-      <option value="">{field.label}</option>
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>{String(o[filterDef.labelField] ?? o.id)}</option>
-      ))}
-    </Select>
+    <div className={cn('relative', wrapperClassName)}>
+      <Combobox
+        id={id}
+        value={value || null}
+        displayValue={value ? (currentLabel || '…') : ''}
+        search={search}
+        onSearchChange={setSearch}
+        options={options}
+        isLoading={isLoading}
+        onSelect={(opt) => onChange(opt?.id ?? '')}
+        placeholder={field.label}
+        className={cn(
+          'border border-input rounded-sm text-sm bg-input-bg w-full px-2 py-1.5',
+          'focus:outline-none focus:ring-1 focus:ring-ring',
+          field.keybind && 'md:pr-16',
+        )}
+      />
+      {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
+    </div>
   )
 }
 

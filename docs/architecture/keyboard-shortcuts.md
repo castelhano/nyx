@@ -153,7 +153,6 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `I` | Open DevTools |
 | `J` | Open Downloads panel |
 | `N` | New incognito / private window |
-| `O` | Open bookmarks manager |
 | `R` | Hard reload (bypass cache) |
 | `P` | New incognito / private window on Firefox |
 | `T` | Reopen last closed tab |
@@ -168,7 +167,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `M` | Guest profile switcher in some Chrome versions |
 | `U` | Unicode input on Linux; safe on Windows |
 
-**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `Q` `S` `U` `V` `X` `Y`
+**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `O` `Q` `S` `U` `V` `X` `Y`
 
 ---
 ### Standard combinations

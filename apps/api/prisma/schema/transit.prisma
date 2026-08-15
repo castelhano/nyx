@@ -451,7 +451,7 @@ model VehicleBlock {
 
 model LineGroup {
   id        String   @id @default(uuid())
-  name      String
+  name      String   @unique
   branchId  String?
   notes     String?
   createdAt DateTime @default(now())

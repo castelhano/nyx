@@ -8,22 +8,24 @@ export const travelTimeSchema = withMeta(
 
     originId: z.uuid().meta({
       label:          'Origem',
-      widget:         'select',
+      widget:         'combobox',
       resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
+      keybind:        'o',
       filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       className:      'md:w-1/2'
     }),
 
     destinationId: z.uuid().meta({
       label:          'Destino',
-      widget:         'select',
+      widget:         'combobox',
       resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
+      keybind:        'd',
       filter:         { type: 'relation', endpoint: 'transit/transit-locality', labelField: 'name' },
       className:      'md:w-1/2'
     }),

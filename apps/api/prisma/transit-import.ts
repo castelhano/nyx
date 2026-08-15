@@ -24,6 +24,7 @@ interface Fixture {
   lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown }>
   routes: Array<{ lineCode: string; direction: string; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
   routeLocalities: Array<{ lineCode: string; direction: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
+  lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
 }
 
 async function main() {
@@ -133,6 +134,20 @@ async function main() {
     })
   }
   console.log(`  ✓ route localities (${fixture.routeLocalities.length})`)
+
+  // ── line groups ─────────────────────────────────────────────────────────────
+  for (const g of fixture.lineGroups) {
+    const branch = g.branchTaxId ? await prisma.branch.findUnique({ where: { taxId: g.branchTaxId } }) : null
+    const group = await prisma.lineGroup.upsert({
+      where:  { name: g.name },
+      update: { branchId: branch?.id, notes: g.notes },
+      create: { name: g.name, branchId: branch?.id, notes: g.notes },
+    })
+    const lineIds = g.lineCodes.map(code => lineMap.get(code)).filter((id): id is string => !!id)
+    await prisma.lineGroupLine.deleteMany({ where: { lineGroupId: group.id } })
+    await prisma.lineGroupLine.createMany({ data: lineIds.map(lineId => ({ lineGroupId: group.id, lineId })) })
+  }
+  console.log(`  ✓ line groups (${fixture.lineGroups.length})`)
 
   console.log('Transit import complete.')
 }
