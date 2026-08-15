@@ -11,9 +11,12 @@ import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
 import { inputBaseCls, selectBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { apiFetch } from '@/lib/auth'
 import { Icons } from '@/lib/icons'
 import { useFieldOptions } from './useFieldOptions'
+import { useComboboxSearch } from './useComboboxSearch'
+import { useRelationLabel } from './useRelationLabel'
 import { ObjectEditorWidget } from './ObjectEditorWidget'
 
 // react-leaflet touches `window` at import time — must stay client-only
@@ -270,6 +273,111 @@ function RelationSelect({
           dependsOnValue={dependsOnValue}
           autoFocus={autoFocus}
           className={className}
+          readonly={readonly}
+          containerClassName={containerClassName}
+        />
+      )}
+    />
+  )
+}
+
+function focusNextField(currentId: string) {
+  const el   = document.getElementById(currentId)
+  const form = el?.closest('form')
+  const all  = form ? Array.from(form.querySelectorAll<HTMLElement>('input, select, textarea')) : []
+  const idx  = all.indexOf(el as HTMLElement)
+  const nextId = all[idx + 1]?.id ?? null
+  if (!nextId) return
+  setTimeout(() => {
+    const next = document.getElementById(nextId)
+    if (next && !(next as HTMLInputElement).disabled) next.focus()
+  }, 0)
+}
+
+function RelationComboboxControl({
+  field, ctrl, dependsOnValue, autoFocus, readonly, containerClassName,
+}: {
+  field: MetadataField
+  ctrl: { value: string | undefined; onChange: (v: unknown) => void; onBlur: () => void; ref: React.Ref<HTMLInputElement> }
+  dependsOnValue: string | undefined
+  autoFocus?: boolean
+  readonly?: boolean
+  containerClassName?: string
+}) {
+  const prevRef = useRef<string | undefined>(undefined)
+  const labelField = field.labelField ?? 'name'
+  const domain     = field.domain ?? 'core'
+
+  useEffect(() => {
+    if (!field.dependsOn) return
+    if (prevRef.current !== undefined && prevRef.current !== dependsOnValue) {
+      ctrl.onChange('')
+    }
+    prevRef.current = dependsOnValue
+  }, [dependsOnValue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isDisabled = readonly || (!!field.dependsOn && !dependsOnValue && !ctrl.value)
+
+  const extraParams: Record<string, string> = {}
+  if (field.dependsOn && dependsOnValue) extraParams[field.dependsOn] = dependsOnValue
+  if (field.relatedWhere) {
+    for (const [k, v] of Object.entries(field.relatedWhere)) extraParams[k] = String(v)
+  }
+
+  const { search, setSearch, rows, isLoading } = useComboboxSearch(domain, field.resource, extraParams, { enabled: !isDisabled })
+
+  const options: ComboboxOption[] = rows.map((opt) => ({
+    id:    String(opt.id),
+    label: String(opt[labelField] ?? opt.id),
+    raw:   opt,
+  }))
+
+  const currentLabel = useRelationLabel(domain, field.resource, ctrl.value, labelField)
+  const displayValue = ctrl.value ? (currentLabel || '…') : ''
+
+  return (
+    <div className={cn('relative', containerClassName)}>
+      <Combobox
+        id={field.name}
+        ref={ctrl.ref}
+        value={ctrl.value ?? null}
+        displayValue={displayValue}
+        search={search}
+        onSearchChange={setSearch}
+        options={options}
+        isLoading={isLoading}
+        onSelect={(opt) => ctrl.onChange(opt?.id ?? '')}
+        placeholder={field.placeholder ?? 'Buscar…'}
+        disabled={isDisabled}
+        autoFocus={autoFocus}
+        className={cn(fieldInputCls, field.keybind && 'md:pr-20', isDisabled && readonlyCls)}
+        onCommitNext={() => focusNextField(field.name)}
+        onBlur={ctrl.onBlur}
+      />
+      {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
+    </div>
+  )
+}
+
+function RelationCombobox({
+  field, control, autoFocus, readonly, containerClassName,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; readonly?: boolean; containerClassName?: string
+}) {
+  const rawWatched      = useWatch({ control, name: field.dependsOn ?? '' })
+  const dependsOnValue: string | undefined = field.dependsOn ? ((rawWatched as string) || undefined) : undefined
+
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required && !field.virtual ? 'Campo obrigatório' : false }}
+      render={({ field: ctrl }) => (
+        <RelationComboboxControl
+          field={field}
+          ctrl={ctrl}
+          dependsOnValue={dependsOnValue}
+          autoFocus={autoFocus}
           readonly={readonly}
           containerClassName={containerClassName}
         />
@@ -641,9 +749,11 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   if (field.widget === 'avatar' && control) {
     controlEl = <AvatarUpload field={field} control={control} readonly={readonly} />
   } else if (field.resource && control) {
-    controlEl = field.lazyEdit
-      ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
-      : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
+    controlEl = field.widget === 'combobox'
+      ? <RelationCombobox field={field} control={control} autoFocus={autoFocus} readonly={readonly} containerClassName={field.className} />
+      : field.lazyEdit
+        ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
+        : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.widget === 'currency' && control) {
     controlEl = <CurrencyInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {

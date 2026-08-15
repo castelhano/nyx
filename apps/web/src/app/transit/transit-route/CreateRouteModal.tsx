@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { Button }          from '@/components/ui/button'
-import { useFieldOptions } from '@/core/useFieldOptions'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
+import { useComboboxSearch } from '@/core/useComboboxSearch'
+import { useRelationLabel } from '@/core/useRelationLabel'
 import { apiFetch }        from '@/lib/auth'
 import { extractError }    from '@/lib/utils'
 import { Icons }           from '@/lib/icons'
@@ -24,14 +26,22 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const [name,        setName]        = useState(route?.name ?? '')
   const [originId,    setOriginId]    = useState(route?.originLocalityId ?? '')
   const [destId,      setDestId]      = useState(route && route.direction !== 'CIRCULAR' ? route.destinationLocalityId : '')
+  const [originLabelOverride, setOriginLabelOverride] = useState<string | null>(null)
+  const [destLabelOverride,   setDestLabelOverride]   = useState<string | null>(null)
   const [isPending,   setIsPending]   = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
-  const { options: rawLocalities, isLoading: localitiesLoading } = useFieldOptions({
-    resource: 'transit-locality',
-    domain:   'transit',
-  })
-  const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
+  const { search: originSearch, setSearch: setOriginSearch, rows: originRows, isLoading: originLoading } =
+    useComboboxSearch('transit', 'transit-locality')
+  const { search: destSearch, setSearch: setDestSearch, rows: destRows, isLoading: destLoading } =
+    useComboboxSearch('transit', 'transit-locality')
+  const originOptions: ComboboxOption[] = originRows.map((o) => ({ id: String(o.id ?? ''), label: String(o.name ?? '') }))
+  const destOptions:   ComboboxOption[] = destRows.map((o) => ({ id: String(o.id ?? ''), label: String(o.name ?? '') }))
+
+  const fetchedOriginLabel = useRelationLabel('transit', 'transit-locality', originId)
+  const fetchedDestLabel   = useRelationLabel('transit', 'transit-locality', destId)
+  const originLabel = originLabelOverride ?? fetchedOriginLabel
+  const destLabel    = destLabelOverride ?? fetchedDestLabel
 
   const isCircular = direction === 'CIRCULAR'
 
@@ -74,7 +84,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
     icon:    Icons.Save,
     context: 'modal',
     origin:  'apps/web/src/app/transit/transit-route/CreateRouteModal.tsx',
-    enabled: !isPending && !localitiesLoading,
+    enabled: !isPending,
   })
 
   return (
@@ -118,17 +128,17 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
 
         <div className="space-y-1">
           <label className="text-sm font-medium">{isCircular ? 'Origem / Destino' : 'Origem'}</label>
-          <select
+          <Combobox
+            value={originId || null}
+            displayValue={originId ? (originLabel || '…') : ''}
+            search={originSearch}
+            onSearchChange={setOriginSearch}
+            options={originOptions}
+            isLoading={originLoading}
+            onSelect={(opt) => { setOriginId(opt?.id ?? ''); setOriginLabelOverride(opt?.label ?? null) }}
+            placeholder="Selecione…"
             className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-            value={originId}
-            onChange={(e) => setOriginId(e.target.value)}
-            disabled={localitiesLoading}
-          >
-            <option value="">Selecione…</option>
-            {localityOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+          />
           {isCircular && (
             <p className="text-xs text-muted-foreground">Rota circular — o destino é o mesmo ponto de origem.</p>
           )}
@@ -137,17 +147,17 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
         {!isCircular && (
           <div className="space-y-1">
             <label className="text-sm font-medium">Destino</label>
-            <select
+            <Combobox
+              value={destId || null}
+              displayValue={destId ? (destLabel || '…') : ''}
+              search={destSearch}
+              onSearchChange={setDestSearch}
+              options={destOptions}
+              isLoading={destLoading}
+              onSelect={(opt) => { setDestId(opt?.id ?? ''); setDestLabelOverride(opt?.label ?? null) }}
+              placeholder="Selecione…"
               className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-              value={destId}
-              onChange={(e) => setDestId(e.target.value)}
-              disabled={localitiesLoading}
-            >
-              <option value="">Selecione…</option>
-              {localityOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            />
           </div>
         )}
 
@@ -155,7 +165,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="cancel" tabIndex={-1} onClick={onClose} disabled={isPending}>Cancelar</Button>
-          <Button type="submit" disabled={isPending || localitiesLoading}>
+          <Button type="submit" disabled={isPending}>
             {isPending ? 'Gravando…' : 'Gravar'}
           </Button>
         </div>

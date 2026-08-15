@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef }  from 'react'
 import { Button }               from '@/components/ui/button'
-import { useFieldOptions }      from '@/core/useFieldOptions'
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
+import { useComboboxSearch }    from '@/core/useComboboxSearch'
 import { apiFetch }        from '@/lib/auth'
 import { Icons }           from '@/lib/icons'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
@@ -42,6 +43,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   const [mode,       setMode]       = useState<Mode>(fromMapClick ? 'waypoint' : 'stop')
   const addButtonRef = useRef<HTMLButtonElement>(null)
   const [localityId, setLocalityId] = useState('')
+  const [selectedLocality, setSelectedLocality] = useState<Record<string, unknown> | null>(null)
   const [latStr,     setLatStr]     = useState(prefillLat?.toFixed(6) ?? '')
   const [lngStr,     setLngStr]     = useState(prefillLng?.toFixed(6) ?? '')
   const [name,       setName]       = useState(prefillName ?? '')
@@ -55,14 +57,17 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
 
   useShortcutContext('modal')
 
-  const { options: rawLocalities } = useFieldOptions({ resource: 'transit-locality', domain: 'transit' })
-  const localityOptions = rawLocalities.map((o) => ({ value: String(o.id ?? ''), label: String(o.name ?? '') }))
+  const { search: localitySearch, setSearch: setLocalitySearch, rows: localityRows, isLoading: localitiesLoading } =
+    useComboboxSearch('transit', 'transit-locality')
+  const localityOptions: ComboboxOption[] = localityRows.map((o) => ({
+    id: String(o.id ?? ''), label: String(o.name ?? ''), raw: o,
+  }))
 
   // an existing stop's coordinates come from its own record, not the (hidden) lat/lng
   // inputs — those only render for waypoints/new localities
-  const selectedRaw = mode === 'stop' && localityId ? rawLocalities.find((o) => String(o.id ?? '') === localityId) : null
-  const resolvedLat = selectedRaw ? (selectedRaw.lat != null ? Number(selectedRaw.lat) : NaN) : parseFloat(latStr)
-  const resolvedLng = selectedRaw ? (selectedRaw.lng != null ? Number(selectedRaw.lng) : NaN) : parseFloat(lngStr)
+  const selectedRaw = mode === 'stop' ? selectedLocality : null
+  const resolvedLat = selectedRaw ? (selectedRaw.lat != null ? Number(selectedRaw.lat as number) : NaN) : parseFloat(latStr)
+  const resolvedLng = selectedRaw ? (selectedRaw.lng != null ? Number(selectedRaw.lng as number) : NaN) : parseFloat(lngStr)
   const hasValidCoords = !isNaN(resolvedLat) && !isNaN(resolvedLng)
 
   // suggest the next free locality code once on mount — user can still overwrite it.
@@ -99,11 +104,10 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
     if (!hasValidCoords) return
     if (isNewLocality && (!code.trim() || !name.trim())) return
 
-    const selectedLocality = localityOptions.find((o) => o.value === localityId)
     onAdd({
       _pendingId:          crypto.randomUUID(),
       localityId:          mode === 'stop' && localityId ? localityId : null,
-      localityName:        mode === 'stop' ? (selectedLocality?.label ?? (name || null)) : null,
+      localityName:        mode === 'stop' ? (String(selectedLocality?.name ?? '') || name || null) : null,
       code:                isNewLocality ? code.trim() : null,
       abbr:                isNewLocality && abbr.trim() ? abbr.trim() : null,
       lat:                 resolvedLat,
@@ -148,16 +152,20 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
         {mode === 'stop' && (
           <div className="space-y-1">
             <label className="text-sm font-medium">Localidade existente</label>
-            <select
+            <Combobox
+              value={localityId || null}
+              displayValue={selectedLocality ? String(selectedLocality.name ?? '') : ''}
+              search={localitySearch}
+              onSearchChange={setLocalitySearch}
+              options={localityOptions}
+              isLoading={localitiesLoading}
+              onSelect={(opt) => {
+                setLocalityId(opt?.id ?? '')
+                setSelectedLocality(opt?.raw ?? null)
+              }}
+              placeholder="— ou informe lat/lng abaixo para criar nova —"
               className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-              value={localityId}
-              onChange={(e) => setLocalityId(e.target.value)}
-            >
-              <option value="">— ou informe lat/lng abaixo para criar nova —</option>
-              {localityOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            />
           </div>
         )}
 

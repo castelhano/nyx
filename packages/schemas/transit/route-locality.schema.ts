@@ -15,7 +15,7 @@ export const routeLocalitySchema = withMeta(
     // null = routing waypoint (not a bus stop)
     localityId: z.uuid().optional().nullable().meta({
       label:          'Localidade',
-      widget:         'select',
+      widget:         'combobox',
       resource:       'transit-locality',
       domain:         'transit',
       labelField:     'name',

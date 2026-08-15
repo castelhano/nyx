@@ -276,7 +276,7 @@ function buildColumns(
         )
       },
       cell: ({ getValue, row: tableRow }) => {
-        if (col.widget === 'select' && col.labelField) {
+        if ((col.widget === 'select' || col.widget === 'combobox') && col.labelField) {
           const relationName = col.name.replace(/Id$/, '')
           const related = (tableRow.original as any)[relationName]
           if (related && col.labelField in related) return String(related[col.labelField])

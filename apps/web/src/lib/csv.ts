@@ -17,7 +17,7 @@ export function downloadCsv(
   const cols    = fields.filter((f) => f.listVisibility !== 'never')
   const headers = cols.map((f) => f.label).join(';')
   const lines   = rows.map((row) => cols.map((f) => {
-    if (f.widget === 'select' && f.labelField && f.name.endsWith('Id')) {
+    if ((f.widget === 'select' || f.widget === 'combobox') && f.labelField && f.name.endsWith('Id')) {
       const rel = f.name.slice(0, -2)
       const obj = row[rel]
       if (obj && typeof obj === 'object') return escapeCell((obj as Record<string, unknown>)[f.labelField])
