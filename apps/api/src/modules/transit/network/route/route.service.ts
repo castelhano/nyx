@@ -129,9 +129,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
   }
 
   // when the route is primary and propagateExtensionToOfficialKm is on, mirrors its
-  // computed extension into TransitLine.metrics.extensionKm for the direction — the
-  // same comparison LineService.reviewExtensions() uses to flag divergences, kept in
-  // sync automatically here instead of via the manual review/apply flow
+  // computed extension into TransitLine.metrics.extensionKm for the direction
   private async syncOfficialExtension(routeId: string): Promise<void> {
     const route = await this.prisma.transitRoute.findUnique({
       where:  { id: routeId },

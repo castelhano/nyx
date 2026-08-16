@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common'
+import { Controller, Post, Body, UseGuards } from '@nestjs/common'
 import { Line, CreateLineDto, UpdateLineDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -13,18 +13,6 @@ export class LineController extends BaseController<Line, CreateLineDto, UpdateLi
     caslFactory: CaslAbilityFactory,
   ) {
     super(lineService, caslFactory)
-  }
-
-  @Get('extension-review')
-  reviewExtensions() {
-    return this.lineService.reviewExtensions()
-  }
-
-  @Post('extension-review/apply')
-  applyExtensions(
-    @Body() body: { updates: Array<{ lineId: string; direction: string; computedKm: number }> },
-  ) {
-    return this.lineService.applyExtensions(body.updates ?? [])
   }
 
   @Post('demand/apply')

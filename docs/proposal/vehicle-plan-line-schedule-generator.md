@@ -1,6 +1,6 @@
 # Line Schedule Generator (Gerador de Proposta de Atendimento por Linha)
 
-> Planning document — nothing here is implemented yet.
+> Status: Phase 1 (UX prototype) and the data-wiring half of Phase 2 are done — see §6. Still missing: the actual generation algorithm (§4.7), the `renewalIndex` schema field (§5), and all of Phase 3 (persistence, §4.8).
 > Scope: `apps/web/src/app/transit/vehicle-plan/[id]/`, `packages/schemas/transit/line.schema.ts`, `apps/api/src/modules/transit/timetabling/vehicle-plan/`.
 
 ---
@@ -55,7 +55,7 @@ In `page.tsx` edit mode, with exactly one line selected/focused in `LinesPanel` 
   - **Merge**: default cycle minutes = `max()` of the underlying registered windows' `minutes`; always user-editable after.
   - **Split**: default cycle minutes = the same value as the original window being split; independently editable per new sub-range afterward.
 - Each generation window row is **unified across directions**, not per-direction: `from`, `to`, `outboundMinutes` (ida cycle), `inboundMinutes` (volta cycle), a single `fleetCount`, and a **read-only inline computed frequency**: `avgFrequencyMinutes = (outboundMinutes + inboundMinutes) / fleetCount`. A vehicle runs ida then volta in sequence, so fleet is one number per time band, not one per direction — registered cycle windows for OUTBOUND/INBOUND (which can have different boundaries) are unified into one merged timeline at seed time (§Resolved, was open question #2).
-- Prototyped in `apps/web/src/app/playground/` (Phase 1, see §6) — `generator-logic.ts#buildUnifiedWindows` does the seed/merge, confirmed working against deliberately misaligned mock ida/volta windows.
+- Originally prototyped against mock data in `apps/web/src/app/playground/` (Phase 1, see §6), confirmed working against deliberately misaligned mock ida/volta windows; the seed/merge logic now lives in `line-generator-logic.ts#buildUnifiedWindows`, wired to real line data.
 
 ### 4.2 Operation window
 
@@ -77,6 +77,7 @@ Two fields, global to the whole generation (not per generation-window): operatio
 
 - Checkbox **"Incluir acesso e recolhida"**, default `false`.
 - When enabled: appends one access deadrun before each vehicle's first trip of the day and one recolhida deadrun after its last trip, from/to whatever depot that vehicle was allocated to in §4.3.
+- **Depot assignment algorithm** (resolves §7 open question #2, ex-"open"): vehicles are not assigned to depots in input order. Each vehicle's starting point is the locality of its first departure — the OUTBOUND terminal or the INBOUND terminal, whichever leg the round-robin schedule happens to place first for that vehicle. Assignment greedily minimizes total access-deadrun distance: for each vehicle, `getTravelTime()` is compared across every depot that still has room under its §4.3 count, and the vehicle goes to whichever depot gives the shortest access leg (e.g. of two vehicles starting the day on IDA vs. VOLTA respectively, each is paired with whichever of the two depots is closer to *its own* starting terminal, not both defaulting to the same one). Once a depot's configured count is filled, remaining vehicles simply fill whatever capacity is left elsewhere — there's nothing left to optimize once a vehicle has only one depot with room.
 
 ### 4.6 Oferta × demanda preview
 
@@ -124,20 +125,14 @@ Consequence worth calling out: this is why the line's dot in `LinesPanel` natura
 
 ## 6. Phased plan
 
-**Phase 1 — modal prototype (next step, this request's actual ask).**
-Repurpose `apps/web/src/app/playground/page.tsx`: clear out the current interval-visual-language prototype (it's already served its purpose and isn't referenced anywhere else) and replace it with only this feature's modal, driven by hardcoded/mock data (a fake line with a couple of registered cycle windows, fake demand numbers, fake depots). Goal: validate the interaction design end-to-end —
-- generation window merge/split behavior and default-minutes rule,
-- inline frequency computation,
-- depot allocation table (single vs. multi-depot),
-- oferta×demanda chart reacting live to window/fleet edits,
-- interval/access toggles.
+**Phase 1 — modal prototype. ✅ Done.**
+Repurposed `apps/web/src/app/playground/page.tsx`: cleared out the prior interval-visual-language prototype and replaced it with only this feature's modal, driven by hardcoded/mock data (a fake line with a couple of registered cycle windows, fake demand numbers, fake depots). Validated end-to-end: generation window merge/split behavior and default-minutes rule, inline frequency computation, depot allocation table (single vs. multi-depot), oferta×demanda chart reacting live to window/fleet edits, interval/access toggles. The prototype logic (`generator-logic.ts`) later moved unchanged into `line-generator-logic.ts` (see that file's header comment) once Phase 2 started, and `playground/page.tsx` has since been reverted to an empty stub — it's not where this feature lives anymore.
 
-No wiring to real line data, no generation algorithm, no persistence — just the modal's UX, validated in isolation before touching `page.tsx` or the backend.
+**Phase 2 — real data + generation algorithm. 🚧 In progress.**
+Done: the modal (`LineScheduleGeneratorModal.tsx`) is wired to real `TransitLine` data — windows, demand, depots, interval types — all fetched live via `useQuery` from within the vehicle-plan page, not mocked. The windows editor, oferta×demanda chart, and depot allocation table all operate on real data already.
+Not done: `handleGenerate()` currently only calls `estimateGeneration()` — a rough trip-count/peak-fleet estimate for the modal's own preview footer. The actual round-robin scheduling loop that produces real `PendingAddTrip`/`PendingAddDeadrun`/`PendingAddInterval` batches merged into the Gantt via the existing pending-changes state (§4.7) has not been implemented yet. This is the next concrete step.
 
-**Phase 2 — real data + generation algorithm.**
-Wire the modal to real `TransitLine` data (windows, demand, metrics) from within the vehicle-plan page; implement the round-robin scheduling loop and produce real `PendingAddTrip`/`PendingAddDeadrun`/`PendingAddInterval` batches merged into the Gantt via the existing pending-changes state.
-
-**Phase 3 — persistence.**
+**Phase 3 — persistence. Not started.**
 New atomic `generate-schedule` endpoint (§4.8), OSO draft creation, wiring into `handleSavePending`.
 
 ---
@@ -148,10 +143,26 @@ New atomic `generate-schedule` endpoint (§4.8), OSO draft creation, wiring into
 
 - ~~Fleet vs. direction~~ — settled: fleet is **one number per unified time band**, shared by both directions (a vehicle does ida then volta in sequence). Generation windows merge OUTBOUND/INBOUND into a single timeline instead of two parallel per-direction tables. See §4.1 and `generator-logic.ts#buildUnifiedWindows`. This also resolved the old §5-open-question about where the window editor lives relative to direction — there's one editor, not one per direction tab.
 
+**Resolved (this update):**
+
+- ~~Depot allocation order~~ — settled: greedy, minimizes total access-deadrun distance per vehicle against depots that still have room, then fills whatever capacity is left once no further optimization is possible. See the algorithm note added to §4.5.
+- ~~Single line vs. multi-line selection~~ — settled for this phase: exactly one line per run, as already assumed. Multi-line isn't rejected, just deliberately deferred — it raises coordination questions (shared terminals, intercalation between lines, cross-line depot contention) this phase doesn't need to answer. See new §8.
+
 **Still open:**
 
-1. **Renewal index formula** — is it a straight multiplier on capacity (`capacity * (1 + renewalIndex/100)`) as assumed in §4.6 and implemented in the prototype's `computeOfertaSeries`, or does it interact with frequency/oferta differently?
-2. **Depot allocation order** — when fleet is split across multiple depots, how are vehicles assigned to depots deterministically (first N vehicles to depot A, remainder to depot B? proportional? user-ordered?). The prototype just lets the user type counts freely per depot row with no auto-distribution algorithm.
-3. **Single line vs. multi-line selection** — is "Gerar" restricted to exactly one selected line at a time, or should the modal ever handle a batch of lines? Current assumption: one line per run.
+1. **Renewal index formula** — is it a straight multiplier on capacity (`capacity * (1 + renewalIndex/100)`) as assumed in §4.6 and implemented in `computeOfertaSeries`, or does it interact with frequency/oferta differently? Also tracked in `docs/TODO.md` ("Definir critério para geração de índice de renovação da linha e campo no form") — this is what's blocking adding `metrics.renewalIndex` to the schema (§5): better to lock the formula before persisting a field whose meaning would be expensive to change later.
+2. **CIRCULAR-direction lines** — `buildUnifiedWindows` (in `line-generator-logic.ts`) only reads `metrics.windows.OUTBOUND`/`.INBOUND`; a circular line's cycle data lives under `metrics.windows.CIRCULAR` and isn't consumed at all today, so running the generator against a circular line would silently produce an all-unknown/zero timeline instead of a useful one. Needs a decision: extend the unifier to handle the CIRCULAR case, or explicitly exclude circular lines from this feature for now and surface that at the entry point (§4.0).
 
-These should be settled during Phase 2; they don't block Phase 1's UX prototype since it uses arbitrary mock assumptions where needed.
+These should be settled before Phase 2's generation algorithm (§4.7) is implemented — #1 blocks the schema change in §5, #2 blocks generation from working correctly for circular lines at all.
+
+---
+
+## 8. Future: multi-line generation (explicitly out of scope for this phase)
+
+`Gerar` in this feature only ever targets one line at a time (§4.0, §7#3). A multi-line mode is real future scope, not rejected — it's deliberately kept out of this phase because it introduces coordination questions a single-line generator doesn't have to answer:
+
+- **Shared terminals/depots** — lines whose IDA or VOLTA terminal coincides with another selected line's terminal, or that draw from the same depot, may need coordinated arrival/departure spacing at that shared point rather than independently generated schedules that happen to collide there.
+- **Intercalation deltas** — where two lines share a corridor or stop, there may be a minimum/target headway *between* lines (not just within one line's own frequency) that a batch generator would need to respect.
+- **Cross-line depot contention** — the depot allocation and assignment logic in §4.3/§4.5 is scoped to one line's fleet; multiple lines drawing from the same depot's vehicle pool would need that resolved jointly, not line by line.
+
+None of this is designed yet, and nothing in this document's algorithm (§4.7) or persistence design (§4.8) assumes it. When multi-line generation is picked up, it should get its own proposal building on this one, rather than being bolted onto the single-line round-robin algorithm after the fact.

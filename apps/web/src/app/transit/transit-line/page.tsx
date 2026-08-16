@@ -10,13 +10,11 @@ import { useShortcut }          from '@/lib/keywatch'
 import { Icons }                from '@/lib/icons'
 import { apiFetch }             from '@/lib/auth'
 import { downloadCsv }          from '@/lib/csv'
-import { ExtensionReviewModal } from './ExtensionReviewModal'
 import { DemandImportModal }    from './DemandImportModal'
 
 export default function TransitLineListPage() {
   const router              = useRouter()
   const { guardNode, meta } = usePageGuard('transit', 'transit-line')
-  const [showExtModal,    setShowExtModal]    = useState(false)
   const [showDemandModal, setShowDemandModal] = useState(false)
 
   if (guardNode) return guardNode
@@ -42,13 +40,6 @@ export default function TransitLineListPage() {
       icon:    Icons.BarChart2,
       overflow: true,
       onClick: () => setShowDemandModal(true),
-      variant: 'ghost' as const,
-    },
-    {
-      label:   'Revisar Extensões',
-      icon:    Icons.SlidersHorizontal,
-      overflow: true,
-      onClick: () => setShowExtModal(true),
       variant: 'ghost' as const,
     },
     {
@@ -89,12 +80,6 @@ export default function TransitLineListPage() {
         resource="transit-line"
         onEdit={(id) => router.push(`/transit/transit-line/${id}`)}
       />
-      {showExtModal && (
-        <ExtensionReviewModal
-          onClose={() => setShowExtModal(false)}
-          onApplied={() => setShowExtModal(false)}
-        />
-      )}
       {showDemandModal && (
         <DemandImportModal
           onClose={() => setShowDemandModal(false)}
