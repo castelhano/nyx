@@ -20,6 +20,7 @@ const FIXTURE_PATH = join(__dirname, 'fixtures', 'transit.json')
 interface Fixture {
   localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown }>
   dayTypes: Array<{ code: string; name: string; pattern: unknown; priority: number; sortOrder: number }>
+  intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
   scopes: Array<{ name: string; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
   lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown }>
   routes: Array<{ lineCode: string; direction: string; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
@@ -51,6 +52,16 @@ async function main() {
     })
   }
   console.log(`  ✓ day types (${fixture.dayTypes.length})`)
+
+  // ── interval types ──────────────────────────────────────────────────────────
+  for (const i of fixture.intervalTypes) {
+    await prisma.intervalType.upsert({
+      where:  { code: i.code },
+      update: { name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes },
+      create: { code: i.code, name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes },
+    })
+  }
+  console.log(`  ✓ interval types (${fixture.intervalTypes.length})`)
 
   // ── scopes + operators ──────────────────────────────────────────────────────
   const scopeMap = new Map<string, string>()

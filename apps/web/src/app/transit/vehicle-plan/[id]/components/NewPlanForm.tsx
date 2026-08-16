@@ -8,6 +8,9 @@ import { apiFetch }     from '@/lib/auth'
 import { useToast }     from '@/lib/toast-context'
 import { extractError } from '@/lib/utils'
 import { Button }       from '@/components/ui/button'
+import { useShortcut }  from '@/lib/keywatch'
+
+const FORM_ID = 'new-vehicle-plan-form'
 
 interface DayType { id: string; name: string; code: string }
 interface ScopeOption { id: string; name: string }
@@ -71,9 +74,22 @@ export function NewPlanForm() {
     }
   }
 
+  function handleCancel() {
+    router.push('/transit/vehicle-plan')
+  }
+
+  useShortcut('alt+g', () => {
+    (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
+  }, { desc: 'Gravar', icon: Icons.Save, context: 'all', origin: 'transit/vehicle-plan/[id]/NewPlanForm' })
+
+  useShortcut('alt+v;esc', handleCancel, {
+    desc: 'Cancelar', icon: Icons.ArrowLeft, context: 'all', origin: 'transit/vehicle-plan/[id]/NewPlanForm',
+  })
+
   return (
     <div className="flex flex justify-center p-8">
       <form
+        id={FORM_ID}
         onSubmit={handleCreate}
         className="w-full max-w-sm space-y-4 border border-border rounded-md p-6 bg-card"
       >
@@ -125,11 +141,11 @@ export function NewPlanForm() {
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button type="submit" disabled={isPending || !scopeId || !dayTypeId} className="w-full" size="default">
-          {isPending ? 'Criando…' : 'Criar Planejamento'}
+          <Button type="button" className="w-full" size="default" variant='cancel' onClick={handleCancel}>
+            Cancelar
           </Button>
-          <Button type="button" className="w-full" size="default" variant='cancel' onClick={ () => router.push('/transit/vehicle-plan') }>
-            Voltar
+          <Button type="submit" disabled={isPending || !scopeId || !dayTypeId} className="w-full" size="default">
+          {isPending ? 'Gravando…' : 'Gravar'}
           </Button>
         </div>
       </form>

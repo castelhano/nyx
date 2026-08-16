@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 
-// Snapshots the transit cadastro domain — TransitLocality, DayType, Scope,
+// Snapshots the transit cadastro domain — TransitLocality, DayType, IntervalType, Scope,
 // ScopeOperator, TransitLine, TransitRoute, RouteLocality, LineGroup — keyed by natural keys
 // (code, not id) so it survives a `prisma migrate reset` and imports cleanly on
 // any machine. Run after making cadastro edits in the app; commit the resulting
@@ -20,9 +20,10 @@ const prisma   = new PrismaClient({ adapter })
 const FIXTURE_PATH = join(__dirname, 'fixtures', 'transit.json')
 
 async function main() {
-  const [localities, dayTypes, scopes, lines, routes, routeLocalities, lineGroups] = await Promise.all([
+  const [localities, dayTypes, intervalTypes, scopes, lines, routes, routeLocalities, lineGroups] = await Promise.all([
     prisma.transitLocality.findMany({ orderBy: { code: 'asc' } }),
     prisma.dayType.findMany({ orderBy: { code: 'asc' } }),
+    prisma.intervalType.findMany({ orderBy: { code: 'asc' } }),
     prisma.scope.findMany({
       include: { operators: { include: { branch: { select: { taxId: true } } } } },
       orderBy: { name: 'asc' },
@@ -61,6 +62,9 @@ async function main() {
     dayTypes: dayTypes.map(d => ({
       code: d.code, name: d.name, pattern: d.pattern, priority: d.priority, sortOrder: d.sortOrder,
     })),
+    intervalTypes: intervalTypes.map(i => ({
+      code: i.code, name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes,
+    })),
     scopes: scopes.map(s => ({
       name: s.name,
       operators: s.operators.map(o => ({ branchTaxId: o.branch.taxId, abbr: o.abbr, share: o.share })),
@@ -91,7 +95,7 @@ async function main() {
   writeFileSync(FIXTURE_PATH, JSON.stringify(fixture, null, 2))
 
   console.log(`Exported to ${FIXTURE_PATH}`)
-  console.log(`  localities=${localities.length} dayTypes=${dayTypes.length} scopes=${scopes.length}`)
+  console.log(`  localities=${localities.length} dayTypes=${dayTypes.length} intervalTypes=${intervalTypes.length} scopes=${scopes.length}`)
   console.log(`  lines=${lines.length} routes=${routes.length} routeLocalities=${routeLocalities.length}`)
   console.log(`  lineGroups=${lineGroups.length}`)
 }
