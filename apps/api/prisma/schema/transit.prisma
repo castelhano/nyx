@@ -83,6 +83,12 @@ model TransitLine {
       "U":{
           "OUTBOUND":{
               "4":24,"5":241,...
+   "renewalIndex":{
+      "OUTBOUND":{"value":81.25,"peakPax":145,"peakTripId":"trip_1399","tripCount":159,
+                  "avgPax":41.75,"assumedCapacity":80,"method":"cut_planned_end",
+                  "computedAt":"2026-08-17T14:46:16","sourceFile":"FULL_2026_08_03_....json"},
+      "INBOUND":{...}, "CIRCULAR":{...}, "overall":{...}
+   }
   */
   metrics   Json?
   createdAt DateTime @default(now())

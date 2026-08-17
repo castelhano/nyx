@@ -26,7 +26,7 @@ export function SubObjectEditor({
     <div>
       <p className="font-semibold text-muted-foreground mb-2">{field.label}</p>
       <div className="flex flex-wrap gap-3">
-        {field.fields?.map((f) => (
+        {field.fields?.filter(f => f.showInForm !== false).map((f) => (
           <div key={f.name} className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground">{f.label}</label>
             <input
@@ -42,6 +42,37 @@ export function SubObjectEditor({
             />
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+/** Group of named sub-objects, e.g. metrics.renewalIndex = { OUTBOUND: Stat, INBOUND: Stat, ... } —
+ *  same shape as SubSectionEditor but nesting SubObjectEditor (objects) instead of SubArrayEditor (arrays). */
+export function SubGroupEditor({
+  field, value, onChange, readonly,
+}: {
+  field:    MetadataField
+  value:    Record<string, unknown>
+  onChange: (v: Record<string, unknown>) => void
+  readonly?: boolean
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
+      <div className="flex flex-wrap gap-6">
+        {field.fields?.map(sub => {
+          if (sub.type !== 'object') return null
+          return (
+            <SubObjectEditor
+              key={sub.name}
+              field={sub}
+              value={(value[sub.name] ?? {}) as Record<string, unknown>}
+              onChange={v => onChange({ ...value, [sub.name]: v })}
+              readonly={readonly}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -174,6 +205,17 @@ export function ObjectEditorWidget({
                 if (sub.fields?.some(f => f.type === 'array')) {
                   return (
                     <SubSectionEditor
+                      key={sub.name}
+                      field={sub}
+                      value={(value[sub.name] ?? {}) as Record<string, unknown>}
+                      onChange={(v) => handleKey(sub.name, v)}
+                      readonly={readonly}
+                    />
+                  )
+                }
+                if (sub.fields?.some(f => f.type === 'object')) {
+                  return (
+                    <SubGroupEditor
                       key={sub.name}
                       field={sub}
                       value={(value[sub.name] ?? {}) as Record<string, unknown>}

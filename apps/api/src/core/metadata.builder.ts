@@ -82,7 +82,7 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
         type:           'object' as const,
         required:       isRequired(field),
         listVisibility: 'never'  as const,
-        showInForm:     true,
+        showInForm:     meta.showInForm ?? true,
         sortable:       false,
         fields:         buildNestedFields((inner as ZodObject<any>).shape),
         ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
@@ -97,7 +97,7 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
         type:           'array' as const,
         required:       isRequired(field),
         listVisibility: 'never'  as const,
-        showInForm:     true,
+        showInForm:     meta.showInForm ?? true,
         sortable:       false,
         ...(elementInner instanceof ZodObject
           ? { itemFields: buildNestedFields((elementInner as ZodObject<any>).shape) }
@@ -112,7 +112,7 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
       type:           getType(field),
       required:       isRequired(field),
       listVisibility: 'never'  as const,
-      showInForm:     true,
+      showInForm:     meta.showInForm ?? true,
       sortable:       false,
       ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
       ...(meta.min !== undefined ? { min: meta.min } : {}),

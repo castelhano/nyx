@@ -2,6 +2,20 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
+// inferido a partir da conciliação bilhetagem x GPS: excedente de embarques na
+// viagem de maior ocupação sobre a capacidade assumida do veículo — ver docs/architecture
+const renewalIndexStatSchema = z.object({
+  value:           z.number().meta({ label: 'Índice (%)' }),
+  peakPax:         z.number().meta({ label: 'Pico de embarques' }),
+  peakTripId:      z.string().meta({ label: 'Viagem de pico', showInForm: false }),
+  tripCount:       z.number().meta({ label: 'Viagens amostradas' }),
+  avgPax:          z.number().meta({ label: 'Média de embarques' }),
+  assumedCapacity: z.number().meta({ label: 'Capacidade assumida' }),
+  method:          z.enum(['real_window', 'cut_planned_end']).meta({ label: 'Método', showInForm: false }),
+  computedAt:      z.string().meta({ label: 'Calculado em', showInForm: false }),
+  sourceFile:      z.string().meta({ label: 'Arquivo fonte', showInForm: false }),
+})
+
 export const lineSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
@@ -96,6 +110,12 @@ export const lineSchema = withMeta(
           isDerived:       z.boolean().optional().meta({ label: 'Inferida' }),
         })).optional().meta({ label: 'Circular' }),
       }).optional().meta({ label: 'Janelas de Ciclo' }),
+      renewalIndex: z.object({
+        OUTBOUND: renewalIndexStatSchema.optional().meta({ label: 'Ida' }),
+        INBOUND:  renewalIndexStatSchema.optional().meta({ label: 'Volta' }),
+        CIRCULAR: renewalIndexStatSchema.optional().meta({ label: 'Circular' }),
+        overall:  renewalIndexStatSchema.optional().meta({ label: 'Geral' }),
+      }).optional().meta({ label: 'Índice de Renovação' }),
     }).optional().meta({
       label:          'Métricas',
       widget:         'object-editor',
