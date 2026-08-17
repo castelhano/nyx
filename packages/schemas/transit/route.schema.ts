@@ -70,6 +70,14 @@ export const routeSchema = withMeta(
       defaultValue:   'false',
     }),
 
+    // null = usa a cor padrão do sentido (DIR_COLOR) — editado via CreateRouteModal,
+    // não pelo form genérico
+    color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional().meta({
+      label:          'Cor',
+      showInForm:     false,
+      listVisibility: 'hidden',
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

@@ -5,7 +5,7 @@ import { useQuery }  from '@tanstack/react-query'
 import { Icons }     from '@/lib/icons'
 import { apiFetch }  from '@/lib/auth'
 import { Dropdown, DropdownItem, DropdownLabel, DropdownSeparator } from '@/components/ui/dropdown'
-import { DIR_LABEL, DIR_COLOR, type TransitRoute, type RouteLocality } from './types'
+import { DIR_LABEL, getRouteColor, type TransitRoute, type RouteLocality } from './types'
 
 interface Props {
   routes:          TransitRoute[]
@@ -116,7 +116,7 @@ function RouteRow({ route, selected, muted, onSelect, onEdit, onTogglePrimary, o
     >
       <span
         className="mt-1 w-2 h-2 rounded-full shrink-0"
-        style={{ backgroundColor: DIR_COLOR[route.direction] }}
+        style={{ backgroundColor: getRouteColor(route) }}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">

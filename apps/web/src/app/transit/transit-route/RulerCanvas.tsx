@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { DIR_COLOR, type RouteLocality, type TransitRoute } from './types'
+import { getRouteColor, type RouteLocality, type TransitRoute } from './types'
 import { StopGlyph } from './StopGlyph'
 import { PointDetailModal } from './PointDetailModal'
 
@@ -16,7 +16,7 @@ function RulerRow({ route, localities }: {
   route: TransitRoute
   localities: RouteLocality[]
 }) {
-  const color = DIR_COLOR[route.direction]
+  const color = getRouteColor(route)
   const opacity = 1   // all fully visible in ruler
   const [detail, setDetail] = useState<{ rl: RouteLocality; position: number } | null>(null)
 

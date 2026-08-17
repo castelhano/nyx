@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, CircleMarker, Marker, Polyline, Tooltip, Popup, useMapEvents } from 'react-leaflet'
 import type { Map as LeafletMap, LeafletMouseEvent } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { DIR_COLOR, DIR_LABEL, DIR_MARK_COLOR, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
+import { DIR_LABEL, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, getRouteColor, getRouteMarkColor, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
 import { DirectionArrows } from './DirectionArrows'
@@ -140,8 +140,8 @@ export default function MapCanvas({
           if (hiddenRouteIds.has(route.id) && !isSelected) return null
 
           const lls      = localities[route.id] ?? []
-          const color     = DIR_COLOR[route.direction]
-          const markColor = DIR_MARK_COLOR[route.direction]
+          const color     = getRouteColor(route)
+          const markColor = getRouteMarkColor(route)
           const opacity   = selectedRouteId ? (isSelected ? 1 : 0.6) : 0.8
 
           // collect leg geometries, keeping the owning RouteLocality so we can key by it
@@ -400,7 +400,7 @@ export default function MapCanvas({
                 >
                   {isHidden
                     ? <Icons.EyeOff className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-                    : <Icons.Eye className="w-3.5 h-3.5 shrink-0" style={{ color: DIR_COLOR[route.direction] }} />}
+                    : <Icons.Eye className="w-3.5 h-3.5 shrink-0" style={{ color: getRouteColor(route) }} />}
                   <span className="flex-1 truncate">{route.name}</span>
                   <span className="text-[10px] text-muted-foreground shrink-0">{DIR_LABEL[route.direction]}</span>
                 </button>

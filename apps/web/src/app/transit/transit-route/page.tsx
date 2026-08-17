@@ -20,7 +20,7 @@ import { AddPointModal }                     from './AddPointModal'
 import { SeqModal }                          from './SeqModal'
 import { apiPost, apiPatch, apiDelete }      from './api'
 import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } from './types'
-import { DIR_COLOR }                         from './types'
+import { getRouteColor }                     from './types'
 import { resolveOrder }                      from './order'
 import { extractError } from '@/lib/utils'
 
@@ -630,7 +630,7 @@ export default function TransitRoutePage() {
         <SeqModal
           routeId={routeId}
           localities={selectedLocalities}
-          color={DIR_COLOR[routes.find((r) => r.id === routeId)?.direction ?? 'OUTBOUND']}
+          color={getRouteColor(routes.find((r) => r.id === routeId) ?? { direction: 'OUTBOUND', color: null })}
           disabled={pendingPoints.length > 0}
           insertTarget={suggestTarget}
           onClose={() => { setShowSeq(false); setSuggestTarget(null) }}

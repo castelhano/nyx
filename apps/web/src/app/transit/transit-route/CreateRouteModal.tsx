@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import { Button }          from '@/components/ui/button'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
+import { ColorPicker }     from '@/components/ui/color-picker'
 import { useComboboxSearch } from '@/core/useComboboxSearch'
 import { useRelationLabel } from '@/core/useRelationLabel'
 import { apiFetch }        from '@/lib/auth'
 import { extractError }    from '@/lib/utils'
 import { Icons }           from '@/lib/icons'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
-import { DIR_LABEL, type RouteDirection, type TransitRoute } from './types'
+import { DIR_COLOR, DIR_LABEL, ROUTE_COLOR_PALETTE, type RouteDirection, type TransitRoute } from './types'
 
 interface Props {
   lineId: string
@@ -23,6 +24,7 @@ const DIRECTIONS: RouteDirection[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
 export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const isEditing = !!route
   const [direction,   setDirection]   = useState<RouteDirection>(route?.direction ?? 'OUTBOUND')
+  const [color,       setColor]       = useState<string | null>(route?.color ?? null)
   const [name,        setName]        = useState(route?.name ?? '')
   const [originId,    setOriginId]    = useState(route?.originLocalityId ?? '')
   const [destId,      setDestId]      = useState(route && route.direction !== 'CIRCULAR' ? route.destinationLocalityId : '')
@@ -44,6 +46,17 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const destLabel    = destLabelOverride ?? fetchedDestLabel
 
   const isCircular = direction === 'CIRCULAR'
+  const autoColor = DIR_COLOR[direction]
+  // the direction's default is already offered as the "Automático" swatch — drop it
+  // from the grid so it isn't shown twice
+  const paletteColors = ROUTE_COLOR_PALETTE.map((c) => c.value).filter((v) => v !== autoColor)
+
+  // switching direction can make an explicitly picked color coincide with the new
+  // direction's default — fold it back into "Automático" so it isn't orphaned
+  // (its swatch was just filtered out of the grid above)
+  useEffect(() => {
+    if (color === autoColor) setColor(null)
+  }, [autoColor]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useShortcutContext('modal')
 
@@ -61,7 +74,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
     setError(null)
     try {
       const body: Record<string, unknown> = {
-        lineId, direction, name: name.trim(),
+        lineId, direction, name: name.trim(), color,
         originLocalityId:      originId,
         destinationLocalityId: isCircular ? originId : destId,
       }
@@ -113,6 +126,17 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Cor</label>
+          <ColorPicker
+            value={color}
+            onChange={setColor}
+            palette={paletteColors}
+            autoColor={autoColor}
+            autoLabel={`Automático (${DIR_LABEL[direction]})`}
+          />
         </div>
 
         <div className="space-y-1">

@@ -112,6 +112,9 @@ model TransitRoute {
   // direction, used to confront TransitLine.metrics.extensionKm — at most one per
   // (lineId, direction), enforced in RouteService
   isPrimary             Boolean        @default(false)
+  // manual override for the trajectory color on Régua/Mapa — null falls back to the
+  // direction's default color (see DIR_COLOR in the frontend)
+  color                 String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
