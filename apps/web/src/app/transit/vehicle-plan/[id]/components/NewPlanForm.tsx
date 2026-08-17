@@ -141,7 +141,7 @@ export function NewPlanForm() {
           </div>
         </div>
         <div className="flex justify-end space-x-4">
-          <Button type="button" className="w-full" size="default" variant='cancel' onClick={handleCancel}>
+          <Button type="button" className="w-full" size="default" variant='cancel' tabIndex={-1} onClick={handleCancel}>
             Cancelar
           </Button>
           <Button type="submit" disabled={isPending || !scopeId || !dayTypeId} className="w-full" size="default">

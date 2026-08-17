@@ -232,48 +232,58 @@ const TARGET_OCCUPANCY = 0.8
 // straddle half-hour boundaries, so this scans every whole hour the band
 // touches and keeps the worst one — sizing fleet for a band's average hour
 // would under-serve its actual peak.
-function peakDemandInRange(
+function peakDemandByDirection(
   from:   number,
   to:     number,
   demand: Partial<Record<Direction, Record<string, number>>>,
-): number {
-  let peak = 0
+): Partial<Record<Direction, number>> {
+  const peaks: Partial<Record<Direction, number>> = {}
   for (const dir of ['OUTBOUND', 'INBOUND'] as Direction[]) {
     const dirDemand = demand[dir]
     if (!dirDemand) continue
+    let peak = 0
     for (let hour = Math.floor(from); hour < Math.ceil(to); hour++) {
       const v = dirDemand[String(hour)] ?? 0
       if (v > peak) peak = v
     }
+    if (peak > 0) peaks[dir] = peak
   }
-  return peak
+  return peaks
 }
 
 /** Sizes fleet from real demand instead of a flat guess: enough vehicles to
  *  carry the band's peak-hour demand (worse of ida/volta — a vehicle serves
  *  both directions in sequence, so it has to cover whichever leg is heavier)
- *  without exceeding TARGET_OCCUPANCY on average. Falls back to the old flat
- *  cycle/15 heuristic when there's no demand data to size from at all — that
- *  case is unfortunately still common (see docs/proposal/…): most lines
- *  don't have demand imported yet. */
+ *  without exceeding TARGET_OCCUPANCY on average. Each leg's capacity is
+ *  further inflated by that direction's renewalIndex (mid-route turnover
+ *  measured from bilhetagem x GPS conciliation, see TransitLine.metrics) —
+ *  a leg with heavy turnover carries more total riders per trip than its
+ *  seat count alone would suggest, so it needs fewer vehicles to match the
+ *  same demand. Falls back to the old flat cycle/15 heuristic when there's
+ *  no demand data to size from at all — that case is unfortunately still
+ *  common (see docs/proposal/…): most lines don't have demand imported yet. */
 export function estimateFleetCounts(
   rows:            GenWindow[],
   demand:          Partial<Record<Direction, Record<string, number>>>,
   vehicleCapacity: number,
+  renewalIndex:    Partial<Record<Direction, number>> = {},
 ): GenWindow[] {
   return rows.map(row => {
     const cycleTotal = totalCycleMinutes(row)
     if (cycleTotal <= 0) return { ...row, fleetCount: 1 }
 
-    const peakDemand = peakDemandInRange(row.from, row.to, demand)
-    if (peakDemand <= 0) {
+    const peaks = peakDemandByDirection(row.from, row.to, demand)
+    const dirs  = Object.keys(peaks) as Direction[]
+    if (dirs.length === 0) {
       return { ...row, fleetCount: Math.max(1, Math.round(cycleTotal / 15)) }
     }
 
-    const capacityPerTrip = vehicleCapacity * TARGET_OCCUPANCY
-    if (capacityPerTrip <= 0) return { ...row, fleetCount: 1 }
+    const tripsPerHourNeeded = Math.max(...dirs.map(dir => {
+      const capacityPerTrip = vehicleCapacity * TARGET_OCCUPANCY * (1 + (renewalIndex[dir] ?? 0) / 100)
+      return capacityPerTrip > 0 ? peaks[dir]! / capacityPerTrip : 0
+    }))
+    if (tripsPerHourNeeded <= 0) return { ...row, fleetCount: 1 }
 
-    const tripsPerHourNeeded = peakDemand / capacityPerTrip
     const fleetCount = Math.max(1, Math.ceil(tripsPerHourNeeded * cycleTotal / 60))
     return { ...row, fleetCount }
   })
