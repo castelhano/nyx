@@ -574,6 +574,38 @@ function windowAtMinutes(rows: GenWindow[], minutes: number): GenWindow | undefi
   return rows.find(w => slot >= w.from && slot < w.to) ?? rows.find(w => slot >= w.from && slot <= w.to)
 }
 
+/** Builds one round (anchor leg + derived paired leg, or the lone anchor leg
+ *  for circular-only lines) departing at `anchorDep` within `band`. Factored
+ *  out of generateRounds so the periodic sweep and the end-of-day closing
+ *  round (see below) build rounds identically. */
+function buildRound(
+  rows:               GenWindow[],
+  band:               GenWindow,
+  anchorDep:          number,
+  firstTripDirection: Direction,
+  pairedDirection:    Direction | null,
+): GeneratedRound {
+  const anchorArr = anchorDep + (firstTripDirection === 'INBOUND' ? band.inboundMinutes : band.outboundMinutes)
+  const legs: GeneratedLeg[] = [{ direction: firstTripDirection, departureMinutes: anchorDep, arrivalMinutes: anchorArr }]
+
+  let readyAgainMinutes: number
+  if (pairedDirection) {
+    const anchorTurnback = firstTripDirection === 'INBOUND' ? band.inboundInterval : band.outboundInterval
+    const pairedDep   = anchorArr + anchorTurnback
+    const pairedBand  = windowAtMinutes(rows, pairedDep) ?? band
+    const pairedMinutes  = pairedDirection === 'INBOUND' ? pairedBand.inboundMinutes  : pairedBand.outboundMinutes
+    const pairedTurnback = pairedDirection === 'INBOUND' ? pairedBand.inboundInterval : pairedBand.outboundInterval
+    const pairedArr = pairedDep + pairedMinutes
+    legs.push({ direction: pairedDirection, departureMinutes: pairedDep, arrivalMinutes: pairedArr })
+    readyAgainMinutes = pairedArr + pairedTurnback
+  } else {
+    const anchorTurnback = band.outboundInterval // circular-only lines reuse the outbound fields (see GenWindow)
+    readyAgainMinutes = anchorArr + anchorTurnback
+  }
+
+  return { id: crypto.randomUUID(), legs, readyAgainMinutes }
+}
+
 /** Steps 1–2: generates the sequence of "rounds" (a full conceptual trip —
  *  outbound followed by inbound, or a single direction for circular lines)
  *  across the operating hours. Departures are placed by a continuous rate
@@ -629,26 +661,7 @@ export function generateRounds(
       warnings.push(`Ciclo não confirmado na faixa ${hourToLabel(band.from)}–${hourToLabel(band.to)} — revise antes de gerar`)
     }
 
-    const anchorDep = cursor
-    const anchorArr = anchorDep + (firstTripDirection === 'INBOUND' ? band.inboundMinutes : band.outboundMinutes)
-    const legs: GeneratedLeg[] = [{ direction: firstTripDirection, departureMinutes: anchorDep, arrivalMinutes: anchorArr }]
-
-    let readyAgainMinutes: number
-    if (pairedDirection) {
-      const anchorTurnback = firstTripDirection === 'INBOUND' ? band.inboundInterval : band.outboundInterval
-      const pairedDep   = anchorArr + anchorTurnback
-      const pairedBand  = windowAtMinutes(rows, pairedDep) ?? band
-      const pairedMinutes  = pairedDirection === 'INBOUND' ? pairedBand.inboundMinutes  : pairedBand.outboundMinutes
-      const pairedTurnback = pairedDirection === 'INBOUND' ? pairedBand.inboundInterval : pairedBand.outboundInterval
-      const pairedArr = pairedDep + pairedMinutes
-      legs.push({ direction: pairedDirection, departureMinutes: pairedDep, arrivalMinutes: pairedArr })
-      readyAgainMinutes = pairedArr + pairedTurnback
-    } else {
-      const anchorTurnback = band.outboundInterval // circular-only lines reuse the outbound fields (see GenWindow)
-      readyAgainMinutes = anchorArr + anchorTurnback
-    }
-
-    rounds.push({ id: crypto.randomUUID(), legs, readyAgainMinutes })
+    rounds.push(buildRound(rows, band, cursor, firstTripDirection, pairedDirection))
 
     // Sweep forward from this departure, accumulating rate × time across
     // however many window boundaries it takes to reach one full round of
@@ -687,7 +700,31 @@ export function generateRounds(
     }
 
     if (nextCursor == null) {
-      warnings.push(`Cobertura de janelas insuficiente para completar a geração após ${minutesToLabel(Math.round(cursor))}`)
+      // Ran out of window coverage before accumulating a full headway's worth
+      // of rate. Rather than just dropping the tail of the day, force one
+      // closing round anchored exactly at opEndMinutes — using the real cycle
+      // data of whichever window covers that instant — so the last trip lands
+      // on the configured end time instead of leaving a gap. Only possible
+      // when a window actually covers opEndMinutes; if it doesn't (windows
+      // end earlier than opEnd entirely), there's no real cycle to anchor to
+      // and the original insufficient-coverage warning still applies.
+      if (opEndMinutes > cursor) {
+        const closingBand = windowAtMinutes(rows, opEndMinutes)
+        if (closingBand) {
+          const closingAnchorKnown = firstTripDirection === 'INBOUND' ? closingBand.inboundKnown : closingBand.outboundKnown
+          if (!closingAnchorKnown && !warnedBands.has(closingBand.id)) {
+            warnedBands.add(closingBand.id)
+            warnings.push(`Ciclo não confirmado na faixa ${hourToLabel(closingBand.from)}–${hourToLabel(closingBand.to)} — revise antes de gerar`)
+          }
+          rounds.push(buildRound(rows, closingBand, opEndMinutes, firstTripDirection, pairedDirection))
+          warnings.push(
+            `Última viagem ajustada para partir às ${minutesToLabel(Math.round(opEndMinutes))} (fim do horário configurado) — `
+            + `intervalo menor que a frequência normal da janela nesse trecho; avalie se ela deve ser suprimida`,
+          )
+        } else {
+          warnings.push(`Cobertura de janelas insuficiente para completar a geração após ${minutesToLabel(Math.round(cursor))}`)
+        }
+      }
       break
     }
     cursor = nextCursor

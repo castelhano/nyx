@@ -365,8 +365,18 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
   }
   function removeWindow(index: number) {
     // may open a gap between the rows that become adjacent — surfaced via
-    // computeBoundaryFlags rather than guessed shut here
-    setWindows(rows => rows.length > 1 ? rows.filter((_, i) => i !== index) : rows)
+    // computeBoundaryFlags rather than guessed shut here. The exception is the
+    // day boundary itself (0/24): removing the first or last row always
+    // re-stretches the new edge to it, same as mergeWithNext already does —
+    // otherwise the edge is stuck showing a mismatch no <input type="time">
+    // can ever fix (24:00 isn't a representable time value).
+    setWindows(rows => {
+      if (rows.length <= 1) return rows
+      const result = rows.filter((_, i) => i !== index)
+      if (index === 0) result[0] = { ...result[0], from: 0 }
+      else if (index === rows.length - 1) result[result.length - 1] = { ...result[result.length - 1], to: 24 }
+      return result
+    })
   }
   function doMerge(index: number) {
     setWindows(rows => mergeWithNext(rows, index))
