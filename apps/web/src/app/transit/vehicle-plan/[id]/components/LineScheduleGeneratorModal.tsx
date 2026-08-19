@@ -319,6 +319,10 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
 
   const [activeDir,    setActiveDir]    = useState<Direction>('OUTBOUND')
   const [isGenerating, setIsGenerating] = useState(false)
+  // True once the user has tried to generate at least once — gates the inline
+  // error labels below so they only appear after a failed attempt, then
+  // auto-clear live as the underlying condition gets fixed.
+  const [attemptedGenerate, setAttemptedGenerate] = useState(false)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -329,6 +333,9 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
   const boundaryFlags = useMemo(() => computeBoundaryFlags(windows), [windows])
   const peakFleet = useMemo(() => windows.reduce((m, w) => Math.max(m, w.fleetCount), 0), [windows])
   const depotSum  = useMemo(() => depotAllocations.reduce((s, d) => s + d.count, 0), [depotAllocations])
+
+  const intervalInvalid = insertInterval && !intervalTypeId
+  const depotMismatch   = includeAccessReturn && depotSum !== peakFleet
 
   // Seeds the single default depot row with the whole peak fleet and keeps it
   // following peakFleet afterward — both when the fleet windows finish loading
@@ -433,6 +440,16 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
   async function handleGenerate() {
     if (windows.length === 0 || isGenerating) return
 
+    setAttemptedGenerate(true)
+    if (intervalInvalid) {
+      setActiveTab('ajuste')
+      return
+    }
+    if (depotMismatch) {
+      setActiveTab('frota')
+      return
+    }
+
     const pairedDirection: Direction | null =
       firstTripDirection === 'CIRCULAR' ? null : firstTripDirection === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'
     const anchorRoute = routeByDirection.get(firstTripDirection)
@@ -509,7 +526,10 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
         onPendingAdd(entry)
       }
 
-      const generalWarnings = new Set(warnings)
+      // The last-trip retiming warning is routine (it fires on nearly every
+      // generation) — worth keeping in the log for auditing, not worth an
+      // interruptive toast every time.
+      const generalWarnings = new Set(warnings.filter(w => !w.startsWith('Última viagem (')))
       let noDepotWarned  = false
       let generatedTrips = 0
 
@@ -622,8 +642,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
     }
   }
 
-  const depotMismatch = includeAccessReturn && depotSum !== peakFleet
-  const isLoading     = lineLoading && !line
+  const isLoading = lineLoading && !line
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -780,6 +799,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                         <table className="w-full text-sm">
                           <thead className="bg-muted/40 text-muted-foreground text-xs">
                             <tr>
+                              <th className="px-2 py-2 text-left font-medium">#</th>
                               <th className="px-2 py-2 text-left font-medium">De</th>
                               <th className="px-2 py-2 text-left font-medium">Até</th>
                               <th className="px-2 py-2 text-left font-medium">Ciclo + Intervalo (Ida)</th>
@@ -795,6 +815,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                               const freqMin    = w.fleetCount > 0 ? cycleTotal / w.fleetCount : 0
                               return (
                                 <tr key={w.id} className="hover:bg-muted/20">
+                                  <td className="px-2 py-2 text-muted-foreground">{i + 1}</td>
                                   <td className="px-2 py-2">
                                     {i === 0 && !boundaryFlags[i].fromMismatch ? (
                                       <div
@@ -958,6 +979,14 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                     ))}
                   </select>
 
+                  {attemptedGenerate && intervalInvalid && (
+                    <>
+                      <span />
+                      <span />
+                      <span className="text-xs text-destructive -mt-2">Selecione um tipo de intervalo antes de gerar</span>
+                    </>
+                  )}
+
                   {/* row: acesso e recolhida */}
                   <Switch checked={includeAccessReturn} onToggle={() => setIncludeAccessReturn(v => !v)} />
                   <span
@@ -1083,12 +1112,20 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                       </div>
                     )}
 
-                    <div className={`text-xs ${depotMismatch ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                    <div className={`text-xs ${
+                      attemptedGenerate && depotMismatch ? 'text-destructive' : depotMismatch ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                    }`}
+                    >
                       {depotSum} / {peakFleet} veículos alocados (pico da frota)
                       {includeAccessReturn && (
                         <span className="ml-1">— obrigatório (acesso/recolhida ligado na aba Ajuste)</span>
                       )}
                     </div>
+                    {attemptedGenerate && depotMismatch && (
+                      <p className="text-xs text-destructive">
+                        Distribua toda a frota do pico entre as garagens antes de gerar
+                      </p>
+                    )}
                   </section>
                 </div>
               )}
