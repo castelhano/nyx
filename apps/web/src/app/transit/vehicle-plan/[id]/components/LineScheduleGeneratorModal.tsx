@@ -499,10 +499,9 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
       const localityRef = (id: string) => ({ id, name: localityNameById.get(id) ?? '?' })
       const selectedIntervalType = intervalTypes.find(it => it.id === intervalTypeId) ?? null
 
+      // depotPool is never empty here when includeAccessReturn is on — the
+      // pre-generate validation above already blocks that case (depotMismatch).
       const depotPool = depotAllocations.flatMap(d => Array(Math.max(0, d.count)).fill(d.depotId)) as string[]
-      if (includeAccessReturn && depotPool.length === 0) {
-        toast.warning('Nenhuma garagem alocada — acesso/recolhida não inseridos (aba Frota)')
-      }
 
       function maybeInsertBreak(gapStart: number, gapEnd: number, blockAnchorId: string) {
         if (!insertInterval || !selectedIntervalType) return
