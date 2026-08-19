@@ -10,12 +10,15 @@ import { Button }              from '@/components/ui/button'
 import { Switch }               from '@/components/ui/switch'
 import { Icons }                from '@/lib/icons'
 import { apiFetch }             from '@/lib/auth'
+import { useToast }             from '@/lib/toast-context'
 import { useShortcutContext }   from '@/lib/keywatch'
-import type { CycleWindow }     from '../views/vehicles.view'
+import type { CycleWindow, LineMetrics } from '../views/vehicles.view'
+import { getTravelTime }        from '../travel-time'
+import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from './AddTripModal'
 import {
-  buildUnifiedWindows, absorbPartialGaps, mergeByTolerance, estimateFleetCounts,
+  buildUnifiedWindows, absorbPartialGaps, mergeByTolerance, deriveFleetBands,
   updateWindowBoundary, computeBoundaryFlags, mergeWithNext, splitWindow, closeFrequency, totalCycleMinutes,
-  computeOfertaSeries, estimateGeneration,
+  computeOfertaSeries, estimateGeneration, generateSchedule,
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour,
   TOLERANCE_MINUTES, TOLERANCE_LABELS, DEFAULT_MANEUVER_MARGIN_MINUTES,
   type GenWindow, type Direction, type ToleranceLevel,
@@ -56,6 +59,8 @@ interface RouteRecord {
   originLocalityId:       string
   destinationLocalityId:  string
   isPrimary:              boolean
+  layoverPolicy:          'DEFAULT' | 'HOLD' | 'DEPOT'
+  homeDepotId:            string | null
 }
 
 interface LocalityRecord {
@@ -79,22 +84,68 @@ interface IntervalTypeRecord {
 }
 
 interface LineRoute {
-  direction:       Direction
-  originName:      string
-  destinationName: string
+  direction:              Direction
+  originName:             string
+  destinationName:        string
+  routeId:                string
+  originLocalityId:       string
+  destinationLocalityId:  string
+  layoverPolicy:          'DEFAULT' | 'HOLD' | 'DEPOT'
+  homeDepotId:            string | null
 }
 
 interface DepotAllocation { id: string; depotId: string; count: number }
 
-interface Props {
-  planId:      string
-  lineId:      string
-  dayTypeCode: string
-  onClose:     () => void
+interface GeneralSettingsRecord {
+  defaultLayoverPolicy: 'HOLD' | 'DEPOT'
 }
 
-export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Props) {
+interface NearestDepotResult { depotId: string; toDepotMinutes: number; fromDepotMinutes: number }
+
+// Fase 3.4 — resolves which depot to use for a return leg at an intermediate stop
+// (a gap within a block). With homeDepot set on the route, uses only that one (no
+// alternative search — if it doesn't fit the gap, implicit HOLD, see the caller).
+// Without homeDepot, searches the loaded depots for the one minimizing there+back,
+// requiring the round trip to fit the gap and both legs to have an OSRM matrix entry.
+async function resolveNearestDepot(
+  homeDepotId:     string | null,
+  fromLocalityId:  string,
+  toLocalityId:    string,
+  gapMinutes:      number,
+  depots:          DepotRecord[],
+): Promise<NearestDepotResult | null> {
+  if (homeDepotId) {
+    const toDepotMinutes   = await getTravelTime(fromLocalityId, homeDepotId)
+    const fromDepotMinutes = await getTravelTime(homeDepotId, toLocalityId)
+    if (toDepotMinutes != null && fromDepotMinutes != null && toDepotMinutes + fromDepotMinutes <= gapMinutes) {
+      return { depotId: homeDepotId, toDepotMinutes, fromDepotMinutes }
+    }
+    return null
+  }
+
+  let best: NearestDepotResult | null = null
+  for (const depot of depots) {
+    const toDepotMinutes   = await getTravelTime(fromLocalityId, depot.id)
+    const fromDepotMinutes = await getTravelTime(depot.id, toLocalityId)
+    if (toDepotMinutes == null || fromDepotMinutes == null) continue
+    const total = toDepotMinutes + fromDepotMinutes
+    if (total > gapMinutes) continue
+    if (!best || total < best.toDepotMinutes + best.fromDepotMinutes) best = { depotId: depot.id, toDepotMinutes, fromDepotMinutes }
+  }
+  return best
+}
+
+interface Props {
+  planId:       string
+  lineId:       string
+  dayTypeCode:  string
+  onClose:      () => void
+  onPendingAdd: (entry: PendingAddEntry) => void
+}
+
+export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClose, onPendingAdd }: Props) {
   useShortcutContext('modal')
+  const { toast } = useToast()
 
   const { data: line, isLoading: lineLoading, error: lineError } = useQuery<LineRecord>({
     queryKey: ['transit', 'transit-line', lineId],
@@ -148,6 +199,16 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     staleTime: 60_000,
   })
 
+  const { data: generalSettings } = useQuery<GeneralSettingsRecord>({
+    queryKey: ['transit', 'settings', 'general'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/general')
+      if (!res.ok) return { defaultLayoverPolicy: 'HOLD' as const }
+      return res.json()
+    },
+    staleTime: 300_000,
+  })
+
   // One route per direction the line actually operates (1 to 3) — prefers the
   // isPrimary route when a direction has more than one, same convention the
   // line's extensionKm already relies on (see route.schema.ts comment).
@@ -161,12 +222,19 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     return DIR_ORDER.filter(d => byDirection.has(d)).map(d => {
       const r = byDirection.get(d)!
       return {
-        direction:       d,
-        originName:      localityNameById.get(r.originLocalityId)      ?? '?',
-        destinationName: localityNameById.get(r.destinationLocalityId) ?? '?',
+        direction:             d,
+        originName:            localityNameById.get(r.originLocalityId)      ?? '?',
+        destinationName:       localityNameById.get(r.destinationLocalityId) ?? '?',
+        routeId:               r.id,
+        originLocalityId:      r.originLocalityId,
+        destinationLocalityId: r.destinationLocalityId,
+        layoverPolicy:         r.layoverPolicy,
+        homeDepotId:           r.homeDepotId,
       }
     })
   }, [routes, localityNameById])
+
+  const routeByDirection = useMemo(() => new Map(lineRoutes.map(r => [r.direction, r])), [lineRoutes])
 
   const demandByDir = line?.metrics?.demand?.[dayTypeCode] ?? {}
 
@@ -186,7 +254,7 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
       OUTBOUND: l?.metrics?.renewalIndex?.OUTBOUND?.value ?? 0,
       INBOUND:  l?.metrics?.renewalIndex?.INBOUND?.value  ?? 0,
     }
-    return estimateFleetCounts(toleranced, demand, vehicleCapacity, renewal)
+    return deriveFleetBands(toleranced, demand, vehicleCapacity, renewal)
   }
 
   useEffect(() => {
@@ -197,7 +265,6 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
 
   function changeTolerance(level: ToleranceLevel) {
     setMergeTolerance(level)
-    setResult(null)
     setWindows(seedWindows(line, level))
   }
 
@@ -223,8 +290,8 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
   const [insertInterval,      setInsertInterval]       = useState(true)
   const [intervalTypeId,      setIntervalTypeId]       = useState('')
 
-  // Sentido considerado para a primeira/última viagem do dia — default Ida (ou Circular na
-  // ausência de Ida) para o início, Volta (ou Circular na ausência de Volta) para o fim.
+  // Direction considered for the first/last trip of the day — defaults to Outbound
+  // (or Circular in its absence) for the start, Inbound (or Circular) for the end.
   const [firstTripDirection, setFirstTripDirection] = useState<Direction>('OUTBOUND')
   const [lastTripDirection,  setLastTripDirection]  = useState<Direction>('INBOUND')
   const tripDirectionsSeededRef = useRef(false)
@@ -237,8 +304,8 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     setLastTripDirection(has('INBOUND') ? 'INBOUND' : 'CIRCULAR')
   }, [lineRoutes])
 
-  // Margem de manobra: quanto "apertar" a viagem anterior de um bloco aberto antes de decidir
-  // abrir um novo bloco (usado só pela distribuição em blocos, Fase 3 — sem efeito na prévia).
+  // Maneuver margin: how much to "tighten" an open block's previous trip before
+  // deciding to open a new block (used only by block assignment, Fase 3 — no effect on the preview).
   const [maneuverMargin, setManeuverMargin] = useState(DEFAULT_MANEUVER_MARGIN_MINUTES)
 
   useEffect(() => {
@@ -254,8 +321,8 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     setDepotAllocations([{ id: crypto.randomUUID(), depotId: depots[0].id, count: 0 }])
   }, [depots])
 
-  const [activeDir, setActiveDir] = useState<Direction>('OUTBOUND')
-  const [result,    setResult]    = useState<{ trips: number; peakFleet: number } | null>(null)
+  const [activeDir,    setActiveDir]    = useState<Direction>('OUTBOUND')
+  const [isGenerating, setIsGenerating] = useState(false)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -280,6 +347,11 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     [windows, vehicleCapacity, renewalIndex, opStart, opEnd],
   )
 
+  // Aggregate preview, recomputed on every edit — a cheap sanity-check before
+  // actually generating (the real algorithm, triggered by handleGenerate, is
+  // much more expensive due to network calls for access/return and HOLD/DEPOT).
+  const preview = useMemo(() => estimateGeneration(windows, opStart, opEnd), [windows, opStart, opEnd])
+
   const chartData = useMemo(() => Array.from({ length: 24 }, (_, hour) => ({
     hour:    hourToLabel(hour),
     oferta:  ofertaSeries[activeDir]?.[hour] ?? 0,
@@ -287,33 +359,26 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
   })), [ofertaSeries, activeDir, demandByDir])
 
   function updateWindow(index: number, patch: Partial<GenWindow>) {
-    setResult(null)
     setWindows(rows => rows.map((r, i) => i === index ? { ...r, ...patch } : r))
   }
   function updateBoundary(index: number, field: 'from' | 'to', value: number) {
-    setResult(null)
     setWindows(rows => updateWindowBoundary(rows, index, field, value))
   }
   function removeWindow(index: number) {
-    setResult(null)
     // may open a gap between the rows that become adjacent — surfaced via
     // computeBoundaryFlags rather than guessed shut here
     setWindows(rows => rows.length > 1 ? rows.filter((_, i) => i !== index) : rows)
   }
   function doMerge(index: number) {
-    setResult(null)
     setWindows(rows => mergeWithNext(rows, index))
   }
   function doSplit(index: number) {
-    setResult(null)
     setWindows(rows => splitWindow(rows, index))
   }
   function doCloseFrequency(index: number) {
-    setResult(null)
     setWindows(rows => closeFrequency(rows, index))
   }
   function doCloseFrequencyAll() {
-    setResult(null)
     setWindows(rows => {
       let acc = rows
       for (let i = 0; i < acc.length; i++) acc = closeFrequency(acc, i)
@@ -321,11 +386,9 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     })
   }
   function resetWindows() {
-    setResult(null)
     setWindows(seedWindows(line, mergeTolerance))
   }
   function addBlankWindow() {
-    setResult(null)
     setWindows(rows => {
       if (rows.length === 0) {
         return [{
@@ -353,8 +416,196 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
     setDepotAllocations(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d))
   }
 
-  function handleGenerate() {
-    setResult(estimateGeneration(windows, opStart, opEnd))
+  async function handleGenerate() {
+    if (windows.length === 0 || isGenerating) return
+
+    const pairedDirection: Direction | null =
+      firstTripDirection === 'CIRCULAR' ? null : firstTripDirection === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'
+    const anchorRoute = routeByDirection.get(firstTripDirection)
+    const pairedRoute = pairedDirection ? routeByDirection.get(pairedDirection) : null
+    if (!anchorRoute || (pairedDirection && !pairedRoute)) {
+      toast.error('Sentido selecionado não possui rota cadastrada para esta linha')
+      return
+    }
+
+    const { blocks, warnings } = generateSchedule(
+      windows, opStart, opEnd, firstTripDirection, lastTripDirection, smoothTransition, maneuverMargin,
+    )
+    if (blocks.length === 0) {
+      toast.error('Nenhuma viagem gerada — revise as janelas e o horário de operação')
+      return
+    }
+
+    // Validation log — while the algorithm is still being tuned, records the
+    // generated plan (windows, blocks/trips, warnings) into a queryable Job at
+    // core/job. Best-effort: shouldn't block generation if the call fails.
+    // See docs/proposal/vehicle-plan-fleet-window-redesign.md.
+    apiFetch(`/transit/vehicle-plan/${planId}/lines/${lineId}/log-generation`, {
+      method: 'POST',
+      body:   JSON.stringify({
+        dayTypeCode,
+        output: {
+          lineId, lineCode: line?.code, lineName: line?.name, dayTypeCode,
+          params: { opStart, opEnd, firstTripDirection, lastTripDirection, smoothTransition, maneuverMargin, mergeTolerance },
+          windows,
+          blocks: blocks.map(b => ({
+            id:     b.id,
+            rounds: b.rounds.map(r => ({ legs: r.legs, readyAgainMinutes: r.readyAgainMinutes })),
+          })),
+          summary: {
+            blockCount: blocks.length,
+            totalTrips: blocks.reduce((s, b) => s + b.rounds.reduce((s2, r) => s2 + r.legs.length, 0), 0),
+            peakFleet:  windows.reduce((m, w) => Math.max(m, w.fleetCount), 0),
+          },
+          warnings,
+        },
+      }),
+    }).catch(() => {})
+
+    setIsGenerating(true)
+    try {
+      const routeFor    = (dir: Direction) => (dir === firstTripDirection ? anchorRoute! : pairedRoute!)
+      const localityRef = (id: string) => ({ id, name: localityNameById.get(id) ?? '?' })
+      const selectedIntervalType = intervalTypes.find(it => it.id === intervalTypeId) ?? null
+
+      const depotPool = depotAllocations.flatMap(d => Array(Math.max(0, d.count)).fill(d.depotId)) as string[]
+      if (includeAccessReturn && depotPool.length === 0) {
+        toast.warning('Nenhuma garagem alocada — acesso/recolhida não inseridos (aba Frota)')
+      }
+
+      function maybeInsertBreak(gapStart: number, gapEnd: number, blockAnchorId: string) {
+        if (!insertInterval || !selectedIntervalType) return
+        const gap = gapEnd - gapStart
+        const min = selectedIntervalType.minMinutes ?? 0
+        const max = selectedIntervalType.maxMinutes ?? Infinity
+        if (gap < min || gap > max) return
+        const entry: PendingAddInterval = {
+          _kind:            'break',
+          _tempId:          crypto.randomUUID(),
+          intervalTypeId:   selectedIntervalType.id,
+          intervalTypeCode: selectedIntervalType.code,
+          intervalTypeName: selectedIntervalType.name,
+          isPaid:           selectedIntervalType.isPaid,
+          minMinutes:       selectedIntervalType.minMinutes,
+          maxMinutes:       selectedIntervalType.maxMinutes,
+          departureMinutes: Math.round(gapStart),
+          arrivalMinutes:   Math.round(gapEnd),
+          blockId:          `pending:${blockAnchorId}`,
+        }
+        onPendingAdd(entry)
+      }
+
+      const generalWarnings = new Set(warnings)
+      let noDepotWarned  = false
+      let generatedTrips = 0
+
+      for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+        const block        = blocks[blockIndex]
+        const allLegs       = block.rounds.flatMap(r => r.legs)
+        const blockDepotId  = includeAccessReturn && depotPool.length > 0 ? depotPool[blockIndex % depotPool.length] : null
+        let anchorTempId: string | null = null
+
+        for (let i = 0; i < allLegs.length; i++) {
+          const leg    = allLegs[i]
+          const route  = routeFor(leg.direction)
+          const tempId = crypto.randomUUID()
+
+          const entry: PendingAddTrip = {
+            _kind:               'trip',
+            _tempId:             tempId,
+            routeId:             route.routeId,
+            direction:           leg.direction,
+            lineId,
+            lineCode:            line?.code ?? '',
+            lineName:            line?.name ?? '',
+            lineMetrics:         (line?.metrics as LineMetrics | null) ?? null,
+            originLocality:      localityRef(route.originLocalityId),
+            destinationLocality: localityRef(route.destinationLocalityId),
+            departureMinutes:    Math.round(leg.departureMinutes),
+            arrivalMinutes:      Math.round(leg.arrivalMinutes),
+            blockId:             anchorTempId ? `pending:${anchorTempId}` : 'new',
+          }
+
+          if (i === 0 && blockDepotId) {
+            const t = await getTravelTime(blockDepotId, route.originLocalityId)
+            if (t != null) entry.access = { localityId: blockDepotId, travelMinutes: t }
+            else if (!noDepotWarned) {
+              noDepotWarned = true
+              generalWarnings.add('Tempo de viagem até a garagem não mapeado na matriz — acesso/recolhida não inseridos em alguns blocos')
+            }
+          }
+          if (i === allLegs.length - 1 && blockDepotId) {
+            const t = await getTravelTime(route.destinationLocalityId, blockDepotId)
+            if (t != null) entry.return = { localityId: blockDepotId, travelMinutes: t }
+          }
+
+          onPendingAdd(entry)
+          generatedTrips++
+          if (i === 0) anchorTempId = tempId
+        }
+
+        // Fase 3.4 — HOLD/DEPOT for gaps within the block (between consecutive
+        // rounds), resolved only now that the whole block has been assembled.
+        if (anchorTempId) {
+          for (let r = 0; r < block.rounds.length - 1; r++) {
+            const prevRound = block.rounds[r]
+            const nextRound = block.rounds[r + 1]
+            const gapStart  = prevRound.readyAgainMinutes
+            const gapEnd    = nextRound.legs[0].departureMinutes
+            if (gapEnd <= gapStart) continue
+
+            const lastLeg   = prevRound.legs[prevRound.legs.length - 1]
+            const fromRoute = routeFor(lastLeg.direction)
+            const effectivePolicy = fromRoute.layoverPolicy === 'DEFAULT'
+              ? (generalSettings?.defaultLayoverPolicy ?? 'HOLD')
+              : fromRoute.layoverPolicy
+
+            if (effectivePolicy !== 'DEPOT') {
+              maybeInsertBreak(gapStart, gapEnd, anchorTempId)
+              continue
+            }
+
+            const fromLocalityId = fromRoute.destinationLocalityId
+            const toLocalityId   = routeFor(nextRound.legs[0].direction).originLocalityId
+            const resolved = await resolveNearestDepot(fromRoute.homeDepotId, fromLocalityId, toLocalityId, gapEnd - gapStart, depots)
+
+            if (!resolved) {
+              if (!noDepotWarned) {
+                noDepotWarned = true
+                generalWarnings.add('Sem garagem disponível para recolhida em parada intermediária — mantido aguardando no ponto')
+              }
+              maybeInsertBreak(gapStart, gapEnd, anchorTempId)
+              continue
+            }
+
+            const toDepotLeg: PendingAddDeadrun = {
+              _kind: 'deadrun', _tempId: crypto.randomUUID(),
+              originLocality:      localityRef(fromLocalityId),
+              destinationLocality: localityRef(resolved.depotId),
+              departureMinutes:    Math.round(gapStart),
+              arrivalMinutes:      Math.round(gapStart + resolved.toDepotMinutes),
+              blockId:             `pending:${anchorTempId}`,
+            }
+            const fromDepotLeg: PendingAddDeadrun = {
+              _kind: 'deadrun', _tempId: crypto.randomUUID(),
+              originLocality:      localityRef(resolved.depotId),
+              destinationLocality: localityRef(toLocalityId),
+              departureMinutes:    Math.round(gapEnd - resolved.fromDepotMinutes),
+              arrivalMinutes:      Math.round(gapEnd),
+              blockId:             `pending:${anchorTempId}`,
+            }
+            onPendingAdd(toDepotLeg)
+            onPendingAdd(fromDepotLeg)
+          }
+        }
+      }
+
+      toast.success(`${generatedTrips} viagens geradas em ${blocks.length} blocos — revise e clique em Salvar para persistir`)
+      generalWarnings.forEach(w => toast.warning(w))
+      onClose()
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   const depotMismatch = includeAccessReturn && depotSum !== peakFleet
@@ -363,7 +614,7 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-5xl mx-4 max-h-[92vh] flex flex-col">
+      <div className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-5xl mx-4 h-[85vh] flex flex-col">
 
         {/* header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
@@ -716,8 +967,8 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                   </span>
                   <span />
 
-                  {/* row: margem de manobra — usada só pela distribuição em blocos (Fase 3),
-                      sem efeito na prévia agregada desta tela */}
+                  {/* row: maneuver margin — used only by block assignment (Fase 3),
+                      no effect on this screen's aggregate preview */}
                   <div className="flex items-center gap-1.5">
                     <input
                       type="number" min={0}
@@ -911,11 +1162,11 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
             {/* footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-border shrink-0">
               <div className="text-xs text-muted-foreground">
-                {result && (
+                {windows.length > 0 && (
                   <span>
-                    Prévia: <strong className="text-foreground">~{result.trips}</strong> viagens para{' '}
-                    <strong className="text-foreground">{result.peakFleet}</strong> veículos (estimativa, não é o
-                    algoritmo de geração final)
+                    Prévia: <strong className="text-foreground">~{preview.trips}</strong> viagens para{' '}
+                    <strong className="text-foreground">{preview.peakFleet}</strong> veículos (estimativa —
+                    a geração real pode variar por conta de margem de manobra e HOLD/DEPOT)
                   </span>
                 )}
               </div>
@@ -923,8 +1174,8 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                 <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
                   Cancelar
                 </Button>
-                <Button type="button" size="sm" onClick={handleGenerate} disabled={windows.length === 0}>
-                  Gerar
+                <Button type="button" size="sm" onClick={handleGenerate} disabled={windows.length === 0 || isGenerating}>
+                  {isGenerating ? 'Gerando…' : 'Gerar'}
                 </Button>
               </div>
             </div>

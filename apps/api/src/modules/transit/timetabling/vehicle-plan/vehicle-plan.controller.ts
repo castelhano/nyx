@@ -31,6 +31,19 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.optimize(id, jobId, params, user.branchIds, user.role)
   }
 
+  @Post(':id/lines/:lineId/log-generation')
+  @HttpCode(201)
+  logGeneration(
+    @Param('id')     id:          string,
+    @Param('lineId') lineId:      string,
+    @Body('dayTypeCode') dayTypeCode: string,
+    @Body('output')      output:      unknown,
+    @Req() req: any,
+  ) {
+    const user: { id: string } = req.user ?? {}
+    return this.vehiclePlanService.logGeneration(id, lineId, dayTypeCode, output, user.id)
+  }
+
   @Sse(':id/stream')
   stream(
     @Param('id') _id: string,

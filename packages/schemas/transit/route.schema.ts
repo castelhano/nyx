@@ -78,8 +78,8 @@ export const routeSchema = withMeta(
       listVisibility: 'hidden',
     }),
 
-    // gerador de planejamento: comportamento ao fechar uma viagem numa parada intermediária —
-    // DEFAULT herda a config geral (defaultLayoverPolicy), HOLD/DEPOT sobrescreve por rota
+    // schedule generator: behavior when closing a trip at an intermediate stop —
+    // DEFAULT inherits the general config (defaultLayoverPolicy), HOLD/DEPOT overrides per route
     layoverPolicy: z.enum(['DEFAULT', 'HOLD', 'DEPOT']).default('DEFAULT').meta({
       label:          'Política de Recolhida',
       widget:         'select',

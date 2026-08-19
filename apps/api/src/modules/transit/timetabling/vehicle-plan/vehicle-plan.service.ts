@@ -5,6 +5,7 @@ import path from 'path'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitGeneralConfigService }  from '../../settings/transit-general-config.service'
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
+import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
 import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
@@ -27,8 +28,40 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     prisma: PrismaService,
     private readonly generalConfig:  TransitGeneralConfigService,
     private readonly planningConfig: TransitPlanningConfigService,
+    private readonly jobService:     JobService,
   ) {
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
+  }
+
+  // Validation log for the per-line schedule generator (Fase 3, 100% client-side) —
+  // not a real async job, just reuses the Job table as a queryable record of what
+  // got generated (trips/blocks/frequency) while the algorithm is still being
+  // tuned. See docs/proposal/vehicle-plan-fleet-window-redesign.md for context.
+  async logGeneration(
+    planId:      string,
+    lineId:      string,
+    dayTypeCode: string,
+    output:      unknown,
+    userId:      string,
+  ): Promise<{ id: string }> {
+    const job = await this.jobService.createJob({
+      type:        'line-schedule-generation',
+      domain:      'transit',
+      resource:    'vehicle-plan',
+      createdById: userId,
+      input:       { planId, lineId, dayTypeCode },
+    })
+    await this.prisma.job.update({
+      where: { id: job.id },
+      data:  {
+        status:      'COMPLETED',
+        startedAt:   new Date(),
+        completedAt: new Date(),
+        durationMs:  0,
+        output:      output as any,
+      },
+    })
+    return { id: job.id }
   }
 
   async optimize(

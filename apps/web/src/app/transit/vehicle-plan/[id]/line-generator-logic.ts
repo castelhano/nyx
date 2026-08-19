@@ -96,7 +96,7 @@ export function buildUnifiedWindows(outbound: CycleWindow[], inbound: CycleWindo
       continue
     }
 
-    // Placeholder only — estimateFleetCounts() overwrites this from real
+    // Placeholder only — deriveFleetBands() rebuilds bands (and fleet) from real
     // demand right after seeding finishes (see the pipeline in the modal's
     // seedWindows()). Bands can still change shape after this (gap
     // absorption, tolerance merge), so sizing fleet here would be premature.
@@ -170,8 +170,8 @@ export type ToleranceLevel = 0 | 1 | 2 | 3 // Nenhuma, Baixa, Média, Alta
 export const TOLERANCE_MINUTES: Record<ToleranceLevel, number> = { 0: 0, 1: 3, 2: 5, 3: 8 }
 export const TOLERANCE_LABELS:  Record<ToleranceLevel, string> = { 0: 'Nenhuma', 1: 'Baixa', 2: 'Média', 3: 'Alta' }
 
-// Distribuição em blocos (Fase 3): ao tentar encaixar uma viagem num bloco já aberto, quanto
-// "apertar" a viagem anterior desse bloco antes de desistir e abrir um novo bloco.
+// Block assignment (Fase 3): when trying to fit a trip into an already-open block, how much
+// to "tighten" that block's previous trip before giving up and opening a new block.
 export const DEFAULT_MANEUVER_MARGIN_MINUTES = 3
 
 function rideCycleMinutes(w: GenWindow): number {
@@ -229,68 +229,138 @@ export function mergeByTolerance(rows: GenWindow[], toleranceMinutes: number): G
 }
 
 // Target occupancy fleet sizing assumes: don't run a vehicle any fuller than
-// this, on average, during the band's peak hour.
+// this, on average, during the hour.
 const TARGET_OCCUPANCY = 0.8
 
-// Demand is stored per hour (string keys); a band can span several hours and
-// straddle half-hour boundaries, so this scans every whole hour the band
-// touches and keeps the worst one — sizing fleet for a band's average hour
-// would under-serve its actual peak.
-function peakDemandByDirection(
-  from:   number,
-  to:     number,
-  demand: Partial<Record<Direction, Record<string, number>>>,
-): Partial<Record<Direction, number>> {
-  const peaks: Partial<Record<Direction, number>> = {}
-  for (const dir of ['OUTBOUND', 'INBOUND'] as Direction[]) {
-    const dirDemand = demand[dir]
-    if (!dirDemand) continue
-    let peak = 0
-    for (let hour = Math.floor(from); hour < Math.ceil(to); hour++) {
-      const v = dirDemand[String(hour)] ?? 0
-      if (v > peak) peak = v
-    }
-    if (peak > 0) peaks[dir] = peak
-  }
-  return peaks
-}
+// See docs/proposal/vehicle-plan-fleet-window-redesign.md — a fleet band shorter
+// than this never survives on its own unless it's an actual peak (higher than its
+// same-cycle neighbors); a brief dip gets absorbed into the sturdier neighbor
+// instead of fragmenting the day into one window per noisy hour of demand.
+const DEFAULT_STABILIZATION_MINUTES = 60
 
-/** Sizes fleet from real demand instead of a flat guess: enough vehicles to
- *  carry the band's peak-hour demand (worse of ida/volta — a vehicle serves
- *  both directions in sequence, so it has to cover whichever leg is heavier)
- *  without exceeding TARGET_OCCUPANCY on average. Each leg's capacity is
- *  further inflated by that direction's renewalIndex (mid-route turnover
- *  measured from bilhetagem x GPS conciliation, see TransitLine.metrics) —
- *  a leg with heavy turnover carries more total riders per trip than its
- *  seat count alone would suggest, so it needs fewer vehicles to match the
- *  same demand. Falls back to the old flat cycle/15 heuristic when there's
- *  no demand data to size from at all — that case is unfortunately still
- *  common (see docs/proposal/…): most lines don't have demand imported yet. */
-export function estimateFleetCounts(
-  rows:            GenWindow[],
+/** Vehicles needed to carry one hour's peak demand (worse of ida/volta — a vehicle
+ *  serves both directions in sequence, so it has to cover whichever leg is
+ *  heavier) without exceeding TARGET_OCCUPANCY on average, at the given cycle
+ *  duration. Each leg's capacity is further inflated by that direction's
+ *  renewalIndex (mid-route turnover measured from bilhetagem x GPS conciliation,
+ *  see TransitLine.metrics) — a leg with heavy turnover carries more total riders
+ *  per trip than its seat count alone would suggest, so it needs fewer vehicles
+ *  to match the same demand. `hasAnyDemand` gates the old flat cycle/15
+ *  heuristic: it only applies when the LINE has no demand curve at all to size
+ *  from (still common — most lines don't have demand imported yet); an hour with
+ *  zero/missing demand on a line that otherwise has a curve is real signal (e.g.
+ *  a genuinely quiet overnight hour), not missing data — it sizes to the floor
+ *  of 1 vehicle, not the flat guess. */
+function fleetNeededForHour(
+  hour:            number,
+  cycleTotal:      number,
   demand:          Partial<Record<Direction, Record<string, number>>>,
   vehicleCapacity: number,
-  renewalIndex:    Partial<Record<Direction, number>> = {},
-): GenWindow[] {
-  return rows.map(row => {
-    const cycleTotal = totalCycleMinutes(row)
-    if (cycleTotal <= 0) return { ...row, fleetCount: 1 }
+  renewalIndex:    Partial<Record<Direction, number>>,
+  hasAnyDemand:    boolean,
+): number {
+  if (cycleTotal <= 0) return 1
+  if (!hasAnyDemand) return Math.max(1, Math.round(cycleTotal / 15))
 
-    const peaks = peakDemandByDirection(row.from, row.to, demand)
-    const dirs  = Object.keys(peaks) as Direction[]
-    if (dirs.length === 0) {
-      return { ...row, fleetCount: Math.max(1, Math.round(cycleTotal / 15)) }
+  const tripsPerHourNeeded = Math.max(...(['OUTBOUND', 'INBOUND'] as Direction[]).map(dir => {
+    const v = demand[dir]?.[String(hour)] ?? 0
+    const capacityPerTrip = vehicleCapacity * TARGET_OCCUPANCY * (1 + (renewalIndex[dir] ?? 0) / 100)
+    return capacityPerTrip > 0 ? v / capacityPerTrip : 0
+  }))
+  if (tripsPerHourNeeded <= 0) return 1
+
+  return Math.max(1, Math.ceil(tripsPerHourNeeded * cycleTotal / 60))
+}
+
+function findCycleRow(rows: GenWindow[], slot: number): GenWindow | undefined {
+  return rows.find(w => slot >= w.from && slot < w.to) ?? rows.find(w => slot >= w.from && slot <= w.to)
+}
+
+interface FleetSlot { from: number; to: number; cycleRowId: string; fleet: number; row: GenWindow }
+
+function coalesceFleetSlots(slots: FleetSlot[]): FleetSlot[] {
+  const rows: FleetSlot[] = []
+  for (const s of slots) {
+    const last = rows[rows.length - 1]
+    if (last && last.cycleRowId === s.cycleRowId && last.fleet === s.fleet) last.to = s.to
+    else rows.push({ ...s })
+  }
+  return rows
+}
+
+/** Hysteresis: a band shorter than `stabilizationMinutes` only survives as-is if
+ *  it's a real peak (fleet higher than its same-cycle neighbors — brief peaks are
+ *  never smoothed away). A brief dip gets absorbed into the sturdier neighbor —
+ *  never the other way around, never silently shrinking coverage — and never
+ *  crosses a real cycle boundary (only merges neighbors sharing the same
+ *  `cycleRowId`, since a fleet band can never mix two different cycles). */
+function applyFleetHysteresis(bands: FleetSlot[], stabilizationMinutes: number): FleetSlot[] {
+  let result = bands.map(b => ({ ...b }))
+  let changed = true
+  while (changed) {
+    changed = false
+    for (let i = 0; i < result.length; i++) {
+      const band = result[i]
+      const durationMinutes = (band.to - band.from) * 60
+      if (durationMinutes >= stabilizationMinutes) continue
+
+      const prev = result[i - 1]
+      const next = result[i + 1]
+      const prevOk = !!prev && prev.cycleRowId === band.cycleRowId && prev.fleet >= band.fleet
+      const nextOk = !!next && next.cycleRowId === band.cycleRowId && next.fleet >= band.fleet
+      if (!prevOk && !nextOk) continue // no compatible neighbor to absorb into — keep it (it's a peak, or isolated by the cycle boundary)
+
+      const target = prevOk && nextOk ? (prev!.fleet >= next!.fleet ? prev! : next!) : (prevOk ? prev! : next!)
+      target.from = Math.min(target.from, band.from)
+      target.to   = Math.max(target.to,   band.to)
+      result = result.filter(b => b !== band)
+      changed = true
+      break
     }
+  }
+  return coalesceFleetSlots(result)
+}
 
-    const tripsPerHourNeeded = Math.max(...dirs.map(dir => {
-      const capacityPerTrip = vehicleCapacity * TARGET_OCCUPANCY * (1 + (renewalIndex[dir] ?? 0) / 100)
-      return capacityPerTrip > 0 ? peaks[dir]! / capacityPerTrip : 0
-    }))
-    if (tripsPerHourNeeded <= 0) return { ...row, fleetCount: 1 }
+/** Replaces the old estimateFleetCounts: decides the SHAPE of the fleet windows
+ *  from demand, not from cycle — see
+ *  docs/proposal/vehicle-plan-fleet-window-redesign.md. `cycleRows` is the
+ *  already-closed cycle timeline (buildUnifiedWindows → absorbPartialGaps →
+ *  mergeByTolerance) and only acts as a constraint here: a fleet band always
+ *  stays contained within a single cycle row, never crosses a cycle change —
+ *  only demand decides WHERE to cut within an otherwise-stable cycle stretch. */
+export function deriveFleetBands(
+  cycleRows:            GenWindow[],
+  demand:               Partial<Record<Direction, Record<string, number>>>,
+  vehicleCapacity:      number,
+  renewalIndex:         Partial<Record<Direction, number>> = {},
+  stabilizationMinutes: number = DEFAULT_STABILIZATION_MINUTES,
+): GenWindow[] {
+  if (cycleRows.length === 0) return cycleRows
+  const hasAnyDemand = Object.keys(demand.OUTBOUND ?? {}).length > 0 || Object.keys(demand.INBOUND ?? {}).length > 0
 
-    const fleetCount = Math.max(1, Math.ceil(tripsPerHourNeeded * cycleTotal / 60))
-    return { ...row, fleetCount }
-  })
+  const slots: FleetSlot[] = []
+  for (let slot = 0; slot < 24; slot += SLOT_STEP) {
+    const row = findCycleRow(cycleRows, slot)
+    if (!row) continue
+    const cycleTotal = totalCycleMinutes(row)
+    const fleet = fleetNeededForHour(Math.floor(slot), cycleTotal, demand, vehicleCapacity, renewalIndex, hasAnyDemand)
+    slots.push({ from: slot, to: slot + SLOT_STEP, cycleRowId: row.id, fleet, row })
+  }
+
+  const smoothed = applyFleetHysteresis(coalesceFleetSlots(slots), stabilizationMinutes)
+
+  return smoothed.map(b => ({
+    id:               crypto.randomUUID(),
+    from:             b.from,
+    to:               b.to,
+    outboundMinutes:  b.row.outboundMinutes,
+    outboundKnown:    b.row.outboundKnown,
+    outboundInterval: b.row.outboundInterval,
+    inboundMinutes:   b.row.inboundMinutes,
+    inboundKnown:     b.row.inboundKnown,
+    inboundInterval:  b.row.inboundInterval,
+    fleetCount:       b.fleet,
+  }))
 }
 
 /** Updates a single row's `from` or `to`, pushing the touching boundary of
@@ -350,10 +420,12 @@ export function computeBoundaryFlags(rows: GenWindow[]): BoundaryFlags[] {
 }
 
 /** Merge a row with the next one. Default cycle times become the max of the
- *  two (never silently shrink a window's assumed duration); fleet count keeps
- *  the first row's value — both stay user-editable after the merge. A side is
- *  only "known" in the merged row if it was known on at least one of the two
- *  — max() already picks the real value over a 0 placeholder in that case. */
+ *  two (never silently shrink a window's assumed duration); fleet count takes
+ *  the larger of the two for the same reason (merging into a bigger window
+ *  should never silently drop coverage down to the smaller one's fleet) —
+ *  both stay user-editable after the merge. A side is only "known" in the
+ *  merged row if it was known on at least one of the two — max() already
+ *  picks the real value over a 0 placeholder in that case. */
 export function mergeWithNext(rows: GenWindow[], index: number): GenWindow[] {
   if (index < 0 || index >= rows.length - 1) return rows
   const a = rows[index]
@@ -368,7 +440,7 @@ export function mergeWithNext(rows: GenWindow[], index: number): GenWindow[] {
     inboundMinutes:   Math.max(a.inboundMinutes,   b.inboundMinutes),
     inboundKnown:     a.inboundKnown || b.inboundKnown,
     inboundInterval:  Math.max(a.inboundInterval,  b.inboundInterval),
-    fleetCount:       a.fleetCount,
+    fleetCount:       Math.max(a.fleetCount, b.fleetCount),
   }
   return [...rows.slice(0, index), merged, ...rows.slice(index + 2)]
 }
@@ -437,10 +509,10 @@ export function computeOfertaSeries(
   return result
 }
 
-/** Rough estimate for the modal's preview footer — not the real scheduling
- *  algorithm (that's the next step: a round-robin walk mirroring
- *  handleAdjustCycle in page.tsx). Good enough to sanity-check a
- *  configuration before closing the modal. */
+/** Rough estimate for the modal's live preview footer — deliberately not the
+ *  real scheduling algorithm (see generateSchedule below): cheap enough to
+ *  recompute on every window edit, good enough to sanity-check a
+ *  configuration before actually generating. */
 export function estimateGeneration(
   rows:           GenWindow[],
   opStartMinutes: number,
@@ -460,4 +532,214 @@ export function estimateGeneration(
     trips += roundTrips * 2 // ida + volta
   }
   return { trips: Math.round(trips), peakFleet }
+}
+
+// ── real generation (Stage 1 — schedule grid) ───────────────────────────────────
+//
+// Three-step pipeline, kept as separate exported functions so each is
+// independently testable: generateRounds (frequency + trip structure,
+// steps 1–2) → assignRoundsToBlocks (block assignment, step 3).
+// HOLD/DEPOT resolution (step 4) is deliberately NOT here — it needs live
+// locality/depot/travel-time data this file has no access to (pure, no
+// fetch), so it's resolved by the modal after calling generateSchedule().
+
+export interface GeneratedLeg {
+  direction:        Direction
+  departureMinutes: number
+  arrivalMinutes:   number
+}
+
+/** One full round-trip: either 2 legs (anchor direction + its pair — the
+ *  common OUTBOUND/INBOUND case) or 1 leg (CIRCULAR-only lines, which have no
+ *  separate return leg to pair against). `readyAgainMinutes` is when the
+ *  vehicle that just did this round could depart on another one — the last
+ *  leg's arrival plus its own trailing turnback interval — used to decide
+ *  block placement in assignRoundsToBlocks. */
+export interface GeneratedRound {
+  id:                string
+  legs:              GeneratedLeg[]
+  readyAgainMinutes: number
+}
+
+export interface GeneratedBlock {
+  id:     string
+  rounds: GeneratedRound[]
+}
+
+// Half-open on `to` (unlike resolveSlotWindow's inclusive-both-ends, built for
+// half-hour-slot seeding) — a continuous minute-by-minute cursor needs an
+// unambiguous single owner for the exact instant a band boundary falls on.
+function windowAtMinutes(rows: GenWindow[], minutes: number): GenWindow | undefined {
+  const slot = minutes / 60
+  return rows.find(w => slot >= w.from && slot < w.to) ?? rows.find(w => slot >= w.from && slot <= w.to)
+}
+
+const SMOOTH_STEPS = 3 // trips over which a frequency change blends in, when smoothTransition is on
+
+/** Steps 1–2: generates the sequence of "rounds" (a full conceptual trip —
+ *  outbound followed by inbound, or a single direction for circular lines)
+ *  across the operating hours, with departures equally spaced within each
+ *  window (frequency = totalCycleMinutes/fleetCount). `firstTripDirection`
+ *  anchors which direction is generated in the periodic step — the round's
+ *  other direction is always derived (anchor leg's arrival + turnback), never
+ *  generated independently, because in continuous operation with N vehicles
+ *  the return headway is automatically equal to the outbound one.
+ *  `lastTripDirection` doesn't participate in the calculation (the final
+ *  round's direction already follows from the anchor/derived pair) — it's
+ *  only used to warn when it diverges from what's configured. */
+export function generateRounds(
+  rows:               GenWindow[],
+  opStartMinutes:     number,
+  opEndMinutes:       number,
+  firstTripDirection: Direction,
+  lastTripDirection:  Direction,
+  smoothTransition:   boolean,
+): { rounds: GeneratedRound[]; warnings: string[] } {
+  const warnings: string[] = []
+  if (rows.length === 0 || opEndMinutes <= opStartMinutes) return { rounds: [], warnings }
+
+  const pairedDirection: Direction | null =
+    firstTripDirection === 'CIRCULAR' ? null : firstTripDirection === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'
+
+  const rounds: GeneratedRound[] = []
+  const warnedBands = new Set<string>()
+  let cursor       = opStartMinutes
+  let prevFreq: number | null = null
+  let blendRemaining = 0
+  let blendFrom = 0
+  let blendTo   = 0
+
+  while (cursor <= opEndMinutes) {
+    const band = windowAtMinutes(rows, cursor)
+    if (!band) {
+      warnings.push(`Sem janela configurada para o horário ${minutesToLabel(Math.round(cursor))}`)
+      cursor += 30
+      continue
+    }
+
+    const cycleTotal = totalCycleMinutes(band)
+    const freq        = band.fleetCount > 0 && cycleTotal > 0 ? cycleTotal / band.fleetCount : 0
+    if (freq <= 0) { cursor += 30; continue }
+
+    const anchorKnown = firstTripDirection === 'INBOUND' ? band.inboundKnown : band.outboundKnown
+    if (!anchorKnown && !warnedBands.has(band.id)) {
+      warnedBands.add(band.id)
+      warnings.push(`Ciclo não confirmado na faixa ${hourToLabel(band.from)}–${hourToLabel(band.to)} — revise antes de gerar`)
+    }
+
+    if (prevFreq != null && Math.abs(freq - prevFreq) > 0.01 && blendRemaining === 0 && smoothTransition) {
+      blendRemaining = SMOOTH_STEPS
+      blendFrom = prevFreq
+      blendTo   = freq
+    }
+
+    let step: number
+    if (blendRemaining > 0) {
+      const fraction = (SMOOTH_STEPS - blendRemaining + 1) / SMOOTH_STEPS
+      step = blendFrom + (blendTo - blendFrom) * fraction
+      blendRemaining--
+    } else {
+      step = freq
+    }
+
+    const anchorDep = cursor
+    const anchorArr = anchorDep + (firstTripDirection === 'INBOUND' ? band.inboundMinutes : band.outboundMinutes)
+    const legs: GeneratedLeg[] = [{ direction: firstTripDirection, departureMinutes: anchorDep, arrivalMinutes: anchorArr }]
+
+    let readyAgainMinutes: number
+    if (pairedDirection) {
+      const anchorTurnback = firstTripDirection === 'INBOUND' ? band.inboundInterval : band.outboundInterval
+      const pairedDep   = anchorArr + anchorTurnback
+      const pairedBand  = windowAtMinutes(rows, pairedDep) ?? band
+      const pairedMinutes  = pairedDirection === 'INBOUND' ? pairedBand.inboundMinutes  : pairedBand.outboundMinutes
+      const pairedTurnback = pairedDirection === 'INBOUND' ? pairedBand.inboundInterval : pairedBand.outboundInterval
+      const pairedArr = pairedDep + pairedMinutes
+      legs.push({ direction: pairedDirection, departureMinutes: pairedDep, arrivalMinutes: pairedArr })
+      readyAgainMinutes = pairedArr + pairedTurnback
+    } else {
+      const anchorTurnback = band.outboundInterval // circular-only lines reuse the outbound fields (see GenWindow)
+      readyAgainMinutes = anchorArr + anchorTurnback
+    }
+
+    rounds.push({ id: crypto.randomUUID(), legs, readyAgainMinutes })
+    prevFreq = freq
+    cursor  += step
+  }
+
+  const lastRound = rounds[rounds.length - 1]
+  const lastLegDirection = lastRound?.legs[lastRound.legs.length - 1]?.direction
+  if (lastLegDirection && lastLegDirection !== lastTripDirection) {
+    warnings.push(
+      `A última viagem gerada é de ${DIR_LABEL_INTERNAL[lastLegDirection]}, não ${DIR_LABEL_INTERNAL[lastTripDirection]} como configurado`,
+    )
+  }
+
+  return { rounds, warnings }
+}
+
+const DIR_LABEL_INTERNAL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
+
+/** Step 3: assigns the generated rounds to blocks (vehicles) via round-robin —
+ *  the first round always opens block 1; each following round goes into
+ *  whichever open block is already free and "tightest" (the latest
+ *  `readyAgainMinutes` among the eligible ones), and only opens a new block if
+ *  none is free in time, nor within the maneuver margin (a block freeing up
+ *  shortly after the round's ideal time, by up to `maneuverMarginMinutes` — in
+ *  that case the round is delayed until the block frees up, instead of
+ *  opening another vehicle for just a few minutes' difference). */
+export function assignRoundsToBlocks(
+  rounds:                GeneratedRound[],
+  maneuverMarginMinutes: number,
+): GeneratedBlock[] {
+  interface OpenBlock { block: GeneratedBlock; availableFrom: number }
+  const open: OpenBlock[] = []
+
+  for (const round of rounds) {
+    const anchorDep = round.legs[0].departureMinutes
+
+    let chosen: OpenBlock | null = null
+    for (const ob of open) {
+      if (ob.availableFrom <= anchorDep && (!chosen || ob.availableFrom > chosen.availableFrom)) chosen = ob
+    }
+
+    if (!chosen) {
+      for (const ob of open) {
+        if (ob.availableFrom > anchorDep && ob.availableFrom - anchorDep <= maneuverMarginMinutes) {
+          if (!chosen || ob.availableFrom < chosen.availableFrom) chosen = ob
+        }
+      }
+    }
+
+    if (chosen) {
+      const shift = Math.max(0, chosen.availableFrom - anchorDep)
+      const placedRound = shift > 0
+        ? {
+            ...round,
+            legs: round.legs.map(l => ({ ...l, departureMinutes: l.departureMinutes + shift, arrivalMinutes: l.arrivalMinutes + shift })),
+            readyAgainMinutes: round.readyAgainMinutes + shift,
+          }
+        : round
+      chosen.block.rounds.push(placedRound)
+      chosen.availableFrom = placedRound.readyAgainMinutes
+    } else {
+      open.push({ block: { id: crypto.randomUUID(), rounds: [round] }, availableFrom: round.readyAgainMinutes })
+    }
+  }
+
+  return open.map(ob => ob.block)
+}
+
+/** Convenience: runs steps 1–3 in sequence. */
+export function generateSchedule(
+  rows:                   GenWindow[],
+  opStartMinutes:         number,
+  opEndMinutes:           number,
+  firstTripDirection:     Direction,
+  lastTripDirection:      Direction,
+  smoothTransition:       boolean,
+  maneuverMarginMinutes:  number,
+): { blocks: GeneratedBlock[]; warnings: string[] } {
+  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection, smoothTransition)
+  const blocks = assignRoundsToBlocks(rounds, maneuverMarginMinutes)
+  return { blocks, warnings }
 }

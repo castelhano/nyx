@@ -80,9 +80,21 @@ export default function JobDetailPage() {
 
   const { guardNode } = usePageGuard('core', 'job', false, jobError ?? undefined)
 
+  function downloadJson() {
+    if (!job) return
+    const blob = new Blob([JSON.stringify(job, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = Object.assign(document.createElement('a'), { href: url, download: `job_${job.type}_${id}.json` })
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   useTopbarActions([
     { label: 'Voltar', icon: Icons.ArrowLeft, onClick: () => router.push('/core/job'), variant: 'ghost' },
-  ], [])
+    { label: 'JSON', icon: Icons.Download, onClick: downloadJson, variant: 'ghost', disabled: !job },
+  ], [job])
 
   useShortcut('alt+v', () => router.push('/core/job'), {
     desc:   'Voltar',

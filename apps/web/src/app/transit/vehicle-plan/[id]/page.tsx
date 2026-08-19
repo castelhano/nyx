@@ -553,6 +553,7 @@ export default function VehiclePlanPage() {
             lineId={generateLineModal.lineId}
             dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
             onClose={() => setGenerateLineModal(null)}
+            onPendingAdd={handlePendingAdd}
           />
         )}
       </div>

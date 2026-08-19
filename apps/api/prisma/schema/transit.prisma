@@ -128,11 +128,11 @@ model TransitRoute {
   // manual override for the trajectory color on Régua/Mapa — null falls back to the
   // direction's default color (see DIR_COLOR in the frontend)
   color                 String?
-  // gerador de planejamento: comportamento ao fechar uma viagem numa parada intermediária —
-  // DEFAULT herda TransitSettings.defaultLayoverPolicy, HOLD/DEPOT sobrescreve por rota
+  // schedule generator: behavior when closing a trip at an intermediate stop —
+  // DEFAULT inherits TransitSettings.defaultLayoverPolicy, HOLD/DEPOT overrides per route
   layoverPolicy         LayoverPolicy  @default(DEFAULT)
-  // garagem preferencial para recolhida quando layoverPolicy resolve para DEPOT — opcional,
-  // com fallback para a garagem mais próxima (ver gerador de planejamento)
+  // preferred depot for the return leg when layoverPolicy resolves to DEPOT — optional,
+  // falls back to the nearest available depot (see the schedule generator)
   homeDepotId           String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt

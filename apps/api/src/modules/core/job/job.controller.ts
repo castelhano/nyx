@@ -22,7 +22,11 @@ export class JobController {
       permissions: {
         create: false,
         read:   ability.can('read', 'Job'),
-        update: false,
+        // Job has no real update endpoint (read-only) — but the generic AutoList
+        // uses "update" to decide whether to show the row's open button, so
+        // mirroring "read" here is what makes that button appear, without
+        // opening any real write action (there is no PATCH).
+        update: ability.can('read', 'Job'),
         delete: false,
       },
     }
