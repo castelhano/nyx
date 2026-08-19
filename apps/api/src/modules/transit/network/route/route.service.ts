@@ -63,13 +63,18 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
       if (!hasPrimary) dto = { ...dto, isPrimary: true }
     }
 
-    if (!dto.isPrimary) return super.create(dto)
+    // internal disambiguator for multiple route variants sharing (lineId, direction) —
+    // never user-facing, assigned here so it survives export/import as a stable identity
+    const ordinal = await this.prisma.transitRoute.count({ where: { lineId: dto.lineId, direction: dto.direction } })
+    const data = { ...this.sanitizeDto(dto as Record<string, unknown>), ordinal } as Prisma.TransitRouteUncheckedCreateInput
+
+    if (!dto.isPrimary) return this.prisma.transitRoute.create({ data }) as unknown as Route
     return this.prisma.$transaction(async (tx) => {
       await tx.transitRoute.updateMany({
         where: { lineId: dto.lineId, direction: dto.direction, isPrimary: true },
         data:  { isPrimary: false },
       })
-      return tx.transitRoute.create({ data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedCreateInput }) as unknown as Route
+      return tx.transitRoute.create({ data }) as unknown as Route
     })
   }
 

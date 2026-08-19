@@ -121,6 +121,9 @@ model TransitRoute {
   originLocalityId      String
   destinationLocalityId String
   isActive              Boolean        @default(true)
+  // internal disambiguator for multiple route variants sharing the same (lineId,
+  // direction) — assigned by RouteService on create (0, 1, 2...), never user-facing
+  ordinal               Int            @default(0)
   // the route whose trajectory represents the line's official extension for this
   // direction, used to confront TransitLine.metrics.extensionKm — at most one per
   // (lineId, direction), enforced in RouteService
@@ -145,6 +148,7 @@ model TransitRoute {
   trips               TransitTrip[]
   lineDepartures      LineDeparture[]
 
+  @@unique([lineId, direction, ordinal])
   @@map("transit_routes")
 }
 
@@ -392,7 +396,7 @@ model VehiclePlan {
 // Uso futuro: base para composição de escala de motoristas (ScopeOperator.share).
 model Scope {
   id          String   @id @default(uuid())
-  name        String
+  name        String   @unique
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

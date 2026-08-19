@@ -23,8 +23,8 @@ interface Fixture {
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
   scopes: Array<{ name: string; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
   lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown }>
-  routes: Array<{ lineCode: string; direction: string; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
-  routeLocalities: Array<{ lineCode: string; direction: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
+  routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
+  routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
 }
 
@@ -66,8 +66,11 @@ async function main() {
   // ── scopes + operators ──────────────────────────────────────────────────────
   const scopeMap = new Map<string, string>()
   for (const s of fixture.scopes) {
-    let scope = await prisma.scope.findFirst({ where: { name: s.name } })
-    if (!scope) scope = await prisma.scope.create({ data: { name: s.name } })
+    const scope = await prisma.scope.upsert({
+      where:  { name: s.name },
+      update: {},
+      create: { name: s.name },
+    })
     scopeMap.set(s.name, scope.id)
 
     for (const op of s.operators) {
@@ -106,34 +109,34 @@ async function main() {
   console.log(`  ✓ lines (${fixture.lines.length})`)
 
   // ── routes ──────────────────────────────────────────────────────────────────
-  const routeMap = new Map<string, string>() // `${lineCode}:${direction}`
+  const routeMap = new Map<string, string>() // `${lineCode}:${direction}:${ordinal}` — a line/direction can have multiple route variants
   for (const r of fixture.routes) {
     const lineId   = lineMap.get(r.lineCode)!
     const originId = localityMap.get(r.originCode)!
     const destId   = localityMap.get(r.destinationCode)!
-    const existing = await prisma.transitRoute.findFirst({ where: { lineId, direction: r.direction as any } })
+    const existing = await prisma.transitRoute.findFirst({ where: { lineId, direction: r.direction as any, ordinal: r.ordinal } })
     const record = existing
       ? await prisma.transitRoute.update({
           where: { id: existing.id },
           data:  { name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary },
         })
       : await prisma.transitRoute.create({
-          data: { lineId, direction: r.direction as any, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary },
+          data: { lineId, direction: r.direction as any, ordinal: r.ordinal, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary },
         })
-    routeMap.set(`${r.lineCode}:${r.direction}`, record.id)
+    routeMap.set(`${r.lineCode}:${r.direction}:${r.ordinal}`, record.id)
   }
   console.log(`  ✓ routes (${fixture.routes.length})`)
 
   // ── route localities (trajectory) ──────────────────────────────────────────
   // owned entirely by the fixture per route — wipe and recreate each route's stops.
-  const routesTouched = new Set(fixture.routeLocalities.map(rl => `${rl.lineCode}:${rl.direction}`))
+  const routesTouched = new Set(fixture.routeLocalities.map(rl => `${rl.lineCode}:${rl.direction}:${rl.routeOrdinal}`))
   for (const key of routesTouched) {
     const routeId = routeMap.get(key)
     if (!routeId) continue
     await prisma.routeLocality.deleteMany({ where: { routeId } })
   }
   for (const rl of fixture.routeLocalities) {
-    const routeId    = routeMap.get(`${rl.lineCode}:${rl.direction}`)
+    const routeId    = routeMap.get(`${rl.lineCode}:${rl.direction}:${rl.routeOrdinal}`)
     if (!routeId) continue
     const localityId = rl.localityCode ? localityMap.get(rl.localityCode) : null
     await prisma.routeLocality.create({

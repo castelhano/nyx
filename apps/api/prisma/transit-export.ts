@@ -42,7 +42,7 @@ async function main() {
     }),
     prisma.routeLocality.findMany({
       include: {
-        route:    { select: { line: { select: { code: true } }, direction: true } },
+        route:    { select: { line: { select: { code: true } }, direction: true, name: true, ordinal: true } },
         locality: { select: { code: true } },
       },
       orderBy: [{ routeId: 'asc' }, { sequence: 'asc' }],
@@ -75,12 +75,14 @@ async function main() {
       notes: l.notes, metrics: l.metrics,
     })),
     routes: routes.map(r => ({
-      lineCode: r.line.code, direction: r.direction, name: r.name,
+      lineCode: r.line.code, direction: r.direction, ordinal: r.ordinal, name: r.name,
       originCode: r.originLocality.code, destinationCode: r.destinationLocality.code,
       isActive: r.isActive, isPrimary: r.isPrimary,
     })),
+    // routeName is informational only (helps eyeballing the fixture) — routeOrdinal is
+    // the actual matching key, since name isn't guaranteed unique per (lineCode, direction)
     routeLocalities: routeLocalities.map(rl => ({
-      lineCode: rl.route.line.code, direction: rl.route.direction, sequence: rl.sequence,
+      lineCode: rl.route.line.code, direction: rl.route.direction, routeOrdinal: rl.route.ordinal, routeName: rl.route.name, sequence: rl.sequence,
       localityCode: rl.locality?.code ?? null, lat: rl.lat, lng: rl.lng,
       deltaMinutes: rl.deltaMinutes, deltaKm: rl.deltaKm, deltaSource: rl.deltaSource,
       geometry: rl.geometry, allowsCrewChange: rl.allowsCrewChange,
