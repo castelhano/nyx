@@ -36,6 +36,12 @@ enum DeadrunType {
   @@map("transit_deadrun_type")
 }
 
+enum LayoverPolicy {
+  DEFAULT
+  HOLD
+  DEPOT
+}
+
 model TransitLocality {
   id        String   @id @default(uuid())
   code      String   @unique
@@ -53,6 +59,7 @@ model TransitLocality {
   travelTimesTo        TravelTimeMatrix[] @relation("TravelTimeDestination")
   routesAsOrigin       TransitRoute[]     @relation("RouteOrigin")
   routesAsDestination  TransitRoute[]     @relation("RouteDestination")
+  routesAsHomeDepot    TransitRoute[]     @relation("RouteHomeDepot")
   routeLocalities      RouteLocality[]
   vehicleBlocks        VehicleBlock[]
   deadrunsAsOrigin     BlockDeadrun[]     @relation("DeadrunOrigin")
@@ -121,12 +128,19 @@ model TransitRoute {
   // manual override for the trajectory color on Régua/Mapa — null falls back to the
   // direction's default color (see DIR_COLOR in the frontend)
   color                 String?
+  // gerador de planejamento: comportamento ao fechar uma viagem numa parada intermediária —
+  // DEFAULT herda TransitSettings.defaultLayoverPolicy, HOLD/DEPOT sobrescreve por rota
+  layoverPolicy         LayoverPolicy  @default(DEFAULT)
+  // garagem preferencial para recolhida quando layoverPolicy resolve para DEPOT — opcional,
+  // com fallback para a garagem mais próxima (ver gerador de planejamento)
+  homeDepotId           String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
   line                TransitLine     @relation(fields: [lineId], references: [id])
   originLocality      TransitLocality @relation("RouteOrigin", fields: [originLocalityId], references: [id])
   destinationLocality TransitLocality @relation("RouteDestination", fields: [destinationLocalityId], references: [id])
+  homeDepot           TransitLocality? @relation("RouteHomeDepot", fields: [homeDepotId], references: [id])
   localities          RouteLocality[]
   trips               TransitTrip[]
   lineDepartures      LineDeparture[]

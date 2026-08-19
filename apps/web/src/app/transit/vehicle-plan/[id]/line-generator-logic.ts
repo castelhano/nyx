@@ -170,6 +170,10 @@ export type ToleranceLevel = 0 | 1 | 2 | 3 // Nenhuma, Baixa, Média, Alta
 export const TOLERANCE_MINUTES: Record<ToleranceLevel, number> = { 0: 0, 1: 3, 2: 5, 3: 8 }
 export const TOLERANCE_LABELS:  Record<ToleranceLevel, string> = { 0: 'Nenhuma', 1: 'Baixa', 2: 'Média', 3: 'Alta' }
 
+// Distribuição em blocos (Fase 3): ao tentar encaixar uma viagem num bloco já aberto, quanto
+// "apertar" a viagem anterior desse bloco antes de desistir e abrir um novo bloco.
+export const DEFAULT_MANEUVER_MARGIN_MINUTES = 3
+
 function rideCycleMinutes(w: GenWindow): number {
   return w.outboundMinutes + w.inboundMinutes
 }

@@ -31,7 +31,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
   }
 
-  async generate(
+  async optimize(
     planId:        string,
     jobId:         string,
     rawParams:     SolverParams | undefined,
@@ -1059,7 +1059,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // scratch — duration from TransitLine.metrics.windows first, travel-time matrix
   // as fallback. Trips that no longer correspond to any departure in the target
   // schedule are removed. Newly-created trips are left unassigned to any block —
-  // the plan must be regenerated ("Gerar") afterward to (re)block them.
+  // the plan must be re-optimized ("Otimizar") afterward to (re)block them.
   async switchLineSchedule(planId: string, lineId: string, lineScheduleId: string): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },

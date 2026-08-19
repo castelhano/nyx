@@ -17,7 +17,7 @@ import {
   updateWindowBoundary, computeBoundaryFlags, mergeWithNext, splitWindow, closeFrequency, totalCycleMinutes,
   computeOfertaSeries, estimateGeneration,
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour,
-  TOLERANCE_MINUTES, TOLERANCE_LABELS,
+  TOLERANCE_MINUTES, TOLERANCE_LABELS, DEFAULT_MANEUVER_MARGIN_MINUTES,
   type GenWindow, type Direction, type ToleranceLevel,
 } from '../line-generator-logic'
 
@@ -223,6 +223,24 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
   const [insertInterval,      setInsertInterval]       = useState(true)
   const [intervalTypeId,      setIntervalTypeId]       = useState('')
 
+  // Sentido considerado para a primeira/última viagem do dia — default Ida (ou Circular na
+  // ausência de Ida) para o início, Volta (ou Circular na ausência de Volta) para o fim.
+  const [firstTripDirection, setFirstTripDirection] = useState<Direction>('OUTBOUND')
+  const [lastTripDirection,  setLastTripDirection]  = useState<Direction>('INBOUND')
+  const tripDirectionsSeededRef = useRef(false)
+
+  useEffect(() => {
+    if (lineRoutes.length === 0 || tripDirectionsSeededRef.current) return
+    tripDirectionsSeededRef.current = true
+    const has = (d: Direction) => lineRoutes.some(r => r.direction === d)
+    setFirstTripDirection(has('OUTBOUND') ? 'OUTBOUND' : 'CIRCULAR')
+    setLastTripDirection(has('INBOUND') ? 'INBOUND' : 'CIRCULAR')
+  }, [lineRoutes])
+
+  // Margem de manobra: quanto "apertar" a viagem anterior de um bloco aberto antes de decidir
+  // abrir um novo bloco (usado só pela distribuição em blocos, Fase 3 — sem efeito na prévia).
+  const [maneuverMargin, setManeuverMargin] = useState(DEFAULT_MANEUVER_MARGIN_MINUTES)
+
   useEffect(() => {
     if (!intervalTypeId && intervalTypes.length > 0) setIntervalTypeId(intervalTypes[0].id)
   }, [intervalTypes, intervalTypeId])
@@ -406,6 +424,16 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                           onChange={e => setOpStart(labelToMinutes(e.target.value))}
                           className="rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         />
+                        <select
+                          value={firstTripDirection}
+                          onChange={e => setFirstTripDirection(e.target.value as Direction)}
+                          title="Sentido da primeira viagem do dia"
+                          className="w-24 appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          {(lineRoutes.length > 0 ? lineRoutes.map(r => r.direction) : DIR_ORDER).map(d => (
+                            <option key={d} value={d}>{DIR_LABEL[d]}</option>
+                          ))}
+                        </select>
                       </label>
                       <label className="flex items-center gap-2 text-sm">
                         Fim
@@ -415,6 +443,16 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                           onChange={e => setOpEnd(labelToMinutes(e.target.value))}
                           className="rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         />
+                        <select
+                          value={lastTripDirection}
+                          onChange={e => setLastTripDirection(e.target.value as Direction)}
+                          title="Sentido da última viagem do dia"
+                          className="w-24 appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          {(lineRoutes.length > 0 ? lineRoutes.map(r => r.direction) : DIR_ORDER).map(d => (
+                            <option key={d} value={d}>{DIR_LABEL[d]}</option>
+                          ))}
+                        </select>
                       </label>
                     </div>
                   </section>
@@ -678,6 +716,25 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                   </span>
                   <span />
 
+                  {/* row: margem de manobra — usada só pela distribuição em blocos (Fase 3),
+                      sem efeito na prévia agregada desta tela */}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number" min={0}
+                      value={maneuverMargin}
+                      onChange={e => setManeuverMargin(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-14 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-sm text-muted-foreground">min</span>
+                  </div>
+                  <span
+                    className="text-sm"
+                    title="Ao encaixar uma viagem, o quanto 'apertar' a viagem anterior de um bloco aberto antes de abrir um novo bloco"
+                  >
+                    Margem de manobra
+                  </span>
+                  <span />
+
                   {/* rows: índice de renovação — one per route the line actually has (1 to 3
                       directions), driven by lineRoutes rather than a fixed OUTBOUND/INBOUND pair.
                       Control column holds the input, same alignment as the switches above. */}
@@ -696,7 +753,7 @@ export function LineScheduleGeneratorModal({ lineId, dayTypeCode, onClose }: Pro
                           type="number" min={0}
                           value={renewalIndex[route.direction] ?? 0}
                           onChange={e => setRenewalIndex(r => ({ ...r, [route.direction]: Number(e.target.value) || 0 }))}
-                          className="w-14 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          className="w-20 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         />
                         <span className="text-sm text-muted-foreground">%</span>
                       </div>

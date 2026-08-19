@@ -27,7 +27,7 @@ interface Props {
   onClose:          () => void
 }
 
-export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onClose }: Props) {
+export function OptimizeModal({ hasCustomMetrics, onConfirm, onClearMetrics, onClose }: Props) {
   const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS)
   useShortcutContext('modal')
 
@@ -55,7 +55,7 @@ export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onC
         onSubmit={handleSubmit}
         className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-5"
       >
-        <h2 className="text-base font-semibold">Gerar Planejamento</h2>
+        <h2 className="text-base font-semibold">Otimizar Planejamento</h2>
 
         {/* type */}
         <div className="space-y-2">
@@ -166,7 +166,7 @@ export function GenerateModal({ hasCustomMetrics, onConfirm, onClearMetrics, onC
             Cancelar
           </Button>
           <Button type="submit" size="sm">
-            Gerar
+            Otimizar
           </Button>
         </div>
       </form>

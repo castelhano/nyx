@@ -78,6 +78,29 @@ export const routeSchema = withMeta(
       listVisibility: 'hidden',
     }),
 
+    // gerador de planejamento: comportamento ao fechar uma viagem numa parada intermediária —
+    // DEFAULT herda a config geral (defaultLayoverPolicy), HOLD/DEPOT sobrescreve por rota
+    layoverPolicy: z.enum(['DEFAULT', 'HOLD', 'DEPOT']).default('DEFAULT').meta({
+      label:          'Política de Recolhida',
+      widget:         'select',
+      listVisibility: 'hidden',
+      optionLabels: {
+        DEFAULT: 'Padrão (config. geral)',
+        HOLD:    'Aguardar no ponto',
+        DEPOT:   'Recolher à garagem',
+      },
+    }),
+
+    homeDepotId: z.uuid().nullable().optional().meta({
+      label:          'Garagem Preferencial',
+      widget:         'select',
+      resource:       'transit-locality',
+      domain:         'transit',
+      labelField:     'name',
+      relatedWhere:   { isDepot: true },
+      listVisibility: 'hidden',
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

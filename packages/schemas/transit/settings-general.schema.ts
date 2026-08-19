@@ -11,6 +11,10 @@ export const generalSettingsSchema = z.object({
   // multiplier applied to OSRM-reported durations when (re)generating the travel-time
   // matrix — compensates for OSRM's free-flow estimate running faster than real traffic
   baseSpeedRatio:                 z.number().min(0.5).max(3.0).default(1.1),
+  // comportamento padrão do gerador de planejamento ao fechar uma viagem numa parada
+  // intermediária, quando a rota não define layoverPolicy própria (DEFAULT) — aguardar no
+  // ponto (HOLD) ou recolher à garagem (DEPOT)
+  defaultLayoverPolicy:           z.enum(['HOLD', 'DEPOT']).default('HOLD'),
 })
 
 export type GeneralSettings = z.infer<typeof generalSettingsSchema>

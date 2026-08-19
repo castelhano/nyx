@@ -25,7 +25,7 @@ import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
 import { TripSummaryPanel }  from './components/TripSummaryPanel'
-import { GenerateModal }         from './components/GenerateModal'
+import { OptimizeModal }         from './components/OptimizeModal'
 import { AccessModal }           from './components/AccessModal'
 import { AddIntervalModal }      from './components/AddIntervalModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
@@ -138,11 +138,11 @@ export default function VehiclePlanPage() {
   const {
     activeJobId,
     isSolverDone,
-    generateModalOpen, setGenerateModalOpen,
+    optimizeModalOpen, setOptimizeModalOpen,
     detailsOpen, setDetailsOpen,
     baselineSnapshot,
     solverProgress,
-    handleGenerate, handleClearMetrics, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
+    handleOptimize, handleClearMetrics, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
   } = solver
 
   // ── topbar ───────────────────────────────────────────────────────────────────
@@ -182,8 +182,8 @@ export default function VehiclePlanPage() {
         { label: '', separator: true },
         {
           // Generates a service proposal (windows/fleet/supply×demand) for the
-          // line selected in "Linhas" — unrelated to the solver's "Gerar"
-          // (that one only appears outside edit mode, see "normal mode" block below).
+          // line selected in "Linhas" — the solver's optimization flow is a
+          // separate action, labeled "Otimizar" (see "normal mode" block below).
           label:    'Gerar',
           icon:     Icons.Play,
           size:     'sm' as const,
@@ -239,11 +239,11 @@ export default function VehiclePlanPage() {
         onClick:  handleStop,
         disabled: isPending,
       }] : []),
-      // generate
+      // optimize
       ...((!activeJobId || isSolverDone) && canEdit ? [{
-        label:    isPending ? 'Gerando…' : 'Gerar',
+        label:    isPending ? 'Otimizando…' : 'Otimizar',
         icon:     Icons.Play,
-        onClick:  () => setGenerateModalOpen(true),
+        onClick:  () => setOptimizeModalOpen(true),
         disabled: isPending,
       }] : []),
       // activate
@@ -326,12 +326,12 @@ export default function VehiclePlanPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {generateModalOpen && (
-        <GenerateModal
+      {optimizeModalOpen && (
+        <OptimizeModal
           hasCustomMetrics={hasCustomMetrics}
-          onConfirm={handleGenerate}
+          onConfirm={handleOptimize}
           onClearMetrics={handleClearMetrics}
-          onClose={() => setGenerateModalOpen(false)}
+          onClose={() => setOptimizeModalOpen(false)}
         />
       )}
 

@@ -19,16 +19,16 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     super(vehiclePlanService, caslFactory)
   }
 
-  @Post(':id/generate')
+  @Post(':id/optimize')
   @HttpCode(200)
-  generate(
+  optimize(
     @Param('id') id: string,
     @Body('jobId') jobId: string,
     @Body('params') params: SolverParams,
     @Req() req: any,
   ) {
     const user: { role: string; branchIds: string[] } = req.user ?? { role: 'USER', branchIds: [] }
-    return this.vehiclePlanService.generate(id, jobId, params, user.branchIds, user.role)
+    return this.vehiclePlanService.optimize(id, jobId, params, user.branchIds, user.role)
   }
 
   @Sse(':id/stream')

@@ -585,6 +585,27 @@ export default function TransitSettingsPage() {
               disabled={!general}
             />
           </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Comportamento do gerador em intervalos longos</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Comportamento do gerador de planejamento em paradas intermediárias (intervalos longos), quando não especificado na rota: aguardar no ponto ou recolher à garagem
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+              value={general?.defaultLayoverPolicy ?? 'HOLD'}
+              onChange={(e) => setGeneral((prev) => prev ? { ...prev, defaultLayoverPolicy: e.target.value as GeneralSettings['defaultLayoverPolicy'] } : null)}
+              size="sm"
+              className="w-30"
+              disabled={!general}
+            >
+              <option value="HOLD">Aguardar</option>
+              <option value="DEPOT">Recolher</option>
+            </Select>
+              <span className="text-sm text-muted-foreground w-6"></span>
+            </div>
+          </div>
         </div>
       </section>
 

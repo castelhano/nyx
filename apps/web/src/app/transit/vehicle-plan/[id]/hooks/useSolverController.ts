@@ -10,7 +10,7 @@ import { extractError } from '@/lib/utils'
 import { useSolverStream } from './useSolverStream'
 import type { SolverBaseline } from '../components/SolverProposalDialog'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
-import type { SolverParams } from '../components/GenerateModal'
+import type { SolverParams } from '../components/OptimizeModal'
 
 interface UseSolverControllerParams {
   id:           string
@@ -29,7 +29,7 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
 
   const [activeJobId,       setActiveJobId]       = useState<string | null>(null)
   const [isSolverDone,      setIsSolverDone]      = useState(false)
-  const [generateModalOpen, setGenerateModalOpen] = useState(false)
+  const [optimizeModalOpen, setOptimizeModalOpen] = useState(false)
   const [detailsOpen,       setDetailsOpen]       = useState(false)
   const [baselineSnapshot,  setBaselineSnapshot]  = useState<SolverBaseline | null>(null)
 
@@ -40,8 +40,8 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
 
   const solverProgress = useSolverStream(id, activeJobId, onSolverDone)
 
-  async function handleGenerate(params: SolverParams) {
-    setGenerateModalOpen(false)
+  async function handleOptimize(params: SolverParams) {
+    setOptimizeModalOpen(false)
     if (!canUpdate) return
 
     const savedSummary = (record as any)?.summary as Record<string, number> | null | undefined
@@ -76,7 +76,7 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
     setIsPending(true)
     const jobId = crypto.randomUUID()
     try {
-      const res = await apiFetch(`/transit/vehicle-plan/${id}/generate`, {
+      const res = await apiFetch(`/transit/vehicle-plan/${id}/optimize`, {
         method: 'POST',
         body:   JSON.stringify({ jobId, params }),
       })
@@ -87,7 +87,7 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
       setActiveJobId(jobId)
       setIsPending(false)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar geração')
+      toast.error(err instanceof Error ? err.message : 'Erro ao iniciar otimização')
       setIsPending(false)
     }
   }
@@ -224,10 +224,10 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
   return {
     activeJobId,
     isSolverDone,
-    generateModalOpen, setGenerateModalOpen,
+    optimizeModalOpen, setOptimizeModalOpen,
     detailsOpen, setDetailsOpen,
     baselineSnapshot,
     solverProgress,
-    handleGenerate, handleClearMetrics, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
+    handleOptimize, handleClearMetrics, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
   }
 }
