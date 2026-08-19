@@ -699,39 +699,85 @@ export function generateRounds(
       idx++
     }
 
-    if (nextCursor == null) {
-      // Ran out of window coverage before accumulating a full headway's worth
-      // of rate. Rather than just dropping the tail of the day, force one
-      // closing round anchored exactly at opEndMinutes — using the real cycle
-      // data of whichever window covers that instant — so the last trip lands
-      // on the configured end time instead of leaving a gap. Only possible
-      // when a window actually covers opEndMinutes; if it doesn't (windows
-      // end earlier than opEnd entirely), there's no real cycle to anchor to
-      // and the original insufficient-coverage warning still applies.
-      if (opEndMinutes > cursor) {
-        const closingBand = windowAtMinutes(rows, opEndMinutes)
-        if (closingBand) {
-          const closingAnchorKnown = firstTripDirection === 'INBOUND' ? closingBand.inboundKnown : closingBand.outboundKnown
-          if (!closingAnchorKnown && !warnedBands.has(closingBand.id)) {
-            warnedBands.add(closingBand.id)
-            warnings.push(`Ciclo não confirmado na faixa ${hourToLabel(closingBand.from)}–${hourToLabel(closingBand.to)} — revise antes de gerar`)
-          }
-          rounds.push(buildRound(rows, closingBand, opEndMinutes, firstTripDirection, pairedDirection))
-          warnings.push(
-            `Última viagem ajustada para partir às ${minutesToLabel(Math.round(opEndMinutes))} (fim do horário configurado) — `
-            + `intervalo menor que a frequência normal da janela nesse trecho; avalie se ela deve ser suprimida`,
-          )
-        } else {
-          warnings.push(`Cobertura de janelas insuficiente para completar a geração após ${minutesToLabel(Math.round(cursor))}`)
-        }
-      }
-      break
-    }
+    // Whatever cuts the sweep short here — fleet too thin to finish another
+    // full round before day's end, or simply no more window data — the loop
+    // just stops. Nothing is fabricated at this point; the closing pass
+    // below is what's responsible for making the last trip land on
+    // opEndMinutes, by retiming what was already generated instead of
+    // inventing a new round.
+    if (nextCursor == null) break
     cursor = nextCursor
   }
 
-  const lastRound = rounds[rounds.length - 1]
-  const lastLegDirection = lastRound?.legs[lastRound.legs.length - 1]?.direction
+  // Closing pass: the last trip of the day is always pulled to land exactly
+  // on opEndMinutes (delayed or advanced, whichever it takes), same as an
+  // operator manually nudging the printed schedule. Rather than concentrate
+  // that whole shift into a single, conspicuously different final headway,
+  // it's spread across every round that shares the last round's cycle
+  // window (buildRound uses real window data throughout, so crossing into a
+  // *different* window's frequency is never blended — only rounds within
+  // the same still-open window get retimed together, evenly spaced between
+  // the window's first natural departure and the new target for the last
+  // one).
+  if (rounds.length > 0) {
+    const lastRound = rounds[rounds.length - 1]
+    const lastLegIndex = lastRound.legs.findIndex(l => l.direction === lastTripDirection)
+
+    if (lastLegIndex !== -1) {
+      const actualDep = lastRound.legs[lastLegIndex].departureMinutes
+      const delta = opEndMinutes - actualDep
+
+      if (Math.abs(delta) > 0.5) {
+        const lastAnchorBand = windowAtMinutes(rows, lastRound.legs[0].departureMinutes)
+        let suffixStart = rounds.length - 1
+        if (lastAnchorBand) {
+          while (suffixStart > 0) {
+            const prevBand = windowAtMinutes(rows, rounds[suffixStart - 1].legs[0].departureMinutes)
+            if (!prevBand || prevBand.id !== lastAnchorBand.id) break
+            suffixStart--
+          }
+        }
+
+        const k               = rounds.length - suffixStart
+        const firstAnchorDep  = rounds[suffixStart].legs[0].departureMinutes
+        const targetAnchorDep = lastRound.legs[0].departureMinutes + delta
+        // Only a chronological-order guard against whatever round precedes the
+        // suffix in the array (a different window/vehicle slot entirely, so its
+        // readyAgainMinutes has no bearing here — departure order is all that
+        // matters for assignRoundsToBlocks downstream).
+        const floorGuard      = suffixStart > 0 ? rounds[suffixStart - 1].legs[0].departureMinutes : -Infinity
+
+        if (targetAnchorDep >= floorGuard && (k === 1 || targetAnchorDep >= firstAnchorDep)) {
+          for (let i = 0; i < k; i++) {
+            const newAnchorDep = k === 1 ? targetAnchorDep : firstAnchorDep + (i / (k - 1)) * (targetAnchorDep - firstAnchorDep)
+            const band = windowAtMinutes(rows, newAnchorDep) ?? lastAnchorBand
+            if (!band) continue
+
+            const anchorKnown = firstTripDirection === 'INBOUND' ? band.inboundKnown : band.outboundKnown
+            if (!anchorKnown && !warnedBands.has(band.id)) {
+              warnedBands.add(band.id)
+              warnings.push(`Ciclo não confirmado na faixa ${hourToLabel(band.from)}–${hourToLabel(band.to)} — revise antes de gerar`)
+            }
+
+            rounds[suffixStart + i] = buildRound(rows, band, newAnchorDep, firstTripDirection, pairedDirection)
+          }
+          warnings.push(
+            `Última viagem (${DIR_LABEL_INTERNAL[lastTripDirection]}) ${delta > 0 ? 'atrasada' : 'adiantada'} em `
+            + `${Math.round(Math.abs(delta))}min para bater com o fim do horário configurado (${minutesToLabel(Math.round(opEndMinutes))})`
+            + (k > 1 ? ` — frequência redistribuída entre as últimas ${k} viagens dessa faixa` : ''),
+          )
+        } else {
+          warnings.push(
+            `Não foi possível ajustar a última viagem ao horário de fim configurado (${minutesToLabel(Math.round(opEndMinutes))}) `
+            + `sem sobrepor a viagem anterior — aumente a frota nas janelas finais (aba Janelas) para reduzir esse intervalo`,
+          )
+        }
+      }
+    }
+  }
+
+  const lastRoundFinal = rounds[rounds.length - 1]
+  const lastLegDirection = lastRoundFinal?.legs[lastRoundFinal.legs.length - 1]?.direction
   if (lastLegDirection && lastLegDirection !== lastTripDirection) {
     warnings.push(
       `A última viagem gerada é de ${DIR_LABEL_INTERNAL[lastLegDirection]}, não ${DIR_LABEL_INTERNAL[lastTripDirection]} como configurado`,
