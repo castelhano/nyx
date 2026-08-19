@@ -574,26 +574,32 @@ function windowAtMinutes(rows: GenWindow[], minutes: number): GenWindow | undefi
   return rows.find(w => slot >= w.from && slot < w.to) ?? rows.find(w => slot >= w.from && slot <= w.to)
 }
 
-const SMOOTH_STEPS = 3 // trips over which a frequency change blends in, when smoothTransition is on
-
 /** Steps 1–2: generates the sequence of "rounds" (a full conceptual trip —
  *  outbound followed by inbound, or a single direction for circular lines)
- *  across the operating hours, with departures equally spaced within each
- *  window (frequency = totalCycleMinutes/fleetCount). `firstTripDirection`
- *  anchors which direction is generated in the periodic step — the round's
- *  other direction is always derived (anchor leg's arrival + turnback), never
- *  generated independently, because in continuous operation with N vehicles
- *  the return headway is automatically equal to the outbound one.
- *  `lastTripDirection` doesn't participate in the calculation (the final
- *  round's direction already follows from the anchor/derived pair) — it's
- *  only used to warn when it diverges from what's configured. */
+ *  across the operating hours. Departures are placed by a continuous rate
+ *  accumulator instead of a fixed per-round step: as time advances, progress
+ *  toward the next departure accrues at `fleetCount / totalCycleMinutes`
+ *  (rounds per minute) of whichever window covers that instant, and a
+ *  departure fires the moment accumulated progress reaches 1 — carrying any
+ *  leftover across a window boundary instead of resetting it there. A
+ *  window's own frequency only ever governs the portion of time actually
+ *  spent inside it, so a narrow high-frequency window can never be skipped
+ *  by a coarser step inherited from the window before it, and a frequency
+ *  change takes effect exactly at the boundary with no separate smoothing
+ *  pass needed. `firstTripDirection` anchors which direction is generated in
+ *  the periodic step — the round's other direction is always derived
+ *  (anchor leg's arrival + turnback), never generated independently, because
+ *  in continuous operation with N vehicles the return headway is
+ *  automatically equal to the outbound one. `lastTripDirection` doesn't
+ *  participate in the calculation (the final round's direction already
+ *  follows from the anchor/derived pair) — it's only used to warn when it
+ *  diverges from what's configured. */
 export function generateRounds(
   rows:               GenWindow[],
   opStartMinutes:     number,
   opEndMinutes:       number,
   firstTripDirection: Direction,
   lastTripDirection:  Direction,
-  smoothTransition:   boolean,
 ): { rounds: GeneratedRound[]; warnings: string[] } {
   const warnings: string[] = []
   if (rows.length === 0 || opEndMinutes <= opStartMinutes) return { rounds: [], warnings }
@@ -603,11 +609,7 @@ export function generateRounds(
 
   const rounds: GeneratedRound[] = []
   const warnedBands = new Set<string>()
-  let cursor       = opStartMinutes
-  let prevFreq: number | null = null
-  let blendRemaining = 0
-  let blendFrom = 0
-  let blendTo   = 0
+  let cursor = opStartMinutes
 
   while (cursor <= opEndMinutes) {
     const band = windowAtMinutes(rows, cursor)
@@ -618,28 +620,13 @@ export function generateRounds(
     }
 
     const cycleTotal = totalCycleMinutes(band)
-    const freq        = band.fleetCount > 0 && cycleTotal > 0 ? cycleTotal / band.fleetCount : 0
-    if (freq <= 0) { cursor += 30; continue }
+    const rate        = band.fleetCount > 0 && cycleTotal > 0 ? band.fleetCount / cycleTotal : 0
+    if (rate <= 0) { cursor += 30; continue }
 
     const anchorKnown = firstTripDirection === 'INBOUND' ? band.inboundKnown : band.outboundKnown
     if (!anchorKnown && !warnedBands.has(band.id)) {
       warnedBands.add(band.id)
       warnings.push(`Ciclo não confirmado na faixa ${hourToLabel(band.from)}–${hourToLabel(band.to)} — revise antes de gerar`)
-    }
-
-    if (prevFreq != null && Math.abs(freq - prevFreq) > 0.01 && blendRemaining === 0 && smoothTransition) {
-      blendRemaining = SMOOTH_STEPS
-      blendFrom = prevFreq
-      blendTo   = freq
-    }
-
-    let step: number
-    if (blendRemaining > 0) {
-      const fraction = (SMOOTH_STEPS - blendRemaining + 1) / SMOOTH_STEPS
-      step = blendFrom + (blendTo - blendFrom) * fraction
-      blendRemaining--
-    } else {
-      step = freq
     }
 
     const anchorDep = cursor
@@ -662,8 +649,48 @@ export function generateRounds(
     }
 
     rounds.push({ id: crypto.randomUUID(), legs, readyAgainMinutes })
-    prevFreq = freq
-    cursor  += step
+
+    // Sweep forward from this departure, accumulating rate × time across
+    // however many window boundaries it takes to reach one full round of
+    // progress — never a single blind jump sized off this window's rate
+    // alone. Walked by array index (not by re-looking-up the point in time)
+    // so the boundary exactly at a window's `to` always advances to the next
+    // row instead of re-matching the same row a point-lookup's inclusive
+    // fallback would return there — index strictly increases every
+    // iteration, so this can never loop forever.
+    let remaining  = 1
+    let segStart   = cursor
+    let idx        = rows.indexOf(band)
+    let nextCursor: number | null = null
+
+    while (idx < rows.length) {
+      const segBand        = rows[idx]
+      const segCycleTotal  = totalCycleMinutes(segBand)
+      const segRate        = segBand.fleetCount > 0 && segCycleTotal > 0 ? segBand.fleetCount / segCycleTotal : 0
+      const segEnd          = segBand.to * 60
+
+      if (segRate <= 0) {
+        segStart = segEnd
+        idx++
+        continue
+      }
+
+      const capacity = (segEnd - segStart) * segRate
+      if (capacity >= remaining) {
+        nextCursor = segStart + remaining / segRate
+        break
+      }
+
+      remaining -= capacity
+      segStart    = segEnd
+      idx++
+    }
+
+    if (nextCursor == null) {
+      warnings.push(`Cobertura de janelas insuficiente para completar a geração após ${minutesToLabel(Math.round(cursor))}`)
+      break
+    }
+    cursor = nextCursor
   }
 
   const lastRound = rounds[rounds.length - 1]
@@ -736,10 +763,9 @@ export function generateSchedule(
   opEndMinutes:           number,
   firstTripDirection:     Direction,
   lastTripDirection:      Direction,
-  smoothTransition:       boolean,
   maneuverMarginMinutes:  number,
 ): { blocks: GeneratedBlock[]; warnings: string[] } {
-  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection, smoothTransition)
+  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection)
   const blocks = assignRoundsToBlocks(rounds, maneuverMarginMinutes)
   return { blocks, warnings }
 }

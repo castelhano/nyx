@@ -285,7 +285,6 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
     })
   }, [line])
 
-  const [smoothTransition,    setSmoothTransition]     = useState(true)
   const [includeAccessReturn, setIncludeAccessReturn]  = useState(false)
   const [insertInterval,      setInsertInterval]       = useState(true)
   const [intervalTypeId,      setIntervalTypeId]       = useState('')
@@ -429,7 +428,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
     }
 
     const { blocks, warnings } = generateSchedule(
-      windows, opStart, opEnd, firstTripDirection, lastTripDirection, smoothTransition, maneuverMargin,
+      windows, opStart, opEnd, firstTripDirection, lastTripDirection, maneuverMargin,
     )
     if (blocks.length === 0) {
       toast.error('Nenhuma viagem gerada — revise as janelas e o horário de operação')
@@ -446,7 +445,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
         dayTypeCode,
         output: {
           lineId, lineCode: line?.code, lineName: line?.name, dayTypeCode,
-          params: { opStart, opEnd, firstTripDirection, lastTripDirection, smoothTransition, maneuverMargin, mergeTolerance },
+          params: { opStart, opEnd, firstTripDirection, lastTripDirection, maneuverMargin, mergeTolerance },
           windows,
           blocks: blocks.map(b => ({
             id:     b.id,
@@ -951,19 +950,6 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                     onClick={() => setIncludeAccessReturn(v => !v)}
                   >
                     Incluir acesso e recolhida
-                  </span>
-                  <span />
-
-                  {/* row: transição suavizada — affects only the real generation
-                      algorithm (next step), not this tab's oferta×demanda preview;
-                      deliberately not wired into computeOfertaSeries */}
-                  <Switch checked={smoothTransition} onToggle={() => setSmoothTransition(v => !v)} />
-                  <span
-                    className="text-sm cursor-pointer select-none"
-                    onClick={() => setSmoothTransition(v => !v)}
-                    title="Aplicada na geração — não afeta o gráfico de prévia"
-                  >
-                    Transição suavizada
                   </span>
                   <span />
 

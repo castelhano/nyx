@@ -3,10 +3,9 @@
 [x] Localidade vira componente novo, imput search  
 [x] Aplicar componente search no filter para localidade  
 [x] Adiciona IntervalType no export-transit  
-[ ] Definir criterio para geração de indice de renovação da linha e campo no form
-
+[ ] Grid de edição de viagens, problemas com dark light mode: divisorias de faixa e blocos nao eh visivel no darkmode, viagem selecionada (borda branca) nao visivel no lightmode
 > apps/web/src/app/transit/vehicle-plan/[id]/page.tsx modal Gerar no modo de edição de linha "Gerar Proposta de Atendimento":
-[ ] Deixar com height fixo adicionar scroll na aba janela que pode crescer
+[x] Deixar com height fixo adicionar scroll na aba janela que pode crescer
 
 --- 
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações)
