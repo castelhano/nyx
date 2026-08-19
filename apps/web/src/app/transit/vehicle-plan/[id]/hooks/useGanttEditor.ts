@@ -641,11 +641,17 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // preserved, only the whole pair shifts) — a future setting will allow
   // this function some margin to also adjust the cycle.
   //
+  // A deadrun/break sitting next to the trip being moved isn't a wall — it's
+  // dead time for the same vehicle, so it gets pushed along by the same
+  // delta. Only another productive trip (a different service this vehicle
+  // also has to keep, walked past any deadruns/breaks in between) is a hard
+  // boundary.
+  //
   // Accepted simplification: each trip's bounds come from its own block's
-  // current neighbors (deadrun/break/other trip), without accounting for
-  // that neighbor possibly being another trip from the range that already
-  // moved — a rare case (two trips from the same range are unlikely to be
-  // adjacent on the same vehicle, since direction alternates every productive trip).
+  // current neighboring trip, without accounting for that neighbor possibly
+  // being another trip from the range that already moved — a rare case (two
+  // trips from the same range are unlikely to be adjacent on the same
+  // vehicle, since direction alternates every productive trip).
   function handleDistributeHeadway() {
     if (!canEdit || !mergedPlottedData || !headwayRangeInfo) return
 
@@ -675,7 +681,38 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       ].sort((a, b) => a.dep - b.dep)
     }
 
-    const overrides = new Map(pendingChanges)
+    const overrides      = new Map(pendingChanges)
+    const drOverrides     = new Map(pendingDeadrunChanges)
+    const bkOverrides     = new Map(pendingIntervalChanges)
+    const tempDeadrunIds = new Set(pendingAdds.filter(a => a._kind === 'deadrun').map(a => a._tempId))
+    const tempBreakIds   = new Set(pendingAdds.filter(a => a._kind === 'break').map(a => a._tempId))
+    const tempDeadrunUpdates = new Map<string, { dep: number; arr: number }>()
+    const tempBreakUpdates   = new Map<string, { dep: number; arr: number }>()
+
+    // Mirrors setDr/setBk from handleTripTimingOp below — same diff-against-
+    // ganttData pattern, kept local here since this call needs to batch
+    // several pushes per trip instead of a single marked-item shift.
+    function pushDr(drId: string, dep: number, arr: number) {
+      if (tempDeadrunIds.has(drId)) { tempDeadrunUpdates.set(drId, { dep, arr }); return }
+      if (drId.endsWith(':access') || drId.endsWith(':return')) return
+      const orig = ganttData?.blocks.flatMap(b => b.blockDeadruns).find(dr => dr.id === drId)
+      const patch: DeadrunPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) drOverrides.set(drId, patch)
+      else drOverrides.delete(drId)
+    }
+
+    function pushBk(bkId: string, dep: number, arr: number) {
+      if (tempBreakIds.has(bkId)) { tempBreakUpdates.set(bkId, { dep, arr }); return }
+      const orig = ganttData?.blocks.flatMap(b => b.blockIntervals).find(bi => bi.id === bkId)
+      const patch: IntervalPatch = {}
+      if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
+      if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
+      if (Object.keys(patch).length) bkOverrides.set(bkId, patch)
+      else bkOverrides.delete(bkId)
+    }
+
     let movedCount    = 0
     let strandedCount = 0
 
@@ -686,17 +723,35 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
       const timeline = blockTimeline(rt.blockId)
       const ownIdx   = timeline.findIndex(it => it.kind === 'trip' && it.id === rt.segId)
-      // Keeps a 1min gap against the neighbor — can't touch (end == next's start).
-      const lowerBound = ownIdx > 0                      ? timeline[ownIdx - 1].arr + 1             : -Infinity
-      const upperBound = ownIdx < timeline.length - 1    ? timeline[ownIdx + 1].dep - duration - 1   : Infinity
+
+      // Walk past any deadruns/breaks on each side — they're not the boundary,
+      // the nearest actual trip is.
+      let lo = ownIdx - 1
+      while (lo >= 0 && timeline[lo].kind !== 'trip') lo--
+      let hi = ownIdx + 1
+      while (hi < timeline.length && timeline[hi].kind !== 'trip') hi++
+
+      // Keeps a 1min gap against the bounding trip — can't touch (end == next's start).
+      const lowerBound = lo >= 0              ? timeline[lo].arr + 1            : -Infinity
+      const upperBound = hi < timeline.length ? timeline[hi].dep - duration - 1 : Infinity
 
       if (lowerBound > upperBound) { strandedCount++; continue }
 
       const newDep = Math.min(Math.max(idealDep, lowerBound), upperBound)
       if (newDep === rt.dep) continue
 
+      const delta = newDep - rt.dep
       movedCount++
       overrides.set(rt.tripId, { ...overrides.get(rt.tripId), departureMinutes: newDep, arrivalMinutes: newDep + duration })
+
+      const pushRange = delta > 0
+        ? Array.from({ length: hi - ownIdx - 1 }, (_, k) => ownIdx + 1 + k)
+        : Array.from({ length: ownIdx - lo - 1 }, (_, k) => ownIdx - 1 - k)
+      for (const j of pushRange) {
+        const it = timeline[j]
+        if (it.kind === 'deadrun') pushDr(it.id, it.dep + delta, it.arr + delta)
+        else                       pushBk(it.id, it.dep + delta, it.arr + delta)
+      }
     }
 
     if (movedCount === 0) {
@@ -707,6 +762,21 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     }
 
     setPendingChanges(overrides)
+    setPendingDeadrunChanges(drOverrides)
+    setPendingIntervalChanges(bkOverrides)
+    if (tempDeadrunUpdates.size > 0 || tempBreakUpdates.size > 0) {
+      setPendingAdds(prev => prev.map(a => {
+        if (a._kind === 'deadrun' && tempDeadrunUpdates.has(a._tempId)) {
+          const u = tempDeadrunUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        if (a._kind === 'break' && tempBreakUpdates.has(a._tempId)) {
+          const u = tempBreakUpdates.get(a._tempId)!
+          return { ...a, departureMinutes: u.dep, arrivalMinutes: u.arr }
+        }
+        return a
+      }))
+    }
     toast.success('Viagens distribuídas')
   }
 
