@@ -497,10 +497,13 @@ export function useVehiclePlanShortcuts({
   })
 
   useShortcut('home', () => {
-    const first = navBlocks[0]?.[0]
+    // Earliest item across the whole day, not just block 0 — blocks aren't
+    // ordered by the time range they cover, so the block first in the array
+    // isn't necessarily the one starting earliest.
+    const first = navBlocks.flat().reduce<NavItem | null>((min, item) => (!min || item.dep < min.dep) ? item : min, null)
     if (first) { setFocusedSegId(first.segId); setSelection(null); shiftAnchorRef.current = null }
   }, {
-    desc:    'Primeiro item do dia (por bloco)',
+    desc:    'Primeiro item do dia',
     icon:    Icons.ArrowLeft,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -508,11 +511,11 @@ export function useVehiclePlanShortcuts({
   })
 
   useShortcut('end', () => {
-    const lastBlock = navBlocks[navBlocks.length - 1]
-    const last = lastBlock?.[lastBlock.length - 1]
+    // Same reasoning as 'home' above, mirrored for the latest item of the day.
+    const last = navBlocks.flat().reduce<NavItem | null>((max, item) => (!max || item.dep > max.dep) ? item : max, null)
     if (last) { setFocusedSegId(last.segId); setSelection(null); shiftAnchorRef.current = null }
   }, {
-    desc:    'Último item do dia (por bloco)',
+    desc:    'Último item do dia',
     icon:    Icons.ArrowRight,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
