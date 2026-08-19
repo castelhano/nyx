@@ -312,13 +312,10 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
   }, [intervalTypes, intervalTypeId])
 
   const [depotAllocations, setDepotAllocations] = useState<DepotAllocation[]>([])
-  const depotsSeededRef = useRef(false)
-
-  useEffect(() => {
-    if (depots.length === 0 || depotsSeededRef.current) return
-    depotsSeededRef.current = true
-    setDepotAllocations([{ id: crypto.randomUUID(), depotId: depots[0].id, count: 0 }])
-  }, [depots])
+  // Stays true until the user manually touches depot allocation (edits a
+  // count, adds/removes a row) — while true, the single default row keeps
+  // following peakFleet automatically instead of only being seeded once.
+  const depotAutoSyncRef = useRef(true)
 
   const [activeDir,    setActiveDir]    = useState<Direction>('OUTBOUND')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -333,13 +330,18 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
   const peakFleet = useMemo(() => windows.reduce((m, w) => Math.max(m, w.fleetCount), 0), [windows])
   const depotSum  = useMemo(() => depotAllocations.reduce((s, d) => s + d.count, 0), [depotAllocations])
 
-  // Seed the (initially empty) first depot row with the whole peak fleet once
-  // it's known — keeps the single-depot case a zero-effort default.
+  // Seeds the single default depot row with the whole peak fleet and keeps it
+  // following peakFleet afterward — both when the fleet windows finish loading
+  // after the depot list already arrived, and when the user tweaks a window's
+  // fleet count later. Stops the moment the user touches depot allocation
+  // manually (depotAutoSyncRef flips off in updateDepotRow/add/removeDepotRow),
+  // so it never stomps a deliberate custom split across garages.
   useEffect(() => {
-    setDepotAllocations(prev => (prev.length === 1 && prev[0].count === 0 && peakFleet > 0)
-      ? [{ ...prev[0], count: peakFleet }]
+    if (depots.length === 0 || !depotAutoSyncRef.current) return
+    setDepotAllocations(prev => (prev.length <= 1)
+      ? [{ id: prev[0]?.id ?? crypto.randomUUID(), depotId: prev[0]?.depotId ?? depots[0].id, count: peakFleet }]
       : prev)
-  }, [peakFleet])
+  }, [depots, peakFleet])
 
   const ofertaSeries = useMemo(
     () => computeOfertaSeries(windows, vehicleCapacity, renewalIndex, opStart, opEnd),
@@ -416,12 +418,15 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
     const used = new Set(depotAllocations.map(d => d.depotId))
     const next = depots.find(d => !used.has(d.id)) ?? depots[0]
     if (!next) return
+    depotAutoSyncRef.current = false
     setDepotAllocations(prev => [...prev, { id: crypto.randomUUID(), depotId: next.id, count: 0 }])
   }
   function removeDepotRow(id: string) {
+    depotAutoSyncRef.current = false
     setDepotAllocations(prev => prev.length > 1 ? prev.filter(d => d.id !== id) : prev)
   }
   function updateDepotRow(id: string, patch: Partial<DepotAllocation>) {
+    depotAutoSyncRef.current = false
     setDepotAllocations(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d))
   }
 
