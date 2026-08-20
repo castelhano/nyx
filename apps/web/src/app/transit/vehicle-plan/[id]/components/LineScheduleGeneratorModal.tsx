@@ -1038,7 +1038,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                         <span className="text-sm text-muted-foreground">%</span>
                       </div>
                       <span className="text-sm">
-                        Índice de renovação {DIR_LABEL[route.direction]}{' '}
+                        renovação {DIR_LABEL[route.direction]}{' '}
                         <span className="text-muted-foreground">({route.originName} x {route.destinationName})</span>
                       </span>
                       <span />
@@ -1132,7 +1132,12 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
               {activeTab === 'oferta' && (
                 <section className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Oferta × Demanda</h3>
+                    <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Oferta × Demanda{' '}
+                      <span className="normal-case font-normal">
+                        (renovação {DIR_LABEL[activeDir]}: {renewalIndex[activeDir] ?? 0}%)
+                      </span>
+                    </h3>
                     <div className="flex gap-1">
                       {(['OUTBOUND', 'INBOUND'] as Direction[]).map(dir => (
                         <button
@@ -1203,7 +1208,7 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
                   <span>
                     Prévia: <strong className="text-foreground">~{preview.trips}</strong> viagens para{' '}
                     <strong className="text-foreground">{preview.peakFleet}</strong> veículos (estimativa —
-                    a geração real pode variar por conta de margem de manobra e HOLD/DEPOT)
+                    a geração real pode variar)
                   </span>
                 )}
               </div>
