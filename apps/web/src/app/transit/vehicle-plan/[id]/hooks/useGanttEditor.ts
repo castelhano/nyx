@@ -11,7 +11,7 @@ import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInte
 import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 import { resolveCycleWindow } from '../views/vehicles.view'
-import { createVehiclesActionSpec } from '../views/vehicles.actions'
+import { createVehiclesActionSpec, canAddAccess, canAddReturn } from '../views/vehicles.actions'
 import type { Selection, RowHintEntry } from '../engine/gantt.types'
 import { getTravelTime } from '../travel-time'
 
@@ -166,7 +166,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
           }),
           ...addDeadruns.map(a => ({
             id:                    a._tempId,
-            type:                  'DISPLACEMENT' as const,
+            type:                  (a.type ?? 'DISPLACEMENT') as GanttBlockDeadrun['type'],
             originLocalityId:      a.originLocality.id,
             destinationLocalityId: a.destinationLocality.id,
             originLocality:        a.originLocality,
@@ -247,7 +247,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
         blockDeadruns: [
           ...addDeadruns.map(a => ({
             id:                    a._tempId,
-            type:                  'DISPLACEMENT' as const,
+            type:                  (a.type ?? 'DISPLACEMENT') as GanttBlockDeadrun['type'],
             originLocalityId:      a.originLocality.id,
             destinationLocalityId: a.destinationLocality.id,
             originLocality:        a.originLocality,
@@ -523,6 +523,137 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao atualizar restrições')
     }
+  }
+
+  // Two passes: already-saved blocks (from ganttData — not plottedData/
+  // mergedPlottedData, which are filtered to the lines currently selected for
+  // display) get a new pending ACCESS/RETURN deadrun; brand-new blocks that only
+  // exist as pendingAdds trips ('new'/'pending:<id>' groups — e.g. right after
+  // generating a line without "incluir acesso e recolhida") get their first/last
+  // PendingAddTrip patched with .access/.return directly, same shape
+  // handleConfirmDepotModal already writes for a single manual pick. Nothing is
+  // persisted until Salvar — same staged model as handleAdjustCycle above.
+  async function handleFinalizePlan() {
+    if (!canEdit || !ganttData) return
+
+    // ── pass 1: saved blocks ──────────────────────────────────────────────────
+    const alreadyPendingAccess = new Set(
+      pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.type === 'ACCESS').map(a => a.blockId),
+    )
+    const alreadyPendingReturn = new Set(
+      pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.type === 'RETURN').map(a => a.blockId),
+    )
+
+    type SavedCandidate = { block: typeof ganttData.blocks[0]; bt: typeof ganttData.blocks[0]['blockTrips'][0]; kind: 'ACCESS' | 'RETURN' }
+    const savedCandidates: SavedCandidate[] = []
+    for (const block of ganttData.blocks) {
+      if (block.blockTrips.length === 0) continue
+      const sorted = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+      const first  = sorted[0]
+      const last   = sorted[sorted.length - 1]
+      if (canAddAccess(first, block) && !alreadyPendingAccess.has(block.id)) savedCandidates.push({ block, bt: first, kind: 'ACCESS' })
+      if (canAddReturn(last, block)  && !alreadyPendingReturn.has(block.id)) savedCandidates.push({ block, bt: last,  kind: 'RETURN' })
+    }
+
+    const savedResults = await Promise.all(savedCandidates.map(async c => {
+      const isAccess     = c.kind === 'ACCESS'
+      const tripLocality = isAccess ? c.bt.trip.route.originLocality : c.bt.trip.route.destinationLocality
+      const travelMinutes = isAccess
+        ? await getTravelTime(c.block.depotId, tripLocality.id)
+        : await getTravelTime(tripLocality.id, c.block.depotId)
+      return { ...c, tripLocality, travelMinutes }
+    }))
+    const savedUsable = savedResults.filter(r => r.travelMinutes != null)
+    const savedFailed = savedResults.length - savedUsable.length
+
+    const newDeadrunEntries: PendingAddDeadrun[] = savedUsable.map(r => {
+      const isAccess = r.kind === 'ACCESS'
+      const depot    = { id: r.block.depotId, name: r.block.depot.name }
+      const dep = isAccess ? r.bt.trip.departureMinutes - r.travelMinutes! - 1 : r.bt.trip.arrivalMinutes + 1
+      const arr = isAccess ? r.bt.trip.departureMinutes - 1                    : r.bt.trip.arrivalMinutes + r.travelMinutes! + 1
+      return {
+        _kind: 'deadrun', _tempId: crypto.randomUUID(),
+        type: r.kind, blockTripId: r.bt.id, blockId: r.block.id,
+        originLocality:      isAccess ? depot : r.tripLocality,
+        destinationLocality: isAccess ? r.tripLocality : depot,
+        departureMinutes: dep, arrivalMinutes: arr,
+      }
+    })
+
+    // ── pass 2: brand-new pending blocks — no VehicleBlock.depotId to read yet,
+    // so fall back to the last existing block's depot, same as the backend does
+    // when creating a block without an explicit depot (addTrip/addDeadrun/
+    // addInterval in vehicle-plan.service.ts). If the plan has no saved block at
+    // all, there's nothing to fall back to — those get reported as skipped.
+    const lastRealBlock  = [...ganttData.blocks].sort((a, b) => b.blockNumber - a.blockNumber)[0]
+    const fallbackDepotId   = lastRealBlock?.depotId
+    const fallbackDepotName = lastRealBlock?.depot.name
+
+    const pendingTripGroups = new Map<string, PendingAddTrip[]>()
+    for (const a of pendingAdds) {
+      if (a._kind !== 'trip') continue
+      const key = a.blockId === 'new' ? a._tempId : a.blockId.startsWith('pending:') ? a.blockId.slice('pending:'.length) : null
+      if (key == null) continue // trip pending-added onto an existing real block — out of scope here
+      if (!pendingTripGroups.has(key)) pendingTripGroups.set(key, [])
+      pendingTripGroups.get(key)!.push(a)
+    }
+
+    type PendingCandidate = { entry: PendingAddTrip; kind: 'access' | 'return' }
+    const pendingCandidates: PendingCandidate[] = []
+    let skippedNoDepot = 0
+    for (const entries of pendingTripGroups.values()) {
+      const sorted = [...entries].sort((a, b) => a.departureMinutes - b.departureMinutes)
+      const first  = sorted[0]
+      const last   = sorted[sorted.length - 1]
+      if (!first.access) { if (!fallbackDepotId) skippedNoDepot++; else pendingCandidates.push({ entry: first, kind: 'access' }) }
+      if (!last.return)  { if (!fallbackDepotId) skippedNoDepot++; else pendingCandidates.push({ entry: last,  kind: 'return' }) }
+    }
+
+    const pendingResults = await Promise.all(pendingCandidates.map(async c => {
+      const isAccess = c.kind === 'access'
+      const travelMinutes = isAccess
+        ? await getTravelTime(fallbackDepotId!, c.entry.originLocality.id)
+        : await getTravelTime(c.entry.destinationLocality.id, fallbackDepotId!)
+      return { ...c, travelMinutes }
+    }))
+    const pendingUsable = pendingResults.filter(r => r.travelMinutes != null)
+    const pendingFailed = pendingResults.length - pendingUsable.length
+
+    const totalFailed = savedFailed + pendingFailed + skippedNoDepot
+
+    if (newDeadrunEntries.length === 0 && pendingUsable.length === 0) {
+      if (totalFailed > 0) toast.error(`Nenhuma lacuna pôde ser preparada — ${totalFailed} sem garagem ou mapeamento de viagem compatível`)
+      else toast.success('Nenhuma lacuna de acesso/recolhida encontrada — plano já está completo')
+      return
+    }
+
+    setPendingAdds(prev => {
+      const withDeadruns = newDeadrunEntries.length > 0 ? [...prev, ...newDeadrunEntries] : prev
+      if (pendingUsable.length === 0) return withDeadruns
+      // Separate maps per kind — a single-trip block can need both access AND
+      // return on the very same PendingAddTrip, with different travel times
+      // (depot→origin vs destination→depot), so neither can short-circuit the other.
+      const accessTravelByTempId = new Map(pendingUsable.filter(r => r.kind === 'access').map(r => [r.entry._tempId, r.travelMinutes!]))
+      const returnTravelByTempId = new Map(pendingUsable.filter(r => r.kind === 'return').map(r => [r.entry._tempId, r.travelMinutes!]))
+      return withDeadruns.map(a => {
+        if (a._kind !== 'trip') return a
+        let patched = a
+        const accessTravel = accessTravelByTempId.get(a._tempId)
+        if (accessTravel != null) patched = { ...patched, access: { localityId: fallbackDepotId!, travelMinutes: accessTravel } }
+        const returnTravel = returnTravelByTempId.get(a._tempId)
+        if (returnTravel != null) patched = { ...patched, return: { localityId: fallbackDepotId!, travelMinutes: returnTravel } }
+        return patched
+      })
+    })
+
+    const accessCount = newDeadrunEntries.filter(e => e.type === 'ACCESS').length + pendingUsable.filter(r => r.kind === 'access').length
+    const returnCount = newDeadrunEntries.filter(e => e.type === 'RETURN').length + pendingUsable.filter(r => r.kind === 'return').length
+    const parts = [
+      accessCount > 0 ? `${accessCount} ${accessCount === 1 ? 'acesso' : 'acessos'}`       : null,
+      returnCount > 0 ? `${returnCount} ${returnCount === 1 ? 'recolhida' : 'recolhidas'}` : null,
+    ].filter(Boolean).join(' e ')
+    toast.success(`${parts} preparados` + (fallbackDepotName && pendingUsable.length > 0 ? ` (novos blocos usando garagem ${fallbackDepotName})` : '') + ' — use Salvar para persistir'
+      + (totalFailed > 0 ? ` (${totalFailed} sem garagem ou mapeamento compatível)` : ''))
   }
 
   function handleAdjustCycle() {
@@ -1221,22 +1352,42 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
           }
           blockId = (await res.json()).blockId
         } else if (entry._kind === 'deadrun') {
-          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
-              originLocalityId:      entry.originLocality.id,
-              destinationLocalityId: entry.destinationLocality.id,
-              departureMinutes:      entry.departureMinutes,
-              arrivalMinutes:        entry.arrivalMinutes,
-              blockId:               resolvedBlockId,
-            }),
-          })
-          if (!res.ok) {
-            const j = await res.json().catch(() => ({}))
-            throw new Error(extractError(j))
+          if (entry.type === 'ACCESS' || entry.type === 'RETURN') {
+            // Access/return on an already-saved block: staged the same way as any
+            // other pendingAdd, but persisted through the dedicated endpoint (same
+            // one handleConfirmDepotModal already uses for a single manual add) —
+            // the generic add-deadrun below always creates type DISPLACEMENT.
+            if (!resolvedBlockId || !entry.blockTripId) throw new Error('Acesso/recolhida pendente sem bloco ou viagem associada')
+            const kind           = entry.type === 'ACCESS' ? 'access' : 'return'
+            const depotLocalityId = entry.type === 'ACCESS' ? entry.originLocality.id : entry.destinationLocality.id
+            const res = await apiFetch(`/transit/vehicle-block/${resolvedBlockId}/${kind}`, {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ blockTripId: entry.blockTripId, depotLocalityId }),
+            })
+            if (!res.ok) {
+              const j = await res.json().catch(() => ({}))
+              throw new Error(extractError(j))
+            }
+            blockId = resolvedBlockId
+          } else {
+            const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({
+                originLocalityId:      entry.originLocality.id,
+                destinationLocalityId: entry.destinationLocality.id,
+                departureMinutes:      entry.departureMinutes,
+                arrivalMinutes:        entry.arrivalMinutes,
+                blockId:               resolvedBlockId,
+              }),
+            })
+            if (!res.ok) {
+              const j = await res.json().catch(() => ({}))
+              throw new Error(extractError(j))
+            }
+            blockId = (await res.json()).blockId
           }
-          blockId = (await res.json()).blockId
         } else {
           const res = await apiFetch(`/transit/vehicle-plan/${id}/add-interval`, {
             method:  'POST',
@@ -1732,6 +1883,6 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
     vehiclesActionSpec,
-    handleAdjustCycle, handleDistributeHeadway, handleTripTimingOp,
+    handleAdjustCycle, handleFinalizePlan, handleDistributeHeadway, handleTripTimingOp,
   }
 }

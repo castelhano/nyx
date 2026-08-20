@@ -156,7 +156,7 @@ function makeLockAction(
 // gap ≤ this between two items → no room to insert a deadrun
 const BACK_TO_BACK_THRESHOLD = 15 // minutes
 
-function canAddAccess(bt: GanttBlockTrip, block: GanttBlock): boolean {
+export function canAddAccess(bt: GanttBlockTrip, block: GanttBlock): boolean {
   const btDep = bt.trip.departureMinutes
 
   // already has an ACCESS deadrun arriving right before this trip
@@ -183,7 +183,7 @@ function makeAccessAction(blockTripId: string, blockId: string, deps: VehiclesAc
   }
 }
 
-function canAddReturn(bt: GanttBlockTrip, block: GanttBlock): boolean {
+export function canAddReturn(bt: GanttBlockTrip, block: GanttBlock): boolean {
   const btArr = bt.trip.arrivalMinutes
 
   // already has a RETURN deadrun departing right after this trip

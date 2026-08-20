@@ -73,6 +73,7 @@ interface UseVehiclePlanShortcutsParams {
   stepMoveTarget:              (prev: string | null, dir: 1 | -1) => string | null
   handleConfirmMove:           () => void
   handleDistributeHeadway:     () => void
+  handleFinalizePlan:          () => void
   handleTripTimingOp:          (op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext') => void
   discardBreaks:               (ids: string[]) => void
 }
@@ -86,7 +87,7 @@ export function useVehiclePlanShortcuts({
   pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
-  handleTripTimingOp, discardBreaks,
+  handleFinalizePlan, handleTripTimingOp, discardBreaks,
 }: UseVehiclePlanShortcutsParams) {
   const router  = useRouter()
   const confirm = useConfirm()
@@ -417,6 +418,14 @@ export function useVehiclePlanShortcuts({
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && selectionHasTrips && !!moveTargetBlockId,
     section: SEC_MOVER,
+  })
+
+  useShortcut('q+w+g', () => handleFinalizePlan(), {
+    desc:    'Finalizar plano (acesso/recolhida)',
+    icon:    Icons.CheckCircle,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && canEdit,
+    section: SEC_GERAL,
   })
 
   useShortcut('pagedown', () => {

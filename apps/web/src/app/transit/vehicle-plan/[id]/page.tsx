@@ -102,7 +102,7 @@ export default function VehiclePlanPage() {
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
     vehiclesActionSpec,
-    handleAdjustCycle, handleDistributeHeadway, handleTripTimingOp,
+    handleAdjustCycle, handleFinalizePlan, handleDistributeHeadway, handleTripTimingOp,
   } = editor
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
@@ -129,7 +129,7 @@ export default function VehiclePlanPage() {
     pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
-    handleTripTimingOp, discardBreaks,
+    handleFinalizePlan, handleTripTimingOp, discardBreaks,
   })
 
   // ── solver ──────────────────────────────────────────────────────────────────
@@ -195,6 +195,12 @@ export default function VehiclePlanPage() {
               label:    'Ajustar Ciclo',
               icon:     Icons.Timer,
               onClick:  handleAdjustCycle,
+              disabled: isPending,
+            },
+            {
+              label:    'Finalizar Plano',
+              icon:     Icons.CheckCircle,
+              onClick:  handleFinalizePlan,
               disabled: isPending,
             },
           ],

@@ -62,6 +62,8 @@ export interface PendingAddTrip {
 export interface PendingAddDeadrun {
   _kind:               'deadrun'
   _tempId:             string
+  type?:               'ACCESS' | 'RETURN'  // absent = DISPLACEMENT (mid-block, the original case)
+  blockTripId?:        string               // required when type is ACCESS/RETURN
   originLocality:      { id: string; name: string }
   destinationLocality: { id: string; name: string }
   departureMinutes:    number
