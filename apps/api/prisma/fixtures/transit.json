@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-08-19T21:32:16.201Z",
+  "exportedAt": "2026-08-20T20:24:45.760Z",
   "localities": [
     {
       "code": "10",
@@ -2606,8 +2606,8 @@
           ]
         },
         "extensionKm": {
-          "INBOUND": 15.08,
-          "OUTBOUND": 16.43
+          "INBOUND": 14.89,
+          "OUTBOUND": 16.57
         },
         "renewalIndex": {
           "INBOUND": {
@@ -46466,10 +46466,6 @@
             -15.598549
           ],
           [
-            -56.094289,
-            -15.598477
-          ],
-          [
             -56.093803,
             -15.597997
           ],
@@ -47527,12 +47523,16 @@
             -15.546258
           ],
           [
-            -56.07715,
-            -15.545652
+            -56.077037,
+            -15.54544
           ],
           [
-            -56.076997,
-            -15.545366
+            -56.077046,
+            -15.545357
+          ],
+          [
+            -56.077039,
+            -15.545342
           ],
           [
             -56.076992,
@@ -47560,9 +47560,9 @@
       "routeOrdinal": 0,
       "routeName": "Bispo x Term CPA 1",
       "sequence": 10,
-      "localityCode": null,
-      "lat": -15.541331,
-      "lng": -56.075835,
+      "localityCode": "1075",
+      "lat": null,
+      "lng": null,
       "deltaMinutes": 1,
       "deltaKm": 0.35,
       "deltaSource": "OSRM",
@@ -47598,12 +47598,12 @@
             -15.541458
           ],
           [
-            -56.075835,
-            -15.541331
+            -56.075813,
+            -15.541344
           ],
           [
-            -56.075835,
-            -15.541331
+            -56.075813,
+            -15.541344
           ]
         ]
       },
@@ -47619,14 +47619,14 @@
       "lat": -15.540115,
       "lng": -56.077093,
       "deltaMinutes": 1,
-      "deltaKm": 0.23,
+      "deltaKm": 0.24,
       "deltaSource": "OSRM",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            -56.075835,
-            -15.541331
+            -56.075813,
+            -15.541344
           ],
           [
             -56.07595,
@@ -48303,7 +48303,7 @@
       "lat": null,
       "lng": null,
       "deltaMinutes": 6,
-      "deltaKm": 2.79,
+      "deltaKm": 2.59,
       "deltaSource": "OSRM",
       "geometry": {
         "type": "LineString",
@@ -48445,6 +48445,10 @@
             -15.551774
           ],
           [
+            -56.055251,
+            -15.551805
+          ],
+          [
             -56.054699,
             -15.552219
           ],
@@ -48481,60 +48485,56 @@
             -15.555678
           ],
           [
-            -56.051803,
-            -15.55608
+            -56.050951,
+            -15.556077
           ],
           [
-            -56.05202,
-            -15.556356
+            -56.05065,
+            -15.556304
           ],
           [
-            -56.052405,
-            -15.556844
+            -56.05058,
+            -15.556357
           ],
           [
-            -56.052677,
-            -15.557218
+            -56.05055,
+            -15.556379
           ],
           [
-            -56.052454,
-            -15.557354
+            -56.050283,
+            -15.556576
           ],
           [
-            -56.051858,
-            -15.557791
+            -56.050304,
+            -15.556602
           ],
           [
-            -56.05183,
-            -15.557811
+            -56.050362,
+            -15.556607
           ],
           [
-            -56.051763,
-            -15.557861
+            -56.050409,
+            -15.556621
           ],
           [
-            -56.051686,
-            -15.557784
+            -56.050463,
+            -15.556645
           ],
           [
-            -56.051555,
-            -15.557658
+            -56.050522,
+            -15.556683
           ],
           [
-            -56.051416,
-            -15.557513
+            -56.05058,
+            -15.556724
           ],
           [
-            -56.051189,
-            -15.557223
+            -56.050923,
+            -15.557161
           ],
           [
-            -56.051056,
-            -15.557053
-          ],
-          [
-            -56.051056,
-            -15.557053
+            -56.050923,
+            -15.557161
           ]
         ]
       },
@@ -91110,15 +91110,55 @@
       "localityCode": null,
       "lat": -15.540859,
       "lng": -56.051668,
-      "deltaMinutes": 5,
-      "deltaKm": 2.71,
+      "deltaMinutes": 6,
+      "deltaKm": 2.86,
       "deltaSource": "OSRM",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            -56.051056,
-            -15.557053
+            -56.050923,
+            -15.557161
+          ],
+          [
+            -56.051051,
+            -15.557324
+          ],
+          [
+            -56.05127,
+            -15.557604
+          ],
+          [
+            -56.051296,
+            -15.557625
+          ],
+          [
+            -56.051315,
+            -15.55763
+          ],
+          [
+            -56.051338,
+            -15.557625
+          ],
+          [
+            -56.05141,
+            -15.557567
+          ],
+          [
+            -56.051418,
+            -15.55755
+          ],
+          [
+            -56.051419,
+            -15.557532
+          ],
+          [
+            -56.051416,
+            -15.557513
+          ],
+          [
+            -56.051189,
+            -15.557223
           ],
           [
             -56.05071,
@@ -91835,11 +91875,11 @@
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
       "sequence": 10,
-      "localityCode": null,
-      "lat": -15.543747,
-      "lng": -56.076097,
-      "deltaMinutes": 3,
-      "deltaKm": 1.03,
+      "localityCode": "1075",
+      "lat": null,
+      "lng": null,
+      "deltaMinutes": 2,
+      "deltaKm": 0.67,
       "deltaSource": "OSRM",
       "geometry": {
         "type": "LineString",
@@ -91901,6 +91941,37 @@
             -15.541265
           ],
           [
+            -56.075813,
+            -15.541344
+          ],
+          [
+            -56.075813,
+            -15.541344
+          ]
+        ]
+      },
+      "allowsCrewChange": false
+    },
+    {
+      "lineCode": "206",
+      "direction": "OUTBOUND",
+      "routeOrdinal": 0,
+      "routeName": "Term CPA 1 x Bispo",
+      "sequence": 11,
+      "localityCode": null,
+      "lat": -15.543747,
+      "lng": -56.076097,
+      "deltaMinutes": 1,
+      "deltaKm": 0.35,
+      "deltaSource": "OSRM",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -56.075813,
+            -15.541344
+          ],
+          [
             -56.075614,
             -15.541458
           ],
@@ -91941,7 +92012,7 @@
       "direction": "OUTBOUND",
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
-      "sequence": 11,
+      "sequence": 12,
       "localityCode": null,
       "lat": -15.545036,
       "lng": -56.077575,
@@ -91962,6 +92033,10 @@
           [
             -56.076992,
             -15.545259
+          ],
+          [
+            -56.077039,
+            -15.545342
           ],
           [
             -56.077075,
@@ -91988,7 +92063,7 @@
       "direction": "OUTBOUND",
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
-      "sequence": 12,
+      "sequence": 13,
       "localityCode": null,
       "lat": -15.544871,
       "lng": -56.078613,
@@ -92031,7 +92106,7 @@
       "direction": "OUTBOUND",
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
-      "sequence": 13,
+      "sequence": 14,
       "localityCode": null,
       "lat": -15.547546,
       "lng": -56.080234,
@@ -92074,7 +92149,7 @@
       "direction": "OUTBOUND",
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
-      "sequence": 14,
+      "sequence": 15,
       "localityCode": null,
       "lat": -15.551223,
       "lng": -56.082416,
@@ -92125,7 +92200,7 @@
       "direction": "OUTBOUND",
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
-      "sequence": 15,
+      "sequence": 16,
       "localityCode": null,
       "lat": -15.553941,
       "lng": -56.084259,
@@ -92172,7 +92247,7 @@
       "direction": "OUTBOUND",
       "routeOrdinal": 0,
       "routeName": "Term CPA 1 x Bispo",
-      "sequence": 16,
+      "sequence": 17,
       "localityCode": "1009",
       "lat": null,
       "lng": null,
