@@ -421,7 +421,7 @@ export function useVehiclePlanShortcuts({
   })
 
   useShortcut('q+w+g', () => handleFinalizePlan(), {
-    desc:    'Finalizar plano (acesso/recolhida)',
+    desc:    'Finalizar e validar plano',
     icon:    Icons.CheckCircle,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit,

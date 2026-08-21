@@ -38,6 +38,7 @@ export default function TransitLocalityPage() {
       icon:    Icons.MapPin,
       onClick: () => setSnapOpen(true),
       variant: 'ghost' as const,
+      overflow: true
     },
     ...(meta?.permissions?.create !== false ? [{
       label:   'Nova',
