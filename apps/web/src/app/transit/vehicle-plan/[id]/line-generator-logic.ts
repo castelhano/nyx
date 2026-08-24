@@ -480,7 +480,22 @@ function windowCoveringHour(rows: GenWindow[], hour: number): GenWindow | undefi
   return rows.find(w => hour >= w.from && hour < w.to)
 }
 
-/** oferta(hour) = (round trips/hour for one direction) × capacity per trip.
+// Fraction of [hour*60, hour*60+60) that falls inside [opStart, opEnd) — used to
+// weight an hour's bar by how much of it is actually operated, instead of an
+// all-or-nothing test on the hour's midpoint (which zeroed out, e.g., the 04h
+// bar entirely for a 04:50 start even though 10' of it are operated). Any
+// nonzero overlap is floored to 30' — this is a rate approximation, not a
+// count of discrete trips, so a sliver of overlap (a handful of minutes)
+// shouldn't read as a sliver of a bar.
+function hourCoverage(hour: number, opStartMinutes: number, opEndMinutes: number): number {
+  const hourStart = hour * 60
+  const hourEnd   = hourStart + 60
+  const overlap   = Math.max(0, Math.min(hourEnd, opEndMinutes) - Math.max(hourStart, opStartMinutes))
+  return overlap > 0 ? Math.max(overlap, 30) / 60 : 0
+}
+
+/** oferta(hour) = (round trips/hour for one direction) × capacity per trip,
+ *  weighted by the fraction of that hour actually within [opStart, opEnd).
  *  One vehicle produces exactly one outbound + one inbound departure per full
  *  cycle, so trips/hour is the same figure for both directions — only the
  *  renewal index (and therefore capacity per trip) differs between them. */
@@ -494,16 +509,15 @@ export function computeOfertaSeries(
   const result: Partial<Record<Direction, Record<number, number>>> = { OUTBOUND: {}, INBOUND: {} }
 
   for (let hour = 0; hour < 24; hour++) {
-    const hourMidMinutes = hour * 60 + 30
-    const inOperation    = hourMidMinutes >= opStartMinutes && hourMidMinutes < opEndMinutes
-    const w              = windowCoveringHour(rows, hour + 0.5)
+    const coverage = hourCoverage(hour, opStartMinutes, opEndMinutes)
+    const w        = windowCoveringHour(rows, hour + 0.5)
 
     for (const dir of ['OUTBOUND', 'INBOUND'] as Direction[]) {
-      if (!inOperation || !w) { result[dir]![hour] = 0; continue }
+      if (coverage <= 0 || !w) { result[dir]![hour] = 0; continue }
       const cycleTotal      = totalCycleMinutes(w)
       const tripsPerHour    = cycleTotal > 0 ? (w.fleetCount * 60) / cycleTotal : 0
       const capacityPerTrip = vehicleCapacity * (1 + (renewalIndex[dir] ?? 0) / 100)
-      result[dir]![hour]    = Math.round(tripsPerHour * capacityPerTrip)
+      result[dir]![hour]    = Math.round(tripsPerHour * capacityPerTrip * coverage)
     }
   }
 
