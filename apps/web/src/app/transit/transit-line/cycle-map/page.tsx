@@ -23,8 +23,8 @@ import type { CsvData, Direction, DotCluster } from './types'
 const DIRECTIONS: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
 
 const DEFAULT_INTERVAL: Record<Direction, number> = {
-  OUTBOUND: 10,
-  INBOUND:  1,
+  OUTBOUND: 1,
+  INBOUND:  10,
   CIRCULAR: 5,
 }
 

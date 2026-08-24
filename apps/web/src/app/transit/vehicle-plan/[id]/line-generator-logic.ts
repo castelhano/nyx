@@ -459,9 +459,9 @@ export function splitWindow(rows: GenWindow[], index: number): GenWindow[] {
 }
 
 /** "Closes" the frequency: if the round trip doesn't divide evenly by the
- *  fleet count (a fractional/broken frequency), pads `outboundInterval` with
+ *  fleet count (a fractional/broken frequency), pads `inboundInterval` with
  *  whatever's missing to reach the next multiple — always adding time to the
- *  ida turnback interval, never shortening anything and never touching the
+ *  volta turnback interval, never shortening anything and never touching the
  *  travel-time cycle fields, so the frequency becomes a clean whole-minute
  *  figure. No-op if it's already closed. */
 export function closeFrequency(rows: GenWindow[], index: number): GenWindow[] {
@@ -471,7 +471,7 @@ export function closeFrequency(rows: GenWindow[], index: number): GenWindow[] {
   const remainder = total % row.fleetCount
   if (remainder === 0) return rows
   const toAdd = row.fleetCount - remainder
-  return rows.map((r, i) => i === index ? { ...r, outboundInterval: r.outboundInterval + toAdd } : r)
+  return rows.map((r, i) => i === index ? { ...r, inboundInterval: r.inboundInterval + toAdd } : r)
 }
 
 // ── oferta × demanda ──────────────────────────────────────────────────────────
