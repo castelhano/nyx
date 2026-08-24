@@ -24,8 +24,8 @@ export const lineScheduleSchema = withMeta(
       className:      'md:w-1/3',
     }),
 
-    // gerenciado via ações "Nova Versão" / "Aprovar" — não editável em massa pelo form,
-    // para preservar a transação de supersessão (só uma APPROVED por linha+dayType)
+    // managed via the "Duplicar" / "Aprovar" actions — not editable through the bulk
+    // form, to preserve the supersession transaction (only one APPROVED per line+dayType)
     status: z.enum(['DRAFT', 'APPROVED', 'SUPERSEDED', 'ARCHIVED']).default('DRAFT').meta({
       label:          'Status',
       listVisibility: 'visible',
@@ -86,7 +86,7 @@ export const lineScheduleSchema = withMeta(
     rowActions: [
       {
         action:     'duplicate',
-        label:      'Nova Versão',
+        label:      'Duplicar',
         icon:       'Copy',
         permission: 'create',
         method:     'POST',
@@ -99,14 +99,6 @@ export const lineScheduleSchema = withMeta(
         permission:  'update',
         method:      'POST',
         endpoint:    (row) => `/transit/line-schedule/${row.id}/approve`,
-        visibleWhen: { field: 'status', value: 'DRAFT' },
-      },
-      {
-        action:      'delete',
-        label:       'Excluir',
-        icon:        'Trash2',
-        variant:     'destructive',
-        permission:  'delete',
         visibleWhen: { field: 'status', value: 'DRAFT' },
       },
     ],
