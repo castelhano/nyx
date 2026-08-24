@@ -99,6 +99,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const [pendingIntervalDeletes,setPendingIntervalDeletes]= useState<Set<string>>(new Set())
   const [editBarOpen,       setEditBarOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
+  // Dedicated to Save (separate from the generic isPending, shared with the
+  // solver) — the page uses isSaving to show a spinner overlay only while the
+  // pending state is being persisted, without mixing with the Otimizar UI.
+  const [isSaving,          setIsSaving]          = useState(false)
 
   // ── trip-sequence selection (shift+pagedown/pageup) — anchor + current focus
   // form a range over allTrips filtered by direction (same traversal as plain
@@ -333,7 +337,12 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       })
     }
 
-    return { ...plottedData, blocks: allBlocks }
+    // A block with no trips left will already be deleted by the server on Save
+    // (removeTripsFromPlan deletes the VehicleBlock once blockTrips hits zero) —
+    // hide it from the merged view now so it doesn't linger as a "ghost" row until then.
+    const visibleBlocks = allBlocks.filter(b => b.blockTrips.length > 0)
+
+    return { ...plottedData, blocks: visibleBlocks }
   }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
@@ -1218,6 +1227,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     if (!canEdit) return
     if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
     setIsPending(true)
+    setIsSaving(true)
     try {
       // Save trip patches
       await Promise.all(
@@ -1275,11 +1285,13 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
         )
       }
 
-      // Delete pending-deleted trips
+      // Delete pending-deleted trips. skipScore=true — each delete would otherwise
+      // rescore the whole plan on its own; a single rescore runs at the end of the
+      // batch instead (see below).
       if (pendingDeletes.size > 0) {
         await Promise.all(
           Array.from(pendingDeletes).map(tripId =>
-            apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
+            apiFetch(`/transit/transit-trip/${tripId}?skipScore=true`, { method: 'DELETE' })
           ),
         )
       }
@@ -1344,6 +1356,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
               blockId:                resolvedBlockId,
               ...(entry.access && { accessDepotLocalityId: entry.access.localityId }),
               ...(entry.return && { returnDepotLocalityId: entry.return.localityId }),
+              skipScore:              true,
             }),
           })
           if (!res.ok) {
@@ -1380,6 +1393,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
                 departureMinutes:      entry.departureMinutes,
                 arrivalMinutes:        entry.arrivalMinutes,
                 blockId:               resolvedBlockId,
+                skipScore:             true,
               }),
             })
             if (!res.ok) {
@@ -1397,6 +1411,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
               departureMinutes: entry.departureMinutes,
               arrivalMinutes:   entry.arrivalMinutes,
               blockId:          resolvedBlockId,
+              skipScore:        true,
             }),
           })
           if (!res.ok) {
@@ -1439,13 +1454,20 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
         const toBlockId   = resolveMoveBlockRef(move.toBlockId)
         const res = await apiFetch(`/transit/vehicle-block/${fromBlockId}/move-trip`, {
           method: 'PATCH',
-          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds, deadrunIds }),
+          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds, deadrunIds, skipScore: true }),
         })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
           throw new Error(extractError(j))
         }
       }
+
+      // A single rescore at the end of the whole batch, instead of one per call
+      // (addTrip/addDeadrun/addInterval/delete/move all ran with skipScore=true
+      // above) — scorePlan scans the whole plan, so this avoids dozens of full
+      // reloads. The function already guaranteed at the top that something is
+      // pending by this point.
+      await apiFetch(`/transit/vehicle-plan/${id}/rescore`, { method: 'POST' })
 
       await refetchGantt()
       setPendingChanges(new Map())
@@ -1465,6 +1487,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')
     } finally {
       setIsPending(false)
+      setIsSaving(false)
     }
   }
 
@@ -1876,7 +1899,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     plottedData, mergedPlottedData,
     allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex,
     addTripReference, moveTargetBlocks, moveTargetHints,
-    pendingCount,
+    pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,

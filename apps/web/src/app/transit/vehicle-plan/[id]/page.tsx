@@ -95,7 +95,7 @@ export default function VehiclePlanPage() {
     plottedData, mergedPlottedData,
     allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex,
     addTripReference, moveTargetBlocks, moveTargetHints,
-    pendingCount,
+    pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
@@ -207,7 +207,7 @@ export default function VehiclePlanPage() {
         },
         { label: '', separator: true },
         {
-          label:    pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
+          label:    isSaving ? 'Salvando…' : pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
           icon:     Icons.Save,
           size:     'sm' as const,
           onClick:  handleSavePendingWithConfirm,
@@ -270,7 +270,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount])
+  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -332,6 +332,15 @@ export default function VehiclePlanPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {isSaving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="flex items-center gap-3 bg-card border border-border rounded-lg shadow-xl px-6 py-4">
+            <Icons.Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <span className="text-sm font-medium">Salvando alterações…</span>
+          </div>
+        </div>
+      )}
+
       {optimizeModalOpen && (
         <OptimizeModal
           hasCustomMetrics={hasCustomMetrics}
@@ -348,7 +357,7 @@ export default function VehiclePlanPage() {
           dayTypeName={ganttData.plan.dayType.name}
           lines={planLines.filter(l => selectedLineIds.has(l.lineId))}
           hasPendingChanges={pendingCount > 0}
-          onApplied={() => refetchGantt()}
+          onApplied={async () => { await refetchGantt() }}
           onClose={() => setVersionsModalOpen(false)}
         />
       )}
@@ -559,8 +568,16 @@ export default function VehiclePlanPage() {
             planId={id}
             lineId={generateLineModal.lineId}
             dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
+            existingTripIds={
+              (ganttData?.blocks ?? [])
+                .flatMap(b => b.blockTrips)
+                .filter(bt => bt.trip.route.line.id === generateLineModal.lineId)
+                .map(bt => bt.trip.id)
+            }
+            hasPendingChanges={pendingCount > 0}
             onClose={() => setGenerateLineModal(null)}
             onPendingAdd={handlePendingAdd}
+            onPendingDeleteTrips={(tripIds) => setPendingDeletes(prev => new Set([...prev, ...tripIds]))}
           />
         )}
       </div>

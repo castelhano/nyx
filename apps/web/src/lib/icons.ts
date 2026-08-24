@@ -29,6 +29,7 @@ const iconNames = [
   'Copy',
   'Download',
   'EllipsisVertical',
+  'ExternalLink',
   'Eye',
   'EyeOff',
   'FileText',

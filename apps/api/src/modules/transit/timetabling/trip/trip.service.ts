@@ -69,7 +69,7 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
     return result
   }
 
-  override async remove(id: string): Promise<void> {
+  override async remove(id: string, opts?: { skipScore?: boolean }): Promise<void> {
     const db = this.prisma as any
 
     const existing = await this.prisma.transitTrip.findUnique({
@@ -119,9 +119,12 @@ export class TripService extends BaseService<Trip, CreateTripDto, UpdateTripDto>
       })
     }
 
-    // Re-score each affected plan so block summaries are recalculated
-    for (const planId of planIds) {
-      await this.vehiclePlanService.scorePlan(planId)
+    // Re-score each affected plan so block summaries are recalculated — skippable
+    // for callers doing a batch of removals, who rescore once at the end instead.
+    if (!opts?.skipScore) {
+      for (const planId of planIds) {
+        await this.vehiclePlanService.scorePlan(planId)
+      }
     }
   }
 }

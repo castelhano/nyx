@@ -138,14 +138,21 @@ async function resolveNearestDepot(
 }
 
 interface Props {
-  planId:       string
-  lineId:       string
-  dayTypeCode:  string
-  onClose:      () => void
-  onPendingAdd: (entry: PendingAddEntry) => void
+  planId:               string
+  lineId:               string
+  dayTypeCode:          string
+  // trips already persisted for this line in this plan — Gerar replaces them, but
+  // only on the server once the user saves (staged in pendingDeletes until then).
+  existingTripIds:      string[]
+  hasPendingChanges:    boolean
+  onClose:              () => void
+  onPendingAdd:         (entry: PendingAddEntry) => void
+  onPendingDeleteTrips: (tripIds: string[]) => void
 }
 
-export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClose, onPendingAdd }: Props) {
+export function LineScheduleGeneratorModal({
+  planId, lineId, dayTypeCode, existingTripIds, hasPendingChanges, onClose, onPendingAdd, onPendingDeleteTrips,
+}: Props) {
   useShortcutContext('modal')
   const { toast } = useToast()
 
@@ -443,6 +450,10 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
 
   async function handleGenerate() {
     if (windows.length === 0 || isGenerating) return
+    if (hasPendingChanges) {
+      toast.error('Salve ou descarte as alterações pendentes do Gantt antes de gerar novamente')
+      return
+    }
 
     setAttemptedGenerate(true)
     if (intervalInvalid) {
@@ -471,34 +482,40 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
       return
     }
 
-    // Validation log — while the algorithm is still being tuned, records the
-    // generated plan (windows, blocks/trips, warnings) into a queryable Job at
-    // core/job. Best-effort: shouldn't block generation if the call fails.
-    // See docs/proposal/vehicle-plan-fleet-window-redesign.md.
-    apiFetch(`/transit/vehicle-plan/${planId}/lines/${lineId}/log-generation`, {
-      method: 'POST',
-      body:   JSON.stringify({
-        dayTypeCode,
-        output: {
-          lineId, lineCode: line?.code, lineName: line?.name, dayTypeCode,
-          params: { opStart, opEnd, firstTripDirection, lastTripDirection, maneuverMargin, mergeTolerance },
-          windows,
-          blocks: blocks.map(b => ({
-            id:     b.id,
-            rounds: b.rounds.map(r => ({ legs: r.legs, readyAgainMinutes: r.readyAgainMinutes })),
-          })),
-          summary: {
-            blockCount: blocks.length,
-            totalTrips: blocks.reduce((s, b) => s + b.rounds.reduce((s2, r) => s2 + r.legs.length, 0), 0),
-            peakFleet:  windows.reduce((m, w) => Math.max(m, w.fleetCount), 0),
-          },
-          warnings,
-        },
-      }),
-    }).catch(() => {})
-
     setIsGenerating(true)
     try {
+      // Recreate instead of stacking: stage the removal of the line's current trips
+      // (pendingDeletes already hides them from the merged view) instead of deleting
+      // on the server — nothing is destructive until the user clicks Salvar. "Limpar"
+      // on the Gantt discards this staging and puts everything back exactly as it was.
+      if (existingTripIds.length > 0) onPendingDeleteTrips(existingTripIds)
+
+      // Validation log — while the algorithm is still being tuned, records the
+      // generated plan (windows, blocks/trips, warnings) into a queryable Job at
+      // core/job. Best-effort: shouldn't block generation if the call fails.
+      // See docs/proposal/vehicle-plan-fleet-window-redesign.md.
+      apiFetch(`/transit/vehicle-plan/${planId}/lines/${lineId}/log-generation`, {
+        method: 'POST',
+        body:   JSON.stringify({
+          dayTypeCode,
+          output: {
+            lineId, lineCode: line?.code, lineName: line?.name, dayTypeCode,
+            params: { opStart, opEnd, firstTripDirection, lastTripDirection, maneuverMargin, mergeTolerance },
+            windows,
+            blocks: blocks.map(b => ({
+              id:     b.id,
+              rounds: b.rounds.map(r => ({ legs: r.legs, readyAgainMinutes: r.readyAgainMinutes })),
+            })),
+            summary: {
+              blockCount: blocks.length,
+              totalTrips: blocks.reduce((s, b) => s + b.rounds.reduce((s2, r) => s2 + r.legs.length, 0), 0),
+              peakFleet:  windows.reduce((m, w) => Math.max(m, w.fleetCount), 0),
+            },
+            warnings,
+          },
+        }),
+      }).catch(() => {})
+
       const routeFor    = (dir: Direction) => (dir === firstTripDirection ? anchorRoute! : pairedRoute!)
       const localityRef = (id: string) => ({ id, name: localityNameById.get(id) ?? '?' })
       const selectedIntervalType = intervalTypes.find(it => it.id === intervalTypeId) ?? null
@@ -640,6 +657,8 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
       toast.success(`${generatedTrips} viagens geradas em ${blocks.length} blocos — revise e clique em Salvar para persistir`)
       generalWarnings.forEach(w => toast.warning(w))
       onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao gerar quadro de horários')
     } finally {
       setIsGenerating(false)
     }

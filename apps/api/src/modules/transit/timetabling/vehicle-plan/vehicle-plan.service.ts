@@ -8,6 +8,7 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
+import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
@@ -678,6 +679,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     blockId?:               string
     accessDepotLocalityId?: string
     returnDepotLocalityId?: string
+    // Skips summary recalculation (scorePlan scans the whole plan) — used by the
+    // Gantt Save flow, which fires dozens of calls in sequence and does a single
+    // rescore at the end via POST :id/rescore.
+    skipScore?: boolean
   }): Promise<{ blockId: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
@@ -695,13 +700,28 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       })
       if (!route) throw new NotFoundException('Route not found')
 
-      // Marca a linha como presente no plano mesmo sem quadro de horários pinado —
-      // uma viagem avulsa ("Adicionar viagem") não tem LineSchedule por trás, mas
-      // a linha passa a existir no plano (indicador laranja no LinesPanel).
+      // Marks the line as present in the plan even without a pinned schedule — a
+      // free-standing trip ("Adicionar viagem") has no LineSchedule behind it, but
+      // the line still exists in the plan (orange indicator in LinesPanel). If a
+      // schedule is already pinned and this departure doesn't match any of its
+      // LineDeparture rows, marks isDrifted — signals that the schedule needs to
+      // be synced or versioned.
+      const currentLine = await tx.vehiclePlanLine.findUnique({
+        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
+        select: { lineScheduleId: true },
+      })
+      let driftUpdate: Record<string, unknown> = {}
+      if (currentLine?.lineScheduleId) {
+        const matches = await tx.lineDeparture.findFirst({
+          where:  { lineScheduleId: currentLine.lineScheduleId, routeId: dto.routeId, departureMinutes: dto.departureMinutes },
+          select: { id: true },
+        })
+        if (!matches) driftUpdate = { isDrifted: true }
+      }
       await tx.vehiclePlanLine.upsert({
         where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
-        create: { vehiclePlanId: planId, lineId: route.lineId },
-        update: {},
+        create: { vehiclePlanId: planId, lineId: route.lineId, ...driftUpdate },
+        update: driftUpdate,
       })
 
       const trip = await tx.transitTrip.create({
@@ -796,7 +816,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       return { blockId: resolvedBlockId }
     })
 
-    await this.scorePlan(planId)
+    if (!dto.skipScore) await this.scorePlan(planId)
     return result
   }
 
@@ -806,6 +826,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     departureMinutes:      number
     arrivalMinutes:        number
     blockId?:             string
+    skipScore?:           boolean
   }): Promise<{ blockId: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
@@ -867,7 +888,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       return { blockId }
     })
 
-    await this.scorePlan(planId)
+    if (!dto.skipScore) await this.scorePlan(planId)
     return result
   }
 
@@ -876,6 +897,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     departureMinutes: number
     arrivalMinutes:   number
     blockId?:        string
+    skipScore?:      boolean
   }): Promise<{ blockId: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
@@ -935,7 +957,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       return { blockId }
     })
 
-    await this.scorePlan(planId)
+    if (!dto.skipScore) await this.scorePlan(planId)
     return result
   }
 
@@ -1085,6 +1107,177 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }
 
       return { id: schedule.id }
+    })
+  }
+
+  // Overwrites the LineDeparture set of a DRAFT schedule already pinned to this
+  // line/plan with the current trip set (routeId+departureMinutes) — still a
+  // draft, so there's no approval history to preserve. Only callable while the
+  // schedule is DRAFT; once approved, the only way to reflect changes is a new
+  // version (activateNewLineSchedule). Duration/vehicle type don't factor into
+  // the comparison — only the departure time decides whether a trip "matches" a
+  // schedule departure.
+  async syncLineSchedule(planId: string, lineId: string): Promise<{ id: string; approvalRef: string }> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, dayTypeId: true, status: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+
+    const vpl = await this.prisma.vehiclePlanLine.findUnique({
+      where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+      select: { lineScheduleId: true },
+    })
+    if (!vpl?.lineScheduleId) throw new BadRequestException('Linha não possui OSO vinculada')
+
+    const db = this.prisma as any
+
+    const schedule = await db.lineSchedule.findUnique({
+      where:  { id: vpl.lineScheduleId },
+      select: { id: true, status: true, approvalRef: true },
+    })
+    if (!schedule) throw new NotFoundException('LineSchedule not found')
+    if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be synced in place')
+
+    const existingTrips = await db.transitTrip.findMany({
+      where: {
+        dayTypeId:  plan.dayTypeId,
+        route:      { lineId },
+        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
+      },
+      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true },
+    })
+
+    const tripByKey = new Map<string, any>()
+    for (const t of existingTrips) {
+      const key = `${t.routeId}:${t.departureMinutes}`
+      if (!tripByKey.has(key)) tripByKey.set(key, t)
+    }
+
+    const departures = await db.lineDeparture.findMany({
+      where:  { lineScheduleId: schedule.id },
+      select: { id: true, routeId: true, departureMinutes: true },
+    })
+    const departureKeys = new Set(departures.map((d: any) => `${d.routeId}:${d.departureMinutes}`))
+
+    const toDeleteIds = departures
+      .filter((d: any) => !tripByKey.has(`${d.routeId}:${d.departureMinutes}`))
+      .map((d: any) => d.id)
+    const toCreate = [...tripByKey.entries()]
+      .filter(([key]) => !departureKeys.has(key))
+      .map(([, t]) => t)
+
+    await this.prisma.$transaction(async (tx0) => {
+      const tx = tx0 as any
+
+      if (toDeleteIds.length > 0) {
+        await tx.lineDeparture.deleteMany({ where: { id: { in: toDeleteIds } } })
+      }
+
+      const idByKey = new Map<string, string>(
+        departures
+          .filter((d: any) => !toDeleteIds.includes(d.id))
+          .map((d: any) => [`${d.routeId}:${d.departureMinutes}`, d.id]),
+      )
+      for (const t of toCreate) {
+        const created = await tx.lineDeparture.create({
+          data: {
+            lineScheduleId:      schedule.id,
+            routeId:             t.routeId,
+            departureMinutes:    t.departureMinutes,
+            requiredVehicleType: t.requiredVehicleType ?? undefined,
+          },
+          select: { id: true },
+        })
+        idByKey.set(`${t.routeId}:${t.departureMinutes}`, created.id)
+      }
+
+      for (const t of existingTrips) {
+        const depId = idByKey.get(`${t.routeId}:${t.departureMinutes}`)
+        if (depId) await tx.transitTrip.update({ where: { id: t.id }, data: { lineDepartureId: depId } })
+      }
+
+      await tx.vehiclePlanLine.update({
+        where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+        data:  { isDrifted: false },
+      })
+    })
+
+    return { id: schedule.id, approvalRef: schedule.approvalRef }
+  }
+
+  // Creates a new DRAFT version of the line's schedule, seeded 1:1 from the trips
+  // the line already has *in this plan*, relinks each of them and pins it on
+  // VehiclePlanLine right away — unlike createLineSchedule (the manual "Nova OSO"
+  // flow, ref required, doesn't pin by itself), this is the automatic activation
+  // used by reconcile when the line's current schedule is no longer DRAFT (or
+  // doesn't exist yet). Ref is optional because the proposal is normally put
+  // together before the granting authority issues the actual processo number —
+  // without one, falls back to a DRAFT-XXXX placeholder (generateDraftRef).
+  async activateNewLineSchedule(planId: string, lineId: string, approvalRef?: string): Promise<{ id: string; approvalRef: string }> {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { id: true, scopeId: true, dayTypeId: true, status: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+
+    const line = await this.prisma.transitLine.findUnique({ where: { id: lineId }, select: { scopeId: true } })
+    if (!line || line.scopeId !== plan.scopeId) throw new BadRequestException('Linha não pertence ao escopo deste planejamento')
+
+    const db = this.prisma as any
+
+    const existingTrips = await db.transitTrip.findMany({
+      where: {
+        dayTypeId:  plan.dayTypeId,
+        route:      { lineId },
+        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
+      },
+      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true },
+    })
+
+    const departureByKey = new Map<string, any>()
+    for (const t of existingTrips) {
+      const key = `${t.routeId}:${t.departureMinutes}`
+      if (!departureByKey.has(key)) departureByKey.set(key, t)
+    }
+
+    const ref = approvalRef?.trim() || await generateDraftRef(this.prisma, lineId, plan.dayTypeId)
+
+    return this.prisma.$transaction(async (tx0) => {
+      const tx = tx0 as any
+
+      const schedule = await tx.lineSchedule.create({
+        data: { lineId, dayTypeId: plan.dayTypeId, approvalRef: ref, status: 'DRAFT' },
+      })
+
+      const idByKey = new Map<string, string>()
+      for (const d of departureByKey.values()) {
+        const created = await tx.lineDeparture.create({
+          data: {
+            lineScheduleId:      schedule.id,
+            routeId:             d.routeId,
+            departureMinutes:    d.departureMinutes,
+            requiredVehicleType: d.requiredVehicleType ?? undefined,
+          },
+          select: { id: true },
+        })
+        idByKey.set(`${d.routeId}:${d.departureMinutes}`, created.id)
+      }
+
+      for (const t of existingTrips) {
+        const depId = idByKey.get(`${t.routeId}:${t.departureMinutes}`)
+        if (depId) await tx.transitTrip.update({ where: { id: t.id }, data: { lineDepartureId: depId } })
+      }
+
+      await tx.vehiclePlanLine.upsert({
+        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+        create: { vehiclePlanId: planId, lineId, lineScheduleId: schedule.id, isDrifted: false },
+        update: { lineScheduleId: schedule.id, isDrifted: false },
+      })
+
+      return { id: schedule.id, approvalRef: ref }
     })
   }
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { lineScheduleSchema, LineSchedule, CreateLineScheduleDto, UpdateLineScheduleDto } from '@nyx/schemas'
+import { generateDraftRef } from './line-schedule.util'
 
 @Injectable()
 export class LineScheduleService extends BaseService<LineSchedule, CreateLineScheduleDto, UpdateLineScheduleDto> {
@@ -14,18 +15,13 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     return this.model.create({ data: { ...data, status: 'DRAFT' } })
   }
 
-  // Placeholder approvalRef for schedules created via "Nova Versão" — user renames it
-  // before/at approval time. Not gapless (renaming/deleting a DRAFT-000N frees the number).
-  private async generateDraftRef(lineId: string, dayTypeId: string): Promise<string> {
-    const existing = await this.prisma.lineSchedule.findMany({
-      where:  { lineId, dayTypeId, approvalRef: { startsWith: 'DRAFT-' } },
-      select: { approvalRef: true },
-    })
-    const maxSuffix = existing.reduce((max, s) => {
-      const n = parseInt(s.approvalRef.slice('DRAFT-'.length), 10)
-      return isNaN(n) ? max : Math.max(max, n)
-    }, 0)
-    return `DRAFT-${String(maxSuffix + 1).padStart(4, '0')}`
+  override async update(id: string, dto: UpdateLineScheduleDto): Promise<LineSchedule> {
+    const schedule = await this.prisma.lineSchedule.findUnique({ where: { id } })
+    if (!schedule) throw new NotFoundException('LineSchedule not found')
+    if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be edited')
+
+    const data = this.sanitizeDto(dto as Record<string, unknown>)
+    return this.model.update({ where: { id }, data })
   }
 
   override async remove(id: string): Promise<void> {
@@ -46,7 +42,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
 
-    const approvalRef = await this.generateDraftRef(schedule.lineId, schedule.dayTypeId)
+    const approvalRef = await generateDraftRef(this.prisma, schedule.lineId, schedule.dayTypeId)
 
     return this.prisma.$transaction(async tx => {
       const newSchedule = await tx.lineSchedule.create({

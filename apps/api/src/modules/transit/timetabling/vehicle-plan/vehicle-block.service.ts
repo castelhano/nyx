@@ -155,7 +155,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     })
   }
 
-  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string, breakIds: string[] = [], deadrunIds: string[] = []): Promise<void> {
+  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string, breakIds: string[] = [], deadrunIds: string[] = [], skipScore = false): Promise<void> {
     if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
     if (!blockTripIds.length)      throw new BadRequestException('Nenhuma viagem informada')
     const db = this.prisma as any
@@ -226,7 +226,7 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
       await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })
     })
 
-    await this.vehiclePlanService.scorePlan(sourceBlock.vehiclePlanId)
+    if (!skipScore) await this.vehiclePlanService.scorePlan(sourceBlock.vehiclePlanId)
   }
 
   async addReturn(blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {

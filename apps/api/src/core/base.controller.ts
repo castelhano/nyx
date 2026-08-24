@@ -9,7 +9,7 @@ export abstract class BaseController<T, CreateDTO, UpdateDTO> {
     protected readonly caslFactory?: CaslAbilityFactory,
   ) {}
 
-  private async assertAbility(user: AuthUser | undefined, action: string): Promise<void> {
+  protected async assertAbility(user: AuthUser | undefined, action: string): Promise<void> {
     if (!this.caslFactory || !user) return
     const meta    = this.service.getMetadata()
     const subject = meta.resource[0].toUpperCase() + meta.resource.slice(1)

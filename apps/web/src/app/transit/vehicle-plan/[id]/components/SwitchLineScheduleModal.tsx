@@ -23,6 +23,7 @@ export interface PlanLineInfo {
   line:           { id: string; code: string; name: string }
   lineScheduleId: string | null
   lineSchedule:   { id: string; status: string; approvalRef: string | null } | null
+  isDrifted?:     boolean
 }
 
 interface Props {
@@ -32,7 +33,7 @@ interface Props {
   lines:             PlanLineInfo[]
   hasPendingChanges: boolean
   onClose:           () => void
-  onApplied:         () => void
+  onApplied:         () => void | Promise<void>
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,6 +67,11 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
   const [draftNotesByLine, setDraftNotesByLine] = useState<Map<string, string>>(new Map())
   const [savingLineId,     setSavingLineId]     = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Reconcile: line already linked to a schedule, but with diverging trips
+  // (isDrifted). DRAFT → syncs in-place; any other status → creates and
+  // immediately activates a new version.
+  const [reconcilingLineId, setReconcilingLineId] = useState<string | null>(null)
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -150,6 +156,47 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
     }
   }
 
+  async function handleReconcile(l: PlanLineInfo) {
+    if (!l.lineSchedule || reconcilingLineId) return
+    const isDraft = l.lineSchedule.status === 'DRAFT'
+
+    const ok = await confirm({
+      title:        isDraft ? 'Sincronizar OSO' : 'Nova versão da OSO',
+      description:  isDraft
+        ? `As partidas da OSO ${l.lineSchedule.approvalRef} serão reescritas para corresponder exatamente às viagens que "${l.line.code}" tem hoje neste plano — partidas sem viagem correspondente serão removidas. Essa ação não pode ser desfeita.`
+        : `A OSO ${l.lineSchedule.approvalRef} está ${STATUS_LABELS[l.lineSchedule.status]} e não pode ser alterada. Será criada uma nova versão (rascunho), com as partidas que "${l.line.code}" tem hoje neste plano, e ela já ficará ativa.`,
+      confirmLabel: isDraft ? 'Sincronizar' : 'Criar nova versão',
+      variant:      'safeConfirm',
+    })
+    if (!ok) return
+
+    setReconcilingLineId(l.lineId)
+    try {
+      const res = await apiFetch(
+        `/transit/vehicle-plan/${planId}/lines/${l.lineId}/${isDraft ? 'sync-schedule' : 'activate-new-schedule'}`,
+        { method: 'POST' },
+      )
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json, 'Erro ao aplicar OSO'))
+      }
+      const result: { id: string; approvalRef: string } = await res.json()
+      setSelections(prev => new Map(prev).set(l.lineId, result.id))
+      await queryClient.invalidateQueries({ queryKey: ['transit', 'line-schedule', 'history', l.lineId, dayTypeId] })
+      toast.success(isDraft ? `OSO ${result.approvalRef} sincronizada` : `Nova versão ${result.approvalRef} ativada`)
+      // Awaited (unlike handleApply's fire-and-forget, which immediately closes the
+      // modal anyway): this modal stays open, so the "Aplicar" button must not go
+      // stale-clickable in the gap between the local `selections` update above and
+      // `lines`' lineScheduleId prop catching up — that's what previously let a
+      // second, redundant switchLineSchedule call slip through.
+      await onApplied()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao aplicar OSO')
+    } finally {
+      setReconcilingLineId(null)
+    }
+  }
+
   async function handleApply() {
     if (changed.length === 0 || isSubmitting) return
 
@@ -164,7 +211,7 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
 
     const ok = await confirm({
       title:        'Trocar quadro de horários',
-      description:  `As viagens destas linhas serão recriadas a partir da OSO selecionada — o plano precisará ser gerado novamente para reblocar:\n\n${summary.join('\n')}`,
+      description:  `As viagens destas linhas serão recriadas a partir da OSO selecionada — partidas sem viagem correspondente na operação atual ficarão fora de bloco até você rodar Otimizar:\n\n${summary.join('\n')}`,
       confirmLabel: 'Aplicar',
       variant:      'safeConfirm',
     })
@@ -229,8 +276,19 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
                     <span className="text-muted-foreground ml-2">{l.line.name}</span>
                   </span>
                   {l.lineSchedule ? (
-                    <span className={`text-xs rounded-full border px-2 py-0.5 ${STATUS_CLASSES[l.lineSchedule.status]}`}>
-                      {l.lineSchedule.approvalRef} - {STATUS_LABELS[l.lineSchedule.status]}
+                    <span className="flex items-center gap-1">
+                      <span className={`text-xs rounded-full border px-2 py-0.5 ${STATUS_CLASSES[l.lineSchedule.status]}`}>
+                        {l.lineSchedule.approvalRef} - {STATUS_LABELS[l.lineSchedule.status]}
+                      </span>
+                      <a
+                        href={`/transit/line-schedule/${l.lineSchedule.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Editar OSO"
+                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                      >
+                        <Icons.ExternalLink className="w-3 h-3" />
+                      </a>
                     </span>
                   ) : (
                     <div className="relative" ref={openMenuLineId === l.lineId ? menuRef : undefined}>
@@ -256,6 +314,26 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
                     </div>
                   )}
                 </div>
+
+                {l.lineSchedule && l.isDrifted && (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 px-2.5 py-1.5">
+                    <span className="text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                      <Icons.AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      Viagens desta linha no plano divergem da OSO vinculada
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={hasPendingChanges || reconcilingLineId === l.lineId}
+                      onClick={() => handleReconcile(l)}
+                    >
+                      {reconcilingLineId === l.lineId
+                        ? 'Aplicando…'
+                        : l.lineSchedule.status === 'DRAFT' ? 'Sincronizar' : 'Nova versão'}
+                    </Button>
+                  </div>
+                )}
 
                 {isCreating ? (
                   <div className="space-y-2 rounded-md border border-dashed border-border p-2.5">

@@ -87,6 +87,7 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
       blockId?:               string
       accessDepotLocalityId?: string
       returnDepotLocalityId?: string
+      skipScore?:             boolean
     },
   ) {
     return this.vehiclePlanService.addTrip(id, body)
@@ -96,7 +97,7 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
   @HttpCode(201)
   addDeadrun(
     @Param('id') id: string,
-    @Body() body: { originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string },
+    @Body() body: { originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string; skipScore?: boolean },
   ) {
     return this.vehiclePlanService.addDeadrun(id, body)
   }
@@ -105,14 +106,36 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
   @HttpCode(201)
   addInterval(
     @Param('id') id: string,
-    @Body() body: { intervalTypeId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string },
+    @Body() body: { intervalTypeId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string; skipScore?: boolean },
   ) {
     return this.vehiclePlanService.addInterval(id, body)
+  }
+
+  @Post(':id/rescore')
+  @HttpCode(200)
+  rescore(@Param('id') id: string) {
+    return this.vehiclePlanService.scorePlan(id)
   }
 
   @Delete(':id/lines/:lineId')
   clearLine(@Param('id') id: string, @Param('lineId') lineId: string) {
     return this.vehiclePlanService.clearLine(id, lineId)
+  }
+
+  @Post(':id/lines/:lineId/sync-schedule')
+  @HttpCode(200)
+  syncLineSchedule(@Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.vehiclePlanService.syncLineSchedule(id, lineId)
+  }
+
+  @Post(':id/lines/:lineId/activate-new-schedule')
+  @HttpCode(201)
+  activateNewLineSchedule(
+    @Param('id')     id:     string,
+    @Param('lineId') lineId: string,
+    @Body('approvalRef') approvalRef: string | undefined,
+  ) {
+    return this.vehiclePlanService.activateNewLineSchedule(id, lineId, approvalRef)
   }
 
   @Post(':id/lines/:lineId/schedules')
