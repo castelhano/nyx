@@ -9,11 +9,13 @@
 // the trigger to refactor into a real recursive renderer first — bolting one more
 // shape-specific Sub*Editor onto this file is how it stops being tractable.
 
+import { useState } from 'react'
 import { Controller, type Control } from 'react-hook-form'
 import { cn } from '@/lib/utils'
 import type { MetadataField } from '@nyx/types'
 import { inputBaseCls } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Icons } from '@/lib/icons'
 
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 const fieldInputCls = `${inputBaseCls} w-full`
@@ -206,6 +208,14 @@ export function SubRecordEditor({
   readonly?: boolean
 }) {
   const keys = Object.keys(value)
+  // collapsed by default — each key's detail (potentially several tables of rows) is
+  // only worth the vertical space once the user actually wants to inspect that one
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
+  const toggle = (key: string) => setOpenKeys(prev => {
+    const next = new Set(prev)
+    next.has(key) ? next.delete(key) : next.add(key)
+    return next
+  })
 
   return (
     <div className="space-y-4">
@@ -213,23 +223,37 @@ export function SubRecordEditor({
       {keys.length === 0 && (
         <p className="text-xs text-muted-foreground italic">Nenhum dado cadastrado.</p>
       )}
-      {keys.map((key) => (
-        <div key={key} className="pl-3 border-l-2 border-border space-y-4">
-          <p className="text-xs font-medium text-muted-foreground">Tipo de dia: {key}</p>
-          {field.fields?.map(sub => {
-            if (sub.type !== 'array') return null
-            return (
-              <SubArrayEditor
-                key={sub.name}
-                field={sub}
-                value={((value[key]?.[sub.name] ?? []) as Record<string, unknown>[])}
-                onChange={v => onChange({ ...value, [key]: { ...(value[key] ?? {}), [sub.name]: v } })}
-                readonly={readonly}
-              />
-            )
-          })}
-        </div>
-      ))}
+      {keys.map((key) => {
+        const isOpen = openKeys.has(key)
+        return (
+          <div key={key} className="pl-3 border-l-2 border-border space-y-3">
+            <button
+              type="button"
+              onClick={() => toggle(key)}
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              <Icons.ChevronDown className={cn('w-3.5 h-3.5 transition-transform', isOpen && 'rotate-180')} />
+              Tipo de dia: {key}
+            </button>
+            {isOpen && (
+              <div className="space-y-4">
+                {field.fields?.map(sub => {
+                  if (sub.type !== 'array') return null
+                  return (
+                    <SubArrayEditor
+                      key={sub.name}
+                      field={sub}
+                      value={((value[key]?.[sub.name] ?? []) as Record<string, unknown>[])}
+                      onChange={v => onChange({ ...value, [key]: { ...(value[key] ?? {}), [sub.name]: v } })}
+                      readonly={readonly}
+                    />
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
