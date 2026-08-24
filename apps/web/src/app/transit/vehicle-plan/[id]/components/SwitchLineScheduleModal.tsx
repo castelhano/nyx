@@ -163,8 +163,8 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
     const ok = await confirm({
       title:        isDraft ? 'Sincronizar OSO' : 'Nova versão da OSO',
       description:  isDraft
-        ? `As partidas da OSO ${l.lineSchedule.approvalRef} serão reescritas para corresponder exatamente às viagens que "${l.line.code}" tem hoje neste plano — partidas sem viagem correspondente serão removidas. Essa ação não pode ser desfeita.`
-        : `A OSO ${l.lineSchedule.approvalRef} está ${STATUS_LABELS[l.lineSchedule.status]} e não pode ser alterada. Será criada uma nova versão (rascunho), com as partidas que "${l.line.code}" tem hoje neste plano, e ela já ficará ativa.`,
+        ? `A OSO ${l.lineSchedule.approvalRef} será atualizada para corresponder ao plano atual. Essa ação não pode ser desfeita.`
+        : `A OSO ${l.lineSchedule.approvalRef} está ${STATUS_LABELS[l.lineSchedule.status]} e não pode ser alterada. Será criada nova OSO (rascunho), com partidas do plano.`,
       confirmLabel: isDraft ? 'Sincronizar' : 'Criar nova versão',
       variant:      'safeConfirm',
     })
