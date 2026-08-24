@@ -105,43 +105,69 @@ export function suggestCuts(trips: RawTrip[]): number[] {
   return cuts
 }
 
-export function calcWindowAverage(clusters: DotCluster[]): number {
+export type Methodology = 'linear' | 'longer' | 'shorter'
+
+/** Weighted mean of {minutes, count} entries. 'linear' weighs each entry by
+ *  its trip count alone (today's behavior). 'longer'/'shorter' additionally
+ *  tilt that weight by the entry's percentile rank within the set (by
+ *  cumulative trip-count share, midpoint rule), so the skew tracks how much
+ *  of the traffic is slow/fast rather than a single entry's raw value — an
+ *  isolated, low-volume entry near the tail still can't dominate on its own,
+ *  since its weight is still capped by its own trip count. */
+function weightedAverage(entries: { minutes: number; count: number }[], methodology: Methodology): { total: number; count: number } {
+  const active = entries.filter(e => e.count > 0)
+  if (active.length === 0) return { total: 0, count: 0 }
+  if (methodology === 'linear') {
+    return {
+      total: active.reduce((s, e) => s + e.minutes * e.count, 0),
+      count: active.reduce((s, e) => s + e.count, 0),
+    }
+  }
+
+  const sorted = [...active].sort((a, b) => a.minutes - b.minutes)
+  const totalTrips = sorted.reduce((s, e) => s + e.count, 0)
+
+  let cum = 0, total = 0, weightSum = 0
+  for (const e of sorted) {
+    const percentile = (cum + e.count / 2) / totalTrips
+    const tilt   = methodology === 'longer' ? percentile : 1 - percentile
+    total     += e.minutes * e.count * tilt
+    weightSum += e.count * tilt
+    cum += e.count
+  }
+  return { total, count: weightSum }
+}
+
+export function calcWindowAverage(clusters: DotCluster[], methodology: Methodology = 'linear'): number {
   const active = clusters.filter(c => !c.isOutlier && !c.isDisabled)
-  if (active.length === 0) return 0
-  const totalMin   = active.reduce((s, c) => s + c.minutes * c.count, 0)
-  const totalCount = active.reduce((s, c) => s + c.count, 0)
-  return Math.round(totalMin / totalCount)
+  const { total, count } = weightedAverage(active.map(c => ({ minutes: c.minutes, count: c.count })), methodology)
+  return count > 0 ? Math.round(total / count) : 0
 }
 
 function minuteOfTrip(t: RawTrip): number {
   return parseInt(t.departureTime.split(':')[1] ?? '0', 10) || 0
 }
 
-function clusterWeightedSum(clusters: DotCluster[]): { total: number; count: number } {
+function clusterWeightedSum(clusters: DotCluster[], methodology: Methodology): { total: number; count: number } {
   const active = clusters.filter(c => !c.isOutlier && !c.isDisabled)
-  return {
-    total: active.reduce((s, c) => s + c.minutes * c.count, 0),
-    count: active.reduce((s, c) => s + c.count, 0),
-  }
+  return weightedAverage(active.map(c => ({ minutes: c.minutes, count: c.count })), methodology)
 }
 
-function halfWeightedSum(clusters: DotCluster[], wantSecondHalf: boolean): { total: number; count: number } {
+function halfWeightedSum(clusters: DotCluster[], wantSecondHalf: boolean, methodology: Methodology): { total: number; count: number } {
   const active = clusters.filter(c => !c.isOutlier && !c.isDisabled)
-  let total = 0, count = 0
-  for (const c of active) {
-    for (const t of c.trips) {
-      if ((minuteOfTrip(t) >= 30) === wantSecondHalf) { total += c.minutes; count++ }
-    }
-  }
-  return { total, count }
+  const entries = active.map(c => ({
+    minutes: c.minutes,
+    count:   c.trips.filter(t => (minuteOfTrip(t) >= 30) === wantSecondHalf).length,
+  }))
+  return weightedAverage(entries, methodology)
 }
 
 /** Split an hour's active trips at the 30min mark and average each half
  *  separately (same cluster-center weighting as calcWindowAverage). Used by
  *  the canvas to preview what a 30min sub-cut would look like. */
-export function calcHalfWindowAverages(clusters: DotCluster[]): { first: number; second: number } {
-  const first  = halfWeightedSum(clusters, false)
-  const second = halfWeightedSum(clusters, true)
+export function calcHalfWindowAverages(clusters: DotCluster[], methodology: Methodology = 'linear'): { first: number; second: number } {
+  const first  = halfWeightedSum(clusters, false, methodology)
+  const second = halfWeightedSum(clusters, true, methodology)
   return {
     first:  first.count  > 0 ? Math.round(first.total  / first.count)  : 0,
     second: second.count > 0 ? Math.round(second.total / second.count) : 0,
@@ -169,6 +195,7 @@ export function buildRawWindowCandidates(
   hourClusters: Map<number, DotCluster[]>,
   cuts:         number[],
   subCuts:      number[],
+  methodology:  Methodology,
 ): Candidate[] {
   const hours = Array.from(hourClusters.keys()).sort((a, b) => a - b)
   if (hours.length === 0) return []
@@ -209,21 +236,21 @@ export function buildRawWindowCandidates(
       if (subCutSet.has(h)) {
         // first half extends whatever run was already in progress, then hard-breaks
         if (runFrom === null) runFrom = h
-        const firstSum = halfWeightedSum(cs, false)
+        const firstSum = halfWeightedSum(cs, false, methodology)
         runTotal += firstSum.total
         runCount += firstSum.count
         runEnd    = h
         flush()
 
         // second half always starts a fresh run
-        const secondSum = halfWeightedSum(cs, true)
+        const secondSum = halfWeightedSum(cs, true, methodology)
         runFrom  = h + 0.5
         runTotal = secondSum.total
         runCount = secondSum.count
         runEnd   = h + 0.5
       } else {
         if (runFrom === null) runFrom = h
-        const { total, count } = clusterWeightedSum(cs)
+        const { total, count } = clusterWeightedSum(cs, methodology)
         runTotal += total
         runCount += count
         runEnd    = h + 0.5
@@ -240,6 +267,7 @@ export function computeWindows(
   cuts: number[],
   subCuts: number[],
   intervalMinutes: number,
+  methodology: Methodology,
 ): Window[] {
   const hours = Array.from(hourClusters.keys()).sort((a, b) => a - b)
   if (hours.length === 0) return []
@@ -247,7 +275,7 @@ export function computeWindows(
   const minH = hours[0]
   const maxH = hours[hours.length - 1]
 
-  const candidates = buildRawWindowCandidates(hourClusters, cuts, subCuts)
+  const candidates = buildRawWindowCandidates(hourClusters, cuts, subCuts, methodology)
   if (candidates.every(c => c.minutes === 0)) return []
 
   // measured windows keep their average; windows with no data (e.g. a cut

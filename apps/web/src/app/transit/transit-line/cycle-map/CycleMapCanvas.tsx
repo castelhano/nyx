@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTheme }      from 'next-themes'
 import { CycleEngine }   from './cycle-engine'
-import { markOutliers }  from './cycle-utils'
+import { markOutliers, type Methodology } from './cycle-utils'
 import type { Direction, DotCluster, DotClickInfo, MarqueeSelection } from './types'
 
 const DIR_LABEL: Record<Direction, string> = {
@@ -17,6 +17,7 @@ interface Props {
   hourClusters:   Map<number, DotCluster[]>
   cuts:           number[]
   subCuts:        number[]
+  methodology:    Methodology
   onCutsChange:   (cuts: number[]) => void
   onSubCutsChange: (subCuts: number[]) => void
   onHourClustersChange: (updated: Map<number, DotCluster[]>) => void
@@ -34,6 +35,7 @@ export function CycleMapCanvas({
   hourClusters,
   cuts,
   subCuts,
+  methodology,
   onCutsChange,
   onSubCutsChange,
   onHourClustersChange,
@@ -94,10 +96,10 @@ export function CycleMapCanvas({
 
   // sync data to engine when props change
   useEffect(() => {
-    engineRef.current?.setData(hourClusters, cuts, subCuts)
+    engineRef.current?.setData(hourClusters, cuts, subCuts, methodology)
     setMarquee(null)
     engineRef.current?.clearSelection()
-  }, [hourClusters, cuts, subCuts])
+  }, [hourClusters, cuts, subCuts, methodology])
 
   // avg pill colors are read from the DOM at draw time — force a redraw
   // when the theme actually changes so they don't stay stuck on whichever

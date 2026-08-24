@@ -1,4 +1,4 @@
-import { markOutliers, buildRawWindowCandidates } from './cycle-utils'
+import { markOutliers, buildRawWindowCandidates, type Methodology } from './cycle-utils'
 import type { DotCluster, DotClickInfo, CycleEngineState, MarqueeItem, MarqueeSelection } from './types'
 
 const PAD   = { left: 52, right: 20, bottom: 44 }
@@ -38,6 +38,7 @@ export class CycleEngine {
   private hours:         number[]                   = []
   private cuts:          Set<number>                = new Set()
   private subCuts:       Set<number>                = new Set()
+  private methodology:   Methodology                 = 'linear'
   // grows past MIN_TOP_PAD when avg pills need to stack into extra rows —
   // recomputed at the start of every draw() so it never falls out of sync
   private topPad:        number                      = MIN_TOP_PAD
@@ -87,11 +88,12 @@ export class CycleEngine {
     }
   }
 
-  setData(hourClusters: Map<number, DotCluster[]>, cuts: number[], subCuts: number[]): void {
+  setData(hourClusters: Map<number, DotCluster[]>, cuts: number[], subCuts: number[], methodology: Methodology): void {
     this.hourClusters = hourClusters
     this.hours        = Array.from(hourClusters.keys()).sort((a, b) => a - b)
     this.cuts         = new Set(cuts)
     this.subCuts      = new Set(subCuts)
+    this.methodology  = methodology
     this.requestDraw()
   }
 
@@ -211,7 +213,7 @@ export class CycleEngine {
     topPad: number
   } {
     const { ctx, width: W } = this
-    const candidates = buildRawWindowCandidates(this.hourClusters, [...this.cuts], [...this.subCuts])
+    const candidates = buildRawWindowCandidates(this.hourClusters, [...this.cuts], [...this.subCuts], this.methodology)
       .filter(c => c.minutes > 0)
 
     ctx.save()

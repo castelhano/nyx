@@ -8,6 +8,7 @@ import { cn }                            from '@/lib/utils'
 import { Button }                        from '@/components/ui/button'
 import { Switch }                        from '@/components/ui/switch'
 import { Select }                        from '@/components/ui/select'
+import { MultiSelect }                   from '@/components/ui/multi-select'
 import { Breadcrumb }                    from '@/components/ui/breadcrumb'
 import { useTopbarActions }              from '@/components/layout/topbar-actions-context'
 import { useShortcut }                   from '@/lib/keywatch'
@@ -15,7 +16,7 @@ import { apiFetch }                      from '@/lib/auth'
 import { useToast }                      from '@/lib/toast-context'
 import { parseCsv }                      from './csv-parser'
 import { buildHourClusters, suggestCuts, computeWindows, suggestDayTypeCode } from './cycle-utils'
-import type { Window }                   from './cycle-utils'
+import type { Window, Methodology }      from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
 import type { CsvData, Direction, DotCluster } from './types'
 
@@ -66,19 +67,20 @@ export default function CycleMapPage() {
   const [savedLines,     setSavedLines]     = useState<Set<string>>(new Set())
   const [lineIndex,      setLineIndex]      = useState(0)
   const [includeEdited,  setIncludeEdited]  = useState(true)
+  const [methodology,    setMethodology]    = useState<Methodology>('longer')
   const [saving,         setSaving]         = useState(false)
   const [savingAll,      setSavingAll]      = useState(false)
   const [saveAllResult,  setSaveAllResult]  = useState<SaveAllResult | null>(null)
   const [dirStates,      setDirStates]      = useState<Map<Direction, DirState>>(new Map())
   const [dayTypes,       setDayTypes]       = useState<DayType[]>([])
-  const [dayTypeCode,    setDayTypeCode]    = useState('')
+  const [dayTypeCodes,   setDayTypeCodes]   = useState<string[]>([])
 
   const poolLines  = csvData ? csvData.lines.filter(code => !savedLines.has(code)) : []
 
   useEffect(() => {
     apiFetch('/transit/day-type?pageSize=100').then(r => r.json()).then(({ data }: { data: DayType[] }) => {
       setDayTypes(data ?? [])
-      if (data?.length && !dayTypeCode) setDayTypeCode(data[0].code)
+      if (data?.length && dayTypeCodes.length === 0) setDayTypeCodes([data[0].code])
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -91,13 +93,13 @@ export default function CycleMapPage() {
       icon:     Icons.Save,
       onClick:  handleSave,
       primary:  true,
-      disabled: saving || savingAll,
+      disabled: saving || savingAll || dayTypeCodes.length === 0,
       keybind:  'ALT+G',
     }, {
       label:    savingAll ? 'Salvando…' : 'Salvar todos',
       icon:     Icons.Layers,
       onClick:  handleSaveAll,
-      disabled: saving || savingAll,
+      disabled: saving || savingAll || dayTypeCodes.length === 0,
       overflow: true,
     }, {
       label:   'Remover',
@@ -112,7 +114,7 @@ export default function CycleMapPage() {
       onClick: advanceLine,
       variant: 'ghost' as const,
     }] : []),
-  ], [csvData, saving, savingAll, lineIndex, poolLines.length])
+  ], [csvData, saving, savingAll, lineIndex, poolLines.length, dayTypeCodes])
 
   useShortcut('alt+g', handleSave,    { desc: 'Salvar e avançar linha', icon: Icons.Save })
   useShortcut('alt+j', advanceLine,   { desc: 'Próxima linha',           icon: Icons.ArrowRight })
@@ -146,14 +148,17 @@ export default function CycleMapPage() {
 
       // suggest a dayType from the date of the CSV's first trip (dia útil/sábado/domingo
       // only — "Especial"/"Férias" have no weekday pattern to infer from); falls back to
-      // whatever's currently selected when the date can't be parsed or matched
-      const suggested = suggestDayTypeCode(data.sampleDate, dayTypes) ?? dayTypeCode
+      // whatever's currently selected when the date can't be parsed or matched. A new
+      // upload always narrows the selection back down to that single guess — the N-day
+      // multi-select is for choosing extra targets to apply the *current* CSV's windows
+      // to, not something a fresh CSV should inherit.
+      const suggested = suggestDayTypeCode(data.sampleDate, dayTypes) ?? dayTypeCodes[0] ?? ''
 
       setCsvData(data)
       setLinesMap(map)
       setSavedLines(new Set())
       setLineIndex(0)
-      setDayTypeCode(suggested)
+      setDayTypeCodes(suggested ? [suggested] : [])
       loadLineData(data, data.lines[0], includeEdited, map, suggested)
     }
     reader.readAsText(file, 'latin1')
@@ -192,10 +197,12 @@ export default function CycleMapPage() {
 
   // ──────────────── dayType change ──────────────────────────
 
-  function handleDayTypeChange(code: string) {
-    setDayTypeCode(code)
+  // the first selected day type is the "reference" whose previously saved windows
+  // prefill the editing canvas — the rest are just extra save targets
+  function handleDayTypesChange(codes: string[]) {
+    setDayTypeCodes(codes)
     if (!csvData) return
-    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, code)
+    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, codes[0] ?? '')
   }
 
   // ──────────────── includeEdited toggle ──────────────────────────
@@ -231,7 +238,7 @@ export default function CycleMapPage() {
       return
     }
     setLineIndex(next)
-    loadLineData(csvData, poolLines[next], includeEdited, linesMap, dayTypeCode)
+    loadLineData(csvData, poolLines[next], includeEdited, linesMap, dayTypeCodes[0] ?? '')
   }
 
   // ──────────────── remove from pool ──────────────────────────
@@ -247,7 +254,7 @@ export default function CycleMapPage() {
     }
     const nextIdx = Math.min(lineIndex, newPool.length - 1)
     setLineIndex(nextIdx)
-    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCode)
+    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCodes[0] ?? '')
   }
 
   // ──────────────── save ──────────────────────────
@@ -266,19 +273,21 @@ export default function CycleMapPage() {
     try {
       const windows: Record<string, Window[]> = {}
       for (const [dir, state] of dirStates) {
-        const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes)
+        const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes, methodology)
         if (w.length > 0) windows[dir] = w
       }
 
-      const res = await apiFetch('/transit/transit-line/windows/apply', {
-        method: 'POST',
-        body:   JSON.stringify({ dayTypeCode, updates: [{ lineId: lineRec.id, windows }] }),
-      })
+      for (const code of dayTypeCodes) {
+        const res = await apiFetch('/transit/transit-line/windows/apply', {
+          method: 'POST',
+          body:   JSON.stringify({ dayTypeCode: code, updates: [{ lineId: lineRec.id, windows }] }),
+        })
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        toast.error(err?.message?.message ?? 'Erro ao salvar')
-        return
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          toast.error(err?.message?.message ?? `Erro ao salvar (${code})`)
+          return
+        }
       }
 
       toast.success(`Linha ${lineCode} salva`)
@@ -294,7 +303,7 @@ export default function CycleMapPage() {
 
       const nextIdx = Math.min(lineIndex, newPool.length - 1)
       setLineIndex(nextIdx)
-      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCode)
+      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCodes[0] ?? '')
     } finally {
       setSaving(false)
     }
@@ -323,7 +332,7 @@ export default function CycleMapPage() {
 
         if (i === lineIndex) {
           for (const [dir, state] of dirStates) {
-            const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes)
+            const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes, methodology)
             if (w.length > 0) windows[dir] = w
           }
         } else {
@@ -334,23 +343,30 @@ export default function CycleMapPage() {
               if (!trips || trips.length === 0) continue
               const hc              = buildHourClusters(trips, includeEdited)
               const cuts            = suggestCuts(trips)
-              const existingWindows = lineRec.metrics?.windows?.[dayTypeCode]?.[dir]
+              const existingWindows = lineRec.metrics?.windows?.[dayTypeCodes[0]]?.[dir]
               const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
               const subCuts: number[] = []   // see loadLineData — not restored from a previous save
-              const w = computeWindows(hc, cuts, subCuts, intervalMinutes)
+              const w = computeWindows(hc, cuts, subCuts, intervalMinutes, methodology)
               if (w.length > 0) windows[dir] = w
             }
           }
         }
 
-        const res = await apiFetch('/transit/transit-line/windows/apply', {
-          method: 'POST',
-          body:   JSON.stringify({ dayTypeCode, updates: [{ lineId: lineRec.id, windows }] }),
-        })
+        const lineErrors: string[] = []
+        for (const code of dayTypeCodes) {
+          const res = await apiFetch('/transit/transit-line/windows/apply', {
+            method: 'POST',
+            body:   JSON.stringify({ dayTypeCode: code, updates: [{ lineId: lineRec.id, windows }] }),
+          })
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          errors.push({ code: lineCode, message: err?.message?.message ?? 'Erro ao salvar' })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            lineErrors.push(`${code}: ${err?.message?.message ?? 'Erro ao salvar'}`)
+          }
+        }
+
+        if (lineErrors.length > 0) {
+          errors.push({ code: lineCode, message: lineErrors.join('; ') })
         } else {
           saved.push(lineCode)
         }
@@ -458,7 +474,7 @@ export default function CycleMapPage() {
                   onChange={e => {
                     const idx = Number(e.target.value)
                     setLineIndex(idx)
-                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap, dayTypeCode)
+                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap, dayTypeCodes[0] ?? '')
                   }}
                   size="sm"
                   className="w-36"
@@ -474,16 +490,28 @@ export default function CycleMapPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Tipo de dia</span>
+                <span className="text-sm text-muted-foreground">Dia tipo</span>
+                <MultiSelect
+                  value={dayTypeCodes}
+                  onChange={handleDayTypesChange}
+                  options={dayTypes.map(dt => ({ id: dt.code, label: `${dt.name} (${dt.code})` }))}
+                  placeholder="Selecionar…"
+                  size="sm"
+                  containerClassName="w-48"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Metodo</span>
                 <Select
-                  value={dayTypeCode}
-                  onChange={e => handleDayTypeChange(e.target.value)}
+                  value={methodology}
+                  onChange={e => setMethodology(e.target.value as Methodology)}
                   size="sm"
                   className="w-40"
                 >
-                  {dayTypes.map(dt => (
-                    <option key={dt.id} value={dt.code}>{dt.name} ({dt.code})</option>
-                  ))}
+                  <option value="linear">Media</option>
+                  <option value="longer">Media alta</option>
+                  <option value="shorter">Media baixa</option>
                 </Select>
               </div>
 
@@ -519,6 +547,7 @@ export default function CycleMapPage() {
                     hourClusters={state.hourClusters}
                     cuts={state.cuts}
                     subCuts={state.subCuts}
+                    methodology={methodology}
                     onCutsChange={cuts => handleCutsChange(dir, cuts)}
                     onSubCutsChange={subCuts => handleSubCutsChange(dir, subCuts)}
                     onHourClustersChange={hc => handleHourClustersChange(dir, hc)}
