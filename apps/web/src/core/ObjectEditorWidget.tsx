@@ -1,5 +1,14 @@
 'use client'
 
+// NOTE: despite the "generic" framing, this widget is not a true recursive JSON-schema
+// editor — each Sub*Editor below was hand-written to match one specific shape found in
+// TransitLine.metrics (the only field using widget: 'object-editor' in the whole app
+// today), and the dispatch in ObjectEditorWidget picks between them by sniffing
+// field.fields shapes rather than a clean type-driven switch. It works for what it
+// currently serves, but if a second schema field ever needs this widget, treat that as
+// the trigger to refactor into a real recursive renderer first — bolting one more
+// shape-specific Sub*Editor onto this file is how it stops being tractable.
+
 import { Controller, type Control } from 'react-hook-form'
 import { cn } from '@/lib/utils'
 import type { MetadataField } from '@nyx/types'
