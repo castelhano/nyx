@@ -182,6 +182,49 @@ export function SubArrayEditor({
   )
 }
 
+/** Dynamic-keyed group of sub-sections, e.g. metrics.windows = { <dayTypeCode>: { OUTBOUND:
+ *  [...], INBOUND: [...] }, ... } — the value shape per key (`field.fields`) is static and
+ *  introspected server-side, but which keys exist is data (DayType.code is a free-text
+ *  resource, not a fixed enum), so keys are read from `value` itself rather than from the
+ *  schema. Existing keys only — this editor corrects/inspects windows already imported via
+ *  cycle-map, it doesn't originate a new dayType's data from scratch. */
+export function SubRecordEditor({
+  field, value, onChange, readonly,
+}: {
+  field:    MetadataField
+  value:    Record<string, Record<string, unknown>>
+  onChange: (v: Record<string, Record<string, unknown>>) => void
+  readonly?: boolean
+}) {
+  const keys = Object.keys(value)
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
+      {keys.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">Nenhum dado cadastrado.</p>
+      )}
+      {keys.map((key) => (
+        <div key={key} className="pl-3 border-l-2 border-border space-y-4">
+          <p className="text-xs font-medium text-muted-foreground">Tipo de dia: {key}</p>
+          {field.fields?.map(sub => {
+            if (sub.type !== 'array') return null
+            return (
+              <SubArrayEditor
+                key={sub.name}
+                field={sub}
+                value={((value[key]?.[sub.name] ?? []) as Record<string, unknown>[])}
+                onChange={v => onChange({ ...value, [key]: { ...(value[key] ?? {}), [sub.name]: v } })}
+                readonly={readonly}
+              />
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function ObjectEditorWidget({
   field, control, readonly,
 }: {
@@ -240,6 +283,17 @@ export function ObjectEditorWidget({
                     key={sub.name}
                     field={sub}
                     value={(value[sub.name] ?? []) as Record<string, unknown>[]}
+                    onChange={(v) => handleKey(sub.name, v)}
+                    readonly={readonly}
+                  />
+                )
+              }
+              if (sub.type === 'record') {
+                return (
+                  <SubRecordEditor
+                    key={sub.name}
+                    field={sub}
+                    value={(value[sub.name] ?? {}) as Record<string, Record<string, unknown>>}
                     onChange={(v) => handleKey(sub.name, v)}
                     readonly={readonly}
                   />

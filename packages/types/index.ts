@@ -68,7 +68,7 @@ export interface MetadataField {
   label: string
   placeholder?: string
   helpText?: string
-  type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation' | 'object' | 'array'
+  type: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation' | 'object' | 'array' | 'record'
   required: boolean
   options?: string[]
   defaultValue?: unknown

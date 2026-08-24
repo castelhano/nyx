@@ -1,6 +1,6 @@
 import {
   ZodType, ZodObject, ZodString, ZodNumber, ZodBoolean,
-  ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault, ZodArray,
+  ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault, ZodArray, ZodRecord,
 } from 'zod'
 import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef, RowActionDef } from '@nyx/types'
 import { resourceRegistry } from './resource-registry'
@@ -85,6 +85,27 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
         showInForm:     meta.showInForm ?? true,
         sortable:       false,
         fields:         buildNestedFields((inner as ZodObject<any>).shape),
+        ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
+      }
+    }
+
+    // dynamic-keyed object (e.g. metrics.windows, keyed by DayType.code — a free-text
+    // resource, not a fixed enum, so it can't be modeled as ZodObject-with-known-keys).
+    // The *value* shape is still static, so it's introspected once here; which keys
+    // actually exist is data, resolved client-side from the record being edited.
+    if (inner instanceof ZodRecord) {
+      const valueInner = unwrap((inner as any)._def.valueType as ZodType)
+      return {
+        name,
+        label:          meta.label ?? toTitleCase(name),
+        type:           'record' as const,
+        required:       isRequired(field),
+        listVisibility: 'never'  as const,
+        showInForm:     meta.showInForm ?? true,
+        sortable:       false,
+        ...(valueInner instanceof ZodObject
+          ? { fields: buildNestedFields((valueInner as ZodObject<any>).shape) }
+          : {}),
         ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
       }
     }

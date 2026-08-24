@@ -16,6 +16,14 @@ const renewalIndexStatSchema = z.object({
   sourceFile:      z.string().meta({ label: 'Arquivo fonte', showInForm: false }),
 })
 
+const windowEntrySchema = z.object({
+  from:            z.number().min(0).max(23.5).default(0).meta({ label: 'De',             min: 0, max: 23.5 }),
+  to:              z.number().min(0).max(23.5).default(23.5).meta({ label: 'Até',           min: 0, max: 23.5 }),
+  minutes:         z.number().positive().min(1).meta({ label: 'Viagem (min)',  min: 1 }),
+  intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
+  isDerived:       z.boolean().optional().meta({ label: 'Inferida' }),
+})
+
 export const lineSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
@@ -87,10 +95,14 @@ export const lineSchema = withMeta(
         INBOUND:   z.number().positive().optional().meta({ label: 'Volta (km)' }),
         CIRCULAR:  z.number().positive().optional().meta({ label: 'Circular (km)' }),
       }).optional().meta({ label: 'Extensão por Sentido' }),
-      // windows is keyed by dayTypeCode first (same convention as demand, applied via
-      // LineService.applyWindows/cycle-map) — not modeled here because it's a dynamic
-      // record keyed by DayType.code, which the generic object-editor widget can't
-      // introspect; edited exclusively through the cycle-map import tool.
+      // keyed by dayTypeCode first (DayType.code is a free-text resource, not a fixed
+      // enum, hence z.record rather than a fixed OUTBOUND/INBOUND/CIRCULAR-style object)
+      // — same convention as demand, applied via LineService.applyWindows/cycle-map.
+      windows: z.record(z.string(), z.object({
+        OUTBOUND: z.array(windowEntrySchema).optional().meta({ label: 'Ida' }),
+        INBOUND:  z.array(windowEntrySchema).optional().meta({ label: 'Volta' }),
+        CIRCULAR: z.array(windowEntrySchema).optional().meta({ label: 'Circular' }),
+      })).optional().meta({ label: 'Janelas de Ciclo' }),
       renewalIndex: z.object({
         OUTBOUND: renewalIndexStatSchema.optional().meta({ label: 'Ida' }),
         INBOUND:  renewalIndexStatSchema.optional().meta({ label: 'Volta' }),
