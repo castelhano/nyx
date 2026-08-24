@@ -43,7 +43,9 @@ interface LineRecord {
   code:    string
   name:    string
   metrics: {
-    windows?:      Partial<Record<Direction, CycleWindow[]>>
+    // windows is keyed by dayTypeCode first (same convention as demand — see prisma
+    // schema comment on TransitLine.metrics), then by direction
+    windows?:      Record<string, Partial<Record<Direction, CycleWindow[]>>>
     // metrics.demand is keyed by dayTypeCode first — see prisma schema comment
     // on TransitLine.metrics — then by direction, then by hour (string keys).
     demand?:       Record<string, Partial<Record<Direction, Record<string, number>>>>
@@ -246,7 +248,9 @@ export function LineScheduleGeneratorModal({ planId, lineId, dayTypeCode, onClos
   const windowsSeededRef = useRef(false)
 
   function seedWindows(l: LineRecord | undefined, tolerance: ToleranceLevel): GenWindow[] {
-    const base       = buildUnifiedWindows(l?.metrics?.windows?.OUTBOUND ?? [], l?.metrics?.windows?.INBOUND ?? [])
+    // falls back to 'U' (dia útil) when this dayType has no cycle data imported yet
+    const windowsForDay = l?.metrics?.windows?.[dayTypeCode] ?? l?.metrics?.windows?.['U']
+    const base       = buildUnifiedWindows(windowsForDay?.OUTBOUND ?? [], windowsForDay?.INBOUND ?? [])
     const absorbed   = absorbPartialGaps(base)
     const toleranced = mergeByTolerance(absorbed, TOLERANCE_MINUTES[tolerance])
     const demand     = l?.metrics?.demand?.[dayTypeCode] ?? {}

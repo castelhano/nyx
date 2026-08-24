@@ -1011,12 +1011,16 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // Cycle time (minutes) for a departure from TransitLine.metrics.windows — same
   // resolution logic as the frontend's resolveCycleWindow (vehicles.view.ts), kept
   // in sync manually since one runs in the browser and the other server-side.
+  // windows is keyed by dayTypeCode first (see LineService.applyWindows); falls back
+  // to 'U' (dia útil) when the plan's own dayType has no cycle data imported yet.
   private resolveCycleMinutes(
     metrics:          Record<string, any> | null | undefined,
+    dayTypeCode:      string,
     direction:        string,
     departureMinutes: number,
   ): number | null {
-    const windows = metrics?.windows?.[direction] ?? metrics?.windows?.['OUTBOUND'] ?? []
+    const forDayType = metrics?.windows?.[dayTypeCode] ?? metrics?.windows?.['U'] ?? {}
+    const windows     = forDayType[direction] ?? forDayType['OUTBOUND'] ?? []
     const slot     = (Math.floor(departureMinutes / 30) / 2) % 24
     const window   = (windows as any[]).find(w => slot >= w.from && slot <= w.to)
     return window?.minutes ?? null
@@ -1096,7 +1100,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   async switchLineSchedule(planId: string, lineId: string, lineScheduleId: string): Promise<void> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
-      select: { id: true, scopeId: true, dayTypeId: true, status: true },
+      select: { id: true, scopeId: true, dayTypeId: true, status: true, dayType: { select: { code: true } } },
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
@@ -1147,7 +1151,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       const missingRoutes = new Set<string>()
       tripRows = toCreate.map(d => {
-        const cycleMinutes  = this.resolveCycleMinutes(line.metrics as any, d.route.direction, d.departureMinutes)
+        const cycleMinutes  = this.resolveCycleMinutes(line.metrics as any, plan.dayType.code, d.route.direction, d.departureMinutes)
         const matrixMinutes = matrixMap.get(`${d.route.originLocalityId}:${d.route.destinationLocalityId}`)
         const minutes       = cycleMinutes ?? matrixMinutes
         if (minutes === undefined) missingRoutes.add(d.routeId)

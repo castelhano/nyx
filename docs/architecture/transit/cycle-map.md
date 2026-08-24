@@ -1,6 +1,6 @@
 # Cycle Map — Architecture Reference
 
-The cycle map is a bulk-import tool that turns raw trip execution data (exported from an operations system) into per-direction cycle-time windows stored on each transit line record.
+The cycle map is a bulk-import tool that turns raw trip execution data (exported from an operations system) into per-direction cycle-time windows stored on each transit line record, scoped to the day type (`DayType.code`, e.g. `U`/`S`/`D`) selected when importing.
 
 ---
 
@@ -20,31 +20,36 @@ buildHourClusters() ← cycle-utils.ts
 suggestCuts()       ← cycle-utils.ts
     │  detects hour boundaries where avg cycle time shifts ≥15%
     ▼
-[user reviews canvas, adjusts cuts/clusters/interval]
+[user selects day type, reviews canvas, adjusts cuts/clusters/interval]
     ▼
 computeWindows()    ← cycle-utils.ts
     │  collapses hour clusters into time windows (from→to) using the cut boundaries
     │  each window: { from, to, minutes (weighted avg), intervalMinutes }
     ▼
-PATCH /transit/transit-line/:id
-    └─ body: { metrics: { windows: { OUTBOUND: [...], INBOUND: [...] } } }
+POST /transit/transit-line/windows/apply
+    └─ body: { dayTypeCode, updates: [{ lineId, windows: { OUTBOUND: [...], INBOUND: [...] } }] }
 ```
 
 ---
 
 ## Data Model Output
 
-Windows are stored in the `metrics` JSON field of the `TransitLine` record:
+Windows are stored in the `metrics` JSON field of the `TransitLine` record, keyed by `dayTypeCode` first — same convention as `metrics.demand` (see `LineService.applyDemand`):
 
 ```ts
 metrics: {
   windows: {
-    OUTBOUND: Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>
-    INBOUND:  Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>
-    CIRCULAR: Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>
+    U: { // dayTypeCode
+      OUTBOUND: Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>
+      INBOUND:  Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>
+      CIRCULAR: Array<{ from: number; to: number; minutes: number; intervalMinutes: number }>
+    }
+    S: { ... }, D: { ... }
   }
 }
 ```
+
+Consumers that resolve a cycle window (schedule generator, block editor, vehicle-plan materialization) fall back to `windows['U']` (dia útil) when the plan's own day type has no cycle data imported yet.
 
 `from` and `to` are hour integers (e.g. `6`–`11`). `minutes` is the weighted average cycle time across all active clusters in that window. `intervalMinutes` is a uniform headway value set by the user and applied equally to all windows of a direction. Custom intervals per window can be defined by the user in the line settings, but they will be overwritten during the next sync call.
 
@@ -87,7 +92,7 @@ const DEFAULT_INTERVAL: Record<Direction, number> = {
 }
 ```
 
-On reload, if the line already has saved windows, the interval from `windows[dir][0].intervalMinutes` is restored instead of the default (all windows for a direction always share the same interval value).
+On reload, if the line already has saved windows for the selected day type, the interval from `windows[dayTypeCode][dir][0].intervalMinutes` is restored instead of the default (all windows for a direction always share the same interval value). Switching the day type selector reloads this default for the newly selected day type.
 
 ---
 
@@ -108,14 +113,15 @@ Users can click a dot to toggle outlier/disabled state. Vertical cut lines are d
 
 ## Page Mechanics
 
-- **Single save** (`handleSave`): computes windows from current `dirStates`, PATCHes the current line, then advances to the next one.
+- **Day type selector**: fetched from `/transit/day-type` on mount, defaults to the first day type; changing it reloads the current line's `dirStates` against that day type's previously saved windows (if any). On CSV upload, `suggestDayTypeCode()` (`cycle-utils.ts`) parses the `Data` of the file's first trip into an ISO weekday and matches it against each day type's own `pattern.days` — pre-selecting the match instead of leaving whatever was selected before. Day types with no `pattern` (e.g. "Especial"/"Férias") can never be suggested this way; the selector falls back to its current value when the date can't be parsed or matched.
+- **Single save** (`handleSave`): computes windows from current `dirStates`, calls `windows/apply` for the current line under the selected day type, then advances to the next one.
 - **Save all** (`handleSaveAll`): iterates every line in the CSV. The currently displayed line uses `dirStates` directly. All other lines are reprocessed headlessly (cluster → suggest cuts → compute windows) without user interaction, using their previously saved interval or `DEFAULT_INTERVAL` as fallback.
 - **Include edited toggle**: rebuilds `hourClusters` for the current line with or without trips flagged as edited in the source system.
 - **Encoding**: CSV is read as `latin1` to handle accented characters from Brazilian operations exports.
 
 ### Partial metrics update
 
-The save payload sends only `{ metrics: { windows } }` — it does **not** spread the full `metrics` object on the frontend. The backend (`LineService.update`) reads the current record and shallow-merges the incoming `metrics` patch on top of the existing value before writing. This ensures that other keys inside `metrics` (e.g. `extensionKm`, future demand windows) are never overwritten by the cycle map, regardless of how stale the frontend's cached line data is.
+The save payload sends only `{ dayTypeCode, updates: [{ lineId, windows }] }` to the dedicated `windows/apply` endpoint — not a generic PATCH to `metrics`. The backend (`LineService.applyWindows`) reads the current record and merges the incoming windows into `metrics.windows[dayTypeCode]` only, leaving every other key inside `metrics` (`extensionKm`, `demand`, `renewalIndex`, and windows for every other day type) untouched, regardless of how stale the frontend's cached line data is. This mirrors `LineService.applyDemand`.
 
 ---
 

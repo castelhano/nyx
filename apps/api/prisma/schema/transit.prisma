@@ -85,7 +85,9 @@ model TransitLine {
    {
    "extensionKm":{"OUTBOUND":16.5,"INBOUND":16.5},
    "windows":{
-      "OUTBOUND":[{"from":4,"to":5,"minutes":54,"intervalMinutes":10}, ...
+      "U":{
+          "OUTBOUND":[{"from":4,"to":5,"minutes":54,"intervalMinutes":10}, ...
+      "S":{...}, "D":{...}
    "demand":{
       "U":{
           "OUTBOUND":{

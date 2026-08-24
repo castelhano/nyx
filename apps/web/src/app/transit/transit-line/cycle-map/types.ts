@@ -22,8 +22,10 @@ export interface DotCluster {
 }
 
 export interface CsvData {
-  lines:  string[]
-  byLine: Map<string, Map<Direction, RawTrip[]>>
+  lines:      string[]
+  byLine:     Map<string, Map<Direction, RawTrip[]>>
+  // "Data" of the first row with a usable trip — used to suggest a dayType
+  sampleDate: string | null
 }
 
 export interface DotClickInfo {

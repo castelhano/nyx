@@ -371,6 +371,7 @@ export default function VehiclePlanPage() {
       {addTripOpen && mergedPlottedData && selectedLineIds.size > 0 && (
         <AddTripModal
           planId={id}
+          dayTypeCode={ganttData?.plan?.dayType?.code ?? 'U'}
           plottedLines={mergedPlottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
           plottedBlocks={mergedPlottedData.blocks}
           reference={addTripReference}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal }                  from 'react-dom'
 import { useRouter }                     from 'next/navigation'
 import { Icons }                         from '@/lib/icons'
@@ -14,7 +14,7 @@ import { useShortcut }                   from '@/lib/keywatch'
 import { apiFetch }                      from '@/lib/auth'
 import { useToast }                      from '@/lib/toast-context'
 import { parseCsv }                      from './csv-parser'
-import { buildHourClusters, suggestCuts, computeWindows } from './cycle-utils'
+import { buildHourClusters, suggestCuts, computeWindows, suggestDayTypeCode } from './cycle-utils'
 import type { Window }                   from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
 import type { CsvData, Direction, DotCluster } from './types'
@@ -39,13 +39,21 @@ interface LineRecord {
   code:    string
   metrics: {
     extensionKm?: Record<string, number>
-    windows?:     Record<Direction, Window[]>
+    // keyed by dayTypeCode first (see LineService.applyWindows), then by direction
+    windows?:     Record<string, Record<Direction, Window[]>>
   } | null
 }
 
 interface SaveAllResult {
   saved:  string[]
   errors: Array<{ code: string; message: string }>
+}
+
+interface DayType {
+  id:      string
+  code:    string
+  name:    string
+  pattern: unknown
 }
 
 export default function CycleMapPage() {
@@ -62,8 +70,18 @@ export default function CycleMapPage() {
   const [savingAll,      setSavingAll]      = useState(false)
   const [saveAllResult,  setSaveAllResult]  = useState<SaveAllResult | null>(null)
   const [dirStates,      setDirStates]      = useState<Map<Direction, DirState>>(new Map())
+  const [dayTypes,       setDayTypes]       = useState<DayType[]>([])
+  const [dayTypeCode,    setDayTypeCode]    = useState('')
 
   const poolLines  = csvData ? csvData.lines.filter(code => !savedLines.has(code)) : []
+
+  useEffect(() => {
+    apiFetch('/transit/day-type?pageSize=100').then(r => r.json()).then(({ data }: { data: DayType[] }) => {
+      setDayTypes(data ?? [])
+      if (data?.length && !dayTypeCode) setDayTypeCode(data[0].code)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ──────────────── Topbar ──────────────────────────
 
@@ -126,20 +144,27 @@ export default function CycleMapPage() {
         }
       } catch { /* fallback: no pre-fill */ }
 
+      // suggest a dayType from the date of the CSV's first trip (dia útil/sábado/domingo
+      // only — "Especial"/"Férias" have no weekday pattern to infer from); falls back to
+      // whatever's currently selected when the date can't be parsed or matched
+      const suggested = suggestDayTypeCode(data.sampleDate, dayTypes) ?? dayTypeCode
+
       setCsvData(data)
       setLinesMap(map)
       setSavedLines(new Set())
       setLineIndex(0)
-      loadLineData(data, data.lines[0], includeEdited, map)
+      setDayTypeCode(suggested)
+      loadLineData(data, data.lines[0], includeEdited, map, suggested)
     }
     reader.readAsText(file, 'latin1')
   }
 
   function loadLineData(
-    data:        CsvData,
-    lineCode:    string,
-    withEdited:  boolean,
-    map:         Map<string, LineRecord>,
+    data:            CsvData,
+    lineCode:        string,
+    withEdited:      boolean,
+    map:             Map<string, LineRecord>,
+    forDayTypeCode:  string,
   ) {
     const dirMap   = data.byLine.get(lineCode)
     if (!dirMap) return
@@ -153,7 +178,7 @@ export default function CycleMapPage() {
 
       const hc              = buildHourClusters(trips, withEdited)
       const cuts            = suggestCuts(trips)
-      const existingWindows = existing?.metrics?.windows?.[dir]
+      const existingWindows = existing?.metrics?.windows?.[forDayTypeCode]?.[dir]
       const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
       // 30min sub-cuts aren't restored from a previous save — the window
       // shape alone can't reliably tell a real sub-cut apart from an
@@ -163,6 +188,14 @@ export default function CycleMapPage() {
       next.set(dir, { hourClusters: hc, cuts, subCuts, intervalMinutes })
     }
     setDirStates(next)
+  }
+
+  // ──────────────── dayType change ──────────────────────────
+
+  function handleDayTypeChange(code: string) {
+    setDayTypeCode(code)
+    if (!csvData) return
+    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, code)
   }
 
   // ──────────────── includeEdited toggle ──────────────────────────
@@ -198,7 +231,7 @@ export default function CycleMapPage() {
       return
     }
     setLineIndex(next)
-    loadLineData(csvData, poolLines[next], includeEdited, linesMap)
+    loadLineData(csvData, poolLines[next], includeEdited, linesMap, dayTypeCode)
   }
 
   // ──────────────── remove from pool ──────────────────────────
@@ -214,7 +247,7 @@ export default function CycleMapPage() {
     }
     const nextIdx = Math.min(lineIndex, newPool.length - 1)
     setLineIndex(nextIdx)
-    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap)
+    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCode)
   }
 
   // ──────────────── save ──────────────────────────
@@ -237,9 +270,9 @@ export default function CycleMapPage() {
         if (w.length > 0) windows[dir] = w
       }
 
-      const res = await apiFetch(`/transit/transit-line/${lineRec.id}`, {
-        method: 'PATCH',
-        body:   JSON.stringify({ metrics: { windows } }),
+      const res = await apiFetch('/transit/transit-line/windows/apply', {
+        method: 'POST',
+        body:   JSON.stringify({ dayTypeCode, updates: [{ lineId: lineRec.id, windows }] }),
       })
 
       if (!res.ok) {
@@ -261,7 +294,7 @@ export default function CycleMapPage() {
 
       const nextIdx = Math.min(lineIndex, newPool.length - 1)
       setLineIndex(nextIdx)
-      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap)
+      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCode)
     } finally {
       setSaving(false)
     }
@@ -301,7 +334,7 @@ export default function CycleMapPage() {
               if (!trips || trips.length === 0) continue
               const hc              = buildHourClusters(trips, includeEdited)
               const cuts            = suggestCuts(trips)
-              const existingWindows = lineRec.metrics?.windows?.[dir]
+              const existingWindows = lineRec.metrics?.windows?.[dayTypeCode]?.[dir]
               const intervalMinutes = existingWindows?.[0]?.intervalMinutes ?? DEFAULT_INTERVAL[dir]
               const subCuts: number[] = []   // see loadLineData — not restored from a previous save
               const w = computeWindows(hc, cuts, subCuts, intervalMinutes)
@@ -310,9 +343,9 @@ export default function CycleMapPage() {
           }
         }
 
-        const res = await apiFetch(`/transit/transit-line/${lineRec.id}`, {
-          method: 'PATCH',
-          body:   JSON.stringify({ metrics: { windows } }),
+        const res = await apiFetch('/transit/transit-line/windows/apply', {
+          method: 'POST',
+          body:   JSON.stringify({ dayTypeCode, updates: [{ lineId: lineRec.id, windows }] }),
         })
 
         if (!res.ok) {
@@ -425,7 +458,7 @@ export default function CycleMapPage() {
                   onChange={e => {
                     const idx = Number(e.target.value)
                     setLineIndex(idx)
-                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap)
+                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap, dayTypeCode)
                   }}
                   size="sm"
                   className="w-36"
@@ -438,6 +471,20 @@ export default function CycleMapPage() {
                   {lineIndex + 1} de {totalLines}
                   {savedLines.size > 0 && ` · ${savedLines.size} salva${savedLines.size !== 1 ? 's' : ''}`}
                 </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Tipo de dia</span>
+                <Select
+                  value={dayTypeCode}
+                  onChange={e => handleDayTypeChange(e.target.value)}
+                  size="sm"
+                  className="w-40"
+                >
+                  {dayTypes.map(dt => (
+                    <option key={dt.id} value={dt.code}>{dt.name} ({dt.code})</option>
+                  ))}
+                </Select>
               </div>
 
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">

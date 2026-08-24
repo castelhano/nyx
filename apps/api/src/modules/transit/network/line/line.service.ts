@@ -128,6 +128,40 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     return { updated }
   }
 
+  // windows are keyed by dayTypeCode first, same convention as demand — a windows-only
+  // PATCH for one dayType must not clobber windows already stored for other dayTypes.
+  async applyWindows(
+    dayTypeCode: string,
+    updates: Array<{ lineId: string; windows: Record<string, unknown> }>,
+  ): Promise<{ updated: number }> {
+    const ids   = updates.map((u) => u.lineId)
+    const lines = await this.prisma.transitLine.findMany({
+      where:  { id: { in: ids } },
+      select: { id: true, code: true, metrics: true },
+    })
+
+    const lineMap = new Map(lines.map((l) => [l.id, l]))
+
+    let updated = 0
+    await Promise.all(
+      updates.map(async (u) => {
+        const line = lineMap.get(u.lineId)
+        if (!line) return
+        const metrics = (line.metrics as Record<string, unknown> ?? {})
+        const windows = { ...(metrics.windows as Record<string, unknown> ?? {}) }
+        windows[dayTypeCode] = u.windows
+        const newMetrics = { ...metrics, windows }
+        await this.model.update({
+          where: { id: line.id },
+          data:  { metrics: newMetrics },
+        })
+        updated++
+      }),
+    )
+
+    return { updated }
+  }
+
   async applyExtensions(
     updates: Array<{ lineId: string; direction: string; computedKm: number }>,
   ): Promise<{ updated: number }> {

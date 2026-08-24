@@ -694,7 +694,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
             overrides.get(trip.id)?.departureMinutes ?? trip.departureMinutes,
             minDep,
           )
-          const cycleWindow  = resolveCycleWindow(trip.route.line.metrics, trip.route.direction, effectiveDep)
+          const cycleWindow  = resolveCycleWindow(trip.route.line.metrics, ganttData?.plan.dayType?.code ?? 'U', trip.route.direction, effectiveDep)
           const cycleMinutes = cycleWindow?.minutes ?? null
           if (cycleWindow) tripsWithWindow++
           const newArrival = cycleMinutes != null

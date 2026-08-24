@@ -279,3 +279,58 @@ export function computeWindows(
 
   return result
 }
+
+// ── dayType suggestion ───────────────────────────────────────────────────────
+
+export interface DayTypeOption {
+  code:    string
+  pattern: unknown
+}
+
+/** Parses a CSV "Data" cell (DD/MM/YYYY or YYYY-MM-DD, optionally with a time
+ *  part) into an ISO weekday (1=Monday..7=Sunday). Returns null for anything
+ *  unparseable — the caller should fall back to no suggestion rather than
+ *  guess. Built as UTC to avoid the local-timezone date shift a bare
+ *  `new Date("YYYY-MM-DD")` construction is prone to. */
+export function parseIsoWeekday(dateStr: string): number | null {
+  const datePart = dateStr.trim().split(/\s+/)[0]
+  const slash    = datePart.split('/')
+  const dash     = datePart.split('-')
+
+  let y: number, m: number, d: number
+  if (slash.length === 3) {
+    [d, m, y] = slash.map(Number)
+  } else if (dash.length === 3) {
+    [y, m, d] = dash.map(Number)
+  } else {
+    return null
+  }
+  if (y < 100) y += 2000
+  if ([y, m, d].some(n => isNaN(n))) return null
+
+  const date = new Date(Date.UTC(y, m - 1, d))
+  if (isNaN(date.getTime())) return null
+
+  const jsDay = date.getUTCDay() // 0=Sunday..6=Saturday
+  return jsDay === 0 ? 7 : jsDay
+}
+
+/** Suggests which registered DayType a CSV import belongs to, from the date of
+ *  its first trip — matches against each DayType's own `pattern.days` (ISO
+ *  weekday numbers) instead of hardcoding day-type codes, so it works with
+ *  whatever day types this system has configured. DayTypes with no pattern
+ *  (e.g. "Especial"/"Férias") can never match — there's nothing in a date
+ *  alone to tell those apart from a regular weekday. Returns null (no
+ *  suggestion) when the date can't be parsed or no configured pattern covers
+ *  its weekday. */
+export function suggestDayTypeCode(sampleDate: string | null, dayTypes: DayTypeOption[]): string | null {
+  if (!sampleDate) return null
+  const isoWeekday = parseIsoWeekday(sampleDate)
+  if (isoWeekday == null) return null
+
+  for (const dt of dayTypes) {
+    const days = (dt.pattern as { days?: unknown } | null)?.days
+    if (Array.isArray(days) && days.includes(isoWeekday)) return dt.code
+  }
+  return null
+}

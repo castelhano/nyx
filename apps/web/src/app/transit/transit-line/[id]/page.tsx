@@ -185,20 +185,23 @@ export default function TransitLineDetailPage() {
   const hasDemand = !!demand && Object.keys(demand).length > 0
 
   type WindowEntry = { from: number; to: number; minutes: number; intervalMinutes: number }
-  const windows    = (record?.metrics as Record<string, unknown> | undefined)?.windows as Record<string, WindowEntry[]> | undefined
-  const hasWindows = !!windows && Object.values(windows).some((arr) => arr?.length > 0)
+  // keyed by dayTypeCode first (see LineService.applyWindows), then by direction
+  const windows    = (record?.metrics as Record<string, unknown> | undefined)?.windows as Record<string, Record<string, WindowEntry[]>> | undefined
+  const hasWindows = !!windows && Object.values(windows).some((byDir) => Object.values(byDir).some((arr) => arr?.length > 0))
 
   const DIR_LABEL: Record<string, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 
   function exportCycles() {
     if (!windows) return
     const BOM  = '﻿'
-    const rows: string[] = ['sentido;de;ate;viagem (min);intervalo (min)']
-    for (const [dir, entries] of Object.entries(windows)) {
-      if (!entries?.length) continue
-      const label = DIR_LABEL[dir] ?? dir
-      for (const w of entries) {
-        rows.push(`${label};${w.from};${w.to};${w.minutes};${w.intervalMinutes}`)
+    const rows: string[] = ['tipo de dia;sentido;de;ate;viagem (min);intervalo (min)']
+    for (const [dayTypeCode, byDir] of Object.entries(windows)) {
+      for (const [dir, entries] of Object.entries(byDir)) {
+        if (!entries?.length) continue
+        const label = DIR_LABEL[dir] ?? dir
+        for (const w of entries) {
+          rows.push(`${dayTypeCode};${label};${w.from};${w.to};${w.minutes};${w.intervalMinutes}`)
+        }
       }
     }
     const blob = new Blob([BOM + rows.join('\n')], { type: 'text/csv;charset=utf-8;' })

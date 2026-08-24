@@ -24,4 +24,14 @@ export class LineController extends BaseController<Line, CreateLineDto, UpdateLi
   ) {
     return this.lineService.applyDemand(body.dayTypeCode ?? '', body.updates ?? [])
   }
+
+  @Post('windows/apply')
+  applyWindows(
+    @Body() body: {
+      dayTypeCode: string
+      updates: Array<{ lineId: string; windows: Record<string, unknown> }>
+    },
+  ) {
+    return this.lineService.applyWindows(body.dayTypeCode ?? '', body.updates ?? [])
+  }
 }

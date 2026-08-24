@@ -121,6 +121,7 @@ export interface AddTripReference {
 
 interface Props {
   planId:        string
+  dayTypeCode:   string
   plottedLines:  PlanLine[]
   plottedBlocks: GanttBlock[]
   reference:     AddTripReference | null
@@ -175,7 +176,7 @@ const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, onPendingAdd }: Props) {
+export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, reference, onClose, onPendingAdd }: Props) {
   const { toast } = useToast()
   useShortcutContext('modal')
 
@@ -299,18 +300,18 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
     // an existing break only counts as "the gap" if nothing else sits between it and the trip
     const startMinutes = nextBreak && (nextOther == null || nextBreak.departureMinutes < nextOther)
       ? nextBreak.arrivalMinutes + 1
-      : referenceTrip.trip.arrivalMinutes + (resolveCycleWindow(lineMetrics, candidateRoute.direction, referenceTrip.trip.arrivalMinutes)?.intervalMinutes ?? 5)
+      : referenceTrip.trip.arrivalMinutes + (resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, referenceTrip.trip.arrivalMinutes)?.intervalMinutes ?? 5)
 
     // space check only when a metrics window gives a synchronous duration — otherwise
     // let the async resolveCycle() + the submit-time overlap fallback handle it
-    const window = resolveCycleWindow(lineMetrics, candidateRoute.direction, startMinutes)
+    const window = resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, startMinutes)
     if (window && hasOverlap(block, startMinutes, startMinutes + window.minutes)) return
 
     setRouteId(candidateRoute.id)
     setDepHH(String(Math.floor(startMinutes / 60) % 24))
     setDepMM(String(startMinutes % 60))
     setBlockId(block.id)
-  }, [routes, reference, referenceEligible, referenceLineId, tripType, lineId, plottedLines])
+  }, [routes, reference, referenceEligible, referenceLineId, tripType, lineId, plottedLines, dayTypeCode])
 
   async function resolveCycle() {
     if (tripType === 'interval') return
@@ -329,7 +330,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
         if (token !== resolveRef.current) return
 
         const mm = parseInt(depMM, 10) || 0
-        const cycleMinutes = resolveCycleMinutes(metrics, route.direction, hh * 60 + mm)
+        const cycleMinutes = resolveCycleMinutes(metrics, dayTypeCode, route.direction, hh * 60 + mm)
         if (cycleMinutes != null) { setCycleMinutes(String(cycleMinutes)); return }
 
         const travelMin = await getTravelTime(route.originLocalityId, route.destinationLocalityId)
@@ -420,7 +421,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
       let curRoute  = route
       let curDep    = depMin
       let curDur    = arrivalMin - depMin // trip 1 always honors the form's own Duração field
-      let curWindow = resolveCycleWindow(lineMetrics, curRoute.direction, curDep)
+      let curWindow = resolveCycleWindow(lineMetrics, dayTypeCode, curRoute.direction, curDep)
 
       for (let i = 0; i < requestedCount; i++) {
         const curArr = curDep + curDur
@@ -459,7 +460,7 @@ export function AddTripModal({ plottedLines, plottedBlocks, reference, onClose, 
         // primary direction if alternating — else same route, back to back.
         const nextRoute  = flip(curRoute)
         const nextDep    = curArr + (curWindow?.intervalMinutes ?? 0)
-        const nextWindow = resolveCycleWindow(lineMetrics, nextRoute.direction, nextDep)
+        const nextWindow = resolveCycleWindow(lineMetrics, dayTypeCode, nextRoute.direction, nextDep)
         const nextDur    = nextWindow?.minutes
           ?? await getTravelTime(nextRoute.originLocalityId, nextRoute.destinationLocalityId)
         if (nextDur == null) break // no way to size the next trip — stop the batch here
