@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle, memo } from 'react'
+import { useTheme } from 'next-themes'
 import { useShortcut } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
@@ -99,6 +100,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
   const [tooltip,      setTooltip]      = useState<TooltipState | null>(null)
   const [blockDetail,  setBlockDetail]  = useState<BlockDetailState | null>(null)
   const lastEmittedVpRef               = useRef<ViewportSnapshot | null>(null)
+  const { resolvedTheme }              = useTheme()
 
   // ── engine lifecycle ────────────────────────────────────────────────────────
 
@@ -185,6 +187,13 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
       engineRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // renderer colors are read from the DOM at draw time — force a redraw when
+  // the theme actually changes so they don't stay stuck on whichever mode
+  // was active on mount
+  useEffect(() => {
+    engineRef.current?.requestDraw()
+  }, [resolvedTheme])
 
   // ── sync selection highlight with engine ────────────────────────────────────
 

@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Home, PanelLeft, RefreshCw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useShortcut } from '@/lib/keywatch'
+import { useToastContext } from '@/lib/toast-context'
 import { useSidebar } from './sidebar-context'
 
 function toYMD(d: Date): string {
@@ -21,6 +22,9 @@ export function GlobalShortcuts() {
   const router      = useRouter()
   const { toggle }  = useSidebar()
   const queryClient = useQueryClient()
+  const { toasts, remove } = useToastContext()
+  const toastsRef   = useRef(toasts)
+  useEffect(() => { toastsRef.current = toasts }, [toasts])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -46,28 +50,34 @@ export function GlobalShortcuts() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  // duplo-esc: perde foco do controle (se houver) e fecha toasts persistentes
+  // (autoDismiss: false, ex. erros) — não passa por useShortcut de propósito,
+  // pra não poluir o modal de atalhos
   useEffect(() => {
     let lastEsc = 0
 
-    function onEscBlur(e: KeyboardEvent) {
+    function onEscDouble(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
-      const target = e.target
-      if (!(target instanceof HTMLElement)) return
-      const tag = target.nodeName.toLowerCase()
-      if (!['input', 'textarea', 'select'].includes(tag)) return
 
       const now = Date.now()
-      if (now - lastEsc < 300) {
-        target.blur()
-        lastEsc = 0
-      } else {
-        lastEsc = now
+      const isDouble = now - lastEsc < 300
+      lastEsc = isDouble ? 0 : now
+      if (!isDouble) return
+
+      const target = e.target
+      if (target instanceof HTMLElement) {
+        const tag = target.nodeName.toLowerCase()
+        if (['input', 'textarea', 'select'].includes(tag)) target.blur()
+      }
+
+      for (const t of toastsRef.current) {
+        if (!t.autoDismiss) remove(t.id)
       }
     }
 
-    document.addEventListener('keydown', onEscBlur)
-    return () => document.removeEventListener('keydown', onEscBlur)
-  }, [])
+    document.addEventListener('keydown', onEscDouble)
+    return () => document.removeEventListener('keydown', onEscDouble)
+  }, [remove])
 
   useShortcut('alt+i', () => router.push('/'), {
     desc:   'Ir para Início',

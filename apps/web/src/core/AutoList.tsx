@@ -13,7 +13,7 @@ import {
 } from '@tanstack/react-table'
 import { useMetadata } from './useMetadata'
 import { useAuth } from '@/lib/auth-context'
-import { useShortcut, useKeywatch } from '@/lib/keywatch'
+import { useShortcut, useKeywatch, type ShortcutSection } from '@/lib/keywatch'
 import { KeyHint } from './FieldRenderer'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
@@ -28,6 +28,8 @@ import { useRelationLabel } from './useRelationLabel'
 import { cn, extractError } from '@/lib/utils'
 import type { FilterDef, MetadataField, PaginatedResult, RowActionDef } from '@nyx/types'
 import { RowActionsCell } from './RowActionsCell'
+
+const SEC_TABELA: ShortcutSection = { label: 'Tabela' }
 
 type Row = Record<string, unknown>
 
@@ -505,31 +507,31 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
 
   useShortcut('ctrl+arrowdown', () => {
     const rows = table.getRowModel().rows
-    
+
     if (!rows.length) return
     setFocusedRow((prev) => prev === null ? 0 : Math.min(prev + 1, rows.length - 1))
-  }, { desc: 'Tabela - Linha seguinte', icon: ChevronDown, origin: 'apps.web.src.core.AutoList' })
+  }, { desc: 'Linha seguinte', icon: ChevronDown, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('ctrl+arrowup', () => {
     const rows = table.getRowModel().rows
     if (!rows.length) return
     setFocusedRow((prev) => prev === null ? rows.length - 1 : Math.max(prev - 1, 0))
-  }, { desc: 'Tabela - Linha anterior', icon: ChevronUp, origin: 'apps.web.src.core.AutoList' })
+  }, { desc: 'Linha anterior', icon: ChevronUp, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('alt+pagedown', () => {
     if (data && page * 20 < data.total) setPage((p) => p + 1)
-  }, { desc: 'Tabela - Próxima página', icon: ArrowRightFromLine, origin: 'apps.web.src.core.AutoList' })
+  }, { desc: 'Próxima página', icon: ArrowRightFromLine, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('alt+pageup', () => {
     if (page > 1) setPage((p) => Math.max(1, p - 1))
-  }, { desc: 'Tabela - Página anterior', icon: ArrowLeftFromLine, origin: 'apps.web.src.core.AutoList' })
+  }, { desc: 'Página anterior', icon: ArrowLeftFromLine, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('ctrl+enter', () => {
     const rows = table.getRowModel().rows
     if (focusedRow !== null && onEdit && rows[focusedRow]) {
       onEdit(String(rows[focusedRow].original.id))
     }
-  }, { desc: 'Tabela - Editar linha selecionada', icon: SquarePen, origin: 'apps.web.src.core.AutoList' })
+  }, { desc: 'Editar linha selecionada', icon: SquarePen, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   const handleSort = useCallback((col: MetadataField) => {
     setSorting((prev) => {

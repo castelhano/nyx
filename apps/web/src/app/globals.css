@@ -168,9 +168,9 @@
   }
 
   .theme-slate {
-    --accent:             215 12% 46%; 
-    --accent-foreground:  215 15% 98%;
-    --ring:               215 20% 30%;
+    --accent:             215 14% 34%;
+    --accent-foreground:  215 15% 97%;
+    --ring:               215 22% 22%;
   }
 
   /* ── Cold Eucalyptus ──────────────────────────────────────────────────── */
@@ -210,9 +210,9 @@
 
   /* ── Slate ────────────────────────────────────────────────────────────── */
   .dark.theme-slate {
-    --accent:             215 8% 22%;
-    --accent-foreground:  215 5% 88%;
-    --ring:               215 25% 55%;
+    --accent:             215 10% 42%;
+    --accent-foreground:  215 10% 92%;
+    --ring:               215 30% 62%;
   }
 
   * { @apply border-border; }

@@ -6,7 +6,6 @@ const SEG_PADDING = 3   // px vertical
 const LABEL_FONT  = '11px Inter, system-ui, sans-serif'
 const DEADHEAD_PATTERN_ALPHA = 0.4
 const DIM_ALPHA              = 0.25
-const SELECTION_RING_COLOR   = 'rgba(255, 255, 255, 0.9)'
 const SELECTION_RING_WIDTH   = 2.5
 const LOCK_DOT_RADIUS        = 3
 const LOCK_DOT_COLOR         = '#0f172a'
@@ -31,6 +30,10 @@ export class Renderer {
 
   init(ctx: CanvasRenderingContext2D): void {
     this.ctx = ctx
+  }
+
+  private isDark(): boolean {
+    return typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
   }
 
   render(
@@ -75,12 +78,13 @@ export class Renderer {
 
   private drawRowBands(viewport: Viewport, rows: LayoutRow[]): void {
     const { ctx } = this
+    const bandColor = this.isDark() ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)'
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       if (!viewport.isRowVisible(row.y, row.height)) continue
       const canvasY = viewport.contentToCanvasY(row.y)
       if (i % 2 === 0) {
-        ctx.fillStyle = 'rgba(0,0,0,0.02)'
+        ctx.fillStyle = bandColor
         ctx.fillRect(0, canvasY, viewport.width, row.height)
       }
     }
@@ -119,7 +123,7 @@ export class Renderer {
     const { ctx }           = this
     const interval          = gridInterval(viewport.pixelsPerMinute)
     const startM            = Math.floor(viewport.visibleStartMinute / interval) * interval
-    ctx.strokeStyle         = 'rgba(0,0,0,0.07)'
+    ctx.strokeStyle         = this.isDark() ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)'
     ctx.lineWidth           = 1
     for (let m = startM; m <= viewport.visibleEndMinute; m += interval) {
       const x = Math.round(viewport.minuteToX(m)) + 0.5
@@ -141,6 +145,9 @@ export class Renderer {
     const { ctx }    = this
     const rowMap     = new Map(rows.map((r) => [r.id, r]))
     const hasSelect  = selectedSegIds.size > 0
+    const dark       = this.isDark()
+    const ringColor  = dark ? 'rgba(255, 255, 255, 0.9)' : 'rgba(15, 23, 42, 0.85)'
+    const hoverColor = dark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(15, 23, 42, 0.75)'
     ctx.font         = LABEL_FONT
     ctx.textBaseline = 'middle'
 
@@ -200,7 +207,7 @@ export class Renderer {
       }
 
       if (hovered && !hasSelect) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)'
+        ctx.strokeStyle = hoverColor
         ctx.lineWidth   = 2
         ctx.beginPath()
         ctx.roundRect(x, y, w, h, radius)
@@ -245,7 +252,7 @@ export class Renderer {
 
     // ring pass: draw selection outline on top of everything
     if (rings.length > 0) {
-      ctx.strokeStyle = SELECTION_RING_COLOR
+      ctx.strokeStyle = ringColor
       ctx.lineWidth   = SELECTION_RING_WIDTH
       for (const { x, y, w, h, radius } of rings) {
         ctx.beginPath()
@@ -256,7 +263,7 @@ export class Renderer {
 
     // focus ring pass: keyboard-nav highlight — same ring, no dimming
     if (focusRect) {
-      ctx.strokeStyle = SELECTION_RING_COLOR
+      ctx.strokeStyle = ringColor
       ctx.lineWidth   = SELECTION_RING_WIDTH
       ctx.beginPath()
       ctx.roundRect(focusRect.x, focusRect.y, focusRect.w, focusRect.h, focusRect.radius)
