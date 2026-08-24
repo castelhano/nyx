@@ -70,13 +70,15 @@ IQR is computed over all individual trip values in active (non-disabled) cluster
 
 ## Window Computation
 
-`suggestCuts()` proposes a cut between hour `h` and `h+1` when:
+`suggestCuts()` walks the hours in order against a rolling `anchor` — the raw average of the hour that opened the current candidate window. It proposes a cut between hour `h` and `h+1` when:
 
 ```
-|avg(h+1) - avg(h)| / avg(h) >= 0.15
+|avg(h+1) - anchor| / anchor >= 0.15
 ```
 
-Cuts divide the active hour range into windows. Each window's `minutes` value is the weighted average of all non-outlier, non-disabled cluster centers within that window, weighted by trip count.
+and resets `anchor` to `avg(h+1)` whenever that fires. Comparing against the anchor instead of just the previous hour means gradual drift spread over several hours (each individual step under 15%) still trips the threshold once the cumulative change from the window's start crosses it, instead of hiding inside small hour-to-hour steps.
+
+Cuts divide the active hour range into windows. Each window's `minutes` value is the weighted average of all non-outlier, non-disabled cluster centers within that window, weighted by trip count (or tilted by percentile rank — see Methodology selector below).
 
 ---
 

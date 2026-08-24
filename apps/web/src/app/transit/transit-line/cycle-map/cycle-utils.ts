@@ -95,11 +95,20 @@ export function suggestCuts(trips: RawTrip[]): number[] {
   const avg = (vals: number[]) => vals.reduce((s, v) => s + v, 0) / vals.length
   const cuts: number[] = []
 
+  // anchor = average of the hour that opened the window currently being
+  // accumulated. Each following hour is compared against the anchor, not
+  // just the hour right before it, so a gradual drift spread over several
+  // hours (each individual step under 15%) still crosses the threshold
+  // instead of hiding inside small hour-to-hour steps. The anchor resets to
+  // the new hour whenever a cut fires, so it never compares against a window
+  // that's already been split off.
+  let anchor = avg(byHour.get(hours[0])!)
+
   for (let i = 1; i < hours.length; i++) {
-    const prev = avg(byHour.get(hours[i - 1])!)
     const curr = avg(byHour.get(hours[i])!)
-    if (prev > 0 && Math.abs(curr - prev) / prev >= 0.15) {
+    if (anchor > 0 && Math.abs(curr - anchor) / anchor >= 0.15) {
       cuts.push(hours[i - 1])
+      anchor = curr
     }
   }
   return cuts
