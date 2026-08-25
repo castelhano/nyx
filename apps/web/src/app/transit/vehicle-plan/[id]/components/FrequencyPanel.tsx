@@ -24,6 +24,17 @@ function fmtMin(minutes: number): string {
   return `${Math.floor(minutes / 60).toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}`
 }
 
+// Snaps to the device pixel grid, not just the CSS pixel grid — on a fractional
+// devicePixelRatio (e.g. 125%/150% display scaling) a whole CSS px can still land
+// on a blurry half-device-pixel, which is what made these 1px hairlines look
+// blurry/"thicker" on some minutes but not others. The canvas Gantt board avoids
+// this by rendering at devicePixelRatio scale (engine/gantt-engine.ts); here we
+// just snap the CSS position to whatever that grid is.
+function snapToDevicePixel(x: number): number {
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+  return Math.round(x * dpr) / dpr
+}
+
 interface Props {
   data: VehiclePlanGanttData
   vp:   ViewportSnapshot
@@ -83,7 +94,7 @@ export function FrequencyPanel({ data, vp }: Props) {
                     key={i}
                     title={fmtMin(min)}
                     className={`absolute top-0.5 bottom-0.5 w-px ${barColor} opacity-80`}
-                    style={{ left: (min - vp.dayStartMinute) * vp.pixelsPerMinute - vp.scrollX }}
+                    style={{ left: snapToDevicePixel((min - vp.dayStartMinute) * vp.pixelsPerMinute - vp.scrollX) }}
                   />
                 ))}
               </div>
