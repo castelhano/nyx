@@ -125,7 +125,7 @@ export function FrequencyPanel({ data, vp, focusedTripId }: Props) {
                   const cls       = entry.dup
                     ? 'absolute top-0 bottom-0 w-0.5 bg-amber-400'
                     : isFocused
-                      ? `absolute top-0 bottom-0 w-px ${barColor}`
+                      ? `absolute top-0 bottom-0 w-0.5 ${barColor}`
                       : `absolute top-0.5 bottom-0.5 w-px ${barColor} opacity-80`
                   return (
                     <div
