@@ -231,6 +231,7 @@ export default function VehiclePlanPage() {
         label:   'Linhas',
         icon:    Icons.List,
         onClick: () => setLinesPanelOpen(v => !v),
+        variant: (linesPanelOpen ? 'default' : 'ghost') as 'default' | 'ghost',
         menu: [
           { label: 'Versões', icon: Icons.GitBranch, onClick: () => {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
@@ -270,7 +271,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount])
+  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused

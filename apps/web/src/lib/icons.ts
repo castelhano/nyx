@@ -3,6 +3,7 @@ export type { LucideIcon } from 'lucide-react'
 
 const iconNames = [
   'AlertCircle',
+  'AlertTriangle',
   'AlignHorizontalDistributeCenter',
   'ArrowDown',
   'ArrowLeft',
@@ -25,6 +26,7 @@ const iconNames = [
   'CheckSquare',
   'ChevronDown',
   'ClipboardList',
+  'Clock',
   'Coffee',
   'Copy',
   'Download',
@@ -33,6 +35,7 @@ const iconNames = [
   'Eye',
   'EyeOff',
   'FileText',
+  'Gauge',
   'GitBranch',
   'Info',
   'KeyRound',
@@ -55,6 +58,7 @@ const iconNames = [
   'MapPinPlus',
   'MousePointerClick',
   'Play',
+  'RotateCcw',
   'Route',
   'Ruler',
   'Save',
@@ -72,6 +76,8 @@ const iconNames = [
   'Tag',
   'Timer',
   'Trash2',
+  'TrendingDown',
+  'TrendingUp',
   'Undo2',
   'Truck',
   'Upload',
@@ -79,6 +85,7 @@ const iconNames = [
   'Users',
   'Warehouse',
   'X',
+  'Zap',
   'ZoomIn',
   'ZoomOut',
 ] as const
