@@ -36,23 +36,43 @@ function snapToDevicePixel(x: number): number {
 }
 
 interface Props {
-  data: VehiclePlanGanttData
-  vp:   ViewportSnapshot
+  data:           VehiclePlanGanttData
+  vp:             ViewportSnapshot
+  focusedTripId?: string | null
 }
 
-export function FrequencyPanel({ data, vp }: Props) {
+interface FreqEntry {
+  min: number
+  // true when this trip's own line has another trip at this exact minute+direction —
+  // one vehicle can't run two trips at once, so this almost always signals a
+  // generation/edit bug rather than two unrelated lines just coinciding on the clock.
+  dup: boolean
+}
+
+export function FrequencyPanel({ data, vp, focusedTripId }: Props) {
   const groups = useMemo(() => {
-    const map = new Map<string, number[]>()
+    const raw = new Map<string, { min: number; lineId: string }[]>()
 
     for (const block of data.blocks) {
       for (const bt of block.blockTrips) {
         const dir = bt.trip.route.direction
-        if (!map.has(dir)) map.set(dir, [])
-        map.get(dir)!.push(bt.trip.departureMinutes)
+        if (!raw.has(dir)) raw.set(dir, [])
+        raw.get(dir)!.push({ min: bt.trip.departureMinutes, lineId: bt.trip.route.line.id })
       }
     }
 
-    for (const minutes of map.values()) minutes.sort((a, b) => a - b)
+    const map = new Map<string, FreqEntry[]>()
+    for (const [dir, list] of raw) {
+      const counts = new Map<string, number>()
+      for (const e of list) {
+        const key = `${e.lineId}:${e.min}`
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
+      const entries = list
+        .map(e => ({ min: e.min, dup: counts.get(`${e.lineId}:${e.min}`)! > 1 }))
+        .sort((a, b) => a.min - b.min)
+      map.set(dir, entries)
+    }
     return map
   }, [data])
 
@@ -60,6 +80,16 @@ export function FrequencyPanel({ data, vp }: Props) {
     ...DIRECTION_ORDER.filter(d => groups.has(d)),
     ...[...groups.keys()].filter(d => !DIRECTION_ORDER.includes(d)),
   ]
+
+  // Focused trip — highlights its own tick below instead of the whole row.
+  const focused = useMemo(() => {
+    if (!focusedTripId) return null
+    for (const block of data.blocks) {
+      const bt = block.blockTrips.find(bt => bt.id === focusedTripId)
+      if (bt) return { direction: bt.trip.route.direction, min: bt.trip.departureMinutes }
+    }
+    return null
+  }, [data, focusedTripId])
 
   if (orderedDirs.length === 0) return null
 
@@ -85,18 +115,27 @@ export function FrequencyPanel({ data, vp }: Props) {
         {/* bar area — same coordinate space as GanttBoard canvas */}
         <div className="flex-1 min-w-0 overflow-hidden py-2 flex flex-col gap-1">
           {orderedDirs.map(dir => {
-            const minutes  = groups.get(dir)!
+            const entries  = groups.get(dir)!
             const barColor = DIRECTION_COLORS[dir] ?? 'bg-foreground'
             return (
               <div key={dir} className="relative h-4 overflow-hidden">
-                {minutes.map((min, i) => (
-                  <div
-                    key={i}
-                    title={fmtMin(min)}
-                    className={`absolute top-0.5 bottom-0.5 w-px ${barColor} opacity-80`}
-                    style={{ left: snapToDevicePixel((min - vp.dayStartMinute) * vp.pixelsPerMinute - vp.scrollX) }}
-                  />
-                ))}
+                {entries.map((entry, i) => {
+                  const isFocused = focused != null && focused.direction === dir && focused.min === entry.min
+                  const title     = entry.dup ? `${fmtMin(entry.min)} · viagens sobrepostas` : fmtMin(entry.min)
+                  const cls       = entry.dup
+                    ? 'absolute top-0 bottom-0 w-0.5 bg-amber-400'
+                    : isFocused
+                      ? `absolute top-0 bottom-0 w-px ${barColor}`
+                      : `absolute top-0.5 bottom-0.5 w-px ${barColor} opacity-80`
+                  return (
+                    <div
+                      key={i}
+                      title={title}
+                      className={cls}
+                      style={{ left: snapToDevicePixel((entry.min - vp.dayStartMinute) * vp.pixelsPerMinute - vp.scrollX) }}
+                    />
+                  )
+                })}
               </div>
             )
           })}

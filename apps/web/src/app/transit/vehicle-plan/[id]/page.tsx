@@ -547,7 +547,7 @@ export default function VehiclePlanPage() {
           </div>
 
           {freqPanelOpen && plottedData && (
-            <FrequencyPanel data={mergedPlottedData ?? plottedData} vp={ganttVp} />
+            <FrequencyPanel data={mergedPlottedData ?? plottedData} vp={ganttVp} focusedTripId={focusedSegId} />
           )}
         </div>
 
