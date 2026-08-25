@@ -32,7 +32,7 @@ Checklist de tudo que existe hoje no protótipo, para marcar o que interessa lev
 
 ### Qualidade de Serviço
 [x] Velocidade média operacional (km/h)
-[x] Pontualidade (%)
+[N] Pontualidade (%)
 [x] Índice de Ocupação — IOC
 [x] Índice de Frequência de Serviço — IFS (viag/h)
 
@@ -54,20 +54,20 @@ Checklist de tudo que existe hoje no protótipo, para marcar o que interessa lev
 [x] Oferta calculada no pico (pax/h), derivada de viagens/h × capacidade
 
 ### Perfil de demanda horária
-[ ] Percentual da demanda diária por hora (curva 04h–23h, soma = 100%)
-[ ] Marcação de horários de pico (06–08h e 16–18h) usada para aplicar intervalo de pico vs entrepico
+[x] Percentual da demanda diária por hora (curva 04h–23h, soma = 100%)
+[x] Marcação de horários de pico (06–08h e 16–18h) usada para aplicar intervalo de pico vs entrepico
 
 ### Série por hora (Oferta × Demanda)
-[ ] Demanda estimada por hora (pax)
-[ ] Oferta estimada por hora (pax), a partir do intervalo e capacidade vigentes
-[ ] Fator de Ocupação por hora (FOC = demanda / oferta)
-[ ] Déficit de atendimento por hora (demanda − oferta, quando positivo)
+[x] Demanda estimada por hora (pax)
+[x] Oferta estimada por hora (pax), a partir do intervalo e capacidade vigentes
+[x] Fator de Ocupação por hora (FOC = demanda / oferta)
+[x] Déficit de atendimento por hora (demanda − oferta, quando positivo)
 
 ### Classificação do Fator de Ocupação (FOC)
-[ ] Faixas: <0.75 Confortável · 0.75–0.90 Moderado · 0.90–1.0 Elevado · >1.0 Saturado
+[x] Faixas: <0.75 Confortável · 0.75–0.85 Moderado · 0.85–1.0 Elevado · >1.0 Saturado
 
 ### KPIs agregados do dia
-[ ] Demanda total diária (pax/dia)
-[ ] Fator de Ocupação médio do dia + status (Subutilizado/Adequado/Elevado/Saturado)
-[ ] Quantidade de horas com saturação (FOC > 1.0)
-[ ] Passageiros não atendidos no dia (soma dos déficits horários)
+[x] Demanda total diária (pax/dia)
+[x] Fator de Ocupação médio do dia + status (Subutilizado/Adequado/Elevado/Saturado)
+[x] Quantidade de horas com saturação (FOC > 1.0)
+[x] Passageiros não atendidos no dia (soma dos déficits horários)
