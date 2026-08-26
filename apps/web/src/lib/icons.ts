@@ -76,8 +76,6 @@ const iconNames = [
   'Tag',
   'Timer',
   'Trash2',
-  'TrendingDown',
-  'TrendingUp',
   'Undo2',
   'Truck',
   'Upload',

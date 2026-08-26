@@ -16,15 +16,12 @@ import {
 } from 'recharts'
 import { resolveIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/select'
 
-const Bus            = resolveIcon('Bus')
-const MapPin          = resolveIcon('MapPin')
-const Clock           = resolveIcon('Clock')
 const BarChart2       = resolveIcon('BarChart2')
 const Sliders         = resolveIcon('SlidersHorizontal')
-const ChevronDown     = resolveIcon('ChevronDown')
-const TrendingUp      = resolveIcon('TrendingUp')
-const TrendingDown    = resolveIcon('TrendingDown')
+const ArrowUp         = resolveIcon('ArrowUp')
+const ArrowDown       = resolveIcon('ArrowDown')
 const RotateCcw       = resolveIcon('RotateCcw')
 const Users           = resolveIcon('Users')
 const Gauge           = resolveIcon('Gauge')
@@ -40,17 +37,15 @@ interface LineMetrics {
   viagens_dia: number
   horas_op: number
   intervalo_pico: number
+  intervalo_pico_tarde: number
   intervalo_entrepico: number
   capacidade_veiculo: number
   passageiros_dia: number
   km_dia: number
-  custo_km: number
   vel_media: number
-  pontualidade: number
   ifs: number
   ioc: number
   pph_pico: number
-  idade_media_frota: number
 }
 
 interface TransitLine {
@@ -58,6 +53,7 @@ interface TransitLine {
   nome: string
   tipo: 'Urbano' | 'Alimentador' | 'Expresso'
   corredor: string
+  status: 'rascunho' | 'ativo'
   atual: LineMetrics
   proposto: LineMetrics
 }
@@ -85,56 +81,59 @@ interface MetricRowDef {
 const LINES: TransitLine[] = [
   {
     id: '301',
-    nome: '301 · Central ↔ Aeroporto',
+    nome: '301 · Central x Aeroporto',
     tipo: 'Expresso',
     corredor: 'Corredor Leste',
+    status: 'ativo',
     atual: {
       extensao_km: 18.5, frota: 12, viagens_dia: 98, horas_op: 18,
-      intervalo_pico: 12, intervalo_entrepico: 20, capacidade_veiculo: 70,
-      passageiros_dia: 8400, km_dia: 1813, custo_km: 8.45, vel_media: 21.2,
-      pontualidade: 72, ifs: 5.0, ioc: 0.82, pph_pico: 350, idade_media_frota: 7.2,
+      intervalo_pico: 12, intervalo_pico_tarde: 14, intervalo_entrepico: 20, capacidade_veiculo: 70,
+      passageiros_dia: 8400, km_dia: 1813, vel_media: 21.2,
+      ifs: 5.0, ioc: 0.82, pph_pico: 350,
     },
     proposto: {
       extensao_km: 22.3, frota: 15, viagens_dia: 128, horas_op: 20,
-      intervalo_pico: 9, intervalo_entrepico: 15, capacidade_veiculo: 80,
-      passageiros_dia: 11200, km_dia: 2854, custo_km: 8.12, vel_media: 24.1,
-      pontualidade: 87, ifs: 6.67, ioc: 0.72, pph_pico: 533, idade_media_frota: 2.1,
+      intervalo_pico: 9, intervalo_pico_tarde: 10, intervalo_entrepico: 21, capacidade_veiculo: 80,
+      passageiros_dia: 7800, km_dia: 2854, vel_media: 24.1,
+      ifs: 6.67, ioc: 0.72, pph_pico: 533,
     },
   },
   {
     id: '442',
-    nome: '442 · Terminal Norte ↔ Hospital Central',
+    nome: '442 · Terminal Norte x Hospital Central',
     tipo: 'Urbano',
     corredor: 'Corredor Norte',
+    status: 'rascunho',
     atual: {
       extensao_km: 14.8, frota: 9, viagens_dia: 76, horas_op: 17,
-      intervalo_pico: 15, intervalo_entrepico: 25, capacidade_veiculo: 70,
-      passageiros_dia: 5800, km_dia: 1124, custo_km: 8.65, vel_media: 19.5,
-      pontualidade: 65, ifs: 4.0, ioc: 0.89, pph_pico: 280, idade_media_frota: 9.1,
+      intervalo_pico: 15, intervalo_pico_tarde: 17, intervalo_entrepico: 25, capacidade_veiculo: 70,
+      passageiros_dia: 5800, km_dia: 1124, vel_media: 19.5,
+      ifs: 4.0, ioc: 0.89, pph_pico: 280,
     },
     proposto: {
       extensao_km: 14.8, frota: 12, viagens_dia: 104, horas_op: 19,
-      intervalo_pico: 10, intervalo_entrepico: 18, capacidade_veiculo: 80,
-      passageiros_dia: 7900, km_dia: 1539, custo_km: 8.30, vel_media: 21.8,
-      pontualidade: 83, ifs: 6.0, ioc: 0.75, pph_pico: 480, idade_media_frota: 1.8,
+      intervalo_pico: 10, intervalo_pico_tarde: 12, intervalo_entrepico: 18, capacidade_veiculo: 80,
+      passageiros_dia: 7900, km_dia: 1539, vel_media: 18.9,
+      ifs: 6.0, ioc: 0.75, pph_pico: 480,
     },
   },
   {
     id: '505',
-    nome: '505 · Bairro Novo ↔ Centro Histórico',
+    nome: '505 · Bairro Novo x Centro Histórico',
     tipo: 'Alimentador',
     corredor: 'Eixo Sul',
+    status: 'rascunho',
     atual: {
       extensao_km: 9.2, frota: 6, viagens_dia: 54, horas_op: 15,
-      intervalo_pico: 18, intervalo_entrepico: 30, capacidade_veiculo: 50,
-      passageiros_dia: 2900, km_dia: 496, custo_km: 9.10, vel_media: 17.8,
-      pontualidade: 58, ifs: 3.33, ioc: 0.91, pph_pico: 167, idade_media_frota: 11.5,
+      intervalo_pico: 18, intervalo_pico_tarde: 20, intervalo_entrepico: 30, capacidade_veiculo: 50,
+      passageiros_dia: 2900, km_dia: 496, vel_media: 17.8,
+      ifs: 3.33, ioc: 0.91, pph_pico: 167,
     },
     proposto: {
       extensao_km: 11.4, frota: 8, viagens_dia: 72, horas_op: 17,
-      intervalo_pico: 12, intervalo_entrepico: 20, capacidade_veiculo: 60,
-      passageiros_dia: 4100, km_dia: 820, custo_km: 8.75, vel_media: 20.3,
-      pontualidade: 80, ifs: 5.0, ioc: 0.78, pph_pico: 300, idade_media_frota: 2.5,
+      intervalo_pico: 12, intervalo_pico_tarde: 13, intervalo_entrepico: 20, capacidade_veiculo: 60,
+      passageiros_dia: 4100, km_dia: 820, vel_media: 20.3,
+      ifs: 5.0, ioc: 0.78, pph_pico: 300,
     },
   },
 ]
@@ -156,22 +155,19 @@ const DEMAND_PROFILE = [
 const PEAK_HOURS = new Set([6, 7, 8, 16, 17, 18])
 
 const METRICS: MetricRowDef[] = [
-  { label: 'Extensão do itinerário', unit: 'km', key: 'extensao_km', fmt: v => v.toFixed(1), cat: 'Operação' },
-  { label: 'Frota necessária', unit: 'veículos', key: 'frota', fmt: v => v.toLocaleString('pt-BR'), cat: 'Operação' },
-  { label: 'Viagens por dia', unit: 'viag/dia', key: 'viagens_dia', fmt: v => v.toLocaleString('pt-BR'), cat: 'Operação' },
-  { label: 'Horas de operação', unit: 'h', key: 'horas_op', fmt: v => String(v), cat: 'Operação' },
-  { label: 'Intervalo de pico', unit: 'min', key: 'intervalo_pico', fmt: v => String(v), inverse: true, cat: 'Operação' },
+  { label: 'Extensão', unit: 'km', key: 'extensao_km', fmt: v => v.toFixed(1), cat: 'Operação' },
+  { label: 'Frota', unit: 'veículos', key: 'frota', fmt: v => v.toLocaleString('pt-BR'), cat: 'Operação' },
+  { label: 'Viagens', unit: 'viag/dia', key: 'viagens_dia', fmt: v => v.toLocaleString('pt-BR'), cat: 'Operação' },
+  { label: 'Horas operacionais', unit: 'h', key: 'horas_op', fmt: v => String(v), cat: 'Operação' },
+  { label: 'Intervalo pico manhã', unit: 'min', key: 'intervalo_pico', fmt: v => String(v), inverse: true, cat: 'Operação' },
+  { label: 'Intervalo pico tarde', unit: 'min', key: 'intervalo_pico_tarde', fmt: v => String(v), inverse: true, cat: 'Operação' },
   { label: 'Intervalo entrepico', unit: 'min', key: 'intervalo_entrepico', fmt: v => String(v), inverse: true, cat: 'Operação' },
-  { label: 'Capacidade por veículo', unit: 'pax', key: 'capacidade_veiculo', fmt: v => String(v), cat: 'Oferta e Demanda' },
   { label: 'Passageiros por dia', unit: 'pax/dia', key: 'passageiros_dia', fmt: v => v.toLocaleString('pt-BR'), cat: 'Oferta e Demanda' },
   { label: 'Quilômetros produzidos', unit: 'km/dia', key: 'km_dia', fmt: v => v.toLocaleString('pt-BR'), cat: 'Oferta e Demanda' },
   { label: 'PPH pico (cap. ofertada)', unit: 'pax/h/sent.', key: 'pph_pico', fmt: v => String(v), cat: 'Oferta e Demanda' },
-  { label: 'Velocidade média operacional', unit: 'km/h', key: 'vel_media', fmt: v => v.toFixed(1), cat: 'Qualidade de Serviço' },
-  { label: 'Pontualidade', unit: '%', key: 'pontualidade', fmt: v => `${v}%`, cat: 'Qualidade de Serviço' },
+  { label: 'Velocidade média', unit: 'km/h', key: 'vel_media', fmt: v => v.toFixed(1), cat: 'Qualidade de Serviço' },
   { label: 'Índice de Ocupação (IOC)', unit: '', key: 'ioc', fmt: v => v.toFixed(2), inverse: true, cat: 'Qualidade de Serviço' },
   { label: 'Índice de Freq. de Serviço (IFS)', unit: 'viag/h', key: 'ifs', fmt: v => v.toFixed(2), cat: 'Qualidade de Serviço' },
-  { label: 'Custo por quilômetro', unit: 'R$/km', key: 'custo_km', fmt: v => `R$ ${v.toFixed(2)}`, inverse: true, cat: 'Gestão' },
-  { label: 'Idade média da frota', unit: 'anos', key: 'idade_media_frota', fmt: v => v.toFixed(1), inverse: true, cat: 'Gestão' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -243,14 +239,6 @@ function LFTooltip({ active, payload, label }: any) {
   )
 }
 
-// ── Tipo badge ─────────────────────────────────────────────────────────────────
-
-const TIPO_COLOR: Record<string, string> = {
-  Expresso: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30',
-  Urbano: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
-  Alimentador: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
-}
-
 // ── Comparativo Tab ───────────────────────────────────────────────────────────
 
 function ComparativoTab({ line }: { line: TransitLine }) {
@@ -261,9 +249,9 @@ function ComparativoTab({ line }: { line: TransitLine }) {
   const summaryItems = [
     { label: 'Frota', aVal: atual.frota, pVal: proposto.frota, fmt: (v: number) => `${v} veíc.`, inverse: false },
     { label: 'Operação', aVal: atual.horas_op, pVal: proposto.horas_op, fmt: (v: number) => `${v}h/dia`, inverse: false },
-    { label: 'Int. Pico', aVal: atual.intervalo_pico, pVal: proposto.intervalo_pico, fmt: (v: number) => `${v} min`, inverse: true },
+    { label: 'Int. Pico Manhã', aVal: atual.intervalo_pico, pVal: proposto.intervalo_pico, fmt: (v: number) => `${v} min`, inverse: true },
     { label: 'Int. Entrepico', aVal: atual.intervalo_entrepico, pVal: proposto.intervalo_entrepico, fmt: (v: number) => `${v} min`, inverse: true },
-    { label: 'Pontualidade', aVal: atual.pontualidade, pVal: proposto.pontualidade, fmt: (v: number) => `${v}%`, inverse: false },
+    { label: 'Int. Pico Tarde', aVal: atual.intervalo_pico_tarde, pVal: proposto.intervalo_pico_tarde, fmt: (v: number) => `${v} min`, inverse: true },
     { label: 'IOC', aVal: atual.ioc, pVal: proposto.ioc, fmt: (v: number) => v.toFixed(2), inverse: true },
   ]
 
@@ -282,10 +270,10 @@ function ComparativoTab({ line }: { line: TransitLine }) {
             </span>
           </div>
           <div>
-            <p className="font-bold text-5xl text-foreground leading-none tracking-tight tabular-nums">
+            <p className="font-bold text-4xl text-foreground leading-none tracking-tight tabular-nums">
               {atual.passageiros_dia.toLocaleString('pt-BR')}
             </p>
-            <p className="text-sm text-muted-foreground mt-1.5">passageiros / dia</p>
+            <p className="text-sm text-muted-foreground mt-1.5">score</p>
           </div>
           <div className="grid grid-cols-2 gap-2.5 pt-1">
             {summaryItems.map(item => (
@@ -330,28 +318,39 @@ function ComparativoTab({ line }: { line: TransitLine }) {
                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
                 : 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/25',
             )}>
-              {mainDelta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-              {fmtPct(mainDelta)} pax/dia
+              {mainDelta >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+              {fmtPct(mainDelta)}
             </span>
           </div>
           <div>
-            <p className="font-bold text-5xl text-primary leading-none tracking-tight tabular-nums">
+            <p className="font-bold text-4xl text-primary leading-none tracking-tight tabular-nums">
               {proposto.passageiros_dia.toLocaleString('pt-BR')}
             </p>
-            <p className="text-sm text-muted-foreground mt-1.5">passageiros / dia</p>
+            <p className="text-sm text-muted-foreground mt-1.5">score</p>
           </div>
           <div className="grid grid-cols-2 gap-2.5 pt-1">
             {summaryItems.map(item => {
               const delta = pctChange(item.aVal, item.pVal)
-              const good = item.inverse ? delta < 0 : delta > 0
+              const neutral = Math.abs(delta) < 0.5
+              const good = neutral ? null : (item.inverse ? delta < 0 : delta > 0)
               return (
-                <div key={item.label} className="bg-primary/5 border border-primary/10 rounded-lg px-3 py-2.5">
+                <div
+                  key={item.label}
+                  className={cn(
+                    'rounded-lg px-3 py-2.5 border',
+                    good === false
+                      ? 'bg-red-500/[0.07] border-red-500/15'
+                      : 'bg-primary/5 border-primary/10',
+                  )}
+                >
                   <p className="text-xs text-muted-foreground">{item.label}</p>
                   <div className="flex items-center justify-between mt-0.5">
                     <p className="font-medium text-sm text-foreground/90 tabular-nums">{item.fmt(item.pVal)}</p>
                     <span className={cn(
                       'text-[10px] font-semibold tabular-nums',
-                      good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+                      neutral
+                        ? 'text-muted-foreground'
+                        : good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
                     )}>
                       {fmtPct(delta)}
                     </span>
@@ -388,8 +387,7 @@ function ComparativoTab({ line }: { line: TransitLine }) {
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-3.5 border-b border-border flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-primary" />
-          <h3 className="font-semibold text-sm text-foreground">Detalhamento dos Indicadores</h3>
-          <span className="ml-auto text-xs text-muted-foreground">↑ melhoria · ↓ degradação</span>
+          <h3 className="font-semibold text-sm text-foreground">Indicadores</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -446,7 +444,7 @@ function ComparativoTab({ line }: { line: TransitLine }) {
                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                                 : 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20',
                             )}>
-                              {good ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {good ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                               {fmtPct(delta)}
                             </span>
                           )}
@@ -780,7 +778,6 @@ function SimulacaoTab({
 export default function PlaygroundPage() {
   const [lineId, setLineId] = useState('301')
   const [tab, setTab] = useState<'comparativo' | 'simulacao'>('comparativo')
-  const [showLineMenu, setShowLineMenu] = useState(false)
 
   const line = LINES.find(l => l.id === lineId)!
 
@@ -809,7 +806,6 @@ export default function PlaygroundPage() {
     setSliderHp(l.proposto.intervalo_pico)
     setSliderHo(l.proposto.intervalo_entrepico)
     setSliderCap(l.proposto.capacidade_veiculo)
-    setShowLineMenu(false)
   }
 
   function resetSim() {
@@ -819,83 +815,29 @@ export default function PlaygroundPage() {
   }
 
   return (
-    <div
-      className="min-h-full bg-background text-foreground flex flex-col"
-      onClick={() => showLineMenu && setShowLineMenu(false)}
-    >
-      {/* Header */}
-      <header className="h-14 flex items-center px-5 border-b border-border bg-card shrink-0 gap-4">
-        <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-            <Bus className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-semibold text-sm tracking-widest uppercase text-foreground/60 hidden sm:block">
-            Planejamento de Linhas · Comparativo
-          </span>
-        </div>
-
-        {/* Line selector */}
-        <div
-          className="relative ml-auto"
-          onClick={e => e.stopPropagation()}
+    <div className="min-h-full bg-background text-foreground flex flex-col">
+      {/* Status bar */}
+      <div className="px-5 border-b border-border shrink-0 bg-background flex items-center gap-0.5 pt-3">
+        <Select
+          size="sm"
+          value={lineId}
+          onChange={e => handleLineSelect(e.target.value)}
+          wrapperClassName="mr-2 mb-3 w-auto"
+          className="w-auto"
         >
-          <button
-            type="button"
-            onClick={() => setShowLineMenu(!showLineMenu)}
-            className="flex items-center gap-2 bg-muted border border-border rounded-lg px-3 py-1.5 text-sm hover:border-primary/40 transition-colors cursor-pointer"
-          >
-            <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span className="font-medium text-foreground/90 max-w-[180px] sm:max-w-[280px] truncate">
-              {line.nome}
-            </span>
-            <ChevronDown
-              className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform shrink-0', showLineMenu && 'rotate-180')}
-            />
-          </button>
-          {showLineMenu && (
-            <div className="absolute top-full mt-1.5 right-0 w-72 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-              {LINES.map(l => (
-                <button
-                  type="button"
-                  key={l.id}
-                  onClick={() => handleLineSelect(l.id)}
-                  className={cn(
-                    'w-full text-left px-4 py-3 text-sm transition-colors border-b border-border/50 last:border-0 cursor-pointer',
-                    l.id === lineId
-                      ? 'bg-primary/10 text-primary'
-                      : 'hover:bg-row-hover text-foreground/80',
-                  )}
-                >
-                  <span className="font-medium block">{l.nome}</span>
-                  <span className="text-xs text-muted-foreground mt-0.5 block">
-                    {l.corredor} · {l.tipo}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs px-2.5 py-1 rounded-full shrink-0">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-          <span className="hidden sm:block">Proposta em Análise</span>
-        </div>
-      </header>
-
-      {/* Line info strip */}
-      <div className="px-5 py-2.5 border-b border-border bg-card/40 flex flex-wrap items-center gap-4 text-xs shrink-0">
-        <span className={cn('font-semibold px-2.5 py-0.5 rounded border text-xs tracking-wider uppercase', TIPO_COLOR[line.tipo])}>
-          {line.tipo}
+          {LINES.map(l => (
+            <option key={l.id} value={l.id}>{l.nome}</option>
+          ))}
+        </Select>
+        <span className={cn(
+          'flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full font-semibold border mb-3',
+          line.status === 'ativo'
+            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+            : 'bg-muted/60 text-muted-foreground border-border',
+        )}>
+          <span className={cn('w-1.5 h-1.5 rounded-full', line.status === 'ativo' ? 'bg-emerald-500' : 'bg-muted-foreground')} />
+          {line.status === 'ativo' ? 'ATIVO' : 'RASCUNHO'}
         </span>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <MapPin className="w-3 h-3" />
-          {line.corredor}
-        </div>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Clock className="w-3 h-3" />
-          Atual: {line.atual.horas_op}h · Proposta: {line.proposto.horas_op}h de operação
-        </div>
-        <span className="ml-auto text-muted-foreground/50">Ref.: ago/2026</span>
       </div>
 
       {/* Tabs */}
@@ -915,7 +857,7 @@ export default function PlaygroundPage() {
             {t === 'comparativo' ? (
               <><BarChart2 className="w-3.5 h-3.5" /> Comparativo</>
             ) : (
-              <><Sliders className="w-3.5 h-3.5" /> Simulação O/D</>
+              <><Sliders className="w-3.5 h-3.5" />Oferta · Demanda</>
             )}
           </button>
         ))}
