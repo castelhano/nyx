@@ -4,7 +4,7 @@ import { useState, useMemo, Fragment } from 'react'
 import {
   ComposedChart,
   BarChart,
-  Area,
+  Line,
   Bar,
   XAxis,
   YAxis,
@@ -22,7 +22,6 @@ const BarChart2       = resolveIcon('BarChart2')
 const Sliders         = resolveIcon('SlidersHorizontal')
 const ArrowUp         = resolveIcon('ArrowUp')
 const ArrowDown       = resolveIcon('ArrowDown')
-const RotateCcw       = resolveIcon('RotateCcw')
 const Users           = resolveIcon('Users')
 const Gauge           = resolveIcon('Gauge')
 const AlertTriangle   = resolveIcon('AlertTriangle')
@@ -153,6 +152,11 @@ const DEMAND_PROFILE = [
 ]
 
 const PEAK_HOURS = new Set([6, 7, 8, 16, 17, 18])
+
+const SIM_DEFAULT_HP = 7
+const SIM_DEFAULT_HO = 12
+const SIM_DEFAULT_CAP = 80
+const SIM_DEFAULT_RENOVACAO = 10
 
 const METRICS: MetricRowDef[] = [
   { label: 'Extensão', unit: 'km', key: 'extensao_km', fmt: v => v.toFixed(1), cat: 'Operação' },
@@ -474,19 +478,10 @@ interface SimKPIs {
 }
 
 function SimulacaoTab({
-  line,
-  sliderHp, sliderHo, sliderCap,
-  setSliderHp, setSliderHo, setSliderCap,
-  simData, kpis, resetSim,
+  simData, kpis,
 }: {
-  line: TransitLine
-  sliderHp: number; sliderHo: number; sliderCap: number
-  setSliderHp: (v: number) => void
-  setSliderHo: (v: number) => void
-  setSliderCap: (v: number) => void
   simData: SimRow[]
   kpis: SimKPIs
-  resetSim: () => void
 }) {
   const lfStatus =
     kpis.avgLF > 0.9 ? 'Saturado' :
@@ -498,7 +493,7 @@ function SimulacaoTab({
     kpis.avgLF > 0.75 ? 'text-orange-600 dark:text-orange-400' :
     kpis.avgLF > 0.55 ? 'text-emerald-600 dark:text-emerald-400' : 'text-yellow-600 dark:text-yellow-400'
 
-  const computedPph = Math.round((60 / sliderHp) * sliderCap)
+  const computedPph = Math.round((60 / SIM_DEFAULT_HP) * SIM_DEFAULT_CAP)
 
   const domainMax = Math.min(2.0, Math.max(...simData.map(d => d.lf)) + 0.15)
 
@@ -513,76 +508,22 @@ function SimulacaoTab({
       {/* Params panel */}
       <div className="w-full lg:w-68 shrink-0 space-y-4">
         <div className="bg-card border border-border rounded-xl p-5 space-y-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold text-sm">Parâmetros</h3>
-            </div>
-            <button
-              type="button"
-              onClick={resetSim}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Resetar
-            </button>
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold text-sm">Parâmetros</h3>
           </div>
 
-          {/* Headway peak */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-muted-foreground">Intervalo de Pico</label>
-              <span className="text-sm font-semibold text-primary tabular-nums">{sliderHp} min</span>
-            </div>
-            <input
-              type="range" min={4} max={20} step={1} value={sliderHp}
-              onChange={e => setSliderHp(Number(e.target.value))}
-              className="w-full h-1.5 rounded-full cursor-pointer"
-              style={{ accentColor: 'hsl(var(--primary))' }}
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>4 min</span>
-              <span className="text-muted-foreground/50">proposta: {line.proposto.intervalo_pico} min</span>
-              <span>20 min</span>
-            </div>
-          </div>
-
-          {/* Headway off-peak */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-muted-foreground">Intervalo Entrepico</label>
-              <span className="text-sm font-semibold text-primary tabular-nums">{sliderHo} min</span>
-            </div>
-            <input
-              type="range" min={8} max={40} step={2} value={sliderHo}
-              onChange={e => setSliderHo(Number(e.target.value))}
-              className="w-full h-1.5 rounded-full cursor-pointer"
-              style={{ accentColor: 'hsl(var(--primary))' }}
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>8 min</span>
-              <span className="text-muted-foreground/50">proposta: {line.proposto.intervalo_entrepico} min</span>
-              <span>40 min</span>
-            </div>
-          </div>
-
-          {/* Vehicle capacity */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-muted-foreground">Capacidade do Veículo</label>
-              <span className="text-sm font-semibold text-primary tabular-nums">{sliderCap} pax</span>
-            </div>
-            <input
-              type="range" min={40} max={130} step={5} value={sliderCap}
-              onChange={e => setSliderCap(Number(e.target.value))}
-              className="w-full h-1.5 rounded-full cursor-pointer"
-              style={{ accentColor: 'hsl(var(--primary))' }}
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>40 pax</span>
-              <span className="text-muted-foreground/50">proposta: {line.proposto.capacidade_veiculo} pax</span>
-              <span>130 pax</span>
-            </div>
+          {/* Static parameters */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: 'Capacidade', value: `${SIM_DEFAULT_CAP} pax` },
+              { label: 'Renovação', value: `${SIM_DEFAULT_RENOVACAO}%` },
+            ].map(item => (
+              <div key={item.label} className="bg-muted/50 rounded-lg px-2.5 py-2.5 text-center">
+                <p className="font-semibold text-sm text-primary tabular-nums">{item.value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
+              </div>
+            ))}
           </div>
 
           {/* Computed capacity */}
@@ -592,7 +533,7 @@ function SimulacaoTab({
               {computedPph.toLocaleString('pt-BR')} pax/h
             </p>
             <p className="text-[10px] text-muted-foreground">
-              {(60 / sliderHp).toFixed(1)} viag/h × {sliderCap} pax/veíc.
+              {(60 / SIM_DEFAULT_HP).toFixed(1)} viag/h × {SIM_DEFAULT_CAP} pax/veíc.
             </p>
           </div>
 
@@ -669,11 +610,11 @@ function SimulacaoTab({
             <h3 className="font-semibold text-sm">Oferta × Demanda por Hora</h3>
             <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-0.5 rounded inline-block" style={{ background: 'var(--series-oferta)' }} />
+                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'var(--series-oferta)' }} />
                 Oferta
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'var(--series-demanda)' }} />
+                <span className="w-3 h-0.5 rounded inline-block" style={{ background: 'var(--series-demanda)' }} />
                 Demanda
               </span>
             </div>
@@ -695,24 +636,21 @@ function SimulacaoTab({
                 width={38}
               />
               <Tooltip content={<ChartTooltip />} />
-              <Area
-                type="monotone"
+              <Bar
                 dataKey="supply"
                 name="Oferta (cap.)"
                 fill="var(--series-oferta)"
-                fillOpacity={0.10}
-                stroke="var(--series-oferta)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, strokeWidth: 0 }}
-              />
-              <Bar
-                dataKey="demand"
-                name="Demanda"
-                fill="var(--series-demanda)"
                 fillOpacity={0.8}
                 radius={[2, 2, 0, 0]}
                 maxBarSize={26}
+              />
+              <Line
+                dataKey="demand"
+                name="Demanda"
+                stroke="var(--series-demanda)"
+                strokeWidth={2}
+                dot={{ r: 4, fill: 'var(--series-demanda)' }}
+                activeDot={{ r: 5 }}
               />
             </ComposedChart>
           </ResponsiveContainer>
@@ -781,13 +719,9 @@ export default function PlaygroundPage() {
 
   const line = LINES.find(l => l.id === lineId)!
 
-  const [sliderHp, setSliderHp] = useState(line.proposto.intervalo_pico)
-  const [sliderHo, setSliderHo] = useState(line.proposto.intervalo_entrepico)
-  const [sliderCap, setSliderCap] = useState(line.proposto.capacidade_veiculo)
-
   const simData = useMemo(
-    () => calcSim(line, sliderHp, sliderHo, sliderCap),
-    [line, sliderHp, sliderHo, sliderCap],
+    () => calcSim(line, SIM_DEFAULT_HP, SIM_DEFAULT_HO, SIM_DEFAULT_CAP),
+    [line],
   )
 
   const kpis: SimKPIs = useMemo(() => {
@@ -801,17 +735,7 @@ export default function PlaygroundPage() {
   }, [simData])
 
   function handleLineSelect(id: string) {
-    const l = LINES.find(x => x.id === id)!
     setLineId(id)
-    setSliderHp(l.proposto.intervalo_pico)
-    setSliderHo(l.proposto.intervalo_entrepico)
-    setSliderCap(l.proposto.capacidade_veiculo)
-  }
-
-  function resetSim() {
-    setSliderHp(line.proposto.intervalo_pico)
-    setSliderHo(line.proposto.intervalo_entrepico)
-    setSliderCap(line.proposto.capacidade_veiculo)
   }
 
   return (
@@ -869,16 +793,8 @@ export default function PlaygroundPage() {
           <ComparativoTab line={line} />
         ) : (
           <SimulacaoTab
-            line={line}
-            sliderHp={sliderHp}
-            sliderHo={sliderHo}
-            sliderCap={sliderCap}
-            setSliderHp={setSliderHp}
-            setSliderHo={setSliderHo}
-            setSliderCap={setSliderCap}
             simData={simData}
             kpis={kpis}
-            resetSim={resetSim}
           />
         )}
       </div>
