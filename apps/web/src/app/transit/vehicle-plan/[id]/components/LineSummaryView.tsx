@@ -505,7 +505,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                     },
                     {
                       label: 'Passageiros não atendidos', value: hourly.kpis.totalUnmetDemand.toLocaleString('pt-BR'),
-                      sub: hourly.kpis.totalUnmetDemand === 0 ? 'cobertura total' : 'em horas saturadas',
+                      sub: hourly.kpis.totalUnmetDemand === 0 ? 'cobertura total' : 'além da capacidade ofertada',
                       icon: <Icons.Zap className="w-4 h-4" />,
                       color: hourly.kpis.totalUnmetDemand === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
                       bg: hourly.kpis.totalUnmetDemand === 0 ? 'bg-emerald-500/8 border-emerald-500/15' : 'bg-red-500/8 border-red-500/15',

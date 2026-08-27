@@ -1763,10 +1763,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const r3 = (n: number) => Math.round(n * 1000) / 1000
 
     const hours = Array.from({ length: 24 }, (_, hour) => {
-      const demand     = Math.round(demandByHour[hour])
-      const supply     = Math.round(supplyByHour[hour])
-      const loadFactor = supply > 0 ? r3(demand / supply) : 0
-      const deficit    = Math.max(0, demand - supply)
+      const demand  = Math.round(demandByHour[hour])
+      const supply  = Math.round(supplyByHour[hour])
+      const deficit = Math.max(0, demand - supply)
+      // No vehicle running this hour but real demand exists: definitely saturated
+      // (worse than any finite ratio), pinned at 2 (the chart's practical max)
+      // instead of an unbounded/Infinity value that would skew peakLoadFactor.
+      const loadFactor = supply > 0 ? r3(demand / supply) : (demand > 0 ? 2 : 0)
       return { hour, demand, supply, loadFactor, deficit, isPeak: this.isPeakHour(hour) }
     })
 
