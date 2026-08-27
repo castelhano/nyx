@@ -24,7 +24,7 @@ Tudo abaixo já está implementado e em uso — não são campos novos, são o q
 
 ## Métricas do comparativo sem lastro hoje (precisam de fonte/cálculo)
 
-Nenhum destes existe persistido em lugar nenhum hoje. Precisam ser calculados (provavelmente agregando `LineSchedule` → `LineDeparture`/`TransitTrip`, ou `VehicleBlock`, de forma análoga a `VehiclePlan.summary`) ou definidos como novo campo. Ver dúvida (7).
+Nenhum destes existe persistido em lugar nenhum hoje. RESOLVIDO (ver dúvida 7): vão viver em `VehiclePlanLine.summary` (Json, novo campo), calculado dentro do mesmo `scorePlan()` que já popula `VehiclePlan.summary`/`VehicleBlock.summary` — agrupando por linha em vez de só por plano.
 
 - [ ] `fleetSize`
 - [ ] `dailyTrips`
@@ -114,7 +114,9 @@ Nomenclatura observada no código real: funções/variáveis em inglês (`comput
 
 7. **Métricas sem fonte hoje** (`fleetSize`, `dailyTrips`, `operatingHours`, `dailyKm`, `avgSpeed`, `occupancyIndex`, `serviceFrequencyIndex`, `peakPassengersPerHour`) — de onde cada uma seria calculada? Hipótese: agregação de `LineSchedule`/`LineDeparture`/`TransitTrip` para o "atual" (o que está oficialmente aprovado), e de algum rascunho editável para o "proposto" — análogo a como `VehiclePlan.summary` é populado pelo solver. Confirmar fonte por métrica, e se "atual" = schedule `APPROVED` vigente.
 
-> Resposta: Aqui tudo já existe ou será calculado em nivel de plano, fleetSize (blocos usados no plano), dailyTrips (viagens produtivas do plano), etc... hipoteze correta, mais estou pensando em adicionar um summary (provavelmente em VehiclePlanLine) para persistir dados e facilitar a consulta / comparação, quero sua opnião neste caso
+> Resposta: Aqui tudo já existe ou será calculado em nivel de plano, fleetSize (blocos usados no plano), dailyTrips (viagens produtivas do plano), etc... sua hipotese foi correta, mais estou pensando em adicionar um summary (provavelmente em VehiclePlanLine) para persistir dados e facilitar a consulta / comparação, quero sua opnião neste caso
+
+> RESOLVIDO: `VehiclePlanLine.summary` (Json), seguindo o mesmo padrão de `VehiclePlan.summary`/`VehicleBlock.summary` — schema zod dedicado, recalculado dentro do mesmo `scorePlan()` (agrupando por linha), exposto via `rescore`. Sem cache separado para o "atual": cada `VehiclePlan` (inclusive o `ACTIVE`) é dono do próprio `summary` calculado pelo seu próprio `scorePlan()`. O comparativo só lê dois `VehiclePlanLine.summary` — o do plano em edição e o do plano `ACTIVE` de mesma linha/dayType (ver dúvida 4) — sem recomputar nem persistir nada especial pro lado "atual".
 
 8. **`score`** — RESOLVIDO (ver acima), critérios definidos depois.
 

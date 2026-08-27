@@ -162,4 +162,14 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
   getGanttData(@Param('id') id: string) {
     return this.vehiclePlanService.getGanttData(id)
   }
+
+  @Get(':id/lines/:lineId/comparison')
+  getLineComparison(@Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.vehiclePlanService.getLineComparison(id, lineId)
+  }
+
+  @Get(':id/lines/:lineId/hourly')
+  getLineHourlySeries(@Param('id') id: string, @Param('lineId') lineId: string) {
+    return this.vehiclePlanService.getLineHourlySeries(id, lineId)
+  }
 }

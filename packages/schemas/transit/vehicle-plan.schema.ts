@@ -22,6 +22,19 @@ export const vehiclePlanSummarySchema = z.object({
 })
 export type VehiclePlanSummary = z.infer<typeof vehiclePlanSummarySchema>
 
+export const vehiclePlanLineSummarySchema = z.object({
+  fleetSize:             z.number(),
+  dailyTrips:            z.number(),
+  operatingHours:        z.number(),
+  dailyKm:               z.number(),
+  avgSpeed:              z.number(),
+  occupancyIndex:        z.number(),
+  serviceFrequencyIndex: z.number(),
+  peakPassengersPerHour: z.number(),
+  score:                 z.number(),
+})
+export type VehiclePlanLineSummary = z.infer<typeof vehiclePlanLineSummarySchema>
+
 export const vehiclePlanSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),

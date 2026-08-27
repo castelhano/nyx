@@ -12,6 +12,8 @@ import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
+import type { VehiclePlanLineSummary } from '@nyx/schemas'
+import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 
 interface Job {
   worker:    Worker | null
@@ -24,6 +26,12 @@ interface Job {
 export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
   private readonly logger = new Logger(VehiclePlanService.name)
   private readonly jobs = new Map<string, Job>()
+
+  // Approximate peak bands used to consolidate cycle windows and bucket hourly
+  // demand/supply for the line comparativo — see docs/proposal/linha-comparativo-simulacao-indicadores.md
+  // dúvida 2 (rare per-line variation gets handled if/when it shows up).
+  private readonly PEAK_MORNING:   [number, number] = [5.5, 8]
+  private readonly PEAK_AFTERNOON: [number, number] = [15.5, 18]
 
   constructor(
     prisma: PrismaService,
@@ -360,8 +368,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   async scorePlan(planId: string): Promise<void> {
-    const [plan, blocks, matrix] = await Promise.all([
-      this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { summary: true } }),
+    const [plan, blocks, matrix, planLines] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: { summary: true, dayType: { select: { code: true } } },
+      }),
       this.prisma.vehicleBlock.findMany({
         where:   { vehiclePlanId: planId },
         include: {
@@ -374,6 +385,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                   arrivalMinutes:   true,
                   route: {
                     select: {
+                      lineId:                true,
                       originLocalityId:      true,
                       destinationLocalityId: true,
                       direction:             true,
@@ -398,6 +410,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         },
       }),
       this.prisma.travelTimeMatrix.findMany(),
+      this.prisma.vehiclePlanLine.findMany({
+        where:  { vehiclePlanId: planId },
+        select: { lineId: true, summary: true },
+      }),
     ])
 
     if (!plan || blocks.length === 0) return
@@ -411,9 +427,112 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const staleWithTrips  = blocksWithTrips.filter(b => b.isStale)
     const emptyStale      = blocks.filter(b => b.isStale && b.blockTrips.length === 0)
 
-    if (staleWithTrips.length === 0 && emptyStale.length === 0) return
-
     const r2 = (n: number) => Math.round(n * 100) / 100
+
+    // Per-line aggregation (VehiclePlanLine.summary) — grouped by lineId from the same
+    // blockTrips already loaded above. Always recomputed in full straight from raw trip
+    // data (never a persisted block summary), so — unlike the plan/block totals below —
+    // it never depends on any block being stale. That's also why it runs (and persists)
+    // before the early return just below: a plan whose blocks are all already fresh
+    // would otherwise never get its line summaries written (e.g. the first rescore
+    // after this field shipped, or any plan nobody happens to re-edit afterward).
+    interface LineAgg {
+      blockIds:          Set<string>
+      tripCount:         number
+      productiveKm:      number
+      productiveMinutes: number
+      minDeparture:      number
+      maxArrival:        number
+      totalSupply:       number
+      demand:            Record<string, Record<string, number>> | undefined
+    }
+    const dayTypeCode = plan.dayType?.code
+    const lineAgg      = new Map<string, LineAgg>()
+
+    for (const block of blocksWithTrips) {
+      for (const bt of block.blockTrips) {
+        const route  = bt.trip.route
+        const lineId = route.lineId
+
+        let agg = lineAgg.get(lineId)
+        if (!agg) {
+          const lineMetrics = route.line.metrics as {
+            renewalIndex?: { overall?: { value?: number } }
+            demand?:       Record<string, Record<string, Record<string, number>>>
+          } | null
+          agg = {
+            blockIds: new Set(), tripCount: 0, productiveKm: 0, productiveMinutes: 0,
+            minDeparture: Infinity, maxArrival: -Infinity, totalSupply: 0,
+            demand: dayTypeCode ? lineMetrics?.demand?.[dayTypeCode] : undefined,
+          }
+          lineAgg.set(lineId, agg)
+        }
+
+        const extMetrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
+        const tripKm     = extMetrics?.extensionKm?.[route.direction]
+          ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
+          ?? 0
+        const renewal = (route.line.metrics as { renewalIndex?: { overall?: { value?: number } } } | null)
+          ?.renewalIndex?.overall?.value ?? 0
+
+        agg.blockIds.add(block.id)
+        agg.tripCount++
+        agg.productiveKm      += tripKm
+        agg.productiveMinutes += bt.trip.arrivalMinutes - bt.trip.departureMinutes
+        agg.minDeparture       = Math.min(agg.minDeparture, bt.trip.departureMinutes)
+        agg.maxArrival         = Math.max(agg.maxArrival,   bt.trip.arrivalMinutes)
+        agg.totalSupply       += (VEHICLE_TYPE_CAPACITY[block.vehicleType] ?? 0) * (1 + renewal / 100)
+      }
+    }
+
+    const lineSummaries = new Map<string, VehiclePlanLineSummary>()
+    for (const { lineId, summary: existingLineSummary } of planLines) {
+      const score = (existingLineSummary as VehiclePlanLineSummary | null)?.score ?? 0
+      const agg   = lineAgg.get(lineId)
+
+      if (!agg || agg.tripCount === 0) {
+        lineSummaries.set(lineId, {
+          fleetSize: 0, dailyTrips: 0, operatingHours: 0, dailyKm: 0, avgSpeed: 0,
+          occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0, score,
+        })
+        continue
+      }
+
+      const operatingHours  = (agg.maxArrival - agg.minDeparture) / 60
+      const productiveHours = agg.productiveMinutes / 60
+
+      let totalDemand            = 0
+      let peakPassengersPerHour  = 0
+      for (const hourly of Object.values(agg.demand ?? {})) {
+        for (const v of Object.values(hourly)) {
+          totalDemand           += v
+          peakPassengersPerHour  = Math.max(peakPassengersPerHour, v)
+        }
+      }
+
+      lineSummaries.set(lineId, {
+        fleetSize:             agg.blockIds.size,
+        dailyTrips:            agg.tripCount,
+        operatingHours:        r2(operatingHours),
+        dailyKm:               r2(agg.productiveKm),
+        avgSpeed:              productiveHours > 0 ? r2(agg.productiveKm / productiveHours)  : 0,
+        occupancyIndex:        agg.totalSupply  > 0 ? r2(totalDemand / agg.totalSupply)       : 0,
+        serviceFrequencyIndex: operatingHours   > 0 ? r2(agg.tripCount / operatingHours)      : 0,
+        peakPassengersPerHour,
+        score,
+      })
+    }
+
+    await Promise.all(
+      Array.from(lineSummaries.entries()).map(([lineId, summary]) =>
+        this.prisma.vehiclePlanLine.update({
+          where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+          data:  { summary },
+        })
+      ),
+    )
+
+    if (staleWithTrips.length === 0 && emptyStale.length === 0) return
 
     const freshSummaries = staleWithTrips.map(block => {
       let productiveMinutes = 0
@@ -1485,5 +1604,178 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
 
     return null
+  }
+
+  // Consolidates TransitLine.metrics into the "Operação" figures shown by the line
+  // comparativo — these describe the line itself (extension, registered cycle
+  // windows), not a specific plan, so they're identical on both sides of the
+  // comparison and never persisted. Cycle windows are averaged ida+volta into a
+  // single number per band (doc decision: rare for one direction to run a very
+  // different frequency — those exceptions get handled if/when they show up).
+  private consolidateOperation(
+    metrics: {
+      extensionKm?: Partial<Record<'OUTBOUND' | 'INBOUND' | 'CIRCULAR', number>>
+      windows?:     Record<string, Partial<Record<'OUTBOUND' | 'INBOUND' | 'CIRCULAR', { from: number; to: number; intervalMinutes: number }[]>>>
+    } | null,
+    dayTypeCode: string | undefined,
+  ): { extensionKm: number | null; peakMorningInterval: number | null; peakAfternoonInterval: number | null; offPeakInterval: number | null } {
+    const ext       = metrics?.extensionKm
+    const extValues = [ext?.OUTBOUND, ext?.INBOUND].filter((v): v is number => typeof v === 'number')
+    const extensionKm = extValues.length > 0
+      ? Math.round((extValues.reduce((a, b) => a + b, 0) / extValues.length) * 100) / 100
+      : ext?.CIRCULAR ?? null
+
+    const dayWindows = dayTypeCode ? metrics?.windows?.[dayTypeCode] : undefined
+    const allEntries = [
+      ...(dayWindows?.OUTBOUND ?? []),
+      ...(dayWindows?.INBOUND  ?? []),
+      ...(dayWindows?.CIRCULAR ?? []),
+    ]
+
+    const bandAvg = (bandFrom: number, bandTo: number): number | null => {
+      const overlapping = allEntries.filter(w => w.from < bandTo && w.to > bandFrom)
+      if (overlapping.length === 0) return null
+      return Math.round(overlapping.reduce((sum, w) => sum + w.intervalMinutes, 0) / overlapping.length)
+    }
+
+    return {
+      extensionKm,
+      peakMorningInterval:   bandAvg(...this.PEAK_MORNING),
+      peakAfternoonInterval: bandAvg(...this.PEAK_AFTERNOON),
+      offPeakInterval:       bandAvg(this.PEAK_MORNING[1], this.PEAK_AFTERNOON[0]),
+    }
+  }
+
+  // Whether the hour bucket [hour, hour+1) overlaps either peak band — same overlap
+  // test consolidateOperation uses for cycle windows, applied to a plain hour slot.
+  private isPeakHour(hour: number): boolean {
+    const overlaps = (from: number, to: number) => hour < to && hour + 1 > from
+    return overlaps(...this.PEAK_MORNING) || overlaps(...this.PEAK_AFTERNOON)
+  }
+
+  // Reads the line comparativo: this plan's line summary (draft/proposed side) next
+  // to the currently ACTIVE plan's summary for the same line+dayType+scope
+  // (current/atual side) — each plan owns its own VehiclePlanLine.summary (populated
+  // by scorePlan), so there's nothing extra to compute here besides locating the
+  // right two rows. When this plan IS the ACTIVE one, there's no separate "atual" to
+  // compare against (doc decision: single card in that case).
+  async getLineComparison(planId: string, lineId: string) {
+    const [plan, planLine, line] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: { status: true, scopeId: true, dayTypeId: true, dayType: { select: { code: true } } },
+      }),
+      this.prisma.vehiclePlanLine.findUnique({
+        where:   { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+        include: { lineSchedule: { select: { status: true } } },
+      }),
+      this.prisma.transitLine.findUnique({
+        where:  { id: lineId },
+        select: { id: true, code: true, name: true, metrics: true },
+      }),
+    ])
+    if (!plan)     throw new NotFoundException('VehiclePlan not found')
+    if (!planLine) throw new NotFoundException('Line not found in this plan')
+    if (!line)     throw new NotFoundException('Line not found')
+
+    const draft = {
+      planId,
+      planStatus:         plan.status,
+      lineScheduleStatus: planLine.lineScheduleId ? (planLine.lineSchedule?.status ?? null) : null,
+      summary:            (planLine.summary as VehiclePlanLineSummary | null) ?? null,
+    }
+
+    let active: { planId: string; lineScheduleStatus: string | null; summary: VehiclePlanLineSummary | null } | null = null
+    if (plan.status !== 'ACTIVE') {
+      const activePlanLine = await this.prisma.vehiclePlanLine.findFirst({
+        where:   { lineId, vehiclePlan: { status: 'ACTIVE', scopeId: plan.scopeId, dayTypeId: plan.dayTypeId } },
+        include: { lineSchedule: { select: { status: true } } },
+      })
+      if (activePlanLine) {
+        active = {
+          planId:             activePlanLine.vehiclePlanId,
+          lineScheduleStatus: activePlanLine.lineScheduleId ? (activePlanLine.lineSchedule?.status ?? null) : null,
+          summary:            (activePlanLine.summary as VehiclePlanLineSummary | null) ?? null,
+        }
+      }
+    }
+
+    return {
+      line:      { id: line.id, code: line.code, name: line.name },
+      operation: this.consolidateOperation(line.metrics as any, plan.dayType?.code),
+      draft,
+      active,
+    }
+  }
+
+  // Real hourly oferta×demanda for the "Oferta · Demanda" tab of the line comparativo
+  // — this plan's actual generated trips only (never the ACTIVE counterpart: unlike
+  // the Comparativo tab, this is a single series for whichever plan is loaded, doc
+  // decision). Supply buckets each trip's departure hour with the same
+  // capacity-per-trip formula scorePlan uses for occupancyIndex (VEHICLE_TYPE_CAPACITY
+  // × renewal); demand comes straight from the line's real imported demand curve.
+  async getLineHourlySeries(planId: string, lineId: string) {
+    const [plan, line, blockTrips] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: { dayType: { select: { code: true } } },
+      }),
+      this.prisma.transitLine.findUnique({
+        where:  { id: lineId },
+        select: { metrics: true },
+      }),
+      this.prisma.blockTrip.findMany({
+        where:  { vehicleBlock: { vehiclePlanId: planId }, trip: { route: { lineId } } },
+        select: {
+          trip:         { select: { departureMinutes: true } },
+          vehicleBlock: { select: { vehicleType: true } },
+        },
+      }),
+    ])
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (!line) throw new NotFoundException('Line not found')
+
+    const dayTypeCode = plan.dayType?.code
+    const metrics = line.metrics as {
+      renewalIndex?: { overall?: { value?: number } }
+      demand?:       Record<string, Record<string, Record<string, number>>>
+    } | null
+    const renewal     = metrics?.renewalIndex?.overall?.value ?? 0
+    const demandByDir = dayTypeCode ? metrics?.demand?.[dayTypeCode] : undefined
+
+    const supplyByHour = new Array(24).fill(0)
+    for (const bt of blockTrips) {
+      const hour = Math.floor(bt.trip.departureMinutes / 60) % 24
+      supplyByHour[hour] += (VEHICLE_TYPE_CAPACITY[bt.vehicleBlock.vehicleType] ?? 0) * (1 + renewal / 100)
+    }
+
+    const demandByHour = new Array(24).fill(0)
+    for (const hourly of Object.values(demandByDir ?? {})) {
+      for (const [hourStr, v] of Object.entries(hourly)) {
+        demandByHour[Number(hourStr) % 24] += v
+      }
+    }
+
+    const r3 = (n: number) => Math.round(n * 1000) / 1000
+
+    const hours = Array.from({ length: 24 }, (_, hour) => {
+      const demand     = Math.round(demandByHour[hour])
+      const supply     = Math.round(supplyByHour[hour])
+      const loadFactor = supply > 0 ? r3(demand / supply) : 0
+      const deficit    = Math.max(0, demand - supply)
+      return { hour, demand, supply, loadFactor, deficit, isPeak: this.isPeakHour(hour) }
+    })
+
+    const totalDailyDemand   = hours.reduce((s, h) => s + h.demand, 0)
+    const totalDailySupply   = hours.reduce((s, h) => s + h.supply, 0)
+    const avgLoadFactor      = totalDailySupply > 0 ? r3(totalDailyDemand / totalDailySupply) : 0
+    const saturatedHoursCount = hours.filter(h => h.loadFactor > 1).length
+    const totalUnmetDemand   = hours.reduce((s, h) => s + h.deficit, 0)
+    const peakLoadFactor     = hours.reduce((m, h) => Math.max(m, h.loadFactor), 0)
+
+    return {
+      hours,
+      kpis: { totalDailyDemand, totalDailySupply, avgLoadFactor, saturatedHoursCount, totalUnmetDemand, peakLoadFactor },
+    }
   }
 }

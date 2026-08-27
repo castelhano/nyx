@@ -30,9 +30,10 @@ interface Props {
   onClose:           () => void
   onLineCleared?:    () => void
   canClear?:         boolean
+  onOpenComparison?: (lineId: string) => void
 }
 
-export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChange, onClose, onLineCleared, canClear }: Props) {
+export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChange, onClose, onLineCleared, canClear, onOpenComparison }: Props) {
   const [search,   setSearch]   = useState('')
   const [groupId,  setGroupId]  = useState('')
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -271,6 +272,16 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
                 <span className="text-xs font-mono font-medium">{line.code}</span>
                 <span className="text-xs text-muted-foreground truncate flex-1">{line.name}</span>
               </label>
+              {inPlan && onOpenComparison && (
+                <button
+                  type="button"
+                  onClick={() => onOpenComparison(lineId)}
+                  title="Comparativo de indicadores"
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity shrink-0"
+                >
+                  <Icons.BarChart2 className="w-3.5 h-3.5" />
+                </button>
+              )}
               {canClear && inPlan && (
                 <button
                   type="button"

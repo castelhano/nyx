@@ -31,6 +31,7 @@ import { AddIntervalModal }      from './components/AddIntervalModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
+import { LineSummaryView }            from './components/LineSummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
 import type { ViewportSnapshot } from './engine/gantt.types'
@@ -106,6 +107,7 @@ export default function VehiclePlanPage() {
   } = editor
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
+  const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
@@ -170,6 +172,15 @@ export default function VehiclePlanPage() {
     // Navigation/inspection stays available even on active plans; actions that
     // write changes (trip, generate, save, clear) require canEdit (DRAFT).
     ...(editBarOpen ? [
+      {
+        label:    'Resumo',
+        icon:     Icons.BarChart2,
+        size:     'sm' as const,
+        variant:  (summaryLineIds ? 'default' : 'ghost') as 'default' | 'ghost',
+        onClick:  () => setSummaryLineIds(v => v ? null : [...selectedLineIds]),
+        disabled: !summaryLineIds && selectedLineIds.size === 0,
+      },
+      { label: '', separator: true },
       ...(canEdit ? [
         {
           label:    'Viagem',
@@ -271,7 +282,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen])
+  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -493,57 +504,70 @@ export default function VehiclePlanPage() {
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           <div className="flex-1 min-h-0 relative">
-            {mergedPlottedData ? (
-              mergedPlottedData.blocks.length > 0 ? (
-                <GanttBoard
-                  ref={ganttBoardRef}
-                  data={mergedPlottedData}
-                  onViewportChange={setGanttVp}
-                  selection={editBarOpen ? selection : null}
-                  onSelectionChange={handleSelectionChange}
-                  actionSpec={editBarOpen ? vehiclesActionSpec : undefined}
-                  onBlockUpdate={refetchGantt}
-                  focusedSegId={editBarOpen ? focusedSegId : null}
-                  moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
-                  moveTargetHints={moveTargetHints}
-                  highlightedSegIds={editBarOpen ? tripSeqRangeIds : null}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  {selectedLineIds.size === 0
-                    ? 'Selecione linhas no painel lateral para visualizar'
-                    : 'Nenhum bloco para as linhas selecionadas'}
-                </div>
-              )
+            {summaryLineIds ? (
+              <LineSummaryView
+                planId={id}
+                lineIds={summaryLineIds}
+                lines={planLines
+                  .filter(l => summaryLineIds.includes(l.lineId))
+                  .map(l => ({ lineId: l.lineId, code: l.line.code, name: l.line.name }))}
+                onClose={() => setSummaryLineIds(null)}
+              />
             ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                Carregando…
-              </div>
-            )}
+              <>
+                {mergedPlottedData ? (
+                  mergedPlottedData.blocks.length > 0 ? (
+                    <GanttBoard
+                      ref={ganttBoardRef}
+                      data={mergedPlottedData}
+                      onViewportChange={setGanttVp}
+                      selection={editBarOpen ? selection : null}
+                      onSelectionChange={handleSelectionChange}
+                      actionSpec={editBarOpen ? vehiclesActionSpec : undefined}
+                      onBlockUpdate={refetchGantt}
+                      focusedSegId={editBarOpen ? focusedSegId : null}
+                      moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
+                      moveTargetHints={moveTargetHints}
+                      highlightedSegIds={editBarOpen ? tripSeqRangeIds : null}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                      {selectedLineIds.size === 0
+                        ? 'Selecione linhas no painel lateral para visualizar'
+                        : 'Nenhum bloco para as linhas selecionadas'}
+                    </div>
+                  )
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                    Carregando…
+                  </div>
+                )}
 
-            {editBarOpen && selection && mergedPlottedData && (
-              <GanttActionBar
-                selection={selection}
-                actions={vehiclesActionSpec.getActions(selection, mergedPlottedData, () => setSelection(null))}
-                onDismiss={() => setSelection(null)}
-              />
-            )}
+                {editBarOpen && selection && mergedPlottedData && (
+                  <GanttActionBar
+                    selection={selection}
+                    actions={vehiclesActionSpec.getActions(selection, mergedPlottedData, () => setSelection(null))}
+                    onDismiss={() => setSelection(null)}
+                  />
+                )}
 
-            {editBarOpen && canEdit && !selection && headwayRangeInfo && (
-              <HeadwayRangeBar
-                count={headwayRangeInfo.trips.length}
-                singleLine={headwayRangeInfo.singleLine}
-                onDistribute={handleDistributeHeadway}
-              />
-            )}
+                {editBarOpen && canEdit && !selection && headwayRangeInfo && (
+                  <HeadwayRangeBar
+                    count={headwayRangeInfo.trips.length}
+                    singleLine={headwayRangeInfo.singleLine}
+                    onDistribute={handleDistributeHeadway}
+                  />
+                )}
 
-            {lineFreqOpen && editBarOpen && freqIndex && (
-              <LineFreqPanel
-                index={freqIndex}
-                focusedSegId={focusedSegId}
-                onFocusChange={(segId) => { setTripSeqAnchor(null); setFocusedSegId(segId) }}
-                rangeSegIds={tripSeqRangeIds}
-              />
+                {lineFreqOpen && editBarOpen && freqIndex && (
+                  <LineFreqPanel
+                    index={freqIndex}
+                    focusedSegId={focusedSegId}
+                    onFocusChange={(segId) => { setTripSeqAnchor(null); setFocusedSegId(segId) }}
+                    rangeSegIds={tripSeqRangeIds}
+                  />
+                )}
+              </>
             )}
           </div>
 
@@ -561,6 +585,7 @@ export default function VehiclePlanPage() {
             onClose={() => setLinesPanelOpen(false)}
             onLineCleared={() => refetchGantt()}
             canClear={canEdit}
+            onOpenComparison={(lineId) => setSummaryLineIds([lineId])}
           />
         )}
 

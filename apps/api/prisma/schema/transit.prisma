@@ -441,6 +441,10 @@ model VehiclePlanLine {
   // LineSchedule version (with all of this line's current trips) may be warranted.
   // Cleared when the line's schedule is switched/rematerialized.
   isDrifted      Boolean       @default(false)
+  // populated by VehiclePlanService.scorePlan() (grouped by line); current shape:
+  // {"fleetSize":5,"dailyTrips":98,"operatingHours":18,"dailyKm":1813.2,"avgSpeed":21.2,
+  //  "occupancyIndex":0.82,"serviceFrequencyIndex":5.44,"peakPassengersPerHour":350,"score":0}
+  summary        Json?
 
   vehiclePlan  VehiclePlan   @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
   line         TransitLine   @relation(fields: [lineId], references: [id])
