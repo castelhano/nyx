@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-08-24T20:45:11.279Z",
+  "exportedAt": "2026-08-27T15:14:02.934Z",
   "localities": [
     {
       "code": "10",
@@ -573,70 +573,6 @@
       }
     },
     {
-      "code": "1035",
-      "abbr": "MERC B FIM",
-      "name": "Mercado Bom Fim",
-      "lat": -15.558263,
-      "lng": -56.025281,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.558263,
-        "lng": -56.025281,
-        "roadName": "Rua Nove",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1036",
-      "abbr": "VERDINHO",
-      "name": "Verdinho, CPA 1",
-      "lat": -15.554057,
-      "lng": -56.056438,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.554057,
-        "lng": -56.056438,
-        "roadName": "Avenida Alenquer",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1037",
-      "abbr": "D FABIO 166",
-      "name": "Dr Fabio, CS 166",
-      "lat": -15.57034,
-      "lng": -56.027044,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.57034,
-        "lng": -56.027044,
-        "roadName": "Rua Rondonópolis",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1038",
-      "abbr": "BURITI P2",
-      "name": "Resid Buriti, Pt 2, Rua R",
-      "lat": -15.52929,
-      "lng": -56.031014,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.52929,
-        "lng": -56.031014,
-        "roadName": "Rua R",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
       "code": "1039",
       "abbr": "PEDRA 90",
       "name": "PF Pedra 90",
@@ -649,134 +585,6 @@
         "lng": -55.942218,
         "checkedAt": "2026-08-21T13:36:47.583Z",
         "distanceM": 1.061747
-      }
-    },
-    {
-      "code": "1040",
-      "abbr": "VL JARDIM BC",
-      "name": "Vila Jardim BC",
-      "lat": -15.559144,
-      "lng": -56.123746,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.559144,
-        "lng": -56.123746,
-        "roadName": "Rua José Afonso Portocarrero",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1041",
-      "abbr": "BASE PM",
-      "name": "Base da PM",
-      "lat": -15.558846,
-      "lng": -56.110023,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.558846,
-        "lng": -56.110023,
-        "roadName": "Avenida Mário Palma",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1042",
-      "abbr": "ICEC BC",
-      "name": "ICEC BC",
-      "lat": -15.575637,
-      "lng": -56.097018,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.575637,
-        "lng": -56.097018,
-        "roadName": "Avenida Osvaldo da Silva Corrêa",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1043",
-      "abbr": "JD MARIANA PT1",
-      "name": "Jd Mariana Pt1, Rua Mariana",
-      "lat": -15.577992,
-      "lng": -56.114607,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.577992,
-        "lng": -56.114607,
-        "roadName": "Rua Mariana",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1044",
-      "abbr": "PCA CHOPPAO BC",
-      "name": "Praca do Choppao, CB",
-      "lat": -15.591998,
-      "lng": -56.106561,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.591998,
-        "lng": -56.106561,
-        "roadName": "Avenida Isaac Póvoas",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1045",
-      "abbr": "PQ MAE BONIFACIA",
-      "name": "Pq Mae Bonifacia, Nativas Grill",
-      "lat": -15.575211,
-      "lng": -56.103068,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.575211,
-        "lng": -56.103068,
-        "roadName": "Avenida Miguel Sutil",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1046",
-      "abbr": "ICEC CB",
-      "name": "ICEC CB",
-      "lat": -15.575542,
-      "lng": -56.097017,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.575542,
-        "lng": -56.097017,
-        "roadName": "Avenida Osvaldo da Silva Corrêa",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1047",
-      "abbr": "VL JARDIM CB",
-      "name": "Vila Jardim CB",
-      "lat": -15.559028,
-      "lng": -56.123762,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.559028,
-        "lng": -56.123762,
-        "roadName": "Rua José Afonso Portocarrero",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
       }
     },
     {
@@ -811,262 +619,6 @@
       }
     },
     {
-      "code": "1050",
-      "abbr": "CPA B BRASIL BC",
-      "name": "Rua Um, CPA",
-      "lat": -15.567751,
-      "lng": -56.074575,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.567751,
-        "lng": -56.074575,
-        "roadName": "Rua Um",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1051",
-      "abbr": "CPA CR ECONOMIA",
-      "name": "CPA Cr Economia",
-      "lat": -15.568088,
-      "lng": -56.071124,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.568088,
-        "lng": -56.071124,
-        "roadName": "Rua 4",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1052",
-      "abbr": "44 BTM CB",
-      "name": "44 BTM CB",
-      "lat": -15.590785,
-      "lng": -56.112095,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.590785,
-        "lng": -56.112095,
-        "roadName": "Rua Tenente Alcides Duarte de Souza",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1053",
-      "abbr": "PCA MIRAGLIA CB",
-      "name": "Praca M Miraglia, CB",
-      "lat": -15.595179,
-      "lng": -56.1124,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.595179,
-        "lng": -56.1124,
-        "roadName": "Rua das Papoulas",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1054",
-      "abbr": "EE U CUIABANO CB",
-      "name": "EE Ulisses Cuiabano, CB",
-      "lat": -15.595121,
-      "lng": -56.119525,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.595121,
-        "lng": -56.119525,
-        "roadName": "Rua dos Crisântemos",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1055",
-      "abbr": "BOMBEIROS CB",
-      "name": "Bombeiros CB",
-      "lat": -15.6036,
-      "lng": -56.127105,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.6036,
-        "lng": -56.127105,
-        "roadName": "Rua da Fé",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1056",
-      "abbr": "STA ISABEL PT1",
-      "name": "Rua Vereador Wilson Alves Diniz",
-      "lat": -15.598361,
-      "lng": -56.130959,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.598361,
-        "lng": -56.13096,
-        "roadName": "Rua Vereador Wilson Alves Diniz",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0.107259
-      }
-    },
-    {
-      "code": "1057",
-      "abbr": "S AMALIA BC PT1",
-      "name": "Santa Amalia, BC Pt1",
-      "lat": -15.596236,
-      "lng": -56.138904,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.596236,
-        "lng": -56.138903,
-        "roadName": "Rua José Luiz Borges Garcia",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0.107259
-      }
-    },
-    {
-      "code": "1058",
-      "abbr": "S ISABEL BC PT1",
-      "name": "Santa Isabel, BC Pt1",
-      "lat": -15.597896,
-      "lng": -56.129907,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.597896,
-        "lng": -56.129907,
-        "roadName": "Avenida Deputado Gilson Duarte de Barros",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1059",
-      "abbr": "POLIC VERDAO BC",
-      "name": "Policlinica do Verdao",
-      "lat": -15.60461,
-      "lng": -56.12635,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.60461,
-        "lng": -56.12635,
-        "roadName": "Avenida Doutor Agrícola Paes de Barros",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1060",
-      "abbr": "RUA FE 361 BC",
-      "name": "Rua da Fé",
-      "lat": -15.601762,
-      "lng": -56.124999,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.601762,
-        "lng": -56.124999,
-        "roadName": "Rua da Fé",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1061",
-      "abbr": "HOSP JD CUIABA",
-      "name": "Hospital Jardim Cuiaba",
-      "lat": -15.594881,
-      "lng": -56.117943,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.594881,
-        "lng": -56.117943,
-        "roadName": "Avenida das Flores",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1062",
-      "abbr": "EE U CUIABANO BC",
-      "name": "EE Ulisses Cuiabano, BC",
-      "lat": -15.59488,
-      "lng": -56.119206,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.59488,
-        "lng": -56.119206,
-        "roadName": "Rua dos Crisântemos",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1063",
-      "abbr": "PCA M MIRAG BC",
-      "name": "Rua das Papoulas",
-      "lat": -15.595172,
-      "lng": -56.112391,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.595172,
-        "lng": -56.112391,
-        "roadName": "Rua das Papoulas",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1064",
-      "abbr": "44 BTM BC",
-      "name": "44 BTM BC",
-      "lat": -15.590809,
-      "lng": -56.112112,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.590809,
-        "lng": -56.112112,
-        "roadName": "Rua Tenente Alcides Duarte de Souza",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1065",
-      "abbr": "PALACIO CB",
-      "name": "Palacio Cuiaba",
-      "lat": -15.568058,
-      "lng": -56.074823,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.568058,
-        "lng": -56.074823,
-        "roadName": "Rua Um",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
       "code": "1066",
       "abbr": "SHOP PANTANAL",
       "name": "Shopping Pantanal",
@@ -1079,118 +631,6 @@
         "lng": -56.073032,
         "roadName": "Avenida Historiador Rubens de Mendonça",
         "checkedAt": "2026-08-21T13:36:47.583Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1067",
-      "abbr": "FLORAIS VALLE",
-      "name": "Florais do Valle",
-      "lat": -15.532937,
-      "lng": -56.085204,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.532937,
-        "lng": -56.085204,
-        "roadName": "Avenida B",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1068",
-      "abbr": "ATACADAO CB",
-      "name": "Atacadao CB",
-      "lat": -15.561332,
-      "lng": -56.088155,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.561332,
-        "lng": -56.088155,
-        "roadName": "Rodovia Emanuel Pinheiro",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1069",
-      "abbr": "CAMPO FUT ITAPUA",
-      "name": "Campo Futebol Itapua",
-      "lat": -15.55913,
-      "lng": -56.083485,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.55913,
-        "lng": -56.083485,
-        "roadName": "Rua Inidianópolis",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1070",
-      "abbr": "CASA ISCA VIVA",
-      "name": "Casa Isca Viva",
-      "lat": -15.556555,
-      "lng": -56.085457,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.556555,
-        "lng": -56.085457,
-        "roadName": "Rua Limeira",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1071",
-      "abbr": "ESC GOVERNO",
-      "name": "Escola do Governo",
-      "lat": -15.563973,
-      "lng": -56.082185,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.563973,
-        "lng": -56.082185,
-        "roadName": "Avenida Paiaguás",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1072",
-      "abbr": "CONT CASA CB",
-      "name": "Constru Casas, CB",
-      "lat": -15.559851,
-      "lng": -56.083033,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.559851,
-        "lng": -56.083033,
-        "roadName": "Rua Iporá",
-        "checkedAt": "2026-08-11T18:26:35.392Z",
-        "distanceM": 0
-      }
-    },
-    {
-      "code": "1073",
-      "abbr": "ATACADAO BC",
-      "name": "Atacadao BC",
-      "lat": -15.560872,
-      "lng": -56.088145,
-      "isDepot": false,
-      "notes": null,
-      "snapInfo": {
-        "lat": -15.560872,
-        "lng": -56.088145,
-        "roadName": "Rodovia Emanuel Pinheiro",
-        "checkedAt": "2026-08-13T17:57:09.914Z",
         "distanceM": 0
       }
     },
@@ -1918,8 +1358,8 @@
           }
         },
         "extensionKm": {
-          "INBOUND": 20.35,
-          "OUTBOUND": 17.02
+          "INBOUND": 20.82,
+          "OUTBOUND": 17.17
         },
         "renewalIndex": {
           "INBOUND": {
@@ -14527,9 +13967,9 @@
       "routeOrdinal": 0,
       "routeName": "ALENC - AMBEV",
       "sequence": 2,
-      "localityCode": "1045",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.575211,
+      "lng": -56.103068,
       "deltaMinutes": 5,
       "deltaKm": 4.13,
       "deltaSource": "OSRM",
@@ -15010,9 +14450,9 @@
       "routeOrdinal": 0,
       "routeName": "ALENC - AMBEV",
       "sequence": 3,
-      "localityCode": "1046",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.575542,
+      "lng": -56.097017,
       "deltaMinutes": 2,
       "deltaKm": 1.2,
       "deltaSource": "OSRM",
@@ -15261,9 +14701,9 @@
       "routeOrdinal": 0,
       "routeName": "ALENC - AMBEV",
       "sequence": 4,
-      "localityCode": "1047",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.559028,
+      "lng": -56.123762,
       "deltaMinutes": 7,
       "deltaKm": 5.07,
       "deltaSource": "OSRM",
@@ -18744,9 +18184,9 @@
       "routeOrdinal": 0,
       "routeName": "AMBEV - ALENC",
       "sequence": 2,
-      "localityCode": "1040",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.559144,
+      "lng": -56.123746,
       "deltaMinutes": 3,
       "deltaKm": 1.5,
       "deltaSource": "OSRM",
@@ -19015,9 +18455,9 @@
       "routeOrdinal": 0,
       "routeName": "AMBEV - ALENC",
       "sequence": 3,
-      "localityCode": "1041",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.558846,
+      "lng": -56.110023,
       "deltaMinutes": 3,
       "deltaKm": 1.88,
       "deltaSource": "OSRM",
@@ -19318,9 +18758,9 @@
       "routeOrdinal": 0,
       "routeName": "AMBEV - ALENC",
       "sequence": 4,
-      "localityCode": "1042",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.575637,
+      "lng": -56.097018,
       "deltaMinutes": 4,
       "deltaKm": 3.22,
       "deltaSource": "OSRM",
@@ -19725,9 +19165,9 @@
       "routeOrdinal": 0,
       "routeName": "AMBEV - ALENC",
       "sequence": 5,
-      "localityCode": "1043",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.577992,
+      "lng": -56.114607,
       "deltaMinutes": 5,
       "deltaKm": 2.76,
       "deltaSource": "OSRM",
@@ -20204,9 +19644,9 @@
       "routeOrdinal": 0,
       "routeName": "AMBEV - ALENC",
       "sequence": 6,
-      "localityCode": "1044",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.591998,
+      "lng": -56.106561,
       "deltaMinutes": 4,
       "deltaKm": 2.21,
       "deltaSource": "OSRM",
@@ -61907,9 +61347,9 @@
       "routeOrdinal": 0,
       "routeName": "MATRIZ - MIKA",
       "sequence": 5,
-      "localityCode": "1073",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.560872,
+      "lng": -56.088145,
       "deltaMinutes": 4,
       "deltaKm": 2.34,
       "deltaSource": "OSRM",
@@ -62174,9 +61614,9 @@
       "routeOrdinal": 0,
       "routeName": "MATRIZ - MIKA",
       "sequence": 6,
-      "localityCode": "1067",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.532937,
+      "lng": -56.085204,
       "deltaMinutes": 7,
       "deltaKm": 5.18,
       "deltaSource": "OSRM",
@@ -63506,9 +62946,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 2,
-      "localityCode": "1057",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.596236,
+      "lng": -56.138904,
       "deltaMinutes": 3,
       "deltaKm": 1.42,
       "deltaSource": "OSRM",
@@ -63641,9 +63081,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 3,
-      "localityCode": "1058",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.597896,
+      "lng": -56.129907,
       "deltaMinutes": 2,
       "deltaKm": 1.22,
       "deltaSource": "OSRM",
@@ -63760,9 +63200,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 4,
-      "localityCode": "1059",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.60461,
+      "lng": -56.12635,
       "deltaMinutes": 2,
       "deltaKm": 0.94,
       "deltaSource": "OSRM",
@@ -64018,9 +63458,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 6,
-      "localityCode": "1060",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.601762,
+      "lng": -56.124999,
       "deltaMinutes": 1,
       "deltaKm": 0.32,
       "deltaSource": "OSRM",
@@ -64152,9 +63592,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 8,
-      "localityCode": "1062",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.59488,
+      "lng": -56.119206,
       "deltaMinutes": 2,
       "deltaKm": 0.55,
       "deltaSource": "OSRM",
@@ -64211,9 +63651,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 9,
-      "localityCode": "1061",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.594881,
+      "lng": -56.117943,
       "deltaMinutes": 1,
       "deltaKm": 0.14,
       "deltaSource": "OSRM",
@@ -64258,9 +63698,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 10,
-      "localityCode": "1063",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.595172,
+      "lng": -56.112391,
       "deltaMinutes": 1,
       "deltaKm": 0.61,
       "deltaSource": "OSRM",
@@ -64305,9 +63745,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 11,
-      "localityCode": "1064",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.590809,
+      "lng": -56.112112,
       "deltaMinutes": 2,
       "deltaKm": 0.65,
       "deltaSource": "OSRM",
@@ -64704,10 +64144,6 @@
           [
             -56.094364,
             -15.598549
-          ],
-          [
-            -56.094289,
-            -15.598477
           ],
           [
             -56.093803,
@@ -65246,6 +64682,10 @@
             -15.576127
           ],
           [
+            -56.073786,
+            -15.575938
+          ],
+          [
             -56.073736,
             -15.575879
           ],
@@ -65281,8 +64721,8 @@
             -15.575014
           ],
           [
-            -56.072696,
-            -15.574601
+            -56.07267,
+            -15.574568
           ],
           [
             -56.072609,
@@ -65438,9 +64878,9 @@
       "routeOrdinal": 0,
       "routeName": "AMALIA - CPA 1",
       "sequence": 14,
-      "localityCode": "1065",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.568058,
+      "lng": -56.074823,
       "deltaMinutes": 2,
       "deltaKm": 0.79,
       "deltaSource": "OSRM",
@@ -65474,6 +64914,14 @@
           [
             -56.074245,
             -15.571286
+          ],
+          [
+            -56.074071,
+            -15.571061
+          ],
+          [
+            -56.073881,
+            -15.570816
           ],
           [
             -56.073476,
@@ -65771,7 +65219,7 @@
       "lat": null,
       "lng": null,
       "deltaMinutes": 7,
-      "deltaKm": 3.94,
+      "deltaKm": 4.41,
       "deltaSource": "OSRM",
       "geometry": {
         "type": "LineString",
@@ -65965,200 +65413,560 @@
             -15.568202
           ],
           [
-            -56.067802,
-            -15.5678
+            -56.067974,
+            -15.568161
           ],
           [
-            -56.067713,
-            -15.56768
+            -56.067853,
+            -15.568145
           ],
           [
-            -56.06753,
-            -15.567457
+            -56.067704,
+            -15.568141
           ],
           [
-            -56.067284,
-            -15.567143
+            -56.067592,
+            -15.568164
           ],
           [
-            -56.064813,
-            -15.563985
+            -56.067513,
+            -15.568202
           ],
           [
-            -56.064668,
-            -15.5638
+            -56.066797,
+            -15.568591
           ],
           [
-            -56.063447,
-            -15.562246
+            -56.066454,
+            -15.568784
           ],
           [
-            -56.063287,
-            -15.562056
+            -56.06605,
+            -15.569011
           ],
           [
-            -56.062886,
-            -15.561534
+            -56.065863,
+            -15.569138
           ],
           [
-            -56.062808,
-            -15.561436
+            -56.065857,
+            -15.569171
           ],
           [
-            -56.062356,
-            -15.560864
+            -56.065843,
+            -15.569201
           ],
           [
-            -56.061571,
-            -15.559862
+            -56.06582,
+            -15.569227
           ],
           [
-            -56.061365,
-            -15.559601
+            -56.065792,
+            -15.569246
           ],
           [
-            -56.061227,
-            -15.559425
+            -56.065759,
+            -15.569257
           ],
           [
-            -56.061162,
-            -15.559333
+            -56.065724,
+            -15.569259
           ],
           [
-            -56.060658,
-            -15.558655
+            -56.06569,
+            -15.569252
           ],
           [
-            -56.060524,
-            -15.558465
+            -56.065659,
+            -15.569237
           ],
           [
-            -56.060411,
-            -15.558303
+            -56.065629,
+            -15.569209
           ],
           [
-            -56.060162,
-            -15.557963
+            -56.06561,
+            -15.569173
           ],
           [
-            -56.059627,
-            -15.557219
+            -56.065604,
+            -15.569133
           ],
           [
-            -56.05905,
-            -15.556522
+            -56.065607,
+            -15.569106
           ],
           [
-            -56.057968,
-            -15.555123
+            -56.065599,
+            -15.569009
           ],
           [
-            -56.0575,
-            -15.554537
+            -56.06559,
+            -15.568937
           ],
           [
-            -56.057409,
-            -15.554424
+            -56.065578,
+            -15.568878
           ],
           [
-            -56.057275,
-            -15.554256
+            -56.065266,
+            -15.56839
           ],
           [
-            -56.057192,
-            -15.554152
+            -56.065208,
+            -15.568305
           ],
           [
-            -56.056985,
-            -15.553875
+            -56.065153,
+            -15.568247
           ],
           [
-            -56.056872,
-            -15.55374
+            -56.064959,
+            -15.568055
           ],
           [
-            -56.056605,
-            -15.553935
+            -56.064755,
+            -15.567885
           ],
           [
-            -56.056465,
-            -15.554038
+            -56.064508,
+            -15.567723
           ],
           [
-            -56.056451,
-            -15.554048
+            -56.064271,
+            -15.567601
           ],
           [
-            -56.055595,
-            -15.554675
+            -56.063976,
+            -15.567492
           ],
           [
-            -56.054141,
-            -15.555751
+            -56.063822,
+            -15.56745
           ],
           [
-            -56.054051,
-            -15.555642
+            -56.063621,
+            -15.567417
           ],
           [
-            -56.053651,
-            -15.555954
+            -56.063415,
+            -15.567389
           ],
           [
-            -56.053221,
-            -15.556273
+            -56.063036,
+            -15.567386
           ],
           [
-            -56.052849,
-            -15.556534
+            -56.062856,
+            -15.567383
           ],
           [
-            -56.052405,
-            -15.556844
+            -56.062783,
+            -15.567383
           ],
           [
-            -56.052677,
-            -15.557218
+            -56.062584,
+            -15.567382
           ],
           [
-            -56.052454,
-            -15.557354
+            -56.062486,
+            -15.567382
           ],
           [
-            -56.051858,
-            -15.557791
+            -56.061793,
+            -15.567381
           ],
           [
-            -56.05183,
-            -15.557811
+            -56.061384,
+            -15.56738
           ],
           [
-            -56.051763,
-            -15.557861
+            -56.060787,
+            -15.567385
           ],
           [
-            -56.051686,
-            -15.557784
+            -56.060714,
+            -15.567386
           ],
           [
-            -56.051555,
-            -15.557658
+            -56.06056,
+            -15.567389
           ],
           [
-            -56.051416,
-            -15.557513
+            -56.060453,
+            -15.56739
           ],
           [
-            -56.051189,
-            -15.557223
+            -56.060364,
+            -15.567389
           ],
           [
-            -56.051056,
-            -15.557053
+            -56.060243,
+            -15.567388
           ],
           [
-            -56.051056,
-            -15.557053
+            -56.06002,
+            -15.567413
+          ],
+          [
+            -56.059417,
+            -15.567454
+          ],
+          [
+            -56.05939,
+            -15.56748
+          ],
+          [
+            -56.059356,
+            -15.567497
+          ],
+          [
+            -56.059317,
+            -15.567503
+          ],
+          [
+            -56.059279,
+            -15.567495
+          ],
+          [
+            -56.059245,
+            -15.567477
+          ],
+          [
+            -56.059228,
+            -15.56746
+          ],
+          [
+            -56.059126,
+            -15.56743
+          ],
+          [
+            -56.058928,
+            -15.567394
+          ],
+          [
+            -56.058762,
+            -15.567392
+          ],
+          [
+            -56.057787,
+            -15.567382
+          ],
+          [
+            -56.057571,
+            -15.567379
+          ],
+          [
+            -56.057198,
+            -15.567375
+          ],
+          [
+            -56.057125,
+            -15.567374
+          ],
+          [
+            -56.057036,
+            -15.567373
+          ],
+          [
+            -56.056681,
+            -15.567369
+          ],
+          [
+            -56.056504,
+            -15.567367
+          ],
+          [
+            -56.056065,
+            -15.567362
+          ],
+          [
+            -56.05595,
+            -15.567382
+          ],
+          [
+            -56.055915,
+            -15.567391
+          ],
+          [
+            -56.055883,
+            -15.5674
+          ],
+          [
+            -56.055854,
+            -15.567414
+          ],
+          [
+            -56.055834,
+            -15.567429
+          ],
+          [
+            -56.055821,
+            -15.567439
+          ],
+          [
+            -56.055762,
+            -15.567495
+          ],
+          [
+            -56.055741,
+            -15.567509
+          ],
+          [
+            -56.055716,
+            -15.567518
+          ],
+          [
+            -56.05569,
+            -15.56752
+          ],
+          [
+            -56.055664,
+            -15.567517
+          ],
+          [
+            -56.05564,
+            -15.567508
+          ],
+          [
+            -56.055619,
+            -15.567493
+          ],
+          [
+            -56.055602,
+            -15.567474
+          ],
+          [
+            -56.055591,
+            -15.567451
+          ],
+          [
+            -56.055561,
+            -15.567438
+          ],
+          [
+            -56.055532,
+            -15.567423
+          ],
+          [
+            -56.055497,
+            -15.567409
+          ],
+          [
+            -56.055455,
+            -15.567397
+          ],
+          [
+            -56.055267,
+            -15.567371
+          ],
+          [
+            -56.055086,
+            -15.567354
+          ],
+          [
+            -56.054975,
+            -15.567315
+          ],
+          [
+            -56.054917,
+            -15.567293
+          ],
+          [
+            -56.054614,
+            -15.567126
+          ],
+          [
+            -56.054506,
+            -15.566999
+          ],
+          [
+            -56.054167,
+            -15.566595
+          ],
+          [
+            -56.054108,
+            -15.566525
+          ],
+          [
+            -56.053996,
+            -15.566394
+          ],
+          [
+            -56.053546,
+            -15.565804
+          ],
+          [
+            -56.053513,
+            -15.565761
+          ],
+          [
+            -56.052736,
+            -15.564782
+          ],
+          [
+            -56.052638,
+            -15.564658
+          ],
+          [
+            -56.052336,
+            -15.564273
+          ],
+          [
+            -56.052046,
+            -15.563882
+          ],
+          [
+            -56.051985,
+            -15.563794
+          ],
+          [
+            -56.051804,
+            -15.56356
+          ],
+          [
+            -56.051741,
+            -15.563488
+          ],
+          [
+            -56.051403,
+            -15.563071
+          ],
+          [
+            -56.050861,
+            -15.562345
+          ],
+          [
+            -56.050791,
+            -15.562264
+          ],
+          [
+            -56.050664,
+            -15.562113
+          ],
+          [
+            -56.050492,
+            -15.561898
+          ],
+          [
+            -56.050181,
+            -15.561506
+          ],
+          [
+            -56.049872,
+            -15.561121
+          ],
+          [
+            -56.049551,
+            -15.560716
+          ],
+          [
+            -56.049249,
+            -15.560313
+          ],
+          [
+            -56.049008,
+            -15.56
+          ],
+          [
+            -56.048938,
+            -15.559909
+          ],
+          [
+            -56.048883,
+            -15.559838
+          ],
+          [
+            -56.04864,
+            -15.559523
+          ],
+          [
+            -56.04831,
+            -15.559122
+          ],
+          [
+            -56.048159,
+            -15.558932
+          ],
+          [
+            -56.048008,
+            -15.558731
+          ],
+          [
+            -56.047947,
+            -15.558648
+          ],
+          [
+            -56.047647,
+            -15.558251
+          ],
+          [
+            -56.047609,
+            -15.558202
+          ],
+          [
+            -56.04742,
+            -15.557951
+          ],
+          [
+            -56.047865,
+            -15.557638
+          ],
+          [
+            -56.047976,
+            -15.55756
+          ],
+          [
+            -56.048247,
+            -15.557369
+          ],
+          [
+            -56.048698,
+            -15.557052
+          ],
+          [
+            -56.049138,
+            -15.556742
+          ],
+          [
+            -56.049961,
+            -15.556163
+          ],
+          [
+            -56.050283,
+            -15.556576
+          ],
+          [
+            -56.050304,
+            -15.556602
+          ],
+          [
+            -56.050362,
+            -15.556607
+          ],
+          [
+            -56.050409,
+            -15.556621
+          ],
+          [
+            -56.050463,
+            -15.556645
+          ],
+          [
+            -56.050522,
+            -15.556683
+          ],
+          [
+            -56.05058,
+            -15.556724
+          ],
+          [
+            -56.050923,
+            -15.557161
+          ],
+          [
+            -56.050923,
+            -15.557161
           ]
         ]
       },
@@ -75432,15 +75240,55 @@
       "localityCode": "1048",
       "lat": null,
       "lng": null,
-      "deltaMinutes": 6,
-      "deltaKm": 3.39,
+      "deltaMinutes": 7,
+      "deltaKm": 3.54,
       "deltaSource": "OSRM",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            -56.051056,
-            -15.557053
+            -56.050923,
+            -15.557161
+          ],
+          [
+            -56.051051,
+            -15.557324
+          ],
+          [
+            -56.05127,
+            -15.557604
+          ],
+          [
+            -56.051296,
+            -15.557625
+          ],
+          [
+            -56.051315,
+            -15.55763
+          ],
+          [
+            -56.051338,
+            -15.557625
+          ],
+          [
+            -56.05141,
+            -15.557567
+          ],
+          [
+            -56.051418,
+            -15.55755
+          ],
+          [
+            -56.051419,
+            -15.557532
+          ],
+          [
+            -56.051416,
+            -15.557513
+          ],
+          [
+            -56.051189,
+            -15.557223
           ],
           [
             -56.05071,
@@ -75639,6 +75487,10 @@
             -15.561553
           ],
           [
+            -56.067579,
+            -15.561665
+          ],
+          [
             -56.067698,
             -15.561779
           ],
@@ -75760,9 +75612,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 3,
-      "localityCode": "1051",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.568088,
+      "lng": -56.071124,
       "deltaMinutes": 3,
       "deltaKm": 0.94,
       "deltaSource": "OSRM",
@@ -75919,9 +75771,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 4,
-      "localityCode": "1050",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.567751,
+      "lng": -56.074575,
       "deltaMinutes": 1,
       "deltaKm": 0.51,
       "deltaSource": "OSRM",
@@ -76137,9 +75989,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 6,
-      "localityCode": "1052",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.590785,
+      "lng": -56.112095,
       "deltaMinutes": 8,
       "deltaKm": 6.43,
       "deltaSource": "OSRM",
@@ -76659,8 +76511,8 @@
             -15.596766
           ],
           [
-            -56.09308,
-            -15.596831
+            -56.093076,
+            -15.596832
           ],
           [
             -56.093169,
@@ -76960,9 +76812,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 7,
-      "localityCode": "1053",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.595179,
+      "lng": -56.1124,
       "deltaMinutes": 2,
       "deltaKm": 0.65,
       "deltaSource": "OSRM",
@@ -77031,9 +76883,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 8,
-      "localityCode": "1054",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.595121,
+      "lng": -56.119525,
       "deltaMinutes": 2,
       "deltaKm": 0.8,
       "deltaSource": "OSRM",
@@ -77094,9 +76946,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 9,
-      "localityCode": "1055",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.6036,
+      "lng": -56.127105,
       "deltaMinutes": 4,
       "deltaKm": 1.31,
       "deltaSource": "OSRM",
@@ -77225,9 +77077,9 @@
       "routeOrdinal": 0,
       "routeName": "CPA 1 - AMALIA",
       "sequence": 10,
-      "localityCode": "1056",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.598361,
+      "lng": -56.130959,
       "deltaMinutes": 2,
       "deltaKm": 0.82,
       "deltaSource": "OSRM",
@@ -113701,9 +113553,9 @@
       "routeOrdinal": 0,
       "routeName": "Circular",
       "sequence": 2,
-      "localityCode": "1036",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.554057,
+      "lng": -56.056438,
       "deltaMinutes": 8,
       "deltaKm": 6.89,
       "deltaSource": "OSRM",
@@ -114743,9 +114595,9 @@
       "routeOrdinal": 0,
       "routeName": "Circular",
       "sequence": 4,
-      "localityCode": "1035",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.558263,
+      "lng": -56.025281,
       "deltaMinutes": 5,
       "deltaKm": 3.75,
       "deltaSource": "OSRM",
@@ -146110,9 +145962,9 @@
       "routeOrdinal": 0,
       "routeName": "MIKA - MATRIZ",
       "sequence": 2,
-      "localityCode": "1067",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.532937,
+      "lng": -56.085204,
       "deltaMinutes": 7,
       "deltaKm": 4.92,
       "deltaSource": "OSRM",
@@ -146956,9 +146808,9 @@
       "routeOrdinal": 0,
       "routeName": "MIKA - MATRIZ",
       "sequence": 4,
-      "localityCode": "1068",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.561332,
+      "lng": -56.088155,
       "deltaMinutes": 8,
       "deltaKm": 6.12,
       "deltaSource": "OSRM",
@@ -147807,9 +147659,9 @@
       "routeOrdinal": 0,
       "routeName": "MIKA - MATRIZ",
       "sequence": 5,
-      "localityCode": "1070",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.556555,
+      "lng": -56.085457,
       "deltaMinutes": 1,
       "deltaKm": 0.66,
       "deltaSource": "OSRM",
@@ -147930,9 +147782,9 @@
       "routeOrdinal": 0,
       "routeName": "MIKA - MATRIZ",
       "sequence": 6,
-      "localityCode": "1069",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.55913,
+      "lng": -56.083485,
       "deltaMinutes": 2,
       "deltaKm": 0.41,
       "deltaSource": "OSRM",
@@ -148060,9 +147912,9 @@
       "routeOrdinal": 0,
       "routeName": "MIKA - MATRIZ",
       "sequence": 8,
-      "localityCode": "1071",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.563973,
+      "lng": -56.082185,
       "deltaMinutes": 1,
       "deltaKm": 0.32,
       "deltaSource": "OSRM",
@@ -152026,9 +151878,9 @@
       "routeOrdinal": 0,
       "routeName": "Circular",
       "sequence": 4,
-      "localityCode": "1038",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.52929,
+      "lng": -56.031014,
       "deltaMinutes": 10,
       "deltaKm": 5.96,
       "deltaSource": "OSRM",
@@ -152453,9 +152305,9 @@
       "routeOrdinal": 0,
       "routeName": "Circular",
       "sequence": 5,
-      "localityCode": "1037",
-      "lat": null,
-      "lng": null,
+      "localityCode": null,
+      "lat": -15.57034,
+      "lng": -56.027044,
       "deltaMinutes": 11,
       "deltaKm": 6.27,
       "deltaSource": "OSRM",
