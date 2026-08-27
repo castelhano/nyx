@@ -89,7 +89,7 @@ export default function VehiclePlanPage() {
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
-    editBarOpen,
+    editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
@@ -586,7 +586,12 @@ export default function VehiclePlanPage() {
             onClose={() => setLinesPanelOpen(false)}
             onLineCleared={() => refetchGantt()}
             canClear={canEdit}
-            onOpenComparison={(lineId) => setSummaryLineIds([lineId])}
+            onOpenComparison={(lineId) => {
+              setLinesPanelOpen(false)
+              setSelectedLineIds(new Set([lineId]))
+              setEditBarOpen(true)
+              setSummaryLineIds([lineId])
+            }}
           />
         )}
 

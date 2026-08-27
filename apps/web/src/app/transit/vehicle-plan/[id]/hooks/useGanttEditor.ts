@@ -1892,7 +1892,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
-    editBarOpen,
+    editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
