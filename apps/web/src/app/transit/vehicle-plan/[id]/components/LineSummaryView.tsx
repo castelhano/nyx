@@ -311,12 +311,13 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
             Carregando…
           </div>
         ) : tab === 'comparativo' ? (
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-[1400px] mx-auto space-y-5">
 
             {/* summary cards */}
             <div className={cn('grid gap-4 items-stretch', hasReference ? 'grid-cols-1 lg:grid-cols-[1fr_48px_1fr]' : 'grid-cols-1 max-w-sm mx-auto')}>
               {hasReference && (
-                <div className="bg-muted/30 border border-border rounded-xl p-4 space-y-3">
+                <div className="bg-muted/30 border border-border rounded-xl p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Atual</span>
                     <ScheduleBadge status={data.active?.lineScheduleStatus ?? null} />
@@ -339,7 +340,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                 </div>
               )}
 
-              <div className={cn('bg-primary/5 border border-primary/30 rounded-xl p-4 space-y-3', hasReference && 'shadow-[0_0_32px_hsl(var(--primary)/0.08)]')}>
+              <div className={cn('bg-primary/5 border border-primary/30 rounded-xl p-5 space-y-3', hasReference && 'shadow-[0_0_32px_hsl(var(--primary)/0.08)]')}>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold uppercase tracking-widest text-primary">
                     {data.draft.planStatus === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
@@ -418,6 +419,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                   </tbody>
                 </table>
               </div>
+            </div>
             </div>
           </div>
         ) : (
