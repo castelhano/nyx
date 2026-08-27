@@ -63,6 +63,8 @@ interface UseVehiclePlanShortcutsParams {
   setAddTripOpen:       Dispatch<SetStateAction<boolean>>
   setLineFreqOpen:      Dispatch<SetStateAction<boolean>>
   setLinesPanelOpen:    Dispatch<SetStateAction<boolean>>
+  summaryLineIds:       string[] | null
+  setSummaryLineIds:    Dispatch<SetStateAction<string[] | null>>
 
   clearAllPending:            () => void
   handleSavePendingWithConfirm:    () => void
@@ -85,6 +87,7 @@ export function useVehiclePlanShortcuts({
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
   pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
+  summaryLineIds, setSummaryLineIds,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
   handleFinalizePlan, handleTripTimingOp, discardBreaks,
@@ -181,6 +184,14 @@ export function useVehiclePlanShortcuts({
     icon:    Icons.List,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: !isNew,
+    section: SEC_PAINEIS,
+  })
+
+  useShortcut('alt+;', () => setSummaryLineIds(v => v ? null : [...selectedLineIds]), {
+    desc:    'Resumo comparativo da linha',
+    icon:    Icons.BarChart2,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: !isNew && (summaryLineIds != null || selectedLineIds.size > 0),
     section: SEC_PAINEIS,
   })
 

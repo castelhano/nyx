@@ -1728,7 +1728,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         where:  { vehicleBlock: { vehiclePlanId: planId }, trip: { route: { lineId } } },
         select: {
           trip:         { select: { departureMinutes: true } },
-          vehicleBlock: { select: { vehicleType: true } },
+          vehicleBlock: { select: { id: true, vehicleType: true } },
         },
       }),
     ])
@@ -1743,11 +1743,15 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const renewal     = metrics?.renewalIndex?.overall?.value ?? 0
     const demandByDir = dayTypeCode ? metrics?.demand?.[dayTypeCode] : undefined
 
-    const supplyByHour = new Array(24).fill(0)
+    const supplyByHour  = new Array(24).fill(0)
+    const blockTypeById = new Map<string, typeof blockTrips[number]['vehicleBlock']['vehicleType']>()
     for (const bt of blockTrips) {
       const hour = Math.floor(bt.trip.departureMinutes / 60) % 24
       supplyByHour[hour] += (VEHICLE_TYPE_CAPACITY[bt.vehicleBlock.vehicleType] ?? 0) * (1 + renewal / 100)
+      blockTypeById.set(bt.vehicleBlock.id, bt.vehicleBlock.vehicleType)
     }
+    const capacities = Array.from(blockTypeById.values()).map(vt => VEHICLE_TYPE_CAPACITY[vt] ?? 0)
+    const avgCapacity = capacities.length > 0 ? Math.round(capacities.reduce((a, b) => a + b, 0) / capacities.length) : 0
 
     const demandByHour = new Array(24).fill(0)
     for (const hourly of Object.values(demandByDir ?? {})) {
@@ -1775,7 +1779,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     return {
       hours,
-      kpis: { totalDailyDemand, totalDailySupply, avgLoadFactor, saturatedHoursCount, totalUnmetDemand, peakLoadFactor },
+      kpis: {
+        totalDailyDemand, totalDailySupply, avgLoadFactor, saturatedHoursCount, totalUnmetDemand, peakLoadFactor,
+        avgCapacity, renewalIndex: renewal,
+      },
     }
   }
 }

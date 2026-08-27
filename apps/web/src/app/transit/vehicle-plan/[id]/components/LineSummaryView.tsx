@@ -10,7 +10,7 @@ import { apiFetch } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import { Select } from '@/components/ui/select'
-import { useShortcutContext } from '@/lib/keywatch'
+import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 
 interface LineComparisonSummary {
   fleetSize:             number
@@ -54,12 +54,14 @@ interface HourRow {
 interface HourlyResponse {
   hours: HourRow[]
   kpis: {
-    totalDailyDemand:   number
-    totalDailySupply:   number
-    avgLoadFactor:      number
+    totalDailyDemand:    number
+    totalDailySupply:    number
+    avgLoadFactor:       number
     saturatedHoursCount: number
-    totalUnmetDemand:   number
-    peakLoadFactor:     number
+    totalUnmetDemand:    number
+    peakLoadFactor:      number
+    avgCapacity:         number
+    renewalIndex:        number
   }
 }
 
@@ -194,6 +196,16 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  useShortcut('alt+[', () => {
+    const idx = TABS.findIndex(t => t.key === tab)
+    if (idx > 0) setTab(TABS[idx - 1].key as typeof tab)
+  }, { context: 'summary', desc: 'Aba anterior' })
+
+  useShortcut('alt+]', () => {
+    const idx = TABS.findIndex(t => t.key === tab)
+    if (idx < TABS.length - 1) setTab(TABS[idx + 1].key as typeof tab)
+  }, { context: 'summary', desc: 'Próxima aba' })
+
   const { data, isLoading, error } = useQuery<LineComparisonResponse>({
     queryKey: ['transit', 'vehicle-plan', planId, 'lines', activeLineId, 'comparison'],
     queryFn:  async () => {
@@ -219,6 +231,9 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
 
   const chartData = hourly?.hours.map(h => ({ ...h, hourLabel: `${String(h.hour).padStart(2, '0')}h` })) ?? []
   const domainMax = chartData.length > 0 ? Math.min(2.0, Math.max(...chartData.map(d => d.loadFactor)) + 0.15) : 2.0
+  const peakSupplyHour = chartData.reduce<typeof chartData[number] | null>(
+    (max, h) => (!max || h.supply > max.supply) ? h : max, null,
+  )
 
   const lfStatus =
     !hourly ? '' :
@@ -299,7 +314,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
             {/* summary cards */}
-            <div className={cn('grid gap-4 items-stretch', hasReference ? 'grid-cols-1 lg:grid-cols-[1fr_1fr]' : 'grid-cols-1 max-w-sm mx-auto')}>
+            <div className={cn('grid gap-4 items-stretch', hasReference ? 'grid-cols-1 lg:grid-cols-[1fr_48px_1fr]' : 'grid-cols-1 max-w-sm mx-auto')}>
               {hasReference && (
                 <div className="bg-muted/30 border border-border rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -307,15 +322,20 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                     <ScheduleBadge status={data.active?.lineScheduleStatus ?? null} />
                   </div>
                   {data.active ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Stat label="Frota" value={`${atual!.fleetSize ?? 0} veíc.`} />
-                      <Stat label="Viagens/dia" value={String(atual!.dailyTrips ?? 0)} />
-                      <Stat label="Km/dia" value={(atual!.dailyKm ?? 0).toLocaleString('pt-BR')} />
-                      <Stat label="IOC" value={(atual!.occupancyIndex ?? 0).toFixed(2)} />
-                    </div>
+                    <SummaryCardBody v={atual!} />
                   ) : (
                     <p className="text-sm text-muted-foreground py-2">Nenhum plano ativo para esta linha/dia ainda.</p>
                   )}
+                </div>
+              )}
+
+              {hasReference && (
+                <div className="flex lg:flex-col items-center justify-center gap-2 py-6">
+                  <div className="flex-1 h-px lg:w-px lg:h-auto bg-border" />
+                  <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/25 flex items-center justify-center shrink-0">
+                    <Icons.ArrowRight className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1 h-px lg:w-px lg:h-auto bg-border" />
                 </div>
               )}
 
@@ -326,12 +346,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                   </span>
                   <ScheduleBadge status={data.draft.lineScheduleStatus} />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Stat label="Frota" value={`${proposta.fleetSize ?? 0} veíc.`} />
-                  <Stat label="Viagens/dia" value={String(proposta.dailyTrips ?? 0)} />
-                  <Stat label="Km/dia" value={(proposta.dailyKm ?? 0).toLocaleString('pt-BR')} />
-                  <Stat label="IOC" value={(proposta.occupancyIndex ?? 0).toFixed(2)} />
-                </div>
+                <SummaryCardBody v={proposta} primary />
               </div>
             </div>
 
@@ -417,7 +432,57 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
             {hourlyLoading || !hourly ? (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">Carregando…</div>
             ) : (
-              <div className="space-y-5 max-w-[1200px] mx-auto">
+              <div className="flex flex-col lg:flex-row gap-6 max-w-[1400px] mx-auto">
+                {/* Params panel */}
+                <div className="w-full lg:w-68 shrink-0 space-y-4">
+                  <div className="bg-card border border-border rounded-xl p-5 space-y-5">
+                    <div className="flex items-center gap-2">
+                      <Icons.SlidersHorizontal className="w-4 h-4 text-primary" />
+                      <h3 className="font-semibold text-sm">Parâmetros</h3>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-muted/50 rounded-lg px-2.5 py-2.5 text-center">
+                        <p className="font-semibold text-sm text-primary tabular-nums">{hourly.kpis.avgCapacity} pax</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Capacidade média</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg px-2.5 py-2.5 text-center">
+                        <p className="font-semibold text-sm text-primary tabular-nums">{hourly.kpis.renewalIndex}%</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Renovação</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-primary/5 border border-primary/15 rounded-lg p-3.5 space-y-1">
+                      <p className="text-xs text-muted-foreground">Oferta calculada no pico</p>
+                      <p className="font-bold text-xl text-primary leading-none tabular-nums">
+                        {(peakSupplyHour?.supply ?? 0).toLocaleString('pt-BR')} pax/h
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        pico às {peakSupplyHour?.hourLabel ?? '—'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 pt-1 border-t border-border">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground pt-1">
+                        Fator de Ocupação (FOC)
+                      </p>
+                      {[
+                        { color: 'var(--sim-lf-ok)', label: 'FOC < 0.75 — Confortável' },
+                        { color: 'var(--sim-lf-moderate)', label: 'FOC 0.75–0.90 — Moderado' },
+                        { color: 'var(--sim-lf-high)', label: 'FOC 0.90–1.0 — Elevado' },
+                        { color: 'var(--sim-lf-critical)', label: 'FOC > 1.0 — Saturado' },
+                      ].map(item => (
+                        <div key={item.label} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: item.color }} />
+                          {item.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Charts & KPIs */}
+                <div className="flex-1 min-w-0 space-y-5">
                 {/* KPI cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
@@ -517,6 +582,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                </div>
               </div>
             )}
           </div>
@@ -531,5 +597,43 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="font-medium text-sm text-foreground/90 mt-0.5 tabular-nums">{value}</p>
     </div>
+  )
+}
+
+const dash = (v: number | null | undefined, fmt: (v: number) => string) => v == null ? '—' : fmt(v)
+
+// Mirrors the prototype's summary card layout — big score number, then the same
+// 6+3 stat split. `score` stays at 0 on both sides until a formula is defined
+// (doc decision) — shown anyway so the element already exists in the UI.
+function SummaryCardBody({ v, primary }: { v: RowValues; primary?: boolean }) {
+  return (
+    <>
+      <div>
+        <p className={cn('font-bold text-4xl leading-none tracking-tight tabular-nums', primary ? 'text-primary' : 'text-foreground')}>
+          {v.score ?? 0}
+        </p>
+        <p className="text-sm text-muted-foreground mt-1.5">score</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <Stat label="Frota" value={`${v.fleetSize ?? 0} veíc.`} />
+        <Stat label="Operação" value={`${dash(v.operatingHours, x => x.toFixed(1))}h/dia`} />
+        <Stat label="Int. Pico Manhã" value={`${dash(v.peakMorningInterval, String)} min`} />
+        <Stat label="Int. Entrepico" value={`${dash(v.offPeakInterval, String)} min`} />
+        <Stat label="Int. Pico Tarde" value={`${dash(v.peakAfternoonInterval, String)} min`} />
+        <Stat label="IOC" value={dash(v.occupancyIndex, x => x.toFixed(2))} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border">
+        {[
+          { label: 'Km/dia',   value: (v.dailyKm ?? 0).toLocaleString('pt-BR') },
+          { label: 'IFS',      value: dash(v.serviceFrequencyIndex, x => x.toFixed(2)) },
+          { label: 'PPH pico', value: String(v.peakPassengersPerHour ?? 0) },
+        ].map(item => (
+          <div key={item.label} className="text-center">
+            <p className="font-semibold text-base text-foreground/80 tabular-nums">{item.value}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }

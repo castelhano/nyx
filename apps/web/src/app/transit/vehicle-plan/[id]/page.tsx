@@ -129,6 +129,7 @@ export default function VehiclePlanPage() {
     mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
     pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
+    summaryLineIds, setSummaryLineIds,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks,
