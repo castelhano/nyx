@@ -52,6 +52,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   const [allowsCrewChange, setAllowsCrewChange] = useState(false)
   const [afterKey,   setAfterKey]   = useState<string | null>(() => insertOptions.at(-1)?.value ?? null)
   const [snapping,   setSnapping]   = useState(false)
+  const codeTouched = useRef(false)
 
   const isNewLocality = mode === 'stop' && !localityId
 
@@ -70,17 +71,30 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   const resolvedLng = selectedRaw ? (selectedRaw.lng != null ? Number(selectedRaw.lng as number) : NaN) : parseFloat(lngStr)
   const hasValidCoords = !isNaN(resolvedLat) && !isNaN(resolvedLng)
 
-  // suggest the next free locality code once on mount — user can still overwrite it.
-  // the server only knows about persisted codes, so bump past any code already
-  // claimed by a pending (not-yet-saved) point to avoid a unique-constraint clash on save
+  // suggest a locality code from the quadrant grid once lat/lng resolve to valid numbers
+  // — user can still overwrite it, which stops further auto-fills (codeTouched).
+  // the server only knows about persisted codes, so bump the sequence past any code
+  // already claimed by a pending (not-yet-saved) point, to avoid a unique-constraint clash on save
   useEffect(() => {
-    apiFetch('/transit/transit-locality/next-code').then((r) => r.json()).then((data) => {
-      const usedByPending = new Set(pending.map((p) => p.code).filter((c): c is string => c != null))
-      let n = Number(data.code)
-      while (usedByPending.has(String(n))) n += 1
-      setCode((prev) => prev || String(n))
-    }).catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isNewLocality) return
+    const lat = parseFloat(latStr)
+    const lng = parseFloat(lngStr)
+    if (isNaN(lat) || isNaN(lng)) return
+    const timer = setTimeout(() => {
+      apiFetch(`/transit/transit-locality/next-code?lat=${lat}&lng=${lng}`).then((r) => r.json()).then((data) => {
+        if (codeTouched.current || !data.code) return
+        const usedByPending = new Set(pending.map((p) => p.code).filter((c): c is string => c != null))
+        const match = /^(.+-)(\d{3})$/.exec(data.code)
+        if (!match) { setCode(data.code); return }
+        const [, prefix, seqStr] = match
+        let seq = Number(seqStr)
+        while (usedByPending.has(`${prefix}${String(seq).padStart(3, '0')}`)) seq += 1
+        setCode(`${prefix}${String(seq).padStart(3, '0')}`)
+      }).catch(() => {})
+    }, 300)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNewLocality, latStr, lngStr])
 
   // when lat/lng are prefilled from map click, try to snap and reverse-geocode
   useEffect(() => {
@@ -214,8 +228,8 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
                 <input
                   className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="Ex: 1234"
+                  onChange={(e) => { codeTouched.current = true; setCode(e.target.value) }}
+                  placeholder="Ex: A0517-001"
                   maxLength={10}
                 />
               </div>

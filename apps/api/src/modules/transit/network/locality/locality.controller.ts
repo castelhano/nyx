@@ -25,8 +25,9 @@ export class LocalityController extends BaseController<Locality, CreateLocalityD
   }
 
   @Get('next-code')
-  async nextCode() {
-    return { code: await this.localityService.suggestNextCode() }
+  async nextCode(@Query('lat') lat?: string, @Query('lng') lng?: string) {
+    if (lat === undefined || lng === undefined) return {}
+    return { code: await this.localityService.suggestCode(Number(lat), Number(lng)) }
   }
 
   @Get('reverse-geocode')

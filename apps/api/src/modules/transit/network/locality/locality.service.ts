@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { localitySchema, Locality, CreateLocalityDto, UpdateLocalityDto, SnapInfo } from '@nyx/schemas'
+import { localitySchema, Locality, CreateLocalityDto, UpdateLocalityDto, SnapInfo, localityQuadrant } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { stringContains } from '../../../../core/db.utils'
@@ -35,13 +35,15 @@ export class LocalityService extends BaseService<Locality, CreateLocalityDto, Up
     return result
   }
 
-  async suggestNextCode(): Promise<string> {
-    const rows = await this.prisma.transitLocality.findMany({ select: { code: true } })
-    const maxCode = rows.reduce((max, { code }) => {
-      const n = Number(code)
-      return Number.isInteger(n) && String(n) === code && n > max ? n : max
-    }, 999)
-    return String(maxCode + 1)
+  // Prefix = macro-region letter + quadrant row/col (or letter + "0000" for points
+  // outside the core box). The sequence within a quadrant needs a DB round-trip (count
+  // of codes already using this prefix), so it can't be computed on the frontend alone.
+  async suggestCode(lat: number, lng: number): Promise<string> {
+    const { prefix } = localityQuadrant(lat, lng)
+    const existing = await this.prisma.transitLocality.count({
+      where: { code: { startsWith: `${prefix}-` } },
+    })
+    return `${prefix}-${String(existing + 1).padStart(3, '0')}`
   }
 
   async findRoutesForLocality(localityId: string) {

@@ -21,6 +21,7 @@ export const localitySchema = withMeta(
       keybind:         'c',
       filter:          true,
       suggestEndpoint: '/transit/transit-locality/next-code',
+      suggestParams:   ['lat', 'lng'],
     }),
 
     abbr: z.string().max(16).optional().meta({

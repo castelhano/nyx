@@ -58,6 +58,8 @@ export interface FieldMeta {
   pairField?: string
   /** On create-only forms, GET this endpoint once on mount and prefill the field with `response[fieldName]` if the field has no value yet. */
   suggestEndpoint?: string
+  /** Names of sibling fields to send as query params to `suggestEndpoint`. When set, the suggestion also re-fetches whenever these fields change (not just once on mount), as long as the field itself hasn't been edited by hand. */
+  suggestParams?: string[]
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -97,6 +99,7 @@ export interface MetadataField {
   lazyEdit?: boolean
   pairField?: string
   suggestEndpoint?: string
+  suggestParams?: string[]
   fields?: MetadataField[]
   itemFields?: MetadataField[]
 }

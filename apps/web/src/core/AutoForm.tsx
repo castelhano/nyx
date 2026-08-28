@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
-import { useForm, FormProvider } from 'react-hook-form'
+import { useForm, FormProvider, useWatch } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
@@ -80,13 +80,13 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
   // `values` (RHF 7.31+): sincroniza o form com dados externos via deep-equal,
   // eliminando os useEffects manuais de reset que havia antes.
   const methods = useForm({ values: mergedValues })
-  const { register, control, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = methods
+  const { register, control, handleSubmit, reset, setValue, formState: { errors, isSubmitting, dirtyFields } } = methods
 
   // Em registros novos, campos com suggestEndpoint buscam um valor sugerido uma vez
   // (ex: próximo código livre) e preenchem o form sem sobrescrever valor já presente.
   useEffect(() => {
     if (!isNew || !meta) return
-    const fields = meta.fields.filter((f) => f.suggestEndpoint && !mergedValues[f.name])
+    const fields = meta.fields.filter((f) => f.suggestEndpoint && !f.suggestParams && !mergedValues[f.name])
     for (const field of fields) {
       apiFetch(field.suggestEndpoint!).then((r) => r.json()).then((data) => {
         const suggested = data?.[field.name]
@@ -94,6 +94,31 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
       }).catch(() => {})
     }
   }, [isNew, meta?.resource]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fields with suggestParams (e.g. `code` suggested from lat/lng) re-fetch the suggestion
+  // whenever those fields change, not just once on mount — as long as the field itself
+  // hasn't been edited by hand yet.
+  const suggestReactiveFields = meta?.fields.filter((f) => f.suggestEndpoint && f.suggestParams?.length) ?? []
+  const suggestParamNames     = Array.from(new Set(suggestReactiveFields.flatMap((f) => f.suggestParams!)))
+  const suggestParamValues    = useWatch({ control, name: suggestParamNames })
+
+  useEffect(() => {
+    if (!isNew || suggestReactiveFields.length === 0) return
+    const timer = setTimeout(() => {
+      for (const field of suggestReactiveFields) {
+        if (dirtyFields[field.name]) continue
+        const params = field.suggestParams!.map((p) => methods.getValues(p))
+        if (params.some((v) => v === undefined || v === null || v === '')) continue
+        const qs = field.suggestParams!.map((p, i) => `${p}=${encodeURIComponent(String(params[i]))}`).join('&')
+        apiFetch(`${field.suggestEndpoint}?${qs}`).then((r) => r.json()).then((data) => {
+          const suggested = data?.[field.name]
+          if (suggested !== undefined) setValue(field.name, suggested)
+        }).catch(() => {})
+      }
+    }, 400)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, meta?.resource, JSON.stringify(suggestParamValues)])
 
   // Reset explícito apenas quando o sinal de reset muda (alt+l)
   useEffect(() => {
