@@ -31,6 +31,13 @@ export const vehiclePlanLineSummarySchema = z.object({
   occupancyIndex:        z.number(),
   serviceFrequencyIndex: z.number(),
   peakPassengersPerHour: z.number(),
+  // Actual headway (avg gap between consecutive departures, per direction then
+  // averaged) within each band — from this plan's own scheduled trips, unlike
+  // TransitLine.metrics.windows (the registered target, identical across plans).
+  // null when the band has fewer than 2 departures to measure a gap from.
+  peakMorningInterval:   z.number().nullable(),
+  peakAfternoonInterval: z.number().nullable(),
+  offPeakInterval:       z.number().nullable(),
   score:                 z.number(),
 })
 export type VehiclePlanLineSummary = z.infer<typeof vehiclePlanLineSummarySchema>

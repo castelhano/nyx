@@ -22,6 +22,11 @@ interface LineComparisonSummary {
   occupancyIndex:         number
   serviceFrequencyIndex:  number
   peakPassengersPerHour:  number
+  // actual headway from THIS side's own scheduled departures — not the line's
+  // registered target windows, so draft/active/preview can genuinely differ
+  peakMorningInterval:    number | null
+  peakAfternoonInterval:  number | null
+  offPeakInterval:        number | null
   score:                  number
 }
 
@@ -33,11 +38,10 @@ interface LineComparisonSide {
 
 interface LineComparisonResponse {
   line: { id: string; code: string; name: string }
+  // route characteristic, identical on both sides — see LineComparisonSummary for
+  // the per-side headway fields
   operation: {
-    extensionKm:           number | null
-    peakMorningInterval:   number | null
-    peakAfternoonInterval: number | null
-    offPeakInterval:       number | null
+    extensionKm: number | null
   }
   draft:  LineComparisonSide & { planStatus: 'DRAFT' | 'ACTIVE' }
   active: LineComparisonSide | null

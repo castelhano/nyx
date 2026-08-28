@@ -1457,43 +1457,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   // Consolidates TransitLine.metrics into the "Operação" figures shown by the line
-  // comparativo — these describe the line itself (extension, registered cycle
-  // windows), not a specific plan, so they're identical on both sides of the
-  // comparison and never persisted. Cycle windows are averaged ida+volta into a
-  // single number per band (doc decision: rare for one direction to run a very
-  // different frequency — those exceptions get handled if/when they show up).
+  // comparativo — extension is a route characteristic, identical on both sides of the
+  // comparison and never persisted. Headways (peakMorningInterval/peakAfternoonInterval/
+  // offPeakInterval) are NOT derived here — they come from each side's own
+  // VehiclePlanLineSummary (computeLineSummary), computed from that plan's actual
+  // scheduled departures, so draft/active/preview can genuinely differ.
   private consolidateOperation(
     metrics: {
       extensionKm?: Partial<Record<'OUTBOUND' | 'INBOUND' | 'CIRCULAR', number>>
-      windows?:     Record<string, Partial<Record<'OUTBOUND' | 'INBOUND' | 'CIRCULAR', { from: number; to: number; intervalMinutes: number }[]>>>
     } | null,
-    dayTypeCode: string | undefined,
-  ): { extensionKm: number | null; peakMorningInterval: number | null; peakAfternoonInterval: number | null; offPeakInterval: number | null } {
+  ): { extensionKm: number | null } {
     const ext       = metrics?.extensionKm
     const extValues = [ext?.OUTBOUND, ext?.INBOUND].filter((v): v is number => typeof v === 'number')
     const extensionKm = extValues.length > 0
       ? Math.round((extValues.reduce((a, b) => a + b, 0) / extValues.length) * 100) / 100
       : ext?.CIRCULAR ?? null
 
-    const dayWindows = dayTypeCode ? metrics?.windows?.[dayTypeCode] : undefined
-    const allEntries = [
-      ...(dayWindows?.OUTBOUND ?? []),
-      ...(dayWindows?.INBOUND  ?? []),
-      ...(dayWindows?.CIRCULAR ?? []),
-    ]
-
-    const bandAvg = (bandFrom: number, bandTo: number): number | null => {
-      const overlapping = allEntries.filter(w => w.from < bandTo && w.to > bandFrom)
-      if (overlapping.length === 0) return null
-      return Math.round(overlapping.reduce((sum, w) => sum + w.intervalMinutes, 0) / overlapping.length)
-    }
-
-    return {
-      extensionKm,
-      peakMorningInterval:   bandAvg(...this.PEAK_MORNING),
-      peakAfternoonInterval: bandAvg(...this.PEAK_AFTERNOON),
-      offPeakInterval:       bandAvg(this.PEAK_MORNING[1], this.PEAK_AFTERNOON[0]),
-    }
+    return { extensionKm }
   }
 
   // Whether the hour bucket [hour, hour+1) overlaps either peak band — same overlap
@@ -1513,7 +1493,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const [plan, planLine, line] = await Promise.all([
       this.prisma.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { status: true, scopeId: true, dayTypeId: true, dayType: { select: { code: true } } },
+        select: { status: true, scopeId: true, dayTypeId: true },
       }),
       this.prisma.vehiclePlanLine.findUnique({
         where:   { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
@@ -1554,7 +1534,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     return {
       line:      { id: line.id, code: line.code, name: line.name },
-      operation: this.consolidateOperation(line.metrics as any, plan.dayType?.code),
+      operation: this.consolidateOperation(line.metrics as any),
       draft,
       active,
     }

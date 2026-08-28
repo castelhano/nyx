@@ -68,6 +68,32 @@ export function peakVehicleRequirement(trips: { departureMinutes: number; arriva
 const PEAK_HOURS: [number, number][] = [[5.5, 8], [15.5, 18]]
 const isPeakHour = (hour: number) => PEAK_HOURS.some(([from, to]) => hour >= from && hour < to)
 
+// Actual headway within [bandFrom, bandTo) — avg gap between consecutive departures
+// that fall in the band, per direction, then averaged across directions (equal
+// weight per direction, same convention as the old registered-window average).
+// Unlike TransitLine.metrics.windows (the line's registered target, identical
+// across every plan), this reads the real scheduled departures for this specific
+// side of the comparison — so draft/active/preview can actually differ.
+function bandHeadway(
+  tripsByDirection: Record<string, { departureMinutes: number }[]>,
+  bandFrom: number,
+  bandTo:   number,
+): number | null {
+  const perDirection: number[] = []
+  for (const trips of Object.values(tripsByDirection)) {
+    const departures = trips
+      .map(t => t.departureMinutes)
+      .filter(m => { const h = m / 60; return h >= bandFrom && h < bandTo })
+      .sort((a, b) => a - b)
+    if (departures.length < 2) continue
+    let gapSum = 0
+    for (let i = 1; i < departures.length; i++) gapSum += departures[i] - departures[i - 1]
+    perDirection.push(gapSum / (departures.length - 1))
+  }
+  if (perDirection.length === 0) return null
+  return Math.round(perDirection.reduce((s, v) => s + v, 0) / perDirection.length)
+}
+
 export interface AggregateScoreResult {
   score:             number
   fleetCount:        number
@@ -337,7 +363,9 @@ export function computeLineSummary(
   if (!agg || agg.tripCount === 0) {
     return {
       fleetSize: 0, dailyTrips: 0, operatingHours: 0, dailyKm: 0, avgSpeed: 0,
-      occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0, score: 0,
+      occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0,
+      peakMorningInterval: null, peakAfternoonInterval: null, offPeakInterval: null,
+      score: 0,
     }
   }
 
@@ -362,6 +390,9 @@ export function computeLineSummary(
     occupancyIndex:        agg.totalSupply  > 0 ? r2(totalDemand / agg.totalSupply)     : 0,
     serviceFrequencyIndex: operatingHours   > 0 ? r2(agg.tripCount / operatingHours)    : 0,
     peakPassengersPerHour,
+    peakMorningInterval:   bandHeadway(agg.tripsByDirection, PEAK_HOURS[0][0], PEAK_HOURS[0][1]),
+    peakAfternoonInterval: bandHeadway(agg.tripsByDirection, PEAK_HOURS[1][0], PEAK_HOURS[1][1]),
+    offPeakInterval:       bandHeadway(agg.tripsByDirection, PEAK_HOURS[0][1], PEAK_HOURS[1][0]),
     score: computeLineScore(agg, cfg),
   }
 }
