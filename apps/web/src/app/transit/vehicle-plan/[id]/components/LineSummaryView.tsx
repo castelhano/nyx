@@ -119,10 +119,10 @@ const METRICS: MetricRowDef[] = [
   { label: 'Intervalo pico manhã',               unit: 'min',      key: 'peakMorningInterval',   fmt: v => String(v), inverse: true,                            cat: 'Operação' },
   { label: 'Intervalo pico tarde',               unit: 'min',      key: 'peakAfternoonInterval', fmt: v => String(v), inverse: true,                            cat: 'Operação' },
   { label: 'Intervalo entrepico',                unit: 'min',      key: 'offPeakInterval',       fmt: v => String(v), inverse: true,                            cat: 'Operação' },
-  { label: 'Frota',                              unit: 'veículos', key: 'fleetSize',             fmt: v => v.toLocaleString('pt-BR'),                           cat: 'Oferta e Demanda' },
+  { label: 'Frota',                              unit: 'veículos', key: 'fleetSize',             fmt: v => v.toLocaleString('pt-BR'), inverse: true,          cat: 'Oferta e Demanda' },
   { label: 'Viagens',                            unit: 'viag/dia', key: 'dailyTrips',            fmt: v => v.toLocaleString('pt-BR'),                           cat: 'Oferta e Demanda' },
-  { label: 'Horas operacionais',                 unit: 'h',        key: 'operatingHours',        fmt: v => v.toFixed(1),                                        cat: 'Oferta e Demanda' },
-  { label: 'Quilômetros produzidos',             unit: 'km/dia',   key: 'dailyKm',               fmt: v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }), cat: 'Oferta e Demanda' },
+  { label: 'Horas operacionais',                 unit: 'h',        key: 'operatingHours',        fmt: v => v.toFixed(1), inverse: true,                         cat: 'Oferta e Demanda' },
+  { label: 'Quilômetros produzidos',             unit: 'km/dia',   key: 'dailyKm',               fmt: v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }), inverse: true, cat: 'Oferta e Demanda' },
   { label: 'Pico de passageiros',                unit: 'pax/h',    key: 'peakPassengersPerHour', fmt: v => v.toLocaleString('pt-BR'),                           cat: 'Oferta e Demanda' },
   { label: 'Velocidade média',                   unit: 'km/h',     key: 'avgSpeed',              fmt: v => v.toFixed(1),                                        cat: 'Qualidade de Serviço' },
   { label: 'Índice de Ocupação (IOC)',           unit: '',         key: 'occupancyIndex',        fmt: v => v.toFixed(2), inverse: true,                         cat: 'Qualidade de Serviço' },
@@ -130,6 +130,28 @@ const METRICS: MetricRowDef[] = [
 ]
 
 const CATEGORIES = ['Operação', 'Oferta e Demanda', 'Qualidade de Serviço']
+
+const METRIC_INVERSE: Partial<Record<keyof RowValues, boolean>> = Object.fromEntries(
+  METRICS.map(m => [m.key, !!m.inverse]),
+)
+
+interface Goodness {
+  delta:   number
+  neutral: boolean
+  good:    boolean
+}
+
+// "Maior melhor" vs "menor melhor" is driven by each metric's `inverse` flag (the same
+// one behind the comparison table) instead of the raw sign of the delta — e.g. a shorter
+// interval or a lower IOC is an improvement even though the % change is negative. A key
+// with no entry in METRICS (e.g. 'score') defaults to inverse: false — higher is better.
+function goodnessFor(key: keyof RowValues, a: number | null | undefined, p: number | null | undefined): Goodness | null {
+  if (a == null || p == null) return null
+  const delta   = pctChange(a, p)
+  const neutral = Math.abs(delta) < 0.5
+  const inverse = !!METRIC_INVERSE[key]
+  return { delta, neutral, good: !neutral && (inverse ? delta < 0 : delta > 0) }
+}
 
 const SCHEDULE_STATUS_LABEL: Record<string, string> = {
   DRAFT:      'Rascunho',
@@ -288,6 +310,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
   const proposta       = data && rowValues(data.operation, needsPreview ? (preview ?? null) : data.draft.summary)
   const atual          = data && hasReference ? rowValues(data.operation, data.active?.summary ?? null) : null
   const previewPending = needsPreview && (previewLoading || !preview)
+  const scoreDelta     = atual && proposta ? goodnessFor('score', atual.score, proposta.score) : null
 
   const chartData = hourly?.hours.map(h => ({ ...h, hourLabel: `${String(h.hour).padStart(2, '0')}h` })) ?? []
   const domainMax = chartData.length > 0 ? Math.min(2.0, Math.max(...chartData.map(d => d.loadFactor)) + 0.15) : 2.0
@@ -405,21 +428,34 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                   <span className="text-xs font-semibold uppercase tracking-widest text-primary">
                     {data.draft.planStatus === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
                   </span>
-                  {needsPreview ? (
-                    <span
-                      title={data.draft.summary === null
-                        ? 'Linha ainda não salva neste plano — números calculados a partir do que está em edição, sem persistir.'
-                        : 'Há edições não salvas no plano — números recalculados a partir do estado atual em edição, ainda não persistidos.'}
-                      className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25"
-                    >
-                      <Icons.Info className="w-3 h-3" />
-                      Prévia (não salvo)
-                    </span>
-                  ) : (
-                    <ScheduleBadge status={data.draft.lineScheduleStatus} />
-                  )}
+                  <span className="flex items-center gap-2">
+                    {scoreDelta && !scoreDelta.neutral && (
+                      <span className={cn(
+                        'flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border',
+                        scoreDelta.good
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                          : 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/25',
+                      )}>
+                        {scoreDelta.good ? <Icons.ArrowUp className="w-3 h-3" /> : <Icons.ArrowDown className="w-3 h-3" />}
+                        {fmtPct(scoreDelta.delta)}
+                      </span>
+                    )}
+                    {needsPreview ? (
+                      <span
+                        title={data.draft.summary === null
+                          ? 'Linha ainda não salva neste plano — números calculados a partir do que está em edição, sem persistir.'
+                          : 'Há edições não salvas no plano — números recalculados a partir do estado atual em edição, ainda não persistidos.'}
+                        className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25"
+                      >
+                        <Icons.Info className="w-3 h-3" />
+                        Prévia (não salvo)
+                      </span>
+                    ) : (
+                      <ScheduleBadge status={data.draft.lineScheduleStatus} />
+                    )}
+                  </span>
                 </div>
-                <SummaryCardBody v={proposta} primary />
+                <SummaryCardBody v={proposta} primary reference={atual} />
               </div>
             </div>
 
@@ -665,11 +701,22 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, goodness }: { label: string; value: string; goodness?: Goodness | null }) {
+  const worse = !!goodness && !goodness.neutral && !goodness.good
   return (
-    <div className="bg-muted/50 rounded-lg px-3 py-2.5">
+    <div className={cn('rounded-lg px-3 py-2.5', worse ? 'bg-red-500/[0.07] border border-red-500/15' : 'bg-muted/50')}>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-medium text-sm text-foreground/90 mt-0.5 tabular-nums">{value}</p>
+      <div className="flex items-center justify-between gap-2 mt-0.5">
+        <p className="font-medium text-sm text-foreground/90 tabular-nums">{value}</p>
+        {goodness && !goodness.neutral && (
+          <span className={cn(
+            'text-[10px] font-semibold tabular-nums shrink-0',
+            goodness.good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+          )}>
+            {fmtPct(goodness.delta)}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -677,36 +724,48 @@ function Stat({ label, value }: { label: string; value: string }) {
 const dash = (v: number | null | undefined, fmt: (v: number) => string) => v == null ? '—' : fmt(v)
 
 // Mirrors the prototype's summary card layout — big score number, then the same
-// 6+3 stat split. `score` is on a fixed 0–9999 scale (see
-// docs/proposal/vehicle_plan_score_formula_v1.md).
-function SummaryCardBody({ v, primary }: { v: RowValues; primary?: boolean }) {
+// 6+3 stat split. `score` is on a fixed 0–9999 scale. `reference` (the "Atual" side)
+// is only passed to the proposta card, driving the per-stat variation indicators.
+function SummaryCardBody({ v, primary, reference }: { v: RowValues; primary?: boolean; reference?: RowValues | null }) {
+  const g = (key: keyof RowValues) => reference ? goodnessFor(key, reference[key], v[key]) : null
   return (
     <>
       <div>
         <p className={cn('font-bold text-4xl leading-none tracking-tight tabular-nums', primary ? 'text-primary' : 'text-foreground')}>
-          {v.score ?? 0}
+          {(v.score ?? 0).toLocaleString('pt-BR')}
         </p>
         <p className="text-sm text-muted-foreground mt-1.5">score</p>
       </div>
       <div className="grid grid-cols-2 gap-2 pt-1">
-        <Stat label="Frota" value={`${v.fleetSize ?? 0} veíc.`} />
-        <Stat label="Operação" value={`${dash(v.operatingHours, x => x.toFixed(1))}h/dia`} />
-        <Stat label="Int. Pico Manhã" value={`${dash(v.peakMorningInterval, String)} min`} />
-        <Stat label="Int. Entrepico" value={`${dash(v.offPeakInterval, String)} min`} />
-        <Stat label="Int. Pico Tarde" value={`${dash(v.peakAfternoonInterval, String)} min`} />
-        <Stat label="IOC" value={dash(v.occupancyIndex, x => x.toFixed(2))} />
+        <Stat label="Frota" value={`${v.fleetSize ?? 0} veíc.`} goodness={g('fleetSize')} />
+        <Stat label="Operação" value={`${dash(v.operatingHours, x => x.toFixed(1))}h/dia`} goodness={g('operatingHours')} />
+        <Stat label="Int. Pico Manhã" value={`${dash(v.peakMorningInterval, String)} min`} goodness={g('peakMorningInterval')} />
+        <Stat label="Int. Entrepico" value={`${dash(v.offPeakInterval, String)} min`} goodness={g('offPeakInterval')} />
+        <Stat label="Int. Pico Tarde" value={`${dash(v.peakAfternoonInterval, String)} min`} goodness={g('peakAfternoonInterval')} />
+        <Stat label="IOC" value={dash(v.occupancyIndex, x => x.toFixed(2))} goodness={g('occupancyIndex')} />
       </div>
       <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border">
-        {[
-          { label: 'Km/dia',   value: (v.dailyKm ?? 0).toLocaleString('pt-BR') },
-          { label: 'IFS',      value: dash(v.serviceFrequencyIndex, x => x.toFixed(2)) },
-          { label: 'PPH pico', value: String(v.peakPassengersPerHour ?? 0) },
-        ].map(item => (
-          <div key={item.label} className="text-center">
-            <p className="font-semibold text-base text-foreground/80 tabular-nums">{item.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
-          </div>
-        ))}
+        {([
+          { key: 'dailyKm' as const,              label: 'Km/dia',   value: (v.dailyKm ?? 0).toLocaleString('pt-BR') },
+          { key: 'serviceFrequencyIndex' as const, label: 'IFS',      value: dash(v.serviceFrequencyIndex, x => x.toFixed(2)) },
+          { key: 'peakPassengersPerHour' as const, label: 'PPH pico', value: String(v.peakPassengersPerHour ?? 0) },
+        ]).map(item => {
+          const gd = g(item.key)
+          return (
+            <div key={item.label} className="text-center">
+              <p className="font-semibold text-base text-foreground/80 tabular-nums">{item.value}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{item.label}</p>
+              {gd && !gd.neutral && (
+                <span className={cn(
+                  'text-[9px] font-semibold tabular-nums',
+                  gd.good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
+                )}>
+                  {fmtPct(gd.delta)}
+                </span>
+              )}
+            </div>
+          )
+        })}
       </div>
     </>
   )
