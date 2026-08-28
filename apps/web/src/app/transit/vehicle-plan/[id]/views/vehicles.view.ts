@@ -1,5 +1,5 @@
 import type { GanttView, GanttRow, GanttSegment } from '../engine/gantt.types'
-import type { VehicleBlockSummary } from '@nyx/schemas'
+import type { VehicleBlockSummary, VehiclePlanLineSummary } from '@nyx/schemas'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
@@ -160,6 +160,7 @@ export interface VehiclePlanGanttData {
       inPlan:         boolean
       lineScheduleId: string | null
       isDrifted:      boolean
+      summary:      VehiclePlanLineSummary | null
       line:         { id: string; code: string; name: string; metrics: LineMetrics | null }
       lineSchedule: { id: string; status: string; approvalRef: string | null } | null
     }>

@@ -1,7 +1,7 @@
 import type { VehicleType } from '@prisma/client'
 
 // Capacidade de referência por tipo de veículo, usada para inferir oferta real
-// por linha em VehiclePlanService.scorePlan(). Hardcoded por enquanto — migrar
+// por linha em VehiclePlanService.recalculate(). Hardcoded por enquanto — migrar
 // para uma tela de settings (fleet ou transit, a definir) quando o volume de
 // tipos justificar.
 export const VEHICLE_TYPE_CAPACITY: Record<VehicleType, number> = {

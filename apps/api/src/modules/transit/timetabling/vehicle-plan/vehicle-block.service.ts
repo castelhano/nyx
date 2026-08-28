@@ -1,16 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { vehicleBlockSchema, VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
-import { VehiclePlanService } from './vehicle-plan.service'
-import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 
+// Block-level mutations that used to live here (addAccess, addReturn, updateDeadruns,
+// deleteDeadruns, updateIntervals, deleteIntervals, moveTrip) moved to
+// block-mutation.utils.ts — they're only ever called from VehiclePlanService.applyDiff
+// now, inside its single transaction, never standalone. See docs/proposal/
+// vehicle-plan-summary-score-consolidation.md §2.4/§2.5.
 @Injectable()
 export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto> {
-  constructor(
-    prisma: PrismaService,
-    private readonly vehiclePlanService: VehiclePlanService,
-  ) {
+  constructor(prisma: PrismaService) {
     super(prisma, 'vehicleBlock', vehicleBlockSchema, 'transit')
   }
 
@@ -18,263 +18,23 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
     return {}
   }
 
-  async addAccess(blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
-    const db = this.prisma as any
-
-    const target = await db.blockTrip.findUnique({
-      where:  { id: blockTripId },
-      select: {
-        id:             true,
-        vehicleBlockId: true,
-        trip: {
-          select: {
-            departureMinutes: true,
-            route: { select: { originLocality: { select: { id: true } } } },
-          },
-        },
-      },
-    })
-
-    if (!target || target.vehicleBlockId !== blockId) {
-      throw new NotFoundException('Viagem não encontrada neste bloco')
-    }
-
-    const originLocalityId = target.trip.route.originLocality.id
-
-    const travelTime = await db.travelTimeMatrix.findUnique({
-      where: { originId_destinationId: { originId: depotLocalityId, destinationId: originLocalityId } },
-    })
-
-    if (!travelTime) {
-      throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-    }
-
-    const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
-
-    await db.$transaction(async (tx: any) => {
-      await tx.blockDeadrun.create({
-        data: {
-          vehicleBlockId:        blockId,
-          type:                  'ACCESS',
-          originLocalityId:      depotLocalityId,
-          destinationLocalityId: originLocalityId,
-          departureMinutes:      target.trip.departureMinutes - deadheadMinutes - 1,
-          arrivalMinutes:        target.trip.departureMinutes - 1,
-        },
-      })
-
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-    })
+  // summary/constraints are only ever written by recalculate()/applyDiff or by
+  // lock()/unlock() below — a generic PATCH must not be able to overwrite them
+  // directly. See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.3.
+  override async update(id: string, dto: UpdateVehicleBlockDto): Promise<VehicleBlock> {
+    const { summary: _summary, constraints: _constraints, ...rest } = dto as any
+    return super.update(id, rest)
   }
 
-  async updateDeadruns(
-    blockId: string,
-    updates: { id: string; departureMinutes: number; arrivalMinutes: number }[],
-  ): Promise<void> {
-    if (updates.length === 0) return
-    const db = this.prisma as any
-
-    const found = await db.blockDeadrun.findMany({
-      where:  { id: { in: updates.map(u => u.id) }, vehicleBlockId: blockId },
-      select: { id: true },
-    })
-    if (found.length !== updates.length) {
-      throw new NotFoundException('Um ou mais vazios não encontrados neste bloco')
-    }
-
-    await db.$transaction(async (tx: any) => {
-      for (const u of updates) {
-        await tx.blockDeadrun.update({
-          where: { id: u.id },
-          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes },
-        })
-      }
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-    })
+  async lock(id: string): Promise<VehicleBlock> {
+    await this.findOne(id)
+    const updated = await this.prisma.vehicleBlock.update({ where: { id }, data: { constraints: { locked: true } } })
+    return updated as unknown as VehicleBlock
   }
 
-  async deleteDeadruns(blockId: string, ids: string[]): Promise<void> {
-    if (ids.length === 0) return
-    const db = this.prisma as any
-    const found = await db.blockDeadrun.findMany({
-      where:  { id: { in: ids }, vehicleBlockId: blockId },
-      select: { id: true },
-    })
-    if (found.length !== ids.length) {
-      throw new NotFoundException('Um ou mais vazios não encontrados neste bloco')
-    }
-    await db.$transaction(async (tx: any) => {
-      await tx.blockDeadrun.deleteMany({ where: { id: { in: ids } } })
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-    })
-  }
-
-  // Unlike updateDeadruns/deleteDeadruns, missing ids are silently skipped rather
-  // than throwing: an interval can legitimately vanish between the client queueing
-  // this call and it landing — its anchor trip may have been deleted/moved in the
-  // same save batch, which cascade-deletes it server-side (see block-interval.utils.ts).
-  // The client doesn't try to sequence around that race, so this endpoint has to
-  // tolerate it instead.
-  async updateIntervals(
-    blockId: string,
-    updates: { id: string; departureMinutes: number; arrivalMinutes: number }[],
-  ): Promise<void> {
-    if (updates.length === 0) return
-    const db = this.prisma as any
-
-    const found = await db.blockInterval.findMany({
-      where:  { id: { in: updates.map(u => u.id) }, vehicleBlockId: blockId },
-      select: { id: true },
-    })
-    const foundIds = new Set(found.map((f: any) => f.id))
-    const existing = updates.filter(u => foundIds.has(u.id))
-    if (existing.length === 0) return
-
-    await db.$transaction(async (tx: any) => {
-      for (const u of existing) {
-        await tx.blockInterval.update({
-          where: { id: u.id },
-          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes },
-        })
-      }
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-    })
-  }
-
-  async deleteIntervals(blockId: string, ids: string[]): Promise<void> {
-    if (ids.length === 0) return
-    const db = this.prisma as any
-    const found = await db.blockInterval.findMany({
-      where:  { id: { in: ids }, vehicleBlockId: blockId },
-      select: { id: true },
-    })
-    if (found.length === 0) return
-    await db.$transaction(async (tx: any) => {
-      await tx.blockInterval.deleteMany({ where: { id: { in: found.map((f: any) => f.id) } } })
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-    })
-  }
-
-  async moveTrip(blockId: string, blockTripIds: string[], targetBlockId: string, breakIds: string[] = [], deadrunIds: string[] = [], skipScore = false): Promise<void> {
-    if (targetBlockId === blockId) throw new BadRequestException('Bloco destino igual ao bloco de origem')
-    if (!blockTripIds.length)      throw new BadRequestException('Nenhuma viagem informada')
-    const db = this.prisma as any
-
-    const sourceBlock = await db.vehicleBlock.findUnique({
-      where:  { id: blockId },
-      select: { id: true, vehiclePlanId: true },
-    })
-    if (!sourceBlock) throw new NotFoundException('Bloco de origem não encontrado')
-
-    const found = await db.blockTrip.findMany({
-      where:  { id: { in: blockTripIds }, vehicleBlockId: blockId },
-      select: { id: true, tripId: true },
-    })
-    if (found.length !== blockTripIds.length) {
-      throw new NotFoundException('Uma ou mais viagens não encontradas neste bloco')
-    }
-
-    const targetBlock = await db.vehicleBlock.findUnique({
-      where:  { id: targetBlockId },
-      select: { id: true },
-    })
-    if (!targetBlock) throw new NotFoundException('Bloco destino não encontrado')
-
-    const maxSeq = await db.blockTrip.aggregate({
-      where: { vehicleBlockId: targetBlockId },
-      _max:  { sequence: true },
-    })
-    let nextSequence = (maxSeq._max.sequence ?? 0) + 1
-
-    // Intervals live attached to the trip that precedes them (positional, no FK — see
-    // block-interval.utils.ts). Moving a trip to another block without also moving its
-    // interval leaves it orphaned, so it's dropped rather than left stranded in time.
-    // If the caller explicitly included the interval in the move (breakIds), it's
-    // relocated to the target block alongside its anchor trip instead of discarded.
-    const tripIds = found.map((f: any) => f.tripId)
-    const anchoredIntervalIds = await findIntervalIdsAnchoredToTrips(this.prisma, blockId, tripIds)
-    const movedIntervalIds    = breakIds.filter(bid => anchoredIntervalIds.includes(bid))
-    const orphanedIntervalIds = anchoredIntervalIds.filter(bid => !movedIntervalIds.includes(bid))
-
-    await db.$transaction(async (tx: any) => {
-      for (const btId of blockTripIds) {
-        await tx.blockTrip.update({
-          where: { id: btId },
-          data:  { vehicleBlockId: targetBlockId, sequence: nextSequence++ },
-        })
-      }
-      if (movedIntervalIds.length > 0) {
-        await tx.blockInterval.updateMany({
-          where: { id: { in: movedIntervalIds } },
-          data:  { vehicleBlockId: targetBlockId },
-        })
-      }
-      if (orphanedIntervalIds.length > 0) {
-        await tx.blockInterval.deleteMany({ where: { id: { in: orphanedIntervalIds } } })
-      }
-      // Deadruns have no anchor concept (unlike intervals) — they're never implied,
-      // only moved when the caller explicitly selected them, so there's no orphaned
-      // set to clean up here. Scoped to blockId so a stray id from another block is
-      // silently ignored rather than moved.
-      if (deadrunIds.length > 0) {
-        await tx.blockDeadrun.updateMany({
-          where: { id: { in: deadrunIds }, vehicleBlockId: blockId },
-          data:  { vehicleBlockId: targetBlockId },
-        })
-      }
-      await tx.vehicleBlock.update({ where: { id: blockId },       data: { isStale: true } })
-      await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })
-    })
-
-    if (!skipScore) await this.vehiclePlanService.scorePlan(sourceBlock.vehiclePlanId)
-  }
-
-  async addReturn(blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
-    const db = this.prisma as any
-
-    const target = await db.blockTrip.findUnique({
-      where:  { id: blockTripId },
-      select: {
-        id:             true,
-        vehicleBlockId: true,
-        trip: {
-          select: {
-            arrivalMinutes: true,
-            route: { select: { destinationLocality: { select: { id: true } } } },
-          },
-        },
-      },
-    })
-
-    if (!target || target.vehicleBlockId !== blockId) {
-      throw new NotFoundException('Viagem não encontrada neste bloco')
-    }
-
-    const destinationLocalityId = target.trip.route.destinationLocality.id
-
-    const travelTime = await db.travelTimeMatrix.findUnique({
-      where: { originId_destinationId: { originId: destinationLocalityId, destinationId: depotLocalityId } },
-    })
-
-    if (!travelTime) {
-      throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-    }
-
-    const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
-
-    await db.$transaction(async (tx: any) => {
-      await tx.blockDeadrun.create({
-        data: {
-          vehicleBlockId:        blockId,
-          type:                  'RETURN',
-          originLocalityId:      destinationLocalityId,
-          destinationLocalityId: depotLocalityId,
-          departureMinutes:      target.trip.arrivalMinutes + 1,
-          arrivalMinutes:        target.trip.arrivalMinutes + 1 + deadheadMinutes,
-        },
-      })
-
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-    })
+  async unlock(id: string): Promise<VehicleBlock> {
+    await this.findOne(id)
+    const updated = await this.prisma.vehicleBlock.update({ where: { id }, data: { constraints: {} } })
+    return updated as unknown as VehicleBlock
   }
 }

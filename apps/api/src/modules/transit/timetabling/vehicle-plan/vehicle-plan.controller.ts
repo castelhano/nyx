@@ -1,6 +1,6 @@
-import { Controller, Post, Get, Delete, Param, Body, Query, Req, Sse, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Post, Get, Delete, Patch, Param, Body, Query, Req, Sse, UseGuards, HttpCode } from '@nestjs/common'
 import { Observable } from 'rxjs'
-import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
+import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, vehiclePlanDiffSchema } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtOrQueryGuard } from '../../../../auth/policies.guard'
@@ -76,45 +76,14 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.activate(id, force ?? false)
   }
 
-  @Post(':id/add-trip')
-  @HttpCode(201)
-  addTrip(
-    @Param('id') id: string,
-    @Body() body: {
-      routeId:                string
-      departureMinutes:       number
-      arrivalMinutes:         number
-      blockId?:               string
-      accessDepotLocalityId?: string
-      returnDepotLocalityId?: string
-      skipScore?:             boolean
-    },
-  ) {
-    return this.vehiclePlanService.addTrip(id, body)
-  }
-
-  @Post(':id/add-deadrun')
-  @HttpCode(201)
-  addDeadrun(
-    @Param('id') id: string,
-    @Body() body: { originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string; skipScore?: boolean },
-  ) {
-    return this.vehiclePlanService.addDeadrun(id, body)
-  }
-
-  @Post(':id/add-interval')
-  @HttpCode(201)
-  addInterval(
-    @Param('id') id: string,
-    @Body() body: { intervalTypeId: string; departureMinutes: number; arrivalMinutes: number; blockId?: string; skipScore?: boolean },
-  ) {
-    return this.vehiclePlanService.addInterval(id, body)
-  }
-
-  @Post(':id/rescore')
+  // Single transactional entry point for the Gantt "Salvar" flow — replaces the old
+  // add-trip/add-deadrun/add-interval/move-trip/deadruns/intervals/rescore endpoints.
+  // See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.4.
+  @Patch(':id/apply-diff')
   @HttpCode(200)
-  rescore(@Param('id') id: string) {
-    return this.vehiclePlanService.scorePlan(id)
+  applyDiff(@Param('id') id: string, @Body() body: unknown) {
+    const diff = vehiclePlanDiffSchema.parse(body)
+    return this.vehiclePlanService.applyDiff(id, diff)
   }
 
   @Delete(':id/lines/:lineId')

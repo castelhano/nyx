@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
@@ -67,7 +66,7 @@ export function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): stri
 
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { blockTripId: string; blockId: string }
-export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number }
+export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null }
 export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
@@ -81,9 +80,8 @@ interface UseGanttEditorParams {
 }
 
 export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPending }: UseGanttEditorParams) {
-  const queryClient = useQueryClient()
-  const { toast }    = useToast()
-  const confirm      = useConfirm()
+  const { toast } = useToast()
+  const confirm    = useConfirm()
 
   const [selection,             setSelection]             = useState<Selection | null>(null)
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
@@ -499,39 +497,19 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
   const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length
 
-  async function handleUpdateConstraints(tripIds: string[], patches: TripConstraints | null | TripConstraints[]) {
+  // Queued into pendingChanges like a time patch — mergedPlottedData already spreads
+  // TripPatch onto trip, so a staged constraints value renders immediately without a
+  // network call. See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.5.
+  function handleUpdateConstraints(tripIds: string[], patches: TripConstraints | null | TripConstraints[]) {
     if (!canEdit) return
-    try {
-      await Promise.all(
-        tripIds.map((tripId, i) => {
-          const constraints = Array.isArray(patches) ? patches[i] : patches
-          return apiFetch(`/transit/transit-trip/${tripId}`, {
-            method: 'PATCH',
-            body:   JSON.stringify({ constraints }),
-          })
-        })
-      )
-      queryClient.setQueryData(
-        ['transit', 'vehicle-plan', id, 'gantt'],
-        (old: VehiclePlanGanttData | undefined) => {
-          if (!old) return old
-          return {
-            ...old,
-            blocks: old.blocks.map(b => ({
-              ...b,
-              blockTrips: b.blockTrips.map(bt => {
-                const idx = tripIds.indexOf(bt.trip.id)
-                if (idx === -1) return bt
-                const constraints = Array.isArray(patches) ? patches[idx] : patches
-                return { ...bt, trip: { ...bt.trip, constraints } }
-              }),
-            })),
-          }
-        },
-      )
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar restrições')
-    }
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      tripIds.forEach((tripId, i) => {
+        const constraints = Array.isArray(patches) ? patches[i] : patches
+        next.set(tripId, { ...next.get(tripId), constraints })
+      })
+      return next
+    })
   }
 
   // Two passes: already-saved blocks (from ganttData — not plottedData/
@@ -1229,21 +1207,11 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     setIsPending(true)
     setIsSaving(true)
     try {
-      // Save trip patches
-      await Promise.all(
-        Array.from(pendingChanges.entries()).map(([tripId, patch]) =>
-          apiFetch(`/transit/transit-trip/${tripId}`, {
-            method: 'PATCH',
-            body:   JSON.stringify(patch),
-          }),
-        ),
-      )
-
-      // Save deadrun patches grouped by block (endpoint requires block ownership)
-      if (pendingDeadrunChanges.size > 0 && plottedData) {
-        await Promise.all(
-          plottedData.blocks.flatMap(block => {
-            const updates = block.blockDeadruns
+      // Deadrun/interval patches need both departureMinutes and arrivalMinutes even
+      // when only one moved — fill the other in from the pristine server data.
+      const deadrunUpdates = plottedData
+        ? plottedData.blocks.flatMap(block =>
+            block.blockDeadruns
               .filter(dr => pendingDeadrunChanges.has(dr.id))
               .map(dr => {
                 const patch = pendingDeadrunChanges.get(dr.id)!
@@ -1252,21 +1220,13 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
                   departureMinutes: patch.departureMinutes ?? dr.departureMinutes,
                   arrivalMinutes:   patch.arrivalMinutes   ?? dr.arrivalMinutes,
                 }
-              })
-            if (updates.length === 0) return []
-            return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
-              method: 'PATCH',
-              body:   JSON.stringify({ updates }),
-            })]
-          }),
-        )
-      }
+              }),
+          )
+        : []
 
-      // Save interval patches grouped by block
-      if (pendingIntervalChanges.size > 0 && plottedData) {
-        await Promise.all(
-          plottedData.blocks.flatMap(block => {
-            const updates = block.blockIntervals
+      const intervalUpdates = plottedData
+        ? plottedData.blocks.flatMap(block =>
+            block.blockIntervals
               .filter(bi => pendingIntervalChanges.has(bi.id))
               .map(bi => {
                 const patch = pendingIntervalChanges.get(bi.id)!
@@ -1275,199 +1235,32 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
                   departureMinutes: patch.departureMinutes ?? bi.departureMinutes,
                   arrivalMinutes:   patch.arrivalMinutes   ?? bi.arrivalMinutes,
                 }
-              })
-            if (updates.length === 0) return []
-            return [apiFetch(`/transit/vehicle-block/${block.id}/intervals`, {
-              method: 'PATCH',
-              body:   JSON.stringify({ updates }),
-            })]
-          }),
-        )
-      }
-
-      // Delete pending-deleted trips. skipScore=true — each delete would otherwise
-      // rescore the whole plan on its own; a single rescore runs at the end of the
-      // batch instead (see below).
-      if (pendingDeletes.size > 0) {
-        await Promise.all(
-          Array.from(pendingDeletes).map(tripId =>
-            apiFetch(`/transit/transit-trip/${tripId}?skipScore=true`, { method: 'DELETE' })
-          ),
-        )
-      }
-
-      // Delete pending-deleted deadruns grouped by block
-      if (pendingDeadrunDeletes.size > 0 && plottedData) {
-        await Promise.all(
-          plottedData.blocks.flatMap(block => {
-            const ids = block.blockDeadruns
-              .filter(dr => pendingDeadrunDeletes.has(dr.id))
-              .map(dr => dr.id)
-            if (ids.length === 0) return []
-            return [apiFetch(`/transit/vehicle-block/${block.id}/deadruns`, {
-              method:  'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ ids }),
-            })]
-          }),
-        )
-      }
-
-      // Delete pending-deleted intervals grouped by block
-      if (pendingIntervalDeletes.size > 0 && plottedData) {
-        await Promise.all(
-          plottedData.blocks.flatMap(block => {
-            const ids = block.blockIntervals
-              .filter(bi => pendingIntervalDeletes.has(bi.id))
-              .map(bi => bi.id)
-            if (ids.length === 0) return []
-            return [apiFetch(`/transit/vehicle-block/${block.id}/intervals`, {
-              method:  'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ ids }),
-            })]
-          }),
-        )
-      }
-
-      // Persist pending adds. blockId 'new' spawns a fresh block (server-resolved);
-      // 'pending:<tempId>' joins a fake block created earlier in this same batch by
-      // a 'new' entry — resolve it to that entry's server-assigned block id, captured
-      // below as each add response comes back. pendingAdds is walked in insertion
-      // order via a sequential for-of, so the 'new' entry for a group always lands
-      // before any 'pending:<tempId>' entry that references it.
-      const newBlockIds = new Map<string, string>()
-      for (const entry of pendingAdds) {
-        const resolvedBlockId = entry.blockId === 'new'
-          ? undefined
-          : entry.blockId.startsWith('pending:')
-            ? newBlockIds.get(entry.blockId.slice('pending:'.length))
-            : entry.blockId
-
-        let blockId: string
-        if (entry._kind === 'trip') {
-          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-trip`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
-              routeId:                entry.routeId,
-              departureMinutes:       entry.departureMinutes,
-              arrivalMinutes:         entry.arrivalMinutes,
-              blockId:                resolvedBlockId,
-              ...(entry.access && { accessDepotLocalityId: entry.access.localityId }),
-              ...(entry.return && { returnDepotLocalityId: entry.return.localityId }),
-              skipScore:              true,
-            }),
-          })
-          if (!res.ok) {
-            const j = await res.json().catch(() => ({}))
-            throw new Error(extractError(j))
-          }
-          blockId = (await res.json()).blockId
-        } else if (entry._kind === 'deadrun') {
-          if (entry.type === 'ACCESS' || entry.type === 'RETURN') {
-            // Access/return on an already-saved block: staged the same way as any
-            // other pendingAdd, but persisted through the dedicated endpoint (same
-            // one handleConfirmDepotModal already uses for a single manual add) —
-            // the generic add-deadrun below always creates type DISPLACEMENT.
-            if (!resolvedBlockId || !entry.blockTripId) throw new Error('Acesso/recolhida pendente sem bloco ou viagem associada')
-            const kind           = entry.type === 'ACCESS' ? 'access' : 'return'
-            const depotLocalityId = entry.type === 'ACCESS' ? entry.originLocality.id : entry.destinationLocality.id
-            const res = await apiFetch(`/transit/vehicle-block/${resolvedBlockId}/${kind}`, {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ blockTripId: entry.blockTripId, depotLocalityId }),
-            })
-            if (!res.ok) {
-              const j = await res.json().catch(() => ({}))
-              throw new Error(extractError(j))
-            }
-            blockId = resolvedBlockId
-          } else {
-            const res = await apiFetch(`/transit/vehicle-plan/${id}/add-deadrun`, {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({
-                originLocalityId:      entry.originLocality.id,
-                destinationLocalityId: entry.destinationLocality.id,
-                departureMinutes:      entry.departureMinutes,
-                arrivalMinutes:        entry.arrivalMinutes,
-                blockId:               resolvedBlockId,
-                skipScore:             true,
               }),
-            })
-            if (!res.ok) {
-              const j = await res.json().catch(() => ({}))
-              throw new Error(extractError(j))
-            }
-            blockId = (await res.json()).blockId
-          }
-        } else {
-          const res = await apiFetch(`/transit/vehicle-plan/${id}/add-interval`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
-              intervalTypeId:   entry.intervalTypeId,
-              departureMinutes: entry.departureMinutes,
-              arrivalMinutes:   entry.arrivalMinutes,
-              blockId:          resolvedBlockId,
-              skipScore:        true,
-            }),
-          })
-          if (!res.ok) {
-            const j = await res.json().catch(() => ({}))
-            throw new Error(extractError(j))
-          }
-          blockId = (await res.json()).blockId
-        }
+          )
+        : []
 
-        if (entry.blockId === 'new') newBlockIds.set(entry._tempId, blockId)
+      // Single transactional call — applies the whole diff and recalculates summary/
+      // score inside one server-side transaction, or persists nothing at all on
+      // failure. Replaces the old N-calls-plus-final-rescore flow. See docs/proposal/
+      // vehicle-plan-summary-score-consolidation.md §2.4.
+      const res = await apiFetch(`/transit/vehicle-plan/${id}/apply-diff`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripUpdates:     Array.from(pendingChanges.entries()).map(([tripId, patch]) => ({ id: tripId, ...patch })),
+          deadrunUpdates,
+          intervalUpdates,
+          tripDeletes:     Array.from(pendingDeletes),
+          deadrunDeletes:  Array.from(pendingDeadrunDeletes),
+          intervalDeletes: Array.from(pendingIntervalDeletes),
+          adds:            pendingAdds,
+          moves:           pendingMoves,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(extractError(j))
       }
-
-      // Persist pending moves. fromBlockId/toBlockId may be a 'pending:<tempId>' fake
-      // block spawned by a 'new' add above — resolve it to the real id created for
-      // that group (same newBlockIds map the adds loop just populated) before calling.
-      const resolveMoveBlockRef = (ref: string) =>
-        ref.startsWith('pending:') ? (newBlockIds.get(ref.slice('pending:'.length)) ?? ref) : ref
-
-      // A moved trip may also be pending-deleted (deletes are persisted above, before
-      // moves) — its BlockTrip row is already gone by cascade at this point, so the
-      // move endpoint's ownership check would 404 on it. Deleting wins: drop it from
-      // the move instead of sending a stale id.
-      const tripIdByBlockTripId = new Map<string, string>()
-      for (const block of ganttData?.blocks ?? []) {
-        for (const bt of block.blockTrips) tripIdByBlockTripId.set(bt.id, bt.trip.id)
-      }
-
-      for (const move of pendingMoves) {
-        const blockTripIds = move.blockTripIds.filter(btId => {
-          const tripId = tripIdByBlockTripId.get(btId)
-          return !tripId || !pendingDeletes.has(tripId)
-        })
-        if (blockTripIds.length === 0) continue
-
-        // Same "deleting wins" precedence as trips above — a moved deadrun that's
-        // also pending-deleted is already gone by the delete step run above.
-        const deadrunIds = move.deadrunIds.filter(id => !pendingDeadrunDeletes.has(id))
-
-        const fromBlockId = resolveMoveBlockRef(move.fromBlockId)
-        const toBlockId   = resolveMoveBlockRef(move.toBlockId)
-        const res = await apiFetch(`/transit/vehicle-block/${fromBlockId}/move-trip`, {
-          method: 'PATCH',
-          body:   JSON.stringify({ blockTripIds, targetBlockId: toBlockId, breakIds: move.breakIds, deadrunIds, skipScore: true }),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(extractError(j))
-        }
-      }
-
-      // A single rescore at the end of the whole batch, instead of one per call
-      // (addTrip/addDeadrun/addInterval/delete/move all ran with skipScore=true
-      // above) — scorePlan scans the whole plan, so this avoids dozens of full
-      // reloads. The function already guaranteed at the top that something is
-      // pending by this point.
-      await apiFetch(`/transit/vehicle-plan/${id}/rescore`, { method: 'POST' })
 
       await refetchGantt()
       setPendingChanges(new Map())
@@ -1645,7 +1438,8 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
     // Pending (unsaved) trips/breaks/deadruns aren't real persisted ids yet — relocate
     // them by editing pendingAdds directly instead of routing them through pendingMoves,
-    // which only carries real ids the move-trip endpoint can act on (it 404s on a temp id).
+    // which only carries real ids applyDiff's move step can act on (a temp id has no
+    // BlockTrip row to find server-side).
     const tempTripIds = new Set(
       pendingAdds.filter((a): a is PendingAddTrip => a._kind === 'trip').map(a => a._tempId),
     )
@@ -1694,17 +1488,21 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     setMoveTargetBlockId(null)
   }
 
-  async function handleConfirmDepotModal(depotLocalityId: string) {
-    if (!canEdit || !depotModal) return
+  // Every Gantt edit — this included — is queued into pending state and only ever
+  // reaches the server in the single applyDiff call fired by Salvar (handleSavePending).
+  // No handler in this file makes a network call on its own anymore (solver excepted).
+  // See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.5.
+  async function handleConfirmDepotModal(depot: { id: string; name: string }) {
+    if (!canEdit || !depotModal || !mergedPlottedData) return
     const { kind, blockTripId, blockId } = depotModal
     setDepotModal(null)
 
-    // Intercept pending trips: bundle access/return into the pending entry
+    // Intercept pending trips: bundle access/return into the pending entry directly
     const pendingIdx = pendingAdds.findIndex(a => a._kind === 'trip' && a._tempId === blockTripId)
     if (pendingIdx !== -1) {
       const entry    = pendingAdds[pendingIdx] as PendingAddTrip
-      const originId = kind === 'access' ? depotLocalityId         : entry.destinationLocality.id
-      const destId   = kind === 'access' ? entry.originLocality.id : depotLocalityId
+      const originId = kind === 'access' ? depot.id              : entry.destinationLocality.id
+      const destId   = kind === 'access' ? entry.originLocality.id : depot.id
       const travelMinutes = await getTravelTime(originId, destId)
       if (travelMinutes === null) {
         toast.error('Mapeamento não localizado na matriz entre os pontos informados')
@@ -1713,31 +1511,89 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       setPendingAdds(prev => prev.map((a, i) => {
         if (i !== pendingIdx || a._kind !== 'trip') return a
         return kind === 'access'
-          ? { ...a, access: { localityId: depotLocalityId, travelMinutes } }
-          : { ...a, return: { localityId: depotLocalityId, travelMinutes } }
+          ? { ...a, access: { localityId: depot.id, travelMinutes } }
+          : { ...a, return: { localityId: depot.id, travelMinutes } }
       }))
       setSelection(null)
       return
     }
 
-    try {
-      const res = await apiFetch(`/transit/vehicle-block/${blockId}/${kind}`, {
-        method: 'POST',
-        body:   JSON.stringify({ blockTripId, depotLocalityId }),
+    // Existing (already-saved) trip: queue a pending ACCESS/RETURN deadrun — same
+    // shape a new trip's own access/return uses (buildFakeAccessReturn), applied via
+    // the Save batch instead of a standalone call. Times are a client-side estimate
+    // for the optimistic render only; the server re-derives them from the matrix.
+    const block = mergedPlottedData.blocks.find(b => b.id === blockId)
+    const bt    = block?.blockTrips.find(bt => bt.id === blockTripId)
+    if (!block || !bt) return
+
+    const originLocality      = kind === 'access' ? depot : bt.trip.route.destinationLocality
+    const destinationLocality = kind === 'access' ? bt.trip.route.originLocality : depot
+    const travelMinutes = await getTravelTime(
+      kind === 'access' ? depot.id : bt.trip.route.destinationLocality.id,
+      kind === 'access' ? bt.trip.route.originLocality.id : depot.id,
+    )
+    if (travelMinutes === null) {
+      toast.error('Mapeamento não localizado na matriz entre os pontos informados')
+      return
+    }
+
+    handlePendingAdd({
+      _kind:               'deadrun',
+      _tempId:             crypto.randomUUID(),
+      type:                kind === 'access' ? 'ACCESS' : 'RETURN',
+      blockTripId,
+      originLocality,
+      destinationLocality,
+      departureMinutes:    kind === 'access' ? bt.trip.departureMinutes - travelMinutes - 1 : bt.trip.arrivalMinutes + 1,
+      arrivalMinutes:      kind === 'access' ? bt.trip.departureMinutes - 1 : bt.trip.arrivalMinutes + 1 + travelMinutes,
+      blockId,
+    })
+    setSelection(null)
+  }
+
+  // Pending (unsaved) trips/deadruns aren't real persisted ids — deleting them means
+  // dropping the pendingAdds entry outright, mirroring discardBreaks (below) for breaks.
+  function queueTripDeletes(tripIds: string[]) {
+    const tempTripIds = new Map(
+      pendingAdds.filter((a): a is PendingAddTrip => a._kind === 'trip').map(a => [`${a._tempId}:trip`, a._tempId]),
+    )
+    const tempIds = tripIds.filter(id => tempTripIds.has(id)).map(id => tempTripIds.get(id)!)
+    const realIds = tripIds.filter(id => !tempTripIds.has(id))
+
+    if (tempIds.length > 0) {
+      setPendingAdds(prev => prev.filter(a => !(a._kind === 'trip' && tempIds.includes(a._tempId))))
+    }
+    if (realIds.length > 0) {
+      setPendingDeletes(prev => new Set([...prev, ...realIds]))
+      setPendingChanges(prev => {
+        const next = new Map(prev)
+        for (const id of realIds) next.delete(id)
+        return next
       })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(extractError(json))
-      }
-      setSelection(null)
-      await refetchGantt()
-    } catch (err) {
-      const label = kind === 'access' ? 'acesso' : 'recolhida'
-      toast.error(err instanceof Error ? err.message : `Erro ao adicionar ${label}`)
     }
   }
 
-  async function handleDeleteDeadruns(deadrunIds: string[], blockId: string) {
+  function queueDeadrunDeletes(deadrunIds: string[]) {
+    const tempDeadrunIds = new Set(
+      pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun').map(a => a._tempId),
+    )
+    const tempIds = deadrunIds.filter(id => tempDeadrunIds.has(id))
+    const realIds = deadrunIds.filter(id => !tempDeadrunIds.has(id))
+
+    if (tempIds.length > 0) {
+      setPendingAdds(prev => prev.filter(a => !(a._kind === 'deadrun' && tempIds.includes(a._tempId))))
+    }
+    if (realIds.length > 0) {
+      setPendingDeadrunDeletes(prev => new Set([...prev, ...realIds]))
+      setPendingDeadrunChanges(prev => {
+        const next = new Map(prev)
+        for (const id of realIds) next.delete(id)
+        return next
+      })
+    }
+  }
+
+  async function handleDeleteDeadruns(deadrunIds: string[], _blockId: string) {
     if (!canEdit) return
     const ok = await confirm({
       title:        deadrunIds.length === 1 ? 'Excluir vazio' : `Excluir ${deadrunIds.length} vazios`,
@@ -1746,24 +1602,11 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       variant:      'destructive',
     })
     if (!ok) return
-    try {
-      const res = await apiFetch(`/transit/vehicle-block/${blockId}/deadruns`, {
-        method:  'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ ids: deadrunIds }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(extractError(json))
-      }
-      setSelection(null)
-      await refetchGantt()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir vazio')
-    }
+    queueDeadrunDeletes(deadrunIds)
+    setSelection(null)
   }
 
-  async function handleDeleteBreaks(breakIds: string[], blockId: string) {
+  async function handleDeleteBreaks(breakIds: string[], _blockId: string) {
     if (!canEdit) return
     const ok = await confirm({
       title:        breakIds.length === 1 ? 'Excluir intervalo' : `Excluir ${breakIds.length} intervalos`,
@@ -1772,24 +1615,11 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       variant:      'destructive',
     })
     if (!ok) return
-    try {
-      const res = await apiFetch(`/transit/vehicle-block/${blockId}/intervals`, {
-        method:  'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ ids: breakIds }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(extractError(json))
-      }
-      setSelection(null)
-      await refetchGantt()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir intervalo')
-    }
+    discardBreaks(breakIds)
+    setSelection(null)
   }
 
-  async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) {
+  async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], breakIds: string[], _blockId: string) {
     if (!canEdit) return
     const tripCount    = tripIds.length
     const deadrunCount = deadrunIds.length
@@ -1807,36 +1637,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       variant:      'destructive',
     })
     if (!ok) return
-    try {
-      await Promise.all([
-        ...tripIds.map(async (tripId) => {
-          const res = await apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
-          if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
-        }),
-        ...(deadrunIds.length > 0 ? [
-          apiFetch(`/transit/vehicle-block/${blockId}/deadruns`, {
-            method:  'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ ids: deadrunIds }),
-          }).then(async (res) => {
-            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
-          }),
-        ] : []),
-        ...(breakIds.length > 0 ? [
-          apiFetch(`/transit/vehicle-block/${blockId}/intervals`, {
-            method:  'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ ids: breakIds }),
-          }).then(async (res) => {
-            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j)) }
-          }),
-        ] : []),
-      ])
-      setSelection(null)
-      await refetchGantt()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir seleção')
-    }
+    queueTripDeletes(tripIds)
+    queueDeadrunDeletes(deadrunIds)
+    discardBreaks(breakIds)
+    setSelection(null)
   }
 
   async function handleDeleteTrips(tripIds: string[]) {
@@ -1849,21 +1653,8 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       variant:      'destructive',
     })
     if (!ok) return
-    try {
-      await Promise.all(
-        tripIds.map(async (tripId) => {
-          const res = await apiFetch(`/transit/transit-trip/${tripId}`, { method: 'DELETE' })
-          if (!res.ok) {
-            const json = await res.json().catch(() => ({}))
-            throw new Error(extractError(json))
-          }
-        })
-      )
-      setSelection(null)
-      await refetchGantt()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir viagens')
-    }
+    queueTripDeletes(tripIds)
+    setSelection(null)
   }
 
   const vehiclesActionSpec = useMemo(

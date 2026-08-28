@@ -15,7 +15,7 @@ interface Depot {
 
 interface Props {
   title:     string
-  onConfirm: (depotLocalityId: string) => void
+  onConfirm: (depot: { id: string; name: string }) => void
   onClose:   () => void
 }
 
@@ -44,7 +44,8 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (depotId) onConfirm(depotId)
+    const depot = depots.find(d => d.id === depotId)
+    if (depot) onConfirm(depot)
   }
 
   return (

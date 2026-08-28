@@ -113,10 +113,17 @@ export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate 
     patch({ branchId: v || null })
   }
 
-  function handleLock() {
+  async function handleLock() {
+    if (isPending) return
     const next = !locked
     setLocked(next)
-    patch({ constraints: next ? { locked: true } : {} })
+    setIsPending(true)
+    try {
+      await apiFetch(`/transit/vehicle-block/${block.id}/${next ? 'lock' : 'unlock'}`, { method: 'POST' })
+      onUpdate()
+    } finally {
+      setIsPending(false)
+    }
   }
 
   const s = block.summary

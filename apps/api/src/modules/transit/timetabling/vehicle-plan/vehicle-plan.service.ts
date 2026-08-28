@@ -13,7 +13,12 @@ import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPla
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
+import type { VehiclePlanDiff } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
+import { buildAggregateFromPersisted } from './scoring/block-aggregate'
+import { scoreFromAggregates, buildLineAggregates, computeLineSummary } from './scoring/plan-scoring.calc'
+import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
+import { beforeTripUpdate, afterTripUpdate, applyTripRemoval } from '../trip/trip-mutation.utils'
 
 interface Job {
   worker:    Worker | null
@@ -40,6 +45,15 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     private readonly jobService:     JobService,
   ) {
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
+  }
+
+  // summary/constraints/metrics are only ever written by recalculate()/applyDiff — a
+  // generic PATCH here must not be able to overwrite them directly (they'd go stale
+  // with no isStale marker to signal it). See docs/proposal/vehicle-plan-summary-
+  // score-consolidation.md §2.3.
+  override async update(id: string, dto: UpdateVehiclePlanDto): Promise<VehiclePlan> {
+    const { summary: _summary, constraints: _constraints, metrics: _metrics, ...rest } = dto as any
+    return super.update(id, rest)
   }
 
   // Validation log for the per-line schedule generator (Fase 3, 100% client-side) —
@@ -187,7 +201,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     if (!params.redistributeTrips) {
       setImmediate(async () => {
         try {
-          await this.scorePlan(planId)
+          await this.recalculate(planId)
           const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
           if (!plan?.summary) { messages$.complete(); return }
 
@@ -310,15 +324,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }
 
       for (const block of best.blocks) {
-        const blockSummary: VehicleBlockSummary = {
-          totalMinutes:      block.totalMinutes,
-          productiveMinutes: block.productiveMinutes,
-          deadrunMinutes:    block.deadrunMinutes,
-          totalKm:           block.totalKm,
-          productiveKm:      block.productiveKm,
-          deadrunKm:         block.deadrunKm,
-        }
-
         // a block is stale when it contains trips from lines outside the solver scope
         const hasCrossLineTrip = block.trips.some(bt => {
           const lineId = tripLineMap.get(bt.tripId)
@@ -331,7 +336,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             blockNumber:   block.blockNumber,
             depotId:       block.depotId,
             vehicleType:   block.vehicleType as any,
-            summary:       blockSummary,
             isStale:       hasCrossLineTrip,
           },
         })
@@ -344,36 +348,27 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           })),
         })
       }
-
-      const r2 = (n: number) => Math.round(n * 100) / 100
-      const planSummary: VehiclePlanSummary = {
-        fleetCount:        best.fleetCount,
-        score:             best.score,
-        deadrunKm:         r2(best.deadrunKm),
-        productiveKm:      r2(best.productiveKm),
-        totalKm:           r2(best.totalKm),
-        deadrunMinutes:    best.deadrunMinutes,
-        productiveMinutes: best.productiveMinutes,
-        totalMinutes:      best.totalMinutes,
-      }
-
-      await tx.vehiclePlan.update({
-        where: { id: planId },
-        data: {
-          summary:     planSummary,
-          generatedAt: new Date(),
-        },
-      })
     })
+
+    // summary/score are never written from the SolverResult directly — recalculate()
+    // is the single place that derives them, from the blocks just committed above.
+    await this.recalculate(planId)
   }
 
-  async scorePlan(planId: string): Promise<void> {
-    const [plan, blocks, matrix, planLines] = await Promise.all([
-      this.prisma.vehiclePlan.findUnique({
+  // The single write path for VehiclePlan.summary, VehiclePlanLine.summary and
+  // VehicleBlock.summary (score included) — see docs/proposal/vehicle-plan-summary-
+  // score-consolidation.md §2.1/§2.2. Recomputes every block with trips (not just
+  // isStale ones): score is a function of the whole block set (mean/stdDev of
+  // duration feed into it), so it can't be composed from a partial recalculation.
+  // Accepts an optional transaction client so applyDiff can run this as the closing
+  // step of its own atomic batch instead of opening a second transaction.
+  async recalculate(planId: string, db: any = this.prisma): Promise<void> {
+    const [plan, blocks, matrix, planLines, planningCfg] = await Promise.all([
+      db.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { summary: true, dayType: { select: { code: true } } },
+        select: { dayType: { select: { code: true } }, metrics: true },
       }),
-      this.prisma.vehicleBlock.findMany({
+      db.vehicleBlock.findMany({
         where:   { vehiclePlanId: planId },
         include: {
           blockTrips: {
@@ -381,8 +376,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             include: {
               trip: {
                 select: {
-                  departureMinutes: true,
-                  arrivalMinutes:   true,
+                  departureMinutes:    true,
+                  arrivalMinutes:      true,
+                  requiredVehicleType: true,
                   route: {
                     select: {
                       lineId:                true,
@@ -409,234 +405,66 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           },
         },
       }),
-      this.prisma.travelTimeMatrix.findMany(),
-      this.prisma.vehiclePlanLine.findMany({
+      db.travelTimeMatrix.findMany(),
+      db.vehiclePlanLine.findMany({
         where:  { vehiclePlanId: planId },
-        select: { lineId: true, summary: true },
+        select: { lineId: true },
       }),
+      this.planningConfig.get(),
     ])
 
-    if (!plan || blocks.length === 0) return
+    if (!plan) return
 
     const matrixKm: Record<string, number> = {}
-    for (const m of matrix) {
-      matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm
-    }
+    for (const m of matrix) matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm
 
-    const blocksWithTrips = blocks.filter(b => b.blockTrips.length > 0)
-    const staleWithTrips  = blocksWithTrips.filter(b => b.isStale)
-    const emptyStale      = blocks.filter(b => b.isStale && b.blockTrips.length === 0)
+    const blocksWithTrips = blocks.filter((b: any) => b.blockTrips.length > 0)
 
-    const r2 = (n: number) => Math.round(n * 100) / 100
-
-    // Per-line aggregation (VehiclePlanLine.summary) — grouped by lineId from the same
-    // blockTrips already loaded above. Always recomputed in full straight from raw trip
-    // data (never a persisted block summary), so — unlike the plan/block totals below —
-    // it never depends on any block being stale. That's also why it runs (and persists)
-    // before the early return just below: a plan whose blocks are all already fresh
-    // would otherwise never get its line summaries written (e.g. the first rescore
-    // after this field shipped, or any plan nobody happens to re-edit afterward).
-    interface LineAgg {
-      blockIds:          Set<string>
-      tripCount:         number
-      productiveKm:      number
-      productiveMinutes: number
-      minDeparture:      number
-      maxArrival:        number
-      totalSupply:       number
-      demand:            Record<string, Record<string, number>> | undefined
-    }
+    // ── VehiclePlanLine.summary — always recomputed in full from raw trip data ──
     const dayTypeCode = plan.dayType?.code
-    const lineAgg      = new Map<string, LineAgg>()
+    const lineAgg      = buildLineAggregates(blocksWithTrips, matrixKm, dayTypeCode, VEHICLE_TYPE_CAPACITY)
 
-    for (const block of blocksWithTrips) {
-      for (const bt of block.blockTrips) {
-        const route  = bt.trip.route
-        const lineId = route.lineId
-
-        let agg = lineAgg.get(lineId)
-        if (!agg) {
-          const lineMetrics = route.line.metrics as {
-            renewalIndex?: { overall?: { value?: number } }
-            demand?:       Record<string, Record<string, Record<string, number>>>
-          } | null
-          agg = {
-            blockIds: new Set(), tripCount: 0, productiveKm: 0, productiveMinutes: 0,
-            minDeparture: Infinity, maxArrival: -Infinity, totalSupply: 0,
-            demand: dayTypeCode ? lineMetrics?.demand?.[dayTypeCode] : undefined,
-          }
-          lineAgg.set(lineId, agg)
-        }
-
-        const extMetrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
-        const tripKm     = extMetrics?.extensionKm?.[route.direction]
-          ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
-          ?? 0
-        const renewal = (route.line.metrics as { renewalIndex?: { overall?: { value?: number } } } | null)
-          ?.renewalIndex?.overall?.value ?? 0
-
-        agg.blockIds.add(block.id)
-        agg.tripCount++
-        agg.productiveKm      += tripKm
-        agg.productiveMinutes += bt.trip.arrivalMinutes - bt.trip.departureMinutes
-        agg.minDeparture       = Math.min(agg.minDeparture, bt.trip.departureMinutes)
-        agg.maxArrival         = Math.max(agg.maxArrival,   bt.trip.arrivalMinutes)
-        agg.totalSupply       += (VEHICLE_TYPE_CAPACITY[block.vehicleType] ?? 0) * (1 + renewal / 100)
-      }
-    }
-
+    // score has no formula yet for lines (see plan-scoring.calc.ts) — 0 until Fase 6
     const lineSummaries = new Map<string, VehiclePlanLineSummary>()
-    for (const { lineId, summary: existingLineSummary } of planLines) {
-      const score = (existingLineSummary as VehiclePlanLineSummary | null)?.score ?? 0
-      const agg   = lineAgg.get(lineId)
-
-      if (!agg || agg.tripCount === 0) {
-        lineSummaries.set(lineId, {
-          fleetSize: 0, dailyTrips: 0, operatingHours: 0, dailyKm: 0, avgSpeed: 0,
-          occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0, score,
-        })
-        continue
-      }
-
-      const operatingHours  = (agg.maxArrival - agg.minDeparture) / 60
-      const productiveHours = agg.productiveMinutes / 60
-
-      let totalDemand            = 0
-      let peakPassengersPerHour  = 0
-      for (const hourly of Object.values(agg.demand ?? {})) {
-        for (const v of Object.values(hourly)) {
-          totalDemand           += v
-          peakPassengersPerHour  = Math.max(peakPassengersPerHour, v)
-        }
-      }
-
-      lineSummaries.set(lineId, {
-        fleetSize:             agg.blockIds.size,
-        dailyTrips:            agg.tripCount,
-        operatingHours:        r2(operatingHours),
-        dailyKm:               r2(agg.productiveKm),
-        avgSpeed:              productiveHours > 0 ? r2(agg.productiveKm / productiveHours)  : 0,
-        occupancyIndex:        agg.totalSupply  > 0 ? r2(totalDemand / agg.totalSupply)       : 0,
-        serviceFrequencyIndex: operatingHours   > 0 ? r2(agg.tripCount / operatingHours)      : 0,
-        peakPassengersPerHour,
-        score,
-      })
+    for (const { lineId } of planLines) {
+      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), 0))
     }
 
-    await Promise.all(
-      Array.from(lineSummaries.entries()).map(([lineId, summary]) =>
-        this.prisma.vehiclePlanLine.update({
+    // ── VehicleBlock.summary + VehiclePlan.summary — from BlockAggregate ────────
+    const planMetrics = plan.metrics as Partial<SolverPlanningConfig> | null
+    const resolvedCfg = planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg
+
+    const aggregates = blocksWithTrips.map((b: any) => buildAggregateFromPersisted(b, matrixKm))
+    const scored      = scoreFromAggregates(aggregates, resolvedCfg as SolverPlanningConfig)
+
+    const planSummary: VehiclePlanSummary = { ...scored, fleetCount: blocksWithTrips.length }
+
+    await Promise.all([
+      db.vehiclePlan.update({
+        where: { id: planId },
+        data:  { summary: planSummary, generatedAt: new Date() },
+      }),
+      ...Array.from(lineSummaries.entries()).map(([lineId, summary]) =>
+        db.vehiclePlanLine.update({
           where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
           data:  { summary },
         })
       ),
-    )
-
-    if (staleWithTrips.length === 0 && emptyStale.length === 0) return
-
-    const freshSummaries = staleWithTrips.map(block => {
-      let productiveMinutes = 0
-      let productiveKm      = 0
-      let deadrunMinutes    = 0
-      let deadrunKm         = 0
-
-      for (const bt of block.blockTrips) {
-        const route   = bt.trip.route
-        const metrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
-        const tripKm  = metrics?.extensionKm?.[route.direction]
-          ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
-          ?? 0
-        productiveMinutes += bt.trip.arrivalMinutes - bt.trip.departureMinutes
-        productiveKm      += tripKm
-      }
-
-      for (const dr of block.blockDeadruns) {
-        deadrunMinutes += dr.arrivalMinutes - dr.departureMinutes
-        deadrunKm      += matrixKm[`${dr.originLocalityId}:${dr.destinationLocalityId}`] ?? 0
-      }
-
-      const allDepartures = [
-        ...block.blockTrips.map(bt => bt.trip.departureMinutes),
-        ...block.blockDeadruns.map(dr => dr.departureMinutes),
-        ...block.blockIntervals.map(bi => bi.departureMinutes),
-      ]
-      const allArrivals = [
-        ...block.blockTrips.map(bt => bt.trip.arrivalMinutes),
-        ...block.blockDeadruns.map(dr => dr.arrivalMinutes),
-        ...block.blockIntervals.map(bi => bi.arrivalMinutes),
-      ]
-      const totalMinutes = Math.max(...allArrivals) - Math.min(...allDepartures)
-
-      const summary: VehicleBlockSummary = {
-        totalMinutes,
-        productiveMinutes,
-        deadrunMinutes,
-        totalKm:      r2(productiveKm + deadrunKm),
-        productiveKm: r2(productiveKm),
-        deadrunKm:    r2(deadrunKm),
-      }
-      return { block, summary }
-    })
-
-    // Aggregate plan totals: fresh stale + stored non-stale
-    let totalDeadrunKm         = 0
-    let totalDeadrunMinutes    = 0
-    let totalProductiveKm      = 0
-    let totalProductiveMinutes = 0
-    let totalKm                = 0
-    let totalMinutes           = 0
-
-    for (const { summary } of freshSummaries) {
-      totalDeadrunKm         += summary.deadrunKm
-      totalDeadrunMinutes    += summary.deadrunMinutes
-      totalProductiveKm      += summary.productiveKm
-      totalProductiveMinutes += summary.productiveMinutes
-      totalKm                += summary.totalKm
-      totalMinutes           += summary.totalMinutes
-    }
-
-    for (const block of blocksWithTrips) {
-      if (block.isStale) continue
-      const s = block.summary as VehicleBlockSummary | null
-      if (!s) continue
-      totalDeadrunKm         += s.deadrunKm         ?? 0
-      totalDeadrunMinutes    += s.deadrunMinutes     ?? 0
-      totalProductiveKm      += s.productiveKm      ?? 0
-      totalProductiveMinutes += s.productiveMinutes  ?? 0
-      totalKm                += s.totalKm            ?? 0
-      totalMinutes           += s.totalMinutes       ?? 0
-    }
-
-    const existingScore = (plan.summary as VehiclePlanSummary | null)?.score ?? 0
-
-    const planSummary: VehiclePlanSummary = {
-      fleetCount:        blocksWithTrips.length,
-      score:             existingScore,
-      deadrunKm:         r2(totalDeadrunKm),
-      productiveKm:      r2(totalProductiveKm),
-      totalKm:           r2(totalKm),
-      deadrunMinutes:    totalDeadrunMinutes,
-      productiveMinutes: totalProductiveMinutes,
-      totalMinutes:      totalMinutes,
-    }
-
-    await Promise.all([
-      this.prisma.vehiclePlan.update({
-        where: { id: planId },
-        data:  { summary: planSummary, generatedAt: new Date() },
+      ...blocksWithTrips.map((block: any, i: number) => {
+        const a = aggregates[i]
+        const summary: VehicleBlockSummary = {
+          totalMinutes:      a.totalMinutes,
+          productiveMinutes: a.productiveMinutes,
+          deadrunMinutes:    a.deadrunMinutes,
+          totalKm:           a.deadrunKm + a.productiveKm,
+          productiveKm:      a.productiveKm,
+          deadrunKm:         a.deadrunKm,
+        }
+        return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false } })
       }),
-      ...freshSummaries.map(({ block, summary }) =>
-        this.prisma.vehicleBlock.update({
-          where: { id: block.id },
-          data:  { summary, isStale: false },
-        })
-      ),
-      ...emptyStale.map(block =>
-        this.prisma.vehicleBlock.update({
-          where: { id: block.id },
-          data:  { isStale: false },
-        })
-      ),
+      ...blocks
+        .filter((b: any) => b.blockTrips.length === 0 && b.isStale)
+        .map((b: any) => db.vehicleBlock.update({ where: { id: b.id }, data: { isStale: false } })),
     ])
   }
 
@@ -791,18 +619,45 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     job.worker?.postMessage({ type: 'stop' })
   }
 
-  async addTrip(planId: string, dto: {
-    routeId:                string
-    departureMinutes:       number
-    arrivalMinutes:         number
-    blockId?:               string
-    accessDepotLocalityId?: string
-    returnDepotLocalityId?: string
-    // Skips summary recalculation (scorePlan scans the whole plan) — used by the
-    // Gantt Save flow, which fires dozens of calls in sequence and does a single
-    // rescore at the end via POST :id/rescore.
-    skipScore?: boolean
-  }): Promise<{ blockId: string }> {
+  // Shared by applyDiff's 'adds' processing — resolves an existing block by id
+  // (scoped to this plan) or spawns a new one off the last block's depot, mirroring
+  // what used to be duplicated three times across addTrip/addDeadrun/addInterval.
+  private async resolveOrCreateBlock(tx: any, planId: string, blockId?: string): Promise<string> {
+    if (blockId) {
+      const block = await tx.vehicleBlock.findFirst({ where: { id: blockId, vehiclePlanId: planId }, select: { id: true } })
+      if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
+      return block.id
+    }
+
+    const lastBlock = await tx.vehicleBlock.findFirst({
+      where:   { vehiclePlanId: planId },
+      orderBy: { blockNumber: 'desc' },
+      select:  { blockNumber: true, depotId: true },
+    })
+
+    let depotId: string
+    if (lastBlock?.depotId) {
+      depotId = lastBlock.depotId
+    } else {
+      const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
+      if (!depot) throw new BadRequestException('No depot locality configured')
+      depotId = depot.id
+    }
+
+    const newBlock = await tx.vehicleBlock.create({
+      data: { vehiclePlanId: planId, blockNumber: (lastBlock?.blockNumber ?? 0) + 1, depotId, vehicleType: 'STANDARD' },
+    })
+    return newBlock.id
+  }
+
+  // The single write path for every Gantt edit (trip/deadrun/interval patches and
+  // deletes, adds, moves) — applies the whole diff inside one transaction, closing
+  // with recalculate() before commit. Nothing above ever persists without an
+  // up-to-date summary, and a mid-batch failure rolls back everything instead of
+  // leaving isStale blocks with no guaranteed follow-up recalculation. Replaces the
+  // old N-HTTP-calls-plus-final-rescore flow. See docs/proposal/vehicle-plan-
+  // summary-score-consolidation.md §2.4.
+  async applyDiff(planId: string, diff: VehiclePlanDiff): Promise<{ blockIdMap: Record<string, string> }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
       select: { id: true, dayTypeId: true, status: true },
@@ -810,274 +665,189 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
 
-    const db = this.prisma as any
+    const newBlockIds = new Map<string, string>()
+    const resolveBlockRef = (ref: string): string =>
+      ref.startsWith('pending:') ? (newBlockIds.get(ref.slice('pending:'.length)) ?? ref) : ref
 
-    const result = await db.$transaction(async (tx: any) => {
-      const route = await tx.transitRoute.findUnique({
-        where:  { id: dto.routeId },
-        select: { lineId: true, originLocalityId: true, destinationLocalityId: true },
-      })
-      if (!route) throw new NotFoundException('Route not found')
-
-      // Marks the line as present in the plan even without a pinned schedule — a
-      // free-standing trip ("Adicionar viagem") has no LineSchedule behind it, but
-      // the line still exists in the plan (orange indicator in LinesPanel). If a
-      // schedule is already pinned and this departure doesn't match any of its
-      // LineDeparture rows, marks isDrifted — signals that the schedule needs to
-      // be synced or versioned.
-      const currentLine = await tx.vehiclePlanLine.findUnique({
-        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
-        select: { lineScheduleId: true },
-      })
-      let driftUpdate: Record<string, unknown> = {}
-      if (currentLine?.lineScheduleId) {
-        const matches = await tx.lineDeparture.findFirst({
-          where:  { lineScheduleId: currentLine.lineScheduleId, routeId: dto.routeId, departureMinutes: dto.departureMinutes },
-          select: { id: true },
-        })
-        if (!matches) driftUpdate = { isDrifted: true }
+    await this.prisma.$transaction(async (tx: any) => {
+      // 1. trip time patches
+      for (const u of diff.tripUpdates) {
+        // constraints (field-level lock) is excluded from `patch` — it never marks
+        // isStale/drift (afterTripUpdate keys off departure/arrival only, same as
+        // TripService.update), only departure/arrival timing does.
+        const patch: { departureMinutes?: number; arrivalMinutes?: number } = {}
+        if (u.departureMinutes !== undefined) patch.departureMinutes = u.departureMinutes
+        if (u.arrivalMinutes   !== undefined) patch.arrivalMinutes   = u.arrivalMinutes
+        const data: typeof patch & { constraints?: unknown } = { ...patch }
+        if (u.constraints !== undefined) data.constraints = u.constraints
+        const existing = await beforeTripUpdate(tx, u.id)
+        const result   = await tx.transitTrip.update({ where: { id: u.id }, data })
+        await afterTripUpdate(tx, u.id, existing, patch, result)
       }
-      await tx.vehiclePlanLine.upsert({
-        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
-        create: { vehiclePlanId: planId, lineId: route.lineId, ...driftUpdate },
-        update: driftUpdate,
-      })
 
-      const trip = await tx.transitTrip.create({
-        data: {
-          dayTypeId:        plan.dayTypeId,
-          routeId:          dto.routeId,
-          departureMinutes: dto.departureMinutes,
-          arrivalMinutes:   dto.arrivalMinutes,
-        },
-      })
+      // 2. deadrun time patches
+      for (const u of diff.deadrunUpdates) {
+        const dr = await tx.blockDeadrun.findUnique({ where: { id: u.id }, select: { vehicleBlockId: true } })
+        if (!dr) throw new NotFoundException('Vazio não encontrado')
+        await tx.blockDeadrun.update({ where: { id: u.id }, data: { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes } })
+        await tx.vehicleBlock.update({ where: { id: dr.vehicleBlockId }, data: { isStale: true } })
+      }
 
-      let resolvedBlockId: string
+      // 3. interval time patches — tolerant of a missing id: the anchor trip may
+      // already have been deleted earlier in this same diff, cascading it away
+      // (block-interval.utils.ts) before this loop runs.
+      for (const u of diff.intervalUpdates) {
+        const bi = await tx.blockInterval.findUnique({ where: { id: u.id }, select: { vehicleBlockId: true } })
+        if (!bi) continue
+        await tx.blockInterval.update({ where: { id: u.id }, data: { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes } })
+        await tx.vehicleBlock.update({ where: { id: bi.vehicleBlockId }, data: { isStale: true } })
+      }
 
-      if (dto.blockId) {
-        const block = await tx.vehicleBlock.findFirst({
-          where:   { id: dto.blockId, vehiclePlanId: planId },
-          include: { blockTrips: { select: { sequence: true }, orderBy: { sequence: 'desc' }, take: 1 } },
-        })
-        if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
-        const nextSeq = (block.blockTrips[0]?.sequence ?? -1) + 1
-        await tx.blockTrip.create({ data: { vehicleBlockId: block.id, tripId: trip.id, sequence: nextSeq } })
-        await tx.vehicleBlock.update({ where: { id: block.id }, data: { isStale: true } })
-        resolvedBlockId = block.id
-      } else {
-        const lastBlock = await tx.vehicleBlock.findFirst({
-          where:   { vehiclePlanId: planId },
-          orderBy: { blockNumber: 'desc' },
-          select:  { blockNumber: true, depotId: true },
-        })
+      // 4. trip deletes
+      for (const tripId of diff.tripDeletes) {
+        await applyTripRemoval(tx, tripId)
+      }
 
-        let depotId: string
-        if (lastBlock?.depotId) {
-          depotId = lastBlock.depotId
+      // 5. deadrun deletes
+      if (diff.deadrunDeletes.length > 0) {
+        const found     = await tx.blockDeadrun.findMany({ where: { id: { in: diff.deadrunDeletes } }, select: { id: true, vehicleBlockId: true } })
+        const blockIds  = [...new Set(found.map((f: any) => f.vehicleBlockId))]
+        await tx.blockDeadrun.deleteMany({ where: { id: { in: found.map((f: any) => f.id) } } })
+        for (const blockId of blockIds) await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+      }
+
+      // 6. interval deletes (tolerant, same reasoning as step 3)
+      if (diff.intervalDeletes.length > 0) {
+        const found = await tx.blockInterval.findMany({ where: { id: { in: diff.intervalDeletes } }, select: { id: true, vehicleBlockId: true } })
+        if (found.length > 0) {
+          const blockIds = [...new Set(found.map((f: any) => f.vehicleBlockId))]
+          await tx.blockInterval.deleteMany({ where: { id: { in: found.map((f: any) => f.id) } } })
+          for (const blockId of blockIds) await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+        }
+      }
+
+      // 7. adds — walked in order so a 'new' entry's server-assigned block id is
+      // available to any later 'pending:<tempId>' entry in the same batch that
+      // references it (mirrors the old client-side newBlockIds map).
+      for (const entry of diff.adds) {
+        const rawBlockId = entry.blockId === 'new' ? undefined : resolveBlockRef(entry.blockId)
+        let resolvedBlockId: string
+
+        if (entry._kind === 'trip') {
+          const route = await tx.transitRoute.findUnique({
+            where:  { id: entry.routeId },
+            select: { lineId: true, originLocalityId: true, destinationLocalityId: true },
+          })
+          if (!route) throw new NotFoundException('Route not found')
+
+          // Marks the line as present in the plan even without a pinned schedule; if
+          // a schedule is pinned and this departure doesn't match any LineDeparture,
+          // marks isDrifted.
+          const currentLine = await tx.vehiclePlanLine.findUnique({
+            where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
+            select: { lineScheduleId: true },
+          })
+          let driftUpdate: Record<string, unknown> = {}
+          if (currentLine?.lineScheduleId) {
+            const matches = await tx.lineDeparture.findFirst({
+              where:  { lineScheduleId: currentLine.lineScheduleId, routeId: entry.routeId, departureMinutes: entry.departureMinutes },
+              select: { id: true },
+            })
+            if (!matches) driftUpdate = { isDrifted: true }
+          }
+          await tx.vehiclePlanLine.upsert({
+            where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
+            create: { vehiclePlanId: planId, lineId: route.lineId, ...driftUpdate },
+            update: driftUpdate,
+          })
+
+          const trip = await tx.transitTrip.create({
+            data: { dayTypeId: plan.dayTypeId, routeId: entry.routeId, departureMinutes: entry.departureMinutes, arrivalMinutes: entry.arrivalMinutes },
+          })
+
+          resolvedBlockId = await this.resolveOrCreateBlock(tx, planId, rawBlockId)
+          const maxSeq = await tx.blockTrip.aggregate({ where: { vehicleBlockId: resolvedBlockId }, _max: { sequence: true } })
+          await tx.blockTrip.create({ data: { vehicleBlockId: resolvedBlockId, tripId: trip.id, sequence: (maxSeq._max.sequence ?? -1) + 1 } })
+
+          // Deadrun timing is always re-derived server-side from the matrix — the
+          // client's precomputed travelMinutes (used for its own optimistic render)
+          // is display-only and never trusted for what gets persisted.
+          if (entry.access) {
+            const tt = await tx.travelTimeMatrix.findUnique({
+              where: { originId_destinationId: { originId: entry.access.localityId, destinationId: route.originLocalityId } },
+            })
+            if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
+            const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
+            await tx.blockDeadrun.create({
+              data: {
+                vehicleBlockId: resolvedBlockId, type: 'ACCESS',
+                originLocalityId: entry.access.localityId, destinationLocalityId: route.originLocalityId,
+                departureMinutes: entry.departureMinutes - minutes - 1, arrivalMinutes: entry.departureMinutes - 1,
+              },
+            })
+          }
+          if (entry.return) {
+            const tt = await tx.travelTimeMatrix.findUnique({
+              where: { originId_destinationId: { originId: route.destinationLocalityId, destinationId: entry.return.localityId } },
+            })
+            if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
+            const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
+            await tx.blockDeadrun.create({
+              data: {
+                vehicleBlockId: resolvedBlockId, type: 'RETURN',
+                originLocalityId: route.destinationLocalityId, destinationLocalityId: entry.return.localityId,
+                departureMinutes: entry.arrivalMinutes + 1, arrivalMinutes: entry.arrivalMinutes + minutes + 1,
+              },
+            })
+          }
+          await tx.vehicleBlock.update({ where: { id: resolvedBlockId }, data: { isStale: true } })
+        } else if (entry._kind === 'deadrun') {
+          resolvedBlockId = await this.resolveOrCreateBlock(tx, planId, rawBlockId)
+          if (entry.type === 'ACCESS' || entry.type === 'RETURN') {
+            if (!entry.blockTripId) throw new BadRequestException('Acesso/recolhida pendente sem viagem associada')
+            const depotLocalityId = entry.type === 'ACCESS' ? entry.originLocality.id : entry.destinationLocality.id
+            if (entry.type === 'ACCESS') await applyAddAccess(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
+            else                          await applyAddReturn(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
+          } else {
+            await tx.blockDeadrun.create({
+              data: {
+                vehicleBlockId: resolvedBlockId, type: 'DISPLACEMENT',
+                originLocalityId: entry.originLocality.id, destinationLocalityId: entry.destinationLocality.id,
+                departureMinutes: entry.departureMinutes, arrivalMinutes: entry.arrivalMinutes,
+              },
+            })
+            await tx.vehicleBlock.update({ where: { id: resolvedBlockId }, data: { isStale: true } })
+          }
         } else {
-          const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
-          if (!depot) throw new BadRequestException('No depot locality configured')
-          depotId = depot.id
+          resolvedBlockId = await this.resolveOrCreateBlock(tx, planId, rawBlockId)
+          await tx.blockInterval.create({
+            data: { vehicleBlockId: resolvedBlockId, intervalTypeId: entry.intervalTypeId, departureMinutes: entry.departureMinutes, arrivalMinutes: entry.arrivalMinutes },
+          })
+          await tx.vehicleBlock.update({ where: { id: resolvedBlockId }, data: { isStale: true } })
         }
 
-        const newBlock = await tx.vehicleBlock.create({
-          data: {
-            vehiclePlanId: planId,
-            blockNumber:   (lastBlock?.blockNumber ?? 0) + 1,
-            depotId,
-            vehicleType:   'STANDARD',
-          },
-        })
-        await tx.blockTrip.create({ data: { vehicleBlockId: newBlock.id, tripId: trip.id, sequence: 0 } })
-        resolvedBlockId = newBlock.id
+        if (entry.blockId === 'new') newBlockIds.set(entry._tempId, resolvedBlockId)
       }
 
-      if (dto.accessDepotLocalityId || dto.returnDepotLocalityId) {
-        if (dto.accessDepotLocalityId) {
-          const tt = await tx.travelTimeMatrix.findUnique({
-            where: { originId_destinationId: { originId: dto.accessDepotLocalityId, destinationId: route.originLocalityId } },
-          })
-          if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-          const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
-          await tx.blockDeadrun.create({
-            data: {
-              vehicleBlockId:        resolvedBlockId,
-              type:                  'ACCESS',
-              originLocalityId:      dto.accessDepotLocalityId,
-              destinationLocalityId: route.originLocalityId,
-              departureMinutes:      dto.departureMinutes - minutes - 1,
-              arrivalMinutes:        dto.departureMinutes - 1,
-            },
-          })
-        }
+      // 8. moves — "delete wins": a trip/deadrun also pending-deleted in this same
+      // diff is dropped from the move instead of erroring (already gone by step 4/5).
+      for (const move of diff.moves) {
+        const foundTrips    = await tx.blockTrip.findMany({ where: { id: { in: move.blockTripIds } }, select: { id: true, tripId: true } })
+        const blockTripIds  = foundTrips.filter((f: any) => !diff.tripDeletes.includes(f.tripId)).map((f: any) => f.id)
+        if (blockTripIds.length === 0) continue
 
-        if (dto.returnDepotLocalityId) {
-          const tt = await tx.travelTimeMatrix.findUnique({
-            where: { originId_destinationId: { originId: route.destinationLocalityId, destinationId: dto.returnDepotLocalityId } },
-          })
-          if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-          const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
-          await tx.blockDeadrun.create({
-            data: {
-              vehicleBlockId:        resolvedBlockId,
-              type:                  'RETURN',
-              originLocalityId:      route.destinationLocalityId,
-              destinationLocalityId: dto.returnDepotLocalityId,
-              departureMinutes:      dto.arrivalMinutes + 1,
-              arrivalMinutes:        dto.arrivalMinutes + minutes + 1,
-            },
-          })
-        }
-
-        await tx.vehicleBlock.update({ where: { id: resolvedBlockId }, data: { isStale: true } })
+        const deadrunIds  = move.deadrunIds.filter(id => !diff.deadrunDeletes.includes(id))
+        const fromBlockId = resolveBlockRef(move.fromBlockId)
+        const toBlockId    = resolveBlockRef(move.toBlockId)
+        await applyMoveTrip(tx, fromBlockId, blockTripIds, toBlockId, move.breakIds, deadrunIds)
       }
 
-      return { blockId: resolvedBlockId }
-    })
+      // 9. the only write path for summary/score — closes this same transaction so
+      // nothing above ever commits without an up-to-date summary.
+      await this.recalculate(planId, tx)
+    }, { timeout: 30_000 })
 
-    if (!dto.skipScore) await this.scorePlan(planId)
-    return result
-  }
-
-  async addDeadrun(planId: string, dto: {
-    originLocalityId:      string
-    destinationLocalityId: string
-    departureMinutes:      number
-    arrivalMinutes:        number
-    blockId?:             string
-    skipScore?:           boolean
-  }): Promise<{ blockId: string }> {
-    const plan = await this.prisma.vehiclePlan.findUnique({
-      where:  { id: planId },
-      select: { id: true, status: true },
-    })
-    if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
-
-    const db = this.prisma as any
-
-    const result = await db.$transaction(async (tx: any) => {
-      let blockId = dto.blockId
-
-      if (blockId) {
-        const block = await tx.vehicleBlock.findFirst({
-          where: { id: blockId, vehiclePlanId: planId },
-        })
-        if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
-      } else {
-        const lastBlock = await tx.vehicleBlock.findFirst({
-          where:   { vehiclePlanId: planId },
-          orderBy: { blockNumber: 'desc' },
-          select:  { blockNumber: true, depotId: true },
-        })
-
-        let depotId: string
-        if (lastBlock?.depotId) {
-          depotId = lastBlock.depotId
-        } else {
-          const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
-          if (!depot) throw new BadRequestException('No depot locality configured')
-          depotId = depot.id
-        }
-
-        const newBlock = await tx.vehicleBlock.create({
-          data: {
-            vehiclePlanId: planId,
-            blockNumber:   (lastBlock?.blockNumber ?? 0) + 1,
-            depotId,
-            vehicleType:   'STANDARD',
-          },
-        })
-        blockId = newBlock.id
-      }
-
-      await tx.blockDeadrun.create({
-        data: {
-          vehicleBlockId:        blockId,
-          type:                  'DISPLACEMENT',
-          originLocalityId:      dto.originLocalityId,
-          destinationLocalityId: dto.destinationLocalityId,
-          departureMinutes:      dto.departureMinutes,
-          arrivalMinutes:        dto.arrivalMinutes,
-        },
-      })
-
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-
-      return { blockId }
-    })
-
-    if (!dto.skipScore) await this.scorePlan(planId)
-    return result
-  }
-
-  async addInterval(planId: string, dto: {
-    intervalTypeId:   string
-    departureMinutes: number
-    arrivalMinutes:   number
-    blockId?:        string
-    skipScore?:      boolean
-  }): Promise<{ blockId: string }> {
-    const plan = await this.prisma.vehiclePlan.findUnique({
-      where:  { id: planId },
-      select: { id: true, status: true },
-    })
-    if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
-
-    const db = this.prisma as any
-
-    const result = await db.$transaction(async (tx: any) => {
-      let blockId = dto.blockId
-
-      if (blockId) {
-        const block = await tx.vehicleBlock.findFirst({
-          where: { id: blockId, vehiclePlanId: planId },
-        })
-        if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
-      } else {
-        const lastBlock = await tx.vehicleBlock.findFirst({
-          where:   { vehiclePlanId: planId },
-          orderBy: { blockNumber: 'desc' },
-          select:  { blockNumber: true, depotId: true },
-        })
-
-        let depotId: string
-        if (lastBlock?.depotId) {
-          depotId = lastBlock.depotId
-        } else {
-          const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
-          if (!depot) throw new BadRequestException('No depot locality configured')
-          depotId = depot.id
-        }
-
-        const newBlock = await tx.vehicleBlock.create({
-          data: {
-            vehiclePlanId: planId,
-            blockNumber:   (lastBlock?.blockNumber ?? 0) + 1,
-            depotId,
-            vehicleType:   'STANDARD',
-          },
-        })
-        blockId = newBlock.id
-      }
-
-      await tx.blockInterval.create({
-        data: {
-          vehicleBlockId:   blockId,
-          intervalTypeId:   dto.intervalTypeId,
-          departureMinutes: dto.departureMinutes,
-          arrivalMinutes:   dto.arrivalMinutes,
-        },
-      })
-
-      await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
-
-      return { blockId }
-    })
-
-    if (!dto.skipScore) await this.scorePlan(planId)
-    return result
+    return { blockIdMap: Object.fromEntries(newBlockIds) }
   }
 
   // "Limpa" uma linha do plano: remove os blocos/viagens materializados (dayType-scoped)
@@ -1537,6 +1307,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         lineScheduleId: materialized?.lineScheduleId ?? null,
         lineSchedule:   materialized?.lineSchedule ?? null,
         isDrifted:      materialized?.isDrifted ?? false,
+        summary:        materialized?.summary ?? null,
       }
     })
     const planWithLines = { ...plan, lines }
@@ -1656,7 +1427,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // Reads the line comparativo: this plan's line summary (draft/proposed side) next
   // to the currently ACTIVE plan's summary for the same line+dayType+scope
   // (current/atual side) — each plan owns its own VehiclePlanLine.summary (populated
-  // by scorePlan), so there's nothing extra to compute here besides locating the
+  // by recalculate), so there's nothing extra to compute here besides locating the
   // right two rows. When this plan IS the ACTIVE one, there's no separate "atual" to
   // compare against (doc decision: single card in that case).
   async getLineComparison(planId: string, lineId: string) {
@@ -1712,7 +1483,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // — this plan's actual generated trips only (never the ACTIVE counterpart: unlike
   // the Comparativo tab, this is a single series for whichever plan is loaded, doc
   // decision). Supply buckets each trip's departure hour with the same
-  // capacity-per-trip formula scorePlan uses for occupancyIndex (VEHICLE_TYPE_CAPACITY
+  // capacity-per-trip formula recalculate uses for occupancyIndex (VEHICLE_TYPE_CAPACITY
   // × renewal); demand comes straight from the line's real imported demand curve.
   async getLineHourlySeries(planId: string, lineId: string) {
     const [plan, line, blockTrips] = await Promise.all([

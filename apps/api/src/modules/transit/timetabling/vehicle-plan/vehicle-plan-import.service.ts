@@ -501,7 +501,7 @@ export class VehiclePlanImportService {
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
     await (this.prisma as any).blockDeadrun.createMany({ data: deadrunRows })
 
-    await this.vehiclePlanSvc.scorePlan(plan.id)
+    await this.vehiclePlanSvc.recalculate(plan.id)
 
     return { created: blockRows.length, trips: tripRows.length, errors }
   }
