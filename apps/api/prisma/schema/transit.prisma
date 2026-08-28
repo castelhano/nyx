@@ -42,6 +42,9 @@ enum LayoverPolicy {
   DEPOT
 }
 
+// A point in the network — bus stop, terminal, or depot. Shared by routes (as stops),
+// travel-time matrix entries, and vehicle blocks/deadruns (as depot/origin/destination).
+// isDepot marks it as eligible for a block's home depot and for deadrun endpoints.
 model TransitLocality {
   id        String   @id @default(uuid())
   code      String   @unique
@@ -51,6 +54,9 @@ model TransitLocality {
   lng       Float?
   isDepot   Boolean  @default(false)
   notes     String?
+  // SnapInfo (packages/schemas/transit/locality.schema.ts) — set by OsrmService when
+  // snapping this locality's coordinates onto the OSRM road network:
+  // { lat, lng, distanceM, roadName?, checkedAt: ISO datetime }
   snapInfo  Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -68,6 +74,9 @@ model TransitLocality {
   @@map("transit_localities")
 }
 
+// A public transit line — the top-level entity riders identify by code (e.g. "308").
+// Groups routes (one per direction/variant), schedules, and vehicle plan membership.
+// A line can be scoped (scopeId) to restrict which VehiclePlan it can be materialized in.
 model TransitLine {
   id        String   @id @default(uuid())
   code      String   @unique
@@ -81,24 +90,30 @@ model TransitLine {
   // the chain depth is always at most 1.
   parentLineId String?
   notes     String?
-  /* metrics shape
-   {
-   "extensionKm":{"OUTBOUND":16.5,"INBOUND":16.5},
-   "windows":{
-      "U":{
-          "OUTBOUND":[{"from":4,"to":5,"minutes":54,"intervalMinutes":10}, ...
-      "S":{...}, "D":{...}
-   "demand":{
-      "U":{
-          "OUTBOUND":{
-              "4":24,"5":241,...
-   "renewalIndex":{
-      "OUTBOUND":{"value":81.25,"peakPax":145,"peakTripId":"trip_1399","tripCount":159,
-                  "avgPax":41.75,"assumedCapacity":80,"method":"cut_planned_end",
-                  "computedAt":"2026-08-17T14:46:16","sourceFile":"FULL_2026_08_03_....json"},
-      "INBOUND":{...}, "CIRCULAR":{...}, "overall":{...}
-   }
-  */
+  // shape mirrors LineSchema['metrics'] (packages/schemas/transit/line.schema.ts), plus
+  // `demand` — populated via LineController's POST /transit-line/demand/apply, not yet
+  // formalized in the zod schema:
+  // {
+  //   "extensionKm": {"OUTBOUND":16.5,"INBOUND":16.5,"CIRCULAR"?:number},
+  //   "windows": {
+  //     "<dayTypeCode>": {
+  //       "OUTBOUND":[{"from":4,"to":5,"minutes":54,"intervalMinutes":10,"isDerived"?:false}, ...],
+  //       "INBOUND":[...], "CIRCULAR":[...]
+  //     }, ...
+  //   },
+  //   "demand": {
+  //     "<dayTypeCode>": {
+  //       "OUTBOUND":{"4":24,"5":241,...},   // hour → boardings
+  //       "INBOUND":{...}, "CIRCULAR":{...}
+  //     }, ...
+  //   },
+  //   "renewalIndex": {
+  //     "OUTBOUND":{"value":81.25,"peakPax":145,"peakTripId":"trip_1399","tripCount":159,
+  //                 "avgPax":41.75,"assumedCapacity":80,"method":"cut_planned_end",
+  //                 "computedAt":"2026-08-17T14:46:16","sourceFile":"FULL_2026_08_03_....json"},
+  //     "INBOUND":{...}, "CIRCULAR":{...}, "overall":{...}
+  //   }
+  // }
   metrics   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -115,6 +130,10 @@ model TransitLine {
   @@map("transit_lines")
 }
 
+// One direction (or circular variant) of a line's trajectory — the ordered path a
+// vehicle follows between originLocality and destinationLocality. A line can have
+// several routes per direction (variants sharing the same lineId+direction,
+// disambiguated by ordinal); isPrimary marks the one whose trajectory is authoritative.
 model TransitRoute {
   id                    String         @id @default(uuid())
   lineId                String
@@ -154,6 +173,9 @@ model TransitRoute {
   @@map("transit_routes")
 }
 
+// One entry in a route's ordered stop sequence — either a real stop (localityId set)
+// or a routing waypoint (localityId null, forces OSRM through a raw lat/lng without
+// stopping). deltaMinutes/deltaKm hold the leg's cost from the previous entry.
 model RouteLocality {
   id               String           @id @default(uuid())
   routeId          String
@@ -168,7 +190,8 @@ model RouteLocality {
   deltaKm          Float?
   // protects manual overrides from being clobbered by auto-generation
   deltaSource      TravelTimeSource @default(OSRM)
-  // GeoJSON LineString for the leg from the previous stop to this one; null for sequence=1
+  // GeoJSON LineString for the leg from the previous stop to this one; null for sequence=1.
+  // Stored opaquely — z.unknown() in RouteLocality's schema, never introspected server-side.
   geometry         Json?
   allowsCrewChange Boolean          @default(false)
   createdAt        DateTime         @default(now())
@@ -184,6 +207,9 @@ model RouteLocality {
   @@map("transit_route_localities")
 }
 
+// Precomputed travel time/distance between two localities — the fallback used by a
+// RouteLocality leg when it doesn't override deltaMinutes/deltaKm, and by the solver
+// for deadruns. Directional: (origin, destination) is a distinct row from its reverse.
 model TravelTimeMatrix {
   id             String           @id @default(uuid())
   originId       String
@@ -203,11 +229,17 @@ model TravelTimeMatrix {
   @@map("transit_travel_times")
 }
 
+// A calendar classification (e.g. weekday, Saturday, Sunday/holiday) that selects
+// which schedules and trips run on a given date. A DayType with no pattern only
+// ever applies via an explicit LineCalendarException, never by date matching.
 model DayType {
   id          String   @id @default(uuid())
   code        String   @unique
   name        String
   description String?
+  // DayTypePattern (packages/schemas/transit/day-type.schema.ts) — discriminated union:
+  // { type: "weekdays", days: number[] }                           days: 1-7 (ISO weekday)
+  // { type: "month_window", anchor: "start"|"end", days: number, baseWeekdays?: number[] }
   pattern     Json?
   priority    Int      @default(0)
   sortOrder   Int      @default(0)
@@ -223,6 +255,9 @@ model DayType {
   @@map("transit_day_types")
 }
 
+// A date-range override that swaps which DayType a set of lines operates under (e.g.
+// a holiday that should run Sunday service). sourceDayTypeId optionally scopes the
+// override to lines currently running under that specific day type.
 model LineCalendarException {
   id                String    @id @default(uuid())
   validFrom         DateTime
@@ -240,6 +275,7 @@ model LineCalendarException {
   @@map("transit_line_calendar_exceptions")
 }
 
+// Join table — which lines a LineCalendarException applies to.
 model LineCalendarExceptionLine {
   exceptionId String
   lineId      String
@@ -252,10 +288,10 @@ model LineCalendarExceptionLine {
 }
 
 // A line's officially planned service — the sequence of departures per direction
-// that the line operates under, as agreed with the granting authority (orgao gestor).
-// Identified per (line, dayType) by approvalRef (a OSO number issued by the orgao
-// gestor): at most one APPROVED version at a time; approving a new one supersedes
-// the previous APPROVED record, which is kept for history.
+// that the line operates under, as agreed with the granting authority.
+// Identified per (line, dayType) by approvalRef (a OSO number issued by the
+// authority): at most one APPROVED version at a time; approving a new one
+// supersedes the previous APPROVED record, which is kept for history.
 model LineSchedule {
   id          String             @id @default(uuid())
   lineId      String
@@ -265,7 +301,7 @@ model LineSchedule {
   validFrom   DateTime?
   // set when superseded by a newer approved version
   validTo     DateTime?
-  // n do processo/portaria do orgao gestor — business identity of this record
+  // official number generated by authority — business identity of this record
   approvalRef String
   approvedAt  DateTime?
   notes       String?
@@ -281,9 +317,10 @@ model LineSchedule {
   @@map("transit_line_schedules")
 }
 
-// A single approved departure — sentido + horário (+ tipo de veículo quando o orgao
-// gestor já especifica na ordem de serviço). This is the actual "partida" that gets
-// approved; frozen once its LineSchedule leaves DRAFT.
+// A single approved departure — direction + time (+ vehicle type when the 
+// managing body already specifies it in the service order).
+// This is the actual "departure" that gets approved; frozen once its 
+// LineSchedule leaves DRAFT.
 model LineDeparture {
   id               String       @id @default(uuid())
   lineScheduleId   String
@@ -301,6 +338,9 @@ model LineDeparture {
   @@map("transit_line_departures")
 }
 
+// A single scheduled run of a route on a given day type — the operational unit that
+// vehicle blocks are built from (via BlockTrip). May trace back to an approved
+// LineDeparture or be free-standing (e.g. an ad-hoc reinforcement trip).
 model TransitTrip {
   id                  String       @id @default(uuid())
   routeId             String
@@ -314,7 +354,8 @@ model TransitTrip {
   departureMinutes    Int
   arrivalMinutes      Int
   requiredVehicleType VehicleType?
-  // {"locked":["departureMinutes","cycleTime"]}
+  // TripConstraints (packages/schemas/transit/trip.schema.ts) — { locked?: string[] },
+  // field names the solver must not modify, e.g. {"locked":["departureMinutes"]}
   constraints         Json?
   notes               String?
   createdAt           DateTime     @default(now())
@@ -328,10 +369,9 @@ model TransitTrip {
   @@map("transit_trips")
 }
 
-// Cadastrado pelo usuário (nao um enum fixo como DeadrunType) porque min/max e
-// remunerado variam por tipo. minMinutes/maxMinutes sao informativos — nunca
-// bloqueiam o lançamento de um BlockInterval fora da faixa, so sinalizam
-// irregularidade na UI (ver docs/proposal/vehicle-plan-block-intervals.md).
+// A user-defined kind of non-productive stop within a block (meal, shift change,
+// wait...). minMinutes/maxMinutes are informative only — they never block a
+// BlockInterval outside the range, only flag it as irregular in the UI.
 model IntervalType {
   id         String   @id @default(uuid())
   code       String   @unique
@@ -348,11 +388,11 @@ model IntervalType {
   @@map("transit_interval_types")
 }
 
-// Parada dentro de um bloco (refeiçao, troca, aguardo...). Sem FK para a viagem
-// que a antecede — o vínculo é posicional (viagem produtiva mais proxima antes
-// dela na sequência do bloco). O gerador (solver) nao mantém essa consistência:
-// ao regerar um plano os intervalos existentes somem via onDelete: Cascade junto
-// com os blocos recriados. Ver docs/proposal/vehicle-plan-block-intervals.md.
+// A stop within a block (meal, shift change, wait time...). No FK to the preceding
+// trip — the link is positional (the nearest productive trip prior to it
+// in the block sequence). The solver does not maintain this consistency:
+// when regenerating a plan, existing intervals disappear via `onDelete: Cascade`
+// along with the recreated blocks. See docs/proposal/vehicle-plan-block-intervals.md
 model BlockInterval {
   id               String   @id @default(uuid())
   vehicleBlockId   String
@@ -368,18 +408,27 @@ model BlockInterval {
   @@map("transit_block_intervals")
 }
 
+// A generated vehicle-block plan for one (scope, dayType) combination — the solver's
+// output artifact, holding blocks/lines plus scoring summaries. Multiple plans (drafts,
+// revisions) may exist for the same scope/dayType; nothing enforces a single ACTIVE one.
 model VehiclePlan {
   id          String            @id @default(uuid())
   scopeId     String
   dayTypeId   String
   description String?
   status      VehiclePlanStatus @default(DRAFT)
-  // populated by solver, current shape:
-  // {"fleetCount":102,"score":0,"deadrunKm":0,"productiveKm":23249.58,"totalKm":23249.58,"deadrunMinutes":6650,"productiveMinutes":73213,"totalMinutes":98230}
+  // VehiclePlanSummary (packages/schemas/transit/vehicle-plan.schema.ts) — populated by
+  // the solver after generation:
+  // {"fleetCount":102,"score":0,"deadrunKm":0,"productiveKm":23249.58,"totalKm":23249.58,
+  //  "deadrunMinutes":6650,"productiveMinutes":73213,"totalMinutes":98230,
+  //  "errors"?:{"missingMatrix":[{"origin":"...","destination":"..."}]}}
   summary     Json?
   generatedAt DateTime?
-  // { locked?: true }
+  // VehiclePlanConstraints (packages/schemas/transit/vehicle-plan.schema.ts) — { locked?: true }
   constraints Json?
+  // Partial<SolverPlanningConfig> (solver/solver.types.ts) — per-plan override snapshot
+  // of the global planning settings, applied on top of TransitSettings when this plan
+  // is (re)generated
   metrics     Json?
   notes       String?
   createdAt   DateTime          @default(now())
@@ -410,8 +459,8 @@ model Scope {
   @@map("transit_scopes")
 }
 
-// Filial que opera dentro de um Scope — abbr/share reservados para uso futuro
-// (composição de escala de motoristas).
+// Branch operating within a Scope — abbr/share reserved for future use
+// (driver scheduling)
 model ScopeOperator {
   id        String   @id @default(uuid())
   scopeId   String
@@ -428,6 +477,8 @@ model ScopeOperator {
   @@map("transit_scope_operators")
 }
 
+// Join table — which lines are materialized in a VehiclePlan, plus per-plan schedule
+// pinning (lineScheduleId) and drift tracking (isDrifted); see field comments.
 model VehiclePlanLine {
   vehiclePlanId String
   lineId        String
@@ -441,7 +492,8 @@ model VehiclePlanLine {
   // LineSchedule version (with all of this line's current trips) may be warranted.
   // Cleared when the line's schedule is switched/rematerialized.
   isDrifted      Boolean       @default(false)
-  // populated by VehiclePlanService.scorePlan() (grouped by line); current shape:
+  // VehiclePlanLineSummary (packages/schemas/transit/vehicle-plan.schema.ts) — populated
+  // by VehiclePlanService.scorePlan() (grouped by line):
   // {"fleetSize":5,"dailyTrips":98,"operatingHours":18,"dailyKm":1813.2,"avgSpeed":21.2,
   //  "occupancyIndex":0.82,"serviceFrequencyIndex":5.44,"peakPassengersPerHour":350,"score":0}
   summary        Json?
@@ -454,6 +506,9 @@ model VehiclePlanLine {
   @@map("transit_vehicle_plan_lines")
 }
 
+// One vehicle's daily duty within a plan — the ordered sequence of trips (BlockTrip),
+// deadruns, and intervals it performs. blockNumber is the human-facing id ("carro X"),
+// unique per plan.
 model VehicleBlock {
   id            String      @id @default(uuid())
   vehiclePlanId String
@@ -463,10 +518,12 @@ model VehicleBlock {
   vehicleType VehicleType
   // true when any trip in the block was modified, used for update summary
   isStale     Boolean     @default(false)
-  // populated by solver; current shape:
-  // {"totalMinutes":1127,"productiveMinutes":758,"deadrunMinutes":47,"totalKm":439.2,"productiveKm":439.2,"deadrunKm":0}
+  // VehicleBlockSummary (packages/schemas/transit/vehicle-block.schema.ts) — populated by
+  // the solver:
+  // {"totalMinutes":1127,"productiveMinutes":758,"deadrunMinutes":47,"totalKm":439.2,
+  //  "productiveKm":439.2,"deadrunKm":0}
   summary     Json?
-  // { locked?: true }
+  // VehicleBlockConstraints (packages/schemas/transit/vehicle-block.schema.ts) — { locked?: true }
   constraints Json?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -482,6 +539,7 @@ model VehicleBlock {
   @@map("transit_vehicle_blocks")
 }
 
+// A user-defined grouping of lines for reporting/aggregation, optionally scoped to a branch.
 model LineGroup {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -496,6 +554,7 @@ model LineGroup {
   @@map("transit_line_groups")
 }
 
+// Join table — which lines belong to a LineGroup.
 model LineGroupLine {
   lineGroupId String
   lineId      String
@@ -507,6 +566,8 @@ model LineGroupLine {
   @@map("transit_line_group_lines")
 }
 
+// Join table (ordered) — assigns a TransitTrip to a VehicleBlock; sequence defines
+// the trip's position within the block's duty.
 model BlockTrip {
   id             String   @id @default(uuid())
   vehicleBlockId String
@@ -522,6 +583,8 @@ model BlockTrip {
   @@map("transit_block_trips")
 }
 
+// A non-revenue movement within a block. type distinguishes ACCESS (garage → first
+// trip), RETURN (last trip → garage), and DISPLACEMENT (between two disconnected trips).
 model BlockDeadrun {
   id                    String      @id @default(uuid())
   vehicleBlockId        String
