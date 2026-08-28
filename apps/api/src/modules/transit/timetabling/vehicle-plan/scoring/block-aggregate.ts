@@ -7,6 +7,7 @@
 // — until then the solver keeps its own internal scoring path.
 export interface BlockAggregate {
   vehicleType:       string
+  tripCount:          number
   productiveKm:       number
   productiveMinutes:  number
   deadrunKm:          number
@@ -81,6 +82,7 @@ export function buildAggregateFromPersisted(
 
   return {
     vehicleType: block.vehicleType,
+    tripCount:         block.blockTrips.length,
     productiveKm:      r2(productiveKm),
     productiveMinutes,
     deadrunKm:         r2(deadrunKm),

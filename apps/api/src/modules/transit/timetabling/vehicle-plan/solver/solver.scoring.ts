@@ -1,4 +1,4 @@
-import type { SolverTrip, SolverMatrixEntry, SolverBlockTrip, SolverPlanningConfig, SolverResult, RangeCriterionConfig } from './solver.types'
+import type { SolverTrip, SolverMatrixEntry, SolverBlockTrip, SolverPlanningConfig, SolverResult, RangeCriterionConfig, AnchoredCriterionConfig } from './solver.types'
 
 export interface ScoringBlock {
   id:          number
@@ -59,6 +59,12 @@ export function getEdge(
   return matrix[`${from}:${to}`] ?? null
 }
 
+// Duplicated from plan-scoring.calc.ts on purpose — the solver keeps its own live
+// scoring path (see block-aggregate.ts header comment); a future revision is expected
+// to converge onto the shared formula instead. See
+// docs/proposal/vehicle_plan_score_formula_v1.md for the weighted-average reform.
+const SCORE_SCALE = 9999
+
 function rangeV(value: number, c: RangeCriterionConfig): number {
   if (value > c.ceiling) return 0
   if (value >= c.idealMin && value <= c.idealMax) return 1
@@ -68,6 +74,33 @@ function rangeV(value: number, c: RangeCriterionConfig): number {
   }
   if (c.ceiling <= c.idealMax) return 0
   return (c.ceiling - value) / (c.ceiling - c.idealMax)
+}
+
+function anchoredV(realized: number, theoreticalMin: number, c: AnchoredCriterionConfig): number {
+  if (theoreticalMin <= 0) return 1
+  const ratio = realized / theoreticalMin
+  return rangeV(ratio, {
+    active: c.active, modifier: 0, floor: 1, idealMin: 1,
+    idealMax: 1 + c.idealMaxOverPercent / 100,
+    ceiling:  1 + c.ceilingOverPercent  / 100,
+  })
+}
+
+function peakVehicleRequirement(trips: { departureMinutes: number; arrivalMinutes: number }[]): number {
+  if (trips.length === 0) return 0
+  const events: [number, number][] = []
+  for (const t of trips) {
+    events.push([t.departureMinutes, 1])
+    events.push([t.arrivalMinutes, -1])
+  }
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  let concurrent = 0
+  let peak       = 0
+  for (const [, delta] of events) {
+    concurrent += delta
+    if (concurrent > peak) peak = concurrent
+  }
+  return peak
 }
 
 function toActiveBlock(block: ScoringBlock, matrix: Record<string, SolverMatrixEntry>): ActiveBlock {
@@ -144,17 +177,20 @@ function toActiveBlock(block: ScoringBlock, matrix: Record<string, SolverMatrixE
 export function scoreBlocks(
   blocks: ScoringBlock[],
   matrix: Record<string, SolverMatrixEntry>,
-  config: Pick<SolverPlanningConfig, 'flat' | 'range'>,
+  config: Pick<SolverPlanningConfig, 'range' | 'anchored'>,
 ): SolverResult {
   const active = blocks.map(b => toActiveBlock(b, matrix))
 
-  let rangeScore             = 0
   let totalDeadrunKm         = 0
   let totalDeadrunMinutes    = 0
   let totalProductiveKm      = 0
   let totalProductiveMinutes = 0
   let totalBlockMinutes      = 0
   const durations: number[]  = []
+
+  let weightedSum = 0
+  let weightTotal = 0
+  const add = (weight: number, value: number) => { weightedSum += weight * value; weightTotal += weight }
 
   for (const block of active) {
     const duration   = block.lastArrivalMinutes - block.startMinutes
@@ -170,36 +206,39 @@ export function scoreBlocks(
     totalBlockMinutes      += duration
 
     if (config.range.lineTransfer.active)
-      rangeScore += config.range.lineTransfer.modifier * rangeV(block.lineTransfers, config.range.lineTransfer)
+      add(config.range.lineTransfer.modifier, rangeV(block.lineTransfers, config.range.lineTransfer))
     if (config.range.tripInterval.active && block.intervalCount > 0)
-      rangeScore += config.range.tripInterval.modifier * rangeV(avgLayover, config.range.tripInterval)
+      add(config.range.tripInterval.modifier, rangeV(avgLayover, config.range.tripInterval))
     if (config.range.deadrunRatio.active)
-      rangeScore += config.range.deadrunRatio.modifier * rangeV(drRatio, config.range.deadrunRatio)
+      add(config.range.deadrunRatio.modifier, rangeV(drRatio, config.range.deadrunRatio))
     if (config.range.minBlockDuration.active)
-      rangeScore += config.range.minBlockDuration.modifier * rangeV(duration, config.range.minBlockDuration)
+      add(config.range.minBlockDuration.modifier, rangeV(duration, config.range.minBlockDuration))
   }
 
-  let flatScore = 0
-  const flat    = config.flat
-
-  const applyFlat = (active: boolean, direction: string, weight: number, quantity: number) => {
-    if (!active) return
-    flatScore += direction === 'minimize' ? -quantity * weight : quantity * weight
-  }
-
-  const mean    = durations.length > 0 ? totalBlockMinutes / durations.length : 0
-  const stdDev  = durations.length > 0
+  const mean   = durations.length > 0 ? totalBlockMinutes / durations.length : 0
+  const stdDev = durations.length > 0
     ? Math.sqrt(durations.reduce((acc, d) => acc + (d - mean) ** 2, 0) / durations.length)
     : 0
+  const durationCV = mean > 0 ? (stdDev / mean) * 100 : 0
 
+  if (config.range.distributionVariance.active)
+    add(config.range.distributionVariance.modifier, rangeV(durationCV, config.range.distributionVariance))
+
+  const totalTripCount = active.reduce((sum, b) => sum + b.entries.length, 0)
   // sum of trips across all blocks where requiredVehicleType is unmet
-  const specialCount = active.reduce((sum, b) => sum + b.specialTripCount, 0)
+  const specialCount   = active.reduce((sum, b) => sum + b.specialTripCount, 0)
+  const specialPercent = totalTripCount > 0 ? (specialCount / totalTripCount) * 100 : 0
+  if (config.range.specialFleetUsage.active)
+    add(config.range.specialFleetUsage.modifier, rangeV(specialPercent, config.range.specialFleetUsage))
 
-  applyFlat(flat.fleetUsage.active,           flat.fleetUsage.direction,           flat.fleetUsage.weight,           active.length)
-  applyFlat(flat.deadrunKm.active,            flat.deadrunKm.direction,            flat.deadrunKm.weight,            totalDeadrunKm)
-  applyFlat(flat.totalKm.active,              flat.totalKm.direction,              flat.totalKm.weight,              totalDeadrunKm + totalProductiveKm)
-  applyFlat(flat.distributionVariance.active, flat.distributionVariance.direction, flat.distributionVariance.weight, stdDev)
-  applyFlat(flat.specialFleetUsage.active,    flat.specialFleetUsage.direction,    flat.specialFleetUsage.weight,    specialCount)
+  if (config.anchored.totalKm.active)
+    add(config.anchored.totalKm.weight, anchoredV(totalDeadrunKm + totalProductiveKm, totalProductiveKm, config.anchored.totalKm))
+  if (config.anchored.fleetUsage.active) {
+    const allTrips = blocks.flatMap(b => b.trips)
+    add(config.anchored.fleetUsage.weight, anchoredV(active.length, peakVehicleRequirement(allTrips), config.anchored.fleetUsage))
+  }
+
+  const score = weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0
 
   return {
     blocks: active.map(b => ({
@@ -214,7 +253,7 @@ export function scoreBlocks(
       productiveKm:      b.totalProductiveKm,
       deadrunKm:         b.totalDeadrunKm,
     })),
-    score:             rangeScore + flatScore,
+    score,
     fleetCount:        active.length,
     deadrunKm:         totalDeadrunKm,
     productiveKm:      totalProductiveKm,

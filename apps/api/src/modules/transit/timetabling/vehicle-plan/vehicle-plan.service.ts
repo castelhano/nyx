@@ -169,8 +169,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         demandModifier:           generalCfg.demandModifier,
         stopNoImprovementMinutes: adjustedCfg.stopNoImprovementMinutes,
         stopMaxTotalMinutes:      adjustedCfg.stopMaxTotalMinutes,
-        flat:                     adjustedCfg.flat,
         range:                    adjustedCfg.range,
+        anchored:                 adjustedCfg.anchored,
+        line:                     adjustedCfg.line,
       },
       trips: trips.map(t => {
         const metrics = t.route.line.metrics as { extensionKm?: Record<string, number> } | null
@@ -254,16 +255,16 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
   }
 
+  // 'optimize_drivers'/'optimize_overtime' are currently no-ops — the criteria they
+  // used to boost (driverUsage/overtime) were removed from SolverPlanningConfig along
+  // with `flat` (see docs/proposal/vehicle_plan_score_formula_v1.md §4.4); they belong
+  // to the future CrewPlan, not VehiclePlan. Left as valid SolverParams.direction
+  // values pending that implementation.
   private applyDirectionWeights(config: SolverPlanningConfig, direction: SolverParams['direction']): SolverPlanningConfig {
-    if (direction === 'automatic') return config
+    if (direction !== 'optimize_fleet') return config
     const result = JSON.parse(JSON.stringify(config)) as SolverPlanningConfig
-    if (direction === 'optimize_fleet') {
-      result.flat.fleetUsage.active = true
-      result.flat.fleetUsage.weight = Math.round(result.flat.fleetUsage.weight * 2)
-    } else if (direction === 'optimize_drivers') {
-      result.flat.driverUsage.active = true
-      result.flat.driverUsage.weight = Math.round(result.flat.driverUsage.weight * 2)
-    }
+    result.anchored.fleetUsage.active = true
+    result.anchored.fleetUsage.weight = Math.round(result.anchored.fleetUsage.weight * 2)
     return result
   }
 
@@ -424,18 +425,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const dayTypeCode = plan.dayType?.code
     const lineAgg      = buildLineAggregates(blocksWithTrips, matrixKm, dayTypeCode, VEHICLE_TYPE_CAPACITY)
 
-    // score has no formula yet for lines (see plan-scoring.calc.ts) — 0 until Fase 6
-    const lineSummaries = new Map<string, VehiclePlanLineSummary>()
-    for (const { lineId } of planLines) {
-      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), 0))
-    }
-
     // ── VehicleBlock.summary + VehiclePlan.summary — from BlockAggregate ────────
     const planMetrics = plan.metrics as Partial<SolverPlanningConfig> | null
-    const resolvedCfg = planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg
+    const resolvedCfg = (planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg) as SolverPlanningConfig
 
+    const lineSummaries = new Map<string, VehiclePlanLineSummary>()
+    for (const { lineId } of planLines) {
+      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), resolvedCfg.line))
+    }
+
+    const planTrips = blocksWithTrips.flatMap((b: any) =>
+      b.blockTrips.map((bt: any) => ({
+        departureMinutes: bt.trip.departureMinutes,
+        arrivalMinutes:   bt.trip.arrivalMinutes,
+      })),
+    )
     const aggregates = blocksWithTrips.map((b: any) => buildAggregateFromPersisted(b, matrixKm))
-    const scored      = scoreFromAggregates(aggregates, resolvedCfg as SolverPlanningConfig)
+    const scored      = scoreFromAggregates(aggregates, planTrips, resolvedCfg)
 
     const planSummary: VehiclePlanSummary = { ...scored, fleetCount: blocksWithTrips.length }
 

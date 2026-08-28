@@ -605,8 +605,8 @@ function Stat({ label, value }: { label: string; value: string }) {
 const dash = (v: number | null | undefined, fmt: (v: number) => string) => v == null ? '—' : fmt(v)
 
 // Mirrors the prototype's summary card layout — big score number, then the same
-// 6+3 stat split. `score` stays at 0 on both sides until a formula is defined
-// (doc decision) — shown anyway so the element already exists in the UI.
+// 6+3 stat split. `score` is on a fixed 0–9999 scale (see
+// docs/proposal/vehicle_plan_score_formula_v1.md).
 function SummaryCardBody({ v, primary }: { v: RowValues; primary?: boolean }) {
   return (
     <>

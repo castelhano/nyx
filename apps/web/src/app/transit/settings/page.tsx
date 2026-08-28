@@ -14,25 +14,34 @@ import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
 import { cn } from '@/lib/utils'
-import type { GeneralSettings, PlanningSettings, ScheduleSettings, FlatCriterion, RangeCriterion } from '@nyx/schemas'
+import type { GeneralSettings, PlanningSettings, ScheduleSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
-const FLAT_META: Record<keyof PlanningSettings['flat'], { label: string; unit: string; hint: string }> = {
-  fleetUsage:           { label: 'Uso de Frota',              unit: 'por veículo',  hint: 'Peso por veículo utilizado no plano.'                                              },
-  deadrunKm:            { label: 'Km em Vazio',               unit: 'por km',       hint: 'Peso por km de deslocamento em vazio no plano.'                                    },
-  totalKm:              { label: 'Km Total',                  unit: 'por km',       hint: 'Peso por km total percorrido no plano.'                                            },
-  distributionVariance: { label: 'Variância de Distribuição', unit: 'por coef.',    hint: 'Penaliza planos desbalanceados. Quantity = desvio padrão / média de km por bloco.' },
-  specialFleetUsage:    { label: 'Frota Especial',            unit: 'por bloco',    hint: 'Custo por bloco que requer tipo de veículo especial (requiredVehicleType).'        },
-  driverUsage:          { label: 'Uso de Condutores',         unit: 'por condutor', hint: 'Custo por condutor utilizado no plano.'                                            },
-  overtime:             { label: 'Hora Extra',                unit: 'por minuto',   hint: 'Custo por minuto de hora extra no plano.'                                          },
+const RANGE_META: Record<keyof PlanningSettings['range'], { label: string; unit: string; hint: string }> = {
+  lineTransfer:         { label: 'Troca de Linha',          unit: 'trocas', hint: 'Nº de trocas de linha no bloco (linhas distintas - 1). Zero = bloco com linha única.' },
+  tripInterval:         { label: 'Intervalo de Viagem',     unit: 'min',    hint: 'Menor intervalo entre viagens consecutivas no bloco (minutos).' },
+  deadrunRatio:         { label: 'Ratio Km em Vazio',       unit: '%',      hint: 'Proporção de km em vazio sobre o total do bloco.' },
+  minBlockDuration:     { label: 'Duração Mínima Bloco',    unit: 'min',    hint: 'Duração total do bloco (minutos). Blocos abaixo do idealMin são candidatos a fusão.' },
+  distributionVariance: { label: 'Variância de Distribuição', unit: '% CV', hint: 'Coeficiente de variação (desvio padrão / média) da duração dos blocos do plano.' },
+  specialFleetUsage:    { label: 'Frota Especial',          unit: '% viagens', hint: 'Proporção de viagens do plano cujo tipo de veículo exigido não foi respeitado.' },
 }
 
-const RANGE_META: Record<keyof PlanningSettings['range'], { label: string; unit: string; hint: string }> = {
-  lineTransfer:    { label: 'Troca de Linha',       unit: 'trocas', hint: 'Nº de trocas de linha no bloco (linhas distintas - 1). Zero = bloco com linha única.' },
-  tripInterval:    { label: 'Intervalo de Viagem',  unit: 'min',    hint: 'Menor intervalo entre viagens consecutivas no bloco (minutos).' },
-  deadrunRatio:    { label: 'Ratio Km em Vazio',    unit: '%',      hint: 'Proporção de km em vazio sobre o total do bloco.' },
-  minBlockDuration:{ label: 'Duração Mínima Bloco', unit: 'min',    hint: 'Duração total do bloco (minutos). Blocos abaixo do idealMin são candidatos a fusão.' },
+const ANCHORED_META: Record<keyof PlanningSettings['anchored'], { label: string; unit: string; hint: string }> = {
+  totalKm:    { label: 'Km Total',   unit: '% sobre mínimo', hint: 'Km total do plano sobre o mínimo teórico (soma do km de cada viagem, deadrun zero).' },
+  fleetUsage: { label: 'Uso de Frota', unit: '% sobre mínimo', hint: 'Frota utilizada sobre o mínimo teórico (requisito de pico de veículos simultâneos).' },
+}
+
+const LINE_RANGE_META: Record<Exclude<keyof PlanningSettings['line'], 'fleetUsage'>, { label: string; unit: string; hint: string }> = {
+  demandMatch:          { label: 'Oferta x Demanda',        unit: '% ocupação', hint: 'Ocupação por hora e sentido (demanda/oferta). Penaliza excesso e falta de oferta.' },
+  headwayRegularity:    { label: 'Regularidade de Intervalo', unit: '% CV',     hint: 'Coeficiente de variação dos intervalos entre partidas consecutivas, por sentido.' },
+  maxGap:               { label: 'Maior Vão sem Atendimento', unit: 'min',     hint: 'Maior intervalo entre partidas consecutivas de um mesmo sentido.' },
+  peakConcentration:    { label: 'Concentração Pico/Vale',  unit: '%',         hint: 'Participação da oferta no horário de pico sobre a participação da demanda no pico (100% = equivalente).' },
+  distributionVariance: { label: 'Variância de Distribuição', unit: '% CV',    hint: 'Coeficiente de variação do km que a linha demanda de cada veículo que a atende.' },
+}
+
+const LINE_FLEET_META: Record<'fleetUsage', { label: string; unit: string; hint: string }> = {
+  fleetUsage: { label: 'Uso de Frota', unit: '% sobre mínimo', hint: 'Frota da linha sobre o mínimo teórico (requisito de pico de veículos simultâneos, só desta linha).' },
 }
 
 const SCHEDULE_META: Record<keyof ScheduleSettings['range'], { label: string; unit: string; hint: string }> = {
@@ -129,15 +138,18 @@ function NumberInput({ value, onChange, min = 0, max, step = 1, disabled }: {
   )
 }
 
-// ── FlatTable ────────────────────────────────────────────────────────────────
+// ── AnchoredTable ────────────────────────────────────────────────────────────
 
-function FlatTable({ data, globalData, onChange, disabled }: {
-  data:       PlanningSettings['flat']
-  globalData: PlanningSettings['flat']
-  onChange:   (key: keyof PlanningSettings['flat'], field: keyof FlatCriterion, value: unknown) => void
+type AnchoredMeta = Record<string, { label: string; unit: string; hint: string }>
+
+function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ data, globalData, meta, onChange, disabled }: {
+  data:       T
+  globalData: T
+  meta:       AnchoredMeta
+  onChange?:  (key: keyof T, field: keyof AnchoredCriterion, value: unknown) => void
   disabled?:  boolean
 }) {
-  const keys = Object.keys(FLAT_META) as (keyof PlanningSettings['flat'])[]
+  const keys = Object.keys(meta) as (keyof T)[]
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
@@ -147,24 +159,28 @@ function FlatTable({ data, globalData, onChange, disabled }: {
             <th className="w-1.5" />
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Critério</th>
             <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-16">Ativo</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-24">Direção</th>
+            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-28">Ideal até (%)</th>
+            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-28">Ceiling (%)</th>
             <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-24">Peso</th>
             <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-8" />
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {keys.map((key) => {
-            const meta      = FLAT_META[key]
+            const m         = meta[key as string]
             const row       = data[key]
             const globalRow = globalData[key]
             const isDiff    = !disabled && (
-              row.active !== globalRow.active ||
-              row.direction !== globalRow.direction ||
-              row.weight !== globalRow.weight
+              row.active              !== globalRow.active ||
+              row.idealMaxOverPercent !== globalRow.idealMaxOverPercent ||
+              row.ceilingOverPercent  !== globalRow.ceilingOverPercent ||
+              row.weight              !== globalRow.weight
             )
 
+            const set = (field: keyof AnchoredCriterion, value: unknown) => onChange?.(key, field, value)
+
             return (
-              <tr key={key} className="group">
+              <tr key={String(key)} className="group">
                 <td className="pl-2 pr-0">
                   <div className="flex items-center justify-center h-full py-3">
                     <DiffDot show={isDiff} />
@@ -172,36 +188,37 @@ function FlatTable({ data, globalData, onChange, disabled }: {
                 </td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-2">
-                    <span>{meta.label}</span>
-                    <span className="text-xs text-muted-foreground/50">{meta.unit}</span>
+                    <span>{m.label}</span>
+                    <span className="text-xs text-muted-foreground/50">{m.unit}</span>
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex justify-center">
                     <Switch
                       checked={row.active}
-                      onToggle={() => onChange(key, 'active', !row.active)}
-                      disabled={disabled}
-                    />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center text-xs text-muted-foreground">
-                  {row.direction === 'minimize' ? 'Minimizar' : 'Maximizar'}
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput
-                      value={row.weight}
-                      onChange={(v) => onChange(key, 'weight', v)}
-                      min={0}
-                      step={10}
+                      onToggle={() => set('active', !row.active)}
                       disabled={disabled}
                     />
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex justify-center">
-                    <HintPopover hint={meta.hint} />
+                    <NumberInput value={row.idealMaxOverPercent} onChange={(v) => set('idealMaxOverPercent', v)} min={0} disabled={disabled} />
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  <div className="flex justify-center">
+                    <NumberInput value={row.ceilingOverPercent} onChange={(v) => set('ceilingOverPercent', v)} min={0} disabled={disabled} />
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  <div className="flex justify-center">
+                    <NumberInput value={row.weight} onChange={(v) => set('weight', v)} min={0} step={5} disabled={disabled} />
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 text-center">
+                  <div className="flex justify-center">
+                    <HintPopover hint={m.hint} />
                   </div>
                 </td>
               </tr>
@@ -436,17 +453,31 @@ export default function TransitSettingsPage() {
 
   // ── update helpers ─────────────────────────────────────────────────────────
 
-  function updateFlat(key: keyof PlanningSettings['flat'], field: keyof FlatCriterion, value: unknown) {
-    setPlanning((prev) => prev ? {
-      ...prev,
-      flat: { ...prev.flat, [key]: { ...prev.flat[key], [field]: value } },
-    } : null)
-  }
-
   function updatePlanningRange(key: keyof PlanningSettings['range'], field: keyof RangeCriterion, value: unknown) {
     setPlanning((prev) => prev ? {
       ...prev,
       range: { ...prev.range, [key]: { ...prev.range[key], [field]: value } },
+    } : null)
+  }
+
+  function updatePlanningAnchored(key: keyof PlanningSettings['anchored'], field: keyof AnchoredCriterion, value: unknown) {
+    setPlanning((prev) => prev ? {
+      ...prev,
+      anchored: { ...prev.anchored, [key]: { ...prev.anchored[key], [field]: value } },
+    } : null)
+  }
+
+  function updateLineRange(key: keyof PlanningSettings['line'], field: keyof RangeCriterion, value: unknown) {
+    setPlanning((prev) => prev ? {
+      ...prev,
+      line: { ...prev.line, [key]: { ...(prev.line[key] as RangeCriterion), [field]: value } },
+    } : null)
+  }
+
+  function updateLineFleetUsage(field: keyof AnchoredCriterion, value: unknown) {
+    setPlanning((prev) => prev ? {
+      ...prev,
+      line: { ...prev.line, fleetUsage: { ...prev.line.fleetUsage, [field]: value } },
     } : null)
   }
 
@@ -652,21 +683,22 @@ export default function TransitSettingsPage() {
           </div>
         </div>
 
-        {/* Flat criteria */}
+        {/* Anchored criteria (plan) */}
         {planning && gPlanning && (
           <div className="flex flex-col gap-3">
             <SectionHeader
-              label="Critérios Globais"
-              sub="Calculados sobre o plano. Peso × quantidade = custo no score final."
+              label="Critérios Ancorados no Plano"
+              sub="Piso inferido do próprio plano (km mínimo, frota mínima) — Ideal/Ceiling em % acima desse piso."
             />
             <div className='flex items-center gap-x-2 rounded-sm p-3 text-sm text-slate-50 bg-slate-500 dark:text-slate-300 dark:bg-slate-800/50'>
               <Icons.Info className="w-4 h-4 shrink-0" />
-              <span className='tracking-wide'>Critérios globais definem a prioridade do algoritmo. Quanto maior o peso de um item <b>em relação aos demais</b>, mais o <dfn className='text-amber-200 cursor-help' title='Motor de otimização do sistema'>solver</dfn> focará em otimizá-lo</span>
+              <span className='tracking-wide'>O piso destes critérios não é configurável — é calculado a partir do próprio plano (km mínimo teórico, requisito de pico de veículos). O peso define a prioridade relativa entre critérios no score final.</span>
             </div>
-            <FlatTable
-              data={planning.flat}
-              globalData={isBranch ? gPlanning.flat : planning.flat}
-              onChange={updateFlat}
+            <AnchoredTable
+              data={planning.anchored}
+              globalData={isBranch ? gPlanning.anchored : planning.anchored}
+              meta={ANCHORED_META}
+              onChange={updatePlanningAnchored}
             />
           </div>
         )}
@@ -676,13 +708,13 @@ export default function TransitSettingsPage() {
           <div className="flex flex-col gap-3 mt-4">
             <SectionHeader
               label="Critérios por Bloco"
-              sub="Calculados em isolamento por bloco e somados ao score. Modifier = peso do critério no score do bloco."
+              sub="Calculados em isolamento por bloco e combinados por média ponderada ao score. Modifier = peso do critério no score final."
             />
             <div className='flex items-center gap-x-2 rounded-sm py-3 px-4 text-sm text-slate-50 bg-slate-500 dark:text-slate-300 dark:bg-slate-800/50'>
               <Icons.Info className="w-4 h-4 shrink-0" />
               <span className='tracking-wide'>
-                Modifier define o peso do item. Um valor '0.5' indica metade da importância de um item '1'. Como o modifier altera a pontuação em escala exponencial, pequenas variações causam forte impacto no direcionamento do <dfn className='text-amber-200 cursor-help' title='Motor de otimização do sistema'>solver</dfn>. Altere com cuidado.
-              </span>              
+                Modifier define o peso relativo do item na média ponderada do score. Como o modifier altera a pontuação em escala exponencial, pequenas variações causam forte impacto no direcionamento do <dfn className='text-amber-200 cursor-help' title='Motor de otimização do sistema'>solver</dfn>. Altere com cuidado.
+              </span>
             </div>
             <RangeTable
               data={planning.range}
@@ -692,7 +724,47 @@ export default function TransitSettingsPage() {
             />
           </div>
         )}
-      </section>      
+
+        {/* Line-scoped criteria */}
+        {planning && gPlanning && (
+          <div className="flex flex-col gap-3 mt-4">
+            <SectionHeader
+              label="Critérios de Linha"
+              sub="Score de VehiclePlanLine — só a operação da própria linha, nunca decisões de reaproveitamento entre linhas."
+            />
+            <RangeTable
+              data={{
+                demandMatch:          planning.line.demandMatch,
+                headwayRegularity:    planning.line.headwayRegularity,
+                maxGap:               planning.line.maxGap,
+                peakConcentration:    planning.line.peakConcentration,
+                distributionVariance: planning.line.distributionVariance,
+              }}
+              globalData={isBranch ? {
+                demandMatch:          gPlanning.line.demandMatch,
+                headwayRegularity:    gPlanning.line.headwayRegularity,
+                maxGap:               gPlanning.line.maxGap,
+                peakConcentration:    gPlanning.line.peakConcentration,
+                distributionVariance: gPlanning.line.distributionVariance,
+              } : {
+                demandMatch:          planning.line.demandMatch,
+                headwayRegularity:    planning.line.headwayRegularity,
+                maxGap:               planning.line.maxGap,
+                peakConcentration:    planning.line.peakConcentration,
+                distributionVariance: planning.line.distributionVariance,
+              }}
+              meta={LINE_RANGE_META}
+              onChange={updateLineRange}
+            />
+            <AnchoredTable
+              data={{ fleetUsage: planning.line.fleetUsage }}
+              globalData={{ fleetUsage: isBranch ? gPlanning.line.fleetUsage : planning.line.fleetUsage }}
+              meta={LINE_FLEET_META}
+              onChange={(_key, field, value) => updateLineFleetUsage(field, value)}
+            />
+          </div>
+        )}
+      </section>
       <hr className='mt-2' />
 
       {/* ── Escala ── */}

@@ -1,9 +1,3 @@
-export interface FlatCriterionConfig {
-  active:    boolean
-  direction: 'minimize' | 'maximize'
-  weight:    number
-}
-
 export interface RangeCriterionConfig {
   active:   boolean
   modifier: number
@@ -13,25 +7,41 @@ export interface RangeCriterionConfig {
   ceiling:  number
 }
 
+// Floor is never a config constant — inferred at runtime from the plan/line being
+// scored (theoretical minimum km, peak vehicle requirement). idealMax/ceiling are %
+// over that inferred floor. See docs/proposal/vehicle_plan_score_formula_v1.md §6.2.
+export interface AnchoredCriterionConfig {
+  active:              boolean
+  idealMaxOverPercent: number
+  ceilingOverPercent:  number
+  weight:              number
+}
+
 export interface SolverPlanningConfig {
   operationalDayStartHour:  number
   demandModifier:           number
   stopNoImprovementMinutes: number
   stopMaxTotalMinutes:      number
-  flat: {
-    fleetUsage:           FlatCriterionConfig
-    deadrunKm:            FlatCriterionConfig
-    totalKm:              FlatCriterionConfig
-    distributionVariance: FlatCriterionConfig
-    specialFleetUsage:    FlatCriterionConfig
-    driverUsage:          FlatCriterionConfig
-    overtime:             FlatCriterionConfig
-  }
   range: {
-    lineTransfer:     RangeCriterionConfig
-    tripInterval:     RangeCriterionConfig
-    deadrunRatio:     RangeCriterionConfig
-    minBlockDuration: RangeCriterionConfig
+    lineTransfer:         RangeCriterionConfig
+    tripInterval:         RangeCriterionConfig
+    deadrunRatio:         RangeCriterionConfig
+    minBlockDuration:     RangeCriterionConfig
+    distributionVariance: RangeCriterionConfig
+    specialFleetUsage:    RangeCriterionConfig
+  }
+  anchored: {
+    totalKm:    AnchoredCriterionConfig
+    fleetUsage: AnchoredCriterionConfig
+  }
+  // criteria scoped to a single line's own operation — see proposal doc §2/§3
+  line: {
+    demandMatch:          RangeCriterionConfig
+    headwayRegularity:    RangeCriterionConfig
+    maxGap:               RangeCriterionConfig
+    peakConcentration:    RangeCriterionConfig
+    distributionVariance: RangeCriterionConfig
+    fleetUsage:           AnchoredCriterionConfig
   }
 }
 

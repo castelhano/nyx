@@ -1,12 +1,18 @@
-import type { SolverPlanningConfig, RangeCriterionConfig } from '../solver/solver.types'
+import type { SolverPlanningConfig, RangeCriterionConfig, AnchoredCriterionConfig } from '../solver/solver.types'
 import type { BlockAggregate } from './block-aggregate'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
 
 // The single score formula in the system — extracted from the solver's scoreBlocks
 // (solver.scoring.ts). Consumed today only by VehiclePlanService.recalculate (via
 // BlockAggregate[] built from persisted state); a future solver revision is expected
-// to converge onto this same function instead of keeping its own copy — see
-// docs/proposal/vehicle-plan-summary-score-consolidation.md §2.1.
+// to converge onto this same function instead of keeping its own copy.
+//
+// Reform (docs/proposal/vehicle_plan_score_formula_v1.md): every criterion — plan and
+// line level — maps to a bounded [0,1] reward, combined as a WEIGHTED AVERAGE (not
+// sum) so the final score stays on a fixed, predictable, always-positive 0–9999 scale
+// regardless of how many criteria are active or how weights are tuned.
+const SCORE_SCALE = 9999
+
 function rangeV(value: number, c: RangeCriterionConfig): number {
   if (value > c.ceiling) return 0
   if (value >= c.idealMin && value <= c.idealMax) return 1
@@ -17,6 +23,50 @@ function rangeV(value: number, c: RangeCriterionConfig): number {
   if (c.ceiling <= c.idealMax) return 0
   return (c.ceiling - value) / (c.ceiling - c.idealMax)
 }
+
+// Banded reward for criteria whose floor is inferred at runtime (theoretical minimum
+// km, peak vehicle requirement) instead of a config constant — idealMax/ceiling are
+// expressed as % over that floor. Ratio 1.0 = at the theoretical minimum (best
+// achievable). See proposal doc §6.2.
+function anchoredV(realized: number, theoreticalMin: number, c: AnchoredCriterionConfig): number {
+  if (theoreticalMin <= 0) return 1
+  const ratio = realized / theoreticalMin
+  return rangeV(ratio, {
+    active: c.active, modifier: 0, floor: 1, idealMin: 1,
+    idealMax: 1 + c.idealMaxOverPercent / 100,
+    ceiling:  1 + c.ceilingOverPercent  / 100,
+  })
+}
+
+// Peak Vehicle Requirement — sweep-line lower bound on the fleet needed to cover a
+// set of trips (max number simultaneously in service), ignoring deadhead/turnaround
+// between assignments. Standard transit-scheduling floor; anchors fleetUsage both at
+// plan scope (all trips) and line scope (only that line's own trips — see §2.1, no
+// interlining assumption).
+export function peakVehicleRequirement(trips: { departureMinutes: number; arrivalMinutes: number }[]): number {
+  if (trips.length === 0) return 0
+  const events: [number, number][] = []
+  for (const t of trips) {
+    events.push([t.departureMinutes, 1])
+    events.push([t.arrivalMinutes, -1])
+  }
+  // arrivals before departures at the same minute — a vehicle freed at T can cover a
+  // trip departing at T without counting as two concurrent vehicles
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  let concurrent = 0
+  let peak       = 0
+  for (const [, delta] of events) {
+    concurrent += delta
+    if (concurrent > peak) peak = concurrent
+  }
+  return peak
+}
+
+// Mirrors VehiclePlanService.PEAK_MORNING/PEAK_AFTERNOON — kept as a local constant
+// since this module has no DI access to the service. Hour buckets (0–23) overlapping
+// either band count as peak.
+const PEAK_HOURS: [number, number][] = [[5.5, 8], [15.5, 18]]
+const isPeakHour = (hour: number) => PEAK_HOURS.some(([from, to]) => hour >= from && hour < to)
 
 export interface AggregateScoreResult {
   score:             number
@@ -31,15 +81,23 @@ export interface AggregateScoreResult {
 
 export function scoreFromAggregates(
   aggregates: BlockAggregate[],
-  config:     Pick<SolverPlanningConfig, 'flat' | 'range'>,
+  planTrips:  { departureMinutes: number; arrivalMinutes: number }[],
+  config:     Pick<SolverPlanningConfig, 'range' | 'anchored'>,
 ): AggregateScoreResult {
-  let rangeScore             = 0
   let totalDeadrunKm         = 0
   let totalDeadrunMinutes    = 0
   let totalProductiveKm      = 0
   let totalProductiveMinutes = 0
   let totalBlockMinutes      = 0
+  let totalTripCount         = 0
+  let totalSpecialCount      = 0
   const durations: number[]  = []
+
+  let weightedSum = 0
+  let weightTotal = 0
+  const add = (weight: number, value: number) => { weightedSum += weight * value; weightTotal += weight }
+
+  const range = config.range
 
   for (const agg of aggregates) {
     const totalKm = agg.deadrunKm + agg.productiveKm
@@ -51,40 +109,42 @@ export function scoreFromAggregates(
     totalProductiveKm      += agg.productiveKm
     totalProductiveMinutes += agg.productiveMinutes
     totalBlockMinutes      += agg.totalMinutes
+    totalTripCount         += agg.tripCount
+    totalSpecialCount      += agg.specialTripCount
 
-    if (config.range.lineTransfer.active)
-      rangeScore += config.range.lineTransfer.modifier * rangeV(agg.lineTransfers, config.range.lineTransfer)
-    if (config.range.tripInterval.active && agg.intervalCount > 0)
-      rangeScore += config.range.tripInterval.modifier * rangeV(agg.avgLayover, config.range.tripInterval)
-    if (config.range.deadrunRatio.active)
-      rangeScore += config.range.deadrunRatio.modifier * rangeV(drRatio, config.range.deadrunRatio)
-    if (config.range.minBlockDuration.active)
-      rangeScore += config.range.minBlockDuration.modifier * rangeV(agg.totalMinutes, config.range.minBlockDuration)
-  }
-
-  let flatScore = 0
-  const flat    = config.flat
-
-  const applyFlat = (active: boolean, direction: string, weight: number, quantity: number) => {
-    if (!active) return
-    flatScore += direction === 'minimize' ? -quantity * weight : quantity * weight
+    if (range.lineTransfer.active)
+      add(range.lineTransfer.modifier, rangeV(agg.lineTransfers, range.lineTransfer))
+    if (range.tripInterval.active && agg.intervalCount > 0)
+      add(range.tripInterval.modifier, rangeV(agg.avgLayover, range.tripInterval))
+    if (range.deadrunRatio.active)
+      add(range.deadrunRatio.modifier, rangeV(drRatio, range.deadrunRatio))
+    if (range.minBlockDuration.active)
+      add(range.minBlockDuration.modifier, rangeV(agg.totalMinutes, range.minBlockDuration))
   }
 
   const mean   = durations.length > 0 ? totalBlockMinutes / durations.length : 0
   const stdDev = durations.length > 0
     ? Math.sqrt(durations.reduce((acc, d) => acc + (d - mean) ** 2, 0) / durations.length)
     : 0
+  const durationCV = mean > 0 ? (stdDev / mean) * 100 : 0
 
-  const specialCount = aggregates.reduce((sum, a) => sum + a.specialTripCount, 0)
+  if (range.distributionVariance.active)
+    add(range.distributionVariance.modifier, rangeV(durationCV, range.distributionVariance))
 
-  applyFlat(flat.fleetUsage.active,           flat.fleetUsage.direction,           flat.fleetUsage.weight,           aggregates.length)
-  applyFlat(flat.deadrunKm.active,            flat.deadrunKm.direction,            flat.deadrunKm.weight,            totalDeadrunKm)
-  applyFlat(flat.totalKm.active,              flat.totalKm.direction,              flat.totalKm.weight,              totalDeadrunKm + totalProductiveKm)
-  applyFlat(flat.distributionVariance.active, flat.distributionVariance.direction, flat.distributionVariance.weight, stdDev)
-  applyFlat(flat.specialFleetUsage.active,    flat.specialFleetUsage.direction,    flat.specialFleetUsage.weight,    specialCount)
+  const specialPercent = totalTripCount > 0 ? (totalSpecialCount / totalTripCount) * 100 : 0
+  if (range.specialFleetUsage.active)
+    add(range.specialFleetUsage.modifier, rangeV(specialPercent, range.specialFleetUsage))
+
+  const anchored = config.anchored
+  if (anchored.totalKm.active)
+    add(anchored.totalKm.weight, anchoredV(totalDeadrunKm + totalProductiveKm, totalProductiveKm, anchored.totalKm))
+  if (anchored.fleetUsage.active)
+    add(anchored.fleetUsage.weight, anchoredV(aggregates.length, peakVehicleRequirement(planTrips), anchored.fleetUsage))
+
+  const score = weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0
 
   return {
-    score:             rangeScore + flatScore,
+    score,
     fleetCount:        aggregates.length,
     deadrunKm:         totalDeadrunKm,
     productiveKm:      totalProductiveKm,
@@ -99,6 +159,7 @@ export function scoreFromAggregates(
 
 export interface LineAggregate {
   blockIds:          Set<string>
+  blockKm:           Map<string, number>   // km this line contributes to each vehicle/block touching it
   tripCount:         number
   productiveKm:      number
   productiveMinutes: number
@@ -106,6 +167,8 @@ export interface LineAggregate {
   maxArrival:        number
   totalSupply:       number
   demand:            Record<string, Record<string, number>> | undefined
+  // per direction: each trip's window + capacity, for headway/gap/PVR/peak-concentration
+  tripsByDirection:  Record<string, { departureMinutes: number; arrivalMinutes: number; supply: number }[]>
 }
 
 export interface LineAggregateBlockInput {
@@ -148,9 +211,10 @@ export function buildLineAggregates(
           demand?: Record<string, Record<string, Record<string, number>>>
         } | null
         agg = {
-          blockIds: new Set(), tripCount: 0, productiveKm: 0, productiveMinutes: 0,
+          blockIds: new Set(), blockKm: new Map(), tripCount: 0, productiveKm: 0, productiveMinutes: 0,
           minDeparture: Infinity, maxArrival: -Infinity, totalSupply: 0,
           demand: dayTypeCode ? lineMetrics?.demand?.[dayTypeCode] : undefined,
+          tripsByDirection: {},
         }
         lineAgg.set(lineId, agg)
       }
@@ -161,14 +225,19 @@ export function buildLineAggregates(
         ?? 0
       const renewal = (route.line.metrics as { renewalIndex?: { overall?: { value?: number } } } | null)
         ?.renewalIndex?.overall?.value ?? 0
+      const supply = (vehicleTypeCapacity[block.vehicleType] ?? 0) * (1 + renewal / 100)
 
       agg.blockIds.add(block.id)
+      agg.blockKm.set(block.id, (agg.blockKm.get(block.id) ?? 0) + tripKm)
       agg.tripCount++
       agg.productiveKm      += tripKm
       agg.productiveMinutes += bt.trip.arrivalMinutes - bt.trip.departureMinutes
       agg.minDeparture       = Math.min(agg.minDeparture, bt.trip.departureMinutes)
       agg.maxArrival         = Math.max(agg.maxArrival,   bt.trip.arrivalMinutes)
-      agg.totalSupply       += (vehicleTypeCapacity[block.vehicleType] ?? 0) * (1 + renewal / 100)
+      agg.totalSupply       += supply
+
+      const list = agg.tripsByDirection[route.direction] ?? (agg.tripsByDirection[route.direction] = [])
+      list.push({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes, supply })
     }
   }
 
@@ -177,15 +246,98 @@ export function buildLineAggregates(
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 
-// score is left out on purpose — no formula exists yet for VehiclePlanLine (see
-// docs/proposal/vehicle-plan-summary-score-consolidation.md §2.1/Fase 6). The caller
-// supplies whatever value applies today (currently 0) so this stays the single seam
-// to update once that formula is defined, instead of scattering it across callers.
-export function computeLineSummary(agg: LineAggregate | undefined, score: number): Omit<VehiclePlanLineSummary, 'score'> & { score: number } {
+function computeLineScore(agg: LineAggregate, cfg: SolverPlanningConfig['line']): number {
+  let weightedSum = 0
+  let weightTotal = 0
+  const add = (weight: number, value: number) => { weightedSum += weight * value; weightTotal += weight }
+
+  for (const [direction, trips] of Object.entries(agg.tripsByDirection)) {
+    if (trips.length === 0) continue
+    const demandByHour = agg.demand?.[direction]
+
+    // ── demandMatch: occupancy per hour bucket, symmetric across directions ──
+    if (cfg.demandMatch.active) {
+      const supplyByHour = new Map<number, number>()
+      for (const t of trips) {
+        const hour = Math.floor(t.departureMinutes / 60) % 24
+        supplyByHour.set(hour, (supplyByHour.get(hour) ?? 0) + t.supply)
+      }
+      const hours = new Set<number>([...supplyByHour.keys(), ...Object.keys(demandByHour ?? {}).map(Number)])
+      for (const hour of hours) {
+        const supply = supplyByHour.get(hour) ?? 0
+        const demand = demandByHour?.[String(hour)] ?? 0
+        if (supply === 0 && demand === 0) continue
+        // fully unmet hour (demand recorded, zero service) — guaranteed worst reward
+        const ratio = supply > 0 ? (demand / supply) * 100 : cfg.demandMatch.ceiling + 1
+        add(cfg.demandMatch.modifier, rangeV(ratio, cfg.demandMatch))
+      }
+    }
+
+    // ── headwayRegularity + maxGap: gaps between consecutive departures ──
+    if (trips.length > 1 && (cfg.headwayRegularity.active || cfg.maxGap.active)) {
+      const departures = trips.map(t => t.departureMinutes).sort((a, b) => a - b)
+      const gaps: number[] = []
+      for (let i = 1; i < departures.length; i++) gaps.push(departures[i] - departures[i - 1])
+
+      if (cfg.headwayRegularity.active) {
+        const gapMean = gaps.reduce((s, g) => s + g, 0) / gaps.length
+        const gapStd  = Math.sqrt(gaps.reduce((s, g) => s + (g - gapMean) ** 2, 0) / gaps.length)
+        const gapCV   = gapMean > 0 ? (gapStd / gapMean) * 100 : 0
+        add(cfg.headwayRegularity.modifier, rangeV(gapCV, cfg.headwayRegularity))
+      }
+      if (cfg.maxGap.active)
+        add(cfg.maxGap.modifier, rangeV(Math.max(...gaps), cfg.maxGap))
+    }
+
+    // ── peakConcentration: peak-hour share of supply vs. demand ──
+    if (cfg.peakConcentration.active) {
+      let peakSupply = 0, totalSupplyDir = 0
+      for (const t of trips) {
+        totalSupplyDir += t.supply
+        if (isPeakHour(Math.floor(t.departureMinutes / 60) % 24)) peakSupply += t.supply
+      }
+      let peakDemand = 0, totalDemandDir = 0
+      for (const [hourStr, v] of Object.entries(demandByHour ?? {})) {
+        totalDemandDir += v
+        if (isPeakHour(Number(hourStr))) peakDemand += v
+      }
+      if (totalSupplyDir > 0 && totalDemandDir > 0) {
+        const supplyShare = peakSupply / totalSupplyDir
+        const demandShare = peakDemand / totalDemandDir
+        const ratio = demandShare > 0 ? (supplyShare / demandShare) * 100 : cfg.peakConcentration.ceiling + 1
+        add(cfg.peakConcentration.modifier, rangeV(ratio, cfg.peakConcentration))
+      }
+    }
+  }
+
+  // ── distributionVariance: CV of km contributed per vehicle touching the line ──
+  if (cfg.distributionVariance.active && agg.blockKm.size > 0) {
+    const kms  = Array.from(agg.blockKm.values())
+    const mean = kms.reduce((s, k) => s + k, 0) / kms.length
+    const std  = Math.sqrt(kms.reduce((s, k) => s + (k - mean) ** 2, 0) / kms.length)
+    const cv   = mean > 0 ? (std / mean) * 100 : 0
+    add(cfg.distributionVariance.modifier, rangeV(cv, cfg.distributionVariance))
+  }
+
+  // ── fleetUsage: realized fleet vs. this line's own peak vehicle requirement ──
+  // (no interlining assumption — only this line's trips, see proposal doc §2.1/§2.2)
+  if (cfg.fleetUsage.active) {
+    const allTrips = Object.values(agg.tripsByDirection).flat()
+    const minFleet = peakVehicleRequirement(allTrips)
+    add(cfg.fleetUsage.weight, anchoredV(agg.blockIds.size, minFleet, cfg.fleetUsage))
+  }
+
+  return weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0
+}
+
+export function computeLineSummary(
+  agg: LineAggregate | undefined,
+  cfg: SolverPlanningConfig['line'],
+): VehiclePlanLineSummary {
   if (!agg || agg.tripCount === 0) {
     return {
       fleetSize: 0, dailyTrips: 0, operatingHours: 0, dailyKm: 0, avgSpeed: 0,
-      occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0, score,
+      occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0, score: 0,
     }
   }
 
@@ -210,6 +362,6 @@ export function computeLineSummary(agg: LineAggregate | undefined, score: number
     occupancyIndex:        agg.totalSupply  > 0 ? r2(totalDemand / agg.totalSupply)     : 0,
     serviceFrequencyIndex: operatingHours   > 0 ? r2(agg.tripCount / operatingHours)    : 0,
     peakPassengersPerHour,
-    score,
+    score: computeLineScore(agg, cfg),
   }
 }
