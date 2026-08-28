@@ -1476,8 +1476,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return { extensionKm }
   }
 
-  // Whether the hour bucket [hour, hour+1) overlaps either peak band — same overlap
-  // test consolidateOperation uses for cycle windows, applied to a plain hour slot.
+  // Whether the hour bucket [hour, hour+1) overlaps either peak band.
   private isPeakHour(hour: number): boolean {
     const overlaps = (from: number, to: number) => hour < to && hour + 1 > from
     return overlaps(...this.PEAK_MORNING) || overlaps(...this.PEAK_AFTERNOON)
@@ -1535,6 +1534,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return {
       line:      { id: line.id, code: line.code, name: line.name },
       operation: this.consolidateOperation(line.metrics as any),
+      // band bounds the client renders next to each interval label/row — single
+      // source of truth is PEAK_MORNING/PEAK_AFTERNOON above, not re-hardcoded client-side.
+      // Sibling of `operation` (not nested in it) so it doesn't leak into RowValues.
+      peakBands: {
+        morning:   this.PEAK_MORNING,
+        afternoon: this.PEAK_AFTERNOON,
+        offPeak:   [this.PEAK_MORNING[1], this.PEAK_AFTERNOON[0]] as [number, number],
+      },
       draft,
       active,
     }

@@ -36,6 +36,12 @@ interface LineComparisonSide {
   summary:            LineComparisonSummary | null
 }
 
+interface PeakBands {
+  morning:   [number, number]
+  afternoon: [number, number]
+  offPeak:   [number, number]
+}
+
 interface LineComparisonResponse {
   line: { id: string; code: string; name: string }
   // route characteristic, identical on both sides — see LineComparisonSummary for
@@ -43,8 +49,11 @@ interface LineComparisonResponse {
   operation: {
     extensionKm: number | null
   }
-  draft:  LineComparisonSide & { planStatus: 'DRAFT' | 'ACTIVE' }
-  active: LineComparisonSide | null
+  // sibling of `operation`, not nested in it — kept out of RowValues (operation &
+  // Partial<LineComparisonSummary>), which METRICS/goodnessFor treat as all-numeric
+  peakBands: PeakBands
+  draft:     LineComparisonSide & { planStatus: 'DRAFT' | 'ACTIVE' }
+  active:    LineComparisonSide | null
 }
 
 interface HourRow {
@@ -107,6 +116,20 @@ function pctChange(a: number, b: number): number {
 
 function fmtPct(v: number): string {
   return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+}
+
+// Display only — the score/summary calc still cuts bands at the precise (possibly
+// half-hour) boundary; the label is intentionally rounded down to the whole hour.
+function fmtBand([from, to]: [number, number]): string {
+  return `${String(Math.floor(from)).padStart(2, '0')}h–${String(Math.floor(to)).padStart(2, '0')}h`
+}
+
+// Which PeakBands entry backs each interval metric — drives the "(5:30–8h)" suffix
+// shown next to the label in both the summary card and the indicators table.
+const BAND_KEY: Partial<Record<keyof RowValues, keyof PeakBands>> = {
+  peakMorningInterval:   'morning',
+  peakAfternoonInterval: 'afternoon',
+  offPeakInterval:       'offPeak',
 }
 
 interface MetricRowDef {
@@ -410,7 +433,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                     <ScheduleBadge status={data.active?.lineScheduleStatus ?? null} />
                   </div>
                   {data.active ? (
-                    <SummaryCardBody v={atual!} />
+                    <SummaryCardBody v={atual!} bands={data.peakBands} />
                   ) : (
                     <p className="text-sm text-muted-foreground py-2">Nenhum plano ativo para esta linha/dia ainda.</p>
                   )}
@@ -459,7 +482,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                     )}
                   </span>
                 </div>
-                <SummaryCardBody v={proposta} primary reference={atual} />
+                <SummaryCardBody v={proposta} primary reference={atual} bands={data.peakBands} />
               </div>
             </div>
 
@@ -494,6 +517,9 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                             <tr key={m.key} className="border-b border-border/40 hover:bg-row-hover transition-colors">
                               <td className="px-5 py-2.5">
                                 <span className="text-foreground/80">{m.label}</span>
+                                {BAND_KEY[m.key] && (
+                                  <span className="text-muted-foreground ml-1.5 text-xs">({fmtBand(data.peakBands[BAND_KEY[m.key]!])})</span>
+                                )}
                                 {m.unit && <span className="text-muted-foreground ml-1.5 text-xs">({m.unit})</span>}
                               </td>
                               {hasReference && (
@@ -730,8 +756,9 @@ const dash = (v: number | null | undefined, fmt: (v: number) => string) => v == 
 // Mirrors the prototype's summary card layout — big score number, then the same
 // 6+3 stat split. `score` is on a fixed 0–9999 scale. `reference` (the "Atual" side)
 // is only passed to the proposta card, driving the per-stat variation indicators.
-function SummaryCardBody({ v, primary, reference }: { v: RowValues; primary?: boolean; reference?: RowValues | null }) {
+function SummaryCardBody({ v, primary, reference, bands }: { v: RowValues; primary?: boolean; reference?: RowValues | null; bands: PeakBands }) {
   const g = (key: keyof RowValues) => reference ? goodnessFor(key, reference[key], v[key]) : null
+  const band = (key: keyof RowValues) => BAND_KEY[key] ? ` (${fmtBand(bands[BAND_KEY[key]!])})` : ''
   return (
     <>
       <div>
@@ -743,9 +770,9 @@ function SummaryCardBody({ v, primary, reference }: { v: RowValues; primary?: bo
       <div className="grid grid-cols-2 gap-2 pt-1">
         <Stat label="Frota" value={`${v.fleetSize ?? 0} veíc.`} goodness={g('fleetSize')} />
         <Stat label="Operação" value={`${dash(v.operatingHours, x => x.toFixed(1))}h/dia`} goodness={g('operatingHours')} />
-        <Stat label="Int. Pico Manhã" value={`${dash(v.peakMorningInterval, String)} min`} goodness={g('peakMorningInterval')} />
-        <Stat label="Int. Entrepico" value={`${dash(v.offPeakInterval, String)} min`} goodness={g('offPeakInterval')} />
-        <Stat label="Int. Pico Tarde" value={`${dash(v.peakAfternoonInterval, String)} min`} goodness={g('peakAfternoonInterval')} />
+        <Stat label={`Int. Pico Manhã${band('peakMorningInterval')}`} value={`${dash(v.peakMorningInterval, String)} min`} goodness={g('peakMorningInterval')} />
+        <Stat label={`Int. Entrepico${band('offPeakInterval')}`} value={`${dash(v.offPeakInterval, String)} min`} goodness={g('offPeakInterval')} />
+        <Stat label={`Int. Pico Tarde${band('peakAfternoonInterval')}`} value={`${dash(v.peakAfternoonInterval, String)} min`} goodness={g('peakAfternoonInterval')} />
         <Stat label="IOC" value={dash(v.occupancyIndex, x => x.toFixed(2))} goodness={g('occupancyIndex')} />
       </div>
       <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border">
