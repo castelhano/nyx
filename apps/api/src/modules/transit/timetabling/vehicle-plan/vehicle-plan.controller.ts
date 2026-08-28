@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Delete, Patch, Param, Body, Query, Req, Sse, UseGuards, HttpCode } from '@nestjs/common'
 import { Observable } from 'rxjs'
-import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, vehiclePlanDiffSchema } from '@nyx/schemas'
+import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, vehiclePlanDiffSchema, previewLineScoreSchema } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtOrQueryGuard } from '../../../../auth/policies.guard'
@@ -42,6 +42,28 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
   ) {
     const user: { id: string } = req.user ?? {}
     return this.vehiclePlanService.logGeneration(id, lineId, dayTypeCode, output, user.id)
+  }
+
+  @Post(':id/lines/:lineId/preview-score')
+  @HttpCode(200)
+  previewLineScore(
+    @Param('id')     id:     string,
+    @Param('lineId') lineId: string,
+    @Body() body: unknown,
+  ) {
+    const dto = previewLineScoreSchema.parse(body)
+    return this.vehiclePlanService.previewLineScore(id, lineId, dto)
+  }
+
+  @Post(':id/lines/:lineId/preview-hourly')
+  @HttpCode(200)
+  previewLineHourly(
+    @Param('id')     id:     string,
+    @Param('lineId') lineId: string,
+    @Body() body: unknown,
+  ) {
+    const dto = previewLineScoreSchema.parse(body)
+    return this.vehiclePlanService.previewLineHourly(id, lineId, dto)
   }
 
   @Sse(':id/stream')

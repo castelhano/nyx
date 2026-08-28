@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import { Select } from '@/components/ui/select'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
+import type { VehiclePlanGanttData } from '../views/vehicles.view'
 
 interface LineComparisonSummary {
   fleetSize:             number
@@ -76,6 +77,15 @@ interface Props {
   lineIds: string[]
   lines:   LineOption[]
   onClose: () => void
+  // persisted blocks merged with whatever pending changes/deletes/moves/adds are held
+  // in the Gantt editor (useGanttEditor's mergedPlottedData) — used to preview a line's
+  // score with its current in-progress edits before persisting them. See
+  // docs/proposal/vehicle_plan_score_formula_v1.md.
+  mergedPlottedData?: VehiclePlanGanttData | null
+  // pendingCount > 0 from useGanttEditor — any unsaved edit anywhere in the plan means
+  // the persisted VehiclePlanLine.summary may be stale, so the preview (computed from
+  // the current merged state) takes priority over it while edits are pending.
+  hasPendingChanges?: boolean
 }
 
 type RowValues = LineComparisonResponse['operation'] & Partial<LineComparisonSummary>
@@ -184,7 +194,7 @@ const TABS = [
   { key: 'oferta-demanda',  label: 'Oferta · Demanda', icon: 'SlidersHorizontal' as const },
 ]
 
-export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
+export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlottedData, hasPendingChanges }: Props) {
   useShortcutContext('summary')
 
   const [activeLineId, setActiveLineId] = useState(lineIds[0])
@@ -215,19 +225,69 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
     },
   })
 
-  const { data: hourly, isLoading: hourlyLoading } = useQuery<HourlyResponse>({
-    queryKey: ['transit', 'vehicle-plan', planId, 'lines', activeLineId, 'hourly'],
+  // Need the live preview when either: draft.summary is null (line not persisted in
+  // this plan yet / no trips), or there's ANY unsaved edit in the plan — the persisted
+  // VehiclePlanLine.summary only reflects the last recalculate(), so an unsaved trip
+  // edit/delete/move on this line wouldn't otherwise show up until Save. Not scoped to
+  // just the active line (cheap to recompute, would just return the same number if
+  // this particular line has no pending edits). Fired once on modal open / tab switch,
+  // not per-edit — pendingCount isn't in the queryKey.
+  const needsPreview = !!data && (data.draft.summary === null || !!hasPendingChanges)
+
+  // Shared by both preview endpoints — the merged (persisted + pending) trips of the
+  // active line, grouped by block, in the shape preview-score/preview-hourly expect.
+  function buildPreviewBlocks() {
+    return (mergedPlottedData?.blocks ?? [])
+      .map(b => ({
+        id:          b.id,
+        vehicleType: b.vehicleType,
+        trips: b.blockTrips
+          .filter(bt => bt.trip.route.line.id === activeLineId)
+          .map(bt => ({
+            direction:             bt.trip.route.direction,
+            originLocalityId:      bt.trip.route.originLocality.id,
+            destinationLocalityId: bt.trip.route.destinationLocality.id,
+            departureMinutes:      bt.trip.departureMinutes,
+            arrivalMinutes:        bt.trip.arrivalMinutes,
+          })),
+      }))
+      .filter(b => b.trips.length > 0)
+  }
+
+  const { data: preview, isLoading: previewLoading } = useQuery<LineComparisonSummary>({
+    queryKey: ['transit', 'vehicle-plan', planId, 'lines', activeLineId, 'preview-score'],
     queryFn:  async () => {
-      const res = await apiFetch(`/transit/vehicle-plan/${planId}/lines/${activeLineId}/hourly`)
+      const res = await apiFetch(`/transit/vehicle-plan/${planId}/lines/${activeLineId}/preview-score`, {
+        method: 'POST',
+        body:   JSON.stringify({ blocks: buildPreviewBlocks() }),
+      })
+      if (!res.ok) throw new Error('Erro ao calcular prévia')
+      return res.json()
+    },
+    enabled: needsPreview,
+  })
+
+  const { data: hourly, isLoading: hourlyLoading } = useQuery<HourlyResponse>({
+    queryKey: ['transit', 'vehicle-plan', planId, 'lines', activeLineId, 'hourly', needsPreview],
+    queryFn:  async () => {
+      const res = needsPreview
+        ? await apiFetch(`/transit/vehicle-plan/${planId}/lines/${activeLineId}/preview-hourly`, {
+            method: 'POST',
+            body:   JSON.stringify({ blocks: buildPreviewBlocks() }),
+          })
+        : await apiFetch(`/transit/vehicle-plan/${planId}/lines/${activeLineId}/hourly`)
       if (!res.ok) throw new Error('Erro ao carregar oferta × demanda')
       return res.json()
     },
-    enabled: tab === 'oferta-demanda',
+    enabled: tab === 'oferta-demanda' && data !== undefined,
   })
 
-  const hasReference = data && data.draft.planStatus !== 'ACTIVE'
-  const proposta      = data && rowValues(data.operation, data.draft.summary)
-  const atual         = data && hasReference ? rowValues(data.operation, data.active?.summary ?? null) : null
+  const hasReference   = data && data.draft.planStatus !== 'ACTIVE'
+  // preview wins over the persisted summary whenever it's needed (null summary, or
+  // unsaved edits pending) — it's the only one guaranteed to reflect current state
+  const proposta       = data && rowValues(data.operation, needsPreview ? (preview ?? null) : data.draft.summary)
+  const atual          = data && hasReference ? rowValues(data.operation, data.active?.summary ?? null) : null
+  const previewPending = needsPreview && (previewLoading || !preview)
 
   const chartData = hourly?.hours.map(h => ({ ...h, hourLabel: `${String(h.hour).padStart(2, '0')}h` })) ?? []
   const domainMax = chartData.length > 0 ? Math.min(2.0, Math.max(...chartData.map(d => d.loadFactor)) + 0.15) : 2.0
@@ -306,9 +366,9 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
           <div className="flex-1 flex items-center justify-center p-10 text-sm text-destructive">
             Erro ao carregar comparativo
           </div>
-        ) : isLoading || !data || !proposta ? (
+        ) : isLoading || !data || !proposta || previewPending ? (
           <div className="flex-1 flex items-center justify-center p-10 text-sm text-muted-foreground">
-            Carregando…
+            {previewPending ? 'Calculando prévia…' : 'Carregando…'}
           </div>
         ) : tab === 'comparativo' ? (
           <div className="flex-1 overflow-y-auto p-6">
@@ -345,7 +405,19 @@ export function LineSummaryView({ planId, lineIds, lines, onClose }: Props) {
                   <span className="text-xs font-semibold uppercase tracking-widest text-primary">
                     {data.draft.planStatus === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
                   </span>
-                  <ScheduleBadge status={data.draft.lineScheduleStatus} />
+                  {needsPreview ? (
+                    <span
+                      title={data.draft.summary === null
+                        ? 'Linha ainda não salva neste plano — números calculados a partir do que está em edição, sem persistir.'
+                        : 'Há edições não salvas no plano — números recalculados a partir do estado atual em edição, ainda não persistidos.'}
+                      className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25"
+                    >
+                      <Icons.Info className="w-3 h-3" />
+                      Prévia (não salvo)
+                    </span>
+                  ) : (
+                    <ScheduleBadge status={data.draft.lineScheduleStatus} />
+                  )}
                 </div>
                 <SummaryCardBody v={proposta} primary />
               </div>

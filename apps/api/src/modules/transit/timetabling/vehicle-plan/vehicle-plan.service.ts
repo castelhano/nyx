@@ -14,9 +14,10 @@ import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
 import type { VehiclePlanDiff } from '@nyx/schemas'
+import type { PreviewLineScoreDto } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
-import { scoreFromAggregates, buildLineAggregates, computeLineSummary } from './scoring/plan-scoring.calc'
+import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval } from '../trip/trip-mutation.utils'
 
@@ -472,6 +473,78 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         .filter((b: any) => b.blockTrips.length === 0 && b.isStale)
         .map((b: any) => db.vehicleBlock.update({ where: { id: b.id }, data: { isStale: false } })),
     ])
+  }
+
+  // Shared by previewLineScore/previewLineHourly/getLineHourlySeries.
+  private async resolvePlanAndLine(planId: string, lineId: string) {
+    const [plan, line] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: { dayType: { select: { code: true } }, metrics: true },
+      }),
+      this.prisma.transitLine.findUnique({
+        where:  { id: lineId },
+        select: { metrics: true },
+      }),
+    ])
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (!line) throw new NotFoundException('Line not found')
+    return { plan, line }
+  }
+
+  // '' shows up for fake pending blocks with no persisted block to inherit a
+  // vehicleType from (useGanttEditor.ts mergedPlottedData) — falls back to STANDARD
+  // instead of silently zeroing capacity/supply for the whole line.
+  private resolveVehicleType(vehicleType: string | undefined): string {
+    return vehicleType && vehicleType in VEHICLE_TYPE_CAPACITY ? vehicleType : 'STANDARD'
+  }
+
+  // Stateless line-score preview — computes VehiclePlanLineSummary for a line's current
+  // in-progress editing state (client sends the already-merged persisted+pending view —
+  // see mergedPlottedData in useGanttEditor.ts — grouped by block), so the user can see
+  // the score before deciding whether to save. No DB writes; reuses the exact same
+  // buildLineAggregates/computeLineSummary pair recalculate() uses to write
+  // VehiclePlanLine.summary — one formula, two entry points (persisted vs. preview).
+  // No routeId needed: direction + localities (already present on both persisted and
+  // pending trips in the merged view) are enough, sidestepping route-variant ambiguity.
+  // Triggered by the client on modal open, not per-edit.
+  async previewLineScore(planId: string, lineId: string, dto: PreviewLineScoreDto): Promise<VehiclePlanLineSummary> {
+    const { plan, line } = await this.resolvePlanAndLine(planId, lineId)
+
+    const pairs = new Map<string, { originId: string; destinationId: string }>()
+    for (const b of dto.blocks) for (const t of b.trips) {
+      pairs.set(`${t.originLocalityId}:${t.destinationLocalityId}`, { originId: t.originLocalityId, destinationId: t.destinationLocalityId })
+    }
+    const matrixRows = pairs.size > 0
+      ? await this.prisma.travelTimeMatrix.findMany({ where: { OR: Array.from(pairs.values()) } })
+      : []
+    const matrixKm: Record<string, number> = {}
+    for (const m of matrixRows) matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm
+
+    const blockInputs: LineAggregateBlockInput[] = dto.blocks.map(b => ({
+      id:          b.id,
+      vehicleType: this.resolveVehicleType(b.vehicleType),
+      blockTrips:  b.trips.map(t => ({
+        trip: {
+          departureMinutes: t.departureMinutes,
+          arrivalMinutes:   t.arrivalMinutes,
+          route: {
+            lineId,
+            originLocalityId:      t.originLocalityId,
+            destinationLocalityId: t.destinationLocalityId,
+            direction:             t.direction,
+            line:                  { metrics: line.metrics },
+          },
+        },
+      })),
+    }))
+
+    const planningCfg = await this.planningConfig.get()
+    const planMetrics = plan.metrics as Partial<SolverPlanningConfig> | null
+    const resolvedCfg = (planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg) as SolverPlanningConfig
+
+    const lineAgg = buildLineAggregates(blockInputs, matrixKm, plan.dayType?.code, VEHICLE_TYPE_CAPACITY)
+    return computeLineSummary(lineAgg.get(lineId), resolvedCfg.line)
   }
 
   async duplicate(planId: string): Promise<VehiclePlan> {
@@ -1451,15 +1524,17 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         select: { id: true, code: true, name: true, metrics: true },
       }),
     ])
-    if (!plan)     throw new NotFoundException('VehiclePlan not found')
-    if (!planLine) throw new NotFoundException('Line not found in this plan')
-    if (!line)     throw new NotFoundException('Line not found')
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (!line) throw new NotFoundException('Line not found')
 
+    // planLine can legitimately be null — line generated but not yet persisted in this
+    // plan. draft.summary stays null and the frontend falls back to previewLineScore()
+    // (computed from the client's in-progress merged state) instead of erroring out.
     const draft = {
       planId,
       planStatus:         plan.status,
-      lineScheduleStatus: planLine.lineScheduleId ? (planLine.lineSchedule?.status ?? null) : null,
-      summary:            (planLine.summary as VehiclePlanLineSummary | null) ?? null,
+      lineScheduleStatus: planLine?.lineScheduleId ? (planLine.lineSchedule?.status ?? null) : null,
+      summary:            (planLine?.summary as VehiclePlanLineSummary | null) ?? null,
     }
 
     let active: { planId: string; lineScheduleStatus: string | null; summary: VehiclePlanLineSummary | null } | null = null
@@ -1485,49 +1560,32 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     }
   }
 
-  // Real hourly oferta×demanda for the "Oferta · Demanda" tab of the line comparativo
-  // — this plan's actual generated trips only (never the ACTIVE counterpart: unlike
-  // the Comparativo tab, this is a single series for whichever plan is loaded, doc
-  // decision). Supply buckets each trip's departure hour with the same
-  // capacity-per-trip formula recalculate uses for occupancyIndex (VEHICLE_TYPE_CAPACITY
-  // × renewal); demand comes straight from the line's real imported demand curve.
-  async getLineHourlySeries(planId: string, lineId: string) {
-    const [plan, line, blockTrips] = await Promise.all([
-      this.prisma.vehiclePlan.findUnique({
-        where:  { id: planId },
-        select: { dayType: { select: { code: true } } },
-      }),
-      this.prisma.transitLine.findUnique({
-        where:  { id: lineId },
-        select: { metrics: true },
-      }),
-      this.prisma.blockTrip.findMany({
-        where:  { vehicleBlock: { vehiclePlanId: planId }, trip: { route: { lineId } } },
-        select: {
-          trip:         { select: { departureMinutes: true } },
-          vehicleBlock: { select: { id: true, vehicleType: true } },
-        },
-      }),
-    ])
-    if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (!line) throw new NotFoundException('Line not found')
-
-    const dayTypeCode = plan.dayType?.code
-    const metrics = line.metrics as {
+  // Shared by getLineHourlySeries (persisted trips) and previewLineHourly (client's
+  // in-progress merged trips, stateless) — the only difference between the two call
+  // sites is where `trips`/`blockVehicleTypes` come from. `blockVehicleTypes` is one
+  // entry per distinct vehicle touching the line — avgCapacity averages over vehicles,
+  // not trips, so a vehicle running more trips than another doesn't skew it.
+  private computeHourlySeries(
+    dayTypeCode:       string | undefined,
+    lineMetrics:       unknown,
+    trips:             { departureMinutes: number; vehicleType: string }[],
+    blockVehicleTypes: string[],
+  ) {
+    const metrics = lineMetrics as {
       renewalIndex?: { overall?: { value?: number } }
       demand?:       Record<string, Record<string, Record<string, number>>>
     } | null
     const renewal     = metrics?.renewalIndex?.overall?.value ?? 0
     const demandByDir = dayTypeCode ? metrics?.demand?.[dayTypeCode] : undefined
 
-    const supplyByHour  = new Array(24).fill(0)
-    const blockTypeById = new Map<string, typeof blockTrips[number]['vehicleBlock']['vehicleType']>()
-    for (const bt of blockTrips) {
-      const hour = Math.floor(bt.trip.departureMinutes / 60) % 24
-      supplyByHour[hour] += (VEHICLE_TYPE_CAPACITY[bt.vehicleBlock.vehicleType] ?? 0) * (1 + renewal / 100)
-      blockTypeById.set(bt.vehicleBlock.id, bt.vehicleBlock.vehicleType)
+    const capacity = (vehicleType: string) => (VEHICLE_TYPE_CAPACITY as Record<string, number>)[vehicleType] ?? 0
+
+    const supplyByHour = new Array(24).fill(0)
+    for (const t of trips) {
+      const hour = Math.floor(t.departureMinutes / 60) % 24
+      supplyByHour[hour] += capacity(t.vehicleType) * (1 + renewal / 100)
     }
-    const capacities = Array.from(blockTypeById.values()).map(vt => VEHICLE_TYPE_CAPACITY[vt] ?? 0)
+    const capacities  = blockVehicleTypes.map(capacity)
     const avgCapacity = capacities.length > 0 ? Math.round(capacities.reduce((a, b) => a + b, 0) / capacities.length) : 0
 
     const demandByHour = new Array(24).fill(0)
@@ -1564,5 +1622,40 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         avgCapacity, renewalIndex: renewal,
       },
     }
+  }
+
+  // Real hourly oferta×demanda for the "Oferta · Demanda" tab of the line comparativo
+  // — this plan's actual generated trips only (never the ACTIVE counterpart: unlike
+  // the Comparativo tab, this is a single series for whichever plan is loaded, doc
+  // decision). Supply buckets each trip's departure hour with the same
+  // capacity-per-trip formula recalculate uses for occupancyIndex (VEHICLE_TYPE_CAPACITY
+  // × renewal); demand comes straight from the line's real imported demand curve.
+  async getLineHourlySeries(planId: string, lineId: string) {
+    const { plan, line } = await this.resolvePlanAndLine(planId, lineId)
+    const blockTrips = await this.prisma.blockTrip.findMany({
+      where:  { vehicleBlock: { vehiclePlanId: planId }, trip: { route: { lineId } } },
+      select: {
+        trip:         { select: { departureMinutes: true } },
+        vehicleBlock: { select: { id: true, vehicleType: true } },
+      },
+    })
+
+    const trips = blockTrips.map(bt => ({ departureMinutes: bt.trip.departureMinutes, vehicleType: bt.vehicleBlock.vehicleType }))
+    const blockVehicleTypes = Array.from(new Map(blockTrips.map(bt => [bt.vehicleBlock.id, bt.vehicleBlock.vehicleType])).values())
+    return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes)
+  }
+
+  // Stateless counterpart of getLineHourlySeries — same series/kpis, but computed from
+  // the client's in-progress merged state (mirrors previewLineScore) instead of
+  // persisted BlockTrip rows, for a line not yet saved in this plan.
+  async previewLineHourly(planId: string, lineId: string, dto: PreviewLineScoreDto) {
+    const { plan, line } = await this.resolvePlanAndLine(planId, lineId)
+
+    const trips = dto.blocks.flatMap(b => {
+      const vehicleType = this.resolveVehicleType(b.vehicleType)
+      return b.trips.map(t => ({ departureMinutes: t.departureMinutes, vehicleType }))
+    })
+    const blockVehicleTypes = dto.blocks.map(b => this.resolveVehicleType(b.vehicleType))
+    return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes)
   }
 }

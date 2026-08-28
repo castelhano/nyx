@@ -2,6 +2,7 @@ import 'dotenv/config'
 import 'reflect-metadata'
 import { NestFactory } from '@nestjs/core'
 import { NestExpressApplication } from '@nestjs/platform-express'
+import { json, urlencoded } from 'express'
 import { AppModule } from './app.module'
 import * as path from 'path'
 import * as fs from 'fs'
@@ -9,6 +10,11 @@ import * as fs from 'fs'
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
   app.enableShutdownHooks()
+
+  // Express/body-parser defaults to 100kb — too small for a full-line diff (many
+  // pending trips) on the Gantt "Salvar" flow. Bumped, not removed.
+  app.use(json({ limit: '10mb' }))
+  app.use(urlencoded({ extended: true, limit: '10mb' }))
 
   const uploadsDir = path.join(process.cwd(), 'uploads')
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })

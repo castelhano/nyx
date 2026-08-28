@@ -513,6 +513,8 @@ export default function VehiclePlanPage() {
                   .filter(l => summaryLineIds.includes(l.lineId))
                   .map(l => ({ lineId: l.lineId, code: l.line.code, name: l.line.name }))}
                 onClose={() => setSummaryLineIds(null)}
+                mergedPlottedData={mergedPlottedData}
+                hasPendingChanges={pendingCount > 0}
               />
             ) : (
               <>
