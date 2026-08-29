@@ -55,6 +55,11 @@ export interface PendingAddTrip {
   departureMinutes:    number
   arrivalMinutes:      number
   blockId:             string
+  // Set when this trip comes straight from an approved LineDeparture (OSO switch —
+  // see SwitchLineScheduleModal/switch-schedule-logic.ts) rather than a
+  // free-standing manual add.
+  lineDepartureId?:     string
+  requiredVehicleType?: string
   access?: { localityId: string; travelMinutes: number }
   return?: { localityId: string; travelMinutes: number }
 }

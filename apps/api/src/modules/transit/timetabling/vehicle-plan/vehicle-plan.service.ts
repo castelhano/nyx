@@ -20,6 +20,8 @@ import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval } from '../trip/trip-mutation.utils'
+import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
+import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 
 interface Job {
   worker:    Worker | null
@@ -749,6 +751,19 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       ref.startsWith('pending:') ? (newBlockIds.get(ref.slice('pending:'.length)) ?? ref) : ref
 
     await this.prisma.$transaction(async (tx: any) => {
+      // 0. line-schedule pins — must run before steps 4 (deletes) and 7 (adds):
+      // step 7 reads VehiclePlanLine.lineScheduleId to decide whether an added trip
+      // matches the pinned schedule's departures (isDrifted). Applying the pin first
+      // means trips recreated from that exact schedule's departures land matched,
+      // with no separate reconciliation needed.
+      for (const pin of diff.lineSchedulePins) {
+        await tx.vehiclePlanLine.upsert({
+          where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: pin.lineId } },
+          create: { vehiclePlanId: planId, lineId: pin.lineId, lineScheduleId: pin.lineScheduleId, isDrifted: false },
+          update: { lineScheduleId: pin.lineScheduleId, isDrifted: false },
+        })
+      }
+
       // 1. trip time patches
       for (const u of diff.tripUpdates) {
         // constraints (field-level lock) is excluded from `patch` — it never marks
@@ -841,7 +856,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           })
 
           const trip = await tx.transitTrip.create({
-            data: { dayTypeId: plan.dayTypeId, routeId: entry.routeId, departureMinutes: entry.departureMinutes, arrivalMinutes: entry.arrivalMinutes },
+            data: {
+              dayTypeId:           plan.dayTypeId,
+              routeId:             entry.routeId,
+              departureMinutes:    entry.departureMinutes,
+              arrivalMinutes:      entry.arrivalMinutes,
+              lineDepartureId:     entry.lineDepartureId,
+              requiredVehicleType: entry.requiredVehicleType,
+            },
           })
 
           resolvedBlockId = await this.resolveOrCreateBlock(tx, planId, rawBlockId)
@@ -967,9 +989,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // potentially shared across plans, so a trip is only deleted once no block
   // anywhere references it anymore; otherwise it's left in place for whoever else
   // still uses it. A block left empty is deleted (cascades blockDeadruns); a block
-  // that still has other trips is just flagged stale.
+  // that still has other trips is just flagged stale — but first, any BlockInterval/
+  // BlockDeadrun anchored to the removed trips (positional, no FK) is deleted too,
+  // so a surviving block never keeps a stray interval/deadrun pointing at a trip
+  // that's gone.
   // Accepts an optional transaction client so callers that need this to participate
-  // in a larger atomic operation (e.g. switchLineSchedule) can pass their `tx`.
+  // in a larger atomic operation can pass their `tx`.
   private async removeTripsFromPlan(planId: string, tripIds: string[], db: any = this.prisma): Promise<void> {
     if (tripIds.length === 0) return
 
@@ -982,7 +1007,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const blockTripIds = affected.map((bt: any) => bt.id)
     const blockIds      = [...new Set<string>(affected.map((bt: any) => bt.vehicleBlockId))]
 
+    // Intervals/deadruns have no FK to a trip (positional — see block-interval.utils.ts
+    // / block-deadrun.utils.ts), so a block that survives this removal (still has
+    // other lines' trips) can be left with orphaned rows unless computed up front,
+    // before the BlockTrip rows they're anchored against are gone.
+    const [anchoredIntervalIds, anchoredDeadrunIds] = await Promise.all([
+      Promise.all(blockIds.map(blockId => findIntervalIdsAnchoredToTrips(db, blockId, tripIds))).then(r => r.flat()),
+      Promise.all(blockIds.map(blockId => findDeadrunIdsAnchoredToTrips(db, blockId, tripIds))).then(r => r.flat()),
+    ])
+
     await db.blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
+
+    if (anchoredIntervalIds.length > 0) {
+      await db.blockInterval.deleteMany({ where: { id: { in: anchoredIntervalIds } } })
+    }
+    if (anchoredDeadrunIds.length > 0) {
+      await db.blockDeadrun.deleteMany({ where: { id: { in: anchoredDeadrunIds } } })
+    }
 
     for (const blockId of blockIds) {
       const remaining = await db.blockTrip.count({ where: { vehicleBlockId: blockId } })
@@ -998,29 +1039,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
   }
 
-  // Cycle time (minutes) for a departure from TransitLine.metrics.windows — same
-  // resolution logic as the frontend's resolveCycleWindow (vehicles.view.ts), kept
-  // in sync manually since one runs in the browser and the other server-side.
-  // windows is keyed by dayTypeCode first (see LineService.applyWindows); falls back
-  // to 'U' (dia útil) when the plan's own dayType has no cycle data imported yet.
-  private resolveCycleMinutes(
-    metrics:          Record<string, any> | null | undefined,
-    dayTypeCode:      string,
-    direction:        string,
-    departureMinutes: number,
-  ): number | null {
-    const forDayType = metrics?.windows?.[dayTypeCode] ?? metrics?.windows?.['U'] ?? {}
-    const windows     = forDayType[direction] ?? forDayType['OUTBOUND'] ?? []
-    const slot     = (Math.floor(departureMinutes / 30) / 2) % 24
-    const window   = (windows as any[]).find(w => slot >= w.from && slot <= w.to)
-    return window?.minutes ?? null
-  }
-
   // Cria uma OSO (LineSchedule DRAFT) nova a partir do modal de troca de quadro,
   // já semeada com as partidas (LineDeparture) das viagens que a linha já tem
   // *neste plano* — inclusive avulsas ("Adicionar viagem"), sem lineDepartureId.
-  // Sem isso, aplicar essa OSO recém-criada via switchLineSchedule zeraria a
-  // operação da linha (LineDeparture vazia → clearLinesFromPlan sem nada pra recriar).
+  // Sem isso, trocar pra essa OSO recém-criada (SwitchLineScheduleModal, client-side
+  // — ver switch-schedule-logic.ts) zeraria a operação da linha (LineDeparture
+  // vazia → nenhuma partida pra recriar).
   async createLineSchedule(
     planId: string,
     lineId: string,
@@ -1246,112 +1270,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       })
 
       return { id: schedule.id, approvalRef: ref }
-    })
-  }
-
-  // Swaps which LineSchedule version backs a line within this plan. For each target
-  // departure, reuses the existing TransitTrip when one already matches exactly
-  // (same routeId + departureMinutes) — just relinks lineDepartureId, keeping its
-  // arrivalMinutes/requiredVehicleType/block placement untouched, no recomputation.
-  // Only genuinely new departures (no matching trip yet) get materialized from
-  // scratch — duration from TransitLine.metrics.windows first, travel-time matrix
-  // as fallback. Trips that no longer correspond to any departure in the target
-  // schedule are removed. Newly-created trips are left unassigned to any block —
-  // the plan must be re-optimized ("Otimizar") afterward to (re)block them.
-  async switchLineSchedule(planId: string, lineId: string, lineScheduleId: string): Promise<void> {
-    const plan = await this.prisma.vehiclePlan.findUnique({
-      where:  { id: planId },
-      select: { id: true, scopeId: true, dayTypeId: true, status: true, dayType: { select: { code: true } } },
-    })
-    if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
-
-    const line = await this.prisma.transitLine.findUnique({ where: { id: lineId }, select: { scopeId: true, metrics: true } })
-    if (!line || line.scopeId !== plan.scopeId) throw new BadRequestException('Linha não pertence ao escopo deste planejamento')
-
-    const schedule = await (this.prisma as any).lineSchedule.findUnique({
-      where:   { id: lineScheduleId },
-      include: { departures: { include: { route: { select: { direction: true, originLocalityId: true, destinationLocalityId: true } } } } },
-    })
-    if (!schedule) throw new NotFoundException('LineSchedule not found')
-    if (schedule.lineId !== lineId) throw new BadRequestException('LineSchedule does not belong to this line')
-    if (schedule.dayTypeId !== plan.dayTypeId) throw new BadRequestException('LineSchedule dayType does not match this plan')
-
-    const existingTrips = await (this.prisma as any).transitTrip.findMany({
-      where: {
-        dayTypeId:  plan.dayTypeId,
-        route:      { lineId },
-        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
-      },
-      select: { id: true, routeId: true, departureMinutes: true },
-    })
-    const existingByKey = new Map<string, string>(existingTrips.map((t: any) => [`${t.routeId}:${t.departureMinutes}`, t.id]))
-
-    const reuseUpdates: Array<{ tripId: string; lineDepartureId: string }> = []
-    const toCreate: any[] = []
-    const matchedTripIds  = new Set<string>()
-
-    for (const d of schedule.departures as any[]) {
-      const existingTripId = existingByKey.get(`${d.routeId}:${d.departureMinutes}`)
-      if (existingTripId) {
-        reuseUpdates.push({ tripId: existingTripId, lineDepartureId: d.id })
-        matchedTripIds.add(existingTripId)
-      } else {
-        toCreate.push(d)
-      }
-    }
-
-    const unmatchedTripIds = existingTrips
-      .map((t: any) => t.id as string)
-      .filter((id: string) => !matchedTripIds.has(id))
-
-    let tripRows: Array<{ routeId: string; dayTypeId: string; lineDepartureId: string; departureMinutes: number; arrivalMinutes: number; requiredVehicleType?: string }> = []
-    if (toCreate.length > 0) {
-      const matrix    = await this.prisma.travelTimeMatrix.findMany()
-      const matrixMap = new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes * m.speedRatio]))
-
-      const missingRoutes = new Set<string>()
-      tripRows = toCreate.map(d => {
-        const cycleMinutes  = this.resolveCycleMinutes(line.metrics as any, plan.dayType.code, d.route.direction, d.departureMinutes)
-        const matrixMinutes = matrixMap.get(`${d.route.originLocalityId}:${d.route.destinationLocalityId}`)
-        const minutes       = cycleMinutes ?? matrixMinutes
-        if (minutes === undefined) missingRoutes.add(d.routeId)
-        return {
-          routeId:             d.routeId,
-          dayTypeId:           plan.dayTypeId,
-          lineDepartureId:     d.id,
-          departureMinutes:    d.departureMinutes,
-          arrivalMinutes:      d.departureMinutes + Math.round(minutes ?? 0),
-          requiredVehicleType: d.requiredVehicleType ?? undefined,
-        }
-      })
-
-      if (missingRoutes.size > 0) {
-        throw new BadRequestException(
-          `Faltam dados de ciclo/tempo de viagem para ${missingRoutes.size} trecho(s) desta linha — configure as métricas da linha ou a matriz de tempos antes de trocar de versão`,
-        )
-      }
-    }
-
-    // Tudo daqui pra baixo é uma unidade só: remover as viagens que sobraram, religar
-    // as reaproveitadas, materializar as novas e fixar o VehiclePlanLine — ou tudo,
-    // ou nada, sem estado parcial se cair no meio.
-    await this.prisma.$transaction(async (tx) => {
-      await this.removeTripsFromPlan(planId, unmatchedTripIds, tx)
-
-      for (const u of reuseUpdates) {
-        await (tx as any).transitTrip.update({ where: { id: u.tripId }, data: { lineDepartureId: u.lineDepartureId } })
-      }
-
-      if (tripRows.length > 0) {
-        await (tx as any).transitTrip.createMany({ data: tripRows })
-      }
-
-      await (tx as any).vehiclePlanLine.upsert({
-        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-        create: { vehiclePlanId: planId, lineId, lineScheduleId, isDrifted: false },
-        update: { lineScheduleId, isDrifted: false },
-      })
     })
   }
 

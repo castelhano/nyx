@@ -15,6 +15,12 @@ const pendingAddTripSchema = z.object({
   blockId:             z.string(),   // 'new' | 'pending:<tempId>' | real block id
   departureMinutes:    z.number(),
   arrivalMinutes:      z.number(),
+  // Set when this trip comes straight from an approved LineDeparture (OSO switch —
+  // see SwitchLineScheduleModal/switch-schedule-logic.ts) rather than a
+  // free-standing manual add: preserves traceability/requiredVehicleType the same
+  // way activateNewLineSchedule's server-side trip creation already does.
+  lineDepartureId:     z.string().optional(),
+  requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional(),
   access: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
   return: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
 })
@@ -62,6 +68,12 @@ export const vehiclePlanDiffSchema = z.object({
   deadrunDeletes:  z.array(z.string()).default([]),
   intervalDeletes: z.array(z.string()).default([]),
   adds:            z.array(pendingAddEntrySchema).default([]),
+  // Pins which approved LineSchedule version governs a line within this plan
+  // (VehiclePlanLine.lineScheduleId) — travels with the rest of the diff so an OSO
+  // switch (delete old trips + add new ones from the target schedule) only takes
+  // effect atomically with the pin, never leaving the line pointed at a schedule
+  // whose departures don't match what's actually persisted.
+  lineSchedulePins: z.array(z.object({ lineId: z.string(), lineScheduleId: z.string() })).default([]),
   moves: z.array(z.object({
     blockTripIds: z.array(z.string()),
     breakIds:     z.array(z.string()).default([]),

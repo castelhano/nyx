@@ -1,11 +1,12 @@
 import { findIntervalIdsAnchoredToTrips } from '../vehicle-plan/block-interval.utils'
+import { findDeadrunIdsAnchoredToTrips } from '../vehicle-plan/block-deadrun.utils'
 
 // Core trip-mutation side effects (isStale marking, LineSchedule drift flagging,
-// anchored-interval/empty-block cleanup on delete) shared between TripService (the
-// standalone generic-resource path) and VehiclePlanService.applyDiff (the Gantt batch
-// path). Plain functions taking a db/tx client so applyDiff can run them inside its
-// own transaction without depending on TripService (which itself depends on
-// VehiclePlanService — importing it here would cycle). See docs/proposal/
+// anchored-interval/anchored-deadrun/empty-block cleanup on delete) shared between
+// TripService (the standalone generic-resource path) and VehiclePlanService.applyDiff
+// (the Gantt batch path). Plain functions taking a db/tx client so applyDiff can run
+// them inside its own transaction without depending on TripService (which itself
+// depends on VehiclePlanService — importing it here would cycle). See docs/proposal/
 // vehicle-plan-summary-score-consolidation.md §2.4.
 
 // Marks isDrifted on every VehiclePlanLine (across whatever plans currently use this
@@ -87,14 +88,23 @@ export async function applyTripRemoval(db: any, id: string): Promise<{ affectedP
 
   // Intervals live attached to the trip that precedes them (positional, no FK —
   // see block-interval.utils.ts). Removing that trip removes the interval too.
+  // Deadruns are anchored the same way, no FK either (block-deadrun.utils.ts) —
+  // ACCESS/RETURN to the block's first/last trip, DISPLACEMENT to the nearest
+  // preceding trip.
   const anchoredIntervalIds = (
     await Promise.all(blockIds.map(vehicleBlockId => findIntervalIdsAnchoredToTrips(db, vehicleBlockId, [id])))
+  ).flat()
+  const anchoredDeadrunIds = (
+    await Promise.all(blockIds.map(vehicleBlockId => findDeadrunIdsAnchoredToTrips(db, vehicleBlockId, [id])))
   ).flat()
 
   await db.transitTrip.delete({ where: { id } })  // cascades BlockTrip
 
   if (anchoredIntervalIds.length > 0) {
     await db.blockInterval.deleteMany({ where: { id: { in: anchoredIntervalIds } } })
+  }
+  if (anchoredDeadrunIds.length > 0) {
+    await db.blockDeadrun.deleteMany({ where: { id: { in: anchoredDeadrunIds } } })
   }
 
   if (blockIds.length > 0) {

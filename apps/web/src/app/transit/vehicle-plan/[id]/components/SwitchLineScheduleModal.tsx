@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
-import { useQueries, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useRef } from 'react'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
@@ -9,6 +9,9 @@ import { extractError } from '@/lib/utils'
 import { useToast } from '@/lib/toast-context'
 import { useConfirm } from '@/lib/confirm-context'
 import { useShortcutContext } from '@/lib/keywatch'
+import type { LineMetrics, GanttBlock } from '../views/vehicles.view'
+import type { PendingAddEntry } from './AddTripModal'
+import { computeScheduleSwitch, type LineDepartureForSwitch } from '../switch-schedule-logic'
 
 interface LineScheduleRow {
   id:          string
@@ -18,9 +21,21 @@ interface LineScheduleRow {
   createdAt:   string
 }
 
+interface RouteRow {
+  id:                    string
+  direction:             string
+  originLocalityId:      string
+  destinationLocalityId: string
+}
+
+interface LocalityRow {
+  id:   string
+  name: string
+}
+
 export interface PlanLineInfo {
   lineId:         string
-  line:           { id: string; code: string; name: string }
+  line:           { id: string; code: string; name: string; metrics: LineMetrics | null }
   lineScheduleId: string | null
   lineSchedule:   { id: string; status: string; approvalRef: string | null } | null
   isDrifted?:     boolean
@@ -29,11 +44,16 @@ export interface PlanLineInfo {
 interface Props {
   planId:            string
   dayTypeId:         string
+  dayTypeCode:       string
   dayTypeName?:      string
   lines:             PlanLineInfo[]
+  blocks:            GanttBlock[]
   hasPendingChanges: boolean
   onClose:           () => void
   onApplied:         () => void | Promise<void>
+  onPendingAdd:         (entry: PendingAddEntry) => void
+  onQueueTripDeletes:   (tripIds: string[]) => void
+  onScheduleSwitchStaged: (lineId: string, lineScheduleId: string) => void
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,16 +69,14 @@ const STATUS_CLASSES: Record<string, string> = {
 
 const ANALISE_CLASSES = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
 
-export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines, hasPendingChanges, onClose, onApplied }: Props) {
+export function SwitchLineScheduleModal({
+  planId, dayTypeId, dayTypeCode, dayTypeName, lines, blocks, hasPendingChanges, onClose, onApplied,
+  onPendingAdd, onQueueTripDeletes, onScheduleSwitchStaged,
+}: Props) {
   useShortcutContext('modal')
   const { toast }   = useToast()
   const confirm     = useConfirm()
   const queryClient = useQueryClient()
-
-  const [selections,   setSelections]   = useState<Map<string, string | null>>(
-    () => new Map(lines.map(l => [l.lineId, l.lineScheduleId])),
-  )
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // "Nova OSO" inline creation — badge dropdown (só para linhas "Em análise") → form → Gravar
   const [openMenuLineId, setOpenMenuLineId] = useState<string | null>(null)
@@ -72,6 +90,12 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
   // (isDrifted). DRAFT → syncs in-place; any other status → creates and
   // immediately activates a new version.
   const [reconcilingLineId, setReconcilingLineId] = useState<string | null>(null)
+
+  // Switching to a different approved OSO version — stages trip adds/deletes and a
+  // pending schedule pin (see useGanttEditor's pendingLineSchedulePin), never
+  // writes directly. One line at a time: hasPendingChanges (from the staged diff)
+  // already blocks starting another switch until the user saves or discards.
+  const [switchingTo, setSwitchingTo] = useState<{ lineId: string; lineScheduleId: string } | null>(null)
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -107,14 +131,29 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
     })),
   })
 
-  const changed = useMemo(
-    () => lines.filter(l => (selections.get(l.lineId) ?? null) !== l.lineScheduleId),
-    [lines, selections],
-  )
+  // Route direction/localities per line — needed to resolve cycle time and to
+  // build the PendingAddTrip entries when switching to a different OSO version.
+  const routesQueries = useQueries({
+    queries: lines.map(l => ({
+      queryKey: ['transit', 'transit-route', 'by-line', l.lineId],
+      queryFn:  async (): Promise<RouteRow[]> => {
+        const res = await apiFetch(`/transit/transit-route?f_lineId=${l.lineId}&pageSize=999`)
+        if (!res.ok) return []
+        const json = await res.json()
+        return json.data ?? []
+      },
+    })),
+  })
 
-  function findSchedule(history: LineScheduleRow[], id: string | null): LineScheduleRow | undefined {
-    return id ? history.find(h => h.id === id) : undefined
-  }
+  const { data: localities = [] } = useQuery<LocalityRow[]>({
+    queryKey: ['transit', 'transit-locality', 'all'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/transit-locality?pageSize=999')
+      if (!res.ok) return []
+      const json = await res.json()
+      return json.data ?? []
+    },
+  })
 
   function startCreating(lineId: string) {
     setOpenMenuLineId(null)
@@ -144,8 +183,6 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
         const json = await res.json().catch(() => ({}))
         throw new Error(extractError(json, 'Erro ao criar OSO'))
       }
-      const created = await res.json()
-      setSelections(prev => new Map(prev).set(lineId, created.id))
       await queryClient.invalidateQueries({ queryKey: ['transit', 'line-schedule', 'history', lineId, dayTypeId] })
       cancelCreating(lineId)
       toast.success(`OSO ${approvalRef} criada`)
@@ -181,14 +218,8 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
         throw new Error(extractError(json, 'Erro ao aplicar OSO'))
       }
       const result: { id: string; approvalRef: string } = await res.json()
-      setSelections(prev => new Map(prev).set(l.lineId, result.id))
       await queryClient.invalidateQueries({ queryKey: ['transit', 'line-schedule', 'history', l.lineId, dayTypeId] })
       toast.success(isDraft ? `OSO ${result.approvalRef} sincronizada` : `Nova versão ${result.approvalRef} ativada`)
-      // Awaited (unlike handleApply's fire-and-forget, which immediately closes the
-      // modal anyway): this modal stays open, so the "Aplicar" button must not go
-      // stale-clickable in the gap between the local `selections` update above and
-      // `lines`' lineScheduleId prop catching up — that's what previously let a
-      // second, redundant switchLineSchedule call slip through.
       await onApplied()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao aplicar OSO')
@@ -197,48 +228,91 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
     }
   }
 
-  async function handleApply() {
-    if (changed.length === 0 || isSubmitting) return
-
-    const summary = changed.map((l) => {
-      const idx     = lines.indexOf(l)
-      const history = historyQueries[idx].data ?? []
-      const from    = l.lineSchedule?.approvalRef ?? 'em análise'
-      const target  = findSchedule(history, selections.get(l.lineId) ?? null)
-      const to      = target?.approvalRef ?? 'em análise'
-      return `${l.line.code}: ${from} → ${to}`
-    })
+  // Switches a line to a different OSO version — never writes directly. Stages the
+  // line's current trips in this plan as pending deletes, the target schedule's
+  // departures as pending adds (grouped into blocks, not one-per-trip), and the
+  // schedule pin as pending too, all only taking effect when the user saves the
+  // Gantt's normal pending-changes flow.
+  async function handleSwitchTo(l: PlanLineInfo, idx: number, targetId: string, targetRef: string) {
+    if (switchingTo || hasPendingChanges) return
 
     const ok = await confirm({
       title:        'Trocar quadro de horários',
-      description:  `As viagens destas linhas serão recriadas a partir da OSO selecionada — partidas sem viagem correspondente na operação atual ficarão fora de bloco até você rodar Otimizar:\n\n${summary.join('\n')}`,
-      confirmLabel: 'Aplicar',
+      description:  `As viagens da linha ${l.line.code} neste plano serão apagadas e recriadas a partir da OSO ${targetRef}, com o ciclo atualizado — ficam pendentes até você salvar.`,
+      confirmLabel: 'Trocar',
       variant:      'safeConfirm',
     })
     if (!ok) return
 
-    setIsSubmitting(true)
+    setSwitchingTo({ lineId: l.lineId, lineScheduleId: targetId })
     try {
-      const results = await Promise.all(
-        changed.map(l =>
-          apiFetch(`/transit/vehicle-plan/${planId}/lines/${l.lineId}/switch-schedule`, {
-            method: 'POST',
-            body:   JSON.stringify({ lineScheduleId: selections.get(l.lineId) }),
-          }),
-        ),
-      )
-      const failed = results.filter(r => !r.ok)
-      if (failed.length > 0) {
-        const json = await failed[0].json().catch(() => ({}))
-        throw new Error(json?.message?.message ?? json?.message ?? 'Erro ao trocar quadro de horários')
+      const depRes = await apiFetch(`/transit/line-departure?lineScheduleId=${targetId}&pageSize=999`)
+      if (!depRes.ok) throw new Error('Erro ao buscar partidas da OSO')
+      const depJson = await depRes.json()
+      const rows: Array<{ id: string; routeId: string; departureMinutes: number; requiredVehicleType?: string | null }> = depJson.data ?? []
+
+      const routes     = routesQueries[idx].data ?? []
+      const routeById  = new Map(routes.map(r => [r.id, r]))
+      const localityById = new Map(localities.map(loc => [loc.id, loc.name]))
+
+      const departures: LineDepartureForSwitch[] = []
+      for (const d of rows) {
+        const route = routeById.get(d.routeId)
+        if (!route) continue
+        departures.push({
+          id:                  d.id,
+          routeId:             d.routeId,
+          departureMinutes:    d.departureMinutes,
+          requiredVehicleType: d.requiredVehicleType,
+          route: { direction: route.direction, originLocalityId: route.originLocalityId, destinationLocalityId: route.destinationLocalityId },
+        })
       }
-      toast.success('Quadro de horários atualizado')
-      onApplied()
+      if (departures.length === 0) throw new Error('OSO selecionada não tem partidas com rota reconhecida')
+
+      const { blocks: scheduleBlocks, warnings } = await computeScheduleSwitch(departures, l.line.metrics, dayTypeCode)
+      if (scheduleBlocks.length === 0) throw new Error(warnings[0] ?? 'Nenhuma partida pôde ser posicionada')
+
+      for (const block of scheduleBlocks) {
+        let anchorTempId: string | null = null
+        for (const trip of block) {
+          const route = routeById.get(trip.routeId)!
+          const originLocality      = { id: route.originLocalityId,      name: localityById.get(route.originLocalityId) ?? '' }
+          const destinationLocality = { id: route.destinationLocalityId, name: localityById.get(route.destinationLocalityId) ?? '' }
+          onPendingAdd({
+            _kind:               'trip',
+            _tempId:             trip._tempId,
+            routeId:             trip.routeId,
+            direction:           route.direction,
+            lineId:              l.lineId,
+            lineCode:            l.line.code,
+            lineName:            l.line.name,
+            lineMetrics:         l.line.metrics,
+            originLocality, destinationLocality,
+            departureMinutes:    trip.departureMinutes,
+            arrivalMinutes:      trip.arrivalMinutes,
+            blockId:             anchorTempId ? `pending:${anchorTempId}` : 'new',
+            lineDepartureId:     trip.lineDepartureId,
+            requiredVehicleType: trip.requiredVehicleType,
+          })
+          if (!anchorTempId) anchorTempId = trip._tempId
+        }
+      }
+
+      const currentTripIds = blocks
+        .flatMap(b => b.blockTrips)
+        .filter(bt => bt.trip.route.line.id === l.lineId)
+        .map(bt => bt.trip.id)
+      if (currentTripIds.length > 0) onQueueTripDeletes(currentTripIds)
+
+      onScheduleSwitchStaged(l.lineId, targetId)
+
+      if (warnings.length > 0) toast.error(`${warnings.length} partida(s) sem dado de ciclo/tempo de viagem foram ignoradas`)
+      toast.success(`OSO ${targetRef} pronta para revisão — salve para aplicar`)
       onClose()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao trocar quadro de horários')
+      toast.error(err instanceof Error ? err.message : 'Erro ao trocar OSO')
     } finally {
-      setIsSubmitting(false)
+      setSwitchingTo(null)
     }
   }
 
@@ -264,7 +338,6 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
           {lines.map((l, idx) => {
             const history = historyQueries[idx].data ?? []
             const loading = historyQueries[idx].isLoading
-            const selectedId = selections.get(l.lineId) ?? null
             const isCreating  = creatingLineId === l.lineId
             const isSaving    = savingLineId === l.lineId
 
@@ -381,20 +454,22 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {history.map(h => {
-                      const isSelected = h.id === selectedId
+                      const isActive     = h.id === l.lineScheduleId
+                      const isThisTarget = switchingTo?.lineId === l.lineId && switchingTo.lineScheduleId === h.id
                       return (
                         <button
                           key={h.id}
                           type="button"
-                          onClick={() => setSelections(prev => new Map(prev).set(l.lineId, h.id))}
-                          className={`text-xs rounded-full border px-2.5 py-1 transition-colors ${
-                            isSelected
+                          disabled={hasPendingChanges || switchingTo !== null}
+                          onClick={() => !isActive && handleSwitchTo(l, idx, h.id, h.approvalRef)}
+                          className={`text-xs rounded-full border px-2.5 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            isActive
                               ? 'border-ring bg-accent font-medium'
                               : 'border-border hover:bg-muted/40'
                           }`}
                           title={STATUS_LABELS[h.status]}
                         >
-                          {h.approvalRef}
+                          {isThisTarget ? 'Trocando…' : h.approvalRef}
                         </button>
                       )
                     })}
@@ -407,15 +482,7 @@ export function SwitchLineScheduleModal({ planId, dayTypeId, dayTypeName, lines,
 
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
           <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={hasPendingChanges || changed.length === 0 || isSubmitting}
-            onClick={handleApply}
-          >
-            {isSubmitting ? 'Aplicando…' : 'Aplicar'}
+            Fechar
           </Button>
         </div>
       </div>

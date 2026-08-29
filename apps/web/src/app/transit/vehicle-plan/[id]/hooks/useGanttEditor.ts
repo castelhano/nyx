@@ -70,6 +70,7 @@ export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; 
 export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
+export type PendingLineSchedulePin = { lineId: string; lineScheduleId: string }
 
 interface UseGanttEditorParams {
   id:           string
@@ -95,6 +96,12 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const [pendingDeletes,        setPendingDeletes]        = useState<Set<string>>(new Set())
   const [pendingDeadrunDeletes, setPendingDeadrunDeletes] = useState<Set<string>>(new Set())
   const [pendingIntervalDeletes,setPendingIntervalDeletes]= useState<Set<string>>(new Set())
+  // Pins which LineSchedule version governs a line within this plan — set by
+  // SwitchLineScheduleModal alongside the trip adds/deletes it stages, travels with
+  // the rest of the diff on Salvar (see applyDiff's lineSchedulePins step) instead
+  // of writing VehiclePlanLine immediately, so a Descartar never leaves the line
+  // pinned to a schedule whose departures don't match what's actually persisted.
+  const [pendingLineSchedulePin, setPendingLineSchedulePin] = useState<PendingLineSchedulePin | null>(null)
   const [editBarOpen,       setEditBarOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
   // Dedicated to Save (separate from the generic isPending, shared with the
@@ -495,7 +502,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     moveTargetBlockId ? [{ keys: ['Q', 'M'], label: 'Mover' }] : []
   ), [moveTargetBlockId])
 
-  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length
+  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + (pendingLineSchedulePin ? 1 : 0)
 
   // Queued into pendingChanges like a time patch — mergedPlottedData already spreads
   // TripPatch onto trip, so a staged constraints value renders immediately without a
@@ -1153,6 +1160,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     setPendingDeadrunDeletes(new Set())
     setPendingIntervalDeletes(new Set())
     setPendingMoves([])
+    setPendingLineSchedulePin(null)
   }
 
   async function handleToggleEditBar() {
@@ -1177,8 +1185,8 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
   async function handleSavePendingWithConfirm() {
     if (!canEdit) return
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
-    const total = pendingChanges.size + pendingDeadrunChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingMoves.length
+    if (pendingCount === 0) return
+    const total = pendingCount
     const ok = await confirm({
       title:        'Salvar alterações',
       description:  `Confirmar o salvamento de ${total} alteração(ões) pendente(s)?`,
@@ -1190,7 +1198,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleDiscardPendingWithConfirm() {
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
+    if (pendingCount === 0) return
     const ok = await confirm({
       title:        'Descartar alterações',
       description:  'Todas as alterações pendentes serão removidas.',
@@ -1203,7 +1211,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
   async function handleSavePending() {
     if (!canEdit) return
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return
+    if (pendingCount === 0) return
     setIsPending(true)
     setIsSaving(true)
     try {
@@ -1255,6 +1263,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
           intervalDeletes: Array.from(pendingIntervalDeletes),
           adds:            pendingAdds,
           moves:           pendingMoves,
+          lineSchedulePins: pendingLineSchedulePin ? [pendingLineSchedulePin] : [],
         }),
       })
       if (!res.ok) {
@@ -1271,6 +1280,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       setPendingDeadrunDeletes(new Set())
       setPendingIntervalDeletes(new Set())
       setPendingMoves([])
+      setPendingLineSchedulePin(null)
       // Persisted trips/breaks/deadruns get new server-generated ids, so whatever
       // was focused/selected (by temp id) no longer resolves to anything — the
       // stale-focus recovery effect (keyed off navBlocks) picks a fallback segment
@@ -1675,7 +1685,9 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // onAddAccess/onAddReturn/onAddInterval/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
   // onDeleteInterval/onUpdateConstraints and the raw handleSavePending aren't returned —
   // they're only ever reached through vehiclesActionSpec or the *WithConfirm wrappers,
-  // both already exposed below. Add them back if a future caller needs direct access.
+  // both already exposed below (queueTripDeletes is the exception — SwitchLineScheduleModal
+  // needs to stage a delete without handleDeleteTrips's own confirm dialog, since it shows
+  // its own). Add the rest back if a future caller needs direct access.
   return {
     selection, setSelection,
     depotModal, setDepotModal,
@@ -1683,6 +1695,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
+    pendingLineSchedulePin, setPendingLineSchedulePin,
     editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
@@ -1692,7 +1705,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     addTripReference, moveTargetBlocks, moveTargetHints,
     pendingCount, isSaving,
     stepMoveTarget,
-    handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
+    handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,

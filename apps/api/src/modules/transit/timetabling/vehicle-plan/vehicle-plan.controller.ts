@@ -139,16 +139,6 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.createLineSchedule(id, lineId, body)
   }
 
-  @Post(':id/lines/:lineId/switch-schedule')
-  @HttpCode(200)
-  switchSchedule(
-    @Param('id')     id:             string,
-    @Param('lineId') lineId:         string,
-    @Body('lineScheduleId') lineScheduleId: string,
-  ) {
-    return this.vehiclePlanService.switchLineSchedule(id, lineId, lineScheduleId)
-  }
-
   @Get(':id/gantt-data')
   getGanttData(@Param('id') id: string) {
     return this.vehiclePlanService.getGanttData(id)

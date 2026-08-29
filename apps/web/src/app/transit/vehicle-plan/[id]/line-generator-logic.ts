@@ -854,6 +854,56 @@ export function assignRoundsToBlocks(
   return open.map(ob => ob.block)
 }
 
+export interface FixedTripCandidate {
+  _tempId:              string
+  routeId:              string
+  departureMinutes:     number
+  arrivalMinutes:       number
+  requiredVehicleType?: string
+}
+
+/** Same greedy tightest-fit idea as assignRoundsToBlocks, for trips whose
+ *  departureMinutes is already fixed by an approved LineDeparture — never shifts a
+ *  trip's time to make it fit (no maneuver-margin tolerance: an approved partida's
+ *  time isn't negotiable), and never mixes vehicle types in the same block. Used by
+ *  the OSO-switch feature (switch-schedule-logic.ts), where trips come straight from
+ *  the target schedule's departures instead of being generated from frequency
+ *  windows. */
+export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[]): T[][] {
+  const byVehicleType = new Map<string, T[]>()
+  for (const trip of trips) {
+    const key   = trip.requiredVehicleType ?? ''
+    const group = byVehicleType.get(key)
+    if (group) group.push(trip)
+    else byVehicleType.set(key, [trip])
+  }
+
+  interface OpenBlock { trips: T[]; availableFrom: number }
+  const blocks: T[][] = []
+
+  for (const group of byVehicleType.values()) {
+    const sorted = [...group].sort((a, b) => a.departureMinutes - b.departureMinutes)
+    const open: OpenBlock[] = []
+
+    for (const trip of sorted) {
+      let chosen: OpenBlock | null = null
+      for (const ob of open) {
+        if (ob.availableFrom <= trip.departureMinutes && (!chosen || ob.availableFrom > chosen.availableFrom)) chosen = ob
+      }
+      if (chosen) {
+        chosen.trips.push(trip)
+        chosen.availableFrom = trip.arrivalMinutes
+      } else {
+        open.push({ trips: [trip], availableFrom: trip.arrivalMinutes })
+      }
+    }
+
+    blocks.push(...open.map(ob => ob.trips))
+  }
+
+  return blocks
+}
+
 /** Convenience: runs steps 1–3 in sequence. */
 export function generateSchedule(
   rows:                   GenWindow[],

@@ -89,6 +89,7 @@ export default function VehiclePlanPage() {
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
+    setPendingLineSchedulePin,
     editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
@@ -98,7 +99,7 @@ export default function VehiclePlanPage() {
     addTripReference, moveTargetBlocks, moveTargetHints,
     pendingCount, isSaving,
     stepMoveTarget,
-    handleSelectionChange, handlePendingAdd, clearAllPending, handleToggleEditBar,
+    handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
@@ -367,10 +368,19 @@ export default function VehiclePlanPage() {
         <SwitchLineScheduleModal
           planId={id}
           dayTypeId={ganttData.plan.dayType.id}
+          dayTypeCode={ganttData.plan.dayType.code}
           dayTypeName={ganttData.plan.dayType.name}
           lines={planLines.filter(l => selectedLineIds.has(l.lineId))}
+          blocks={ganttData.blocks}
           hasPendingChanges={pendingCount > 0}
-          onApplied={async () => { await refetchGantt() }}
+          onApplied={async () => { await refetchGantt(); setEditBarOpen(true) }}
+          onPendingAdd={handlePendingAdd}
+          onQueueTripDeletes={queueTripDeletes}
+          onScheduleSwitchStaged={(lineId, lineScheduleId) => {
+            setPendingLineSchedulePin({ lineId, lineScheduleId })
+            setSelectedLineIds(new Set([lineId]))
+            setEditBarOpen(true)
+          }}
           onClose={() => setVersionsModalOpen(false)}
         />
       )}
