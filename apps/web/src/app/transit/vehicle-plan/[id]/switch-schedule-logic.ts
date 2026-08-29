@@ -51,12 +51,14 @@ export async function computeScheduleSwitch(
       continue
     }
     candidates.push({
-      _tempId:             crypto.randomUUID(),
-      lineDepartureId:     d.id,
-      routeId:             d.routeId,
-      departureMinutes:    d.departureMinutes,
-      arrivalMinutes:      d.departureMinutes + Math.round(minutes),
-      requiredVehicleType: d.requiredVehicleType ?? undefined,
+      _tempId:               crypto.randomUUID(),
+      lineDepartureId:       d.id,
+      routeId:               d.routeId,
+      originLocalityId:      d.route.originLocalityId,
+      destinationLocalityId: d.route.destinationLocalityId,
+      departureMinutes:      d.departureMinutes,
+      arrivalMinutes:        d.departureMinutes + Math.round(minutes),
+      requiredVehicleType:   d.requiredVehicleType ?? undefined,
     })
   }
 

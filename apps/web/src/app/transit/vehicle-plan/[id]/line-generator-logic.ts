@@ -855,11 +855,13 @@ export function assignRoundsToBlocks(
 }
 
 export interface FixedTripCandidate {
-  _tempId:              string
-  routeId:              string
-  departureMinutes:     number
-  arrivalMinutes:       number
-  requiredVehicleType?: string
+  _tempId:               string
+  routeId:               string
+  originLocalityId:      string
+  destinationLocalityId: string
+  departureMinutes:      number
+  arrivalMinutes:        number
+  requiredVehicleType?:  string
 }
 
 /** Same greedy tightest-fit idea as assignRoundsToBlocks, for trips whose
@@ -868,7 +870,12 @@ export interface FixedTripCandidate {
  *  time isn't negotiable), and never mixes vehicle types in the same block. Used by
  *  the OSO-switch feature (switch-schedule-logic.ts), where trips come straight from
  *  the target schedule's departures instead of being generated from frequency
- *  windows. */
+ *  windows — so, unlike a round (which already bundles ida+volta as one unit),
+ *  each trip here is an independent leg and nothing pre-pairs them. A block can only
+ *  take a trip whose originLocalityId matches where its last trip left the vehicle
+ *  (or any trip at all if the block is still empty) — without this, tightest-fit-by-
+ *  time-alone happily chains ida→ida→ida whenever departures are frequent enough,
+ *  which no real vehicle can do without teleporting back to the origin. */
 export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[]): T[][] {
   const byVehicleType = new Map<string, T[]>()
   for (const trip of trips) {
@@ -878,7 +885,7 @@ export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[
     else byVehicleType.set(key, [trip])
   }
 
-  interface OpenBlock { trips: T[]; availableFrom: number }
+  interface OpenBlock { trips: T[]; availableFrom: number; atLocalityId: string }
   const blocks: T[][] = []
 
   for (const group of byVehicleType.values()) {
@@ -888,13 +895,17 @@ export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[
     for (const trip of sorted) {
       let chosen: OpenBlock | null = null
       for (const ob of open) {
-        if (ob.availableFrom <= trip.departureMinutes && (!chosen || ob.availableFrom > chosen.availableFrom)) chosen = ob
+        if (ob.atLocalityId === trip.originLocalityId && ob.availableFrom <= trip.departureMinutes
+            && (!chosen || ob.availableFrom > chosen.availableFrom)) {
+          chosen = ob
+        }
       }
       if (chosen) {
         chosen.trips.push(trip)
         chosen.availableFrom = trip.arrivalMinutes
+        chosen.atLocalityId  = trip.destinationLocalityId
       } else {
-        open.push({ trips: [trip], availableFrom: trip.arrivalMinutes })
+        open.push({ trips: [trip], availableFrom: trip.arrivalMinutes, atLocalityId: trip.destinationLocalityId })
       }
     }
 
