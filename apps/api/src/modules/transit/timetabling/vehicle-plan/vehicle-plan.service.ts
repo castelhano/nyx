@@ -747,10 +747,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
 
     const newBlockIds = new Map<string, string>()
-    const resolveBlockRef = (ref: string): string =>
-      ref.startsWith('pending:') ? (newBlockIds.get(ref.slice('pending:'.length)) ?? ref) : ref
 
     await this.prisma.$transaction(async (tx: any) => {
+      // Resolves a `pending:<tempId>` ref to a real block id, creating one on first
+      // reference — covers both a 'new' add from earlier in this same batch (already
+      // in newBlockIds by the time step 8 runs) and a block that was never backed by
+      // any add (e.g. an empty block created client-side and only ever targeted by a
+      // move — see useGanttEditor's handleCreateEmptyBlock).
+      const resolveBlockRef = async (ref: string): Promise<string> => {
+        if (!ref.startsWith('pending:')) return ref
+        const tempId   = ref.slice('pending:'.length)
+        const existing = newBlockIds.get(tempId)
+        if (existing) return existing
+        const created = await this.resolveOrCreateBlock(tx, planId, undefined)
+        newBlockIds.set(tempId, created)
+        return created
+      }
+
       // 0. line-schedule pins — must run before steps 4 (deletes) and 7 (adds):
       // step 7 reads VehiclePlanLine.lineScheduleId to decide whether an added trip
       // matches the pinned schedule's departures (isDrifted). Applying the pin first
@@ -824,7 +837,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // available to any later 'pending:<tempId>' entry in the same batch that
       // references it (mirrors the old client-side newBlockIds map).
       for (const entry of diff.adds) {
-        const rawBlockId = entry.blockId === 'new' ? undefined : resolveBlockRef(entry.blockId)
+        const rawBlockId = entry.blockId === 'new' ? undefined : await resolveBlockRef(entry.blockId)
         let resolvedBlockId: string
 
         if (entry._kind === 'trip') {
@@ -938,8 +951,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         if (blockTripIds.length === 0) continue
 
         const deadrunIds  = move.deadrunIds.filter(id => !diff.deadrunDeletes.includes(id))
-        const fromBlockId = resolveBlockRef(move.fromBlockId)
-        const toBlockId    = resolveBlockRef(move.toBlockId)
+        const fromBlockId = await resolveBlockRef(move.fromBlockId)
+        const toBlockId    = await resolveBlockRef(move.toBlockId)
         await applyMoveTrip(tx, fromBlockId, blockTripIds, toBlockId, move.breakIds, deadrunIds)
       }
 

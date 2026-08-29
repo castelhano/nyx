@@ -78,6 +78,7 @@ interface UseVehiclePlanShortcutsParams {
   handleFinalizePlan:          () => void
   handleTripTimingOp:          (op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext') => void
   discardBreaks:               (ids: string[]) => void
+  handleCreateEmptyBlock:      () => void
 }
 
 export function useVehiclePlanShortcuts({
@@ -90,7 +91,7 @@ export function useVehiclePlanShortcuts({
   summaryLineIds, setSummaryLineIds,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
-  handleFinalizePlan, handleTripTimingOp, discardBreaks,
+  handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
 }: UseVehiclePlanShortcutsParams) {
   const router  = useRouter()
   const confirm = useConfirm()
@@ -156,11 +157,19 @@ export function useVehiclePlanShortcuts({
     section: SEC_GERAL,
   })
 
-  useShortcut('alt+n', () => setAddTripOpen(true), {
+  useShortcut('q+n', () => setAddTripOpen(true), {
     desc:    'Adicionar viagem',
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit && selectedLineIds.size > 0,
+    section: SEC_EDICAO,
+  })
+
+  useShortcut('q+w+n', () => handleCreateEmptyBlock(), {
+    desc:    'Criar novo bloco (vazio)',
+    icon:    Icons.Plus,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && canEdit,
     section: SEC_EDICAO,
   })
 

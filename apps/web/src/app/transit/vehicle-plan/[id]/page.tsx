@@ -89,6 +89,7 @@ export default function VehiclePlanPage() {
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
+    handleCreateEmptyBlock,
     setPendingLineSchedulePin,
     editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
@@ -133,7 +134,7 @@ export default function VehiclePlanPage() {
     summaryLineIds, setSummaryLineIds,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
-    handleFinalizePlan, handleTripTimingOp, discardBreaks,
+    handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
   })
 
   // ── solver ──────────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ export default function VehiclePlanPage() {
           size:     'sm' as const,
           variant:  'ghost' as const,
           onClick:  () => setAddTripOpen(true),
-          keybind:  'alt+n',
+          keybind:  'q+n',
         },
         { label: '', separator: true },
         {

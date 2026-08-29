@@ -96,6 +96,11 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const [pendingDeletes,        setPendingDeletes]        = useState<Set<string>>(new Set())
   const [pendingDeadrunDeletes, setPendingDeadrunDeletes] = useState<Set<string>>(new Set())
   const [pendingIntervalDeletes,setPendingIntervalDeletes]= useState<Set<string>>(new Set())
+  // Empty blocks created via "Novo bloco" (q+w+n) — pure UI placeholders, keyed by
+  // their own tempId rather than a trip's, so they render as an empty row before
+  // anything is added into them. Never sent to apply-diff: a still-empty one on
+  // Salvar simply has no pendingAdds entry referencing it and is dropped.
+  const [pendingNewBlockIds,    setPendingNewBlockIds]    = useState<string[]>([])
   // Pins which LineSchedule version governs a line within this plan — set by
   // SwitchLineScheduleModal alongside the trip adds/deletes it stages, travels with
   // the rest of the diff on Salvar (see applyDiff's lineSchedulePins step) instead
@@ -133,7 +138,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // Merges pending local overrides and additions into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0) return plottedData
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0 && pendingNewBlockIds.length === 0) return plottedData
 
     const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
     let extraBlockCount  = 0
@@ -211,9 +216,11 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
 
     // Fake blocks for pending adds targeting a new block. blockId is either 'new'
     // (spawn a fresh block, keyed by its own tempId) or `pending:<key>` (join a
-    // fake block created by an earlier 'new' add — picked from the Bloco select).
+    // fake block created by an earlier 'new' add, or an empty block created via
+    // handleCreateEmptyBlock — picked from the Bloco select).
     const firstBlock = plottedData.blocks[0]
     const fakeGroups = new Map<string, PendingAddEntry[]>()
+    for (const blockId of pendingNewBlockIds) fakeGroups.set(blockId, [])
     for (const a of pendingAdds) {
       if (a.blockId === 'new') {
         fakeGroups.set(a._tempId, [a])
@@ -345,10 +352,13 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     // A block with no trips left will already be deleted by the server on Save
     // (removeTripsFromPlan deletes the VehicleBlock once blockTrips hits zero) —
     // hide it from the merged view now so it doesn't linger as a "ghost" row until then.
-    const visibleBlocks = allBlocks.filter(b => b.blockTrips.length > 0)
+    // Exception: blocks freshly created via handleCreateEmptyBlock are *meant* to
+    // start empty — they haven't lost trips, they never had any yet.
+    const freshEmptyBlockIds = new Set(pendingNewBlockIds.map(bid => `pending:${bid}`))
+    const visibleBlocks = allBlocks.filter(b => b.blockTrips.length > 0 || freshEmptyBlockIds.has(b.id))
 
     return { ...plottedData, blocks: visibleBlocks }
-  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves])
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves, pendingNewBlockIds])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
   const allTrips = useMemo(() => {
@@ -502,7 +512,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     moveTargetBlockId ? [{ keys: ['Q', 'M'], label: 'Mover' }] : []
   ), [moveTargetBlockId])
 
-  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + (pendingLineSchedulePin ? 1 : 0)
+  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + pendingNewBlockIds.length + (pendingLineSchedulePin ? 1 : 0)
 
   // Queued into pendingChanges like a time patch — mergedPlottedData already spreads
   // TripPatch onto trip, so a staged constraints value renders immediately without a
@@ -1151,6 +1161,11 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     setPendingAdds(prev => [...prev, entry])
   }
 
+  function handleCreateEmptyBlock() {
+    if (!canEdit) return
+    setPendingNewBlockIds(prev => [...prev, crypto.randomUUID()])
+  }
+
   function clearAllPending() {
     setPendingChanges(new Map())
     setPendingDeadrunChanges(new Map())
@@ -1161,6 +1176,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     setPendingIntervalDeletes(new Set())
     setPendingMoves([])
     setPendingLineSchedulePin(null)
+    setPendingNewBlockIds([])
   }
 
   async function handleToggleEditBar() {
@@ -1281,6 +1297,10 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       setPendingIntervalDeletes(new Set())
       setPendingMoves([])
       setPendingLineSchedulePin(null)
+      // Empty blocks never made it into `adds`, so the backend never created them —
+      // drop them here too. Any that got a trip added into it already round-trips
+      // as a real block through the refetch above.
+      setPendingNewBlockIds([])
       // Persisted trips/breaks/deadruns get new server-generated ids, so whatever
       // was focused/selected (by temp id) no longer resolves to anything — the
       // stale-focus recovery effect (keyed off navBlocks) picks a fallback segment
@@ -1695,6 +1715,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
+    pendingNewBlockIds, handleCreateEmptyBlock,
     pendingLineSchedulePin, setPendingLineSchedulePin,
     editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
