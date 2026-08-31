@@ -10,9 +10,9 @@ const SELECTION_RING_WIDTH   = 2.5
 const LOCK_DOT_RADIUS        = 3
 const LOCK_DOT_COLOR         = '#0f172a'
 const LOCK_DOT_MIN_WIDTH     = 12  // skip dot below this segment width
-const DRIFT_DOT_RADIUS       = 3
-const DRIFT_DOT_COLOR        = '#dc2626'  // red-600 — distinct from lock's slate, bottom-left corner
-const DRIFT_DOT_MIN_WIDTH    = 12
+const DRIFT_RIBBON_SIZE      = 10  // px — right-triangle leg length, clipped into the block's own corner
+const DRIFT_RIBBON_COLOR     = '#f43f5e'  // rose-500 — distinct from lock's slate and the isDrifted line dot's amber
+const DRIFT_RIBBON_MIN_WIDTH = 16  // skip below this segment width
 const MOVE_TARGET_COLOR      = '#3b82f6'
 const MOVE_TARGET_FILL       = 'rgba(59, 130, 246, 0.08)'
 const MOVE_TARGET_WIDTH      = 2
@@ -157,7 +157,7 @@ export class Renderer {
     // collect selected rects for the ring pass and locked positions for the dot pass
     const rings: Array<{ x: number; y: number; w: number; h: number; radius: number }> = []
     const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
-    const driftDots: Array<{ cx: number; cy: number; dimmed: boolean }> = []
+    const driftRibbons: Array<{ x: number; y: number; w: number; h: number; radius: number; dimmed: boolean }> = []
     let focusRect: { x: number; y: number; w: number; h: number; radius: number } | null = null
 
     for (const seg of segments) {
@@ -253,12 +253,8 @@ export class Renderer {
         })
       }
 
-      if (seg.offSchedule && seg.kind === 'trip' && w > DRIFT_DOT_MIN_WIDTH) {
-        driftDots.push({
-          cx:     x + DRIFT_DOT_RADIUS + 3,
-          cy:     y + h - DRIFT_DOT_RADIUS - 3,
-          dimmed,
-        })
+      if (seg.offSchedule && seg.kind === 'trip' && w > DRIFT_RIBBON_MIN_WIDTH) {
+        driftRibbons.push({ x, y, w, h, radius, dimmed })
       }
     }
 
@@ -294,14 +290,24 @@ export class Renderer {
       ctx.globalAlpha = 1
     }
 
-    // dot pass: OSO-drift indicator (bottom-left, red — never the same corner as lock)
-    if (driftDots.length > 0) {
-      ctx.fillStyle = DRIFT_DOT_COLOR
-      for (const { cx, cy, dimmed } of driftDots) {
+    // ribbon pass: OSO-drift indicator — right-triangle flag clipped into the
+    // block's own bottom-right corner (legs flush with the block's edges,
+    // hypotenuse cutting the corner diagonally), never the same corner as lock.
+    if (driftRibbons.length > 0) {
+      ctx.fillStyle = DRIFT_RIBBON_COLOR
+      for (const { x, y, w, h, radius, dimmed } of driftRibbons) {
+        ctx.save()
         ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
         ctx.beginPath()
-        ctx.arc(cx, cy, DRIFT_DOT_RADIUS, 0, Math.PI * 2)
+        ctx.roundRect(x, y, w, h, radius)
+        ctx.clip()
+        ctx.beginPath()
+        ctx.moveTo(x + w, y + h - DRIFT_RIBBON_SIZE)
+        ctx.lineTo(x + w, y + h)
+        ctx.lineTo(x + w - DRIFT_RIBBON_SIZE, y + h)
+        ctx.closePath()
         ctx.fill()
+        ctx.restore()
       }
       ctx.globalAlpha = 1
     }

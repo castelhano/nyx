@@ -123,7 +123,7 @@ export function OsoCoverageModal({ lineId, lineCode, lineName, coverage, isLoadi
                   <ul className="space-y-1">
                     {extraTrips.map(bt => (
                       <li key={bt.trip.id} className="flex items-center gap-2 text-xs">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
                         <span className="font-medium">{formatMinute(bt.trip.departureMinutes)}</span>
                         <span className="text-muted-foreground truncate">
                           {DIRECTION_LABELS[bt.trip.route.direction] ?? bt.trip.route.direction}
