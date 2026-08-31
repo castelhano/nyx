@@ -1428,9 +1428,12 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       arr: bt.trip.arrivalMinutes,
     }))
 
+    // Trips need >=1min gap between them (see the `+ 1` convention used across this
+    // file, e.g. line ~872's lowerBound and line ~1346's departureMinutes) — so
+    // touching boundaries (moved.dep === existing.arr) count as a conflict too.
     for (const moved of movedTrips) {
       for (const existing of targetTrips) {
-        if (moved.dep < existing.arr && moved.arr > existing.dep) {
+        if (moved.dep < existing.arr + 1 && moved.arr + 1 > existing.dep) {
           toast.error('Conflito: sobreposição de horários no bloco de destino')
           return
         }
