@@ -1,14 +1,17 @@
 'use client'
 
-// Painel lateral "Frequência da linha" — espelho só-leitura da viagem focada
-// no GanttBoard (focusedSegId). Mostra a linha inteira do sentido focado,
-// colunas [freq][I][V][freq] (bidirecional) ou [freq][C] (sentido único),
-// recortada (sem scroll) e centralizada na viagem focada. Ver
-// docs/TODO.md e line-freq.view.ts pro desenho/índice por trás disso.
+// Sidebar "Line frequency" panel — read-only mirror of the trip focused on
+// the GanttBoard (focusedSegId), or the plan's first line when nothing is
+// focused (e.g. panel opened outside edit mode). Shows the whole line for
+// the focused direction, columns [freq][I][V][freq] (bidirectional) or
+// [freq][C] (single direction), clipped (no scroll) and centered on the
+// focused trip. See docs/TODO.md and line-freq.view.ts for the layout/index
+// behind this.
 //
-// Não tem foco/seleção próprios — clicar nas células não faz nada; as únicas
-// interações são as setas de troca de linha, que só chamam onFocusChange
-// (o próprio GanttBoard já escuta focusedSegId e rola até o segmento).
+// Has no focus/selection of its own — clicking cells does nothing; the only
+// interactions are the line-switch arrows, which just call onFocusChange
+// (the GanttBoard itself already listens to focusedSegId and scrolls to the
+// segment).
 
 import { useEffect, useRef, useState } from 'react'
 import { Icons } from '@/lib/icons'
@@ -21,7 +24,7 @@ interface Props {
   rangeSegIds?:  Set<string> | null
 }
 
-const PANEL_WIDTH = 176
+export const PANEL_WIDTH = 176
 const FREQ_COL_PX = 32
 const TIME_COL_PX = 56
 const TITLE_H     = 22
@@ -55,7 +58,11 @@ export function LineFreqPanel({ index, focusedSegId, onFocusChange, rangeSegIds 
   }, [])
 
   const location = focusedSegId ? index.segIndex.get(focusedSegId) : undefined
-  const group    = location ? index.groups.get(location.lineId) : undefined
+  // No focused trip yet (e.g. panel opened outside edit mode) — fall back to the
+  // first line instead of showing an empty panel.
+  const group = location
+    ? index.groups.get(location.lineId)
+    : index.groups.get(index.lineOrder[0])
 
   function changeLine(delta: number) {
     if (index.lineOrder.length === 0) return
@@ -73,7 +80,8 @@ export function LineFreqPanel({ index, focusedSegId, onFocusChange, rangeSegIds 
     const totalRows = group.mode === 'both'
       ? Math.max(group.outbound.length, group.inbound.length)
       : group.outbound.length
-    const start = Math.max(0, Math.min(totalRows - visibleRows, location!.idx - Math.floor(visibleRows / 2)))
+    const centerIdx = location ? location.idx : 0
+    const start = Math.max(0, Math.min(totalRows - visibleRows, centerIdx - Math.floor(visibleRows / 2)))
     rows = Array.from({ length: Math.min(visibleRows, Math.max(0, totalRows - start)) }, (_, i) => start + i)
   }
 
@@ -121,7 +129,7 @@ export function LineFreqPanel({ index, focusedSegId, onFocusChange, rangeSegIds 
       <div ref={bodyRef} className="flex-1 min-h-0">
         {!group ? (
           <div className="flex items-center justify-center h-full text-center text-[11px] text-muted-foreground px-3">
-            Foque uma viagem no Gantt
+            Nenhuma linha no plano
           </div>
         ) : (
           <table className="border-collapse w-full" style={{ tableLayout: 'fixed' }}>

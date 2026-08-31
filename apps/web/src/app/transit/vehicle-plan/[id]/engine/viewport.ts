@@ -9,6 +9,7 @@ export class Viewport {
   totalHeight          = 0
   dayStartMinute       = 0
   dayEndMinute         = 1440
+  rightInset           = 0 // px reserved by an overlay (e.g. LineFreqPanel) covering the right edge
 
   resize(width: number, height: number): void {
     this.width  = width
@@ -57,7 +58,7 @@ export class Viewport {
   }
 
   scrollXTo(x: number): void {
-    const maxScroll = Math.max(0, (this.dayEndMinute - this.dayStartMinute) * this.pixelsPerMinute - this.width + 120)
+    const maxScroll = Math.max(0, (this.dayEndMinute - this.dayStartMinute) * this.pixelsPerMinute - this.width + 120 + this.rightInset)
     this.scrollX    = Math.max(0, Math.min(maxScroll, x))
   }
 

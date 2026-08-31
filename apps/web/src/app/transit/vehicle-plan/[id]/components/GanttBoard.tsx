@@ -38,6 +38,7 @@ interface Props {
   moveTargetBlockId?: string | null
   moveTargetHints?:   RowHintEntry[]
   highlightedSegIds?: Set<string> | null
+  rightInset?:        number // px reserved by an overlay covering the right edge (e.g. LineFreqPanel)
 }
 
 interface TooltipState {
@@ -72,7 +73,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
 }
 
 export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function GanttBoard(
-  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS, highlightedSegIds }: Props,
+  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS, highlightedSegIds, rightInset = 0 }: Props,
   ref,
 ) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
@@ -195,6 +196,17 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
     engineRef.current?.requestDraw()
   }, [resolvedTheme])
 
+  // ── sync right inset (overlay panels covering the right edge) ───────────────
+
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    engine.viewport.rightInset = rightInset
+    engine.viewport.scrollXTo(engine.viewport.scrollX) // reclamp against the new bound
+    engine.notify()
+    engine.requestDraw()
+  }, [rightInset])
+
   // ── sync selection highlight with engine ────────────────────────────────────
 
   useEffect(() => {
@@ -240,8 +252,8 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
         if (segStartX < vp.scrollX + MARGIN_X) {
           vp.scrollXTo(segStartX - MARGIN_X)
           scrolled = true
-        } else if (segEndX > vp.scrollX + vp.width - MARGIN_X) {
-          vp.scrollXTo(segEndX - vp.width + MARGIN_X)
+        } else if (segEndX > vp.scrollX + vp.width - vp.rightInset - MARGIN_X) {
+          vp.scrollXTo(segEndX - vp.width + vp.rightInset + MARGIN_X)
           scrolled = true
         }
 

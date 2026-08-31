@@ -21,7 +21,7 @@ import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { HeadwayRangeBar }   from './components/HeadwayRangeBar'
-import { LineFreqPanel }     from './components/LineFreqPanel'
+import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './components/LineFreqPanel'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
@@ -568,6 +568,8 @@ export default function VehiclePlanPage() {
                       moveTargetBlockId={editBarOpen ? moveTargetBlockId : null}
                       moveTargetHints={moveTargetHints}
                       highlightedSegIds={editBarOpen ? tripSeqRangeIds : null}
+                      // +8 for LineFreqPanel's `right-2` offset from the container edge
+                      rightInset={lineFreqOpen ? LINE_FREQ_PANEL_WIDTH + 8 : 0}
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -598,7 +600,7 @@ export default function VehiclePlanPage() {
                   />
                 )}
 
-                {lineFreqOpen && editBarOpen && freqIndex && (
+                {lineFreqOpen && freqIndex && (
                   <LineFreqPanel
                     index={freqIndex}
                     focusedSegId={focusedSegId}
