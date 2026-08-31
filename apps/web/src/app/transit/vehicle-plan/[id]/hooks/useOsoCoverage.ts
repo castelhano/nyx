@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import { computeOsoCoverage, type OsoDepartureLike } from '../oso-coverage-logic'
@@ -48,29 +49,37 @@ export function useOsoCoverage(data: VehiclePlanGanttData | null): UseOsoCoverag
     })),
   })
 
-  if (!data || driftedLines.length === 0) return EMPTY
+  const isLoading = queries.some(q => q.isLoading)
+  // Fixed-length proxy for "did any query's data actually change" — lets the
+  // memo below skip recomputation (and keep its Set/Map references stable)
+  // across renders that don't touch coverage at all, e.g. Gantt viewport pans,
+  // which re-render page.tsx constantly via onViewportChange. Without this,
+  // every such render would hand GanttBoard a brand-new `data` object and
+  // retrigger its full engine.setView layout pass for no reason.
+  const departuresSignal = queries.map(q => q.dataUpdatedAt ?? 0).join(':')
 
-  const offScheduleTripIds = new Set<string>()
-  const coverageByLine     = new Map<string, OsoLineCoverage>()
+  return useMemo(() => {
+    if (!data || driftedLines.length === 0) return EMPTY
 
-  driftedLines.forEach((line, i) => {
-    const departures = queries[i].data
-    if (!departures) return
+    const offScheduleTripIds = new Set<string>()
+    const coverageByLine     = new Map<string, OsoLineCoverage>()
 
-    const trips = data.blocks
-      .flatMap(b => b.blockTrips)
-      .filter(bt => bt.trip.route.line.id === line.lineId)
-      .map(bt => ({ id: bt.trip.id, routeId: bt.trip.routeId, departureMinutes: bt.trip.departureMinutes }))
+    driftedLines.forEach((line, i) => {
+      const departures = queries[i].data
+      if (!departures) return
 
-    const { matchedTripIds, extraTripIds, missing } = computeOsoCoverage(departures, trips)
-    for (const id of extraTripIds) offScheduleTripIds.add(id)
+      const trips = data.blocks
+        .flatMap(b => b.blockTrips)
+        .filter(bt => bt.trip.route.line.id === line.lineId)
+        .map(bt => ({ id: bt.trip.id, routeId: bt.trip.routeId, departureMinutes: bt.trip.departureMinutes }))
 
-    coverageByLine.set(line.lineId, { lineId: line.lineId, departures, matchedTripIds, extraTripIds, missing })
-  })
+      const { matchedTripIds, extraTripIds, missing } = computeOsoCoverage(departures, trips)
+      for (const id of extraTripIds) offScheduleTripIds.add(id)
 
-  return {
-    offScheduleTripIds,
-    coverageByLine,
-    isLoading: queries.some(q => q.isLoading),
-  }
+      coverageByLine.set(line.lineId, { lineId: line.lineId, departures, matchedTripIds, extraTripIds, missing })
+    })
+
+    return { offScheduleTripIds, coverageByLine, isLoading }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- driftedLines/queries are pure derivations of `data`, re-derived fresh each render; departuresSignal/isLoading proxy their relevant contents
+  }, [data, departuresSignal, isLoading])
 }

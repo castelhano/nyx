@@ -993,6 +993,11 @@ export interface RedistributeResult {
   warnings: string[]
 }
 
+// Tie-breaker weight for the shrink-branch score below — margins are capped
+// at 10min in the modal, so the largest possible nudge (10 * 1e-6) stays far
+// under the 1-minute granularity separating it from any other candidate score.
+const SHRINK_PENALTY = 1e-6
+
 function resolveCanonicalCycle(
   metrics:     LineMetrics | null | undefined,
   dayTypeCode: string,
@@ -1058,7 +1063,12 @@ export function redistributeTrips(
       if (margin <= 0 || shrinkNeeded > margin) return null
 
       return {
-        score: candidate.departureMinutes,
+        // Every block reaching this branch commits to zero idle after
+        // shrinking, so departureMinutes alone can't rank between them — the
+        // SHRINK_PENALTY nudge breaks the tie toward whichever needs the
+        // least shrink, small enough to never outrank a naturally-tight block
+        // (any real idle is at least a full minute, dwarfing the nudge).
+        score: candidate.departureMinutes - shrinkNeeded * SHRINK_PENALTY,
         commit: () => {
           block.items[block.items.length - 1] = { ...last, arrivalMinutes: lastCanonicalArrival - shrinkNeeded }
           block.items.push(place(candidate))

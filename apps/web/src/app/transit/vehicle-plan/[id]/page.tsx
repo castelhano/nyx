@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Icons }             from '@/lib/icons'
@@ -146,7 +146,15 @@ export default function VehiclePlanPage() {
   // (see useOsoCoverage) ─────────────────────────────────────────────────────────
 
   const { offScheduleTripIds, coverageByLine, isLoading: osoCoverageLoading } = useOsoCoverage(mergedPlottedData)
-  const boardData = mergedPlottedData ? { ...mergedPlottedData, offScheduleTripIds } : null
+  // Memoized so panning/zooming the Gantt (onViewportChange fires on every
+  // scroll tick) doesn't hand GanttBoard a new `data` reference every render —
+  // that would defeat its memo() and retrigger a full engine.setView layout
+  // pass on every frame. offScheduleTripIds is itself stable across unrelated
+  // renders (see useOsoCoverage), so this only changes when something real does.
+  const boardData = useMemo(
+    () => mergedPlottedData ? { ...mergedPlottedData, offScheduleTripIds } : null,
+    [mergedPlottedData, offScheduleTripIds],
+  )
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
