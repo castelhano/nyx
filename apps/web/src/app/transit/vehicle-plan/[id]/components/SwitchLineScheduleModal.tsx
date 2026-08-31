@@ -291,7 +291,6 @@ export function SwitchLineScheduleModal({
             departureMinutes:    trip.departureMinutes,
             arrivalMinutes:      trip.arrivalMinutes,
             blockId:             anchorTempId ? `pending:${anchorTempId}` : 'new',
-            lineDepartureId:     trip.lineDepartureId,
             requiredVehicleType: trip.requiredVehicleType,
           })
           if (!anchorTempId) anchorTempId = trip._tempId

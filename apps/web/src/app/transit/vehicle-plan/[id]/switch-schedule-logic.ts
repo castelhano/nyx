@@ -21,12 +21,8 @@ export interface LineDepartureForSwitch {
   }
 }
 
-export interface ScheduleSwitchTrip extends FixedTripCandidate {
-  lineDepartureId: string
-}
-
 export interface ScheduleSwitchResult {
-  blocks:   ScheduleSwitchTrip[][]
+  blocks:   FixedTripCandidate[][]
   warnings: string[]
 }
 
@@ -40,8 +36,8 @@ export async function computeScheduleSwitch(
   metrics:     LineMetrics | null | undefined,
   dayTypeCode: string,
 ): Promise<ScheduleSwitchResult> {
-  const warnings:   string[]           = []
-  const candidates: ScheduleSwitchTrip[] = []
+  const warnings:   string[]             = []
+  const candidates: FixedTripCandidate[] = []
 
   for (const d of departures) {
     const window  = resolveCycleWindow(metrics, dayTypeCode, d.route.direction, d.departureMinutes)
@@ -52,7 +48,6 @@ export async function computeScheduleSwitch(
     }
     candidates.push({
       _tempId:               crypto.randomUUID(),
-      lineDepartureId:       d.id,
       routeId:               d.routeId,
       originLocalityId:      d.route.originLocalityId,
       destinationLocalityId: d.route.destinationLocalityId,

@@ -32,20 +32,6 @@ export const tripSchema = withMeta(
       keybind:        'r',
     }),
 
-    // rastreio opcional da partida aprovada que originou esta viagem — null para
-    // viagens livres/ad-hoc (reforço) nunca vinculadas a um LineSchedule. Não trava
-    // edição nenhuma; divergência entre esta e a partida ligada é o que deve
-    // acionar a decisão de nova versão vs. alterar a aprovada.
-    lineDepartureId: z.uuid().optional().nullable().meta({
-      label:          'Partida Aprovada',
-      widget:         'select',
-      resource:       'line-departure',
-      domain:         'transit',
-      labelField:     'departureMinutes',
-      showInForm:     false,
-      listVisibility: 'hidden',
-    }),
-
     // minutes from operational day start — allows values > 1440 for overnight trips
     departureMinutes: z.number().int().min(0).meta({
       label:          'Partida (min)',

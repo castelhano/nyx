@@ -15,11 +15,6 @@ const pendingAddTripSchema = z.object({
   blockId:             z.string(),   // 'new' | 'pending:<tempId>' | real block id
   departureMinutes:    z.number(),
   arrivalMinutes:      z.number(),
-  // Set when this trip comes straight from an approved LineDeparture (OSO switch —
-  // see SwitchLineScheduleModal/switch-schedule-logic.ts) rather than a
-  // free-standing manual add: preserves traceability/requiredVehicleType the same
-  // way activateNewLineSchedule's server-side trip creation already does.
-  lineDepartureId:     z.string().optional(),
   requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional(),
   access: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
   return: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),

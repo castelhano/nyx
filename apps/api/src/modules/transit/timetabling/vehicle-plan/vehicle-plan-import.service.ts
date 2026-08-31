@@ -16,7 +16,6 @@ type ProductiveEntry = {
   kind:             'trip'
   id:               string
   routeId:          string
-  lineDepartureId:  string
   departureMinutes: number
   arrivalMinutes:   number
   km:               number
@@ -247,7 +246,7 @@ export class VehiclePlanImportService {
       })
     }
 
-    const tripRows:          Array<{ id: string; routeId: string; dayTypeId: string; lineDepartureId: string; departureMinutes: number; arrivalMinutes: number }> = []
+    const tripRows:          Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const lineDepartureRows: Array<{ id: string; lineScheduleId: string; routeId: string; departureMinutes: number }> = []
     const deadrunRows:       Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:         Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
@@ -338,12 +337,10 @@ export class VehiclePlanImportService {
 
         if (row.isProductive) {
           const scheduleInfo = lineScheduleByLineId.get(line.id)!
-          let lineDepartureId: string
 
           if (scheduleInfo.reused) {
-            const key       = `${scheduleInfo.id}:${route.id}:${departureMinutes}`
-            const existing  = existingDeparturesByKey.get(key)
-            if (!existing) {
+            const key = `${scheduleInfo.id}:${route.id}:${departureMinutes}`
+            if (!existingDeparturesByKey.has(key)) {
               errors.push({
                 line:    row._lineNum,
                 record:  `${row.lineCode} tab ${row.tabId}`,
@@ -351,11 +348,9 @@ export class VehiclePlanImportService {
               })
               continue
             }
-            lineDepartureId = existing
           } else {
-            lineDepartureId = randomUUID()
             lineDepartureRows.push({
-              id:               lineDepartureId,
+              id:               randomUUID(),
               lineScheduleId:   scheduleInfo.id,
               routeId:          route.id,
               departureMinutes,
@@ -366,7 +361,6 @@ export class VehiclePlanImportService {
             kind:             'trip',
             id:               randomUUID(),
             routeId:          route.id,
-            lineDepartureId,
             departureMinutes,
             arrivalMinutes,
             km,
@@ -487,7 +481,7 @@ export class VehiclePlanImportService {
       let seqInBlock = 1
       for (const e of perBlockEntries) {
         if (e.kind === 'trip') {
-          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, lineDepartureId: e.lineDepartureId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
+          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
           blockTripRows.push({ vehicleBlockId: blockId, tripId: e.id, sequence: seqInBlock++ })
         } else {
           deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })

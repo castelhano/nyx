@@ -333,7 +333,6 @@ model LineDeparture {
 
   lineSchedule LineSchedule  @relation(fields: [lineScheduleId], references: [id])
   route        TransitRoute  @relation(fields: [routeId], references: [id])
-  trips        TransitTrip[]
 
   @@map("transit_line_departures")
 }
@@ -345,11 +344,6 @@ model TransitTrip {
   id                  String       @id @default(uuid())
   routeId             String
   dayTypeId           String
-  // optional traceability to the approved departure this trip originated from —
-  // null for free-standing/ad-hoc trips (e.g. reinforcement) never part of any
-  // LineSchedule. Drift between this trip's departureMinutes and the linked
-  // LineDeparture's is what should prompt a new-version-vs-override decision.
-  lineDepartureId     String?
   // minutes from operational day start; values > 1440 indicate overnight trips
   departureMinutes    Int
   arrivalMinutes      Int
@@ -363,7 +357,6 @@ model TransitTrip {
 
   route         TransitRoute   @relation(fields: [routeId], references: [id])
   dayType       DayType        @relation(fields: [dayTypeId], references: [id])
-  lineDeparture LineDeparture? @relation(fields: [lineDepartureId], references: [id])
   blockTrips    BlockTrip[]
 
   @@map("transit_trips")

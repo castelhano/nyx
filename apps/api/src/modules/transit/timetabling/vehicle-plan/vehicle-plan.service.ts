@@ -19,7 +19,7 @@ import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
-import { beforeTripUpdate, afterTripUpdate, applyTripRemoval } from '../trip/trip-mutation.utils'
+import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 
@@ -561,7 +561,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 sequence: true,
                 trip: {
                   select: {
-                    id: true, routeId: true, dayTypeId: true, lineDepartureId: true,
+                    id: true, routeId: true, dayTypeId: true,
                     departureMinutes: true, arrivalMinutes: true,
                     requiredVehicleType: true, constraints: true, notes: true,
                   },
@@ -621,7 +621,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 data: {
                   routeId:             bt.trip.routeId,
                   dayTypeId:           bt.trip.dayTypeId,
-                  lineDepartureId:     bt.trip.lineDepartureId ?? undefined,
                   departureMinutes:    bt.trip.departureMinutes,
                   arrivalMinutes:      bt.trip.arrivalMinutes,
                   requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
@@ -884,7 +883,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               routeId:             entry.routeId,
               departureMinutes:    entry.departureMinutes,
               arrivalMinutes:      entry.arrivalMinutes,
-              lineDepartureId:     entry.lineDepartureId,
               requiredVehicleType: entry.requiredVehicleType,
             },
           })
@@ -967,44 +965,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }
 
       // 9. recompute isDrifted for every line whose trip coverage this diff could
-      // have changed — one final, authoritative re-derivation per line instead of
-      // the per-mutation latch above: not drifted iff the plan's current trips for
-      // that line, by {routeId, departureMinutes}, exactly match its pinned
-      // LineSchedule's departures — the same value-based coverage check
-      // reviseLineSchedule/activateNewLineSchedule already use to relink trips and
-      // clear the flag. Whatever steps 1/4/7 (and trip-mutation.utils.ts's
-      // flagDrift) set along the way is superseded here.
+      // have changed — one final, authoritative re-derivation per line (see
+      // recomputeLineDrift, trip-mutation.utils.ts) instead of judging each
+      // mutation in isolation as steps 1/4/7 do along the way.
       for (const lineId of linesToRecheck) {
-        const line = await tx.vehiclePlanLine.findUnique({
-          where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-          select: { lineScheduleId: true },
-        })
-        if (!line) continue // every trip for this line was removed — no row left to flag
-
-        if (!line.lineScheduleId) {
-          await tx.vehiclePlanLine.update({
-            where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-            data:  { isDrifted: false },
-          })
-          continue
-        }
-
-        const [departures, currentTrips] = await Promise.all([
-          tx.lineDeparture.findMany({ where: { lineScheduleId: line.lineScheduleId }, select: { routeId: true, departureMinutes: true } }),
-          tx.transitTrip.findMany({
-            where:  { dayTypeId: plan.dayTypeId, route: { lineId }, blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } } },
-            select: { routeId: true, departureMinutes: true },
-          }),
-        ])
-
-        const departureKeys = new Set(departures.map((d: any) => `${d.routeId}:${d.departureMinutes}`))
-        const tripKeys       = new Set(currentTrips.map((t: any) => `${t.routeId}:${t.departureMinutes}`))
-        const covered = departureKeys.size === tripKeys.size && [...departureKeys].every(k => tripKeys.has(k))
-
-        await tx.vehiclePlanLine.update({
-          where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-          data:  { isDrifted: !covered },
-        })
+        await recomputeLineDrift(tx, planId, lineId)
       }
 
       // 10. the only write path for summary/score — closes this same transaction so
@@ -1103,12 +1068,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
   }
 
-  // Cria uma OSO (LineSchedule DRAFT) nova a partir do modal de troca de quadro,
-  // já semeada com as partidas (LineDeparture) das viagens que a linha já tem
-  // *neste plano* — inclusive avulsas ("Adicionar viagem"), sem lineDepartureId.
-  // Sem isso, trocar pra essa OSO recém-criada (SwitchLineScheduleModal, client-side
-  // — ver switch-schedule-logic.ts) zeraria a operação da linha (LineDeparture
-  // vazia → nenhuma partida pra recriar).
+  // Creates a new OSO (LineSchedule DRAFT) from the schedule-switch modal, already
+  // seeded with the departures (LineDeparture) of the trips the line already has
+  // *in this plan* — including free-standing ones ("Adicionar viagem").
+  // Without this, switching to this freshly-created OSO (SwitchLineScheduleModal,
+  // client-side — see switch-schedule-logic.ts) would zero out the line's
+  // operation (empty LineDeparture → nothing to recreate).
   async createLineSchedule(
     planId: string,
     lineId: string,
@@ -1231,27 +1196,15 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         await tx.lineDeparture.deleteMany({ where: { id: { in: toDeleteIds } } })
       }
 
-      const idByKey = new Map<string, string>(
-        departures
-          .filter((d: any) => !toDeleteIds.includes(d.id))
-          .map((d: any) => [`${d.routeId}:${d.departureMinutes}`, d.id]),
-      )
       for (const t of toCreate) {
-        const created = await tx.lineDeparture.create({
+        await tx.lineDeparture.create({
           data: {
             lineScheduleId:      schedule.id,
             routeId:             t.routeId,
             departureMinutes:    t.departureMinutes,
             requiredVehicleType: t.requiredVehicleType ?? undefined,
           },
-          select: { id: true },
         })
-        idByKey.set(`${t.routeId}:${t.departureMinutes}`, created.id)
-      }
-
-      for (const t of existingTrips) {
-        const depId = idByKey.get(`${t.routeId}:${t.departureMinutes}`)
-        if (depId) await tx.transitTrip.update({ where: { id: t.id }, data: { lineDepartureId: depId } })
       }
 
       await tx.vehiclePlanLine.update({
@@ -1308,23 +1261,15 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         data: { lineId, dayTypeId: plan.dayTypeId, approvalRef: ref, status: 'DRAFT' },
       })
 
-      const idByKey = new Map<string, string>()
       for (const d of departureByKey.values()) {
-        const created = await tx.lineDeparture.create({
+        await tx.lineDeparture.create({
           data: {
             lineScheduleId:      schedule.id,
             routeId:             d.routeId,
             departureMinutes:    d.departureMinutes,
             requiredVehicleType: d.requiredVehicleType ?? undefined,
           },
-          select: { id: true },
         })
-        idByKey.set(`${d.routeId}:${d.departureMinutes}`, created.id)
-      }
-
-      for (const t of existingTrips) {
-        const depId = idByKey.get(`${t.routeId}:${t.departureMinutes}`)
-        if (depId) await tx.transitTrip.update({ where: { id: t.id }, data: { lineDepartureId: depId } })
       }
 
       await tx.vehiclePlanLine.upsert({
