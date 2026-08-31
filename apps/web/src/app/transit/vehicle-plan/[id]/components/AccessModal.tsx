@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery }  from '@tanstack/react-query'
 import { Button }    from '@/components/ui/button'
 import { Icons }     from '@/lib/icons'
@@ -21,6 +21,7 @@ interface Props {
 
 export function AccessModal({ title, onConfirm, onClose }: Props) {
   const [depotId, setDepotId] = useState('')
+  const selectRef = useRef<HTMLSelectElement>(null)
   useShortcutContext('access_md')
 
   useEffect(() => {
@@ -41,6 +42,12 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
     },
     staleTime: 60_000,
   })
+
+  // autoFocus alone misses the case where the select is still disabled (query
+  // not yet resolved) at mount — refocus once it becomes enabled.
+  useEffect(() => {
+    if (!isLoading) selectRef.current?.focus()
+  }, [isLoading])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -63,11 +70,11 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
           </label>
           <div className="relative mt-2">
             <select
+              ref={selectRef}
               id="depotId"
               value={depotId}
               onChange={e => setDepotId(e.target.value)}
               required
-              autoFocus
               disabled={isLoading}
               className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
             >
