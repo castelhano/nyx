@@ -863,6 +863,11 @@ export interface FixedTripCandidate {
   departureMinutes:      number
   arrivalMinutes:        number
   requiredVehicleType?:  string
+  // Minimum gap required, after this trip's arrival, before the next trip in the
+  // same block can depart (the registered turnback/interval time for this trip's
+  // own direction/cycle window) — 0/undefined when unknown, which enforces no gap
+  // at all (same as the pre-existing behavior for any caller that doesn't supply it).
+  intervalMinutes?:      number
 }
 
 // ── shared packing primitive ────────────────────────────────────────────────
@@ -919,7 +924,12 @@ function packGreedy<C, T>(
  *  take a trip whose originLocalityId matches where its last trip left the vehicle
  *  (or any trip at all if the block is still empty) — without this, tightest-fit-by-
  *  time-alone happily chains ida→ida→ida whenever departures are frequent enough,
- *  which no real vehicle can do without teleporting back to the origin. */
+ *  which no real vehicle can do without teleporting back to the origin. The next
+ *  trip also can't depart before the previous one's own registered turnback/interval
+ *  time has elapsed (`intervalMinutes`, when known) — same requirement redistributeTrips
+ *  enforces, so a plan freshly loaded from an OSO doesn't start out with back-to-back
+ *  pairings tighter than the line's own registered interval, only for Redistribuir to
+ *  immediately reshuffle them the first time it runs. */
 export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[]): T[][] {
   const byVehicleType = new Map<string, T[]>()
   for (const trip of trips) {
@@ -936,8 +946,9 @@ export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[
     blocks.push(...packGreedy<T, T>(sorted, (block, candidate) => {
       const last = block.items[block.items.length - 1]
       if (last.destinationLocalityId !== candidate.originLocalityId) return null
-      if (last.arrivalMinutes > candidate.departureMinutes) return null
-      return { score: last.arrivalMinutes, commit: () => { block.items.push(candidate) } }
+      const availableFrom = last.arrivalMinutes + (last.intervalMinutes ?? 0)
+      if (availableFrom > candidate.departureMinutes) return null
+      return { score: availableFrom, commit: () => { block.items.push(candidate) } }
     }, candidate => candidate))
   }
 

@@ -764,17 +764,37 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         return created
       }
 
-      // 0. line-schedule pins — must run before steps 4 (deletes) and 7 (adds):
-      // step 7 reads VehiclePlanLine.lineScheduleId to decide whether an added trip
-      // matches the pinned schedule's departures (isDrifted). Applying the pin first
-      // means trips recreated from that exact schedule's departures land matched,
-      // with no separate reconciliation needed.
+      // 0. line-schedule pins — must run before step 9 (isDrifted recomputation),
+      // which reads VehiclePlanLine.lineScheduleId to know which LineSchedule a
+      // line's current trips are being checked against.
       for (const pin of diff.lineSchedulePins) {
         await tx.vehiclePlanLine.upsert({
           where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: pin.lineId } },
           create: { vehiclePlanId: planId, lineId: pin.lineId, lineScheduleId: pin.lineScheduleId, isDrifted: false },
           update: { lineScheduleId: pin.lineScheduleId, isDrifted: false },
         })
+      }
+
+      // Lines whose {routeId, departureMinutes} trip coverage this diff might
+      // change — recomputed against the pinned LineSchedule at the very end
+      // (step 9) instead of being judged mutation-by-mutation via the isDrifted
+      // latch in trip-mutation.utils.ts, which gets stuck `true` after a delete
+      // immediately followed by an equivalent add (e.g. Redistribuir reassigning
+      // a trip to a different block/vehicle without touching its departure —
+      // the delete alone flags drift and nothing downstream ever clears it).
+      // Resolved up front, before any deletes run, since a deleted trip's route
+      // can't be looked up afterward.
+      const linesToRecheck = new Set<string>()
+      const tripIdsNeedingLineLookup = [
+        ...diff.tripDeletes,
+        ...diff.tripUpdates.filter(u => u.departureMinutes !== undefined).map(u => u.id),
+      ]
+      if (tripIdsNeedingLineLookup.length > 0) {
+        const rows = await tx.transitTrip.findMany({
+          where:  { id: { in: tripIdsNeedingLineLookup } },
+          select: { route: { select: { lineId: true } } },
+        })
+        for (const r of rows) linesToRecheck.add(r.route.lineId)
       }
 
       // 1. trip time patches
@@ -847,25 +867,15 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           })
           if (!route) throw new NotFoundException('Route not found')
 
-          // Marks the line as present in the plan even without a pinned schedule; if
-          // a schedule is pinned and this departure doesn't match any LineDeparture,
-          // marks isDrifted.
-          const currentLine = await tx.vehiclePlanLine.findUnique({
-            where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
-            select: { lineScheduleId: true },
-          })
-          let driftUpdate: Record<string, unknown> = {}
-          if (currentLine?.lineScheduleId) {
-            const matches = await tx.lineDeparture.findFirst({
-              where:  { lineScheduleId: currentLine.lineScheduleId, routeId: entry.routeId, departureMinutes: entry.departureMinutes },
-              select: { id: true },
-            })
-            if (!matches) driftUpdate = { isDrifted: true }
-          }
+          // Marks the line as present in the plan even without a pinned schedule —
+          // isDrifted itself is left to step 9's final recomputation (this line is
+          // added to linesToRecheck right below), authoritative for the whole diff
+          // instead of judging each add against the schedule in isolation.
+          linesToRecheck.add(route.lineId)
           await tx.vehiclePlanLine.upsert({
             where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId: route.lineId } },
-            create: { vehiclePlanId: planId, lineId: route.lineId, ...driftUpdate },
-            update: driftUpdate,
+            create: { vehiclePlanId: planId, lineId: route.lineId },
+            update: {},
           })
 
           const trip = await tx.transitTrip.create({
@@ -956,7 +966,48 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         await applyMoveTrip(tx, fromBlockId, blockTripIds, toBlockId, move.breakIds, deadrunIds)
       }
 
-      // 9. the only write path for summary/score — closes this same transaction so
+      // 9. recompute isDrifted for every line whose trip coverage this diff could
+      // have changed — one final, authoritative re-derivation per line instead of
+      // the per-mutation latch above: not drifted iff the plan's current trips for
+      // that line, by {routeId, departureMinutes}, exactly match its pinned
+      // LineSchedule's departures — the same value-based coverage check
+      // reviseLineSchedule/activateNewLineSchedule already use to relink trips and
+      // clear the flag. Whatever steps 1/4/7 (and trip-mutation.utils.ts's
+      // flagDrift) set along the way is superseded here.
+      for (const lineId of linesToRecheck) {
+        const line = await tx.vehiclePlanLine.findUnique({
+          where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+          select: { lineScheduleId: true },
+        })
+        if (!line) continue // every trip for this line was removed — no row left to flag
+
+        if (!line.lineScheduleId) {
+          await tx.vehiclePlanLine.update({
+            where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+            data:  { isDrifted: false },
+          })
+          continue
+        }
+
+        const [departures, currentTrips] = await Promise.all([
+          tx.lineDeparture.findMany({ where: { lineScheduleId: line.lineScheduleId }, select: { routeId: true, departureMinutes: true } }),
+          tx.transitTrip.findMany({
+            where:  { dayTypeId: plan.dayTypeId, route: { lineId }, blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } } },
+            select: { routeId: true, departureMinutes: true },
+          }),
+        ])
+
+        const departureKeys = new Set(departures.map((d: any) => `${d.routeId}:${d.departureMinutes}`))
+        const tripKeys       = new Set(currentTrips.map((t: any) => `${t.routeId}:${t.departureMinutes}`))
+        const covered = departureKeys.size === tripKeys.size && [...departureKeys].every(k => tripKeys.has(k))
+
+        await tx.vehiclePlanLine.update({
+          where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+          data:  { isDrifted: !covered },
+        })
+      }
+
+      // 10. the only write path for summary/score — closes this same transaction so
       // nothing above ever commits without an up-to-date summary.
       await this.recalculate(planId, tx)
     }, { timeout: 30_000 })

@@ -5,7 +5,7 @@
 // approved LineDeparture rows, so departureMinutes is fixed and only
 // arrivalMinutes/block placement need computing.
 
-import { resolveCycleMinutes, type LineMetrics } from './views/vehicles.view'
+import { resolveCycleWindow, type LineMetrics } from './views/vehicles.view'
 import { getTravelTime } from './travel-time'
 import { assignFixedTripsToBlocks, type FixedTripCandidate } from './line-generator-logic'
 
@@ -44,8 +44,8 @@ export async function computeScheduleSwitch(
   const candidates: ScheduleSwitchTrip[] = []
 
   for (const d of departures) {
-    const cycleMinutes = resolveCycleMinutes(metrics, dayTypeCode, d.route.direction, d.departureMinutes)
-    const minutes       = cycleMinutes ?? await getTravelTime(d.route.originLocalityId, d.route.destinationLocalityId)
+    const window  = resolveCycleWindow(metrics, dayTypeCode, d.route.direction, d.departureMinutes)
+    const minutes = window?.minutes ?? await getTravelTime(d.route.originLocalityId, d.route.destinationLocalityId)
     if (minutes == null) {
       warnings.push(`Sem dado de ciclo/tempo de viagem para a partida de ${d.departureMinutes}min`)
       continue
@@ -58,6 +58,10 @@ export async function computeScheduleSwitch(
       destinationLocalityId: d.route.destinationLocalityId,
       departureMinutes:      d.departureMinutes,
       arrivalMinutes:        d.departureMinutes + Math.round(minutes),
+      // Only known when a registered cycle window covers this departure — the
+      // travel-time-matrix fallback above has no interval concept, so it's left
+      // unset (assignFixedTripsToBlocks treats that as no gap required).
+      intervalMinutes:       window?.intervalMinutes,
       requiredVehicleType:   d.requiredVehicleType ?? undefined,
     })
   }
