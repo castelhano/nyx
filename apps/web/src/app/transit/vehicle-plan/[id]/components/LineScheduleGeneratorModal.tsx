@@ -153,7 +153,7 @@ interface Props {
 export function LineScheduleGeneratorModal({
   planId, lineId, dayTypeCode, existingTripIds, hasPendingChanges, onClose, onPendingAdd, onPendingDeleteTrips,
 }: Props) {
-  useShortcutContext('modal')
+  useShortcutContext('line_gen_md')
   const { toast } = useToast()
 
   const { data: line, isLoading: lineLoading, error: lineError } = useQuery<LineRecord>({

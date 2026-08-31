@@ -38,7 +38,7 @@ export function ConfirmModal({
   const [remaining, setRemaining]   = useState(confirmDelay)
   const isLocked                    = remaining > 0
 
-  useShortcutContext('modal')
+  useShortcutContext('confirm_md')
 
   useEffect(() => {
     if (!isLocked) confirmRef.current?.focus()

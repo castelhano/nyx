@@ -23,7 +23,7 @@ interface Props {
 
 export function AddIntervalModal({ onConfirm, onClose }: Props) {
   const [intervalTypeId, setIntervalTypeId] = useState('')
-  useShortcutContext('modal')
+  useShortcutContext('add_interval_md')
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {

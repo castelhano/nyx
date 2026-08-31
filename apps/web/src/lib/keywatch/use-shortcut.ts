@@ -46,8 +46,15 @@ export function useShortcut(
  * Controla o contexto ativo do Keywatch para uma seção da UI.
  * Empilha o contexto no mount e restaura o anterior no unmount.
  *
+ * Each modal should get its own context name (e.g. 'add_trip_md',
+ * 'redistribute_md') instead of sharing a generic value — otherwise two
+ * modals binding the same shortcut under the same context both fire their
+ * handler if they ever end up mounted at the same time (e.g. one modal
+ * opened on top of another), since handlers for a given context+scope pair
+ * are accumulated in a list, not replaced.
+ *
  * @example
- *   useShortcutContext('modal', 'Atalhos do modal')
+ *   useShortcutContext('add_trip_md', 'Atalhos — Nova viagem')
  */
 export function useShortcutContext(context: string, desc = '') {
   const { coreRef } = useKeywatch()

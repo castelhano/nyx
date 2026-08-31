@@ -56,7 +56,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
 
   const isNewLocality = mode === 'stop' && !localityId
 
-  useShortcutContext('modal')
+  useShortcutContext('add_point_md')
 
   const { search: localitySearch, setSearch: setLocalitySearch, rows: localityRows, isLoading: localitiesLoading } =
     useComboboxSearch('transit', 'transit-locality')
@@ -138,7 +138,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   useShortcut('alt+g', handleAdd, {
     desc:    'Adicionar ponto',
     icon:    Icons.Save,
-    context: 'modal',
+    context: 'add_point_md',
     origin:  'apps/web/src/app/transit/transit-route/AddPointModal.tsx',
     enabled: !snapping && canSubmit,
   })

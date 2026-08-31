@@ -3,7 +3,8 @@
 // mock data in apps/web/src/app/playground/ before landing here unchanged —
 // only the imports changed to point at real app types.
 
-import type { CycleWindow } from './views/vehicles.view'
+import type { CycleWindow, LineMetrics } from './views/vehicles.view'
+import { resolveCycleWindow } from './views/vehicles.view'
 
 export type Direction = 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
 
@@ -864,6 +865,49 @@ export interface FixedTripCandidate {
   requiredVehicleType?:  string
 }
 
+// ── shared packing primitive ────────────────────────────────────────────────
+//
+// Both assignFixedTripsToBlocks (below) and redistributeTrips (Fase
+// "Redistribuir" — see docs/FLOW.md) need the exact same greedy loop: walk
+// candidates in departure order, and for each one scan every still-open block
+// for the tightest still-valid fit, opening a new block only when none
+// qualifies. What differs between them is only what "fits" means and what
+// placing a candidate into a block actually commits — a fixed, already-known
+// arrival for the OSO-switch case; a cycle that may retroactively shrink the
+// block's last trip (within its margin) for the elastic Redistribuir case.
+// `evaluate` decides both: it returns null when the candidate can't go in that
+// block at all, or `{ score, commit }` when it can — `score` is what the
+// tightest-fit comparison ranks by (so both a static field comparison and an
+// elastic one that can prefer a block only reachable by shrinking share the
+// same ranking), and `commit()` performs the actual mutation, invoked only for
+// the block that wins. `openNew` builds the first item of a fresh block from a
+// candidate that fit nowhere — trivial (identity) for the fixed case, but a
+// real transform (candidate → placed item, cycle resolved) for the elastic one.
+interface PackBlock<T> { items: T[] }
+
+function packGreedy<C, T>(
+  sorted:   C[],
+  evaluate: (block: PackBlock<T>, candidate: C) => { score: number; commit: () => void } | null,
+  openNew:  (candidate: C) => T,
+): T[][] {
+  const open: PackBlock<T>[] = []
+
+  for (const candidate of sorted) {
+    let chosen:      { score: number; commit: () => void } | null = null
+
+    for (const block of open) {
+      if (block.items.length === 0) continue
+      const fit = evaluate(block, candidate)
+      if (fit && (!chosen || fit.score > chosen.score)) chosen = fit
+    }
+
+    if (chosen) chosen.commit()
+    else open.push({ items: [openNew(candidate)] })
+  }
+
+  return open.map(b => b.items)
+}
+
 /** Same greedy tightest-fit idea as assignRoundsToBlocks, for trips whose
  *  departureMinutes is already fixed by an approved LineDeparture — never shifts a
  *  trip's time to make it fit (no maneuver-margin tolerance: an approved partida's
@@ -885,34 +929,141 @@ export function assignFixedTripsToBlocks<T extends FixedTripCandidate>(trips: T[
     else byVehicleType.set(key, [trip])
   }
 
-  interface OpenBlock { trips: T[]; availableFrom: number; atLocalityId: string }
   const blocks: T[][] = []
 
   for (const group of byVehicleType.values()) {
     const sorted = [...group].sort((a, b) => a.departureMinutes - b.departureMinutes)
-    const open: OpenBlock[] = []
-
-    for (const trip of sorted) {
-      let chosen: OpenBlock | null = null
-      for (const ob of open) {
-        if (ob.atLocalityId === trip.originLocalityId && ob.availableFrom <= trip.departureMinutes
-            && (!chosen || ob.availableFrom > chosen.availableFrom)) {
-          chosen = ob
-        }
-      }
-      if (chosen) {
-        chosen.trips.push(trip)
-        chosen.availableFrom = trip.arrivalMinutes
-        chosen.atLocalityId  = trip.destinationLocalityId
-      } else {
-        open.push({ trips: [trip], availableFrom: trip.arrivalMinutes, atLocalityId: trip.destinationLocalityId })
-      }
-    }
-
-    blocks.push(...open.map(ob => ob.trips))
+    blocks.push(...packGreedy<T, T>(sorted, (block, candidate) => {
+      const last = block.items[block.items.length - 1]
+      if (last.destinationLocalityId !== candidate.originLocalityId) return null
+      if (last.arrivalMinutes > candidate.departureMinutes) return null
+      return { score: last.arrivalMinutes, commit: () => { block.items.push(candidate) } }
+    }, candidate => candidate))
   }
 
   return blocks
+}
+
+// ── Redistribuir (docs/FLOW.md) — margin-aware repack of a line's existing trips ──
+//
+// Reuses packGreedy above with an elastic `evaluate`: a candidate can also fit
+// a block whose last trip's canonical cycle wouldn't otherwise leave room, by
+// shrinking that last trip's own cycle down (never up, never below what's
+// needed) within its own direction's margin. The candidate being placed always
+// keeps its full canonical cycle — only the trip immediately preceding it in
+// the block is ever eligible to shrink, and only by exactly the minimum needed
+// to fit, so a trip's cycle is touched at most once per run no matter the
+// margin, and re-running the whole operation from the same source data (as
+// Redistribuir always does — see RedistributeModal) reaches the same result
+// instead of compounding.
+
+export interface RedistributeTripCandidate {
+  _tempId:                 string
+  tripId:                  string
+  routeId:                 string
+  direction:                Direction
+  vehicleType:              string
+  originLocalityId:        string
+  destinationLocalityId:   string
+  departureMinutes:        number
+  // Fallback duration used only when no registered cycle window covers this
+  // departure — the trip's current (pre-redistribution) duration, same
+  // fallback handleAdjustCycle uses (useGanttEditor.ts).
+  originalDurationMinutes: number
+}
+
+export interface RedistributedTrip {
+  candidate:      RedistributeTripCandidate
+  arrivalMinutes: number
+}
+
+export interface RedistributeResult {
+  blocks:   RedistributedTrip[][]
+  warnings: string[]
+}
+
+function resolveCanonicalCycle(
+  metrics:     LineMetrics | null | undefined,
+  dayTypeCode: string,
+  direction:   Direction,
+  dep:         number,
+): { minutes: number; intervalMinutes: number } | null {
+  const w = resolveCycleWindow(metrics, dayTypeCode, direction, dep)
+  return w ? { minutes: w.minutes, intervalMinutes: w.intervalMinutes } : null
+}
+
+export function redistributeTrips(
+  candidates:             RedistributeTripCandidate[],
+  metrics:                LineMetrics | null | undefined,
+  dayTypeCode:            string,
+  marginByDirection:      Partial<Record<Direction, number>>,
+  keepRegisteredInterval: boolean,
+): RedistributeResult {
+  let noWindowCount = 0
+
+  function place(candidate: RedistributeTripCandidate): RedistributedTrip {
+    const cycle = resolveCanonicalCycle(metrics, dayTypeCode, candidate.direction, candidate.departureMinutes)
+    if (!cycle) noWindowCount++
+    return { candidate, arrivalMinutes: candidate.departureMinutes + (cycle?.minutes ?? candidate.originalDurationMinutes) }
+  }
+
+  const byVehicleType = new Map<string, RedistributeTripCandidate[]>()
+  for (const c of candidates) {
+    const group = byVehicleType.get(c.vehicleType)
+    if (group) group.push(c)
+    else byVehicleType.set(c.vehicleType, [c])
+  }
+
+  const allBlocks: RedistributedTrip[][] = []
+
+  for (const group of byVehicleType.values()) {
+    const sorted = [...group].sort((a, b) => a.departureMinutes - b.departureMinutes)
+
+    const packed = packGreedy<RedistributeTripCandidate, RedistributedTrip>(sorted, (block, candidate) => {
+      const last = block.items[block.items.length - 1]
+      if (last.candidate.destinationLocalityId !== candidate.originLocalityId) return null
+
+      const lastCycle             = resolveCanonicalCycle(metrics, dayTypeCode, last.candidate.direction, last.candidate.departureMinutes)
+      const lastCanonicalDuration = lastCycle?.minutes ?? (last.arrivalMinutes - last.candidate.departureMinutes)
+      const lastCanonicalArrival  = last.candidate.departureMinutes + lastCanonicalDuration
+      const interval              = keepRegisteredInterval ? (lastCycle?.intervalMinutes ?? 0) : 1
+      const naturalAvailableFrom  = lastCanonicalArrival + interval
+
+      if (naturalAvailableFrom <= candidate.departureMinutes) {
+        return {
+          score: naturalAvailableFrom,
+          commit: () => {
+            block.items[block.items.length - 1] = { ...last, arrivalMinutes: lastCanonicalArrival }
+            block.items.push(place(candidate))
+          },
+        }
+      }
+
+      // Margin only ever applies to guarantee a fit, and never shrinks a cycle
+      // past zero — a margin larger than the trip's own registered duration is
+      // clamped, not honored literally.
+      const margin       = Math.min(marginByDirection[last.candidate.direction] ?? 0, lastCanonicalDuration)
+      const shrinkNeeded  = naturalAvailableFrom - candidate.departureMinutes
+      if (margin <= 0 || shrinkNeeded > margin) return null
+
+      return {
+        score: candidate.departureMinutes,
+        commit: () => {
+          block.items[block.items.length - 1] = { ...last, arrivalMinutes: lastCanonicalArrival - shrinkNeeded }
+          block.items.push(place(candidate))
+        },
+      }
+    }, place)
+
+    allBlocks.push(...packed)
+  }
+
+  const warnings: string[] = []
+  if (noWindowCount > 0) {
+    warnings.push(`${noWindowCount} viagem(ns) sem ciclo configurado para o horário de partida — duração original mantida`)
+  }
+
+  return { blocks: allBlocks, warnings }
 }
 
 /** Convenience: runs steps 1–3 in sequence. */

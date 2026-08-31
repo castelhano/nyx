@@ -33,7 +33,7 @@ function findConflicts(moving: GanttBlockTrip[], targetBlock: GanttBlock): Gantt
 
 export function MoveBlockModal({ blockTrips, currentBlockId, blocks, onConfirm, onClose }: Props) {
   const [targetBlockId, setTargetBlockId] = useState('')
-  useShortcutContext('modal')
+  useShortcutContext('move_block_md')
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {

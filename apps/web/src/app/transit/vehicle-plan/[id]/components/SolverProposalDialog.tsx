@@ -40,7 +40,7 @@ function fmtKm(val: number): string {
 }
 
 export function SolverProposalDialog({ baseline, proposal, proposalCount, isPending, canDiscard, onClose, onAssume, onDiscard }: Props) {
-  useShortcutContext('modal')
+  useShortcutContext('solver_proposal_md')
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {

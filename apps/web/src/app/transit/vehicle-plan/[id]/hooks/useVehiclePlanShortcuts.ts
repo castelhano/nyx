@@ -65,6 +65,7 @@ interface UseVehiclePlanShortcutsParams {
   setLinesPanelOpen:    Dispatch<SetStateAction<boolean>>
   summaryLineIds:       string[] | null
   setSummaryLineIds:    Dispatch<SetStateAction<string[] | null>>
+  setRedistributeModal: Dispatch<SetStateAction<{ lineId: string } | null>>
 
   clearAllPending:            () => void
   handleSavePendingWithConfirm:    () => void
@@ -88,7 +89,7 @@ export function useVehiclePlanShortcuts({
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
   pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
-  summaryLineIds, setSummaryLineIds,
+  summaryLineIds, setSummaryLineIds, setRedistributeModal,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
   handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -170,6 +171,14 @@ export function useVehiclePlanShortcuts({
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit,
+    section: SEC_EDICAO,
+  })
+
+  useShortcut('q+w+r', () => setRedistributeModal({ lineId: [...selectedLineIds][0] }), {
+    desc:    'Redistribuir viagens',
+    icon:    Icons.Shuffle,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && canEdit && selectedLineIds.size === 1,
     section: SEC_EDICAO,
   })
 

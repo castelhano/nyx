@@ -21,7 +21,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const core = getKeywatchCore()
     if (!core || !pending) return
-    core.setContext('modal', 'Modal de confirmação')
+    core.setContext('confirm_md', 'Modal de confirmação')
     return () => { core.setContext() }
   }, [pending])
 

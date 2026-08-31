@@ -31,6 +31,7 @@ import { AddIntervalModal }      from './components/AddIntervalModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
+import { RedistributeModal }          from './components/RedistributeModal'
 import { LineSummaryView }            from './components/LineSummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
@@ -114,6 +115,7 @@ export default function VehiclePlanPage() {
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [generateLineModal, setGenerateLineModal] = useState<{ lineId: string } | null>(null)
+  const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
 
   // ── side frequency panel — read-only mirror of the focused trip in the
@@ -131,7 +133,7 @@ export default function VehiclePlanPage() {
     mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
     pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
-    summaryLineIds, setSummaryLineIds,
+    summaryLineIds, setSummaryLineIds, setRedistributeModal,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -210,6 +212,12 @@ export default function VehiclePlanPage() {
               icon:     Icons.Timer,
               onClick:  handleAdjustCycle,
               disabled: isPending,
+            },
+            {
+              label:    'Redistribuir',
+              icon:     Icons.Shuffle,
+              onClick:  () => setRedistributeModal({ lineId: [...selectedLineIds][0] }),
+              disabled: isPending || selectedLineIds.size !== 1,
             },
             {
               label:    'Finalizar Plano',
@@ -625,6 +633,25 @@ export default function VehiclePlanPage() {
             onPendingDeleteTrips={(tripIds) => setPendingDeletes(prev => new Set([...prev, ...tripIds]))}
           />
         )}
+
+        {redistributeModal && (() => {
+          const line = ganttData?.plan?.lines?.find(l => l.lineId === redistributeModal.lineId)
+          if (!line) return null
+          return (
+            <RedistributeModal
+              lineId={redistributeModal.lineId}
+              lineCode={line.line.code}
+              lineName={line.line.name}
+              lineMetrics={line.line.metrics}
+              dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
+              blocks={ganttData?.blocks ?? []}
+              hasPendingChanges={pendingCount > 0}
+              onClose={() => setRedistributeModal(null)}
+              onPendingAdd={handlePendingAdd}
+              onQueueTripDeletes={queueTripDeletes}
+            />
+          )
+        })()}
       </div>
     </div>
   )

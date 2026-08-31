@@ -183,7 +183,7 @@ const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2
 
 export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, reference, onClose, onPendingAdd }: Props) {
   const { toast } = useToast()
-  useShortcutContext('modal')
+  useShortcutContext('add_trip_md')
 
   // Only honored if the reference trip's line is itself plotted — the line select
   // only lists plottedLines, so anything else can't be preselected.
@@ -583,7 +583,7 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
 
   useShortcut('alt+g', () => formRef.current?.requestSubmit(), {
     desc:    'Confirmar inclusão',
-    context: 'modal',
+    context: 'add_trip_md',
     icon:    Icons.Save,
     order:   4,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/components/AddTripModal.tsx',

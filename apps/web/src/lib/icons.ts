@@ -68,6 +68,7 @@ const iconNames = [
   'Settings2',
   'Shield',
   'ShoppingCart',
+  'Shuffle',
   'SlidersHorizontal',
   'Sparkles',
   'Square',

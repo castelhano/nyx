@@ -55,7 +55,7 @@ export function MapPickerModal({ initialLat, initialLng, onConfirm, onClose }: P
     hasInitial ? { lat: initialLat!, lng: initialLng! } : null,
   )
 
-  useShortcutContext('modal')
+  useShortcutContext('map_picker_md')
   useEffect(() => { inputRef.current?.focus() }, [])
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export function MapPickerModal({ initialLat, initialLng, onConfirm, onClose }: P
   useShortcut('alt+g', handleConfirm, {
     desc:    'Confirmar coordenadas',
     icon:    Icons.Save,
-    context: 'modal',
+    context: 'map_picker_md',
     origin:  'apps/web/src/core/MapPickerModal.tsx',
     enabled: !!picked,
   })

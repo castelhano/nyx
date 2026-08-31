@@ -21,7 +21,7 @@ interface Props {
 
 export function AccessModal({ title, onConfirm, onClose }: Props) {
   const [depotId, setDepotId] = useState('')
-  useShortcutContext('modal')
+  useShortcutContext('access_md')
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {

@@ -73,7 +73,7 @@ export function SwitchLineScheduleModal({
   planId, dayTypeId, dayTypeCode, dayTypeName, lines, blocks, hasPendingChanges, onClose, onApplied,
   onPendingAdd, onQueueTripDeletes, onScheduleSwitchStaged,
 }: Props) {
-  useShortcutContext('modal')
+  useShortcutContext('switch_schedule_md')
   const { toast }   = useToast()
   const confirm     = useConfirm()
   const queryClient = useQueryClient()

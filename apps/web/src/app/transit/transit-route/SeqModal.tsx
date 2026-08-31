@@ -50,7 +50,7 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
   })
   const [saving,  setSaving]  = useState(false)
 
-  useShortcutContext('modal')
+  useShortcutContext('seq_md')
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

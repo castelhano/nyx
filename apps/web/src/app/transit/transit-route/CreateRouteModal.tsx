@@ -58,7 +58,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
     if (color === autoColor) setColor(null)
   }, [autoColor]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useShortcutContext('modal')
+  useShortcutContext('create_route_md')
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -95,7 +95,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   useShortcut('alt+g', submit, {
     desc:    'Gravar',
     icon:    Icons.Save,
-    context: 'modal',
+    context: 'create_route_md',
     origin:  'apps/web/src/app/transit/transit-route/CreateRouteModal.tsx',
     enabled: !isPending,
   })

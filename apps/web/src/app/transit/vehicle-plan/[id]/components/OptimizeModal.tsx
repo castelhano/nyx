@@ -29,7 +29,7 @@ interface Props {
 
 export function OptimizeModal({ hasCustomMetrics, onConfirm, onClearMetrics, onClose }: Props) {
   const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS)
-  useShortcutContext('modal')
+  useShortcutContext('optimize_md')
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
