@@ -16,6 +16,7 @@ import { InlineDescription } from './components/InlineDescription'
 import { useGanttEditor } from './hooks/useGanttEditor'
 import { useSolverController } from './hooks/useSolverController'
 import { useVehiclePlanShortcuts } from './hooks/useVehiclePlanShortcuts'
+import { useOsoCoverage } from './hooks/useOsoCoverage'
 import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
@@ -32,6 +33,7 @@ import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
 import { RedistributeModal }          from './components/RedistributeModal'
+import { OsoCoverageModal }           from './components/OsoCoverageModal'
 import { LineSummaryView }            from './components/LineSummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
@@ -117,6 +119,7 @@ export default function VehiclePlanPage() {
   const [generateLineModal, setGenerateLineModal] = useState<{ lineId: string } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
+  const [osoCoverageModal,  setOsoCoverageModal]   = useState<{ lineId: string } | null>(null)
 
   // ── side frequency panel — read-only mirror of the focused trip in the
   // Gantt (see LineFreqPanel.tsx), no focus/selection of its own
@@ -138,6 +141,12 @@ export default function VehiclePlanPage() {
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
   })
+
+  // ── OSO drift — per-trip/per-line comparison, gated to isDrifted lines only
+  // (see useOsoCoverage) ─────────────────────────────────────────────────────────
+
+  const { offScheduleTripIds, coverageByLine, isLoading: osoCoverageLoading } = useOsoCoverage(mergedPlottedData)
+  const boardData = mergedPlottedData ? { ...mergedPlottedData, offScheduleTripIds } : null
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -541,7 +550,7 @@ export default function VehiclePlanPage() {
                   mergedPlottedData.blocks.length > 0 ? (
                     <GanttBoard
                       ref={ganttBoardRef}
-                      data={mergedPlottedData}
+                      data={boardData!}
                       onViewportChange={setGanttVp}
                       selection={editBarOpen ? selection : null}
                       onSelectionChange={handleSelectionChange}
@@ -613,8 +622,24 @@ export default function VehiclePlanPage() {
               setEditBarOpen(true)
               setSummaryLineIds([lineId])
             }}
+            onInspectDrift={(lineId) => setOsoCoverageModal({ lineId })}
           />
         )}
+
+        {osoCoverageModal && (() => {
+          const line = ganttData?.plan?.lines?.find(l => l.lineId === osoCoverageModal.lineId)
+          return (
+            <OsoCoverageModal
+              lineId={osoCoverageModal.lineId}
+              lineCode={line?.line.code ?? ''}
+              lineName={line?.line.name ?? ''}
+              coverage={coverageByLine.get(osoCoverageModal.lineId)}
+              isLoading={osoCoverageLoading}
+              blocks={mergedPlottedData?.blocks ?? []}
+              onClose={() => setOsoCoverageModal(null)}
+            />
+          )
+        })()}
 
         {generateLineModal && (
           <LineScheduleGeneratorModal

@@ -31,9 +31,10 @@ interface Props {
   onLineCleared?:    () => void
   canClear?:         boolean
   onOpenComparison?: (lineId: string) => void
+  onInspectDrift?:   (lineId: string) => void
 }
 
-export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChange, onClose, onLineCleared, canClear, onOpenComparison }: Props) {
+export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChange, onClose, onLineCleared, canClear, onOpenComparison, onInspectDrift }: Props) {
   const [search,   setSearch]   = useState('')
   const [groupId,  setGroupId]  = useState('')
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -268,7 +269,16 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
                   onChange={() => toggleLine(lineId)}
                   className="w-3.5 h-3.5 accent-primary shrink-0"
                 />
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} title={dotTitle} />
+                {isDrifted && onInspectDrift ? (
+                  <button
+                    type="button"
+                    onClick={e => { e.preventDefault(); onInspectDrift(lineId) }}
+                    title={`${dotTitle} — clique para ver divergências`}
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass} ring-2 ring-transparent hover:ring-amber-500/40`}
+                  />
+                ) : (
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} title={dotTitle} />
+                )}
                 <span className="text-xs font-mono font-medium">{line.code}</span>
                 <span className="text-xs text-muted-foreground truncate flex-1">{line.name}</span>
               </label>

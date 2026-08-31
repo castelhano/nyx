@@ -17,6 +17,7 @@ export interface LayoutSegment {
   endMinute:   number
   kind:        SegmentKind
   locked?:     boolean
+  offSchedule?: boolean
   label:       string
   color:       string
   data:        unknown

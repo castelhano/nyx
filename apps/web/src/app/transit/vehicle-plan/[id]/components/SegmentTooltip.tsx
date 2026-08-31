@@ -104,6 +104,11 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway 
               </span>
               {' '}{trip!.route.originLocality.name} → {trip!.route.destinationLocality.name}
             </p>
+            {segment.offSchedule && (
+              <p className="text-xs mt-0.5 text-red-400 font-medium">
+                partida não localizada na OSO
+              </p>
+            )}
           </>
         )}
         <p className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">

@@ -449,7 +449,7 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
         virtual.blockTrips.push({
           id: tempId, sequence: 0,
           trip: {
-            id: `${tempId}:trip`, departureMinutes: curDep, arrivalMinutes: curArr, constraints: null,
+            id: `${tempId}:trip`, routeId: curRoute.id, departureMinutes: curDep, arrivalMinutes: curArr, constraints: null,
             route: { direction: curRoute.direction, line: { id: lineId, code: lineCode, name: lineName, metrics: lineMetrics }, originLocality, destinationLocality },
           },
         })

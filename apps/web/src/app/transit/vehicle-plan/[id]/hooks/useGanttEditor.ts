@@ -160,6 +160,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
             sequence: 99,
             trip: {
               id:               `${a._tempId}:trip`,
+              routeId:          a.routeId,
               departureMinutes: a.departureMinutes,
               arrivalMinutes:   a.arrivalMinutes,
               constraints:      null,
@@ -249,6 +250,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
           sequence: 0,
           trip: {
             id:               `${a._tempId}:trip`,
+            routeId:          a.routeId,
             departureMinutes: a.departureMinutes,
             arrivalMinutes:   a.arrivalMinutes,
             constraints:      null,

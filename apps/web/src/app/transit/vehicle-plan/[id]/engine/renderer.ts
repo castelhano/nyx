@@ -10,6 +10,9 @@ const SELECTION_RING_WIDTH   = 2.5
 const LOCK_DOT_RADIUS        = 3
 const LOCK_DOT_COLOR         = '#0f172a'
 const LOCK_DOT_MIN_WIDTH     = 12  // skip dot below this segment width
+const DRIFT_DOT_RADIUS       = 3
+const DRIFT_DOT_COLOR        = '#dc2626'  // red-600 — distinct from lock's slate, bottom-left corner
+const DRIFT_DOT_MIN_WIDTH    = 12
 const MOVE_TARGET_COLOR      = '#3b82f6'
 const MOVE_TARGET_FILL       = 'rgba(59, 130, 246, 0.08)'
 const MOVE_TARGET_WIDTH      = 2
@@ -154,6 +157,7 @@ export class Renderer {
     // collect selected rects for the ring pass and locked positions for the dot pass
     const rings: Array<{ x: number; y: number; w: number; h: number; radius: number }> = []
     const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
+    const driftDots: Array<{ cx: number; cy: number; dimmed: boolean }> = []
     let focusRect: { x: number; y: number; w: number; h: number; radius: number } | null = null
 
     for (const seg of segments) {
@@ -248,6 +252,14 @@ export class Renderer {
           dimmed,
         })
       }
+
+      if (seg.offSchedule && seg.kind === 'trip' && w > DRIFT_DOT_MIN_WIDTH) {
+        driftDots.push({
+          cx:     x + DRIFT_DOT_RADIUS + 3,
+          cy:     y + h - DRIFT_DOT_RADIUS - 3,
+          dimmed,
+        })
+      }
     }
 
     // ring pass: draw selection outline on top of everything
@@ -277,6 +289,18 @@ export class Renderer {
         ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
         ctx.beginPath()
         ctx.arc(cx, cy, LOCK_DOT_RADIUS, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    // dot pass: OSO-drift indicator (bottom-left, red — never the same corner as lock)
+    if (driftDots.length > 0) {
+      ctx.fillStyle = DRIFT_DOT_COLOR
+      for (const { cx, cy, dimmed } of driftDots) {
+        ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
+        ctx.beginPath()
+        ctx.arc(cx, cy, DRIFT_DOT_RADIUS, 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.globalAlpha = 1

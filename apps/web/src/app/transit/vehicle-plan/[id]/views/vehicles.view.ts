@@ -78,6 +78,7 @@ export interface GanttBlockTrip {
   sequence: number
   trip: {
     id:               string
+    routeId:          string
     departureMinutes: number
     arrivalMinutes:   number
     constraints:      TripConstraints | null
@@ -166,6 +167,10 @@ export interface VehiclePlanGanttData {
     }>
   }
   blocks: GanttBlock[]
+  // Trip ids whose {routeId, departureMinutes} don't match any LineDeparture of
+  // their line's pinned OSO — only populated for lines currently isDrifted (see
+  // useOsoCoverage). Optional: absent while the coverage fetch hasn't resolved yet.
+  offScheduleTripIds?: Set<string>
 }
 
 // ── color palette ─────────────────────────────────────────────────────────────
@@ -229,6 +234,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         endMinute:   bt.trip.arrivalMinutes,
         kind:        'trip',
         locked:      (c?.locked?.length ?? 0) > 0,
+        offSchedule: data.offScheduleTripIds?.has(bt.trip.id) ?? false,
         label:       bt.trip.route.line.code,
         color:       segColor,
         data:        bt,

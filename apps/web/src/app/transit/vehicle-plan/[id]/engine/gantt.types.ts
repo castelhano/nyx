@@ -27,6 +27,10 @@ export interface GanttSegment {
   endMinute:   number
   kind:        SegmentKind
   locked?:     boolean
+  // Trip's {routeId, departureMinutes} doesn't match any LineDeparture of its
+  // line's pinned OSO — only ever set for a line currently flagged isDrifted
+  // (see vehiclesView.getSegments / useOsoCoverage).
+  offSchedule?: boolean
   label:       string
   color:       string
   data:        unknown
