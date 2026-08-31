@@ -7,6 +7,7 @@
 ---
 # Outros
 ## Alto
+[ ] Implementar / refinar logica para viagens reservadas, e variações de viagens, observações, etc
 ## Medio
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações)
 [ ] Adição de ponto / waypoint no cadastro da rota, permitir remover um ponto ainda nao persistido (pending), e alt+l deve descartar pendencias
