@@ -201,10 +201,16 @@ Implicações de infra:
 8. **Carro que atende mais de uma linha da família** — a OSO de cada linha lista só os trechos
    que pertencem a ela; viagens de aproveitamento de outra linha do mesmo bloco não aparecem.
 
-9. **Extensão Ociosa (km)** — v1 calcula como soma de todos os acessos e recolhidas (km) do
-   plano, gerando uma média única (em vez de dado manual). Sabidamente impreciso em linhas com
-   carros de recolhida muito variável — aceito como ponto de partida, revisar se surgir uma forma
-   mais precisa de atribuir km ocioso por linha.
+9. **Extensão Ociosa (km)** — média por carro da própria família da linha (não do plano
+   inteiro), **modelada**, não medida a partir do `BlockDeadrun` real do bloco: para cada carro,
+   acesso = garagem → origem do sentido da sua **primeira** viagem dentro do recorte, recolhida =
+   destino do sentido da sua **última** viagem dentro do recorte → garagem, usando a rota
+   canônica de cada sentido (`TransitRoute.originLocalityId`/`destinationLocalityId`) e o
+   `VehicleBlock.depotId` real do carro. Deliberadamente ignora o `BlockDeadrun` de verdade
+   porque ele é ancorado ao primeiro/último evento do bloco no **dia inteiro** (regra 8) — num
+   bloco de aproveitamento isso pode ser de outra linha, então não representa o recorte desta
+   OSO. Validado contra conta manual real (linha 250): 27,66 km somados em 2 carros = 13,83 km
+   de média, batendo com o pipeline.
 
 10. **"Tempo de Viagem (minutos)"** — no máximo 6 valores. Um valor por padrão de rota distinto
     (par origem+destino+sentido realmente operado pela linha/família), usando a duração mais

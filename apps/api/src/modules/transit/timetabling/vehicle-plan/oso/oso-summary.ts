@@ -3,8 +3,8 @@ import type { OsoAssembled, OsoDirection } from './oso-assembler'
 
 // Layer 4 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — recomputes in
 // TS the RESUMO aggregates the legacy spreadsheet did with Excel formulas (COUNT, MAX-MIN,
-// SUMIF...). Takes the assembler's per-family view model plus a couple of plan-wide lookups
-// (extension km, deadhead km) that live outside a single family's scope.
+// SUMIF...). Takes the assembler's per-family view model plus a couple of extra lookups
+// (TransitLine.metrics, TravelTimeMatrix, VehicleBlock.depotId) needed for extension km.
 
 export interface OsoOperatorSummary {
   operatorLabel:    string
@@ -14,7 +14,7 @@ export interface OsoOperatorSummary {
   trips:            number
   fleet:            number // distinct carros for this operator
   operatingMinutes: number // sum, per carro, of (last trip arrival - first trip departure)
-  km:               number // revenue km (per-trip extensionKm by direction) + deadhead km (fleet x plan average)
+  km:               number // revenue km (per-trip extensionKm by direction) + deadhead km (fleet x line's own average)
 }
 
 export interface OsoSummary {
@@ -27,7 +27,10 @@ export interface OsoSummary {
   // TransitLine.metrics.extensionKm of the family's root line, as-is (no field new needed —
   // see "What already exists" in the plan doc)
   extensionUtilKm: Partial<Record<OsoDirection, number>>
-  // rule 9 — plan-wide average, not per line (accepted imprecision, see the plan doc)
+  // rule 9 — average deadhead km per carro of THIS line's family, modeled from each carro's
+  // own depot and the canonical terminal of whichever direction it starts/ends on within the
+  // recorte — not a sum of the family's actual BlockDeadrun rows (rule 8: those are anchored
+  // to the block's whole day, which may belong to another line on an aproveitamento block)
   extensionOciosaKm: number
 }
 
@@ -44,18 +47,51 @@ function mode(values: number[]): number {
   return best
 }
 
-async function computeExtensionOciosaKm(prisma: PrismaService, vehiclePlanId: string): Promise<number> {
+// rule 9 — modeled, not measured: for each carro, the ACCESS leg is depot -> origin of
+// whichever direction the carro's FIRST trip within the recorte runs, and the RETURN leg is
+// destination of whichever direction its LAST trip runs -> depot. Averaged over the family's
+// carros. Deliberately ignores the block's actual BlockDeadrun rows, which are anchored to
+// the block's whole-day first/last trip (possibly a different line on an aproveitamento
+// block) rather than to this line's own recorte.
+async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAssembled): Promise<number> {
   const db = prisma as any
+  if (assembled.carros.length === 0) return 0
 
-  const deadruns = await db.blockDeadrun.findMany({
-    where:  { type: { in: ['ACCESS', 'RETURN'] }, vehicleBlock: { vehiclePlanId } },
-    select: { vehicleBlockId: true, originLocalityId: true, destinationLocalityId: true },
-  })
-  if (deadruns.length === 0) return 0
+  const [routes, blocks] = await Promise.all([
+    db.transitRoute.findMany({
+      where:  { lineId: { in: assembled.family.map(l => l.id) } },
+      select: { direction: true, originLocalityId: true, destinationLocalityId: true },
+    }),
+    db.vehicleBlock.findMany({
+      where:  { id: { in: assembled.carros.map(c => c.blockId) } },
+      select: { id: true, depotId: true },
+    }),
+  ])
+  // one representative route per direction — good enough for a modeled average, this isn't
+  // trying to match the exact route variant each trip used
+  const routeByDirection = new Map<OsoDirection, { originLocalityId: string; destinationLocalityId: string }>()
+  for (const r of routes) if (!routeByDirection.has(r.direction)) routeByDirection.set(r.direction, r)
+  const depotByBlock = new Map<string, string>(blocks.map((b: any) => [b.id, b.depotId]))
+
+  const legs: { depotId: string; accessOriginId: string; returnDestId: string }[] = []
+  for (const carro of assembled.carros) {
+    const tripEvents = carro.events.filter(e => e.kind === 'trip')
+    const depotId = depotByBlock.get(carro.blockId)
+    if (tripEvents.length === 0 || !depotId) continue
+
+    const accessRoute = routeByDirection.get(tripEvents[0].direction)
+    const returnRoute  = routeByDirection.get(tripEvents[tripEvents.length - 1].direction)
+    if (!accessRoute || !returnRoute) continue
+
+    legs.push({ depotId, accessOriginId: accessRoute.originLocalityId, returnDestId: returnRoute.destinationLocalityId })
+  }
+  if (legs.length === 0) return 0
 
   const pairs = new Set<string>()
-  for (const d of deadruns) pairs.add(`${d.originLocalityId}:${d.destinationLocalityId}`)
-
+  for (const l of legs) {
+    pairs.add(`${l.depotId}:${l.accessOriginId}`)
+    pairs.add(`${l.returnDestId}:${l.depotId}`)
+  }
   const matrix = await db.travelTimeMatrix.findMany({
     where:  { OR: [...pairs].map(p => { const [originId, destinationId] = p.split(':'); return { originId, destinationId } }) },
     select: { originId: true, destinationId: true, distanceKm: true },
@@ -63,13 +99,11 @@ async function computeExtensionOciosaKm(prisma: PrismaService, vehiclePlanId: st
   const kmByPair = new Map<string, number>(matrix.map((m: any) => [`${m.originId}:${m.destinationId}`, m.distanceKm]))
 
   let totalKm = 0
-  const blocksWithDeadrun = new Set<string>()
-  for (const d of deadruns) {
-    totalKm += kmByPair.get(`${d.originLocalityId}:${d.destinationLocalityId}`) ?? 0
-    blocksWithDeadrun.add(d.vehicleBlockId)
+  for (const l of legs) {
+    totalKm += kmByPair.get(`${l.depotId}:${l.accessOriginId}`) ?? 0
+    totalKm += kmByPair.get(`${l.returnDestId}:${l.depotId}`) ?? 0
   }
-
-  return blocksWithDeadrun.size > 0 ? totalKm / blocksWithDeadrun.size : 0
+  return totalKm / legs.length
 }
 
 export async function computeOsoSummary(
@@ -80,7 +114,7 @@ export async function computeOsoSummary(
 
   const [rootLine, extensionOciosaKm] = await Promise.all([
     db.transitLine.findUnique({ where: { id: assembled.family[0].id }, select: { metrics: true } }),
-    computeExtensionOciosaKm(prisma, assembled.vehiclePlanId),
+    computeExtensionOciosaKm(prisma, assembled),
   ])
   const extensionUtilKm = (rootLine?.metrics as any)?.extensionKm ?? {}
 
