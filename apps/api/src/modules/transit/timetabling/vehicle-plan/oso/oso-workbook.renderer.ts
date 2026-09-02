@@ -215,6 +215,11 @@ function buildCarroRows(
 
   let cur: Slot[] = new Array(G).fill(null)
   let pending = false
+  // last productive trip's arrival — when RECO/INTERV closes a row with no pending ida (the
+  // carro's day just ends), the reference sheet still shows a time next to the label rather
+  // than leaving that side of the row blank; simplest anchor per the real example: the end of
+  // the last trip, not the deadrun's own (unshown) departure
+  let lastArrival: number | null = null
 
   const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false }
 
@@ -223,12 +228,15 @@ function buildCarroRows(
       if (pending) flush()
       firstCols.forEach((col, i) => { cur[i] = columnValue(col, e, minutesBeforeDestination) })
       pending = true
+      lastArrival = e.arrivalMinutes
     } else if (e.kind === 'trip' && e.direction === secondDir) {
       secondCols.forEach((col, i) => { cur[firstCols.length + i] = columnValue(col, e, minutesBeforeDestination) })
+      lastArrival = e.arrivalMinutes
       flush()
     } else if (e.kind === 'deadrun' || e.kind === 'interval') {
       const label = e.kind === 'deadrun' ? 'RECO' : 'INTERV'
-      cur[pending ? firstCols.length : 0] = label
+      if (!pending && lastArrival !== null) cur[firstCols.length - 1] = lastArrival
+      cur[firstCols.length] = label
       flush()
     }
   }
@@ -269,7 +277,7 @@ async function renderOsoSheet(
   // --- header (rows 1-6, fixed regardless of carro count) ---
   setCell(ws, 'A1', 'ORDEM DE SERVIÇO OPERACIONAL DE TRANSPORTE COLETIVO MUNICIPAL',
     { font: baseFont({ bold: true, size: 11 }), align: { horizontal: 'left' }, border: { left: MEDIUM, top: MEDIUM } })
-  const operatorNames = [...new Set(assembled.carros.map(c => c.operatorLabel).filter((v): v is string => Boolean(v)))]
+  const operatorNames = [...new Set(assembled.carros.map(c => c.operatorFullName ?? c.operatorLabel).filter((v): v is string => Boolean(v)))]
   setCell(ws, 'A2', {
     richText: [
       { font: baseFont(), text: 'Operadora: ' },
@@ -301,6 +309,21 @@ async function renderOsoSheet(
     }
   }
 
+  // a full row of borders across the band's whole fixed width (not just the columns a real
+  // carro uses) — the legacy sheet closes the whole 20-column page into one rectangle
+  // regardless of how many carro slots are actually populated (confirmed against the real
+  // "250" sheet/PDF: unused slots still show a bordered, blank grid, not a ragged edge where
+  // the last real carro ends)
+  function frameRow(row: number, top: Partial<ExcelJS.Border>, bottom: Partial<ExcelJS.Border>) {
+    for (let c = FIRST_DATA_COL; c <= LAST_DATA_COL; c++) {
+      ws.getCell(addr(c, row)).border = {
+        top, bottom,
+        left:  c === FIRST_DATA_COL ? MEDIUM : THIN,
+        right: c === LAST_DATA_COL ? MEDIUM : THIN,
+      }
+    }
+  }
+
   // --- bands: each is its own 23-row block (20 trip rows + E/V/H), stacked vertically ---
   for (let bandIdx = 0; bandIdx < bands.length; bandIdx++) {
     const band = bands[bandIdx]
@@ -308,6 +331,13 @@ async function renderOsoSheet(
     const eRow = gridStart + GRID_ROWS
     const vRow = eRow + 1
     const hRow = eRow + 2
+
+    frameRow(gridStart - 2, MEDIUM, MEDIUM)
+    frameRow(gridStart - 1, MEDIUM, MEDIUM)
+    for (let i = 0; i < GRID_ROWS; i++) frameRow(gridStart + i, i === 0 ? MEDIUM : THIN, i === GRID_ROWS - 1 ? MEDIUM : THIN)
+    frameRow(eRow, THIN, THIN)
+    frameRow(vRow, THIN, THIN)
+    frameRow(hRow, THIN, MEDIUM)
 
     for (let i = 0; i < GRID_ROWS; i++) {
       setCell(ws, addr(1, gridStart + i), i + 1, {
@@ -367,12 +397,6 @@ async function renderOsoSheet(
       setCell(ws, addr(col, hRow), duration(operatingMinutes), { font: baseFont({ bold: true }), numFmt: '[h]:mm', border: { top: THIN, bottom: MEDIUM }, merge: rangeAddr(col, hRow, col + width - 1, hRow) })
 
       col += width
-    }
-    // unused carro slots to the right of the last one still get the outer box border, matching
-    // the legacy template's fixed-width page even when fewer than the max carros are used
-    if (col <= LAST_DATA_COL) {
-      const border = { top: MEDIUM, bottom: MEDIUM, left: MEDIUM, right: MEDIUM }
-      ws.getCell(rangeAddr(col, gridStart, LAST_DATA_COL, hRow).split(':')[0]).border = border
     }
   }
 

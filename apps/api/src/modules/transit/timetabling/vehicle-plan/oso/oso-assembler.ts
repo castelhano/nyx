@@ -43,7 +43,10 @@ export interface OsoCarro {
   blockNumber:   number
   // ScopeOperator.abbr for this block's branch within the plan's scope (fallback:
   // Branch.name) — printed as the "E" row. null when the block has no branch assigned.
-  operatorLabel: string | null
+  operatorLabel:    string | null
+  // Branch.name, unabbreviated — printed once in the header's "Operadora:" line, distinct
+  // from the abbreviated operatorLabel used throughout the grid/RESUMO
+  operatorFullName: string | null
   // chronological, filtered to events belonging to the line family (rule 6/8) — a
   // RETURN deadrun or interval only appears here when it's anchored (see
   // block-deadrun.utils.ts / block-interval.utils.ts) to one of this family's trips
@@ -189,7 +192,8 @@ export async function assembleOso(
     carros.push({
       blockId:       block.id,
       blockNumber:   block.blockNumber,
-      operatorLabel: branchId ? (abbrByBranch.get(branchId) ?? nameByBranch.get(branchId) ?? null) : null,
+      operatorLabel:    branchId ? (abbrByBranch.get(branchId) ?? nameByBranch.get(branchId) ?? null) : null,
+      operatorFullName: branchId ? (nameByBranch.get(branchId) ?? null) : null,
       events,
     })
   }
