@@ -194,9 +194,11 @@ model RouteLocality {
   // Stored opaquely — z.unknown() in RouteLocality's schema, never introspected server-side.
   geometry         Json?
   allowsCrewChange Boolean          @default(false)
-  // marks this stop as a reference point that must appear as its own column in the OSO
-  // export — cycle endpoints always appear regardless, this only matters for intermediate
-  // stops (see docs/proposal/plan_oso_export_v1.md)
+  // marks this stop as a reference point that gets its own column in the OSO export. The
+  // unconditional baseline is one departure column per direction the carro runs (two for a
+  // round trip, one for CIRCULAR) — every other column, arrival endpoints included (e.g.
+  // CHEGADA = the inbound route's own destination), only shows up when flagged true here
+  // (see docs/proposal/plan_oso_export_v1.md)
   includeInOso     Boolean          @default(false)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt

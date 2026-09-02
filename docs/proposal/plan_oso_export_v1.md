@@ -154,15 +154,24 @@ Implicações de infra:
 
 ## Regras de negócio definidas
 
-1. **CHEGADA** (shape com 3 colunas) é o `arrivalMinutes` da perna de volta do mesmo ciclo (par
-   ida+volta do mesmo carro). Waypoints da rota (`RouteLocality` com `localityId` null) não
-   interferem na rotulagem de coluna, só na geometria/tempo de perna.
+1. **Shape base = uma coluna de partida por sentido, sempre presente**: 1 coluna (CIRCULAR) ou 2
+   (dep-ida, dep-volta) — incondicional, não depende de nada cadastrado. Cada
+   `RouteLocality.includeInOso = true` na(s) rota(s) que o carro executa soma **mais uma coluna**,
+   sem distinção entre ponto intermediário de verdade e a própria chegada final do ciclo — CHEGADA
+   é só o caso de `includeInOso` marcado no destino da rota de volta, não é um tratamento especial
+   à parte. Confirmado com os casos reais: A07 (sem `includeInOso`) = 2 colunas; 311
+   (`includeInOso` no destino da volta) = 3 colunas, com CHEGADA sendo sempre a chegada da volta,
+   nunca da ida. Waypoints da rota (`RouteLocality` com `localityId` null) não interferem na
+   rotulagem de coluna, só na geometria/tempo de perna.
 
-2. **Horário de ponto intermediário (`includeInOso`) é derivado, nunca armazenado**: soma o delta
-   OSRM/matrix (`RouteLocality.deltaMinutes`, fallback `TravelTimeMatrix`) a partir do
-   `arrivalMinutes` real da viagem, andando pra trás até o ponto — evita drift entre o horário
-   agendado e a soma das pernas cadastradas. Sempre resulta num instante único; por isso `timing`
-   (DEPARTURE/ARRIVAL) só existe nas duas pontas do ciclo, nunca nos pontos do meio.
+2. **Horário de cada coluna extra**: quando o ponto marcado é o próprio destino da rota (a
+   chegada final do ciclo), é o `arrivalMinutes` real da viagem — direto, sem cálculo. Quando é um
+   ponto intermediário de verdade (nem origem nem destino da rota), o horário é derivado, nunca
+   armazenado: soma o delta OSRM/matrix (`RouteLocality.deltaMinutes`, fallback
+   `TravelTimeMatrix`) a partir do `arrivalMinutes` real da viagem, andando pra trás até o ponto —
+   evita drift entre o horário agendado e a soma das pernas cadastradas. Nesse caso sempre resulta
+   num instante único; por isso `timing` (DEPARTURE/ARRIVAL) só existe nas colunas de partida-base
+   e na própria chegada final, nunca nos pontos intermediários do meio.
 
 3. **Shape de colunas é resolvido por carro, não por linha.** Um carro herda o shape da(s) rota(s)
    que ele efetivamente executa naquele dia — caso real (`A22B`): o carro principal roda a rota

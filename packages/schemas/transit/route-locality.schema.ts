@@ -68,9 +68,11 @@ export const routeLocalitySchema = withMeta(
       keybind:        't',
     }),
 
-    // marks this stop as a reference point that must appear as its own column in the OSO
-    // export (docs/proposal/plan_oso_export_v1.md) — cycle endpoints always appear regardless
-    // of this flag, this only matters for intermediate stops
+    // marks this stop as a reference point that gets its own column in the OSO export
+    // (docs/proposal/plan_oso_export_v1.md). The unconditional baseline is one departure
+    // column per direction the carro runs (two for a round trip, one for CIRCULAR) — every
+    // other column, arrival endpoints included (e.g. CHEGADA = the inbound route's own
+    // destination), only shows up when flagged true here.
     includeInOso: z.boolean().default(false).meta({
       label:          'Referência na OSO',
       widget:         'switch',
