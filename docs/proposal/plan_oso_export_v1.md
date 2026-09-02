@@ -215,11 +215,20 @@ Implicações de infra:
 10. **"Tempo de Viagem (minutos)"** é o **ciclo completo** (ida + folga na ponta + volta +
     folga antes da próxima partida), não a duração de uma perna só — corrigido depois de dar
     37' numa linha com ciclo real de ~85'-92' (a perna sozinha, sem o ciclo inteiro). Calculado
-    como a diferença entre partidas consecutivas do mesmo sentido-âncora por carro (OUTBOUND
-    quando tem ≥2 viagens, senão INBOUND; CIRCULAR usa a própria duração da viagem, que já é o
-    ciclo completo). No máximo 6 valores, um por padrão de rota distinto (o sentido-âncora
-    realmente usado), moda das durações daquele padrão, mantendo os 6 de maior volume de
-    ciclos — e **deduplicado**: dois padrões que caem na mesma duração só aparecem uma vez.
+    por carro: cada ida pareia com a viagem seguinte (qualquer sentido — um carro com um único
+    round-trip no recorte já contribui uma amostra), estendendo até a partida da próxima viagem
+    do mesmo carro quando existir (só o último ciclo do dia do carro cai pra chegada da volta,
+    por não ter próxima partida pra medir). CIRCULAR usa a própria duração da viagem, que já é o
+    ciclo completo. Amostras são agrupadas por padrão de rota (a rota da ida usada) e então
+    **clusterizadas por proximidade** dentro de cada padrão — uma linha pode genuinamente rodar
+    mais de um tempo de ciclo real (pico vs. fora-pico), e o RESUMO mostra os vários valores, não
+    um só. Clusterização é por densidade/semente (não encadeada): a cada rodada, semeia no valor
+    mais frequente do que resta, absorve só o que está a até `CLUSTER_GAP_MINUTES` (4) dessa
+    semente e remove do conjunto — encadear pelo vizinho ordenado (single-linkage) mescla tudo
+    numa linha cujo ciclo deriva gradualmente ao longo do dia, engolindo picos reais.
+    Cluster com menos de `CLUSTER_MIN_TRIPS` (3) viagens é ruído e é descartado. No máximo 6
+    valores, mantendo os clusters de maior volume — e **deduplicado**: dois clusters que caem no
+    mesmo valor só aparecem uma vez.
 
 11. **Config de assinatura** fica no `Scope`, não em `Settings` — `Scope.logoUrl` +
     `Scope.osoConfig` (`organName`, `signatures[]`). Ver seção "Config do órgão gestor" acima.
