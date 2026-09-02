@@ -47,6 +47,31 @@ function mode(values: number[]): number {
   return best
 }
 
+const CLUSTER_GAP_MINUTES = 4
+const CLUSTER_MIN_TRIPS   = 3
+
+// density/seed clustering, not single-linkage chaining — a first version merged each value
+// into the cluster of its immediate sorted neighbor, which chains transitively: a line whose
+// cycle time drifts gradually through the day (84,84,84,84,88,92,92,96 - each step <=
+// CLUSTER_GAP_MINUTES from the last) collapsed into one giant cluster dominated by 84,
+// silently swallowing the real 92' peak even though it had enough samples on its own
+// (confirmed against line 250: the peak-hour 92' cycle, 7 samples across 2 carros, vanished
+// entirely). Seeding each cluster on the mode of what's left and absorbing only points within
+// the gap of THAT seed (not of the previous point) keeps 84 and 92 apart since 92 is farther
+// than CLUSTER_GAP_MINUTES from the 84 seed, even though the two are connected by intermediate
+// values once those are removed from the pool.
+function clusterDurations(durations: number[]): { value: number; count: number }[] {
+  const pool     = [...durations]
+  const clusters: { value: number; count: number }[] = []
+  while (pool.length > 0) {
+    const seed = mode(pool)
+    const near = pool.filter(v => Math.abs(v - seed) <= CLUSTER_GAP_MINUTES)
+    for (const v of near) pool.splice(pool.indexOf(v), 1)
+    if (near.length >= CLUSTER_MIN_TRIPS) clusters.push({ value: mode(near), count: near.length })
+  }
+  return clusters
+}
+
 // rule 9 — modeled, not measured: for each carro, the ACCESS leg is depot -> origin of
 // whichever direction the carro's FIRST trip within the recorte runs, and the RETURN leg is
 // destination of whichever direction its LAST trip runs -> depot. Averaged over the family's
@@ -156,15 +181,27 @@ export async function computeOsoSummary(
     { trips: 0, fleet: 0, operatingMinutes: 0, km: 0 },
   )
 
-  // rule 10 — cycle time, not one-way leg duration: outbound leg + layover at the far end +
-  // inbound leg + layover before the next departure, i.e. the gap between consecutive
-  // departures of the same anchor direction (per carro: OUTBOUND when it has >=2 trips, else
-  // INBOUND) — a single leg's own
-  // arrival-departure badly undercounts it (confirmed against a real case, line 250: 37'
-  // leg duration vs. ~85'-92' real cycle). CIRCULAR has no separate legs, so its own trip
-  // duration already is the full cycle. Grouped by pattern (the anchor route actually used),
-  // keeping the 6 patterns with the most cycles, then deduped — two patterns landing on the
-  // same duration only print once.
+  // rule 10 — cycle time: ida departure -> the departure of the carro's next trip after its
+  // volta (ida + folga + volta + folga antes da próxima partida). Two earlier attempts each
+  // got half of this wrong: measuring the gap to the carro's own *next same-direction* trip
+  // needs 2 trips in one direction from a single carro, so a carro doing exactly one round
+  // trip in a window contributed zero samples despite running one real cycle (confirmed: line
+  // 302 lost 4 of its real clusters this way); measuring ida-departure -> volta-arrival alone
+  // fixed that but dropped the trailing folga, undercounting every sample by however long that
+  // layover is (confirmed against line 250: 37' one-way leg, ~79' without the folga, ~85'-92'
+  // real cycle). This version pairs each ida with the very next trip (so a lone round trip
+  // still counts), then extends to the departure of whatever trip follows the volta when one
+  // exists in this carro — only the carro's last cycle of the day (nothing scheduled after)
+  // falls back to volta-arrival, since there's no next departure to measure against. CIRCULAR
+  // has no separate legs, so its own trip duration already is the full cycle.
+  //
+  // A pattern isn't one number — a line can genuinely run more than one cycle time (peak vs.
+  // off-peak, say), and the OSO is meant to show that (confirmed: a real RESUMO prints "84'
+  // 92' 80'" for a single-pattern line). So within each pattern, durations are clustered by
+  // proximity (gap <= CLUSTER_GAP_MINUTES — the kind of rounding noise a human curating this
+  // by hand would merge on sight) instead of collapsed to one mode; a cluster under
+  // CLUSTER_MIN_TRIPS is a stray outlier and is dropped, matching how the user does this by
+  // hand today.
   const byPattern = new Map<string, number[]>()
 
   for (const carro of assembled.carros) {
@@ -175,21 +212,31 @@ export async function computeOsoSummary(
       byPattern.get(e.routeId)!.push(e.arrivalMinutes - e.departureMinutes)
     }
 
-    const outbound = tripEvents.filter(e => e.direction === 'OUTBOUND')
-    const inbound  = tripEvents.filter(e => e.direction === 'INBOUND')
-    const anchor   = outbound.length >= 2 ? outbound : inbound.length >= 2 ? inbound : null
-    if (anchor) {
-      if (!byPattern.has(anchor[0].routeId)) byPattern.set(anchor[0].routeId, [])
-      const durations = byPattern.get(anchor[0].routeId)!
-      for (let i = 1; i < anchor.length; i++) durations.push(anchor[i].departureMinutes - anchor[i - 1].departureMinutes)
+    // one round trip per carro is enough to start (a lone-cycle carro still contributes),
+    // starting the pair only from whichever direction this carro's day begins on
+    const legs           = tripEvents.filter(e => e.direction !== 'CIRCULAR')
+    const anchorDirection = legs.find(e => e.direction === 'OUTBOUND') ? 'OUTBOUND' : 'INBOUND'
+
+    for (let i = 0; i < legs.length - 1; i++) {
+      const a = legs[i]
+      if (a.direction !== anchorDirection) continue
+      const b = legs[i + 1]
+      if (b.direction === anchorDirection) continue // two idas in a row, no volta between
+
+      const next     = legs[i + 2]
+      const cycleEnd = next ? next.departureMinutes : b.arrivalMinutes
+
+      if (!byPattern.has(a.routeId)) byPattern.set(a.routeId, [])
+      byPattern.get(a.routeId)!.push(cycleEnd - a.departureMinutes)
     }
   }
 
+  const clusters = [...byPattern.values()].flatMap(clusterDurations)
   const cycleTimesMinutes = [...new Set(
-    [...byPattern.values()]
-      .sort((a, b) => b.length - a.length)
+    clusters
+      .sort((a, b) => b.count - a.count)
       .slice(0, 6)
-      .map(durations => mode(durations)),
+      .map(c => c.value),
   )].sort((a, b) => a - b)
 
   return { operators, totals, cycleTimesMinutes, extensionUtilKm, extensionOciosaKm }
