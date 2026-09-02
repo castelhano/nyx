@@ -68,6 +68,17 @@ export const routeLocalitySchema = withMeta(
       keybind:        't',
     }),
 
+    // marks this stop as a reference point that must appear as its own column in the OSO
+    // export (docs/proposal/plan_oso_export_v1.md) — cycle endpoints always appear regardless
+    // of this flag, this only matters for intermediate stops
+    includeInOso: z.boolean().default(false).meta({
+      label:          'Referência na OSO',
+      widget:         'switch',
+      listVisibility: 'visible',
+      filter:         true,
+      keybind:        'o',
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

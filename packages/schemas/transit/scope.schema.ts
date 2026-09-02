@@ -19,6 +19,32 @@ export const scopeSchema = withMeta(
       listVisibility: 'never',
     }),
 
+    // grantor's logo for this scope, printed in the exported OSO's header
+    // (docs/proposal/plan_oso_export_v1.md) — kept out of osoConfig because AutoForm's
+    // File-to-URL swap on submit only scans the payload's root level, not Json fields
+    logoUrl: z.string().optional().meta({
+      label:          'Logo',
+      widget:         'avatar',
+      listVisibility: 'never',
+    }),
+
+    // grantor name and fixed signatures printed on the exported OSO — see
+    // docs/proposal/plan_oso_export_v1.md
+    osoConfig: z.object({
+      organName: z.string().optional().meta({ label: 'Nome do Órgão' }),
+      signatures: z.array(
+        z.object({
+          role: z.string().meta({ label: 'Cargo' }),
+          name: z.string().meta({ label: 'Nome' }),
+        }),
+      ).default([]).meta({ label: 'Assinaturas' }),
+    }).optional().meta({
+      label:          'Config. OSO',
+      widget:         'object-editor',
+      showInForm:     true,
+      listVisibility: 'never',
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

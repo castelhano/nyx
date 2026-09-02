@@ -194,6 +194,10 @@ model RouteLocality {
   // Stored opaquely — z.unknown() in RouteLocality's schema, never introspected server-side.
   geometry         Json?
   allowsCrewChange Boolean          @default(false)
+  // marks this stop as a reference point that must appear as its own column in the OSO
+  // export — cycle endpoints always appear regardless, this only matters for intermediate
+  // stops (see docs/proposal/plan_oso_export_v1.md)
+  includeInOso     Boolean          @default(false)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -442,6 +446,10 @@ model Scope {
   id          String   @id @default(uuid())
   name        String   @unique
   description String?
+  // grantor's logo, printed in the exported OSO's header
+  logoUrl     String?
+  // ScopeOsoConfig (packages/schemas/transit/scope.schema.ts) — { organName?, signatures: [{role, name}] }
+  osoConfig   Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

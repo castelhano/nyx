@@ -6,12 +6,14 @@ do `VehiclePlan`, em dois formatos: `.xlsx` (fiel ao layout hoje usado, com logo
 `.pdf` (uma linha, um grupo de linhas ou um scope inteiro, gerando um único arquivo com todas as
 linhas selecionadas).
 
-Referência real analisada (arquivo do usuário, fora do repo):
+Referência real analisada (arquivos do usuário, fora do repo):
 `/home/rafael/Documentos/Planejamento/Controles/Tabelas/Oficial/OSOs_U.xlsx` — 57 abas (uma por
 linha/família), inspecionadas via ExcelJS para extrair merges, fórmulas, `printArea` e posição da
-logo. 4 exemplos de layout impresso (PDF) foram conferidos: `A07` (simples), `206`/`206B`
-(múltiplos carros, duas bandas empilhadas), `309` (round-trip com ponto intermediário), `311`
-(ida/volta/chegada).
+logo. 5 exemplos de layout impresso (PDF) foram conferidos: `A07` (simples, 3 colunas por ciclo),
+`206`/`206B` (múltiplos carros, duas bandas empilhadas), `309` (round-trip com ponto
+intermediário), `311` (ida/volta/chegada), `A22B` (um carro denso com colunas dobradas + vários
+carros "reforço" de rota mais curta, 2 colunas) — este último foi o que revelou que o shape de
+colunas varia **por carro**, não por linha (ver "Regras de negócio", item 3).
 
 ---
 
@@ -21,185 +23,223 @@ logo. 4 exemplos de layout impresso (PDF) foram conferidos: `A07` (simples), `20
 |---|---|---|
 | `TransitLine.parentLineId` | `transit.prisma:80-131` | Já modela família de linhas (206B filha de 206) — candidato natural para agrupar sub-linhas no RESUMO da OSO |
 | `TransitLine.metrics.extensionKm` | `line.schema.ts:92-97` | Já guarda extensão por sentido (OUTBOUND/INBOUND/CIRCULAR) — mapeia direto pro "Extensão Útil (km)" do rodapé, não precisa de campo novo |
-| `TransitRoute` / `RouteLocality` | `transit.prisma:137-208` | Topologia da rota (paradas reais + waypoints, pernas com `deltaMinutes`/`deltaKm`) — é o dado que permite inferir se uma linha tem "ponto intermediário" (caso 309/311) |
+| `TransitRoute` (variantes por `ordinal`) | `transit.prisma:137-174` | Uma linha pode ter várias rotas por sentido (mesmo `lineId`+`direction`, disambiguadas por `ordinal`) — é a base do shape por carro: um carro "reforço" roda uma rota mais curta/diferente da rota principal, cada uma com sua própria topologia |
+| `RouteLocality` | `transit.prisma:179-208` | Sequência de paradas por rota (reais + waypoints), pernas com `deltaMinutes`/`deltaKm` — dado usado tanto pra montar o `includeInOso` quanto pra derivar o horário de ponto intermediário |
 | `VehicleBlock` / `BlockTrip` / `BlockDeadrun` / `BlockInterval` | `transit.prisma:505-597` | Dado bruto do plano — carros, viagens, recolhidas (RECO), intervalos (INTERV). Mesma estrutura que o Gantt (`useGanttEditor.ts`) já percorre |
 | `VehicleBlock.branchId` | `transit.prisma:508` | Operadora do carro — mapeia pra linha "E" de cada grupo de coluna na planilha legada |
-| `Settings` (model + padrão) | `core.prisma:156`, `transit-general-config.service.ts` | Padrão de singleton por `key`/`scope` já usado (`TransitGeneralConfigService`) — reaproveitável pra config fixa de assinatura/logo da OSO |
+| `Scope` | `transit.prisma:441-453` | Universo de linhas/operadores de um domínio de gestão — todo `VehiclePlan` pertence a exatamente um `Scope`, que na prática corresponde a um único órgão gestor — base natural pra config de assinatura/logo da OSO |
+| `Employee.photoUrl` (widget `avatar`) | `employee.schema.ts:78-82`, `employee.service.ts:25-37` | Padrão já testado de upload de imagem (`File` → URL via `/upload/image`) com limpeza do arquivo antigo no `update()` — reaproveitável tal e qual pra logo do órgão gestor |
 | `vehicle-plan-import.*` | `apps/api/src/modules/transit/timetabling/vehicle-plan/` | Par natural pro novo módulo de export — mesmo diretório, convenção de nomes |
 | `exceljs@4.4.0` | `apps/api/package.json:36` | Já instalado — cobre estilo de célula, merge, largura de coluna e imagem (logo) nativamente |
 
 ---
 
-
 ## Arquitetura proposta (pipeline em camadas)
 
 ```
 1. oso-assembler.ts        — VehiclePlan + lineId(s) → view model bruto (carros × eventos)
-2. oso-layout.resolver.ts  — decide o "shape" de colunas por linha (override ou inferência)
-3. oso-banding.ts          — empilha carros em bandas de até 10 por página
+2. oso-layout.resolver.ts  — resolve o shape+packing de CADA carro, a partir da(s) rota(s) que ele executa
+3. oso-banding.ts          — bin-packing por largura: agrupa carros em bandas até o orçamento de colunas da página
 4. oso-summary.ts          — recalcula em TS os agregados hoje feitos em fórmula Excel
 5. oso-observations.ts     — texto do quadro "OBSERVAÇÃO" (v1: só manual; futuro: + inferido)
-6. oso-workbook.renderer.ts — única camada que toca exceljs (chassi comum + banda por shape)
-7. transit-oso-config       — settings singleton (assinaturas, logo, nome do órgão)
+6. oso-workbook.renderer.ts — única camada que toca exceljs (chassi comum + banda, iterando o layout de cada carro)
+7. scope-oso-config         — Scope.logoUrl + Scope.osoConfig (assinaturas, nome do órgão)
 8. vehicle-plan-export.*    — controller/service: xlsx (1 ou N sheets) e pdf (via LibreOffice)
 ```
 
-Camadas 1-5 são funções puras, testáveis sem abrir Excel. A costura que evita duplicar renderer
-por variação de layout é o `OsoLayout.columns` resolvido na camada 2 — a camada 6 itera sobre ele
-genericamente, nunca hardcoda "3 colunas" ou "4 colunas".
+Camadas 1, 4, 5, 6 e 8 são agnósticas de shape — a única coisa que muda de um carro pro outro é o
+`OsoCarroLayout` resolvido na camada 2, que a camada 6 itera genericamente. A resolução (2) e o
+empacotamento em bandas (3) são as únicas camadas que precisam pensar "por carro".
 
 ```ts
-type OsoLayout = {
-  columns: Array<{ role: 'DEP' | 'ARR'; localityRef: 'origin' | 'dest' }>
-  tripsPerRow: 1 | 2   // 1 = IDA|VOLTA|CHEGADA (padrão), 2 = IDA|VOLTA|IDA|VOLTA (linhas densas)
+type OsoColumn = {
+  direction:       'OUTBOUND' | 'INBOUND'
+  routeLocalityId: string              // RouteLocality real: ponta do ciclo, ou includeInOso = true
+  timing?:         'DEPARTURE' | 'ARRIVAL'  // só nas duas pontas do ciclo — ver regra 2
+}
+
+type OsoCarroLayout = {
+  columns:     OsoColumn[]   // shape herdado da(s) rota(s) que o carro efetivamente executa
+  tripsPerRow: 1 | 2         // packing decidido por carro (viagens do carro vs. orçamento de linhas da banda)
 }
 ```
 
-> No caso da 309 (referencia intermediaria) a linha pode ter N locais de passagem mais nem todos vão para OSO, precisa definir abordagem para o gerador saber quais locais devem ser incluidos na OSO, o ajuste que vem a minha cabeça num primeiro momento eh adicionar campo em RouteLocality similar ao allowsCrewChange (algo como displayOnOSO) (oso eh abbr de order de serviço, esrou misturando ingles com portugues se tiver nome melhor me sugira), se true lista no sentido, acho que da claresa e controle assim, se tiver outra ideia quero ouvir
+### Onde mora
 
+Schema (edições em arquivos existentes, não arquivo novo):
+- `packages/schemas/transit/route-locality.schema.ts` — campo `includeInOso`
+- `packages/schemas/transit/scope.schema.ts` — campos `logoUrl` (widget `avatar`) e `osoConfig`
+  (widget `object-editor`)
+- `apps/api/prisma/schema/transit.prisma` — os dois campos nos models `RouteLocality`/`Scope` +
+  `pnpm db:migrate`
 
-### `TransitLine.osoLayout` (campo novo)
+Form do `Scope` já é genérico (schema → form automático) — não precisa de página nova no
+frontend só pra editar logo/assinatura.
 
-Enum opcional em `packages/schemas/transit/line.schema.ts` + Prisma — só relevante numa linha sem
-`parentLineId` (filhas herdam da pai). `null`/ausente = infere pela topologia da rota.
+Backend — pipeline OSO em subpasta nova dentro de `vehicle-plan/`, mesmo padrão de `scoring/` e
+`solver/` que já existem ali:
 
 ```
-osoLayout: 'IDA_VOLTA_CHEGADA' | 'IDA_VOLTA_IDA_VOLTA' | null
+apps/api/src/modules/transit/timetabling/vehicle-plan/
+├── oso/
+│   ├── oso-assembler.ts
+│   ├── oso-layout.resolver.ts
+│   ├── oso-banding.ts
+│   ├── oso-summary.ts
+│   ├── oso-observations.ts
+│   └── oso-workbook.renderer.ts
+├── vehicle-plan-export.controller.ts   ← irmão de vehicle-plan-import.controller.ts (já existe)
+├── vehicle-plan-export.service.ts      ← orquestra as camadas de oso/, chama o LibreOffice pro pdf
+├── vehicle-plan-import.controller.ts   (já existe)
+├── vehicle-plan-import.service.ts      (já existe)
+└── vehicle-plan.module.ts              ← registra o novo controller/service aqui
 ```
-> valores do enum (pelos menos os persistidos) em ingles para manter coerencia com demais
-> Mais estou pensando que talvez esse layout seja todo inferido: esse caso do "IDA_VOLTA_IDA_VOLTA" pode ser inferido olhando para quantidade de viagens máximas nos carros (qual carro tem a maior quantidade de viagens) e a quantidade de carros do plano.. se layout padrao entregar em torno de 20 linhas, e um dos carros tem 30 viagens (mais somente 2 carros na linha) gerador "escolhe" o layout IDA_VOLTA_IDA_VOLTA.. não existe um motivo para querer forçar um layout em detrimento do outro, esse escolha eh feita pensando em qual layout melhor organiza o plano em uma unica folha (nao tem um certo ou errado aqui).. estou achando que aqui será sempre inferido pelo gerador, me de sua opnião
+
+Frontend — item novo `OSO` no menu do botão "Linhas" (`page.tsx:274-280`), mesmo padrão do item
+`Versões` que já existe ali (abre modal, opera sobre linhas do plano). Modal próprio,
+`ExportOsoModal.tsx`, sem gate nenhum (`canEdit`/`editBarOpen`/pending changes não se aplicam — é
+leitura pura, mesmo raciocínio já aplicado ao `LineFreqPanel` nesta mesma sessão):
+
+- Lista **todas** as `TransitLine` do scope do plano — independente do que estiver marcado no
+  painel "Linhas" (`selectedLineIds` não é usado aqui).
+- Cada linha é um badge toggleável (grid + "Selecionar: Todos/Nenhum"), visual e comportamento
+  iguais ao `RelationMultiSelect` (`FieldRenderer.tsx:494-565`) — **não reaproveitado
+  literalmente** (é acoplado ao `Control` do react-hook-form do `AutoForm`), só replicado como
+  componente próprio, já que o modal precisa de estado local simples e de `disabled` por item
+  (que o widget original não suporta).
+- Linha fica `disabled` quando não tem nenhum `BlockTrip` no plano atual — sem viagem gerada não
+  tem o que exportar.
+- Atalhos de seleção em massa por `LineGroup` do scope (botão por grupo aplica seu `lineIds` de
+  uma vez) — cobre o caso "agrupar por empresa" sem precisar inferir nada (ver "Regras de negócio
+  definidas"; `TransitLine` não tem `branchId` próprio, só `VehicleBlock.branchId`, então
+  agrupamento por operadora ficaria ambíguo se calculado na hora).
+- Seletor de formato (`xlsx` / `pdf`) e botão de processar.
 
 ### PDF — via LibreOffice headless, não renderer próprio
 
-Decisão já tomada na conversa: converter o xlsx gerado (1 sheet por linha selecionada, cada sheet
-com `printArea`/`orientation` corretos) via `soffice --headless --convert-to pdf`, em vez de
-construir um segundo renderer PDF-nativo. Cada sheet do workbook vira página(s) do PDF final, na
-ordem do workbook — "um PDF com N linhas" sai de graça de um `xlsx` multi-sheet.
+Converter o xlsx gerado (1 sheet por linha selecionada, cada sheet com `printArea`/`orientation`
+corretos) via `soffice --headless --convert-to pdf`, em vez de construir um segundo renderer
+PDF-nativo. Cada sheet do workbook vira página(s) do PDF final, na ordem do workbook — "um PDF com
+N linhas" sai de graça de um `xlsx` multi-sheet.
 
 Implicações de infra:
 - Dependência de **binário de sistema** (LibreOffice), não pacote npm — precisa entrar na imagem
   de deploy da API.
-- Rodar `soffice` concorrente pode conflitar por profile lock — mitigar com
-  `-env:UserInstallation=file:///tmp/lo-<uuid>` por chamada, ou serializar conversões numa fila.
-- Wrapper npm opcional (`libreoffice-convert`) só empacota o `child_process.spawn`, se quiser
-  evitar lidar com isso na mão — o binário continua sendo a dependência real.
+- Concorrência: `soffice` headless não escala bem em paralelo (contenção de profile/CPU/memória).
+  Pra v1, um limitador simples in-process (semáforo/fila de Promises na própria service) resolve —
+  não há fila/broker (BullMQ, Redis) no stack hoje, e introduzir um só pra isso é desproporcional
+  até o volume de export justificar.
+
+### Config do órgão gestor — no `Scope`, não em `Settings`
+
+- **`Scope.logoUrl`** — campo próprio (`String?`), widget `avatar`, mesmo padrão de
+  `Employee.photoUrl`. Fica fora de `osoConfig` (Json) porque o swap de `File` pra URL no submit
+  do form genérico (`AutoForm.tsx:241-256`) só varre o nível raiz do payload, nunca desce dentro
+  de um campo Json.
+- **`Scope.osoConfig`** (Json) — nome do órgão e assinaturas:
+  ```ts
+  type ScopeOsoConfig = {
+    organName:  string
+    signatures: Array<{ role: string; name: string }>
+  }
+  ```
+  Editado via `ObjectEditorWidget` no form genérico do Scope. Pré-requisito: o
+  `ObjectEditorWidget` (`apps/web/src/core/ObjectEditorWidget.tsx`) hoje serve só
+  `TransitLine.metrics` e despacha por shape-sniffing hand-rolled — o próprio arquivo já assinala
+  (linhas 3-10) que uma segunda forma é o gatilho pra virar um renderer recursivo de verdade. Esse
+  refactor entra na Fase 0, como sub-etapa própria (mexe num widget compartilhado — checkpoint:
+  confirmar que o editor de `TransitLine.metrics` continua funcionando).
+
+---
+
+## Regras de negócio definidas
+
+1. **CHEGADA** (shape com 3 colunas) é o `arrivalMinutes` da perna de volta do mesmo ciclo (par
+   ida+volta do mesmo carro). Waypoints da rota (`RouteLocality` com `localityId` null) não
+   interferem na rotulagem de coluna, só na geometria/tempo de perna.
+
+2. **Horário de ponto intermediário (`includeInOso`) é derivado, nunca armazenado**: soma o delta
+   OSRM/matrix (`RouteLocality.deltaMinutes`, fallback `TravelTimeMatrix`) a partir do
+   `arrivalMinutes` real da viagem, andando pra trás até o ponto — evita drift entre o horário
+   agendado e a soma das pernas cadastradas. Sempre resulta num instante único; por isso `timing`
+   (DEPARTURE/ARRIVAL) só existe nas duas pontas do ciclo, nunca nos pontos do meio.
+
+3. **Shape de colunas é resolvido por carro, não por linha.** Um carro herda o shape da(s) rota(s)
+   que ele efetivamente executa naquele dia — caso real (`A22B`): o carro principal roda a rota
+   completa (com ponto `includeInOso`, shape de 3 colunas) enquanto os carros "reforço" rodam uma
+   `TransitRoute` variante mais curta (mesma linha, `ordinal` diferente, sem esse ponto → shape de
+   2 colunas). Não existe "shape da linha" — só shape por rota, herdado pelo carro que a executa.
+   Carro que mistura mais de uma rota no mesmo dia é caso de borda a tratar quando aparecer.
+
+4. **Empacotamento (`tripsPerRow`) também é por carro** — compara o nº de viagens daquele carro
+   especificamente com o orçamento de linhas da banda; só um carro com viagens de sobra "abre" um
+   segundo bloco de colunas (dobra a largura do seu próprio grupo) pra caber na altura disponível,
+   sem afetar os carros vizinhos.
+
+5. **Banding é bin-packing por largura, não contagem fixa de carros.** `oso-banding.ts` percorre
+   os carros na ordem de exibição e soma a largura real (nº de colunas) de cada grupo; fecha a
+   banda quando a próxima adição estourar o orçamento de colunas da página. Carros estreitos
+   (shape simples) empacotam vários por banda; carros largos/densos sozinhos já podem ocupar boa
+   parte da largura — resultado varia por linha, não é mais "até 10 carros por banda" fixo.
+
+6. **Numeração dos carros ("1º", "2º"...)** segue a ordem sequencial pelo início da primeira
+   viagem produtiva do carro, sem relação direta com `blockNumber`.
+
+7. **RECO/INTERV na grade** — RECO mapeia pra `BlockDeadrun.type = 'RETURN'`, INTERV pra
+   `BlockInterval`. `DeadrunType.ACCESS` e `DISPLACEMENT` não aparecem na OSO — a grade do carro
+   inicia na primeira viagem produtiva.
+
+8. **Carro que atende mais de uma linha da família** — a OSO de cada linha lista só os trechos
+   que pertencem a ela; viagens de aproveitamento de outra linha do mesmo bloco não aparecem.
+
+9. **Extensão Ociosa (km)** — v1 calcula como soma de todos os acessos e recolhidas (km) do
+   plano, gerando uma média única (em vez de dado manual). Sabidamente impreciso em linhas com
+   carros de recolhida muito variável — aceito como ponto de partida, revisar se surgir uma forma
+   mais precisa de atribuir km ocioso por linha.
+
+10. **"Tempo de Viagem (minutos)"** — no máximo 6 valores. Um valor por padrão de rota distinto
+    (par origem+destino+sentido realmente operado pela linha/família), usando a duração mais
+    comum (moda) das viagens daquele padrão. Havendo mais de 6 padrões, mantém os 6 de maior
+    volume de viagens e descarta o resto.
+
+11. **Config de assinatura** fica no `Scope`, não em `Settings` — `Scope.logoUrl` +
+    `Scope.osoConfig` (`organName`, `signatures[]`). Ver seção "Config do órgão gestor" acima.
+
+12. **"OSO Nº" / "AUTORIZAÇÃO Nº" / ano** — número é gerado pelo órgão gestor; fica sempre em
+    branco no v1, preenchido à mão pelo usuário após exportar/imprimir.
+
+13. **Ordem das linhas no PDF multi-linha** segue EMPRESA (operadora) > código da linha, com
+    natural sort (o que for só número comparado numericamente, mesmo quando a linha tem letra:
+    `31 < 301 < A10`).
 
 ---
 
 ## Ordem de implementação sugerida
 
 **Fase 0 — Fundamentos de dados (sem UI, sem Excel)**
-- `TransitLine.osoLayout` (schema + migration)
-- `transit-oso-config` settings (assinatura, logo, nome do órgão)
+- `RouteLocality.includeInOso` (schema + migration)
+- `Scope.logoUrl` (avatar) + `Scope.osoConfig` (Json) — schema + migration; inclui generalizar o
+  `ObjectEditorWidget` pra um renderer recursivo de verdade (hoje só serve `TransitLine.metrics`)
 - `oso-assembler.ts` — view model bruto, com fixture de um caso real simples (tipo A07)
 - `oso-summary.ts` — validar números calculados contra a planilha legada da mesma linha
 
-**Fase 1 — Layout resolver + banding (ainda sem exceljs)**
-- `oso-layout.resolver.ts` só com override manual (`osoLayout` explícito) — adiar inferência
-  automática pra depois de mais casos observados
-- `oso-banding.ts`
-- Validar o view model completo (camadas 1-5) contra 1-2 linhas reais
+**Fase 1 — Layout resolver por carro + banding por largura (ainda sem exceljs)**
+- `oso-layout.resolver.ts` — shape e packing por carro (regras 3 e 4)
+- `oso-banding.ts` — bin-packing por largura (regra 5)
+- Validar contra `A22B` (carro denso + reforços) e um caso simples de carro único — os dois
+  extremos de shape na mesma execução
 
-**Fase 2 — Renderer xlsx (chassi + shape padrão)**
-- `oso-workbook.renderer.ts`: chassi (cabeçalho, logo, RESUMO, assinaturas) + banda pro shape
-  `IDA_VOLTA_CHEGADA`
+**Fase 2 — Renderer xlsx (chassi + bandas)**
+- `oso-workbook.renderer.ts`: chassi (cabeçalho, logo, RESUMO, assinaturas) + banda, iterando o
+  `OsoCarroLayout` de cada grupo de carro
 - Endpoint `.xlsx` pra 1 linha
-- Comparação visual lado a lado com o exemplo real
+- Comparação visual lado a lado com os exemplos reais
 
 **Fase 3 — Multi-linha/scope + PDF**
 - Endpoint aceita lista de `lineId` ou `scopeId`
 - Workbook com N sheets
 - Conversão pra PDF via LibreOffice (infra: instalar `soffice`, testar concorrência)
 
-**Fase 4 — Segundo shape (`IDA_VOLTA_IDA_VOLTA`) + inferência automática**
-- Packing de 2 ciclos por linha de tabela
-- Heurística de inferência de shape pela topologia da rota (quando `osoLayout` não setado)
-
-**Fase 5 (depende de outra implementação em andamento) — Observações estruturadas**
+**Fase 4 (depende de outra implementação em andamento) — Observações estruturadas**
 - Aguarda o modelo de notas por viagem/bloco (mencionado como próximos dias)
 - `oso-observations.ts` ganha a parte automática (ex.: viagens reservadas)
-
----
-
-## Dúvidas e pendências para construir o layout
-
-1. **Cálculo de "CHEGADA"** no shape padrão (3 colunas) — é o `arrivalMinutes` da perna de volta
-   do mesmo ciclo (par ida+volta do mesmo carro), certo? Waypoints da rota (`RouteLocality` com
-   `localityId` null) não interferem na rotulagem de coluna, só na geometria/tempo de perna?
-
-> RESPOSTA: Sim, chegada eh o arrivalMinutes da volta
-
-2. **Packing do shape `IDA_VOLTA_IDA_VOLTA`** — dado um carro com N viagens no dia, o
-   agrupamento em pares por linha da tabela é sequencial (viagem 1+2 na linha 1, 3+4 na linha 2...)
-   ou pareia por "meia-jornada" (ex.: manhã+noite, como parecia ser o caso no formato antigo da
-   A07 com 2 pares bem espaçados no dia)?
-
-> RESPOSTA: Se a duvida seria com a aba oculta "A07_A10" isso eh um layout experimental (obsoleto) juntando duas linhas, apenas desconsiderar. No layout IDA_VOLTA_IDA_VOLTA as viagens segue normalmente a sequencia IDA_VOLTA (duas primeiras colunas) e se "abre" as novas colunas se faltou espaço (linhas), não sei se ficou claro
-
-3. **Linha sem ponto intermediário e sem override** — quando a topologia não sugere 3 nem 4
-   colunas (ida/volta simples, sem leg extra), a inferência cai pra 2 colunas (IDA|VOLTA, sem
-   CHEGADA) ou o padrão é sempre repetir o horário de volta na coluna CHEGADA mesmo sem leg
-   extra? Preciso de uma regra fechada pra não sobrar um "shape não documentado".
-
-> RESPOSTA: Na seção de osoLayout eu destaco uma questão que pode (talvez) suprimir este campo, por padrão quero usar o layout de IDA_VOLTA_CHEGADA
-
-
-4. **Numeração dos carros ("1º", "2º"...)** — é a ordem de `blockNumber` do plano, ou existe
-   renumeração por linha quando um mesmo bloco atende mais de uma linha da família (ex.: um carro
-   roda trips de 206 e de 206B — ele conta como "carro 1" nas duas OSOs, ou é reindexado por
-   linha)?
-
-> RESPOSTA: ordem sequencial dos carros, não tem relação direta com o numero do bloco, organiza carros pelo inicio (primeira viagem) 1o carro eh o que inicia primeiro
-
-5. **RECO/INTERV na grade** — mapeiam direto pra `BlockDeadrun.type = 'RETURN'` (RECO) e
-   `BlockInterval` (INTERV)? Existe algum caso de `DeadrunType.ACCESS`/`DISPLACEMENT` que também
-   deveria aparecer textualmente nessas colunas, ou fica de fora por não ser imprimível ali?
-
-> RESPOSTA: sim, horarios de recolhida e intervalo no carro, acesso não aparece na OSO, inicia da primeira viagem produtiva, DISPLACEMENT tbm não aparece aqui
-
-
-6. **Carro que atende mais de uma linha da família** — a OSO da linha "206" deve listar, para
-   esse carro, só os trechos que pertencem à 206 (filtrando trips de outras linhas do mesmo
-   bloco), ou a linha inteira do carro aparece (incluindo trechos de linhas fora da família)?
-
-> RESPOSTA: listar apenas viagem da linha, se tem viagens de aproveitamento de outra linha não aparece aqui
-
-
-7. **Extensão Ociosa (km)** — no arquivo legado aparece ao lado da Extensão Útil, mas
-   `TransitLine.metrics.extensionKm` só cobre a útil. Ociosa vem de soma de deslocamento morto
-   (`BlockDeadrun`, via `TravelTimeMatrix` origem↔destino) calculado no momento do export, ou é
-   outro dado manual como a útil?
-
-> RESPOSTA: Hoje é feito a soma das duas pernas GARAGEM -> PONTO INICIAL + PONTO INICIAL -> GARAGEM, porém alguns detalhes entram aqui, tem linhas (308 eh um exemplo) em que parte dos carros inicia no sentido IDA e parte no VOLTA, mesma ideia para as recolhidas, como estamos informatizando queria ja fazer da forma correta, somar todos os acessos e recolhidas (km) e gerar uma média
-
-8. **"Tempo de Viagem (minutos)"** — no legado aparece como texto concatenado tipo `126' 120'
-   114'` (múltiplos valores). É a duração planejada por sentido/rota da linha (ex.: um valor por
-   `TransitRoute` ativa), ou outra unidade de agrupamento?
-
-> RESPOSTA: São os tempos de ciclo verificados na linha (ida + volta) em geral colocamos apenas os ciclos mais comuns (que mais se repetem) e os que mais apresentam variação, não costumo listar todos, seria proximo do que temos nas janelas de geração do modal (ciclo ida + intervalo ida + ciclo volta + intervalo volta) usados para calcular a frequencia
-
-
-9. **Config de assinatura (`transit-oso-config`)** — singleton global (uma prefeitura só) ou por
-   `Scope` (múltiplos municípios/projetos no mesmo Nyx)? Decide se a chave do `Settings` é
-   `scope: 'global'` fixo ou parametrizada por `scopeId`.
-
-> RESPOSTA: interessante ja configurar isso no scope, adicionar um json no modelo que vai armazenar estes dados, me diga o que acha
-
-
-
-10. **"OSO Nº" / "AUTORIZAÇÃO Nº" / ano** — no legado, esses campos apareciam em branco ou
-    preenchidos manualmente na maioria das abas conferidas. Ficam de fora do v1 (usuário
-    completa à mão após exportar/imprimir), ou existe algum campo (`LineSchedule.approvalRef`?)
-    que já deveria alimentar isso automaticamente?
-
-> RESPOSTA: numero é gerado pelo orgão gestor, deixar sempre em branco
-
-
-11. **Ordem das linhas no PDF multi-linha** — segue a ordem de seleção do usuário na UI, ordena
-    por código da linha, ou segue alguma hierarquia de `Scope`/`LineGroup`?
-
-> RESPOSTA: ordem EMPRESA (operadora) > code da linha
-
-12. **Enum `osoLayout`** — fico só com os dois valores discutidos (`IDA_VOLTA_CHEGADA`,
-    `IDA_VOLTA_IDA_VOLTA`), ou você já tem em mente outras variações de forma (mais colunas, mais
-    pontos) que ainda não apareceram nos 4 exemplos?

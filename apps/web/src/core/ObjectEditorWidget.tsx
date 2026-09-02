@@ -1,13 +1,11 @@
 'use client'
 
-// NOTE: despite the "generic" framing, this widget is not a true recursive JSON-schema
-// editor — each Sub*Editor below was hand-written to match one specific shape found in
-// TransitLine.metrics (the only field using widget: 'object-editor' in the whole app
-// today), and the dispatch in ObjectEditorWidget picks between them by sniffing
-// field.fields shapes rather than a clean type-driven switch. It works for what it
-// currently serves, but if a second schema field ever needs this widget, treat that as
-// the trigger to refactor into a real recursive renderer first — bolting one more
-// shape-specific Sub*Editor onto this file is how it stops being tractable.
+// A true recursive JSON-schema-shaped editor, driven entirely by MetadataField.type — no
+// shape-sniffing. `object` renders a labeled section that recurses into each of `field.fields`
+// (whatever their own type is); `array` renders a table over `field.itemFields`; `record`
+// renders a collapsible block per dynamic key, whose value shape is `field.fields`. Depth is
+// unbounded: an object can nest another object/array/record and it just works, because every
+// level dispatches through the same `FieldValueEditor`.
 
 import { useState } from 'react'
 import { Controller, type Control } from 'react-hook-form'
@@ -20,103 +18,135 @@ import { Icons } from '@/lib/icons'
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 const fieldInputCls = `${inputBaseCls} w-full`
 
-export function SubObjectEditor({
+const LEAF_TYPES: MetadataField['type'][] = ['string', 'number', 'boolean', 'date', 'enum', 'relation']
+const isLeaf = (t: MetadataField['type']) => LEAF_TYPES.includes(t)
+
+/** Bare input control for a leaf field — no label, callers own layout/labeling. */
+function PrimitiveInput({
+  field, value, onChange, readonly, className,
+}: {
+  field: MetadataField
+  value: unknown
+  onChange: (v: unknown) => void
+  readonly?: boolean
+  className?: string
+}) {
+  if (field.type === 'boolean') {
+    return (
+      <input
+        type="checkbox"
+        checked={Boolean(value)}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={readonly}
+        className={cn('rounded', className)}
+      />
+    )
+  }
+
+  if (field.type === 'enum' && field.options) {
+    return (
+      <select
+        value={value != null ? String(value) : ''}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+        disabled={readonly}
+        className={cn(fieldInputCls, className, readonly && readonlyCls)}
+      >
+        <option value="" />
+        {field.options.map((opt) => (
+          <option key={opt} value={opt}>{field.optionLabels?.[opt] ?? opt}</option>
+        ))}
+      </select>
+    )
+  }
+
+  const handle = (raw: string) => {
+    onChange(raw === '' ? undefined : field.type === 'number' ? Number(raw) : raw)
+  }
+
+  return (
+    <input
+      // 'relation' has no picker here (no nested resource fetch) — plain id text input
+      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+      value={value != null ? String(value) : ''}
+      onChange={(e) => handle(e.target.value)}
+      readOnly={readonly}
+      step={field.type === 'number' ? 'any' : undefined}
+      min={field.min}
+      max={field.max}
+      placeholder={field.placeholder}
+      className={cn(fieldInputCls, className, readonly && readonlyCls)}
+    />
+  )
+}
+
+/** Compact label+input cell, used when every sibling in an object is a leaf (flows inline). */
+function CompactLeafCell({
   field, value, onChange, readonly,
+}: {
+  field: MetadataField
+  value: unknown
+  onChange: (v: unknown) => void
+  readonly?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-muted-foreground">{field.label}</label>
+      <PrimitiveInput field={field} value={value} onChange={onChange} readonly={readonly} className="w-32" />
+    </div>
+  )
+}
+
+function ObjectValueEditor({
+  field, value, onChange, readonly, hideLabel,
 }: {
   field: MetadataField
   value: Record<string, unknown>
   onChange: (v: Record<string, unknown>) => void
   readonly?: boolean
+  hideLabel?: boolean
 }) {
-  const handle = (key: string, raw: string, type: MetadataField['type']) => {
-    const val = raw === '' ? undefined : type === 'number' ? Number(raw) : raw
-    onChange({ ...value, [key]: val })
-  }
+  const children = field.fields ?? []
+  const handleKey = (key: string, v: unknown) => onChange({ ...value, [key]: v })
+  const allLeaf  = children.length > 0 && children.every((f) => isLeaf(f.type))
+  // array/record children render as tables/blocks that read badly packed side by side
+  // (e.g. metrics.windows.<dayType> = { OUTBOUND, INBOUND, CIRCULAR }, each an array) —
+  // those always stack full-width; only a group of nested named objects (e.g.
+  // metrics.renewalIndex = { OUTBOUND, INBOUND, CIRCULAR, overall }, each all-leaf) flows inline.
+  const hasWideChild = children.some((f) => f.type === 'array' || f.type === 'record')
 
   return (
-    <div>
-      <p className="font-semibold text-muted-foreground mb-2">{field.label}</p>
-      <div className="flex flex-wrap gap-3">
-        {field.fields?.filter(f => f.showInForm !== false).map((f) => (
-          <div key={f.name} className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">{f.label}</label>
-            <input
-              type={f.type === 'number' ? 'number' : 'text'}
-              value={value[f.name] != null ? String(value[f.name]) : ''}
-              onChange={(e) => handle(f.name, e.target.value, f.type)}
-              readOnly={readonly}
-              step={f.type === 'number' ? 'any' : undefined}
-              min={f.min}
-              max={f.max}
-              placeholder={f.placeholder}
-              className={cn(fieldInputCls, 'w-32', readonly && readonlyCls)}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/** Group of named sub-objects, e.g. metrics.renewalIndex = { OUTBOUND: Stat, INBOUND: Stat, ... } —
- *  same shape as SubSectionEditor but nesting SubObjectEditor (objects) instead of SubArrayEditor (arrays). */
-export function SubGroupEditor({
-  field, value, onChange, readonly,
-}: {
-  field:    MetadataField
-  value:    Record<string, unknown>
-  onChange: (v: Record<string, unknown>) => void
-  readonly?: boolean
-}) {
-  return (
-    <div className="space-y-4">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
-      <div className="flex flex-wrap gap-6">
-        {field.fields?.map(sub => {
-          if (sub.type !== 'object') return null
-          return (
-            <SubObjectEditor
+    <div className="space-y-2">
+      {!hideLabel && <p className="font-semibold text-muted-foreground">{field.label}</p>}
+      {allLeaf ? (
+        <div className="flex flex-wrap gap-3">
+          {children.map((sub) => (
+            <CompactLeafCell
               key={sub.name}
               field={sub}
-              value={(value[sub.name] ?? {}) as Record<string, unknown>}
-              onChange={v => onChange({ ...value, [sub.name]: v })}
+              value={value[sub.name]}
+              onChange={(v) => handleKey(sub.name, v)}
               readonly={readonly}
             />
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className={hasWideChild ? 'space-y-4' : 'flex flex-wrap gap-6'}>
+          {children.map((sub) => (
+            <FieldValueEditor
+              key={sub.name}
+              field={sub}
+              value={value[sub.name]}
+              onChange={(v) => handleKey(sub.name, v)}
+              readonly={readonly}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-export function SubSectionEditor({
-  field, value, onChange, readonly,
-}: {
-  field:    MetadataField
-  value:    Record<string, unknown>
-  onChange: (v: Record<string, unknown>) => void
-  readonly?: boolean
-}) {
-  return (
-    <div className="space-y-4">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
-      {field.fields?.map(sub => {
-        if (sub.type !== 'array') return null
-        return (
-          <SubArrayEditor
-            key={sub.name}
-            field={sub}
-            value={(value[sub.name] ?? []) as Record<string, unknown>[]}
-            onChange={v => onChange({ ...value, [sub.name]: v })}
-            readonly={readonly}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
-export function SubArrayEditor({
+function ArrayValueEditor({
   field, value, onChange, readonly,
 }: {
   field: MetadataField
@@ -126,21 +156,19 @@ export function SubArrayEditor({
 }) {
   const addRow    = () => onChange([...value, {}])
   const removeRow = (i: number) => onChange(value.filter((_, idx) => idx !== i))
-  const updateRow = (i: number, key: string, raw: string, type: MetadataField['type']) => {
-    const val = raw === '' ? undefined : type === 'number' ? Number(raw) : raw
-    onChange(value.map((row, idx) => idx === i ? { ...row, [key]: val } : row))
-  }
+  const updateRow = (i: number, key: string, v: unknown) =>
+    onChange(value.map((row, idx) => idx === i ? { ...row, [key]: v } : row))
 
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-semibold text-muted-foreground">{field.label}</p>
         {!readonly && (
-          <Button type="button" onClick={addRow} variant='ghost' size="sm">Add</Button>
+          <Button type="button" onClick={addRow} variant="ghost" size="sm">Add</Button>
         )}
       </div>
       {value.length === 0 && !readonly && (
-        <p className="text-xs text-muted-foreground italic">Nenhuma faixa cadastrada.</p>
+        <p className="text-xs text-muted-foreground italic">Nenhuma linha cadastrada.</p>
       )}
       {value.length > 0 && (
         <div className="rounded border border-border overflow-hidden">
@@ -161,16 +189,12 @@ export function SubArrayEditor({
                 <tr key={i} className="border-t border-border">
                   {field.itemFields?.map((f) => (
                     <td key={f.name} className="px-2 py-1.5">
-                      <input
-                        type={f.type === 'number' ? 'number' : 'text'}
-                        value={row[f.name] != null ? String(row[f.name]) : ''}
-                        onChange={(e) => updateRow(i, f.name, e.target.value, f.type)}
-                        readOnly={readonly}
-                        step={f.type === 'number' ? 'any' : undefined}
-                        min={f.min}
-                        max={f.max}
-                        placeholder={f.placeholder}
-                        className={cn(fieldInputCls, 'w-full', readonly && readonlyCls)}
+                      <PrimitiveInput
+                        field={f}
+                        value={row[f.name]}
+                        onChange={(v) => updateRow(i, f.name, v)}
+                        readonly={readonly}
+                        className="w-full"
                       />
                     </td>
                   ))}
@@ -193,17 +217,14 @@ export function SubArrayEditor({
   )
 }
 
-/** Dynamic-keyed group of sub-sections, e.g. metrics.windows = { <dayTypeCode>: { OUTBOUND:
- *  [...], INBOUND: [...] }, ... } — the value shape per key (`field.fields`) is static and
- *  introspected server-side, but which keys exist is data (DayType.code is a free-text
- *  resource, not a fixed enum), so keys are read from `value` itself rather than from the
- *  schema. Existing keys only — this editor corrects/inspects windows already imported via
- *  cycle-map, it doesn't originate a new dayType's data from scratch. */
-export function SubRecordEditor({
+/** Dynamic-keyed group, e.g. metrics.windows = { <dayTypeCode>: { OUTBOUND: [...], ... }, ... } —
+ *  which keys exist is data (read from `value`, not the schema), but the shape under each key is
+ *  static and described by `field.fields`, rendered recursively via ObjectValueEditor. */
+function RecordValueEditor({
   field, value, onChange, readonly,
 }: {
-  field:    MetadataField
-  value:    Record<string, Record<string, unknown>>
+  field: MetadataField
+  value: Record<string, Record<string, unknown>>
   onChange: (v: Record<string, Record<string, unknown>>) => void
   readonly?: boolean
 }) {
@@ -236,24 +257,68 @@ export function SubRecordEditor({
               Tipo de dia: {key}
             </button>
             {isOpen && (
-              <div className="space-y-4">
-                {field.fields?.map(sub => {
-                  if (sub.type !== 'array') return null
-                  return (
-                    <SubArrayEditor
-                      key={sub.name}
-                      field={sub}
-                      value={((value[key]?.[sub.name] ?? []) as Record<string, unknown>[])}
-                      onChange={v => onChange({ ...value, [key]: { ...(value[key] ?? {}), [sub.name]: v } })}
-                      readonly={readonly}
-                    />
-                  )
-                })}
-              </div>
+              <ObjectValueEditor
+                field={{ ...field, type: 'object' }}
+                value={value[key] ?? {}}
+                onChange={(v) => onChange({ ...value, [key]: v })}
+                readonly={readonly}
+                hideLabel
+              />
             )}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+/** Dispatch by field.type alone — the only place composition depth is decided. */
+function FieldValueEditor({
+  field, value, onChange, readonly, hideLabel,
+}: {
+  field: MetadataField
+  value: unknown
+  onChange: (v: unknown) => void
+  readonly?: boolean
+  hideLabel?: boolean
+}) {
+  if (field.type === 'object') {
+    return (
+      <ObjectValueEditor
+        field={field}
+        value={(value ?? {}) as Record<string, unknown>}
+        onChange={onChange as (v: Record<string, unknown>) => void}
+        readonly={readonly}
+        hideLabel={hideLabel}
+      />
+    )
+  }
+  if (field.type === 'array') {
+    return (
+      <ArrayValueEditor
+        field={field}
+        value={(value ?? []) as Record<string, unknown>[]}
+        onChange={onChange as (v: Record<string, unknown>[]) => void}
+        readonly={readonly}
+      />
+    )
+  }
+  if (field.type === 'record') {
+    return (
+      <RecordValueEditor
+        field={field}
+        value={(value ?? {}) as Record<string, Record<string, unknown>>}
+        onChange={onChange as (v: Record<string, Record<string, unknown>>) => void}
+        readonly={readonly}
+      />
+    )
+  }
+  // standalone leaf (top-level field, or a non-leaf sibling forced this object into the
+  // stacked layout) — normal label + full-width input, distinct from CompactLeafCell
+  return (
+    <div className="flex flex-col gap-1 min-w-48">
+      <label className="text-sm font-medium">{field.label}</label>
+      <PrimitiveInput field={field} value={value} onChange={onChange} readonly={readonly} />
     </div>
   )
 }
@@ -269,71 +334,19 @@ export function ObjectEditorWidget({
       control={control}
       render={({ field: ctrl }) => {
         const value = (ctrl.value ?? {}) as Record<string, unknown>
-
-        const handleKey = (key: string, val: unknown) => {
-          ctrl.onChange({ ...value, [key]: val })
-        }
+        const handleKey = (key: string, val: unknown) => ctrl.onChange({ ...value, [key]: val })
 
         return (
           <div className="space-y-5">
-            {field.fields?.map((sub) => {
-              if (sub.type === 'object') {
-                if (sub.fields?.some(f => f.type === 'array')) {
-                  return (
-                    <SubSectionEditor
-                      key={sub.name}
-                      field={sub}
-                      value={(value[sub.name] ?? {}) as Record<string, unknown>}
-                      onChange={(v) => handleKey(sub.name, v)}
-                      readonly={readonly}
-                    />
-                  )
-                }
-                if (sub.fields?.some(f => f.type === 'object')) {
-                  return (
-                    <SubGroupEditor
-                      key={sub.name}
-                      field={sub}
-                      value={(value[sub.name] ?? {}) as Record<string, unknown>}
-                      onChange={(v) => handleKey(sub.name, v)}
-                      readonly={readonly}
-                    />
-                  )
-                }
-                return (
-                  <SubObjectEditor
-                    key={sub.name}
-                    field={sub}
-                    value={(value[sub.name] ?? {}) as Record<string, unknown>}
-                    onChange={(v) => handleKey(sub.name, v)}
-                    readonly={readonly}
-                  />
-                )
-              }
-              if (sub.type === 'array') {
-                return (
-                  <SubArrayEditor
-                    key={sub.name}
-                    field={sub}
-                    value={(value[sub.name] ?? []) as Record<string, unknown>[]}
-                    onChange={(v) => handleKey(sub.name, v)}
-                    readonly={readonly}
-                  />
-                )
-              }
-              if (sub.type === 'record') {
-                return (
-                  <SubRecordEditor
-                    key={sub.name}
-                    field={sub}
-                    value={(value[sub.name] ?? {}) as Record<string, Record<string, unknown>>}
-                    onChange={(v) => handleKey(sub.name, v)}
-                    readonly={readonly}
-                  />
-                )
-              }
-              return null
-            })}
+            {field.fields?.map((sub) => (
+              <FieldValueEditor
+                key={sub.name}
+                field={sub}
+                value={value[sub.name]}
+                onChange={(v) => handleKey(sub.name, v)}
+                readonly={readonly}
+              />
+            ))}
           </div>
         )
       }}
