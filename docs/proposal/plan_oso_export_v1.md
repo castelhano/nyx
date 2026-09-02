@@ -212,10 +212,14 @@ Implicações de infra:
    OSO. Validado contra conta manual real (linha 250): 27,66 km somados em 2 carros = 13,83 km
    de média, batendo com o pipeline.
 
-10. **"Tempo de Viagem (minutos)"** — no máximo 6 valores. Um valor por padrão de rota distinto
-    (par origem+destino+sentido realmente operado pela linha/família), usando a duração mais
-    comum (moda) das viagens daquele padrão. Havendo mais de 6 padrões, mantém os 6 de maior
-    volume de viagens e descarta o resto.
+10. **"Tempo de Viagem (minutos)"** é o **ciclo completo** (ida + folga na ponta + volta +
+    folga antes da próxima partida), não a duração de uma perna só — corrigido depois de dar
+    37' numa linha com ciclo real de ~85'-92' (a perna sozinha, sem o ciclo inteiro). Calculado
+    como a diferença entre partidas consecutivas do mesmo sentido-âncora por carro (OUTBOUND
+    quando tem ≥2 viagens, senão INBOUND; CIRCULAR usa a própria duração da viagem, que já é o
+    ciclo completo). No máximo 6 valores, um por padrão de rota distinto (o sentido-âncora
+    realmente usado), moda das durações daquele padrão, mantendo os 6 de maior volume de
+    ciclos — e **deduplicado**: dois padrões que caem na mesma duração só aparecem uma vez.
 
 11. **Config de assinatura** fica no `Scope`, não em `Settings` — `Scope.logoUrl` +
     `Scope.osoConfig` (`organName`, `signatures[]`). Ver seção "Config do órgão gestor" acima.

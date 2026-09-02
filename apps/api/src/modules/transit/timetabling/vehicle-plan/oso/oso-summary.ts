@@ -20,9 +20,9 @@ export interface OsoOperatorSummary {
 export interface OsoSummary {
   operators: OsoOperatorSummary[]
   totals:    { trips: number; fleet: number; operatingMinutes: number; km: number }
-  // rule 10 — at most 6 values: one per distinct route (origin+destination+direction) actually
-  // run by the family, using that route's most common (mode) cycle duration; routes beyond 6
-  // are dropped, keeping the ones with the most trips
+  // rule 10 — at most 6 values, deduped: full round-trip cycle time (ida+folga+volta+folga,
+  // not one leg), the mode per pattern actually run by the family, keeping the 6 patterns
+  // with the most cycles
   cycleTimesMinutes: number[]
   // TransitLine.metrics.extensionKm of the family's root line, as-is (no field new needed —
   // see "What already exists" in the plan doc)
@@ -156,21 +156,41 @@ export async function computeOsoSummary(
     { trips: 0, fleet: 0, operatingMinutes: 0, km: 0 },
   )
 
-  // rule 10 — one duration per route (origin+destination+direction), moda of its trips'
-  // durations, keeping the 6 routes with the most trips
-  const byRoute = new Map<string, number[]>()
+  // rule 10 — cycle time, not one-way leg duration: outbound leg + layover at the far end +
+  // inbound leg + layover before the next departure, i.e. the gap between consecutive
+  // departures of the same anchor direction (per carro: OUTBOUND when it has >=2 trips, else
+  // INBOUND) — a single leg's own
+  // arrival-departure badly undercounts it (confirmed against a real case, line 250: 37'
+  // leg duration vs. ~85'-92' real cycle). CIRCULAR has no separate legs, so its own trip
+  // duration already is the full cycle. Grouped by pattern (the anchor route actually used),
+  // keeping the 6 patterns with the most cycles, then deduped — two patterns landing on the
+  // same duration only print once.
+  const byPattern = new Map<string, number[]>()
+
   for (const carro of assembled.carros) {
-    for (const e of carro.events) {
-      if (e.kind !== 'trip') continue
-      if (!byRoute.has(e.routeId)) byRoute.set(e.routeId, [])
-      byRoute.get(e.routeId)!.push(e.arrivalMinutes - e.departureMinutes)
+    const tripEvents = carro.events.filter(e => e.kind === 'trip')
+
+    for (const e of tripEvents.filter(e => e.direction === 'CIRCULAR')) {
+      if (!byPattern.has(e.routeId)) byPattern.set(e.routeId, [])
+      byPattern.get(e.routeId)!.push(e.arrivalMinutes - e.departureMinutes)
+    }
+
+    const outbound = tripEvents.filter(e => e.direction === 'OUTBOUND')
+    const inbound  = tripEvents.filter(e => e.direction === 'INBOUND')
+    const anchor   = outbound.length >= 2 ? outbound : inbound.length >= 2 ? inbound : null
+    if (anchor) {
+      if (!byPattern.has(anchor[0].routeId)) byPattern.set(anchor[0].routeId, [])
+      const durations = byPattern.get(anchor[0].routeId)!
+      for (let i = 1; i < anchor.length; i++) durations.push(anchor[i].departureMinutes - anchor[i - 1].departureMinutes)
     }
   }
-  const cycleTimesMinutes = [...byRoute.values()]
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 6)
-    .map(durations => mode(durations))
-    .sort((a, b) => a - b)
+
+  const cycleTimesMinutes = [...new Set(
+    [...byPattern.values()]
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 6)
+      .map(durations => mode(durations)),
+  )].sort((a, b) => a - b)
 
   return { operators, totals, cycleTimesMinutes, extensionUtilKm, extensionOciosaKm }
 }
