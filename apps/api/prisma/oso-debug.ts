@@ -78,7 +78,7 @@ async function main() {
   console.log(`  Total: V=${summary.totals.trips} frota=${summary.totals.fleet} horas=${(summary.totals.operatingMinutes / 60).toFixed(1)}h km=${summary.totals.km.toFixed(1)}`)
   console.log(`  Tempo de viagem: ${summary.cycleTimesMinutes.map(m => `${m}'`).join(' ')}`)
   console.log(`  Extensão útil: ${JSON.stringify(summary.extensionUtilKm)}`)
-  console.log(`  Extensão ociosa: ${summary.extensionOciosaKm.toFixed(2)} km`)
+  console.log(`  Extensão ociosa: ${summary.extensionOciosaKm.map(o => `${o.operatorLabel}=${o.km.toFixed(2)}km`).join(' ')}`)
 }
 
 main().finally(() => prisma.$disconnect())

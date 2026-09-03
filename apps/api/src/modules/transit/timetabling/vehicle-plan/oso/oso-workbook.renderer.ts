@@ -538,28 +538,37 @@ async function renderOsoSheet(
   setCell(ws, addr(12, r43), 'OBSERVAÇÃO:', { font: baseFont({ bold: true, size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { top: MEDIUM, left: MEDIUM } })
   setCell(ws, addr(20, r43), 'AUTORIZAÇÃO Nº', { font: baseFont({ bold: true, size: 8 }), border: { top: MEDIUM, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(20, r43, 21, r43 + 1) })
 
+  // Extensão Útil (km) — one combined ida+volta figure, unlike the 3-row-per-operator
+  // Ociosa block below it: it's a property of the LINE (TransitLine.metrics.extensionKm),
+  // not something that varies per operator
+  const extensionUtilTotal = (summary.extensionUtilKm.OUTBOUND ?? 0) + (summary.extensionUtilKm.INBOUND ?? 0) + (summary.extensionUtilKm.CIRCULAR ?? 0)
   setCell(ws, addr(2, r43 + 1), 'Extensão Útil (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { top: THIN, bottom: THIN, left: MEDIUM } })
   setCell(ws, addr(3, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
   setCell(ws, addr(4, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
   setCell(ws, addr(5, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
   setCell(ws, addr(6, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
-  setCell(ws, addr(7, r43 + 1), summary.extensionUtilKm.OUTBOUND ?? 0, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
+  setCell(ws, addr(7, r43 + 1), extensionUtilTotal, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
   setCell(ws, addr(9, r43 + 1), 'Início:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: THIN, bottom: HAIR, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 1, 9, r43 + 2) })
   setCell(ws, addr(10, r43 + 1), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: THIN, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
   setCell(ws, addr(12, r43 + 1), '', { border: { left: MEDIUM } })
 
+  // Extensão Ociosa (km) — 3 rows reserved for up to 3 operators running the line, each with
+  // its own abbreviated name + figure (rule 9); the label sits on the middle row, same
+  // convention as the Viagens/Frota/Horas/Km triplets above
+  const [ocA, ocB, ocC] = summary.extensionOciosaKm
+
   setCell(ws, addr(2, r43 + 2), '', { border: { left: MEDIUM } })
   setCell(ws, addr(4, r43 + 2), '', { border: { right: THIN } })
-  setCell(ws, addr(5, r43 + 2), '', { border: { bottom: HAIR, left: THIN } })
+  setCell(ws, addr(5, r43 + 2), ocA?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { bottom: HAIR, left: THIN } })
   setCell(ws, addr(6, r43 + 2), '', { border: { bottom: HAIR } })
-  setCell(ws, addr(7, r43 + 2), summary.extensionUtilKm.INBOUND ?? 0, { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 2, 8, r43 + 2) })
+  setCell(ws, addr(7, r43 + 2), ocA?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 2, 8, r43 + 2) })
   setCell(ws, addr(12, r43 + 2), '', { border: { left: MEDIUM } })
 
   setCell(ws, addr(2, r43 + 3), 'Extensão Ociosa (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { left: MEDIUM } })
   setCell(ws, addr(4, r43 + 3), '', { border: { right: THIN } })
-  setCell(ws, addr(5, r43 + 3), '', { border: { top: HAIR, left: THIN } })
+  setCell(ws, addr(5, r43 + 3), ocB?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { top: HAIR, left: THIN } })
   setCell(ws, addr(6, r43 + 3), '', { border: { top: HAIR } })
-  setCell(ws, addr(7, r43 + 3), summary.extensionOciosaKm, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
+  setCell(ws, addr(7, r43 + 3), ocB?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
   setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: HAIR, bottom: MEDIUM, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
   setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: HAIR, bottom: MEDIUM, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
   setCell(ws, addr(12, r43 + 3), '', { border: { left: MEDIUM } })
@@ -568,9 +577,9 @@ async function renderOsoSheet(
   setCell(ws, addr(2, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
   setCell(ws, addr(3, r43 + 4), '', { border: { bottom: MEDIUM } })
   setCell(ws, addr(4, r43 + 4), '', { border: { bottom: MEDIUM, right: THIN } })
-  setCell(ws, addr(5, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, left: THIN } })
+  setCell(ws, addr(5, r43 + 4), ocC?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { top: HAIR, bottom: MEDIUM, left: THIN } })
   setCell(ws, addr(6, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM } })
-  setCell(ws, addr(7, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, left: HAIR } })
+  setCell(ws, addr(7, r43 + 4), ocC?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, bottom: MEDIUM, left: HAIR } })
   setCell(ws, addr(8, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, right: MEDIUM } })
   setCell(ws, addr(12, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
 

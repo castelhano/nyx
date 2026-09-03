@@ -27,11 +27,13 @@ export interface OsoSummary {
   // TransitLine.metrics.extensionKm of the family's root line, as-is (no field new needed —
   // see "What already exists" in the plan doc)
   extensionUtilKm: Partial<Record<OsoDirection, number>>
-  // rule 9 — average deadhead km per carro of THIS line's family, modeled from each carro's
-  // own depot and the canonical terminal of whichever direction it starts/ends on within the
-  // recorte — not a sum of the family's actual BlockDeadrun rows (rule 8: those are anchored
-  // to the block's whole day, which may belong to another line on an aproveitamento block)
-  extensionOciosaKm: number
+  // rule 9 — average deadhead km per carro, PER OPERATOR (the real doc reserves 3 rows for
+  // up to 3 companies running the same line, each with its own figure — not one line-wide
+  // average). Modeled from each carro's own depot and the canonical terminal of whichever
+  // direction it starts/ends on within the recorte — not a sum of the family's actual
+  // BlockDeadrun rows (rule 8: those are anchored to the block's whole day, which may belong
+  // to another line on an aproveitamento block)
+  extensionOciosaKm: { operatorLabel: string; km: number }[]
 }
 
 const NO_OPERATOR = 'SEM OPERADORA'
@@ -78,9 +80,9 @@ function clusterDurations(durations: number[]): { value: number; count: number }
 // carros. Deliberately ignores the block's actual BlockDeadrun rows, which are anchored to
 // the block's whole-day first/last trip (possibly a different line on an aproveitamento
 // block) rather than to this line's own recorte.
-async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAssembled): Promise<number> {
+async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAssembled): Promise<Map<string, number>> {
   const db = prisma as any
-  if (assembled.carros.length === 0) return 0
+  if (assembled.carros.length === 0) return new Map()
 
   const [routes, blocks] = await Promise.all([
     db.transitRoute.findMany({
@@ -98,7 +100,7 @@ async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAss
   for (const r of routes) if (!routeByDirection.has(r.direction)) routeByDirection.set(r.direction, r)
   const depotByBlock = new Map<string, string>(blocks.map((b: any) => [b.id, b.depotId]))
 
-  const legs: { depotId: string; accessOriginId: string; returnDestId: string }[] = []
+  const legsByOperator = new Map<string, { depotId: string; accessOriginId: string; returnDestId: string }[]>()
   for (const carro of assembled.carros) {
     const tripEvents = carro.events.filter(e => e.kind === 'trip')
     const depotId = depotByBlock.get(carro.blockId)
@@ -108,12 +110,15 @@ async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAss
     const returnRoute  = routeByDirection.get(tripEvents[tripEvents.length - 1].direction)
     if (!accessRoute || !returnRoute) continue
 
-    legs.push({ depotId, accessOriginId: accessRoute.originLocalityId, returnDestId: returnRoute.destinationLocalityId })
+    const key = carro.operatorLabel ?? NO_OPERATOR
+    if (!legsByOperator.has(key)) legsByOperator.set(key, [])
+    legsByOperator.get(key)!.push({ depotId, accessOriginId: accessRoute.originLocalityId, returnDestId: returnRoute.destinationLocalityId })
   }
-  if (legs.length === 0) return 0
+  const allLegs = [...legsByOperator.values()].flat()
+  if (allLegs.length === 0) return new Map()
 
   const pairs = new Set<string>()
-  for (const l of legs) {
+  for (const l of allLegs) {
     pairs.add(`${l.depotId}:${l.accessOriginId}`)
     pairs.add(`${l.returnDestId}:${l.depotId}`)
   }
@@ -123,12 +128,16 @@ async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAss
   })
   const kmByPair = new Map<string, number>(matrix.map((m: any) => [`${m.originId}:${m.destinationId}`, m.distanceKm]))
 
-  let totalKm = 0
-  for (const l of legs) {
-    totalKm += kmByPair.get(`${l.depotId}:${l.accessOriginId}`) ?? 0
-    totalKm += kmByPair.get(`${l.returnDestId}:${l.depotId}`) ?? 0
+  const ociosaByOperator = new Map<string, number>()
+  for (const [operatorLabel, legs] of legsByOperator) {
+    let totalKm = 0
+    for (const l of legs) {
+      totalKm += kmByPair.get(`${l.depotId}:${l.accessOriginId}`) ?? 0
+      totalKm += kmByPair.get(`${l.returnDestId}:${l.depotId}`) ?? 0
+    }
+    ociosaByOperator.set(operatorLabel, totalKm / legs.length)
   }
-  return totalKm / legs.length
+  return ociosaByOperator
 }
 
 export async function computeOsoSummary(
@@ -137,7 +146,7 @@ export async function computeOsoSummary(
 ): Promise<OsoSummary> {
   const db = prisma as any
 
-  const [rootLine, extensionOciosaKm] = await Promise.all([
+  const [rootLine, extensionOciosaByOperator] = await Promise.all([
     db.transitLine.findUnique({ where: { id: assembled.family[0].id }, select: { metrics: true } }),
     computeExtensionOciosaKm(prisma, assembled),
   ])
@@ -166,10 +175,11 @@ export async function computeOsoSummary(
       }
       for (const e of tripEvents) km += extensionUtilKm[e.direction] ?? 0
     }
-    km += carros.length * extensionOciosaKm
+    km += carros.length * (extensionOciosaByOperator.get(operatorLabel) ?? 0)
 
     operators.push({ operatorLabel, trips, fleet: carros.length, operatingMinutes, km })
   }
+  const extensionOciosaKm = operators.map(o => ({ operatorLabel: o.operatorLabel, km: extensionOciosaByOperator.get(o.operatorLabel) ?? 0 }))
 
   const totals = operators.reduce(
     (acc, o) => ({
