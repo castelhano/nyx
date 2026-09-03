@@ -41,6 +41,11 @@ export interface RenderOsoSheetInput {
 
 const FONT_NAME    = 'Arial'
 const TAN_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDD9C3' } }
+// the real workbook highlights these via conditional formatting (cellIs "RECO"/"INTERV") on
+// B7:U26 — same visual result applied as a static style instead, since we already know which
+// cells hold which literal value at generation time (colors read straight from its dxf rules)
+const RECO_FILL:   ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+const INTERV_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCC66' } }
 const MEDIUM = { style: 'medium' as const }
 const THIN   = { style: 'thin' as const }
 const HAIR   = { style: 'hair' as const }
@@ -439,7 +444,10 @@ async function renderOsoSheet(
             const value = row?.[j] ?? null
             const cellAddr = addr(blockCol + j, gridStart + i)
             if (value === 'RECO' || value === 'INTERV') {
-              setCell(ws, cellAddr, value, { font: baseFont(), border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN } })
+              setCell(ws, cellAddr, value, {
+                font: baseFont({ bold: true }), fill: value === 'RECO' ? RECO_FILL : INTERV_FILL,
+                border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN },
+              })
             } else if (value !== null) {
               setCell(ws, cellAddr, timeOfDay(value), { font: baseFont(), numFmt: 'hh:mm', border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN } })
             } else {
