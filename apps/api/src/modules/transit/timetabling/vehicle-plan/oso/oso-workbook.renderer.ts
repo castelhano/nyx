@@ -84,6 +84,9 @@ function setCell(
   cell.font = baseFont(opts.font)
   cell.alignment = { horizontal: 'center', vertical: 'bottom', ...opts.align }
   if (opts.fill) cell.fill = opts.fill
+  // ExcelJS aliases every cell inside a merge to ONE shared style object — writing a border
+  // to any cell in the range (master or not) overwrites it for the whole merge, so a border
+  // must be set once, on the anchor, with every edge it needs already included
   if (opts.border) cell.border = opts.border
   if (opts.numFmt) cell.numFmt = opts.numFmt
   return cell
@@ -266,7 +269,9 @@ async function renderOsoSheet(
     fitToWidth: 1, fitToHeight: 1, showGridLines: false, showRowColHeaders: false,
     margins: { left: 0.2, right: 0.2, top: 0.4, bottom: 0.2, header: 0.5, footer: 0.5 },
   }
-  ws.properties.defaultRowHeight = 12.75
+  ws.properties.defaultRowHeight = 12.75 // 0.45cm, the reference file's row height everywhere but rows 1 and 4
+  ws.getRow(1).height = 13.61 // 0.48cm
+  ws.getRow(4).height = 15.87 // 0.56cm
   ws.getColumn(1).width = 3.67
   for (let c = FIRST_DATA_COL; c <= LAST_DATA_COL; c++) ws.getColumn(c).width = 9.11
 
@@ -280,10 +285,13 @@ async function renderOsoSheet(
   const operatorNames = [...new Set(assembled.carros.map(c => c.operatorFullName ?? c.operatorLabel).filter((v): v is string => Boolean(v)))]
   setCell(ws, 'A2', {
     richText: [
-      { font: baseFont(), text: 'Operadora: ' },
-      { font: baseFont({ bold: true }), text: operatorNames.join(' / ') || '—' },
+      { font: baseFont({ size: 11 }), text: 'Operadora: ' },
+      { font: baseFont({ size: 11, bold: true }), text: (operatorNames.join(' / ') || '—').toUpperCase() },
     ],
-  } as any, { align: { horizontal: 'left' }, border: { left: MEDIUM, bottom: MEDIUM } })
+  } as any, { align: { horizontal: 'left' }, border: { left: MEDIUM } })
+  // the underline below "Operadora:" runs the header's full width (through Q, matching row4's
+  // own B4:Q4 span), not just the one cell the text sits in
+  for (let c = 1; c <= 17; c++) ws.getCell(addr(c, 2)).border = { ...ws.getCell(addr(c, 2)).border, bottom: MEDIUM }
 
   setCell(ws, 'A3', '', {
     font: baseFont({ bold: true }), align: { horizontal: 'center', vertical: 'middle', textRotation: 90 },
@@ -291,11 +299,11 @@ async function renderOsoSheet(
   })
   setCell(ws, 'B3', 'LINHA:', { font: baseFont(), border: { left: MEDIUM, top: MEDIUM, bottom: THIN } })
   setCell(ws, 'C3', lineCode, { font: baseFont({ bold: true }), border: { top: MEDIUM, bottom: THIN } })
-  setCell(ws, 'D3', lineName, { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { top: MEDIUM, bottom: THIN } })
+  setCell(ws, 'D3', lineName.toUpperCase(), { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { top: MEDIUM, bottom: THIN } })
   setCell(ws, 'B4', 'Horários - DIAS ÚTEIS', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { left: MEDIUM, top: THIN, bottom: MEDIUM }, merge: 'B4:Q4' })
 
   setCell(ws, 'R1', 'OSO Nº', { font: baseFont({ bold: true }), border: BOX, merge: 'R1:U2' })
-  ws.mergeCells('R3:U4')
+  setCell(ws, 'R3', '', { border: BOX, merge: 'R3:U4' })
   if (scope.logoUrl) {
     const relative = scope.logoUrl.startsWith('/api/') ? scope.logoUrl.slice('/api/'.length) : scope.logoUrl
     const filePath = path.join(process.cwd(), relative)
@@ -305,7 +313,14 @@ async function renderOsoSheet(
         buffer: fs.readFileSync(filePath) as any,
         extension: (ext === 'jpg' ? 'jpeg' : ext) as 'png' | 'jpeg' | 'gif',
       })
-      ws.addImage(imageId, 'R3:U4')
+      // fixed size (the reference logo is 4.81 x 0.97cm) anchored to the box's top-left corner
+      // instead of stretching to fill the whole R3:U4 range, which distorted the aspect ratio
+      const CM_TO_PX = 96 / 2.54
+      ws.addImage(imageId, {
+        tl: { col: 17, row: 2 } as any,
+        ext: { width: 4.81 * CM_TO_PX, height: 0.97 * CM_TO_PX },
+        editAs: 'oneCell',
+      } as any)
     }
   }
 
@@ -316,11 +331,15 @@ async function renderOsoSheet(
   // the last real carro ends)
   function frameRow(row: number, top: Partial<ExcelJS.Border>, bottom: Partial<ExcelJS.Border>) {
     for (let c = FIRST_DATA_COL; c <= LAST_DATA_COL; c++) {
-      ws.getCell(addr(c, row)).border = {
+      const cell = ws.getCell(addr(c, row))
+      cell.border = {
         top, bottom,
         left:  c === FIRST_DATA_COL ? MEDIUM : THIN,
         right: c === LAST_DATA_COL ? MEDIUM : THIN,
       }
+      // otherwise a cell never touched by setCell falls back to Excel's default (Calibri 11)
+      // instead of the sheet's actual font
+      cell.font = baseFont()
     }
   }
 
@@ -345,9 +364,9 @@ async function renderOsoSheet(
         border: { left: MEDIUM, top: i === 0 ? MEDIUM : THIN, bottom: THIN },
       })
     }
-    setCell(ws, addr(1, eRow), 'E', { font: baseFont({ bold: true }), border: { left: MEDIUM, top: THIN } })
-    setCell(ws, addr(1, vRow), 'V', { font: baseFont({ bold: true }), border: { left: MEDIUM } })
-    setCell(ws, addr(1, hRow), 'H', { font: baseFont({ bold: true }), border: { left: MEDIUM, bottom: MEDIUM } })
+    setCell(ws, addr(1, eRow), 'E', { font: baseFont({ bold: true }), border: { left: MEDIUM, right: MEDIUM, top: THIN } })
+    setCell(ws, addr(1, vRow), 'V', { font: baseFont({ bold: true }), border: { left: MEDIUM, right: MEDIUM } })
+    setCell(ws, addr(1, hRow), 'H', { font: baseFont({ bold: true }), border: { left: MEDIUM, right: MEDIUM, bottom: MEDIUM } })
 
     let col = FIRST_DATA_COL
     for (const blockId of band.blockIds) {
@@ -380,7 +399,9 @@ async function renderOsoSheet(
             } else if (value !== null) {
               setCell(ws, cellAddr, timeOfDay(value), { font: baseFont(), numFmt: 'hh:mm', border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN } })
             } else {
-              ws.getCell(cellAddr).border = { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN }
+              const cell = ws.getCell(cellAddr)
+              cell.border = { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN }
+              cell.font = baseFont()
             }
           }
         }
@@ -392,9 +413,11 @@ async function renderOsoSheet(
         ? Math.max(...trips.map(e => e.arrivalMinutes)) - Math.min(...trips.map(e => e.departureMinutes))
         : 0
 
-      setCell(ws, addr(col, eRow), carro.operatorLabel ?? '', { font: baseFont({ bold: true }), border: { top: MEDIUM, bottom: THIN }, merge: rangeAddr(col, eRow, col + width - 1, eRow) })
-      setCell(ws, addr(col, vRow), tripCount, { font: baseFont({ bold: true }), numFmt: '0.0', border: { top: THIN, bottom: THIN }, merge: rangeAddr(col, vRow, col + width - 1, vRow) })
-      setCell(ws, addr(col, hRow), duration(operatingMinutes), { font: baseFont({ bold: true }), numFmt: '[h]:mm', border: { top: THIN, bottom: MEDIUM }, merge: rangeAddr(col, hRow, col + width - 1, hRow) })
+      // each carro's own E/V/H block is boxed off (medium left/right) from its neighbors,
+      // not just separated by the band-wide thin gridline frameRow already drew
+      setCell(ws, addr(col, eRow), carro.operatorLabel ?? '', { font: baseFont({ bold: true }), border: { top: MEDIUM, bottom: THIN, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, eRow, col + width - 1, eRow) })
+      setCell(ws, addr(col, vRow), tripCount, { font: baseFont({ bold: true }), numFmt: '0.0', border: { top: THIN, bottom: THIN, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, vRow, col + width - 1, vRow) })
+      setCell(ws, addr(col, hRow), duration(operatingMinutes), { font: baseFont({ bold: true }), numFmt: '[h]:mm', border: { top: THIN, bottom: MEDIUM, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, hRow, col + width - 1, hRow) })
 
       col += width
     }
@@ -444,7 +467,7 @@ async function renderOsoSheet(
   setCell(ws, addr(7, r43 + 3), summary.extensionOciosaKm, { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: MEDIUM, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
   setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { left: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
   setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
-  ws.mergeCells(rangeAddr(20, r43 + 2, 21, r43 + 4))
+  setCell(ws, addr(20, r43 + 2), '', { border: { left: MEDIUM, right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(20, r43 + 2, 21, r43 + 4) })
 
   // --- signatures (Scope.osoConfig.signatures — rule 11) ---
   const sigRow = resumoStart + RESUMO_ROWS + SIGNATURE_GAP

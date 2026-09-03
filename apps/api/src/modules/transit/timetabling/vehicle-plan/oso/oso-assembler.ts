@@ -44,8 +44,8 @@ export interface OsoCarro {
   // ScopeOperator.abbr for this block's branch within the plan's scope (fallback:
   // Branch.name) — printed as the "E" row. null when the block has no branch assigned.
   operatorLabel:    string | null
-  // Branch.name, unabbreviated — printed once in the header's "Operadora:" line, distinct
-  // from the abbreviated operatorLabel used throughout the grid/RESUMO
+  // Company.legalName (via Branch.companyId) — printed once in the header's "Operadora:"
+  // line, distinct from the abbreviated operatorLabel used throughout the grid/RESUMO
   operatorFullName: string | null
   // chronological, filtered to events belonging to the line family (rule 6/8) — a
   // RETURN deadrun or interval only appears here when it's anchored (see
@@ -133,11 +133,12 @@ export async function assembleOso(
         })
       : Promise.resolve([]),
     branchIds.length > 0
-      ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } })
+      ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true, company: { select: { legalName: true } } } })
       : Promise.resolve([]),
   ])
-  const abbrByBranch = new Map<string, string>(scopeOperators.map((o: any) => [o.branchId, o.abbr]))
-  const nameByBranch  = new Map<string, string>(branches.map((b: any) => [b.id, b.name]))
+  const abbrByBranch     = new Map<string, string>(scopeOperators.map((o: any) => [o.branchId, o.abbr]))
+  const nameByBranch     = new Map<string, string>(branches.map((b: any) => [b.id, b.name]))
+  const legalNameByBranch = new Map<string, string>(branches.map((b: any) => [b.id, b.company.legalName]))
 
   const carros: OsoCarro[] = []
 
@@ -193,7 +194,7 @@ export async function assembleOso(
       blockId:       block.id,
       blockNumber:   block.blockNumber,
       operatorLabel:    branchId ? (abbrByBranch.get(branchId) ?? nameByBranch.get(branchId) ?? null) : null,
-      operatorFullName: branchId ? (nameByBranch.get(branchId) ?? null) : null,
+      operatorFullName: branchId ? (legalNameByBranch.get(branchId) ?? null) : null,
       events,
     })
   }
