@@ -360,13 +360,13 @@ async function renderOsoSheet(
         buffer: fs.readFileSync(filePath) as any,
         extension: (ext === 'jpg' ? 'jpeg' : ext) as 'png' | 'jpeg' | 'gif',
       })
-      // fixed size (4.81 x 0.97cm) at a fixed position (X=30.73cm, Y=1.00cm from the sheet's
+      // fixed size (4.81 x 0.97cm) at a fixed position (X=30.72cm, Y=1.01cm from the sheet's
       // own top-left, per the real doc's "Posição e tamanho" dialog) instead of stretching to
       // fill the whole R3:U4 range, which distorted the aspect ratio
       const colWidths = [colWidthPx(3.67), ...Array(LAST_DATA_COL - FIRST_DATA_COL + 1).fill(colWidthPx(9.11))]
       const rowHeights = [13.61 * PT_TO_PX, 12.75 * PT_TO_PX, 12.75 * PT_TO_PX, 15.87 * PT_TO_PX]
       ws.addImage(imageId, {
-        tl: { col: cmToFractionalIndex(30.73, colWidths), row: cmToFractionalIndex(1.00, rowHeights) } as any,
+        tl: { col: cmToFractionalIndex(30.72, colWidths), row: cmToFractionalIndex(1.01, rowHeights) } as any,
         ext: { width: 4.81 * CM_TO_PX, height: 0.97 * CM_TO_PX },
         editAs: 'oneCell',
       } as any)
