@@ -43,6 +43,7 @@ const FONT_NAME    = 'Arial'
 const TAN_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDD9C3' } }
 const MEDIUM = { style: 'medium' as const }
 const THIN   = { style: 'thin' as const }
+const HAIR   = { style: 'hair' as const }
 const BOX    = { top: MEDIUM, bottom: MEDIUM, left: MEDIUM, right: MEDIUM }
 
 const FIRST_DATA_COL   = 2  // column B
@@ -51,7 +52,7 @@ const GRID_ROWS        = 20 // rows 7..26 — trip rows per band (rule 4's MAX_R
 const BAND_BLOCK_ROWS  = 23 // grid (20) + E/V/H (3)
 const HEADER_ROWS      = 6
 const RESUMO_ROWS      = 18
-const SIGNATURE_GAP    = 5
+const SIGNATURE_GAP    = 2
 
 function timeOfDay(minutes: number): number {
   return ((minutes % 1440) + 1440) % 1440 / 1440
@@ -59,6 +60,30 @@ function timeOfDay(minutes: number): number {
 
 function duration(minutes: number): number {
   return minutes / 1440
+}
+
+const CM_TO_PX = 96 / 2.54
+const PT_TO_PX = 96 / 72
+const MDW      = 7 // Excel's default-font "maximum digit width", used to turn a column's
+                    // character-unit width into pixels regardless of that cell's own font
+
+function colWidthPx(chars: number): number {
+  return Math.floor(((256 * chars + Math.floor(128 / MDW)) / 256) * MDW)
+}
+
+// converts an absolute cm position (measured from the sheet's own top-left corner, i.e. what
+// LibreOffice/Excel's "Posição e tamanho" dialog shows in the normal view — not the print
+// margin) into a fractional column/row anchor, by walking the same column widths/row heights
+// this sheet actually sets. Used for placing the logo image, since ExcelJS anchors images to
+// a (possibly fractional) cell position, not an absolute page coordinate.
+function cmToFractionalIndex(cm: number, sizesPx: number[]): number {
+  const targetPx = cm * CM_TO_PX
+  let acc = 0
+  for (let i = 0; i < sizesPx.length; i++) {
+    if (targetPx < acc + sizesPx[i]) return i + (targetPx - acc) / sizesPx[i]
+    acc += sizesPx[i]
+  }
+  return sizesPx.length
 }
 
 function baseFont(opts: Partial<ExcelJS.Font> = {}): Partial<ExcelJS.Font> {
@@ -263,20 +288,37 @@ async function renderOsoSheet(
   minutesBeforeDestination: Map<string, number>,
 ): Promise<void> {
   const { lineCode, lineName, assembled, layouts, bands, summary, scope } = input
+  const resumoStart   = HEADER_ROWS + 1 + bands.length * BAND_BLOCK_ROWS
+  const lastResumoRow = resumoStart + RESUMO_ROWS - 1
 
+  const CM_TO_IN = 1 / 2.54
   ws.pageSetup = {
-    orientation: 'landscape', paperSize: 9, fitToPage: false, scale: 100,
+    orientation: 'landscape', paperSize: 9, fitToPage: true, scale: 100,
     fitToWidth: 1, fitToHeight: 1, showGridLines: false, showRowColHeaders: false,
-    margins: { left: 0.2, right: 0.2, top: 0.4, bottom: 0.2, header: 0.5, footer: 0.5 },
+    margins: { left: 0.5 * CM_TO_IN, right: 0.5 * CM_TO_IN, top: 1 * CM_TO_IN, bottom: 0.5 * CM_TO_IN, header: 0.2, footer: 0.2 },
   }
+  ws.views = [{ showGridLines: false }]
   ws.properties.defaultRowHeight = 12.75 // 0.45cm, the reference file's row height everywhere but rows 1 and 4
   ws.getRow(1).height = 13.61 // 0.48cm
   ws.getRow(4).height = 15.87 // 0.56cm
   ws.getColumn(1).width = 3.67
   for (let c = FIRST_DATA_COL; c <= LAST_DATA_COL; c++) ws.getColumn(c).width = 9.11
 
-  if (scope.organName) {
-    ws.headerFooter.oddHeader = `&C&"Arial"&8${scope.organName}`
+  // outer perimeter of the whole printed area (A1:U<last RESUMO row>) closed first, as a base
+  // layer everything else draws on top of — otherwise any cell no other pass happens to touch
+  // (e.g. row 1's title overflow columns, or the RESUMO's unused right-hand columns) has no
+  // border at all, leaving gaps in what should read as one closed rectangle
+  for (let r = 1; r <= lastResumoRow; r++) {
+    for (let c = 1; c <= LAST_DATA_COL; c++) {
+      const cell = ws.getCell(addr(c, r))
+      cell.font = baseFont()
+      const border: Partial<ExcelJS.Borders> = {}
+      if (r === 1) border.top = MEDIUM
+      if (r === lastResumoRow) border.bottom = MEDIUM
+      if (c === 1) border.left = MEDIUM
+      if (c === LAST_DATA_COL) border.right = MEDIUM
+      if (border.top || border.bottom || border.left || border.right) cell.border = border
+    }
   }
 
   // --- header (rows 1-6, fixed regardless of carro count) ---
@@ -313,11 +355,13 @@ async function renderOsoSheet(
         buffer: fs.readFileSync(filePath) as any,
         extension: (ext === 'jpg' ? 'jpeg' : ext) as 'png' | 'jpeg' | 'gif',
       })
-      // fixed size (the reference logo is 4.81 x 0.97cm) anchored to the box's top-left corner
-      // instead of stretching to fill the whole R3:U4 range, which distorted the aspect ratio
-      const CM_TO_PX = 96 / 2.54
+      // fixed size (4.81 x 0.97cm) at a fixed position (X=30.73cm, Y=1.00cm from the sheet's
+      // own top-left, per the real doc's "Posição e tamanho" dialog) instead of stretching to
+      // fill the whole R3:U4 range, which distorted the aspect ratio
+      const colWidths = [colWidthPx(3.67), ...Array(LAST_DATA_COL - FIRST_DATA_COL + 1).fill(colWidthPx(9.11))]
+      const rowHeights = [13.61 * PT_TO_PX, 12.75 * PT_TO_PX, 12.75 * PT_TO_PX, 15.87 * PT_TO_PX]
       ws.addImage(imageId, {
-        tl: { col: 17, row: 2 } as any,
+        tl: { col: cmToFractionalIndex(30.73, colWidths), row: cmToFractionalIndex(1.00, rowHeights) } as any,
         ext: { width: 4.81 * CM_TO_PX, height: 0.97 * CM_TO_PX },
         editAs: 'oneCell',
       } as any)
@@ -424,7 +468,6 @@ async function renderOsoSheet(
   }
 
   // --- RESUMO block: fixed position right after the last band, family-wide totals ---
-  const resumoStart = HEADER_ROWS + 1 + bands.length * BAND_BLOCK_ROWS
   const [op1, op2] = summary.operators.slice(0, 2)
 
   setCell(ws, addr(1, resumoStart), 'RESUMO', {
@@ -432,42 +475,96 @@ async function renderOsoSheet(
     fill: TAN_FILL, border: BOX, merge: rangeAddr(1, resumoStart, 1, resumoStart + RESUMO_ROWS - 1),
   })
 
-  function resumoTriplet(rowOffset: number, label: string, v1: ExcelJS.CellValue, v2: ExcelJS.CellValue, total: ExcelJS.CellValue, numFmt: string) {
+  // border/fill spec for each of a triplet's 3 rows (op1 / op2+label / Total), replicated
+  // column-by-column from the real reference file — the label block (B:D) has no border
+  // between its own 3 rows (the label text visually spans all 3), while the operator/value
+  // block (E:H) uses hair lines internally and picks up medium only at real group boundaries
+  function resumoTriplet(rowOffset: number, label: string, v1: number | undefined, v2: number | undefined, total: number, numFmt: string) {
     const r0 = resumoStart + rowOffset
-    setCell(ws, addr(5, r0), op1?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' } })
-    setCell(ws, addr(7, r0), v1 ?? '', { font: baseFont({ bold: true }), numFmt, border: { right: MEDIUM }, merge: rangeAddr(7, r0, 8, r0) })
-    setCell(ws, addr(5, r0 + 1), op2?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' } })
-    setCell(ws, addr(2, r0 + 1), label, { font: baseFont({ bold: true }), align: { horizontal: 'left' } })
-    setCell(ws, addr(7, r0 + 1), v2 ?? '', { font: baseFont({ bold: true }), numFmt, border: { right: MEDIUM }, merge: rangeAddr(7, r0 + 1, 8, r0 + 1) })
-    setCell(ws, addr(5, r0 + 2), 'Total', { font: baseFont({ bold: true }), align: { horizontal: 'left' } })
-    setCell(ws, addr(7, r0 + 2), total, { font: baseFont({ bold: true }), numFmt, border: { right: MEDIUM }, merge: rangeAddr(7, r0 + 2, 8, r0 + 2) })
+
+    setCell(ws, addr(2, r0), '', { border: { top: MEDIUM, left: MEDIUM } })
+    setCell(ws, addr(3, r0), '', { border: { top: MEDIUM } })
+    setCell(ws, addr(4, r0), '', { border: { top: MEDIUM, right: THIN } })
+    setCell(ws, addr(5, r0), op1?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { top: MEDIUM, bottom: HAIR, left: THIN } })
+    setCell(ws, addr(6, r0), '', { border: { top: MEDIUM, bottom: HAIR } })
+    setCell(ws, addr(7, r0), v1 ?? '', { font: baseFont({ bold: true }), numFmt, border: { top: MEDIUM, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r0, 8, r0) })
+
+    setCell(ws, addr(2, r0 + 1), label, { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { left: MEDIUM } })
+    setCell(ws, addr(4, r0 + 1), '', { border: { right: THIN } })
+    setCell(ws, addr(5, r0 + 1), op2?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { top: HAIR, bottom: HAIR, left: THIN } })
+    setCell(ws, addr(6, r0 + 1), '', { border: { top: HAIR, bottom: HAIR } })
+    setCell(ws, addr(7, r0 + 1), v2 ?? 0, { font: baseFont({ bold: true }), numFmt, border: { top: HAIR, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r0 + 1, 8, r0 + 1) })
+
+    setCell(ws, addr(2, r0 + 2), '', { border: { bottom: THIN, left: MEDIUM } })
+    setCell(ws, addr(3, r0 + 2), '', { border: { bottom: THIN } })
+    setCell(ws, addr(4, r0 + 2), '', { border: { bottom: THIN, right: THIN } })
+    setCell(ws, addr(5, r0 + 2), 'Total', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, fill: TAN_FILL, border: { top: HAIR, bottom: THIN, left: THIN } })
+    setCell(ws, addr(6, r0 + 2), '', { fill: TAN_FILL, border: { top: HAIR, bottom: THIN } })
+    setCell(ws, addr(7, r0 + 2), total, { font: baseFont({ bold: true }), numFmt, fill: TAN_FILL, border: { top: HAIR, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r0 + 2, 8, r0 + 2) })
   }
 
   resumoTriplet(0, 'Viagens Programadas', op1?.trips, op2?.trips, summary.totals.trips, '0.0')
-  setCell(ws, addr(2, resumoStart + 3), 'Tempo de Viagem (minutos)', { font: baseFont({ bold: true }), align: { horizontal: 'left' } })
-  setCell(ws, addr(7, resumoStart + 3), summary.cycleTimesMinutes.map(m => `${m}'`).join(' '), { font: baseFont({ bold: true }), border: { right: MEDIUM }, merge: rangeAddr(7, resumoStart + 3, 8, resumoStart + 3) })
+
+  const tvRow = resumoStart + 3
+  setCell(ws, addr(2, tvRow), 'Tempo de Viagem (minutos)', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { top: THIN, bottom: THIN, left: MEDIUM } })
+  setCell(ws, addr(3, tvRow), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(4, tvRow), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(5, tvRow), '', { border: { top: THIN, bottom: THIN, left: THIN } })
+  setCell(ws, addr(6, tvRow), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(7, tvRow), summary.cycleTimesMinutes.map(m => `${m}'`).join(' '), { font: baseFont({ bold: true }), border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, tvRow, 8, tvRow) })
+
   resumoTriplet(4, 'Frota Operacional', op1?.fleet, op2?.fleet, summary.totals.fleet, '0')
-  resumoTriplet(7, 'Horas Operadas', op1 ? duration(op1.operatingMinutes) : '', op2 ? duration(op2.operatingMinutes) : '', duration(summary.totals.operatingMinutes), '[h]:mm')
+  resumoTriplet(7, 'Horas Operadas', op1 ? duration(op1.operatingMinutes) : undefined, op2 ? duration(op2.operatingMinutes) : undefined, duration(summary.totals.operatingMinutes), '[h]:mm')
   resumoTriplet(10, 'Quilometragem Rodada (km)', op1?.km, op2?.km, summary.totals.km, '0.0')
+  // I:U's own bottom edge at the last triplet's Total row — B:H already gets one from the
+  // "EXTENSÃO DA LINHA" header row's top:medium directly below it, but I onward has nothing
+  // below to borrow that edge from until row43's own I:K/L cells, which don't reach past L
+  for (let c = 9; c <= LAST_DATA_COL; c++) {
+    const cell = ws.getCell(addr(c, resumoStart + 12))
+    cell.border = { ...cell.border, bottom: MEDIUM }
+  }
 
   const r43 = resumoStart + 13
   setCell(ws, addr(2, r43), 'EXTENSÃO DA LINHA', { font: baseFont({ bold: true }), fill: TAN_FILL, border: { top: MEDIUM, bottom: THIN, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(2, r43, 8, r43) })
-  setCell(ws, addr(9, r43), 'OPERAÇÃO', { font: baseFont({ bold: true, size: 8 }), border: { top: MEDIUM, left: MEDIUM }, merge: rangeAddr(9, r43, 11, r43) })
+  setCell(ws, addr(9, r43), 'OPERAÇÃO', { font: baseFont({ bold: true, size: 8 }), border: { top: MEDIUM, bottom: THIN, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(9, r43, 11, r43) })
   setCell(ws, addr(12, r43), 'OBSERVAÇÃO:', { font: baseFont({ bold: true, size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { top: MEDIUM, left: MEDIUM } })
   setCell(ws, addr(20, r43), 'AUTORIZAÇÃO Nº', { font: baseFont({ bold: true, size: 8 }), border: { top: MEDIUM, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(20, r43, 21, r43 + 1) })
 
   setCell(ws, addr(2, r43 + 1), 'Extensão Útil (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { top: THIN, bottom: THIN, left: MEDIUM } })
-  setCell(ws, addr(7, r43 + 1), summary.extensionUtilKm.OUTBOUND ?? 0, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
-  setCell(ws, addr(9, r43 + 1), 'Início:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { left: MEDIUM, top: THIN }, merge: rangeAddr(9, r43 + 1, 9, r43 + 2) })
-  setCell(ws, addr(10, r43 + 1), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { right: MEDIUM, top: THIN }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
+  setCell(ws, addr(3, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(4, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(5, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(6, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
+  setCell(ws, addr(7, r43 + 1), summary.extensionUtilKm.OUTBOUND ?? 0, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
+  setCell(ws, addr(9, r43 + 1), 'Início:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: THIN, bottom: HAIR, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 1, 9, r43 + 2) })
+  setCell(ws, addr(10, r43 + 1), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: THIN, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
+  setCell(ws, addr(12, r43 + 1), '', { border: { left: MEDIUM } })
 
-  setCell(ws, addr(7, r43 + 2), summary.extensionUtilKm.INBOUND ?? 0, { font: baseFont({ bold: true }), numFmt: '0.00', border: { right: MEDIUM }, merge: rangeAddr(7, r43 + 2, 8, r43 + 2) })
+  setCell(ws, addr(2, r43 + 2), '', { border: { left: MEDIUM } })
+  setCell(ws, addr(4, r43 + 2), '', { border: { right: THIN } })
+  setCell(ws, addr(5, r43 + 2), '', { border: { bottom: HAIR, left: THIN } })
+  setCell(ws, addr(6, r43 + 2), '', { border: { bottom: HAIR } })
+  setCell(ws, addr(7, r43 + 2), summary.extensionUtilKm.INBOUND ?? 0, { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 2, 8, r43 + 2) })
+  setCell(ws, addr(12, r43 + 2), '', { border: { left: MEDIUM } })
 
-  setCell(ws, addr(2, r43 + 3), 'Extensão Ociosa (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { left: MEDIUM, bottom: MEDIUM } })
-  setCell(ws, addr(7, r43 + 3), summary.extensionOciosaKm, { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: MEDIUM, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
-  setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { left: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
-  setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
-  setCell(ws, addr(20, r43 + 2), '', { border: { left: MEDIUM, right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(20, r43 + 2, 21, r43 + 4) })
+  setCell(ws, addr(2, r43 + 3), 'Extensão Ociosa (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { left: MEDIUM } })
+  setCell(ws, addr(4, r43 + 3), '', { border: { right: THIN } })
+  setCell(ws, addr(5, r43 + 3), '', { border: { top: HAIR, left: THIN } })
+  setCell(ws, addr(6, r43 + 3), '', { border: { top: HAIR } })
+  setCell(ws, addr(7, r43 + 3), summary.extensionOciosaKm, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
+  setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: HAIR, bottom: MEDIUM, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
+  setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: HAIR, bottom: MEDIUM, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
+  setCell(ws, addr(12, r43 + 3), '', { border: { left: MEDIUM } })
+  setCell(ws, addr(20, r43 + 2), '', { border: { top: THIN, left: MEDIUM, right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(20, r43 + 2, 21, r43 + 4) })
+
+  setCell(ws, addr(2, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
+  setCell(ws, addr(3, r43 + 4), '', { border: { bottom: MEDIUM } })
+  setCell(ws, addr(4, r43 + 4), '', { border: { bottom: MEDIUM, right: THIN } })
+  setCell(ws, addr(5, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, left: THIN } })
+  setCell(ws, addr(6, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM } })
+  setCell(ws, addr(7, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, left: HAIR } })
+  setCell(ws, addr(8, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, right: MEDIUM } })
+  setCell(ws, addr(12, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
 
   // --- signatures (Scope.osoConfig.signatures — rule 11) ---
   const sigRow = resumoStart + RESUMO_ROWS + SIGNATURE_GAP
