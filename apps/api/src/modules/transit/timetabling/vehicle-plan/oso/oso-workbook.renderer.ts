@@ -216,10 +216,8 @@ function columnValue(col: OsoColumn, e: OsoTripEvent, minutesBeforeDestination: 
 type Slot = number | 'RECO' | 'INTERV' | null
 
 // one row = one full cycle: the carro's own chronological event stream is walked and paired
-// ida-then-volta into a row; a RECO/INTERV that interrupts a pending ida closes that row early
-// (showing that trip's own arrival, not its departure — see the lastArrival comment below)
-// instead of waiting for a volta that never comes — matches the real sheet, where a carro's
-// trailing lone leg + RECO still takes exactly one row
+// ida-then-volta into a row; a RECO/INTERV that interrupts a pending ida gets its own two rows
+// instead — see the pending-branch comment below for why
 function buildCarroRows(
   carro:                     OsoCarro,
   layout:                    OsoCarroLayout,
@@ -249,14 +247,8 @@ function buildCarroRows(
 
   let cur: Slot[] = new Array(G).fill(null)
   let pending = false
-  // last productive trip's arrival — whenever RECO/INTERV closes a row, the slot right before
-  // the label always shows this (the trip's END), never a departure: confirmed with a real
-  // counter-example (line 250's 2nd carro) where the day's last cycle is a normal complete
-  // ida+volta pair, and the RECO row that follows shows the volta's ARRIVAL, not a new
-  // departure. The same rule has to apply when a lone, unpaired ida is what's pending too — a
-  // prior version only overwrote this slot when nothing was pending, leaving a lone ida's own
-  // DEPARTURE in place instead, which reads as "departs at 22:44 and goes straight to the
-  // garage" when what actually happens is "runs the trip, THEN garages at its arrival" (22:49)
+  // last productive trip's arrival, tracked so a RECO/INTERV always has something to report
+  // besides the bare label
   let lastArrival: number | null = null
 
   const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false }
@@ -273,9 +265,24 @@ function buildCarroRows(
       flush()
     } else if (e.kind === 'deadrun' || e.kind === 'interval') {
       const label = e.kind === 'deadrun' ? 'RECO' : 'INTERV'
-      if (lastArrival !== null) cur[firstCols.length - 1] = lastArrival
-      cur[firstCols.length] = label
-      flush()
+      if (pending) {
+        // a lone ida with no matching volta: the trip must still run to completion before the
+        // vehicle garages, so its own arrival goes in the volta slot of THIS row (self-paired,
+        // showing the trip's full departure->arrival) — RECO/INTERV then gets an entirely
+        // separate row of its own, rather than overwriting that arrival with the bare label.
+        // Confirmed against a real counter-example (line 250's 2nd carro): there, the day's
+        // last cycle is a normal COMPLETE ida+volta pair, whose departure already has its own
+        // row — nothing left to repeat, so THAT case reports the volta's arrival + RECO
+        // together on one row instead (the else branch below), with no second row needed
+        if (lastArrival !== null) cur[firstCols.length] = lastArrival
+        flush()
+        cur[firstCols.length] = label
+        flush()
+      } else {
+        if (lastArrival !== null) cur[firstCols.length - 1] = lastArrival
+        cur[firstCols.length] = label
+        flush()
+      }
     }
   }
   if (cur.some(v => v !== null)) rows.push(cur)
