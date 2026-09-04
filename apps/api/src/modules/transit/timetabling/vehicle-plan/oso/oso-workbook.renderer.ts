@@ -217,8 +217,9 @@ type Slot = number | 'RECO' | 'INTERV' | null
 
 // one row = one full cycle: the carro's own chronological event stream is walked and paired
 // ida-then-volta into a row; a RECO/INTERV that interrupts a pending ida closes that row early
-// (the untraveled side stays blank) instead of waiting for a volta that never comes — matches
-// the real sheet, where a carro's trailing lone leg + RECO still takes exactly one row
+// (showing that trip's own arrival, not its departure — see the lastArrival comment below)
+// instead of waiting for a volta that never comes — matches the real sheet, where a carro's
+// trailing lone leg + RECO still takes exactly one row
 function buildCarroRows(
   carro:                     OsoCarro,
   layout:                    OsoCarroLayout,
@@ -248,10 +249,14 @@ function buildCarroRows(
 
   let cur: Slot[] = new Array(G).fill(null)
   let pending = false
-  // last productive trip's arrival — when RECO/INTERV closes a row with no pending ida (the
-  // carro's day just ends), the reference sheet still shows a time next to the label rather
-  // than leaving that side of the row blank; simplest anchor per the real example: the end of
-  // the last trip, not the deadrun's own (unshown) departure
+  // last productive trip's arrival — whenever RECO/INTERV closes a row, the slot right before
+  // the label always shows this (the trip's END), never a departure: confirmed with a real
+  // counter-example (line 250's 2nd carro) where the day's last cycle is a normal complete
+  // ida+volta pair, and the RECO row that follows shows the volta's ARRIVAL, not a new
+  // departure. The same rule has to apply when a lone, unpaired ida is what's pending too — a
+  // prior version only overwrote this slot when nothing was pending, leaving a lone ida's own
+  // DEPARTURE in place instead, which reads as "departs at 22:44 and goes straight to the
+  // garage" when what actually happens is "runs the trip, THEN garages at its arrival" (22:49)
   let lastArrival: number | null = null
 
   const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false }
@@ -268,7 +273,7 @@ function buildCarroRows(
       flush()
     } else if (e.kind === 'deadrun' || e.kind === 'interval') {
       const label = e.kind === 'deadrun' ? 'RECO' : 'INTERV'
-      if (!pending && lastArrival !== null) cur[firstCols.length - 1] = lastArrival
+      if (lastArrival !== null) cur[firstCols.length - 1] = lastArrival
       cur[firstCols.length] = label
       flush()
     }
@@ -360,13 +365,19 @@ async function renderOsoSheet(
         buffer: fs.readFileSync(filePath) as any,
         extension: (ext === 'jpg' ? 'jpeg' : ext) as 'png' | 'jpeg' | 'gif',
       })
-      // fixed size (4.81 x 0.97cm) at a fixed position (X=30.72cm, Y=1.01cm from the sheet's
-      // own top-left, per the real doc's "Posição e tamanho" dialog) instead of stretching to
-      // fill the whole R3:U4 range, which distorted the aspect ratio
+      // target position: X=30.64cm, Y=1.00cm from the sheet's own top-left, per the real doc's
+      // "Posição e tamanho" dialog. colWidthPx's formula (MDW=7) doesn't land pixel-exact on
+      // however LibreOffice actually renders these columns/rows — confirmed empirically: a
+      // request of X=30.72/Y=1.01 rendered at X=31.22/Y=1.04 — so the cm fed into
+      // cmToFractionalIndex is pre-corrected by that measured drift ratio (assumed
+      // proportional to distance from the sheet's origin, since the error is a compounding
+      // per-column/row rounding bias, not a fixed offset) rather than the raw target itself
+      const DRIFT_X = 31.22 / 30.72
+      const DRIFT_Y = 1.04 / 1.01
       const colWidths = [colWidthPx(3.67), ...Array(LAST_DATA_COL - FIRST_DATA_COL + 1).fill(colWidthPx(9.11))]
       const rowHeights = [13.61 * PT_TO_PX, 12.75 * PT_TO_PX, 12.75 * PT_TO_PX, 15.87 * PT_TO_PX]
       ws.addImage(imageId, {
-        tl: { col: cmToFractionalIndex(30.72, colWidths), row: cmToFractionalIndex(1.01, rowHeights) } as any,
+        tl: { col: cmToFractionalIndex(30.64 / DRIFT_X, colWidths), row: cmToFractionalIndex(1.00 / DRIFT_Y, rowHeights) } as any,
         ext: { width: 4.81 * CM_TO_PX, height: 0.97 * CM_TO_PX },
         editAs: 'oneCell',
       } as any)
