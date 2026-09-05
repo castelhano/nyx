@@ -626,6 +626,7 @@ export function useVehiclePlanShortcuts({
   }
 
   useShortcut('q+l', () => triggerFocusedTripAction('lock'),         { desc: 'Bloquear/desbloquear viagem', icon: Icons.Lock,   origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
+  useShortcut('q+j', () => triggerFocusedTripAction('markings'),     { desc: 'Marcações da viagem',         icon: Icons.Tag,    origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
   useShortcut('q+e', () => triggerFocusedTripAction('access'),       { desc: 'Adicionar acesso',            icon: Icons.MapPin, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
   useShortcut('q+r', () => triggerFocusedTripAction('return'),       { desc: 'Adicionar recolhida',         icon: Icons.Truck,  origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
   useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { desc: 'Adicionar intervalo',         icon: Icons.Coffee, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })

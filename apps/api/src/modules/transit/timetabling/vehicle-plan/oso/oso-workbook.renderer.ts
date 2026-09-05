@@ -6,6 +6,8 @@ import type { OsoAssembled, OsoCarro, OsoTripEvent } from './oso-assembler'
 import type { OsoBand } from './oso-banding'
 import type { OsoCarroLayout, OsoColumn } from './oso-layout.resolver'
 import type { OsoSummary } from './oso-summary'
+import type { OsoObservations } from './oso-observations'
+import type { TripMarking, TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 // Layer 6 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — the only layer
 // that touches exceljs. Structure reverse-engineered from the real legacy workbook (sheet
@@ -30,13 +32,14 @@ export interface OsoScopeConfig {
 }
 
 export interface RenderOsoSheetInput {
-  lineCode:  string
-  lineName:  string
-  assembled: OsoAssembled
-  layouts:   Map<string, OsoCarroLayout>
-  bands:     OsoBand[]
-  summary:   OsoSummary
-  scope:     OsoScopeConfig
+  lineCode:      string
+  lineName:      string
+  assembled:     OsoAssembled
+  layouts:       Map<string, OsoCarroLayout>
+  bands:         OsoBand[]
+  summary:       OsoSummary
+  observations:  OsoObservations
+  scope:         OsoScopeConfig
 }
 
 const FONT_NAME    = 'Arial'
@@ -46,6 +49,44 @@ const TAN_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { a
 // cells hold which literal value at generation time (colors read straight from its dxf rules)
 const RECO_FILL:   ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
 const INTERV_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCC66' } }
+
+// Trip markings palette (docs/proposal/plan_trip_markings_v1.md, regra 5) — fechada, 6
+// cores, deliberadamente fora da família amarelo/laranja/bege de RECO_FILL/INTERV_FILL/
+// TAN_FILL acima. Hex exatos (tons pastel, legíveis em xerox P&B) a validar visualmente
+// contra a grade real na Fase 2 — placeholders até lá.
+const BG_COLOR_FILLS: Record<TripMarkingBgColor, ExcelJS.Fill> = {
+  AZUL:     { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFBDD7EE' } },
+  VERDE:    { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' } },
+  ROSA:     { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4B6C2' } },
+  ROXO:     { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9C2EC' } },
+  CINZA:    { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } },
+  VERMELHO: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2A5A0' } },
+}
+
+function markingFontOpts(fontStyle?: TripMarkingFontStyle): Partial<ExcelJS.Font> {
+  switch (fontStyle) {
+    case 'BOLD':          return { bold: true }
+    case 'ITALIC':        return { italic: true }
+    case 'BOLD_ITALIC':   return { bold: true, italic: true }
+    case 'UNDERLINE':     return { underline: true }
+    case 'STRIKETHROUGH': return { strike: true }
+    default:              return {}
+  }
+}
+
+// regra 4 (plan_trip_markings_v1.md) — a marcação é um array de entradas, cada uma podendo
+// definir os canais fontStyle/bgColor independentemente; um conflito só existe entre duas
+// entradas que reivindicam o MESMO canal, resolvido pela primeira que o define na lista
+function resolveMarkingStyle(markings?: TripMarking[]): { fontStyle?: TripMarkingFontStyle; bgColor?: TripMarkingBgColor } {
+  let fontStyle: TripMarkingFontStyle | undefined
+  let bgColor:   TripMarkingBgColor   | undefined
+  for (const m of markings ?? []) {
+    if (fontStyle === undefined && m.fontStyle) fontStyle = m.fontStyle
+    if (bgColor   === undefined && m.bgColor)   bgColor   = m.bgColor
+  }
+  return { fontStyle, bgColor }
+}
+
 const MEDIUM = { style: 'medium' as const }
 const THIN   = { style: 'thin' as const }
 const HAIR   = { style: 'hair' as const }
@@ -213,11 +254,20 @@ function columnValue(col: OsoColumn, e: OsoTripEvent, minutesBeforeDestination: 
   return e.arrivalMinutes - (minutesBeforeDestination.get(col.routeLocalityId) ?? 0)
 }
 
-type Slot = number | 'RECO' | 'INTERV' | null
+interface SlotValue {
+  minutes:    number
+  fontStyle?: TripMarkingFontStyle
+  bgColor?:   TripMarkingBgColor
+}
+type Slot = SlotValue | 'RECO' | 'INTERV' | null
+
+function tripSlot(col: OsoColumn, e: OsoTripEvent, minutesBeforeDestination: Map<string, number>): SlotValue {
+  return { minutes: columnValue(col, e, minutesBeforeDestination), ...resolveMarkingStyle(e.markings) }
+}
 
 // one row = one full cycle: the carro's own chronological event stream is walked and paired
-// ida-then-volta into a row; a RECO/INTERV that interrupts a pending ida gets its own two rows
-// instead — see the pending-branch comment below for why
+// ida-then-volta into a row; a RECO/INTERV/DISPLACEMENT that interrupts a pending ida gets its
+// own two rows instead — see the pending-branch comment below for why
 function buildCarroRows(
   carro:                     OsoCarro,
   layout:                    OsoCarroLayout,
@@ -227,13 +277,17 @@ function buildCarroRows(
   const rows: Slot[][] = []
 
   if (directions.length <= 1) {
-    // CIRCULAR — no pairing, every trip/RECO/INTERV is its own row
+    // CIRCULAR — no pairing, every trip/RECO/INTERV/DISPLACEMENT is its own row
     for (const e of carro.events) {
       const row: Slot[] = new Array(layout.columns.length).fill(null)
       if (e.kind === 'trip') {
-        layout.columns.forEach((col, i) => { row[i] = columnValue(col, e, minutesBeforeDestination) })
+        layout.columns.forEach((col, i) => { row[i] = tripSlot(col, e, minutesBeforeDestination) })
+      } else if (e.kind === 'interval') {
+        row[0] = 'INTERV'
+      } else if (e.type === 'DISPLACEMENT') {
+        row[0] = { minutes: e.departureMinutes, ...resolveMarkingStyle(e.markings) }
       } else {
-        row[0] = e.kind === 'deadrun' ? 'RECO' : 'INTERV'
+        row[0] = 'RECO'
       }
       rows.push(row)
     }
@@ -247,8 +301,8 @@ function buildCarroRows(
 
   let cur: Slot[] = new Array(G).fill(null)
   let pending = false
-  // last productive trip's arrival, tracked so a RECO/INTERV always has something to report
-  // besides the bare label
+  // last productive trip's arrival, tracked so a RECO/INTERV/DISPLACEMENT always has
+  // something to report besides its own label/value
   let lastArrival: number | null = null
 
   const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false }
@@ -256,31 +310,35 @@ function buildCarroRows(
   for (const e of carro.events) {
     if (e.kind === 'trip' && e.direction === firstDir) {
       if (pending) flush()
-      firstCols.forEach((col, i) => { cur[i] = columnValue(col, e, minutesBeforeDestination) })
+      firstCols.forEach((col, i) => { cur[i] = tripSlot(col, e, minutesBeforeDestination) })
       pending = true
       lastArrival = e.arrivalMinutes
     } else if (e.kind === 'trip' && e.direction === secondDir) {
-      secondCols.forEach((col, i) => { cur[firstCols.length + i] = columnValue(col, e, minutesBeforeDestination) })
+      secondCols.forEach((col, i) => { cur[firstCols.length + i] = tripSlot(col, e, minutesBeforeDestination) })
       lastArrival = e.arrivalMinutes
       flush()
     } else if (e.kind === 'deadrun' || e.kind === 'interval') {
-      const label = e.kind === 'deadrun' ? 'RECO' : 'INTERV'
+      const slot: Slot = e.kind === 'interval'
+        ? 'INTERV'
+        : e.type === 'DISPLACEMENT'
+          ? { minutes: e.departureMinutes, ...resolveMarkingStyle(e.markings) }
+          : 'RECO'
       if (pending) {
         // a lone ida with no matching volta: the trip must still run to completion before the
         // vehicle garages, so its own arrival goes in the volta slot of THIS row (self-paired,
-        // showing the trip's full departure->arrival) — RECO/INTERV then gets an entirely
-        // separate row of its own, rather than overwriting that arrival with the bare label.
-        // Confirmed against a real counter-example (line 250's 2nd carro): there, the day's
-        // last cycle is a normal COMPLETE ida+volta pair, whose departure already has its own
-        // row — nothing left to repeat, so THAT case reports the volta's arrival + RECO
-        // together on one row instead (the else branch below), with no second row needed
-        if (lastArrival !== null) cur[firstCols.length] = lastArrival
+        // showing the trip's full departure->arrival) — RECO/INTERV/DISPLACEMENT then gets an
+        // entirely separate row of its own, rather than overwriting that arrival with its own
+        // slot. Confirmed against a real counter-example (line 250's 2nd carro): there, the
+        // day's last cycle is a normal COMPLETE ida+volta pair, whose departure already has
+        // its own row — nothing left to repeat, so THAT case reports the volta's arrival +
+        // RECO together on one row instead (the else branch below), with no second row needed
+        if (lastArrival !== null) cur[firstCols.length] = { minutes: lastArrival }
         flush()
-        cur[firstCols.length] = label
+        cur[firstCols.length] = slot
         flush()
       } else {
-        if (lastArrival !== null) cur[firstCols.length - 1] = lastArrival
-        cur[firstCols.length] = label
+        if (lastArrival !== null) cur[firstCols.length - 1] = { minutes: lastArrival }
+        cur[firstCols.length] = slot
         flush()
       }
     }
@@ -304,7 +362,7 @@ async function renderOsoSheet(
   labelByRouteLocalityId:   Map<string, string>,
   minutesBeforeDestination: Map<string, number>,
 ): Promise<void> {
-  const { lineCode, lineName, assembled, layouts, bands, summary, scope } = input
+  const { lineCode, lineName, assembled, layouts, bands, summary, observations, scope } = input
   const resumoStart   = HEADER_ROWS + 1 + bands.length * BAND_BLOCK_ROWS
   const lastResumoRow = resumoStart + RESUMO_ROWS - 1
 
@@ -467,7 +525,12 @@ async function renderOsoSheet(
                 border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN },
               })
             } else if (value !== null) {
-              setCell(ws, cellAddr, timeOfDay(value), { font: baseFont(), numFmt: 'hh:mm', border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN } })
+              setCell(ws, cellAddr, timeOfDay(value.minutes), {
+                font:   markingFontOpts(value.fontStyle),
+                numFmt: 'hh:mm',
+                fill:   value.bgColor ? BG_COLOR_FILLS[value.bgColor] : undefined,
+                border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN },
+              })
             } else {
               const cell = ws.getCell(cellAddr)
               cell.border = { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN }
@@ -568,7 +631,7 @@ async function renderOsoSheet(
   setCell(ws, addr(7, r43 + 1), extensionUtilTotal, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
   setCell(ws, addr(9, r43 + 1), 'Início:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: THIN, bottom: HAIR, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 1, 9, r43 + 2) })
   setCell(ws, addr(10, r43 + 1), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: THIN, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
-  setCell(ws, addr(12, r43 + 1), '', { border: { left: MEDIUM } })
+  setCell(ws, addr(12, r43 + 1), observations.lines[0] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { left: MEDIUM } })
 
   // Extensão Ociosa (km) — 3 rows reserved for up to 3 operators running the line, each with
   // its own abbreviated name + figure (rule 9); the label sits on the middle row, same
@@ -580,7 +643,7 @@ async function renderOsoSheet(
   setCell(ws, addr(5, r43 + 2), ocA?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { bottom: HAIR, left: THIN } })
   setCell(ws, addr(6, r43 + 2), '', { border: { bottom: HAIR } })
   setCell(ws, addr(7, r43 + 2), ocA?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 2, 8, r43 + 2) })
-  setCell(ws, addr(12, r43 + 2), '', { border: { left: MEDIUM } })
+  setCell(ws, addr(12, r43 + 2), observations.lines[1] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { left: MEDIUM } })
 
   setCell(ws, addr(2, r43 + 3), 'Extensão Ociosa (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { left: MEDIUM } })
   setCell(ws, addr(4, r43 + 3), '', { border: { right: THIN } })
@@ -589,7 +652,7 @@ async function renderOsoSheet(
   setCell(ws, addr(7, r43 + 3), ocB?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
   setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: HAIR, bottom: MEDIUM, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
   setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: HAIR, bottom: MEDIUM, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
-  setCell(ws, addr(12, r43 + 3), '', { border: { left: MEDIUM } })
+  setCell(ws, addr(12, r43 + 3), observations.lines[2] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { left: MEDIUM } })
   setCell(ws, addr(20, r43 + 2), '', { border: { top: THIN, left: MEDIUM, right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(20, r43 + 2, 21, r43 + 4) })
 
   setCell(ws, addr(2, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
@@ -599,7 +662,7 @@ async function renderOsoSheet(
   setCell(ws, addr(6, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM } })
   setCell(ws, addr(7, r43 + 4), ocC?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, bottom: MEDIUM, left: HAIR } })
   setCell(ws, addr(8, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, right: MEDIUM } })
-  setCell(ws, addr(12, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
+  setCell(ws, addr(12, r43 + 4), observations.lines[3] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { bottom: MEDIUM, left: MEDIUM } })
 
   // --- signatures (Scope.osoConfig.signatures — rule 11) ---
   const sigRow = resumoStart + RESUMO_ROWS + SIGNATURE_GAP

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
+import { tripMarkingSchema } from './trip-marking.schema'
 
 export const lineDepartureSchema = withMeta(
   z.object({
@@ -48,6 +49,15 @@ export const lineDepartureSchema = withMeta(
       label:          'Observações',
       widget:         'textarea',
       listVisibility: 'never',
+    }),
+
+    // TripMarking[] — molde copiado (cópia unidirecional, uma vez) para o TransitTrip
+    // materializado a partir desta partida (docs/proposal/plan_trip_markings_v1.md, regra
+    // 7). Sem UI de edição própria por ora — hoje só é populado pelo import do plano.
+    markings: z.array(tripMarkingSchema).optional().meta({
+      label:          'Marcações',
+      listVisibility: 'never',
+      showInForm:     false,
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

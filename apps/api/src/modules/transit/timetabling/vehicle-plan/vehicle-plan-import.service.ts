@@ -19,6 +19,7 @@ type ProductiveEntry = {
   departureMinutes: number
   arrivalMinutes:   number
   km:               number
+  markings?:        unknown
 }
 
 type DeadrunEntry = {
@@ -187,14 +188,14 @@ export class VehiclePlanImportService {
     )
 
     const reusedScheduleIds = [...lineScheduleByLineId.values()].filter(s => s.reused).map(s => s.id)
-    const existingDeparturesByKey = new Map<string, string>()
+    const existingDeparturesByKey = new Map<string, { id: string; markings: unknown }>()
     if (reusedScheduleIds.length > 0) {
       const existingDepartures = await (this.prisma as any).lineDeparture.findMany({
         where:  { lineScheduleId: { in: reusedScheduleIds } },
-        select: { id: true, lineScheduleId: true, routeId: true, departureMinutes: true },
+        select: { id: true, lineScheduleId: true, routeId: true, departureMinutes: true, markings: true },
       })
       for (const d of existingDepartures as any[]) {
-        existingDeparturesByKey.set(`${d.lineScheduleId}:${d.routeId}:${d.departureMinutes}`, d.id)
+        existingDeparturesByKey.set(`${d.lineScheduleId}:${d.routeId}:${d.departureMinutes}`, { id: d.id, markings: d.markings })
       }
     }
 
@@ -246,7 +247,7 @@ export class VehiclePlanImportService {
       })
     }
 
-    const tripRows:          Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
+    const tripRows:          Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number; markings?: unknown }> = []
     const lineDepartureRows: Array<{ id: string; lineScheduleId: string; routeId: string; departureMinutes: number }> = []
     const deadrunRows:       Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:         Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
@@ -337,10 +338,12 @@ export class VehiclePlanImportService {
 
         if (row.isProductive) {
           const scheduleInfo = lineScheduleByLineId.get(line.id)!
+          let markings: unknown
 
           if (scheduleInfo.reused) {
-            const key = `${scheduleInfo.id}:${route.id}:${departureMinutes}`
-            if (!existingDeparturesByKey.has(key)) {
+            const key      = `${scheduleInfo.id}:${route.id}:${departureMinutes}`
+            const existing = existingDeparturesByKey.get(key)
+            if (!existing) {
               errors.push({
                 line:    row._lineNum,
                 record:  `${row.lineCode} tab ${row.tabId}`,
@@ -348,6 +351,7 @@ export class VehiclePlanImportService {
               })
               continue
             }
+            markings = existing.markings
           } else {
             lineDepartureRows.push({
               id:               randomUUID(),
@@ -364,6 +368,7 @@ export class VehiclePlanImportService {
             departureMinutes,
             arrivalMinutes,
             km,
+            markings,
           })
         } else {
           perBlockEntries.push({
@@ -481,7 +486,7 @@ export class VehiclePlanImportService {
       let seqInBlock = 1
       for (const e of perBlockEntries) {
         if (e.kind === 'trip') {
-          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
+          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes, markings: e.markings })
           blockTripRows.push({ vehicleBlockId: blockId, tripId: e.id, sequence: seqInBlock++ })
         } else {
           deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })

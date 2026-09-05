@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { tripMarkingSchema } from './trip-marking.schema'
 
 // Single transactional diff for the Gantt "Salvar" flow — VehiclePlanService.applyDiff
 // applies all of it inside one prisma.$transaction, closing with recalculate() before
@@ -56,6 +57,7 @@ export const vehiclePlanDiffSchema = z.object({
     departureMinutes: z.number().optional(),
     arrivalMinutes:   z.number().optional(),
     constraints:      z.object({ locked: z.array(z.string()).optional() }).nullable().optional(),
+    markings:         z.array(tripMarkingSchema).nullable().optional(),
   })).default([]),
   deadrunUpdates:  z.array(timeUpdateSchema).default([]),
   intervalUpdates: z.array(timeUpdateSchema).default([]),

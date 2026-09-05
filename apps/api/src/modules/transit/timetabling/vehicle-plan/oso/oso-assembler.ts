@@ -1,6 +1,16 @@
 import { PrismaService } from '../../../../../prisma/prisma.service'
 import { findDeadrunIdsAnchoredToTrips } from '../block-deadrun.utils'
 import { findIntervalIdsAnchoredToTrips } from '../block-interval.utils'
+import type { TripMarking } from '@nyx/schemas'
+
+// Fixed constant, never persisted — regra 6 of docs/proposal/plan_trip_markings_v1.md.
+// Styles the DISPLACEMENT's own reserved slot in the grid (oso-workbook.renderer.ts) and
+// feeds the OBSERVAÇÃO legend (oso-observations.ts) whenever one is anchored in the recorte.
+export const DISPLACEMENT_MARKING: TripMarking = {
+  legendText: 'Retorno reservado no contrafluxo',
+  fontStyle:  'ITALIC',
+  bgColor:    'CINZA',
+}
 
 // Layer 1 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — turns a
 // VehiclePlan + a line into the raw "carros × eventos" view model the rest of the
@@ -17,15 +27,25 @@ export interface OsoTripEvent {
   direction:        OsoDirection
   departureMinutes: number
   arrivalMinutes:   number
+  // TransitTrip.markings, raw (regra 3/4 of plan_trip_markings_v1.md) — un-collapsed, the
+  // renderer resolves per-channel winner for the cell, oso-observations.ts flattens every
+  // entry's legendText regardless of which one won a channel
+  markings?:        TripMarking[]
 }
 
-// only DeadrunType.RETURN ever appears — ACCESS/DISPLACEMENT are excluded (rule 7,
-// plan_oso_export_v1.md): the grid always starts at a block's first productive trip
+// ACCESS is still excluded (rule 7, plan_oso_export_v1.md): the grid always starts at a
+// block's first productive trip. RETURN and DISPLACEMENT both appear now — DISPLACEMENT
+// closes rule 7's supersession in plan_trip_markings_v1.md (regra 8): shown with its real
+// departure time, styled by the fixed constant above, instead of being discarded
 export interface OsoDeadrunEvent {
   kind:             'deadrun'
   id:                string
+  type:             'RETURN' | 'DISPLACEMENT'
   departureMinutes: number
   arrivalMinutes:   number
+  // only ever [DISPLACEMENT_MARKING] for type 'DISPLACEMENT' — RETURN carries none (its own
+  // cell keeps the plain 'RECO' treatment, unaffected by markings)
+  markings?:        TripMarking[]
 }
 
 export interface OsoIntervalEvent {
@@ -114,6 +134,7 @@ export async function assembleOso(
               id:               true,
               departureMinutes: true,
               arrivalMinutes:   true,
+              markings:         true,
               route:            { select: { id: true, lineId: true, direction: true } },
             },
           },
@@ -168,12 +189,21 @@ export async function assembleOso(
         direction:        bt.trip.route.direction,
         departureMinutes: bt.trip.departureMinutes,
         arrivalMinutes:   bt.trip.arrivalMinutes,
+        markings:         bt.trip.markings ?? undefined,
       })
     }
 
     for (const dr of block.blockDeadruns as any[]) {
-      if (dr.type !== 'RETURN' || !anchoredDeadrunIdSet.has(dr.id)) continue
-      events.push({ kind: 'deadrun', id: dr.id, departureMinutes: dr.departureMinutes, arrivalMinutes: dr.arrivalMinutes })
+      if (dr.type !== 'RETURN' && dr.type !== 'DISPLACEMENT') continue
+      if (!anchoredDeadrunIdSet.has(dr.id)) continue
+      events.push({
+        kind:             'deadrun',
+        id:                dr.id,
+        type:             dr.type,
+        departureMinutes: dr.departureMinutes,
+        arrivalMinutes:   dr.arrivalMinutes,
+        markings:         dr.type === 'DISPLACEMENT' ? [DISPLACEMENT_MARKING] : undefined,
+      })
     }
 
     for (const bi of block.blockIntervals as any[]) {

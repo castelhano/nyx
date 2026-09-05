@@ -1,5 +1,5 @@
 import type { GanttView, GanttRow, GanttSegment } from '../engine/gantt.types'
-import type { VehicleBlockSummary, VehiclePlanLineSummary } from '@nyx/schemas'
+import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking } from '@nyx/schemas'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
@@ -82,6 +82,7 @@ export interface GanttBlockTrip {
     departureMinutes: number
     arrivalMinutes:   number
     constraints:      TripConstraints | null
+    markings:         TripMarking[] | null
     route: {
       direction:           string
       line:                { id: string; code: string; name: string; metrics: LineMetrics | null }

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
+import { tripMarkingSchema } from './trip-marking.schema'
 
 // Constraints shape — managed via dedicated UI controls, not raw JSON input
 export interface TripConstraints {
@@ -72,6 +73,16 @@ export const tripSchema = withMeta(
       label:          'Observações',
       widget:         'textarea',
       listVisibility: 'never',
+    }),
+
+    // TripMarking[] — marcações visuais manuais desta viagem no OSO exportado, gerenciadas
+    // via modal dedicado no Gantt (docs/proposal/plan_trip_markings_v1.md), não input JSON
+    // cru. Nunca inclui a marcação de DISPLACEMENT — essa é sempre inferida em tempo de
+    // export, nunca persistida aqui (regra 6).
+    markings: z.array(tripMarkingSchema).optional().meta({
+      label:          'Marcações',
+      listVisibility: 'never',
+      showInForm:     false,
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

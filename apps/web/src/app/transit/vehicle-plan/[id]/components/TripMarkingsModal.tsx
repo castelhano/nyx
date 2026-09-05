@@ -1,0 +1,298 @@
+'use client'
+
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Button }       from '@/components/ui/button'
+import { ColorPicker }  from '@/components/ui/color-picker'
+import { Icons }        from '@/lib/icons'
+import { useShortcutContext } from '@/lib/keywatch'
+import type { TripMarking, TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
+import type { VehiclePlanGanttData } from '../views/vehicles.view'
+
+// Paleta fechada (docs/proposal/plan_trip_markings_v1.md, regra 5) — mesmos tons usados
+// no export OSO (oso-workbook.renderer.ts BG_COLOR_FILLS), sem o canal alfa do ARGB.
+const BG_COLOR_OPTIONS: { value: TripMarkingBgColor; hex: string }[] = [
+  { value: 'AZUL',     hex: '#BDD7EE' },
+  { value: 'VERDE',    hex: '#C6E0B4' },
+  { value: 'ROSA',     hex: '#F4B6C2' },
+  { value: 'ROXO',     hex: '#D9C2EC' },
+  { value: 'CINZA',    hex: '#D9D9D9' },
+  { value: 'VERMELHO', hex: '#F2A5A0' },
+]
+const NO_COLOR_HEX = '#e5e7eb'
+
+const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[] = [
+  { value: 'BOLD',          label: 'Negrito' },
+  { value: 'ITALIC',        label: 'Itálico' },
+  { value: 'BOLD_ITALIC',   label: 'Negrito + itálico' },
+  { value: 'UNDERLINE',     label: 'Sublinhado' },
+  { value: 'STRIKETHROUGH', label: 'Tachado' },
+]
+
+interface Row {
+  key:          string
+  legendText:   string
+  originalText: string | null // null = nova marcação (não existia em nenhuma viagem da seleção)
+  fontStyle?:   TripMarkingFontStyle
+  bgColor?:     TripMarkingBgColor
+}
+
+interface Props {
+  tripIds:          string[]
+  mergedPlottedData: VehiclePlanGanttData
+  onUpdateMarkings: (tripIds: string[], patches: (TripMarking[] | null)[]) => void
+  onClose:          () => void
+}
+
+function newRowKey(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `row-${Math.random().toString(36).slice(2)}`
+}
+
+export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings, onClose }: Props) {
+  useShortcutContext('trip_markings_md')
+
+  const allBlockTrips = useMemo(
+    () => mergedPlottedData.blocks.flatMap(b => b.blockTrips),
+    [mergedPlottedData],
+  )
+
+  const selectionSet = useMemo(() => new Set(tripIds), [tripIds])
+
+  const [rows, setRows] = useState<Row[]>(() => {
+    const byText = new Map<string, Row>()
+    for (const bt of allBlockTrips) {
+      if (!selectionSet.has(bt.trip.id)) continue
+      for (const m of bt.trip.markings ?? []) {
+        if (!byText.has(m.legendText)) {
+          byText.set(m.legendText, { key: newRowKey(), legendText: m.legendText, originalText: m.legendText, fontStyle: m.fontStyle, bgColor: m.bgColor })
+        }
+      }
+    }
+    return [...byText.values()]
+  })
+
+  // Quick-pick: labels já usados nas viagens das linhas atualmente carregadas no Gantt
+  // (mergedPlottedData já vem filtrado às linhas selecionadas p/ exibição), deduplicado
+  // por legendText — sem chamada nova ao backend (docs/proposal/plan_trip_markings_v1.md,
+  // Fase 3).
+  const quickPicks = useMemo(() => {
+    const byText = new Map<string, TripMarking>()
+    for (const bt of allBlockTrips) {
+      for (const m of bt.trip.markings ?? []) {
+        if (!byText.has(m.legendText)) byText.set(m.legendText, m)
+      }
+    }
+    return [...byText.values()]
+  }, [allBlockTrips])
+
+  // Quantas viagens (fora da seleção atual) seriam afetadas se o texto `from` for
+  // renomeado agora — mostrado ao usuário antes de confirmar (regra do doc, Fase 3).
+  function countAffectedByRename(from: string): number {
+    let n = 0
+    for (const bt of allBlockTrips) {
+      if (selectionSet.has(bt.trip.id)) continue
+      if ((bt.trip.markings ?? []).some(m => m.legendText === from)) n++
+    }
+    return n
+  }
+
+  function updateRow(key: string, patch: Partial<Row>) {
+    setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r))
+  }
+
+  function removeRow(key: string) {
+    setRows(prev => prev.filter(r => r.key !== key))
+  }
+
+  function addRow(seed?: TripMarking) {
+    if (seed && rows.some(r => r.legendText === seed.legendText)) return
+    setRows(prev => [...prev, {
+      key:          newRowKey(),
+      legendText:   seed?.legendText ?? '',
+      originalText: null,
+      fontStyle:    seed?.fontStyle,
+      bgColor:      seed?.bgColor,
+    }])
+  }
+
+  const textInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  function handleSave() {
+    const cleanRows = rows
+      .map(r => ({ ...r, legendText: r.legendText.trim() }))
+      .filter(r => r.legendText.length > 0)
+
+    // 1. renomeações — varre TODAS as viagens carregadas no painel, exceto a seleção
+    // atual (que recebe a escrita autoritativa abaixo) — regra 7/Fase 3: nunca no
+    // plano inteiro, só nas linhas atualmente carregadas.
+    const renamed = cleanRows.filter(r => r.originalText && r.originalText !== r.legendText)
+    if (renamed.length > 0) {
+      const sweepTripIds: string[] = []
+      const sweepPatches: (TripMarking[] | null)[] = []
+      for (const bt of allBlockTrips) {
+        if (selectionSet.has(bt.trip.id)) continue
+        const current = bt.trip.markings ?? []
+        let changed = false
+        const next = current.map(m => {
+          const hit = renamed.find(r => r.originalText === m.legendText)
+          if (!hit) return m
+          changed = true
+          return { legendText: hit.legendText, fontStyle: hit.fontStyle, bgColor: hit.bgColor }
+        })
+        if (changed) { sweepTripIds.push(bt.trip.id); sweepPatches.push(next) }
+      }
+      if (sweepTripIds.length > 0) onUpdateMarkings(sweepTripIds, sweepPatches)
+    }
+
+    // 2. estado final da seleção — mesmo tratamento "tudo ou nada" do botão de lock
+    // (makeLockAction em vehicles.actions.ts): a lista editada aqui vale igual para
+    // toda viagem da seleção atual.
+    const finalMarkings: TripMarking[] = cleanRows.map(r => ({
+      legendText: r.legendText,
+      fontStyle:  r.fontStyle,
+      bgColor:    r.bgColor,
+    }))
+    const finalValue = finalMarkings.length > 0 ? finalMarkings : null
+    onUpdateMarkings(tripIds, tripIds.map(() => finalValue))
+    onClose()
+  }
+
+  const availableQuickPicks = quickPicks.filter(q => !rows.some(r => r.legendText === q.legendText))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-lg mx-4 p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">
+            Marcações {tripIds.length > 1 ? `(${tripIds.length} viagens)` : ''}
+          </h2>
+          <button type="button" onClick={onClose} className="p-0.5 rounded hover:bg-accent text-muted-foreground">
+            <Icons.X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {rows.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhuma marcação nesta seleção.</p>
+          )}
+
+          {rows.map(row => {
+            const affected = row.originalText && row.originalText !== row.legendText
+              ? countAffectedByRename(row.originalText)
+              : 0
+            return (
+              <div key={row.key} className="border border-border rounded-md p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={row.legendText}
+                    onChange={e => updateRow(row.key, { legendText: e.target.value })}
+                    placeholder="Texto da legenda"
+                    className="flex-1 border border-input rounded-sm text-sm bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    title="Remover da seleção"
+                    onClick={() => removeRow(row.key)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                  >
+                    <Icons.Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {affected > 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Renomear afetará mais {affected} {affected === 1 ? 'viagem' : 'viagens'} do painel.
+                  </p>
+                )}
+
+                <div className="flex items-center gap-4">
+                  <select
+                    value={row.fontStyle ?? ''}
+                    onChange={e => updateRow(row.key, { fontStyle: (e.target.value || undefined) as TripMarkingFontStyle | undefined })}
+                    className="border border-input rounded-sm text-xs bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="">Estilo — nenhum</option>
+                    {FONT_STYLE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+
+                  <ColorPicker
+                    value={row.bgColor ? BG_COLOR_OPTIONS.find(o => o.value === row.bgColor)!.hex : null}
+                    onChange={hex => updateRow(row.key, { bgColor: hex ? BG_COLOR_OPTIONS.find(o => o.hex === hex)!.value : undefined })}
+                    palette={BG_COLOR_OPTIONS.map(o => o.hex)}
+                    autoColor={NO_COLOR_HEX}
+                    autoLabel="Sem cor"
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            ref={textInputRef}
+            placeholder="Nova marcação…"
+            onKeyDown={e => {
+              if (e.key !== 'Enter') return
+              const el = e.currentTarget
+              if (!el.value.trim()) return
+              addRow({ legendText: el.value.trim() })
+              el.value = ''
+            }}
+            className="flex-1 border border-input rounded-sm text-sm bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const val = textInputRef.current?.value.trim()
+              if (!val) return
+              addRow({ legendText: val })
+              if (textInputRef.current) textInputRef.current.value = ''
+            }}
+          >
+            <Icons.Plus className="w-3.5 h-3.5" /> Adicionar
+          </Button>
+        </div>
+
+        {availableQuickPicks.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">Já usados neste painel:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {availableQuickPicks.map(q => (
+                <button
+                  key={q.legendText}
+                  type="button"
+                  onClick={() => addRow(q)}
+                  className="text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
+                >
+                  {q.legendText}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="cancel" size="sm" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" size="sm" onClick={handleSave}>
+            Salvar
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}

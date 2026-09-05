@@ -23,6 +23,8 @@ viagem no OSO exportado, sem catálogo nem modelo novo — para dois usos:
 | Clone de plano copia `notes`/`constraints` linha a linha | `vehicle-plan.service.ts:620-630` | `TransitTrip` nunca é reaproveitada entre planos — duplicar sempre cria linhas novas, copiando os campos existentes. `markings` segue o mesmo tratamento, uma linha a mais no `create` |
 | Varredura de órfãs ao remover plano/linha | `vehicle-plan.service.ts:668-690`, `:1066-1068` | `TransitTrip` sem nenhum `BlockTrip` restante é apagada em nível de aplicação — confirma que um campo embutido na própria linha da viagem nunca fica órfão: some junto com a viagem, sem mecanismo novo |
 | `BlockDeadrun.type` (`ACCESS`\|`RETURN`\|`DISPLACEMENT`) | `transit.prisma:31-37, 591-607` | Sem FK pra viagem — vínculo é posicional |
+| `LineDeparture` | `transit.prisma:326-341` | Linha da OSO aprovada (por `LineSchedule`), granularidade 1:1 posicional com o que vira `TransitTrip` na materialização — mesmo casamento por valor (`routeId`+`departureMinutes`) que hoje alimenta `isDrifted` (`trip-mutation.utils.ts:20-52`), sem FK/id compartilhado |
+| `vehicle-plan-import.service.ts` (materialização) | `:249-493` | Ao materializar uma `LineSchedule` num plano, `tripRows` já copia campos de `LineDeparture` pra `TransitTrip` (hoje só `routeId`/`dayTypeId`/`departureMinutes`/`arrivalMinutes`) via `createMany` — ponto de extensão natural pra copiar `markings` também, mesmo padrão de cópia-e-esquece que `duplicate()` já usa entre planos |
 | `findDeadrunIdsAnchoredToTrips` | `block-deadrun.utils.ts:8-58` | **Já resolve** a viagem-âncora de um DISPLACEMENT (a viagem anterior mais próxima cronologicamente, mesma regra dos intervalos) |
 | `oso-assembler.ts:174-177` | assembler | Descarta explicitamente tudo que não é `RETURN` (`if (dr.type !== 'RETURN' \|\| ...) continue`) — o dado ancorado existe, só é jogado fora aqui |
 | `buildCarroRows` (RECO/INTERV) | `oso-workbook.renderer.ts:221-...`, `:464-468` | Mecanismo de "linha reservada" pra um evento que não é viagem já existe e já funciona — é a peça que dá a "lacuna esperando inserir" que já existe no grid. DISPLACEMENT reaproveita esse slot, mas mostrando o horário real, não um rótulo fixo tipo `'RECO'` |
@@ -59,6 +61,12 @@ type TripMarking = {
 
 // TransitTrip.markings: TripMarking[] | null
 ```
+
+`LineDeparture` recebe o **mesmo campo**, mesmo shape (`markings Json?`, validado em
+`line-departure.schema.ts` — schema próprio, não em `line-schedule.schema.ts`) — é o "molde" de
+onde a viagem nasce (regra 7). Como escrever nele hoje é escopo à parte (as telas de
+`line-departure` serão reescritas depois) — por ora o campo só é populado pelo próprio import
+(regra 7), fica `null` até então.
 
 ---
 
@@ -119,13 +127,29 @@ ordem, manual antes do inferido.
    dado de banco), aplicada em tempo de export sempre que `findDeadrunIdsAnchoredToTrips` ancora
    um DISPLACEMENT na viagem — nenhuma escrita na viagem, nenhuma ação manual repetida.
 
-7. **Supersede a regra 7 de `plan_oso_export_v1.md`.** Antes: "`DeadrunType.ACCESS` e
+7. **`LineDeparture.markings` → `TransitTrip.markings` é cópia unidirecional, só na
+   materialização.** Em `vehicle-plan-import.service.ts`, o caso relevante é o de schedule
+   `reused` (schedule já aprovada, reaproveitada num novo plano — é aí que markings já cadastrado
+   deve vir pronto): hoje `existingDeparturesByKey` é um `Map<string, string>` que só guarda o
+   `id` da `LineDeparture` pra validar existência (`select: { id, lineScheduleId, routeId,
+   departureMinutes }`, sem `markings`) — precisa passar a carregar `markings` também e usar no
+   push de `tripRows`. No caso de schedule nova (criada no mesmo import, `reused: false`), não há
+   fonte de markings — o arquivo importado é grade operacional pura, sem marcação — então nasce
+   `null`. Depois de criada, a `TransitTrip` é livre — sem sync de volta, sem re-sync quando a
+   `LineSchedule` muda (mesmo tratamento que `isDrifted` já dá pra divergência: sinaliza, nunca
+   corrige sozinho). Editar a marcação já materializada não afeta o molde nem outras
+   viagens/planos que já nasceram dele. Motivo de não ser bidirecional: exigiria casamento
+   posicional robusto a mudança de horário (mesmo problema frágil do `isDrifted` de hoje) e uma
+   regra de desempate entre múltiplos planos que já divergiram — desproporcional pra uma marcação
+   cosmética de export.
+
+8. **Supersede a regra 7 de `plan_oso_export_v1.md`.** Antes: "`DeadrunType.ACCESS` e
    `DISPLACEMENT` não aparecem na OSO". Agora: `ACCESS` continua fora (grade sempre começa na
    primeira viagem produtiva — isso não muda), `DISPLACEMENT` passa a aparecer como evento próprio
    na grade do carro, na mesma "lacuna" hoje usada por `RECO`, mostrando o horário real de partida
    do deadrun (não um rótulo bare), estilizado pela marcação resolvida.
 
-8. **Legenda na OBSERVAÇÃO é condicional por recorte e deduplicada por string.** `oso-
+9. **Legenda na OBSERVAÇÃO é condicional por recorte e deduplicada por string.** `oso-
    observations.ts` só lista uma legenda quando pelo menos uma viagem do recorte exportado
    (família de linhas deste OSO, não o plano inteiro) efetivamente carrega aquele `legendText` —
    dedupe é por igualdade exata de string (sem id compartilhado pra deduplicar de outra forma;
@@ -136,8 +160,11 @@ ordem, manual antes do inferido.
 ## Ordem de implementação sugerida
 
 **Fase 0 — Dados**
-- `TransitTrip.markings` (schema + migration)
-- Shape `TripMarking` validado em `trip.schema.ts`, paleta de `bgColor` fechada (regra 5)
+- `TransitTrip.markings` e `LineDeparture.markings` (schema + migration)
+- Shape `TripMarking` validado em `trip.schema.ts`/`line-departure.schema.ts`, paleta de `bgColor`
+  fechada (regra 5)
+- `vehicle-plan-import.service.ts`: `tripRows` passa a copiar `markings` de `LineDeparture` pra
+  `TransitTrip` na materialização (regra 7)
 
 **Fase 1 — Assembler + observations**
 - `oso-assembler.ts`: para de descartar DISPLACEMENT; resolve lista efetiva de marcações por

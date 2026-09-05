@@ -9,6 +9,7 @@ import { buildLineFreqIndex } from '../views/line-freq.view'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from '../components/AddTripModal'
 import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
+import type { TripMarking } from '@nyx/schemas'
 import { resolveCycleWindow } from '../views/vehicles.view'
 import { createVehiclesActionSpec, canAddAccess, canAddReturn } from '../views/vehicles.actions'
 import type { Selection, RowHintEntry } from '../engine/gantt.types'
@@ -66,7 +67,7 @@ export function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): stri
 
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { blockTripId: string; blockId: string }
-export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null }
+export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null }
 export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
@@ -87,6 +88,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const [selection,             setSelection]             = useState<Selection | null>(null)
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
   const [addIntervalModal,      setAddIntervalModal]      = useState<AddIntervalModalState | null>(null)
+  const [markingsModalTripIds,  setMarkingsModalTripIds]  = useState<string[] | null>(null)
   const [moveTargetBlockId,     setMoveTargetBlockId]     = useState<string | null>(null)
   const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
@@ -164,6 +166,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
               departureMinutes: a.departureMinutes,
               arrivalMinutes:   a.arrivalMinutes,
               constraints:      null,
+              markings:         null,
               route: {
                 direction:           a.direction,
                 line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
@@ -254,6 +257,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
             departureMinutes: a.departureMinutes,
             arrivalMinutes:   a.arrivalMinutes,
             constraints:      null,
+            markings:         null,
             route: {
               direction:           a.direction,
               line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
@@ -529,6 +533,27 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       })
       return next
     })
+  }
+
+  // Always parallel to tripIds (unlike handleUpdateConstraints' shared-or-parallel
+  // shape) — TripMarking[] is itself an array, so a "shared value applies to every
+  // id" shorthand would be indistinguishable from a parallel array via
+  // Array.isArray. The modal builds the per-tripId array explicitly either way
+  // (same final list repeated for a uniform selection edit, or one entry per
+  // affected trip for the rename-across-panel sweep).
+  function handleUpdateMarkings(tripIds: string[], patches: (TripMarking[] | null)[]) {
+    if (!canEdit) return
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      tripIds.forEach((tripId, i) => {
+        next.set(tripId, { ...next.get(tripId), markings: patches[i] })
+      })
+      return next
+    })
+  }
+
+  function handleOpenMarkings(tripIds: string[]) {
+    setMarkingsModalTripIds(tripIds)
   }
 
   // Two passes: already-saved blocks (from ganttData — not plottedData/
@@ -1695,6 +1720,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const vehiclesActionSpec = useMemo(
     () => createVehiclesActionSpec({
       onUpdateConstraints: handleUpdateConstraints,
+      onOpenMarkings:      handleOpenMarkings,
       onDeleteTrips:       handleDeleteTrips,
       onDeleteDeadruns:    handleDeleteDeadruns,
       onDeleteBreaks:      handleDeleteBreaks,
@@ -1717,6 +1743,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
+    markingsModalTripIds, setMarkingsModalTripIds, handleUpdateMarkings,
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,

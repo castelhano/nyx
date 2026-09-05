@@ -334,6 +334,10 @@ model LineDeparture {
   departureMinutes Int
   requiredVehicleType VehicleType?
   notes            String?
+  // TripMarking[] (packages/schemas/transit/trip-marking.schema.ts) — molde copiado
+  // (cópia unidirecional, uma vez) para o TransitTrip materializado a partir desta
+  // partida. Sem sync de volta (docs/proposal/plan_trip_markings_v1.md, regra 7).
+  markings         Json?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -358,6 +362,11 @@ model TransitTrip {
   // field names the solver must not modify, e.g. {"locked":["departureMinutes"]}
   constraints         Json?
   notes               String?
+  // TripMarking[] (packages/schemas/transit/trip-marking.schema.ts) — marcações visuais
+  // manuais desta viagem no OSO exportado. Nunca inclui a marcação de DISPLACEMENT —
+  // sempre inferida em tempo de export, nunca persistida (docs/proposal/
+  // plan_trip_markings_v1.md, regra 6).
+  markings            Json?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
