@@ -6,6 +6,7 @@ import { assembleOso } from '../src/modules/transit/timetabling/vehicle-plan/oso
 import { resolveLayouts } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-layout.resolver'
 import { bandCarros } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-banding'
 import { computeOsoSummary } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-summary'
+import { computeOsoObservations } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-observations'
 import { renderOsoWorkbook } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-workbook.renderer'
 
 // Manual test harness for layer 6 (renderer) — writes a real .xlsx to disk so the output can
@@ -40,14 +41,15 @@ async function main() {
 
   const assembled = await assembleOso(prisma, plan.id, line.id)
   const layouts    = await resolveLayouts(prisma, assembled)
-  const bands      = bandCarros(assembled, layouts)
-  const summary    = await computeOsoSummary(prisma, assembled)
+  const bands        = bandCarros(assembled, layouts)
+  const summary      = await computeOsoSummary(prisma, assembled)
+  const observations = computeOsoObservations(assembled)
 
   const osoConfig = (scope.osoConfig as any) ?? {}
   const workbook = await renderOsoWorkbook(prisma, [{
     lineCode: line.code,
     lineName: line.name,
-    assembled, layouts, bands, summary,
+    assembled, layouts, bands, summary, observations,
     scope: {
       name:       scope.name,
       logoUrl:    scope.logoUrl,

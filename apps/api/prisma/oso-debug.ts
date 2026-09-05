@@ -65,7 +65,7 @@ async function main() {
       console.log(`  bloco ${carro.blockNumber} [${carro.operatorLabel ?? '—'}] cols=[${cols}] x${layout.tripsPerRow}`)
       for (const e of carro.events) {
         if (e.kind === 'trip')     console.log(`    trip     ${e.direction.padEnd(8)} ${fmt(e.departureMinutes)}-${fmt(e.arrivalMinutes)}`)
-        if (e.kind === 'deadrun')  console.log(`    RECO              ${fmt(e.departureMinutes)}-${fmt(e.arrivalMinutes)}`)
+        if (e.kind === 'deadrun')  console.log(`    ${e.type.padEnd(8)} ${' '.repeat(9)}${fmt(e.departureMinutes)}-${fmt(e.arrivalMinutes)}`)
         if (e.kind === 'interval') console.log(`    INTERV            ${fmt(e.departureMinutes)}-${fmt(e.arrivalMinutes)}`)
       }
     }
