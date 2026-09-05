@@ -159,33 +159,40 @@ ordem, manual antes do inferido.
 
 ## Ordem de implementação sugerida
 
-**Fase 0 — Dados**
+**Fase 0 — Dados** ✅ implementado
 - `TransitTrip.markings` e `LineDeparture.markings` (schema + migration)
 - Shape `TripMarking` validado em `trip.schema.ts`/`line-departure.schema.ts`, paleta de `bgColor`
   fechada (regra 5)
 - `vehicle-plan-import.service.ts`: `tripRows` passa a copiar `markings` de `LineDeparture` pra
   `TransitTrip` na materialização (regra 7)
 
-**Fase 1 — Assembler + observations**
+**Fase 1 — Assembler + observations** ✅ implementado
 - `oso-assembler.ts`: para de descartar DISPLACEMENT; resolve lista efetiva de marcações por
   viagem (manual + inferido)
 - `oso-observations.ts` novo: legenda condicional por recorte, dedupe por string
 
-**Fase 2 — Renderer**
+**Fase 2 — Renderer** ✅ implementado
 - `buildCarroRows`/render da célula: horário real + `fontStyle`/`bgColor` resolvidos, no lugar do
   rótulo bare atual pra este caso
-- Validar visualmente contra a linha 390 (caso real citado no `FLOW.md`)
+- Validado visualmente contra a linha 390 (caso real citado no `FLOW.md`, id
+  `6075ee0d-9692-49ee-8eab-55e021e39b28`) via `pnpm oso:render 390` — DISPLACEMENT aparece em
+  itálico+cinza, distinto do RECO amarelo, e a OBSERVAÇÃO mostra "Retorno reservado no
+  contrafluxo" uma única vez.
 
-**Fase 3 — UI de aplicação manual**
-- Atalho `q+j` (viagem focada) + botão ícone "tags" (novo em `icons.ts`) em
-  `GanttActionBar.tsx` — abre modal de entrada/edição de marcações.
+**Fase 3 — UI de aplicação manual** ✅ implementado
+- Atalho `q+j` (viagem focada) + botão ícone de marcação (`Tag`, já existente em `icons.ts` —
+  reaproveitado, sem precisar cadastrar ícone novo) em `GanttActionBar.tsx` — abre
+  `TripMarkingsModal.tsx` (entrada/edição de marcações).
 - Seleção múltipla reaproveita `Selection` tipo `interval` (mesmo mecanismo do mover em lote) —
   limitada a um range dentro do mesmo carro/bloco, sem seleção cross-carro no v1.
-- Registro de labels em memória: `useMemo` sobre os `blockTrips` das linhas em `selectedLineIds`
-  já carregadas no Gantt, deduplicado por `legendText` — alimenta um quick-pick no modal
-  (clicar reaplica os canais já usados), sem chamada nova ao backend.
+- Registro de labels em memória: `useMemo` sobre os `blockTrips` de `mergedPlottedData` (já vem
+  filtrado às linhas selecionadas pro Gantt — mesmo dado, sem filtro extra necessário),
+  deduplicado por `legendText` — alimenta um quick-pick no modal (clicar reaplica os canais já
+  usados), sem chamada nova ao backend.
 - Modal com múltiplas viagens selecionadas: mostra a união das labels presentes em pelo menos
   uma. Remover uma label afeta só as viagens da seleção atual. Editar o texto de uma label
-  (rename por `legendText`) dispara um batch-update — endpoint novo — que reescreve em todas as
-  viagens das linhas marcadas no painel (mesmo escopo do registro acima), nunca no plano
-  inteiro; modal mostra quantas viagens serão afetadas antes de confirmar.
+  (rename por `legendText`) reescreve em todas as viagens das linhas carregadas no painel (nunca
+  no plano inteiro), mostrando antes quantas serão afetadas — **sem endpoint novo**: o
+  `PATCH .../apply-diff` já existente aceita `tripUpdates[].markings` como mais um campo do
+  patch, mesmo mecanismo genérico que `constraints` já usa, então o rename só monta um array
+  maior de `tripUpdates` na mesma chamada.
