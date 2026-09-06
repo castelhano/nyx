@@ -619,6 +619,62 @@ async function renderOsoSheet(
   setCell(ws, addr(12, r43), 'OBSERVAÇÃO:', { font: baseFont({ bold: true, size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { top: MEDIUM, left: MEDIUM } })
   setCell(ws, addr(20, r43), 'AUTORIZAÇÃO Nº', { font: baseFont({ bold: true, size: 8 }), border: { top: MEDIUM, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(20, r43, 21, r43 + 1) })
 
+  // A small swatch (col 12 alone) carries the marking's own font/fill so it reads as a legend
+  // key, while the sentence itself (cols 13-19) always stays in plain readable text — instead
+  // of coloring the whole sentence, which either gets cut off by unmerged text overflow or
+  // reads as if the sentence itself were the marked cell.
+  //
+  // There are only 4 fixed one-line slots (r43+1..r43+4, shared with the Extensão Útil/Ociosa
+  // rows to their left — growing any of their heights would misalign that grid). The reference
+  // OSO does let a long observation spill onto the next line, so instead of growing a row we
+  // word-wrap each item and let it consume as many of the 4 slots as it needs; the swatch only
+  // repeats on the item's first slot, continuation slots are plain indented text. If every slot
+  // is used before an item (or the item list) finishes, the last visible slot is truncated
+  // with "…".
+  const OBS_SLOTS              = 4
+  const OBS_LEGEND_CHARS_PER_LINE = 90
+
+  function wrapObsLegend(text: string): string[] {
+    const lines = ['']
+    for (const word of text.split(' ')) {
+      const current  = lines[lines.length - 1]
+      const withWord = current ? `${current} ${word}` : word
+      if (withWord.length <= OBS_LEGEND_CHARS_PER_LINE) lines[lines.length - 1] = withWord
+      else lines.push(word)
+    }
+    return lines
+  }
+
+  type ObsSlot = { text: string; isFirst: boolean; fontStyle?: TripMarkingFontStyle; bgColor?: TripMarkingBgColor }
+  const obsSlots: (ObsSlot | undefined)[] = []
+  outer: for (const item of observations.lines) {
+    const wrapped = wrapObsLegend(item.legendText)
+    for (let i = 0; i < wrapped.length; i++) {
+      if (obsSlots.length === OBS_SLOTS) {
+        const prev = obsSlots[obsSlots.length - 1]!
+        prev.text = prev.text.replace(/…$/, '') + '…'
+        break outer
+      }
+      obsSlots.push({ text: wrapped[i], isFirst: i === 0, fontStyle: item.fontStyle, bgColor: item.bgColor })
+    }
+  }
+  while (obsSlots.length < OBS_SLOTS) obsSlots.push(undefined)
+
+  function obsLine(row: number, slot: ObsSlot | undefined, extraBorder: Partial<ExcelJS.Borders>) {
+    setCell(ws, addr(12, row), slot?.isFirst ? 'LEG' : '', {
+      font:   { ...markingFontOpts(slot?.fontStyle), size: 7 },
+      align:  { horizontal: 'center', vertical: 'top' },
+      fill:   slot?.isFirst && slot.bgColor ? BG_COLOR_FILLS[slot.bgColor] : undefined,
+      border: extraBorder,
+    })
+    setCell(ws, addr(13, row), slot?.text ?? '', {
+      font:   baseFont({ size: 8 }),
+      align:  { horizontal: 'left', vertical: 'top' },
+      border: { bottom: extraBorder.bottom },
+      merge:  rangeAddr(13, row, 19, row),
+    })
+  }
+
   // Extensão Útil (km) — one combined ida+volta figure, unlike the 3-row-per-operator
   // Ociosa block below it: it's a property of the LINE (TransitLine.metrics.extensionKm),
   // not something that varies per operator
@@ -631,7 +687,7 @@ async function renderOsoSheet(
   setCell(ws, addr(7, r43 + 1), extensionUtilTotal, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
   setCell(ws, addr(9, r43 + 1), 'Início:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: THIN, bottom: HAIR, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 1, 9, r43 + 2) })
   setCell(ws, addr(10, r43 + 1), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: THIN, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
-  setCell(ws, addr(12, r43 + 1), observations.lines[0] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { left: MEDIUM } })
+  obsLine(r43 + 1, obsSlots[0], { left: MEDIUM })
 
   // Extensão Ociosa (km) — 3 rows reserved for up to 3 operators running the line, each with
   // its own abbreviated name + figure (rule 9); the label sits on the middle row, same
@@ -643,7 +699,7 @@ async function renderOsoSheet(
   setCell(ws, addr(5, r43 + 2), ocA?.operatorLabel ?? '', { font: baseFont({ bold: true }), align: { horizontal: 'left' }, border: { bottom: HAIR, left: THIN } })
   setCell(ws, addr(6, r43 + 2), '', { border: { bottom: HAIR } })
   setCell(ws, addr(7, r43 + 2), ocA?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 2, 8, r43 + 2) })
-  setCell(ws, addr(12, r43 + 2), observations.lines[1] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { left: MEDIUM } })
+  obsLine(r43 + 2, obsSlots[1], { left: MEDIUM })
 
   setCell(ws, addr(2, r43 + 3), 'Extensão Ociosa (km)', { align: { horizontal: 'left' }, font: baseFont({ bold: true }), border: { left: MEDIUM } })
   setCell(ws, addr(4, r43 + 3), '', { border: { right: THIN } })
@@ -652,7 +708,7 @@ async function renderOsoSheet(
   setCell(ws, addr(7, r43 + 3), ocB?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
   setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: HAIR, bottom: MEDIUM, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
   setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: HAIR, bottom: MEDIUM, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
-  setCell(ws, addr(12, r43 + 3), observations.lines[2] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { left: MEDIUM } })
+  obsLine(r43 + 3, obsSlots[2], { left: MEDIUM })
   setCell(ws, addr(20, r43 + 2), '', { border: { top: THIN, left: MEDIUM, right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(20, r43 + 2, 21, r43 + 4) })
 
   setCell(ws, addr(2, r43 + 4), '', { border: { bottom: MEDIUM, left: MEDIUM } })
@@ -662,7 +718,7 @@ async function renderOsoSheet(
   setCell(ws, addr(6, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM } })
   setCell(ws, addr(7, r43 + 4), ocC?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, bottom: MEDIUM, left: HAIR } })
   setCell(ws, addr(8, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, right: MEDIUM } })
-  setCell(ws, addr(12, r43 + 4), observations.lines[3] ?? '', { font: baseFont({ size: 8 }), align: { horizontal: 'left', vertical: 'top' }, border: { bottom: MEDIUM, left: MEDIUM } })
+  obsLine(r43 + 4, obsSlots[3], { bottom: MEDIUM, left: MEDIUM })
 
   // --- signatures (Scope.osoConfig.signatures — rule 11) ---
   const sigRow = resumoStart + RESUMO_ROWS + SIGNATURE_GAP

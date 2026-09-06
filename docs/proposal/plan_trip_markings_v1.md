@@ -178,6 +178,13 @@ ordem, manual antes do inferido.
   `6075ee0d-9692-49ee-8eab-55e021e39b28`) via `pnpm oso:render 390` — DISPLACEMENT aparece em
   itálico+cinza, distinto do RECO amarelo, e a OBSERVAÇÃO mostra "Retorno reservado no
   contrafluxo" uma única vez.
+- Célula OBSERVAÇÃO: cada legenda ganha um swatch "LEG" (col 12) com o mesmo `fontStyle`/
+  `bgColor` da marcação, para ficar claro qual legenda corresponde a qual padrão visual no
+  grid quando há mais de uma marcação na mesma linha — sem isso, duas legendas com estilos
+  diferentes ficavam visualmente idênticas (texto preto plano). Os 4 slots fixos (`r43+1`..
+  `r43+4`, compartilhados com as linhas de Extensão Útil/Ociosa) nunca crescem de altura —
+  uma legenda longa é quebrada por palavra e consome quantos slots precisar (a 1ª linha leva
+  o swatch, as de continuação não), e só é truncada com "…" se não sobrar slot suficiente.
 
 **Fase 3 — UI de aplicação manual** ✅ implementado
 - Atalho `q+j` (viagem focada) + botão ícone de marcação (`Tag`, já existente em `icons.ts` —
