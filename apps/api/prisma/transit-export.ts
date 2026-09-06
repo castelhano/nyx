@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
@@ -18,6 +18,17 @@ const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://'
 const prisma   = new PrismaClient({ adapter })
 
 const FIXTURE_PATH = join(__dirname, 'fixtures', 'transit.json')
+
+// Scope.logoUrl points at a file under apps/api/uploads/, which is gitignored —
+// embed the file's bytes in the fixture so the logo survives a commit + import
+// on another machine.
+function readLogo(logoUrl: string | null): { path: string; data: string } | null {
+  if (!logoUrl || !logoUrl.startsWith('/api/uploads/')) return null
+  const relPath  = logoUrl.replace('/api/uploads/', '')
+  const filePath = join(__dirname, '..', 'uploads', relPath)
+  if (!existsSync(filePath)) return null
+  return { path: relPath, data: readFileSync(filePath).toString('base64') }
+}
 
 async function main() {
   const [localities, dayTypes, intervalTypes, scopes, lines, routes, routeLocalities, lineGroups] = await Promise.all([
@@ -66,7 +77,8 @@ async function main() {
       code: i.code, name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes,
     })),
     scopes: scopes.map(s => ({
-      name: s.name,
+      name: s.name, description: s.description, osoConfig: s.osoConfig,
+      logo: readLogo(s.logoUrl),
       operators: s.operators.map(o => ({ branchTaxId: o.branch.taxId, abbr: o.abbr, share: o.share })),
     })),
     lines: lines.map(l => ({

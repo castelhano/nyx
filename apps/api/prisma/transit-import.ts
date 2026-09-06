@@ -1,6 +1,6 @@
 import 'dotenv/config'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { join, dirname } from 'path'
 import { PrismaClient, Prisma } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -17,11 +17,21 @@ const prisma   = new PrismaClient({ adapter })
 
 const FIXTURE_PATH = join(__dirname, 'fixtures', 'transit.json')
 
+// Writes a fixture-embedded logo back to apps/api/uploads/ and returns the
+// public /api/uploads/... URL to store on the Scope.
+function writeLogo(logo: { path: string; data: string } | null): string | null {
+  if (!logo) return null
+  const filePath = join(__dirname, '..', 'uploads', logo.path)
+  mkdirSync(dirname(filePath), { recursive: true })
+  writeFileSync(filePath, Buffer.from(logo.data, 'base64'))
+  return `/api/uploads/${logo.path}`
+}
+
 interface Fixture {
   localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown }>
   dayTypes: Array<{ code: string; name: string; pattern: unknown; priority: number; sortOrder: number }>
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
-  scopes: Array<{ name: string; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
+  scopes: Array<{ name: string; description: string | null; osoConfig: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
   lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown }>
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
   routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
@@ -66,10 +76,11 @@ async function main() {
   // ── scopes + operators ──────────────────────────────────────────────────────
   const scopeMap = new Map<string, string>()
   for (const s of fixture.scopes) {
+    const logoUrl = writeLogo(s.logo)
     const scope = await prisma.scope.upsert({
       where:  { name: s.name },
-      update: {},
-      create: { name: s.name },
+      update: { description: s.description, osoConfig: s.osoConfig as Prisma.InputJsonValue, logoUrl },
+      create: { name: s.name, description: s.description, osoConfig: s.osoConfig as Prisma.InputJsonValue, logoUrl },
     })
     scopeMap.set(s.name, scope.id)
 
