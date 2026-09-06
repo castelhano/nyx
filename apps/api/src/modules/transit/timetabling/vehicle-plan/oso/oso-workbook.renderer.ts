@@ -343,7 +343,20 @@ function buildCarroRows(
       }
     }
   }
-  if (cur.some(v => v !== null)) rows.push(cur)
+  // a pending ida with no more family events at all (no volta, no deadrun/interval ever
+  // anchored to this line for the rest of the block) — the block keeps running for another
+  // line afterward, so no RETURN ever gets anchored here (block-deadrun.utils.ts anchors
+  // RETURN only to the block's true last trip). From this line's own OSO, no further trip
+  // of it in the block means recolhida is exactly right — same self-paired-arrival +
+  // separate RECO row treatment as the mid-stream interruption above, for consistency
+  if (pending) {
+    if (lastArrival !== null) cur[firstCols.length] = { minutes: lastArrival }
+    flush()
+    cur[firstCols.length] = 'RECO'
+    flush()
+  } else if (cur.some(v => v !== null)) {
+    rows.push(cur)
+  }
 
   return rows
 }

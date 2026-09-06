@@ -217,6 +217,25 @@ export async function assembleOso(
       })
     }
 
+    // a family trip that isn't the block's own true last trip never gets a real RETURN
+    // anchored to it (findDeadrunIdsAnchoredToTrips anchors RETURN only to the block's actual
+    // last trip, regardless of line) — the block simply keeps running other lines afterward.
+    // From this line's own OSO there's no more of it left in the block, so that's exactly
+    // "recolhida" as far as this sheet is concerned: a synthetic RETURN closes the family's
+    // event stream here instead of leaving its last trip open-ended with no volta/RECO at all.
+    const allBlockTrips      = block.blockTrips as any[]
+    const lastBlockTripId    = allBlockTrips[allBlockTrips.length - 1]?.trip.id as string | undefined
+    const lastFamilyBlockTrip = [...allBlockTrips].reverse().find(bt => familyLineIds.has(bt.trip.route.lineId))
+    if (lastFamilyBlockTrip && lastFamilyBlockTrip.trip.id !== lastBlockTripId) {
+      events.push({
+        kind:             'deadrun',
+        id:                `synthetic-reco-${block.id}-${lastFamilyBlockTrip.trip.id}`,
+        type:             'RETURN',
+        departureMinutes: lastFamilyBlockTrip.trip.arrivalMinutes,
+        arrivalMinutes:   lastFamilyBlockTrip.trip.arrivalMinutes,
+      })
+    }
+
     events.sort((a, b) => a.departureMinutes - b.departureMinutes)
 
     const branchId = block.branchId as string | null
