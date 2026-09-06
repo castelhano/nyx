@@ -117,19 +117,28 @@ function colWidthPx(chars: number): number {
   return Math.floor(((256 * chars + Math.floor(128 / MDW)) / 256) * MDW)
 }
 
-// converts an absolute cm position (measured from the sheet's own top-left corner, i.e. what
-// LibreOffice/Excel's "Posição e tamanho" dialog shows in the normal view — not the print
-// margin) into a fractional column/row anchor, by walking the same column widths/row heights
-// this sheet actually sets. Used for placing the logo image, since ExcelJS anchors images to
-// a (possibly fractional) cell position, not an absolute page coordinate.
-function cmToFractionalIndex(cm: number, sizesPx: number[]): number {
-  const targetPx = cm * CM_TO_PX
-  let acc = 0
-  for (let i = 0; i < sizesPx.length; i++) {
-    if (targetPx < acc + sizesPx[i]) return i + (targetPx - acc) / sizesPx[i]
-    acc += sizesPx[i]
+const EMU_PER_CM = 360000
+
+// ExcelJS's fractional `{col: n.fraction}` anchor (doc/anchor.js) turns the fraction into a
+// colOff by dividing against its OWN colWidth getter — which for a *custom*-width column uses
+// `width(chars) * 10000` as if that were the column's full span, then writes that value
+// straight into <xdr:colOff> with no further conversion. That's nowhere near the column's real
+// EMU width (~609,600 EMU for our 9.11-char columns, vs. ExcelJS's assumed ~91,100), so any
+// fractional position more than a hair into a column collapses into a tiny sliver near its left
+// edge instead of spanning it proportionally — confirmed empirically (requesting an absolute
+// 30.53cm rendered at 31.19cm; a request landing right on a column boundary was barely off).
+// Anchor's constructor also accepts nativeCol/nativeColOff directly, written verbatim to the
+// XML (cell-position-xform.js) with no such scaling, so computing a real EMU offset ourselves
+// and passing it that way sidesteps the bug entirely — this also stays correct if the logo's
+// own size ever changes, since it's a genuine cm offset, not a borrowed fraction of colWidth.
+function nativeAnchor(startIndex: number, offsetCm: number, sizesCm: number[]): { native: number; nativeOff: number } {
+  let index = startIndex
+  let remainingCm = offsetCm
+  while (remainingCm >= (sizesCm[index] ?? Infinity)) {
+    remainingCm -= sizesCm[index]
+    index += 1
   }
-  return sizesPx.length
+  return { native: index, nativeOff: Math.round(remainingCm * EMU_PER_CM) }
 }
 
 function baseFont(opts: Partial<ExcelJS.Font> = {}): Partial<ExcelJS.Font> {
@@ -443,20 +452,31 @@ async function renderOsoSheet(
         buffer: fs.readFileSync(filePath) as any,
         extension: (ext === 'jpg' ? 'jpeg' : ext) as 'png' | 'jpeg' | 'gif',
       })
-      // target position: X=30.64cm, Y=1.00cm from the sheet's own top-left, per the real doc's
-      // "Posição e tamanho" dialog. colWidthPx's formula (MDW=7) doesn't land pixel-exact on
-      // however LibreOffice actually renders these columns/rows — confirmed empirically: a
-      // request of X=30.72/Y=1.01 rendered at X=31.22/Y=1.04 — so the cm fed into
-      // cmToFractionalIndex is pre-corrected by that measured drift ratio (assumed
-      // proportional to distance from the sheet's origin, since the error is a compounding
-      // per-column/row rounding bias, not a fixed offset) rather than the raw target itself
-      const DRIFT_X = 31.22 / 30.72
-      const DRIFT_Y = 1.04 / 1.01
-      const colWidths = [colWidthPx(3.67), ...Array(LAST_DATA_COL - FIRST_DATA_COL + 1).fill(colWidthPx(9.11))]
-      const rowHeights = [13.61 * PT_TO_PX, 12.75 * PT_TO_PX, 12.75 * PT_TO_PX, 15.87 * PT_TO_PX]
+      // centered inside its own merged cell (R3:U4). Column R / row 3 both start on an exact
+      // whole column/row boundary (17 columns / 2 rows precede them — a structural fact, not a
+      // pixel estimate), so only the margin INTO that 4-column/2-row box needs colWidthPx math,
+      // and that margin is written as a real EMU offset via nativeAnchor (see its comment above)
+      // instead of ExcelJS's broken fractional col/row, so it stays centered even if the logo's
+      // own width/height changes later
+      const colWidthsCm  = [colWidthPx(3.67) / CM_TO_PX, ...Array(LAST_DATA_COL - FIRST_DATA_COL + 1).fill(colWidthPx(9.11) / CM_TO_PX)]
+      const rowHeightsCm = [13.61 * PT_TO_PX / CM_TO_PX, 12.75 * PT_TO_PX / CM_TO_PX, 12.75 * PT_TO_PX / CM_TO_PX, 15.87 * PT_TO_PX / CM_TO_PX]
+
+      const BOX_FIRST_COL = 17 // R (0-indexed): 17 whole columns (A..Q) precede it
+      const BOX_FIRST_ROW = 2  // row 3 (0-indexed): 2 whole rows (1-2) precede it
+      const boxWidthCm  = colWidthsCm.slice(BOX_FIRST_COL, BOX_FIRST_COL + 4).reduce((a, b) => a + b, 0)
+      const boxHeightCm = rowHeightsCm.slice(BOX_FIRST_ROW, BOX_FIRST_ROW + 2).reduce((a, b) => a + b, 0)
+
+      const imageWidthCm  = 4.81
+      const imageHeightCm = 0.97
+      const marginLeftCm = Math.max(0, (boxWidthCm - imageWidthCm) / 2)
+      const marginTopCm  = Math.max(0, (boxHeightCm - imageHeightCm) / 2)
+
+      const left = nativeAnchor(BOX_FIRST_COL, marginLeftCm, colWidthsCm)
+      const top  = nativeAnchor(BOX_FIRST_ROW, marginTopCm, rowHeightsCm)
+
       ws.addImage(imageId, {
-        tl: { col: cmToFractionalIndex(30.64 / DRIFT_X, colWidths), row: cmToFractionalIndex(1.00 / DRIFT_Y, rowHeights) } as any,
-        ext: { width: 4.81 * CM_TO_PX, height: 0.97 * CM_TO_PX },
+        tl: { nativeCol: left.native, nativeColOff: left.nativeOff, nativeRow: top.native, nativeRowOff: top.nativeOff } as any,
+        ext: { width: imageWidthCm * CM_TO_PX, height: imageHeightCm * CM_TO_PX },
         editAs: 'oneCell',
       } as any)
     }
