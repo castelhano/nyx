@@ -142,7 +142,7 @@ export default function VehiclePlanPage() {
   useVehiclePlanShortcuts({
     canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
     selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
-    moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, navBlocks, allTrips,
+    moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, allTrips,
     mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
     pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,

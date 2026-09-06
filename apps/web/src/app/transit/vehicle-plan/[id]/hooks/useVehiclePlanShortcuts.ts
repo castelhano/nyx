@@ -48,6 +48,8 @@ interface UseVehiclePlanShortcutsParams {
   setMoveTargetBlockId: Dispatch<SetStateAction<string | null>>
   editBarOpen:          boolean
   selectedLineIds:      Set<string>
+  setSelectedLineIds:   Dispatch<SetStateAction<Set<string>>>
+  linesPanelOpen:       boolean
   navBlocks:            NavItem[][]
   allTrips:             TripItem[]
   mergedPlottedData:    VehiclePlanGanttData | null
@@ -89,7 +91,7 @@ interface UseVehiclePlanShortcutsParams {
 export function useVehiclePlanShortcuts({
   canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
   selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
-  moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, navBlocks, allTrips,
+  moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, allTrips,
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
   pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
@@ -154,11 +156,14 @@ export function useVehiclePlanShortcuts({
     section: SEC_GERAL,
   })
 
-  useShortcut('alt+l', () => handleDiscardPendingWithConfirm(), {
+  useShortcut('alt+l', () => {
+    handleDiscardPendingWithConfirm()
+    if (linesPanelOpen) setSelectedLineIds(new Set())
+  }, {
     desc:    'Reverte alterações pendentes',
     icon:    Icons.Undo2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen,
+    enabled: editBarOpen || linesPanelOpen,
     section: SEC_GERAL,
   })
 

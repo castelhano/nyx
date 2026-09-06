@@ -10,6 +10,7 @@
 ## Alto
 [ ] Implementar / refinar logica para viagens reservadas, e variações de viagens, observações, etc
 [ ] Refactor nas telas de OSO
+[ ] Adicionar comando de conversão de viagem em deadrun DISPLACEMENTS (confirmar se displacements eh deadrun ou deveria ser uma trip com type distinto, mesma ideia de para expresso, semiexpresso)
 ## Medio
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações)
 [ ] Adição de ponto / waypoint no cadastro da rota, permitir remover um ponto ainda nao persistido (pending), e alt+l deve descartar pendencias

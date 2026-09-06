@@ -7,7 +7,7 @@ import type { TripMarking } from '@nyx/schemas'
 // Styles the DISPLACEMENT's own reserved slot in the grid (oso-workbook.renderer.ts) and
 // feeds the OBSERVAÇÃO legend (oso-observations.ts) whenever one is anchored in the recorte.
 export const DISPLACEMENT_MARKING: TripMarking = {
-  legendText: 'Retorno reservado no contrafluxo',
+  legendText: 'Retorna reservado no contrafluxo',
   fontStyle:  'ITALIC',
   bgColor:    'CINZA',
 }
