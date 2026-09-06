@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useState, useMemo, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis,
@@ -12,6 +12,8 @@ import { Icons } from '@/lib/icons'
 import { Select } from '@/components/ui/select'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
+import { BG_COLOR_OPTIONS, FONT_STYLE_OPTIONS } from './TripMarkingsModal'
+import type { TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 interface LineComparisonSummary {
   fleetSize:             number
@@ -241,13 +243,61 @@ function LFTooltip({ active, payload, label }: any) {
 const TABS = [
   { key: 'comparativo',     label: 'Comparativo',     icon: 'BarChart2' as const },
   { key: 'oferta-demanda',  label: 'Oferta · Demanda', icon: 'SlidersHorizontal' as const },
+  { key: 'detalhes',        label: 'Detalhes',         icon: 'Tag' as const },
 ]
+
+const DIR_LABEL: Record<string, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
+
+function fmtHHMM(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function markingBgHex(color?: TripMarkingBgColor): string {
+  return color ? (BG_COLOR_OPTIONS.find(o => o.value === color)?.hex ?? '#e5e7eb') : '#e5e7eb'
+}
+
+// The marking palette is always light/pastel by design (regra 5) — a fixed dark
+// text color keeps the "LEG" swatch readable against it in both themes, instead of
+// text-foreground which flips to a light color in dark mode and disappears.
+const MARKING_SWATCH_TEXT = '#1f2937'
+
+function markingFontClass(style?: TripMarkingFontStyle): string {
+  switch (style) {
+    case 'BOLD':          return 'font-bold'
+    case 'ITALIC':        return 'italic'
+    case 'BOLD_ITALIC':   return 'font-bold italic'
+    case 'UNDERLINE':     return 'underline'
+    case 'STRIKETHROUGH': return 'line-through'
+    default:              return ''
+  }
+}
+
+interface MarkingGroupTrip {
+  blockTripId:      string
+  blockNumber:      number
+  departureMinutes: number
+  arrivalMinutes:   number
+  direction:        string
+  fontStyle?:       TripMarkingFontStyle
+  bgColor?:         TripMarkingBgColor
+}
+
+interface MarkingGroup {
+  legendText:   string
+  trips:        MarkingGroupTrip[]
+  // >1 quando a mesma legenda aparece com fontStyle/bgColor diferentes entre viagens
+  // desta linha — nunca deveria acontecer após uma edição via TripMarkingsModal
+  // (que replica texto e estilo juntos), mas pode surgir de dados legados/importados.
+  styleVariants: number
+}
 
 export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlottedData, hasPendingChanges }: Props) {
   useShortcutContext('summary')
 
   const [activeLineId, setActiveLineId] = useState(lineIds[0])
-  const [tab, setTab] = useState<'comparativo' | 'oferta-demanda'>('comparativo')
+  const [tab, setTab] = useState<'comparativo' | 'oferta-demanda' | 'detalhes'>('comparativo')
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -302,6 +352,35 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
       }))
       .filter(b => b.trips.length > 0)
   }
+
+  // Detalhes tab — markings (observações) das viagens desta linha, agrupadas por
+  // legendText. Lê de mergedPlottedData (mesmo dado do preview acima) — já reflete
+  // edições pendentes não salvas, sem chamada nova ao backend.
+  const markingGroups = useMemo<MarkingGroup[]>(() => {
+    const byText = new Map<string, MarkingGroup>()
+    const styleKeys = new Map<string, Set<string>>()
+    for (const block of mergedPlottedData?.blocks ?? []) {
+      for (const bt of block.blockTrips) {
+        if (bt.trip.route.line.id !== activeLineId) continue
+        for (const m of bt.trip.markings ?? []) {
+          if (!byText.has(m.legendText)) { byText.set(m.legendText, { legendText: m.legendText, trips: [], styleVariants: 0 }); styleKeys.set(m.legendText, new Set()) }
+          byText.get(m.legendText)!.trips.push({
+            blockTripId:      bt.id,
+            blockNumber:      block.blockNumber,
+            departureMinutes: bt.trip.departureMinutes,
+            arrivalMinutes:   bt.trip.arrivalMinutes,
+            direction:        bt.trip.route.direction,
+            fontStyle:        m.fontStyle,
+            bgColor:          m.bgColor,
+          })
+          styleKeys.get(m.legendText)!.add(`${m.fontStyle ?? ''}|${m.bgColor ?? ''}`)
+        }
+      }
+    }
+    return [...byText.values()]
+      .map(g => ({ ...g, trips: g.trips.sort((a, b) => a.departureMinutes - b.departureMinutes), styleVariants: styleKeys.get(g.legendText)!.size }))
+      .sort((a, b) => a.legendText.localeCompare(b.legendText))
+  }, [mergedPlottedData, activeLineId])
 
   const { data: preview, isLoading: previewLoading } = useQuery<LineComparisonSummary>({
     queryKey: ['transit', 'vehicle-plan', planId, 'lines', activeLineId, 'preview-score'],
@@ -558,6 +637,54 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                 </table>
               </div>
             </div>
+            </div>
+          </div>
+        ) : tab === 'detalhes' ? (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-[1400px] mx-auto space-y-3">
+              {markingGroups.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-10">Nenhuma marcação nesta linha.</p>
+              ) : (
+                markingGroups.map(g => (
+                  <div key={g.legendText} className="bg-card border border-border rounded-xl p-4 space-y-2">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span
+                        className={cn('shrink-0 px-2 py-0.5 rounded text-xs font-semibold tracking-wide', markingFontClass(g.trips[0].fontStyle))}
+                        style={{ background: markingBgHex(g.trips[0].bgColor), color: MARKING_SWATCH_TEXT }}
+                      >
+                        LEG
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {g.trips.length} {g.trips.length === 1 ? 'viagem' : 'viagens'}
+                      </span>
+                      {g.styleVariants > 1 && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/25">
+                          <Icons.AlertTriangle className="w-3 h-3" />
+                          {g.styleVariants} estilos diferentes nesta seleção
+                        </span>
+                      )}
+                    </div>
+                    <p className={cn('text-sm text-foreground/90 break-words', markingFontClass(g.trips[0].fontStyle))}>
+                      {g.legendText}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      {g.trips.map(t => (
+                        <div key={t.blockTripId} className="bg-muted/40 rounded-lg px-3 py-2 text-xs space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: markingBgHex(t.bgColor) }} />
+                            <span className={cn('font-medium text-foreground/90 tabular-nums', markingFontClass(t.fontStyle))}>
+                              {fmtHHMM(t.departureMinutes)}–{fmtHHMM(t.arrivalMinutes)}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground">
+                            Bloco {t.blockNumber} · {DIR_LABEL[t.direction] ?? t.direction}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         ) : (

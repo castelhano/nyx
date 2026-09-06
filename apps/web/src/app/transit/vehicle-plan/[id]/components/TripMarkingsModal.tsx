@@ -10,7 +10,8 @@ import type { VehiclePlanGanttData } from '../views/vehicles.view'
 
 // Paleta fechada (docs/proposal/plan_trip_markings_v1.md, regra 5) — mesmos tons usados
 // no export OSO (oso-workbook.renderer.ts BG_COLOR_FILLS), sem o canal alfa do ARGB.
-const BG_COLOR_OPTIONS: { value: TripMarkingBgColor; hex: string }[] = [
+// Exportado para reaproveitar o mesmo swatch em LineSummaryView (aba Detalhes).
+export const BG_COLOR_OPTIONS: { value: TripMarkingBgColor; hex: string }[] = [
   { value: 'AZUL',     hex: '#BDD7EE' },
   { value: 'VERDE',    hex: '#C6E0B4' },
   { value: 'ROSA',     hex: '#F4B6C2' },
@@ -20,7 +21,7 @@ const BG_COLOR_OPTIONS: { value: TripMarkingBgColor; hex: string }[] = [
 ]
 const NO_COLOR_HEX = '#e5e7eb'
 
-const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[] = [
+export const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[] = [
   { value: 'BOLD',          label: 'Negrito' },
   { value: 'ITALIC',        label: 'Itálico' },
   { value: 'BOLD_ITALIC',   label: 'Negrito + itálico' },
