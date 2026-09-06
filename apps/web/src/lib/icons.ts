@@ -25,6 +25,8 @@ const iconNames = [
   'CheckCircle',
   'CheckSquare',
   'ChevronDown',
+  'ChevronLeft',
+  'ChevronRight',
   'ClipboardList',
   'Clock',
   'Coffee',

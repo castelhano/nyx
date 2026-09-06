@@ -28,7 +28,7 @@ export const lineDepartureSchema = withMeta(
       label:          'Partida (min)',
       listVisibility: 'visible',
       className:      'md:w-40',
-      keybind:        'p',
+      keybind:        's',
     }),
 
     requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional().meta({
@@ -51,9 +51,8 @@ export const lineDepartureSchema = withMeta(
       listVisibility: 'never',
     }),
 
-    // TripMarking[] — molde copiado (cópia unidirecional, uma vez) para o TransitTrip
-    // materializado a partir desta partida (docs/proposal/plan_trip_markings_v1.md, regra
-    // 7). Sem UI de edição própria por ora — hoje só é populado pelo import do plano.
+    // TripMarking[] — template copied (one-way copy, once) to TransitTrip
+    // materialized from this departure
     markings: z.array(tripMarkingSchema).optional().meta({
       label:          'Marcações',
       listVisibility: 'never',

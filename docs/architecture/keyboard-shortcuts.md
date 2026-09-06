@@ -155,6 +155,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `N` | New incognito / private window |
 | `R` | Hard reload (bypass cache) |
 | `P` | New incognito / private window on Firefox |
+| `Q` | Observed non-functional in Firefox (confirmed working in Chrome) — exact binding unconfirmed, treat as reserved until root cause is known |
 | `T` | Reopen last closed tab |
 | `W` | Close window |
 | `Z` | Redo (some OS/browser combinations) |
@@ -167,7 +168,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `M` | Guest profile switcher in some Chrome versions |
 | `U` | Unicode input on Linux; safe on Windows |
 
-**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `O` `Q` `S` `U` `V` `X` `Y`
+**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `O` `S` `U` `V` `X` `Y`
 
 ---
 ### Standard combinations

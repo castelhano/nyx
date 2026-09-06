@@ -1,11 +1,11 @@
 'use client'
 
-// Prototype: editor único de LineSchedule (OSO) + LineDeparture, ver
-// docs/proposal/plan_line_schedule_editor_v1.md — grade de partidas navegável por
-// teclado, um bloco por sentido, com painel lateral fixo para editar a partida
-// focada (ou edição em lote da seleção). Buffer local (draft) com dirty-tracking,
-// commit único no alt+g (cabeçalho + partidas juntos), alt+l reverte, alt+v volta
-// para a lista real de OSOs. Dados 100% mockados — nada é persistido.
+// Prototype: single editor for LineSchedule (OSO) + LineDeparture, see
+// docs/proposal/plan_line_schedule_editor_v1.md — keyboard-navigable departure grid,
+// one block per direction, with a fixed side panel to edit the focused departure
+// (or bulk-edit the selection). Local buffer (draft) with dirty-tracking, single
+// commit on alt+g (header + departures together), alt+l reverts, alt+v goes back
+// to the real schedule list. Data is 100% mocked — nothing is persisted.
 
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -19,7 +19,7 @@ import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
 import { cn } from '@/lib/utils'
 
-// ── domínio mockado (espelha line-schedule.schema.ts / line-departure.schema.ts / trip-marking.schema.ts) ──
+// ── mocked domain (mirrors line-schedule.schema.ts / line-departure.schema.ts / trip-marking.schema.ts) ──
 
 type Direction   = 'OUTBOUND' | 'INBOUND'
 type VehicleType = 'STANDARD' | 'MICRO_BUS' | 'MINIBUS' | 'VAN'
@@ -40,8 +40,8 @@ interface Departure {
 const DIRECTION_LABELS: Record<Direction, string>   = { OUTBOUND: 'Ida', INBOUND: 'Volta' }
 const VEHICLE_LABELS:   Record<VehicleType, string>  = { STANDARD: 'Ônibus', MICRO_BUS: 'Micro-ônibus', MINIBUS: 'Miniônibus', VAN: 'Van' }
 
-// mesma paleta fechada de TripMarkingsModal.tsx (docs/proposal/plan_trip_markings_v1.md) — copiada
-// aqui só para o protótipo ficar autocontido num único arquivo, sem import cruzando pasta [id]
+// same closed palette as TripMarkingsModal.tsx (docs/proposal/plan_trip_markings_v1.md) — copied
+// here only to keep the prototype self-contained in one file, without an import crossing the [id] folder
 const BG_COLOR_OPTIONS: { value: BgColor; hex: string }[] = [
   { value: 'AZUL',     hex: '#BDD7EE' },
   { value: 'VERDE',    hex: '#C6E0B4' },
@@ -116,7 +116,7 @@ const SEC_NAV   = { label: 'Navegação' }
 const SEC_ED    = { label: 'Edição' }
 const SHORTCUT_ORIGIN = 'apps/web/src/app/playground/page'
 
-// ── subcomponentes ──────────────────────────────────────────────────────────
+// ── subcomponents ──────────────────────────────────────────────────────────
 
 function DepartureChip({ dep, focused, selected, dirty, deleted, onClick }: {
   dep:      Departure
@@ -152,7 +152,7 @@ function DepartureChip({ dep, focused, selected, dirty, deleted, onClick }: {
   )
 }
 
-// ── página ────────────────────────────────────────────────────────────────
+// ── page ────────────────────────────────────────────────────────────────
 
 export default function PlaygroundPage() {
   const router  = useRouter()
@@ -320,7 +320,7 @@ export default function PlaygroundPage() {
     router.push('/transit/line-schedule')
   }
 
-  // ── atalhos ────────────────────────────────────────────────────────────
+  // ── shortcuts ────────────────────────────────────────────────────────────
 
   const origin = SHORTCUT_ORIGIN
 
@@ -354,13 +354,13 @@ export default function PlaygroundPage() {
     desc: 'Voltar', icon: Icons.ArrowLeft, origin, section: SEC_GERAL,
   })
 
-  // ── render ───────────────────────────────────────────────────────────────
+  // ── render ────────────────────────────────────────────────────────────────
 
   const isBulk = selectedIds.size > 1
 
   return (
     <div className="min-h-full bg-background text-foreground flex flex-col">
-      {/* cabeçalho — edita LineSchedule */}
+      {/* header — edits LineSchedule */}
       <div className="border-b border-border px-6 py-4 space-y-3">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Icons.CalendarSync className="w-3.5 h-3.5" />
@@ -430,7 +430,7 @@ export default function PlaygroundPage() {
         </div>
       </div>
 
-      {/* corpo — grade do sentido ativo (aba) + painel de detalhe */}
+      {/* body — active-direction grid (tab) + detail panel */}
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 flex flex-col">
           <div className="flex border-b border-border mb-4">
@@ -474,7 +474,7 @@ export default function PlaygroundPage() {
           </div>
         </div>
 
-        {/* painel lateral — edita LineDeparture focada ou seleção em lote */}
+        {/* side panel — edits the focused LineDeparture, or bulk-edits the selection */}
         <div className="w-80 shrink-0 border-l border-border p-4 overflow-y-auto space-y-4">
           {isBulk ? (
             <>
@@ -638,7 +638,7 @@ export default function PlaygroundPage() {
         </div>
       </div>
 
-      {/* legenda de atalhos */}
+      {/* shortcut legend */}
       <div className="border-t border-border px-6 py-2 text-[11px] text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
         <span>← → ↑ ↓ navegar</span>
         <span>shift+seta selecionar intervalo</span>

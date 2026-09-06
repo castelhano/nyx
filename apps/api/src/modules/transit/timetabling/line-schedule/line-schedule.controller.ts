@@ -1,9 +1,10 @@
-import { Controller, Post, Param, Body, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Post, Patch, Param, Body, Req, UseGuards, HttpCode } from '@nestjs/common'
 import { LineSchedule, CreateLineScheduleDto, UpdateLineScheduleDto } from '@nyx/schemas'
+import type { AuthUser } from '@nyx/types'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
-import { LineScheduleService } from './line-schedule.service'
+import { LineScheduleService, SaveDeparturesBatchDto } from './line-schedule.service'
 
 @Controller('transit/line-schedule')
 @UseGuards(JwtAuthGuard)
@@ -25,5 +26,17 @@ export class LineScheduleController extends BaseController<LineSchedule, CreateL
   @HttpCode(200)
   approve(@Param('id') id: string, @Body('force') force: boolean) {
     return this.lineScheduleService.approve(id, force ?? false)
+  }
+
+  // Schedule editor — single commit for header + departures
+  // (docs/proposal/plan_line_schedule_editor_v1.md)
+  @Patch(':id/departures-batch')
+  async saveDeparturesBatch(
+    @Req() req: { user?: AuthUser },
+    @Param('id') id: string,
+    @Body() dto: SaveDeparturesBatchDto,
+  ) {
+    await this.assertAbility(req.user, 'update')
+    return this.lineScheduleService.saveBatch(id, dto)
   }
 }
