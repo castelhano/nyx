@@ -20,6 +20,7 @@ nyx/
 - [Node.js](https://nodejs.org/) >= 22.12 — required by Prisma 7
 - [pnpm](https://pnpm.io/) >= 10 — install with `npm install -g pnpm`
 - [Docker](https://docs.docker.com/get-docker/) — runs the local PostgreSQL & OSRM instances
+- [LibreOffice](https://www.libreoffice.org/) (`soffice` binary) — required for OSO PDF export (see below)
 
 ## First-time setup
 
@@ -312,6 +313,26 @@ docker compose -f docker-compose.osrm.yml up -d              # (re)start osrm-ro
 Finally, re-generate the travel-time matrix from the UI (**Matriz de Tempos** → **Gerar Matriz**) so it reflects the updated road network.
 
 > Deleting the old `.osm.pbf` and `.osrm*` artifacts is required — `osrm-prepare` skips processing whenever a `.osrm.mldgr` file already exists, so stale data is never regenerated automatically.
+
+---
+
+## LibreOffice — OSO PDF export
+
+The OSO export (`POST /transit/vehicle-plan/:id/oso/export` with `format: "pdf"`) generates the
+`.xlsx` workbook and then shells out to the `soffice` (LibreOffice) binary to convert it to PDF
+(`apps/api/.../vehicle-plan/oso/xlsx-to-pdf.util.ts`). This is a **system binary dependency, not
+an npm package** — it must be installed on every machine that runs the API, dev or production.
+Without it, the `.xlsx` export path still works fine; only `format: "pdf"` fails.
+
+Install on Debian/Ubuntu:
+
+```bash
+sudo apt install libreoffice
+```
+
+> **Production deploy:** whichever image/host runs the API needs LibreOffice installed alongside
+> Node — there is no Dockerfile in this repo yet, so this must be added explicitly whenever one is
+> introduced (or to whatever VM/base image ends up running the API).
 
 ---
 

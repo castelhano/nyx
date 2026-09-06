@@ -32,6 +32,7 @@ export function ExportOsoModal({ planId, onClose }: Props) {
   useShortcutContext('export_oso_md')
   const { toast } = useToast()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [format, setFormat] = useState<'xlsx' | 'pdf'>('pdf')
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function ExportOsoModal({ planId, onClose }: Props) {
     try {
       const res = await apiFetch(`/transit/vehicle-plan/${planId}/oso/export`, {
         method: 'POST',
-        body:   JSON.stringify({ lineIds: [...selected] }),
+        body:   JSON.stringify({ lineIds: [...selected], format }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -88,7 +89,7 @@ export function ExportOsoModal({ planId, onClose }: Props) {
       }
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
-      const a    = Object.assign(document.createElement('a'), { href: url, download: 'oso.xlsx' })
+      const a    = Object.assign(document.createElement('a'), { href: url, download: `oso.${format}` })
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -166,11 +167,30 @@ export function ExportOsoModal({ planId, onClose }: Props) {
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleExport} disabled={selected.size === 0 || exporting}>
-            {exporting ? 'Gerando…' : 'Exportar .xlsx'}
-          </Button>
+        <div className="flex items-center justify-between gap-2 px-6 py-4 border-t border-border">
+          <div className="flex items-center rounded-sm border border-border overflow-hidden text-sm">
+            {(['xlsx', 'pdf'] as const).map(f => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFormat(f)}
+                className={cn(
+                  'px-3 py-1 uppercase',
+                  format === f
+                    ? 'bg-accent text-accent-foreground'
+                    : 'bg-background text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+            <Button onClick={handleExport} disabled={selected.size === 0 || exporting}>
+              {exporting ? 'Gerando…' : 'Exportar'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

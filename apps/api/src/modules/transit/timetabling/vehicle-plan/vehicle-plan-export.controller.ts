@@ -3,6 +3,7 @@ import type { Response } from 'express'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { VehiclePlanExportService } from './vehicle-plan-export.service'
+import { convertXlsxToPdf } from './oso/xlsx-to-pdf.util'
 
 @Controller('transit/vehicle-plan/:id/oso')
 @UseGuards(JwtAuthGuard)
@@ -41,13 +42,22 @@ export class VehiclePlanExportController {
   async export(
     @Param('id') id: string,
     @Body('lineIds') lineIds: string[],
+    @Body('format') format: 'xlsx' | 'pdf' = 'xlsx',
     @Res() res: Response,
   ) {
-    const workbook = await this.exportService.exportOso(id, lineIds)
-    const buffer   = await workbook.xlsx.writeBuffer()
+    const workbook   = await this.exportService.exportOso(id, lineIds)
+    const xlsxBuffer = Buffer.from(await workbook.xlsx.writeBuffer())
+
+    if (format === 'pdf') {
+      const pdfBuffer = await convertXlsxToPdf(xlsxBuffer)
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader('Content-Disposition', 'attachment; filename="oso.pdf"')
+      res.send(pdfBuffer)
+      return
+    }
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', 'attachment; filename="oso.xlsx"')
-    res.send(Buffer.from(buffer))
+    res.send(xlsxBuffer)
   }
 }

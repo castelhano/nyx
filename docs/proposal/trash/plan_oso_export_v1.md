@@ -262,16 +262,20 @@ Implicações de infra:
   `OsoCarroLayout` de cada grupo de carro
 - Comparação visual lado a lado com os exemplos reais
 
-**Fase 3 — Multi-linha + endpoint + UI** ✅ implementado (xlsx apenas; PDF adiado)
+**Fase 3 — Multi-linha + endpoint + UI** ✅ implementado
 - `VehiclePlanExportController`/`VehiclePlanExportService`
   (`apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan-export.*`): `GET
   :id/oso/lines` (todas as `TransitLine` do scope do plano, com `hasTrips`) e `POST
-  :id/oso/export` (`{ lineIds }` → workbook com N sheets, ordenado por operador então código,
-  natural sort — regra 13)
+  :id/oso/export` (`{ lineIds, format }` → workbook com N sheets, ordenado por operador então
+  código, natural sort — regra 13; `format: 'xlsx' | 'pdf'`, default `'xlsx'`)
 - `ExportOsoModal.tsx`: item "OSO" no menu do botão "Linhas", grid de badges toggleáveis
-  (desabilitados sem `hasTrips`), atalhos de seleção em massa por `LineGroup`, botão de export
-- PDF via LibreOffice **não implementado** — dependência de binário de sistema (`soffice`) e
-  limitador de concorrência considerados desproporcionais para o v1; endpoint gera só `.xlsx`
+  (desabilitados sem `hasTrips`), atalhos de seleção em massa por `LineGroup`, seletor de
+  formato xlsx/pdf, botão de export
+- PDF via LibreOffice **implementado**: `oso/xlsx-to-pdf.util.ts` converte o buffer do
+  workbook via `soffice --headless --convert-to pdf`, arquivo temp por conversão, fila
+  in-process serializando as chamadas (sem broker/fila externa, como previsto). Dependência de
+  binário de sistema (`soffice`) documentada no `README.md` ("LibreOffice — OSO PDF export") —
+  precisa entrar na imagem/host de produção quando um deploy real existir (nenhum hoje).
 
 **Fase 4 (depende de outra implementação em andamento) — Observações estruturadas**
 - Aguarda o modelo de notas por viagem/bloco (mencionado como próximos dias)
