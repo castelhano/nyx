@@ -31,6 +31,9 @@ export interface GanttSegment {
   // line's pinned OSO — only ever set for a line currently flagged isDrifted
   // (see vehiclesView.getSegments / useOsoCoverage).
   offSchedule?: boolean
+  // Trip has one or more entries in TripMarking[] (docs/proposal/plan_trip_markings_v1.md) —
+  // one dash regardless of how many markings, count is only visible in TripMarkingsModal.
+  marked?:     boolean
   label:       string
   color:       string
   data:        unknown

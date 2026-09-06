@@ -18,6 +18,7 @@ export interface LayoutSegment {
   kind:        SegmentKind
   locked?:     boolean
   offSchedule?: boolean
+  marked?:     boolean
   label:       string
   color:       string
   data:        unknown

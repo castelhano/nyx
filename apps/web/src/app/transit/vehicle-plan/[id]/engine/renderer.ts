@@ -13,6 +13,10 @@ const LOCK_DOT_MIN_WIDTH     = 12  // skip dot below this segment width
 const DRIFT_RIBBON_SIZE      = 10  // px — right-triangle leg length, clipped into the block's own corner
 const DRIFT_RIBBON_COLOR     = '#f43f5e'  // rose-500 — distinct from lock's slate and the isDrifted line dot's amber
 const DRIFT_RIBBON_MIN_WIDTH = 16  // skip below this segment width
+const MARK_DASH_WIDTH        = 8
+const MARK_DASH_HEIGHT       = 3
+const MARK_DASH_COLOR        = '#ffffff'  // white — a violet tried first washed out against the palette's own purple line color; white holds contrast on every line color, incl. the lightened INBOUND variant
+const MARK_DASH_MIN_WIDTH    = 12  // skip below this segment width, same threshold as the lock dot
 const MOVE_TARGET_COLOR      = '#3b82f6'
 const MOVE_TARGET_FILL       = 'rgba(59, 130, 246, 0.08)'
 const MOVE_TARGET_WIDTH      = 2
@@ -158,6 +162,7 @@ export class Renderer {
     const rings: Array<{ x: number; y: number; w: number; h: number; radius: number }> = []
     const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
     const driftRibbons: Array<{ x: number; y: number; w: number; h: number; radius: number; dimmed: boolean }> = []
+    const markDashes: Array<{ x: number; y: number; dimmed: boolean }> = []
     let focusRect: { x: number; y: number; w: number; h: number; radius: number } | null = null
 
     for (const seg of segments) {
@@ -256,6 +261,14 @@ export class Renderer {
       if (seg.offSchedule && seg.kind === 'trip' && w > DRIFT_RIBBON_MIN_WIDTH) {
         driftRibbons.push({ x, y, w, h, radius, dimmed })
       }
+
+      if (seg.marked && seg.kind === 'trip' && w > MARK_DASH_MIN_WIDTH) {
+        markDashes.push({
+          x: x + 3,
+          y: y + h - MARK_DASH_HEIGHT - 3,
+          dimmed,
+        })
+      }
     }
 
     // ring pass: draw selection outline on top of everything
@@ -308,6 +321,20 @@ export class Renderer {
         ctx.closePath()
         ctx.fill()
         ctx.restore()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    // dash pass: trip-marking indicator (docs/proposal/plan_trip_markings_v1.md) — a single
+    // bar regardless of how many markings the trip has, bottom-left corner (never shares a
+    // corner with lock's dot or drift's ribbon).
+    if (markDashes.length > 0) {
+      ctx.fillStyle = MARK_DASH_COLOR
+      for (const { x, y, dimmed } of markDashes) {
+        ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
+        ctx.beginPath()
+        ctx.roundRect(x, y, MARK_DASH_WIDTH, MARK_DASH_HEIGHT, MARK_DASH_HEIGHT / 2)
+        ctx.fill()
       }
       ctx.globalAlpha = 1
     }
