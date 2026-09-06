@@ -257,16 +257,21 @@ Implicações de infra:
 - Validar contra `A22B` (carro denso + reforços) e um caso simples de carro único — os dois
   extremos de shape na mesma execução
 
-**Fase 2 — Renderer xlsx (chassi + bandas)**
+**Fase 2 — Renderer xlsx (chassi + bandas)** ✅ implementado
 - `oso-workbook.renderer.ts`: chassi (cabeçalho, logo, RESUMO, assinaturas) + banda, iterando o
   `OsoCarroLayout` de cada grupo de carro
-- Endpoint `.xlsx` pra 1 linha
 - Comparação visual lado a lado com os exemplos reais
 
-**Fase 3 — Multi-linha/scope + PDF**
-- Endpoint aceita lista de `lineId` ou `scopeId`
-- Workbook com N sheets
-- Conversão pra PDF via LibreOffice (infra: instalar `soffice`, testar concorrência)
+**Fase 3 — Multi-linha + endpoint + UI** ✅ implementado (xlsx apenas; PDF adiado)
+- `VehiclePlanExportController`/`VehiclePlanExportService`
+  (`apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan-export.*`): `GET
+  :id/oso/lines` (todas as `TransitLine` do scope do plano, com `hasTrips`) e `POST
+  :id/oso/export` (`{ lineIds }` → workbook com N sheets, ordenado por operador então código,
+  natural sort — regra 13)
+- `ExportOsoModal.tsx`: item "OSO" no menu do botão "Linhas", grid de badges toggleáveis
+  (desabilitados sem `hasTrips`), atalhos de seleção em massa por `LineGroup`, botão de export
+- PDF via LibreOffice **não implementado** — dependência de binário de sistema (`soffice`) e
+  limitador de concorrência considerados desproporcionais para o v1; endpoint gera só `.xlsx`
 
 **Fase 4 (depende de outra implementação em andamento) — Observações estruturadas**
 - Aguarda o modelo de notas por viagem/bloco (mencionado como próximos dias)

@@ -34,6 +34,7 @@ const iconNames = [
   'ExternalLink',
   'Eye',
   'EyeOff',
+  'FileSpreadsheet',
   'FileText',
   'Gauge',
   'GitBranch',

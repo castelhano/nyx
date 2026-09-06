@@ -24,6 +24,7 @@ import { HeadwayRangeBar }   from './components/HeadwayRangeBar'
 import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './components/LineFreqPanel'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
+import { ExportOsoModal } from './components/ExportOsoModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
 import { TripSummaryPanel }  from './components/TripSummaryPanel'
 import { OptimizeModal }         from './components/OptimizeModal'
@@ -118,6 +119,7 @@ export default function VehiclePlanPage() {
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
+  const [exportOsoModalOpen, setExportOsoModalOpen] = useState(false)
   const [generateLineModal, setGenerateLineModal] = useState<{ lineId: string } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
@@ -278,6 +280,7 @@ export default function VehiclePlanPage() {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
             setVersionsModalOpen(true)
           } },
+          { label: 'OSO', icon: Icons.FileSpreadsheet, onClick: () => setExportOsoModalOpen(true) },
         ],
       }] : []),
       // stop: only while stream is open
@@ -410,6 +413,13 @@ export default function VehiclePlanPage() {
             setEditBarOpen(true)
           }}
           onClose={() => setVersionsModalOpen(false)}
+        />
+      )}
+
+      {exportOsoModalOpen && (
+        <ExportOsoModal
+          planId={id}
+          onClose={() => setExportOsoModalOpen(false)}
         />
       )}
 
