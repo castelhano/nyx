@@ -75,13 +75,23 @@ export type PendingLineSchedulePin = { lineId: string; lineScheduleId: string }
 
 interface UseGanttEditorParams {
   id:           string
-  canEdit:      boolean
+  // canEditGantt gates punctual Gantt edits (trip/deadrun/interval add-move-delete,
+  // markings, constraints, timing, headway distribute, save/discard) — allowed on
+  // DRAFT and ACTIVE plans. canEditStructural gates bulk/structural flows (Ajustar
+  // Ciclo, Finalizar Plano) — DRAFT-only, mirrors the "Gerar" menu's own gate in
+  // page.tsx.
+  canEditGantt:      boolean
+  canEditStructural: boolean
+  // Only used to flag the Salvar confirmation with a "Plano Ativo" badge — punctual
+  // edits on an ACTIVE plan take effect immediately on operação corrente, with no
+  // DRAFT review step in between.
+  isActivePlan: boolean
   ganttData:    VehiclePlanGanttData | undefined
   refetchGantt: () => Promise<unknown>
   setIsPending: (v: boolean) => void
 }
 
-export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPending }: UseGanttEditorParams) {
+export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePlan, ganttData, refetchGantt, setIsPending }: UseGanttEditorParams) {
   const { toast } = useToast()
   const confirm    = useConfirm()
 
@@ -524,7 +534,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // TripPatch onto trip, so a staged constraints value renders immediately without a
   // network call. See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.5.
   function handleUpdateConstraints(tripIds: string[], patches: TripConstraints | null | TripConstraints[]) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setPendingChanges(prev => {
       const next = new Map(prev)
       tripIds.forEach((tripId, i) => {
@@ -542,7 +552,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // (same final list repeated for a uniform selection edit, or one entry per
   // affected trip for the rename-across-panel sweep).
   function handleUpdateMarkings(tripIds: string[], patches: (TripMarking[] | null)[]) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setPendingChanges(prev => {
       const next = new Map(prev)
       tripIds.forEach((tripId, i) => {
@@ -565,7 +575,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // handleConfirmDepotModal already writes for a single manual pick. Nothing is
   // persisted until Salvar — same staged model as handleAdjustCycle above.
   async function handleFinalizePlan() {
-    if (!canEdit || !ganttData) return
+    if (!canEditStructural || !ganttData) return
 
     // ── pass 1: saved blocks ──────────────────────────────────────────────────
     const alreadyPendingAccess = new Set(
@@ -688,7 +698,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   function handleAdjustCycle() {
-    if (!plottedData || !canEdit) return
+    if (!plottedData || !canEditStructural) return
 
     const overrides   = new Map<string, TripPatch>()
     const drOverrides = new Map<string, DeadrunPatch>()
@@ -815,7 +825,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // trips from the same range are unlikely to be adjacent on the same
   // vehicle, since direction alternates every productive trip).
   function handleDistributeHeadway() {
-    if (!canEdit || !mergedPlottedData || !headwayRangeInfo) return
+    if (!canEditGantt || !mergedPlottedData || !headwayRangeInfo) return
 
     if (!headwayRangeInfo.singleLine) {
       toast.error('O intervalo selecionado mistura mais de uma linha — distribua o headway com um intervalo de uma única linha')
@@ -945,7 +955,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   const handleTripTimingOp = useCallback((
     op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext',
   ) => {
-    if (!canEdit || !mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
+    if (!canEditGantt || !mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
 
     const isBreakFocus = focusedSegId.endsWith(':bk')
     const breakId       = isBreakFocus ? focusedSegId.slice(0, -3) : null
@@ -1172,7 +1182,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
         return a
       }))
     }
-  }, [canEdit, focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
+  }, [canEditGantt, focusedSegId, mergedPlottedData, ganttData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds])
 
   const handleSelectionChange = useCallback((sel: Selection | null) => {
     if (!editBarOpen) return
@@ -1184,12 +1194,12 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }, [editBarOpen])
 
   function handlePendingAdd(entry: PendingAddEntry) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setPendingAdds(prev => [...prev, entry])
   }
 
   function handleCreateEmptyBlock() {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setPendingNewBlockIds(prev => [...prev, crypto.randomUUID()])
   }
 
@@ -1227,7 +1237,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleSavePendingWithConfirm() {
-    if (!canEdit) return
+    if (!canEditGantt) return
     if (pendingCount === 0) return
     const total = pendingCount
     const ok = await confirm({
@@ -1235,6 +1245,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       description:  `Confirmar o salvamento de ${total} alteração(ões) pendente(s)?`,
       confirmLabel: 'Salvar',
       variant:      'safeConfirm',
+      badge:        isActivePlan ? 'Plano Ativo' : undefined,
     })
     if (!ok) return
     await handleSavePending()
@@ -1253,7 +1264,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleSavePending() {
-    if (!canEdit) return
+    if (!canEditGantt) return
     if (pendingCount === 0) return
     setIsPending(true)
     setIsSaving(true)
@@ -1342,17 +1353,17 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   function handleAddAccess(blockTripId: string, blockId: string) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setDepotModal({ kind: 'access', blockTripId, blockId })
   }
 
   function handleAddReturn(blockTripId: string, blockId: string) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
   function handleAddInterval(blockTripId: string, blockId: string) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     setAddIntervalModal({ blockTripId, blockId })
   }
 
@@ -1360,7 +1371,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // travel-time lookup to resolve, so there's nothing that requires an immediate
   // API call even for trips that already exist server-side.
   function handleConfirmAddInterval(intervalType: IntervalType) {
-    if (!canEdit || !addIntervalModal || !mergedPlottedData) return
+    if (!canEditGantt || !addIntervalModal || !mergedPlottedData) return
     const { blockTripId, blockId } = addIntervalModal
     setAddIntervalModal(null)
 
@@ -1429,7 +1440,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   function handleConfirmMove() {
-    if (!canEdit || !selection || !moveTargetBlockId || !mergedPlottedData) return
+    if (!canEditGantt || !selection || !moveTargetBlockId || !mergedPlottedData) return
 
     const sourceBlockId = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
     const sourceBlock   = mergedPlottedData.blocks.find(b => b.id === sourceBlockId)
@@ -1553,7 +1564,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   // No handler in this file makes a network call on its own anymore (solver excepted).
   // See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.5.
   async function handleConfirmDepotModal(depot: { id: string; name: string }) {
-    if (!canEdit || !depotModal || !mergedPlottedData) return
+    if (!canEditGantt || !depotModal || !mergedPlottedData) return
     const { kind, blockTripId, blockId } = depotModal
     setDepotModal(null)
 
@@ -1654,7 +1665,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleDeleteDeadruns(deadrunIds: string[], _blockId: string) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     const ok = await confirm({
       title:        deadrunIds.length === 1 ? 'Excluir vazio' : `Excluir ${deadrunIds.length} vazios`,
       description:  'Esta ação não pode ser desfeita.',
@@ -1667,7 +1678,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleDeleteBreaks(breakIds: string[], _blockId: string) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     const ok = await confirm({
       title:        breakIds.length === 1 ? 'Excluir intervalo' : `Excluir ${breakIds.length} intervalos`,
       description:  'Esta ação não pode ser desfeita.',
@@ -1680,7 +1691,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleDeleteInterval(tripIds: string[], deadrunIds: string[], breakIds: string[], _blockId: string) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     const tripCount    = tripIds.length
     const deadrunCount = deadrunIds.length
     const breakCount   = breakIds.length
@@ -1704,7 +1715,7 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
   }
 
   async function handleDeleteTrips(tripIds: string[]) {
-    if (!canEdit) return
+    if (!canEditGantt) return
     const count = tripIds.length
     const ok = await confirm({
       title:        count === 1 ? 'Excluir viagem' : `Excluir ${count} viagens`,
@@ -1728,9 +1739,9 @@ export function useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPend
       onAddAccess:         handleAddAccess,
       onAddReturn:         handleAddReturn,
       onAddInterval:       handleAddInterval,
-    }, canEdit),
+    }, canEditGantt),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canEdit],
+    [canEditGantt],
   )
 
   // onAddAccess/onAddReturn/onAddInterval/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/

@@ -744,7 +744,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       select: { id: true, dayTypeId: true, status: true },
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+    // ACTIVE plans allow punctual edits (trip moves/adds/deletes, markers, intervals)
+    // straight from the Gantt — only bulk/structural flows (line regen, OSO sync,
+    // solver) stay DRAFT-only, gated in their own methods.
+    if (plan.status !== 'DRAFT' && plan.status !== 'ACTIVE') throw new BadRequestException('Only DRAFT or ACTIVE plans can be modified')
 
     const newBlockIds = new Map<string, string>()
 

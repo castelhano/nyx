@@ -31,7 +31,13 @@ const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[] = [
 interface Row {
   key:          string
   legendText:   string
-  originalText: string | null // null = nova marcação (não existia em nenhuma viagem da seleção)
+  // legendText de origem desta linha — usado pra localizar a marcação em outras
+  // viagens do painel e replicar a edição (texto OU estilo) nelas. null = marcação
+  // nova, digitada do zero (nunca existiu em nenhuma viagem do painel, nada a
+  // localizar/replicar).
+  originalText:      string | null
+  originalFontStyle?: TripMarkingFontStyle
+  originalBgColor?:   TripMarkingBgColor
   fontStyle?:   TripMarkingFontStyle
   bgColor?:     TripMarkingBgColor
 }
@@ -63,7 +69,11 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
       if (!selectionSet.has(bt.trip.id)) continue
       for (const m of bt.trip.markings ?? []) {
         if (!byText.has(m.legendText)) {
-          byText.set(m.legendText, { key: newRowKey(), legendText: m.legendText, originalText: m.legendText, fontStyle: m.fontStyle, bgColor: m.bgColor })
+          byText.set(m.legendText, {
+            key: newRowKey(), legendText: m.legendText, originalText: m.legendText,
+            fontStyle: m.fontStyle, bgColor: m.bgColor,
+            originalFontStyle: m.fontStyle, originalBgColor: m.bgColor,
+          })
         }
       }
     }
@@ -84,8 +94,9 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
     return [...byText.values()]
   }, [allBlockTrips])
 
-  // Quantas viagens (fora da seleção atual) seriam afetadas se o texto `from` for
-  // renomeado agora — mostrado ao usuário antes de confirmar (regra do doc, Fase 3).
+  // Quantas viagens (fora da seleção atual) seriam afetadas se a marcação de
+  // legendText `from` for reescrita agora (texto ou estilo) — mostrado ao usuário
+  // antes de confirmar (regra do doc, Fase 3, estendida a edição de estilo).
   function countAffectedByRename(from: string): number {
     let n = 0
     for (const bt of allBlockTrips) {
@@ -103,14 +114,21 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
     setRows(prev => prev.filter(r => r.key !== key))
   }
 
+  // A quick-pick seed loads a marking that already exists elsewhere in the panel —
+  // originalText/originalFontStyle/originalBgColor are seeded from it (not null)
+  // so that editing the style afterwards (without touching the text) still counts
+  // as a change to sweep-replicate below, same as a rename does. A row typed from
+  // scratch (no seed) has no known origin, so nothing to locate/replicate.
   function addRow(seed?: TripMarking) {
     if (seed && rows.some(r => r.legendText === seed.legendText)) return
     setRows(prev => [...prev, {
-      key:          newRowKey(),
-      legendText:   seed?.legendText ?? '',
-      originalText: null,
-      fontStyle:    seed?.fontStyle,
-      bgColor:      seed?.bgColor,
+      key:               newRowKey(),
+      legendText:        seed?.legendText ?? '',
+      originalText:      seed?.legendText ?? null,
+      fontStyle:         seed?.fontStyle,
+      bgColor:           seed?.bgColor,
+      originalFontStyle: seed?.fontStyle,
+      originalBgColor:   seed?.bgColor,
     }])
   }
 
@@ -129,11 +147,19 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
       .map(r => ({ ...r, legendText: r.legendText.trim() }))
       .filter(r => r.legendText.length > 0)
 
-    // 1. renomeações — varre TODAS as viagens carregadas no painel, exceto a seleção
-    // atual (que recebe a escrita autoritativa abaixo) — regra 7/Fase 3: nunca no
-    // plano inteiro, só nas linhas atualmente carregadas.
-    const renamed = cleanRows.filter(r => r.originalText && r.originalText !== r.legendText)
-    if (renamed.length > 0) {
+    // 1. edições (texto e/ou estilo) de marcações com origem conhecida — varre TODAS
+    // as viagens carregadas no painel, exceto a seleção atual (que recebe a escrita
+    // autoritativa abaixo) — regra 7/Fase 3: nunca no plano inteiro, só nas linhas
+    // atualmente carregadas. Cobre tanto renomear o texto quanto só trocar o estilo
+    // de uma marcação carregada via quick-pick (fontStyle/bgColor não são
+    // sincronizados pelo schema entre viagens — regra 2 — mas dentro desta edição
+    // pontual, nas linhas selecionadas, a intenção é replicar).
+    const edited = cleanRows.filter(r => r.originalText && (
+      r.originalText !== r.legendText ||
+      r.fontStyle    !== r.originalFontStyle ||
+      r.bgColor      !== r.originalBgColor
+    ))
+    if (edited.length > 0) {
       const sweepTripIds: string[] = []
       const sweepPatches: (TripMarking[] | null)[] = []
       for (const bt of allBlockTrips) {
@@ -141,7 +167,7 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
         const current = bt.trip.markings ?? []
         let changed = false
         const next = current.map(m => {
-          const hit = renamed.find(r => r.originalText === m.legendText)
+          const hit = edited.find(r => r.originalText === m.legendText)
           if (!hit) return m
           changed = true
           return { legendText: hit.legendText, fontStyle: hit.fontStyle, bgColor: hit.bgColor }
@@ -185,9 +211,12 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
           )}
 
           {rows.map(row => {
-            const affected = row.originalText && row.originalText !== row.legendText
-              ? countAffectedByRename(row.originalText)
-              : 0
+            const wasEdited = row.originalText != null && (
+              row.originalText !== row.legendText ||
+              row.fontStyle    !== row.originalFontStyle ||
+              row.bgColor      !== row.originalBgColor
+            )
+            const affected = wasEdited ? countAffectedByRename(row.originalText!) : 0
             return (
               <div key={row.key} className="border border-border rounded-md p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -209,7 +238,7 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
 
                 {affected > 0 && (
                   <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Renomear afetará mais {affected} {affected === 1 ? 'viagem' : 'viagens'} do painel.
+                    Alteração afetará mais {affected} {affected === 1 ? 'viagem' : 'viagens'} do painel.
                   </p>
                 )}
 

@@ -29,7 +29,11 @@ type NavItem  = { segId: string; dep: number }
 type TripItem = { segId: string; dep: number; direction: string }
 
 interface UseVehiclePlanShortcutsParams {
+  // canEdit gates structural/bulk flows (Redistribuir, Finalizar Plano) — DRAFT-only.
+  // canEditGantt gates punctual Gantt edits (add trip/block, timing, delete, headway
+  // distribute) — allowed on DRAFT and ACTIVE plans. See page.tsx for the split.
   canEdit:            boolean
+  canEditGantt:        boolean
   isNew:               boolean
   ganttBoardRef:        RefObject<GanttBoardHandle | null>
   shiftAnchorRef:       RefObject<string | null>
@@ -83,7 +87,7 @@ interface UseVehiclePlanShortcutsParams {
 }
 
 export function useVehiclePlanShortcuts({
-  canEdit, isNew, ganttBoardRef, shiftAnchorRef,
+  canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
   selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
   moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, navBlocks, allTrips,
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
@@ -162,7 +166,7 @@ export function useVehiclePlanShortcuts({
     desc:    'Adicionar viagem',
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && canEdit && selectedLineIds.size > 0,
+    enabled: editBarOpen && canEditGantt && selectedLineIds.size > 0,
     section: SEC_EDICAO,
   })
 
@@ -170,7 +174,7 @@ export function useVehiclePlanShortcuts({
     desc:    'Criar novo bloco (vazio)',
     icon:    Icons.Plus,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && canEdit,
+    enabled: editBarOpen && canEditGantt,
     section: SEC_EDICAO,
   })
 
@@ -529,7 +533,7 @@ export function useVehiclePlanShortcuts({
     desc:    'Distribuir frequência viagens',
     icon:    Icons.AlignHorizontalDistributeCenter,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: editBarOpen && canEdit && !selection,
+    enabled: editBarOpen && canEditGantt && !selection,
     preventDefault: true,
     section: SEC_SELECAO,
   })
@@ -613,13 +617,27 @@ export function useVehiclePlanShortcuts({
   // filters through the exact same vehiclesActionSpec the bar itself uses, so
   // eligibility (canAddAccess/canAddReturn/canAddInterval) always matches what
   // would actually be shown; outside that eligibility it's a silent no-op.
+  //
+  // If a multi-trip interval selection is already active and covers the focused
+  // segment, act on that whole selection instead of collapsing it back down to a
+  // single trip — resolveSelection(seg, null, ...) always builds a fresh
+  // single-segment selection, which would otherwise silently discard the rest of
+  // the selection (e.g. q+j only marking the last-focused trip of a range).
   function triggerFocusedTripAction(actionId: string) {
     if (!focusedSegId || !mergedPlottedData) return
-    const segs = ganttBoardRef.current?.getSegments() ?? []
-    const seg  = segs.find(s => s.id === focusedSegId)
-    if (!seg) return
-    const rows     = ganttBoardRef.current?.getRows() ?? []
-    const resolved = vehiclesActionSpec.resolveSelection(seg, null, { allSegments: segs, allRows: rows })
+    const selectionCoversFocus = selection && (
+      selection.type === 'trip'
+        ? selection.segment.id === focusedSegId
+        : selection.segments.some(s => s.id === focusedSegId)
+    )
+    let resolved = selectionCoversFocus ? selection : null
+    if (!resolved) {
+      const segs = ganttBoardRef.current?.getSegments() ?? []
+      const seg  = segs.find(s => s.id === focusedSegId)
+      if (!seg) return
+      const rows = ganttBoardRef.current?.getRows() ?? []
+      resolved   = vehiclesActionSpec.resolveSelection(seg, null, { allSegments: segs, allRows: rows })
+    }
     if (!resolved) return
     const actions = vehiclesActionSpec.getActions(resolved, mergedPlottedData, () => {})
     actions.find(a => a.id === actionId)?.onClick()
@@ -632,7 +650,7 @@ export function useVehiclePlanShortcuts({
   useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { desc: 'Adicionar intervalo',         icon: Icons.Coffee, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
 
   useShortcut('delete', () => {
-    if (!canEdit || !mergedPlottedData) return
+    if (!canEditGantt || !mergedPlottedData) return
 
     // Build list of segment references: prefer active selection, fall back to focusedSegId
     type SegKind = 'trip' | 'deadrun' | 'break'

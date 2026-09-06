@@ -67,9 +67,15 @@ export default function VehiclePlanPage() {
   )
 
   const status = record?.status as string | undefined
-  // Edit bar stays reachable on active plans for navigation/inspection (trip detail
-  // panel, keyboard nav) — only mutating actions require DRAFT + canUpdate.
-  const canEdit = canUpdate && status === 'DRAFT'
+  // canEdit gates structural/bulk flows (Otimizar, Ativar, Excluir, Gerar menu,
+  // Limpar linha, versionamento de OSO) — DRAFT-only, since they touch far more than
+  // one trip at a time or affect operação corrente in a way that needs the DRAFT
+  // review step. canEditGantt gates punctual Gantt edits (mover/adicionar/remover
+  // viagem, marcações, intervalos, acesso/recolhida) — allowed on ACTIVE too, so a
+  // plan already in operação can still receive pontual corrections; only the
+  // solver stays blocked there (enforced independently server-side).
+  const canEdit      = canUpdate && status === 'DRAFT'
+  const canEditGantt = canUpdate && (status === 'DRAFT' || status === 'ACTIVE')
 
   const { data: ganttData, refetch: refetchGantt } = useQuery<VehiclePlanGanttData>({
     queryKey: ['transit', 'vehicle-plan', id, 'gantt'],
@@ -86,7 +92,7 @@ export default function VehiclePlanPage() {
   // useGanttEditor; useVehiclePlanShortcuts below just binds keys to its handlers,
   // so it must run after this call — it destructures values (selection,
   // focusedSegId, mergedPlottedData, ...) straight out of `editor`.
-  const editor = useGanttEditor({ id, canEdit, ganttData, refetchGantt, setIsPending })
+  const editor = useGanttEditor({ id, canEditGantt, canEditStructural: canEdit, isActivePlan: status === 'ACTIVE', ganttData, refetchGantt, setIsPending })
   const {
     selection, setSelection,
     depotModal, setDepotModal,
@@ -134,7 +140,7 @@ export default function VehiclePlanPage() {
   const groupAnchorSegIdRef = useRef<string | null>(null)
 
   useVehiclePlanShortcuts({
-    canEdit, isNew, ganttBoardRef, shiftAnchorRef,
+    canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
     selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
     moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, navBlocks, allTrips,
     mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
@@ -195,8 +201,9 @@ export default function VehiclePlanPage() {
     }] : []),
 
     // ── edit mode ──────────────────────────────────────────────────────────────
-    // Navigation/inspection stays available even on active plans; actions that
-    // write changes (trip, generate, save, clear) require canEdit (DRAFT).
+    // Navigation/inspection stays available even on active plans. Punctual edits
+    // (trip, save, clear) require canEditGantt (DRAFT or ACTIVE); bulk/structural
+    // flows (Gerar and its submenu) require canEdit (DRAFT only).
     ...(editBarOpen ? [
       {
         label:    'Resumo',
@@ -207,7 +214,7 @@ export default function VehiclePlanPage() {
         disabled: !summaryLineIds && selectedLineIds.size === 0,
       },
       { label: '', separator: true },
-      ...(canEdit ? [
+      ...(canEditGantt ? [
         {
           label:    'Viagem',
           icon:     Icons.Plus,
@@ -217,6 +224,8 @@ export default function VehiclePlanPage() {
           keybind:  'q+n',
         },
         { label: '', separator: true },
+      ] : []),
+      ...(canEdit ? [
         {
           // Generates a service proposal (windows/fleet/supply×demand) for the
           // line selected in "Linhas" — the solver's optimization flow is a
@@ -249,6 +258,8 @@ export default function VehiclePlanPage() {
           ],
         },
         { label: '', separator: true },
+      ] : []),
+      ...(canEditGantt ? [
         {
           label:    isSaving ? 'Salvando…' : pendingCount > 0 ? `Salvar (${pendingCount})` : 'Salvar',
           icon:     Icons.Save,
@@ -315,7 +326,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds])
+  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -613,7 +624,7 @@ export default function VehiclePlanPage() {
                   />
                 )}
 
-                {editBarOpen && canEdit && !selection && headwayRangeInfo && (
+                {editBarOpen && canEditGantt && !selection && headwayRangeInfo && (
                   <HeadwayRangeBar
                     count={headwayRangeInfo.trips.length}
                     singleLine={headwayRangeInfo.singleLine}

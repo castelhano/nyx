@@ -16,6 +16,8 @@ export interface ConfirmModalOptions {
   dismissOnEsc?:  boolean
   /** Seconds the confirm button stays disabled before the user can click it */
   confirmDelay?:  number
+  /** Optional alert pill shown above the title — e.g. flagging that the action affects a plan already in operação (ACTIVE) */
+  badge?:         string
 }
 
 interface ConfirmModalProps extends ConfirmModalOptions {
@@ -31,6 +33,7 @@ export function ConfirmModal({
   variant      = 'destructive',
   dismissOnEsc = true,
   confirmDelay = 0,
+  badge,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -84,6 +87,11 @@ export function ConfirmModal({
         'animate-confirm-in',
       )}>
         <div className="flex flex-col gap-1">
+          {badge && (
+            <span className="self-start rounded px-1.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              {badge}
+            </span>
+          )}
           <h2 id="confirm-modal-title" className="text-base font-semibold text-foreground">
             {title}
           </h2>
