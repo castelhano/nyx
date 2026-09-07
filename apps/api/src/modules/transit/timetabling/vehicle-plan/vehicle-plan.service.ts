@@ -619,6 +619,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             if (!tripIdMap.has(origId)) {
               const newTrip = await tx.transitTrip.create({
                 data: {
+                  vehiclePlanId:       newPlan.id,
                   routeId:             bt.trip.routeId,
                   dayTypeId:           bt.trip.dayTypeId,
                   departureMinutes:    bt.trip.departureMinutes,
@@ -671,26 +672,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be deleted')
 
-    const blockTrips = await this.prisma.blockTrip.findMany({
-      where:  { vehicleBlock: { vehiclePlanId: id } },
-      select: { tripId: true },
-    })
-    const tripIds = [...new Set(blockTrips.map(bt => bt.tripId))]
-
-    await this.prisma.$transaction(async tx => {
+    
+      await this.prisma.$transaction(async tx => {
       await tx.blockTrip.deleteMany({ where: { vehicleBlock: { vehiclePlanId: id } } })
       await tx.vehicleBlock.deleteMany({ where: { vehiclePlanId: id } })
       await tx.vehiclePlanLine.deleteMany({ where: { vehiclePlanId: id } })
       await tx.vehiclePlan.delete({ where: { id } })
-
-      if (tripIds.length) {
-        const still      = await tx.blockTrip.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } })
-        const referenced = new Set(still.map(bt => bt.tripId))
-        const toDelete   = tripIds.filter(tid => !referenced.has(tid))
-        if (toDelete.length) {
-          await tx.transitTrip.deleteMany({ where: { id: { in: toDelete } } })
-        }
-      }
     })
   }
 
@@ -884,6 +871,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
           const trip = await tx.transitTrip.create({
             data: {
+              vehiclePlanId:       planId,
               dayTypeId:           plan.dayTypeId,
               routeId:             entry.routeId,
               departureMinutes:    entry.departureMinutes,
@@ -1010,23 +998,24 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   ): Promise<void> {
     const trips = await (this.prisma as any).transitTrip.findMany({
       where: {
+        vehiclePlanId: planId,
         dayTypeId,
-        route:      { lineId: { in: lineIds } },
-        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
+        route:         { lineId: { in: lineIds } },
       },
       select: { id: true },
     })
     await this.removeTripsFromPlan(planId, trips.map((t: any) => t.id))
   }
 
-  // Removes specific trips from this plan's blocks. TransitTrip rows are a pool
-  // potentially shared across plans, so a trip is only deleted once no block
-  // anywhere references it anymore; otherwise it's left in place for whoever else
-  // still uses it. A block left empty is deleted (cascades blockDeadruns); a block
-  // that still has other trips is just flagged stale — but first, any BlockInterval/
-  // BlockDeadrun anchored to the removed trips (positional, no FK) is deleted too,
-  // so a surviving block never keeps a stray interval/deadrun pointing at a trip
-  // that's gone.
+  // Removes specific trips from this plan's blocks. A trip can legitimately sit in
+  // more than one of this plan's blocks (manual reassignments — see duplicate()'s
+  // tripIdMap dedup above), so it's only deleted once no block *in this plan*
+  // references it anymore. TransitTrip.vehiclePlanId ties every trip to exactly one
+  // plan — this is never a cross-plan check. A block left empty is deleted (cascades
+  // blockDeadruns); a block that still has other trips is just flagged stale — but
+  // first, any BlockInterval/BlockDeadrun anchored to the removed trips (positional,
+  // no FK) is deleted too, so a surviving block never keeps a stray interval/deadrun
+  // pointing at a trip that's gone.
   // Accepts an optional transaction client so callers that need this to participate
   // in a larger atomic operation can pass their `tx`.
   private async removeTripsFromPlan(planId: string, tripIds: string[], db: any = this.prisma): Promise<void> {
@@ -1069,7 +1058,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     }
 
     await db.transitTrip.deleteMany({
-      where: { id: { in: tripIds }, blockTrips: { none: {} } },
+      where: { id: { in: tripIds }, vehiclePlanId: planId, blockTrips: { none: {} } },
     })
   }
 
@@ -1098,9 +1087,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const existingTrips = await (this.prisma as any).transitTrip.findMany({
       where: {
-        dayTypeId:  plan.dayTypeId,
-        route:      { lineId },
-        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
+        vehiclePlanId: planId,
+        dayTypeId:     plan.dayTypeId,
+        route:         { lineId },
       },
       select: { routeId: true, departureMinutes: true, requiredVehicleType: true },
     })
@@ -1168,9 +1157,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const existingTrips = await db.transitTrip.findMany({
       where: {
-        dayTypeId:  plan.dayTypeId,
-        route:      { lineId },
-        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
+        vehiclePlanId: planId,
+        dayTypeId:     plan.dayTypeId,
+        route:         { lineId },
       },
       select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true },
     })
@@ -1244,9 +1233,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const existingTrips = await db.transitTrip.findMany({
       where: {
-        dayTypeId:  plan.dayTypeId,
-        route:      { lineId },
-        blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } },
+        vehiclePlanId: planId,
+        dayTypeId:     plan.dayTypeId,
+        route:         { lineId },
       },
       select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true },
     })

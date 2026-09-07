@@ -349,9 +349,13 @@ model LineDeparture {
 
 // A single scheduled run of a route on a given day type — the operational unit that
 // vehicle blocks are built from (via BlockTrip). May trace back to an approved
-// LineDeparture or be free-standing (e.g. an ad-hoc reinforcement trip).
+// LineDeparture or be free-standing (e.g. an ad-hoc reinforcement trip). Owned by
+// exactly one VehiclePlan (vehiclePlanId, cascades on plan delete) — unlike
+// LineSchedule/LineDeparture, never shared across plans; duplicating a plan always
+// creates new TransitTrip rows (VehiclePlanService.duplicate).
 model TransitTrip {
   id                  String       @id @default(uuid())
+  vehiclePlanId       String
   routeId             String
   dayTypeId           String
   // minutes from operational day start; values > 1440 indicate overnight trips
@@ -370,6 +374,7 @@ model TransitTrip {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
+  vehiclePlan   VehiclePlan    @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
   route         TransitRoute   @relation(fields: [routeId], references: [id])
   dayType       DayType        @relation(fields: [dayTypeId], references: [id])
   blockTrips    BlockTrip[]
@@ -446,6 +451,7 @@ model VehiclePlan {
   dayType DayType           @relation(fields: [dayTypeId], references: [id])
   lines   VehiclePlanLine[]
   blocks  VehicleBlock[]
+  trips   TransitTrip[]
 
   @@map("transit_vehicle_plans")
 }

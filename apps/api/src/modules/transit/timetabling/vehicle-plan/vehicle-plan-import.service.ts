@@ -247,7 +247,7 @@ export class VehiclePlanImportService {
       })
     }
 
-    const tripRows:          Array<{ id: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number; markings?: unknown }> = []
+    const tripRows:          Array<{ id: string; vehiclePlanId: string; routeId: string; dayTypeId: string; departureMinutes: number; arrivalMinutes: number; markings?: unknown }> = []
     const lineDepartureRows: Array<{ id: string; lineScheduleId: string; routeId: string; departureMinutes: number }> = []
     const deadrunRows:       Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:         Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
@@ -486,7 +486,7 @@ export class VehiclePlanImportService {
       let seqInBlock = 1
       for (const e of perBlockEntries) {
         if (e.kind === 'trip') {
-          tripRows.push({ id: e.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes, markings: e.markings })
+          tripRows.push({ id: e.id, vehiclePlanId: plan.id, routeId: e.routeId, dayTypeId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes, markings: e.markings })
           blockTripRows.push({ vehicleBlockId: blockId, tripId: e.id, sequence: seqInBlock++ })
         } else {
           deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })

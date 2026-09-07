@@ -37,7 +37,7 @@ export async function recomputeLineDrift(db: any, planId: string, lineId: string
   const [departures, currentTrips] = await Promise.all([
     db.lineDeparture.findMany({ where: { lineScheduleId: line.lineScheduleId }, select: { routeId: true, departureMinutes: true } }),
     db.transitTrip.findMany({
-      where:  { dayTypeId: plan.dayTypeId, route: { lineId }, blockTrips: { some: { vehicleBlock: { vehiclePlanId: planId } } } },
+      where:  { vehiclePlanId: planId, dayTypeId: plan.dayTypeId, route: { lineId } },
       select: { routeId: true, departureMinutes: true },
     }),
   ])
@@ -52,17 +52,13 @@ export async function recomputeLineDrift(db: any, planId: string, lineId: string
   })
 }
 
-// Trigger point after a single trip's own update/removal: recomputes drift (see
-// above) for the given line, across every plan that currently uses `tripId` in one
-// of its blocks. The trip's own mutation might not itself change the line's
-// coverage, but recomputeLineDrift derives the correct answer regardless.
+// Trigger point after a single trip's own update: recomputes drift (see above) for
+// the given line, in the one plan that owns `tripId` (TransitTrip.vehiclePlanId).
+// The trip's own mutation might not itself change the line's coverage, but
+// recomputeLineDrift derives the correct answer regardless.
 async function recomputeDriftForTrip(db: any, tripId: string, lineId: string): Promise<void> {
-  const rows = await db.blockTrip.findMany({
-    where:  { tripId },
-    select: { vehicleBlock: { select: { vehiclePlanId: true } } },
-  })
-  const planIds = [...new Set(rows.map((r: any) => r.vehicleBlock.vehiclePlanId).filter(Boolean))] as string[]
-  for (const planId of planIds) await recomputeLineDrift(db, planId, lineId)
+  const trip = await db.transitTrip.findUnique({ where: { id: tripId }, select: { vehiclePlanId: true } })
+  if (trip) await recomputeLineDrift(db, trip.vehiclePlanId, lineId)
 }
 
 // Two-step so the caller's own update() write (sanitizeDto'd generic update, or a
@@ -98,16 +94,15 @@ export async function afterTripUpdate(
 export async function applyTripRemoval(db: any, id: string): Promise<{ affectedPlanIds: string[] }> {
   const existing = await db.transitTrip.findUnique({
     where:  { id },
-    select: { route: { select: { lineId: true } } },
+    select: { vehiclePlanId: true, route: { select: { lineId: true } } },
   })
 
-  const rows: { vehicleBlockId: string; vehicleBlock: { vehiclePlanId: string | null } }[] =
-    await db.blockTrip.findMany({
-      where:  { tripId: id },
-      select: { vehicleBlockId: true, vehicleBlock: { select: { vehiclePlanId: true } } },
-    })
+  const rows: { vehicleBlockId: string }[] = await db.blockTrip.findMany({
+    where:  { tripId: id },
+    select: { vehicleBlockId: true },
+  })
   const blockIds = rows.map(r => r.vehicleBlockId)
-  const planIds  = [...new Set(rows.map(r => r.vehicleBlock.vehiclePlanId).filter(Boolean) as string[])]
+  const planIds  = existing ? [existing.vehiclePlanId] : []
 
   // Intervals live attached to the trip that precedes them (positional, no FK —
   // see block-interval.utils.ts). Removing that trip removes the interval too.
