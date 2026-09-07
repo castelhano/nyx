@@ -2,7 +2,7 @@
 
 import { useRef } from 'react'
 import { notFound, useRouter, useParams } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { DomainCard } from '@/components/ui/domain-card'
 import { useCardNavigation } from '@/core/useCardNavigation'
@@ -28,7 +28,7 @@ export default function DomainPage() {
 
   useShortcut('alt+v', () => router.push('/'), {
     desc:    'Voltar',
-    icon:    ArrowLeft,
+    icon:    Icons.ArrowLeft,
     origin:  'apps/web/src/app/[domain]/page',
   })
 

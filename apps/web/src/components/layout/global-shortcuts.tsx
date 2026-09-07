@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Home, PanelLeft, RefreshCw } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { useShortcut } from '@/lib/keywatch'
 import { useToastContext } from '@/lib/toast-context'
@@ -81,21 +81,21 @@ export function GlobalShortcuts() {
 
   useShortcut('alt+i', () => router.push('/'), {
     desc:   'Ir para Início',
-    icon:   Home,
+    icon:   Icons.Home,
     origin: 'apps/web/src/components/layout/global-shortcuts',
     order:  1,
   })
 
   useShortcut("ctrl+'", toggle, {
     desc:   'Toggle sidebar',
-    icon:   PanelLeft,
+    icon:   Icons.PanelLeft,
     origin: 'apps/web/src/components/layout/global-shortcuts',
     order:  2,
   })
 
   useShortcut('alt+l', () => queryClient.invalidateQueries(), {
     desc:   'Atualizar página',
-    icon:   RefreshCw,
+    icon:   Icons.RefreshCw,
     origin: 'apps/web/src/components/layout/global-shortcuts',
     order:  3,
   })

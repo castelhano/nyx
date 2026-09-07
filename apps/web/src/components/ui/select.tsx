@@ -1,5 +1,5 @@
 import { forwardRef, type SelectHTMLAttributes } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { KeyHint } from '@/core/FieldRenderer'
 
@@ -34,7 +34,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         {children}
       </select>
       {keybind && <KeyHint k={keybind} className="right-8" />}
-      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
     </div>
   ),
 )

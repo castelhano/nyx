@@ -1,6 +1,6 @@
 'use client'
 
-import { Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { JobData, JobProgress } from '@/lib/use-job-progress'
 
@@ -39,7 +39,7 @@ export function JobProgressBar({ job, isRunning, isCompleted, isFailed, classNam
           </div>
         ) : (
           <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            <Icons.Loader2 className="w-4 h-4 animate-spin shrink-0" />
             <span className="text-xs">Processando…</span>
           </div>
         )
@@ -47,7 +47,7 @@ export function JobProgressBar({ job, isRunning, isCompleted, isFailed, classNam
 
       {isCompleted && (
         <div className="flex items-center gap-2 text-emerald-500">
-          <CheckCircle className="w-4 h-4 shrink-0" />
+          <Icons.CheckCircle className="w-4 h-4 shrink-0" />
           <span className="text-xs">
             Concluído{job?.durationMs ? ` em ${(job.durationMs / 1000).toFixed(1)}s` : ''}
           </span>
@@ -57,7 +57,7 @@ export function JobProgressBar({ job, isRunning, isCompleted, isFailed, classNam
       {isFailed && (
         <div className='bg-destructive/50 p-2 rounded-sm'>
           <div className="flex items-center gap-2 text-destructive-foreground">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+            <Icons.AlertCircle className="w-4 h-4 shrink-0" />
             <span className="text-xs">{job?.error ?? 'Falha no processamento'}</span>
           </div>
         </div>

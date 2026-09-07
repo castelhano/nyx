@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { useKeywatch } from '@/lib/keywatch/context'
 
@@ -68,7 +68,7 @@ export const Tabs = forwardRef<TabsHandle, TabsProps>(function Tabs({ tabs, clas
       activateRef.current(Math.max(0, activeRef.current - 1))
     }, {
       desc:    'Tab - Aba anterior',
-      icon:    ChevronLeft,
+      icon:    Icons.ChevronLeft,
       group,
       origin:  'apps/web/src/components/ui/tabs',
     })
@@ -77,7 +77,7 @@ export const Tabs = forwardRef<TabsHandle, TabsProps>(function Tabs({ tabs, clas
       activateRef.current(Math.min(tabs.length - 1, activeRef.current + 1))
     }, {
       desc:    'Tab - Próxima aba',
-      icon:    ChevronRight,
+      icon:    Icons.ChevronRight,
       group,
       origin:  'apps/web/src/components/ui/tabs',
     })

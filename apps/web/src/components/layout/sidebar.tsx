@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useShortcut } from '@/lib/keywatch'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, User, KeyRound, Settings, ChevronsUpDown, ChevronRight } from 'lucide-react'
 import { cn, getUserFromToken } from '@/lib/utils'
 import { clearToken } from '@/lib/auth'
-import { resolveIcon } from '@/lib/icons'
+import { resolveIcon, Icons } from '@/lib/icons'
 import { useDiscovery } from '@/core/useDiscovery'
 import { useQueryClient } from '@tanstack/react-query'
 import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown'
@@ -71,7 +70,7 @@ export function Sidebar() {
 
   useShortcut('alt+q', handleLogout, {
     desc:   'Sair da sessão',
-    icon:   LogOut,
+    icon:   Icons.LogOut,
     origin: 'apps/web/src/components/layout/sidebar',
     order:  99,
   })
@@ -145,7 +144,7 @@ export function Sidebar() {
                           className="flex w-7 shrink-0 self-stretch items-center justify-center focus:outline-none"
                           aria-expanded={isExpanded}
                         >
-                          <ChevronRight className={cn(
+                          <Icons.ChevronRight className={cn(
                             'h-3.5 w-3.5 transition-transform duration-200',
                             isExpanded && 'rotate-90',
                           )} />
@@ -230,26 +229,26 @@ export function Sidebar() {
                         <p className="font-medium text-sm truncate capitalize">{displayName}</p>
                         <p className="text-xs text-sidebar-foreground/60 truncate capitalize">{displayRole}</p>
                       </div>
-                      <ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-foreground/50" />
+                      <Icons.ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-foreground/50" />
                     </>
                   )}
                 </button>
               }
             >
               <DropdownItem href="/core/user/preferences">
-                <Settings className="h-4 w-4" />
+                <Icons.Settings className="h-4 w-4" />
                 Preferências
               </DropdownItem>
 
               <DropdownItem href="/core/user/password">
-                <KeyRound className="h-4 w-4" />
+                <Icons.KeyRound className="h-4 w-4" />
                 Alterar Senha
               </DropdownItem>
 
               <DropdownSeparator />
 
               <DropdownItem onClick={handleLogout} destructive>
-                <LogOut className="h-4 w-4" />
+                <Icons.LogOut className="h-4 w-4" />
                 Sair
               </DropdownItem>
             </Dropdown>

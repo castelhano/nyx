@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Plus, X, ChevronDown } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
@@ -156,7 +156,7 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
 
         <div ref={containerRef} className="relative">
           <Button type="button" variant="outline" size="sm" onClick={() => setOpen((v) => !v)}>
-            <Plus className="w-4 h-4" />
+            <Icons.Plus className="w-4 h-4" />
             Adicionar
           </Button>
 
@@ -248,7 +248,7 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
                         <option key={r.value} value={r.value} title={r.title}>{r.label}</option>
                       ))}
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Icons.ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                   </div>
 
                   <button
@@ -257,7 +257,7 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
                     title="Remover filial"
                     className="flex-shrink-0 p-1 rounded-sm text-muted-foreground hover:text-destructive transition-colors"
                   >
-                    <X className="w-4 h-4" />
+                    <Icons.X className="w-4 h-4" />
                   </button>
                 </div>
               ))}

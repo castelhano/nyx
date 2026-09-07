@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { Plus, ArrowLeft, Download } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SettingsPanel } from '@/core/SettingsPanel'
@@ -41,25 +41,25 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
   }
 
   useTopbarActions([
-    ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Plus, onClick: () => router.push(newPath), primary: true }] : []),
-    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Download, onClick: handleDownloadCsv, variant: 'ghost' as const, primary: false }] : []),
+    ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push(newPath), primary: true }] : []),
+    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: handleDownloadCsv, variant: 'ghost' as const, primary: false }] : []),
   ], [meta?.allowCsv, meta?.permissions?.create, newPath])
 
   useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push(newPath) }, {
     desc:   'Novo registro',
-    icon:   Plus,
+    icon:   Icons.Plus,
     origin: 'apps/web/src/app/[domain]/[resource]/page',
   })
 
   useShortcut('alt+v', () => router.push(backPath), {
     desc:   'Voltar',
-    icon:   ArrowLeft,
+    icon:   Icons.ArrowLeft,
     origin: 'apps/web/src/app/[domain]/[resource]/page',
   })
 
   useShortcut('alt+d', () => handleDownloadCsv(), {
     desc:   'Baixar dados em CSV',
-    icon:   Download,
+    icon:   Icons.Download,
     origin: 'apps/web/src/app/[domain]/[resource]/page',
   })
 

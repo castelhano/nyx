@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, CheckCircle, XCircle, AlertTriangle, Info } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { useToastContext, type Position, type ToastItem } from '@/lib/toast-context'
 
@@ -51,10 +51,10 @@ const VARIANT_BORDER_CLS: Record<string, string> = {
 }
 
 const ICONS = {
-  success: CheckCircle,
-  error:   XCircle,
-  warning: AlertTriangle,
-  info:    Info,
+  success: Icons.CheckCircle,
+  error:   Icons.XCircle,
+  warning: Icons.AlertTriangle,
+  info:    Icons.Info,
 }
 
 interface ToastCardProps {
@@ -104,7 +104,7 @@ function ToastCard({ item, slideFrom, onDismiss }: ToastCardProps) {
         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
         aria-label="Fechar notificação"
       >
-        <X className="h-3.5 w-3.5" />
+        <Icons.X className="h-3.5 w-3.5" />
       </button>
     </div>
   )

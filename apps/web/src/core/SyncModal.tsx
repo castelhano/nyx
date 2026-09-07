@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { useForm, FormProvider } from 'react-hook-form'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { X, Upload, Loader2, CheckCircle, AlertCircle, Download } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { apiFetch, getToken } from '@/lib/auth'
 import { useJobProgress } from '@/lib/use-job-progress'
@@ -146,7 +146,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <h2 className="font-semibold text-base">Sincronizar {label}</h2>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
-            <X className="w-4 h-4" />
+            <Icons.X className="w-4 h-4" />
           </button>
         </div>
 
@@ -169,7 +169,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                   </div>
                 ) : (
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+                    <Icons.Loader2 className="w-5 h-5 animate-spin shrink-0" />
                     <span>Iniciando, aguarde…</span>
                   </div>
                 )
@@ -178,7 +178,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
               {job?.status === 'COMPLETED' && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-emerald-500">
-                    <CheckCircle className="w-5 h-5 shrink-0" />
+                    <Icons.CheckCircle className="w-5 h-5 shrink-0" />
                     Sincronização concluída
                   </div>
                   {job.output && (
@@ -205,7 +205,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                           onClick={() => downloadCsv(importErrors)}
                           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          <Download className="w-3 h-3" />
+                          <Icons.Download className="w-3 h-3" />
                           Baixar CSV
                         </button>
                       </div>
@@ -242,7 +242,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
               {job?.status === 'FAILED' && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <Icons.AlertCircle className="w-5 h-5 shrink-0" />
                     Falha no processamento
                   </div>
                   {job.error && (
@@ -296,7 +296,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
                         : 'border-input text-muted-foreground hover:bg-muted',
                     )}
                   >
-                    <Upload className="w-4 h-4 shrink-0" />
+                    <Icons.Upload className="w-4 h-4 shrink-0" />
                     <span className="truncate">{file ? file.name : 'Selecionar arquivo (.txt)'}</span>
                   </button>
                   <input
@@ -326,7 +326,7 @@ export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar'
             <>
               <Button variant="outline" type="button" onClick={onClose}>Cancelar</Button>
               <Button type="submit" form="sync-form" disabled={submitting}>
-                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {submitting && <Icons.Loader2 className="w-4 h-4 animate-spin" />}
                 {submitLabel}
               </Button>
             </>

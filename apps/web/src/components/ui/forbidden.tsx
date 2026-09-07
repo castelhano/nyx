@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { ShieldOff } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 
 export function Forbidden() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-12 text-center">
-      <ShieldOff className="h-12 w-12 text-muted-foreground/40" />
+      <Icons.ShieldOff className="h-12 w-12 text-muted-foreground/40" />
       <div className="space-y-1">
         <p className="text-lg font-semibold">Acesso negado</p>
         <p className="text-sm text-muted-foreground">

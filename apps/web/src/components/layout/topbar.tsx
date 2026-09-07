@@ -1,6 +1,6 @@
 'use client'
 
-import { PanelLeft, Bell, Sun, Moon, MoreHorizontal, ChevronDown } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { useTheme } from 'next-themes'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -70,7 +70,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
             className="rounded-l-none border-l border-background/20 px-1.5 focus:ring-1 focus:ring-offset-0"
             aria-label="Mais opções"
           >
-            <ChevronDown className="w-3.5 h-3.5" />
+            <Icons.ChevronDown className="w-3.5 h-3.5" />
           </Button>
         }
       >
@@ -135,7 +135,7 @@ export function Topbar() {
         )}
         aria-label="Toggle sidebar"
       >
-        <PanelLeft className="h-4 w-4" />
+        <Icons.PanelLeft className="h-4 w-4" />
       </button>
 
       {/* Center — page-injected actions */}
@@ -161,7 +161,7 @@ export function Topbar() {
               side="bottom"
               trigger={
                 <Button variant="outline" size="sm" aria-label="Mais ações">
-                  <MoreHorizontal className="w-3.5 h-3.5" />
+                  <Icons.MoreHorizontal className="w-3.5 h-3.5" />
                 </Button>
               }
             >
@@ -180,7 +180,7 @@ export function Topbar() {
               side="bottom"
               trigger={
                 <Button variant="outline" size="sm" aria-label="Mais ações">
-                  <MoreHorizontal className="w-3.5 h-3.5" />
+                  <Icons.MoreHorizontal className="w-3.5 h-3.5" />
                 </Button>
               }
             >
@@ -201,7 +201,7 @@ export function Topbar() {
           )}
           aria-label="Toggle theme"
         >
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {theme === 'dark' ? <Icons.Sun className="h-4 w-4" /> : <Icons.Moon className="h-4 w-4" />}
         </button>
 
         <button
@@ -212,7 +212,7 @@ export function Topbar() {
           )}
           aria-label="Notificações"
         >
-          <Bell className="h-4 w-4" />
+          <Icons.Bell className="h-4 w-4" />
         </button>
       </div>
 

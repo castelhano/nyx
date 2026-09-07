@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type React from 'react'
-import { ArrowRight, ArrowLeft, ArrowDown, ArrowUp, CornerDownLeft } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { useShortcut } from '@/lib/keywatch'
 
 export function useCardNavigation(
@@ -24,33 +24,33 @@ export function useCardNavigation(
 
   useShortcut('arrowright', () => move(+1), {
     desc:   'Próximo card',
-    icon:   ArrowRight,
+    icon:   Icons.ArrowRight,
     origin: 'apps/web/src/core/useCardNavigation',
   })
 
   useShortcut('arrowleft', () => move(-1), {
     desc:   'Card anterior',
-    icon:   ArrowLeft,
+    icon:   Icons.ArrowLeft,
     origin: 'apps/web/src/core/useCardNavigation',
   })
 
   useShortcut('arrowdown', () => move(+cols()), {
     desc:    'Card abaixo',
-    icon:    ArrowDown,
+    icon:    Icons.ArrowDown,
     origin:  'apps/web/src/core/useCardNavigation',
     display: false,
   })
 
   useShortcut('arrowup', () => move(-cols()), {
     desc:    'Card acima',
-    icon:    ArrowUp,
+    icon:    Icons.ArrowUp,
     origin:  'apps/web/src/core/useCardNavigation',
     display: false,
   })
 
   useShortcut('enter', () => onSelect(active), {
     desc:   'Acessar card selecionado',
-    icon:   CornerDownLeft,
+    icon:   Icons.CornerDownLeft,
     origin: 'apps/web/src/core/useCardNavigation',
   })
 

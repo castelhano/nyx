@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { PasswordPolicy } from '@nyx/schemas'
 
@@ -27,7 +27,7 @@ export function PolicyIndicator({ password, policy }: Props) {
             c.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground',
           )}
         >
-          <Check className={cn('w-3 h-3', !c.ok && 'opacity-30')} />
+          <Icons.Check className={cn('w-3 h-3', !c.ok && 'opacity-30')} />
           {c.label}
         </span>
       ))}

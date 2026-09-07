@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { Save, ArrowLeft, LayoutList, Trash2 } from 'lucide-react'
 import { AutoForm }           from '@/core/AutoForm'
 import { AutoBreadcrumb }     from '@/core/AutoBreadcrumb'
 import { usePageGuard }       from '@/core/usePageGuard'
@@ -15,7 +14,7 @@ import { useToast }           from '@/lib/toast-context'
 import { useConfirm }         from '@/lib/confirm-context'
 import { msgs }               from '@/lib/messages'
 import { extractError }       from '@/lib/utils'
-import { resolveIcon }        from '@/lib/icons'
+import { resolveIcon, Icons } from '@/lib/icons'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'transit-locality'
@@ -110,7 +109,7 @@ export default function TransitLocalityDetailPage() {
         const href = `/${childDomain}/${child.resource}?${child.contextField}=${record.id}`
         return {
           label:   child.label,
-          icon:    LayoutList,
+          icon:    Icons.LayoutList,
           onClick: () => router.push(href),
           variant: 'ghost' as const,
           primary: false,
@@ -140,8 +139,8 @@ export default function TransitLocalityDetailPage() {
 
   useTopbarActions([
     ...childActions,
-    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
-    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
+    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
+    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
   ], [isNew, visibleChildren, record?.id, isPending, canCreate, canUpdate, canDelete])
 
   const { coreRef } = useKeywatch()
@@ -153,7 +152,7 @@ export default function TransitLocalityDetailPage() {
       if (!child.keybind) continue
       const href = `/${child.domain ?? DOMAIN}/${child.resource}?${child.contextField}=${record.id}`
       core.bind(child.keybind, () => router.push(href), {
-        desc: child.label, icon: LayoutList, group, order: 4,
+        desc: child.label, icon: Icons.LayoutList, group, order: 4,
       })
     }
     return () => { core.unbindGroup('_children_kb') }
@@ -162,7 +161,7 @@ export default function TransitLocalityDetailPage() {
   useShortcut('alt+g', () => {
     if (isNew ? canCreate : canUpdate)
       (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar registro', icon: Save, origin: 'apps/web/src/app/transit/transit-locality/[id]/page', context: 'all' })
+  }, { desc: 'Salvar registro', icon: Icons.Save, origin: 'apps/web/src/app/transit/transit-locality/[id]/page', context: 'all' })
 
   useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
     display: false,
@@ -170,7 +169,7 @@ export default function TransitLocalityDetailPage() {
   })
 
   useShortcut('alt+v', () => router.push(effectiveListPath), {
-    desc: 'Voltar', icon: ArrowLeft,
+    desc: 'Voltar', icon: Icons.ArrowLeft,
     origin: 'apps/web/src/app/transit/transit-locality/[id]/page', context: 'all',
   })
 

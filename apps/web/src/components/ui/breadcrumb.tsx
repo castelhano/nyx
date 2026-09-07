@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 export interface BreadcrumbSegment {
@@ -33,7 +33,7 @@ function DropdownSegment({ label, href, items }: BreadcrumbSegment) {
           ? <Link href={href} onClick={(e) => e.stopPropagation()}>{label}</Link>
           : label
         }
-        <ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
+        <Icons.ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 min-w-[160px] rounded border bg-popover shadow-md z-50 py-1">
@@ -74,7 +74,7 @@ export function Breadcrumb({ segments }: { segments: BreadcrumbSegment[] }) {
           return (
             <li key={i} className="flex items-center gap-1.5">
               {i > 0 && (
-                <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                <Icons.ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
               )}
               {isLast ? (
                 <span className="text-foreground font-medium">{seg.label}</span>

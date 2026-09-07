@@ -3,9 +3,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { Search } from 'lucide-react'
 import { useDiscovery } from '@/core/useDiscovery'
-import { resolveIcon } from '@/lib/icons'
+import { resolveIcon, Icons } from '@/lib/icons'
 import { useShortcut, useKeywatch } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { httpError, httpRetry } from '@/lib/query'
@@ -81,7 +80,7 @@ export function GlobalSearch() {
 
   useShortcut('f3', () => setOpen((v) => !v), {
     desc:    'Busca global',
-    icon:    Search,
+    icon:    Icons.Search,
     origin:  'apps/web/src/components/layout/global-search',
     context: 'default',
     order: 1
@@ -148,7 +147,7 @@ export function GlobalSearch() {
         <div className="rounded-(--radius) border border-border bg-card shadow-xl overflow-hidden">
 
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-            <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Icons.Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <input
               ref={inputRef}
               value={query}

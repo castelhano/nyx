@@ -18,7 +18,7 @@ import { KeyHint } from './FieldRenderer'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Columns3, SquarePen, Layers, BetweenVerticalStart, ArrowRightFromLine, ArrowLeftFromLine, X, SlidersHorizontal } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -220,7 +220,7 @@ function FilterBar({
 
       {hasActive && (
         <Button type="button" variant="outline" size="sm" onClick={onClear} className={cn('text-muted-foreground', stacked && 'mt-1 w-full')}>
-          <X className="w-3.5 h-3.5" />
+          <Icons.X className="w-3.5 h-3.5" />
           {stacked && 'Limpar'}
         </Button>
       )}
@@ -229,9 +229,9 @@ function FilterBar({
 }
 
 function SortIcon({ state }: { state: false | 'asc' | 'desc' }) {
-  if (!state)          return <ChevronsUpDown className="w-3 h-3 text-muted-foreground/50" />
-  if (state === 'asc') return <ChevronUp      className="w-3 h-3 text-ring" />
-  return                      <ChevronDown    className="w-3 h-3 text-ring" />
+  if (!state)          return <Icons.ChevronsUpDown className="w-3 h-3 text-muted-foreground/50" />
+  if (state === 'asc') return <Icons.ChevronUp      className="w-3 h-3 text-ring" />
+  return                      <Icons.ChevronDown    className="w-3 h-3 text-ring" />
 }
 
 const BADGE_COLOR_CLS: Record<string, string> = {
@@ -336,7 +336,7 @@ function buildColumns(
               size="icon"
               variant="rowAction"
             >
-              <SquarePen className="w-4 h-4" />
+              <Icons.SquarePen className="w-4 h-4" />
             </Button>
           )}
         </div>
@@ -510,28 +510,28 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
 
     if (!rows.length) return
     setFocusedRow((prev) => prev === null ? 0 : Math.min(prev + 1, rows.length - 1))
-  }, { desc: 'Linha seguinte', icon: ChevronDown, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
+  }, { desc: 'Linha seguinte', icon: Icons.ChevronDown, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('ctrl+arrowup', () => {
     const rows = table.getRowModel().rows
     if (!rows.length) return
     setFocusedRow((prev) => prev === null ? rows.length - 1 : Math.max(prev - 1, 0))
-  }, { desc: 'Linha anterior', icon: ChevronUp, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
+  }, { desc: 'Linha anterior', icon: Icons.ChevronUp, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('alt+pagedown', () => {
     if (data && page * 20 < data.total) setPage((p) => p + 1)
-  }, { desc: 'Próxima página', icon: ArrowRightFromLine, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
+  }, { desc: 'Próxima página', icon: Icons.ArrowRightFromLine, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('alt+pageup', () => {
     if (page > 1) setPage((p) => Math.max(1, p - 1))
-  }, { desc: 'Página anterior', icon: ArrowLeftFromLine, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
+  }, { desc: 'Página anterior', icon: Icons.ArrowLeftFromLine, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   useShortcut('ctrl+enter', () => {
     const rows = table.getRowModel().rows
     if (focusedRow !== null && onEdit && rows[focusedRow]) {
       onEdit(String(rows[focusedRow].original.id))
     }
-  }, { desc: 'Editar linha selecionada', icon: SquarePen, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
+  }, { desc: 'Editar linha selecionada', icon: Icons.SquarePen, origin: 'apps.web.src.core.AutoList', section: SEC_TABELA })
 
   const handleSort = useCallback((col: MetadataField) => {
     setSorting((prev) => {
@@ -586,7 +586,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
         {filterableFields.length > 0 && (
           <div className="relative md:hidden" ref={filterRef}>
             <Button variant="outline" size="sm" onClick={() => setFilterOpen((o) => !o)} className="relative">
-              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <Icons.SlidersHorizontal className="w-3.5 h-3.5" />
               <span>Filtros</span>
               {activeCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-0.5 rounded-full bg-ring text-[10px] text-white flex items-center justify-center">
@@ -613,7 +613,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
         {/* Colunas */}
         <div className="relative ml-auto" ref={pickerRef}>
           <Button variant="outline" size="sm" onClick={() => setPickerOpen((o) => !o)}>
-            <Columns3 className="w-3.5 h-3.5" />
+            <Icons.Columns3 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Colunas</span>
           </Button>
           {pickerOpen && (
@@ -703,12 +703,12 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       {/* Pagination */}
       <div className="flex items-center justify-between ps-1 pt-1 text-sm text-muted-foreground">
         <div className='flex items-center gap-x-2'>
-          <Layers className='w-4 h-4' />
+          <Icons.Layers className='w-4 h-4' />
           <span>{data?.total}</span>
         </div>
         <div className='flex items-center'>
           <div className='flex items-center gap-x-2 me-3'>
-            <BetweenVerticalStart className='w-4 h-4' />
+            <Icons.BetweenVerticalStart className='w-4 h-4' />
             <span>
               {data && data.total > 0 ? (
                 <>{data.page} . {Math.ceil(data.total / data.pageSize)}</>
@@ -721,7 +721,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
             size="icon"
             variant="ghost"
           >
-            <ArrowLeftFromLine className='w-4 h-4' />
+            <Icons.ArrowLeftFromLine className='w-4 h-4' />
           </Button>
           <Button
             onClick={() => setPage((p) => p + 1)}
@@ -729,7 +729,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
             size="icon"
             variant="ghost"
           >
-            <ArrowRightFromLine className='w-4 h-4' />
+            <Icons.ArrowRightFromLine className='w-4 h-4' />
           </Button>
         </div>
       </div>

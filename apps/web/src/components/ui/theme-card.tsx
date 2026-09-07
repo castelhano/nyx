@@ -1,6 +1,6 @@
 'use client'
 
-import { Check } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { ThemeName } from '@nyx/types'
 
@@ -56,7 +56,7 @@ export function ThemeCard({ theme, selected, onSelect }: ThemeCardProps) {
 
       {selected && (
         <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <Check className="h-2.5 w-2.5" strokeWidth={3} />
+          <Icons.Check className="h-2.5 w-2.5" strokeWidth={3} />
         </span>
       )}
     </button>

@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { FileQuestion } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 
 export function NotFound() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-12 text-center">
-      <FileQuestion className="h-12 w-12 text-muted-foreground/40" />
+      <Icons.FileQuestion className="h-12 w-12 text-muted-foreground/40" />
       <div className="space-y-1">
         <p className="text-lg font-semibold">Página não encontrada</p>
         <p className="text-sm text-muted-foreground">

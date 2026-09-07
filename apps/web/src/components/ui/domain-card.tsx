@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
-import { resolveIcon } from '@/lib/icons'
-import type { LucideIcon } from 'lucide-react'
+import { resolveIcon, type LucideIcon } from '@/lib/icons'
 
 interface DomainCardProps {
   label:    string

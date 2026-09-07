@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Keyboard, Search, Info, Eye, EyeOff } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { useKeywatch } from './context'
 import type { HandlerEntry, KeywatchCore } from './core'
@@ -103,7 +103,7 @@ function ShortcutRow({ h, core, openId, onToggle }: {
     <div>
       <div className={cn('flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent/30 transition-colors', !h.display && 'opacity-50')}>
         <span className="text-muted-foreground shrink-0"><ShortcutIcon icon={h.icon} /></span>
-        {!h.display && <EyeOff className="h-3 w-3 text-muted-foreground shrink-0" />}
+        {!h.display && <Icons.EyeOff className="h-3 w-3 text-muted-foreground shrink-0" />}
         <span className="flex-1 truncate">{h.desc || <span className="text-muted-foreground/40">—</span>}</span>
         <ShortcutBadge schema={h.schema} core={core} />
         <button
@@ -115,7 +115,7 @@ function ShortcutRow({ h, core, openId, onToggle }: {
           )}
           aria-label="Detalhes do atalho"
         >
-          <Info className="h-3 w-3" />
+          <Icons.Info className="h-3 w-3" />
         </button>
       </div>
       {isOpen && <MetaPanel h={h} />}
@@ -314,7 +314,7 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
-          <Keyboard className="h-4 w-4 text-muted-foreground shrink-0" />
+          <Icons.Keyboard className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="text-sm font-semibold flex-1">Atalhos de teclado</span>
           {/* display:none proposital — mantido no código pra uso futuro, ver
               docs/TODO.md; toda a página vehicle-plan já não usa display:false
@@ -329,7 +329,7 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
             )}
             title={showHidden ? 'Ocultar atalhos internos' : 'Mostrar atalhos internos (display:false)'}
           >
-            {showHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            {showHidden ? <Icons.EyeOff className="h-3 w-3" /> : <Icons.Eye className="h-3 w-3" />}
             ocultos
           </button>
           <button
@@ -341,13 +341,13 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
             )}
             aria-label="Fechar"
           >
-            <X className="h-3.5 w-3.5" />
+            <Icons.X className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        {/* Search */}
+        {/* Icons.Search */}
         <div className="relative px-4 py-2 border-b border-border shrink-0">
-          <Search className="absolute left-7 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Icons.Search className="absolute left-7 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <input
             ref={searchRef}
             type="search"
@@ -369,7 +369,7 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
         {/* Hint */}
         <div className="px-4 pt-3 shrink-0">
           <div className="flex items-center gap-1.5 rounded-md bg-muted/30 px-3 py-1.5">
-            <Info className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+            <Icons.Info className="h-3 w-3 text-muted-foreground/50 shrink-0" />
             <span className="text-[11px] text-muted-foreground/50">
               <kbd className="font-mono text-[10px] px-1 py-0.5 rounded border border-border bg-muted">Ctrl+Shift+[tecla]</kbd> navega em campos do form
             </span>

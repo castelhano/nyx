@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { Save, ArrowLeft, LayoutList, Trash2 } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { usePageGuard } from '@/core/usePageGuard'
@@ -88,7 +88,7 @@ export default function ResourceDetailPage() {
         const href = `/${childDomain}/${child.resource}?${child.contextField}=${record.id}`
         return {
           label:   child.label,
-          icon:    LayoutList,
+          icon:    Icons.LayoutList,
           onClick: () => router.push(href),
           variant: 'ghost' as const,
           primary: false,
@@ -118,8 +118,8 @@ export default function ResourceDetailPage() {
 
   useTopbarActions([
     ...childActions,
-    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
-    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
+    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
+    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
   ], [isNew, visibleChildren, record?.id, isPending, canCreate, canUpdate, canDelete])
 
   const { coreRef } = useKeywatch()
@@ -131,7 +131,7 @@ export default function ResourceDetailPage() {
       if (!child.keybind) continue
       const href = `/${child.domain ?? domain}/${child.resource}?${child.contextField}=${record.id}`
       core.bind(child.keybind, () => router.push(href), {
-        desc: child.label, icon: LayoutList, group, order: 4,
+        desc: child.label, icon: Icons.LayoutList, group, order: 4,
       })
     }
     return () => { core.unbindGroup('_children_kb') }
@@ -140,7 +140,7 @@ export default function ResourceDetailPage() {
   useShortcut('alt+g', () => {
     if (isNew ? canCreate : canUpdate)
       (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar registro', icon: Save, origin: 'apps/web/src/app/[domain]/[resource]/[id]/page', context: 'all' })
+  }, { desc: 'Salvar registro', icon: Icons.Save, origin: 'apps/web/src/app/[domain]/[resource]/[id]/page', context: 'all' })
 
   useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
     display: false,
@@ -148,7 +148,7 @@ export default function ResourceDetailPage() {
   })
 
   useShortcut('alt+v', () => router.push(effectiveListPath), {
-    desc: 'Voltar', icon: ArrowLeft,
+    desc: 'Voltar', icon: Icons.ArrowLeft,
     origin: 'apps/web/src/app/[domain]/[resource]/[id]/page', context: 'all',
   })
 

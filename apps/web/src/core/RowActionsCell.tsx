@@ -1,7 +1,6 @@
 'use client'
 
-import { MoreHorizontal } from 'lucide-react'
-import { resolveIcon } from '@/lib/icons'
+import { resolveIcon, Icons } from '@/lib/icons'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown'
 import type { RowActionDef } from '@nyx/types'
@@ -56,7 +55,7 @@ export function RowActionsCell({ row, actions, onExecute }: Props) {
     <Dropdown
       trigger={
         <Button variant="rowAction" size="sm" title="Ações">
-          <MoreHorizontal className="w-4 h-4" />
+          <Icons.MoreHorizontal className="w-4 h-4" />
         </Button>
       }
       side="bottom"

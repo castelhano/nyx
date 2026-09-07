@@ -187,7 +187,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
       engine.dispose()
       engineRef.current = null
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // renderer colors are read from the DOM at draw time — force a redraw when
   // the theme actually changes so they don't stay stuck on whichever mode

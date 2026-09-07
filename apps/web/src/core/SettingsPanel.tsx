@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import { Save, ArrowLeft } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { useMetadata } from './useMetadata'
 import { AutoBreadcrumb } from './AutoBreadcrumb'
@@ -130,15 +130,15 @@ export function SettingsPanel({ domain, resource }: Props) {
   }
 
   useTopbarActions([
-    ...(canUpdate ? [{ label: 'Gravar', icon: Save, type: 'submit' as const, form: FORM_ID, primary: true, keybind: 'ALT+G' }] : []),
+    ...(canUpdate ? [{ label: 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, primary: true, keybind: 'ALT+G' }] : []),
   ], [canUpdate])
 
   useShortcut('alt+g', () => {
     if (canUpdate) (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar configurações', icon: Save, context: 'all', origin: `SettingsPanel/${domain}/${resource}` })
+  }, { desc: 'Salvar configurações', icon: Icons.Save, context: 'all', origin: `SettingsPanel/${domain}/${resource}` })
 
   useShortcut('alt+v', () => router.push(`/${domain}`), {
-    desc: 'Voltar', icon: ArrowLeft, context: 'all', origin: `SettingsPanel/${domain}/${resource}`,
+    desc: 'Voltar', icon: Icons.ArrowLeft, context: 'all', origin: `SettingsPanel/${domain}/${resource}`,
   })
 
   useShortcut('alt+l', () => setResetSignal((s) => s + 1), {

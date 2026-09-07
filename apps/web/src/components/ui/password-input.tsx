@@ -1,7 +1,7 @@
 'use client'
 
 import { forwardRef, useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { Input } from './input'
 import { KeyHint } from '@/core/FieldRenderer'
 import { cn } from '@/lib/utils'
@@ -32,7 +32,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
             aria-label={show ? 'Ocultar senha' : 'Exibir senha'}
           >
-            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {show ? <Icons.EyeOff className="w-4 h-4" /> : <Icons.Eye className="w-4 h-4" />}
           </button>
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}

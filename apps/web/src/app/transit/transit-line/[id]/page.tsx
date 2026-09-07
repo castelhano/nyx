@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo }   from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
-import { Save, ArrowLeft, LayoutList, Trash2, BarChart2, Download } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { AutoForm }           from '@/core/AutoForm'
 import { AutoBreadcrumb }     from '@/core/AutoBreadcrumb'
 import { usePageGuard }       from '@/core/usePageGuard'
@@ -89,7 +89,7 @@ export default function TransitLineDetailPage() {
         const href = `/${childDomain}/${child.resource}?${child.contextField}=${record.id}`
         return {
           label:   child.label,
-          icon:    LayoutList,
+          icon:    Icons.LayoutList,
           onClick: () => router.push(href),
           variant: 'ghost' as const,
           primary: false,
@@ -119,8 +119,8 @@ export default function TransitLineDetailPage() {
 
   useTopbarActions([
     ...childActions,
-    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
-    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
+    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
+    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
   ], [isNew, visibleChildren, record?.id, isPending, canCreate, canUpdate, canDelete])
 
   const { coreRef } = useKeywatch()
@@ -132,7 +132,7 @@ export default function TransitLineDetailPage() {
       if (!child.keybind) continue
       const href = `/${child.domain ?? DOMAIN}/${child.resource}?${child.contextField}=${record.id}`
       core.bind(child.keybind, () => router.push(href), {
-        desc: child.label, icon: LayoutList, group, order: 4,
+        desc: child.label, icon: Icons.LayoutList, group, order: 4,
       })
     }
     return () => { core.unbindGroup('_children_kb') }
@@ -141,7 +141,7 @@ export default function TransitLineDetailPage() {
   useShortcut('alt+g', () => {
     if (isNew ? canCreate : canUpdate)
       (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
-  }, { desc: 'Salvar registro', icon: Save, origin: 'apps/web/src/app/transit/transit-line/[id]/page', context: 'all' })
+  }, { desc: 'Salvar registro', icon: Icons.Save, origin: 'apps/web/src/app/transit/transit-line/[id]/page', context: 'all' })
 
   useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
     display: false,
@@ -149,7 +149,7 @@ export default function TransitLineDetailPage() {
   })
 
   useShortcut('alt+v', () => router.push(effectiveListPath), {
-    desc: 'Voltar', icon: ArrowLeft,
+    desc: 'Voltar', icon: Icons.ArrowLeft,
     origin: 'apps/web/src/app/transit/transit-line/[id]/page', context: 'all',
   })
 
@@ -240,13 +240,13 @@ export default function TransitLineDetailPage() {
             <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
               {hasDemand && (
                 <Button type="button" variant="outline" size="sm" onClick={() => setChartOpen(true)}>
-                  <BarChart2 className="w-3.5 h-3.5" />
+                  <Icons.BarChart2 className="w-3.5 h-3.5" />
                   Ver Demanda
                 </Button>
               )}
               {hasWindows && (
                 <Button type="button" variant="outline" size="sm" onClick={exportCycles}>
-                  <Download className="w-3.5 h-3.5" />
+                  <Icons.Download className="w-3.5 h-3.5" />
                   Exportar Ciclos
                 </Button>
               )}

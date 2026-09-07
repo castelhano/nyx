@@ -9,7 +9,7 @@ import {
   useCallback,
   type RefObject,
 } from 'react'
-import { Keyboard } from 'lucide-react'
+import { Icons } from '@/lib/icons'
 import { KeywatchCore, type CoreOptions } from './core'
 import { ShortcutsModal } from './modal'
 
@@ -64,7 +64,7 @@ export function KeywatchProvider({
     core.bind(shortcutMapKey, () => setIsModalOpen(true), {
       context: 'all',
       desc:    'Exibir atalhos disponíveis',
-      icon:    Keyboard,
+      icon:    Icons.Keyboard,
       origin:  'Keywatch',
       order:   0,
     })
@@ -89,7 +89,7 @@ export function KeywatchProvider({
       document.removeEventListener('change',  onChange,  false)
       window.removeEventListener(  'focus',   onFocus,   false)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // Bloqueia o core enquanto o modal estiver aberto
   useEffect(() => {

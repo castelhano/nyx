@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import { Controller, useWatch, useFormContext, type Control } from 'react-hook-form'
 import { useQuery } from '@tanstack/react-query'
 import { IMaskInput } from 'react-imask'
-import { ChevronDown, UserRound, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MetadataField } from '@nyx/types'
 import type { UseFormRegisterReturn } from 'react-hook-form'
@@ -74,7 +73,7 @@ function AvatarUpload({
             >
               {previewUrl
                 ? <img src={previewUrl} alt="Avatar" className="w-full h-full object-cover" />
-                : <UserRound className="w-7 h-7 text-muted-foreground" />
+                : <Icons.UserRound className="w-7 h-7 text-muted-foreground" />
               }
             </button>
             <input
@@ -244,7 +243,7 @@ function RelationSelectControl({
         ))}
       </select>
       {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
-      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
     </div>
   )
 }
@@ -422,7 +421,7 @@ function LockedDisplay({
           onClick={onEdit}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
         >
-          <Pencil className="w-4 h-4" />
+          <Icons.Pencil className="w-4 h-4" />
         </button>
       )}
     </div>
@@ -729,7 +728,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
               ))}
             </select>
             {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Icons.ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           </div>
           {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
           {error && <p className="text-xs text-destructive">{error}</p>}
