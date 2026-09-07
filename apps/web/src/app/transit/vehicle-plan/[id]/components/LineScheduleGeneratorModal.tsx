@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -261,11 +261,8 @@ export function LineScheduleGeneratorModal({
     const base       = buildUnifiedWindows(windowsForDay?.OUTBOUND ?? [], windowsForDay?.INBOUND ?? [])
     const absorbed   = absorbPartialGaps(base)
     const toleranced = mergeByTolerance(absorbed, TOLERANCE_MINUTES[tolerance])
-    const demand     = l?.metrics?.demand?.[dayTypeCode] ?? {}
-    const renewal    = {
-      OUTBOUND: l?.metrics?.renewalIndex?.OUTBOUND?.value ?? 0,
-      INBOUND:  l?.metrics?.renewalIndex?.INBOUND?.value  ?? 0,
-    }
+    const demand  = l?.metrics?.demand?.[dayTypeCode] ?? {}
+    const renewal = l?.metrics?.renewalIndex?.overall?.value ?? 0
     return deriveFleetBands(toleranced, demand, vehicleCapacity, renewal)
   }
 
@@ -282,22 +279,17 @@ export function LineScheduleGeneratorModal({
 
   const [opStart,             setOpStart]             = useState(240)  // 04:00
   const [opEnd,               setOpEnd]               = useState(1410) // 23:30
-  const [renewalIndex,        setRenewalIndex]         = useState<Partial<Record<Direction, number>>>({})
+  const [renewalIndex,        setRenewalIndex]         = useState(0)
   const renewalSeededRef = useRef(false)
 
   useEffect(() => {
     if (!line || renewalSeededRef.current) return
     renewalSeededRef.current = true
-    const stats = line.metrics?.renewalIndex ?? {}
-    setRenewalIndex({
-      OUTBOUND: stats.OUTBOUND?.value ?? 0,
-      INBOUND:  stats.INBOUND?.value  ?? 0,
-      CIRCULAR: stats.CIRCULAR?.value ?? 0,
-    })
+    setRenewalIndex(line.metrics?.renewalIndex?.overall?.value ?? 0)
   }, [line])
 
   const [includeAccessReturn, setIncludeAccessReturn]  = useState(false)
-  const [insertInterval,      setInsertInterval]       = useState(true)
+  const [insertInterval,      setInsertInterval]       = useState(false)
   const [intervalTypeId,      setIntervalTypeId]       = useState('')
 
   // Direction considered for the first/last trip of the day — defaults to Outbound
@@ -1040,35 +1032,21 @@ export function LineScheduleGeneratorModal({
                   </span>
                   <span />
 
-                  {/* rows: índice de renovação — one per route the line actually has (1 to 3
-                      directions), driven by lineRoutes rather than a fixed OUTBOUND/INBOUND pair.
-                      Control column holds the input, same alignment as the switches above. */}
-                  {lineRoutes.length === 0 && (
-                    <>
-                      <span />
-                      <span className="text-sm text-muted-foreground col-span-2">
-                        Nenhum sentido cadastrado para esta linha (cadastre rotas em Linha → Rotas)
-                      </span>
-                    </>
-                  )}
-                  {lineRoutes.map(route => (
-                    <Fragment key={route.direction}>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number" min={0}
-                          value={renewalIndex[route.direction] ?? 0}
-                          onChange={e => setRenewalIndex(r => ({ ...r, [route.direction]: Number(e.target.value) || 0 }))}
-                          className="w-20 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        <span className="text-sm text-muted-foreground">%</span>
-                      </div>
-                      <span className="text-sm">
-                        renovação {DIR_LABEL[route.direction]}{' '}
-                        <span className="text-muted-foreground">({route.originName} x {route.destinationName})</span>
-                      </span>
-                      <span />
-                    </Fragment>
-                  ))}
+                  {/* row: índice de renovação — a single line-level figure (mid-route
+                      turnover from bilhetagem x GPS conciliation), applied equally to
+                      both directions. Control column holds the input, same alignment
+                      as the switches above. */}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number" min={0}
+                      value={renewalIndex}
+                      onChange={e => setRenewalIndex(Number(e.target.value) || 0)}
+                      className="w-20 rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-sm text-muted-foreground">%</span>
+                  </div>
+                  <span className="text-sm">Índice de renovação</span>
+                  <span />
                 </div>
               )}
 
@@ -1160,7 +1138,7 @@ export function LineScheduleGeneratorModal({
                     <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       Oferta × Demanda{' '}
                       <span className="normal-case font-normal">
-                        (renovação {DIR_LABEL[activeDir]}: {renewalIndex[activeDir] ?? 0}%)
+                        (renovação: {renewalIndex}%)
                       </span>
                     </h3>
                     <div className="flex gap-1">

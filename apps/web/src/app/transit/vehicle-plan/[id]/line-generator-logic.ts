@@ -242,30 +242,30 @@ const DEFAULT_STABILIZATION_MINUTES = 60
 /** Vehicles needed to carry one hour's peak demand (worse of ida/volta — a vehicle
  *  serves both directions in sequence, so it has to cover whichever leg is
  *  heavier) without exceeding TARGET_OCCUPANCY on average, at the given cycle
- *  duration. Each leg's capacity is further inflated by that direction's
- *  renewalIndex (mid-route turnover measured from bilhetagem x GPS conciliation,
- *  see TransitLine.metrics) — a leg with heavy turnover carries more total riders
- *  per trip than its seat count alone would suggest, so it needs fewer vehicles
- *  to match the same demand. `hasAnyDemand` gates the old flat cycle/15
- *  heuristic: it only applies when the LINE has no demand curve at all to size
- *  from (still common — most lines don't have demand imported yet); an hour with
- *  zero/missing demand on a line that otherwise has a curve is real signal (e.g.
- *  a genuinely quiet overnight hour), not missing data — it sizes to the floor
- *  of 1 vehicle, not the flat guess. */
+ *  duration. Capacity is further inflated by the line's renewalIndex (mid-route
+ *  turnover measured from bilhetagem x GPS conciliation, see TransitLine.metrics
+ *  — a single line-level figure, not broken down by direction) — heavy turnover
+ *  carries more total riders per trip than the seat count alone would suggest,
+ *  so it needs fewer vehicles to match the same demand. `hasAnyDemand` gates the
+ *  old flat cycle/15 heuristic: it only applies when the LINE has no demand
+ *  curve at all to size from (still common — most lines don't have demand
+ *  imported yet); an hour with zero/missing demand on a line that otherwise has
+ *  a curve is real signal (e.g. a genuinely quiet overnight hour), not missing
+ *  data — it sizes to the floor of 1 vehicle, not the flat guess. */
 function fleetNeededForHour(
   hour:            number,
   cycleTotal:      number,
   demand:          Partial<Record<Direction, Record<string, number>>>,
   vehicleCapacity: number,
-  renewalIndex:    Partial<Record<Direction, number>>,
+  renewalIndex:    number,
   hasAnyDemand:    boolean,
 ): number {
   if (cycleTotal <= 0) return 1
   if (!hasAnyDemand) return Math.max(1, Math.round(cycleTotal / 15))
 
+  const capacityPerTrip = vehicleCapacity * TARGET_OCCUPANCY * (1 + renewalIndex / 100)
   const tripsPerHourNeeded = Math.max(...(['OUTBOUND', 'INBOUND'] as Direction[]).map(dir => {
     const v = demand[dir]?.[String(hour)] ?? 0
-    const capacityPerTrip = vehicleCapacity * TARGET_OCCUPANCY * (1 + (renewalIndex[dir] ?? 0) / 100)
     return capacityPerTrip > 0 ? v / capacityPerTrip : 0
   }))
   if (tripsPerHourNeeded <= 0) return 1
@@ -333,7 +333,7 @@ export function deriveFleetBands(
   cycleRows:            GenWindow[],
   demand:               Partial<Record<Direction, Record<string, number>>>,
   vehicleCapacity:      number,
-  renewalIndex:         Partial<Record<Direction, number>> = {},
+  renewalIndex:         number = 0,
   stabilizationMinutes: number = DEFAULT_STABILIZATION_MINUTES,
 ): GenWindow[] {
   if (cycleRows.length === 0) return cycleRows
@@ -498,16 +498,17 @@ function hourCoverage(hour: number, opStartMinutes: number, opEndMinutes: number
 /** oferta(hour) = (round trips/hour for one direction) × capacity per trip,
  *  weighted by the fraction of that hour actually within [opStart, opEnd).
  *  One vehicle produces exactly one outbound + one inbound departure per full
- *  cycle, so trips/hour is the same figure for both directions — only the
- *  renewal index (and therefore capacity per trip) differs between them. */
+ *  cycle, so trips/hour — and capacity per trip, since renewalIndex is a
+ *  single line-level figure — is the same for both directions. */
 export function computeOfertaSeries(
   rows:             GenWindow[],
   vehicleCapacity:  number,
-  renewalIndex:     Partial<Record<Direction, number>>,
+  renewalIndex:     number,
   opStartMinutes:   number,
   opEndMinutes:     number,
 ): Partial<Record<Direction, Record<number, number>>> {
   const result: Partial<Record<Direction, Record<number, number>>> = { OUTBOUND: {}, INBOUND: {} }
+  const capacityPerTrip = vehicleCapacity * (1 + renewalIndex / 100)
 
   for (let hour = 0; hour < 24; hour++) {
     const coverage = hourCoverage(hour, opStartMinutes, opEndMinutes)
@@ -515,10 +516,9 @@ export function computeOfertaSeries(
 
     for (const dir of ['OUTBOUND', 'INBOUND'] as Direction[]) {
       if (coverage <= 0 || !w) { result[dir]![hour] = 0; continue }
-      const cycleTotal      = totalCycleMinutes(w)
-      const tripsPerHour    = cycleTotal > 0 ? (w.fleetCount * 60) / cycleTotal : 0
-      const capacityPerTrip = vehicleCapacity * (1 + (renewalIndex[dir] ?? 0) / 100)
-      result[dir]![hour]    = Math.round(tripsPerHour * capacityPerTrip * coverage)
+      const cycleTotal   = totalCycleMinutes(w)
+      const tripsPerHour = cycleTotal > 0 ? (w.fleetCount * 60) / cycleTotal : 0
+      result[dir]![hour] = Math.round(tripsPerHour * capacityPerTrip * coverage)
     }
   }
 
