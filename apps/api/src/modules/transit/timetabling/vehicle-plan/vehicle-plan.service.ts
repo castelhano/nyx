@@ -555,7 +555,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
-        lines:  { select: { lineId: true, lineScheduleId: true } },
+        lines:  { select: { lineId: true, lineScheduleId: true, summary: true } },
         blocks: {
           include: {
             blockTrips: {
@@ -594,7 +594,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       if (plan.lines.length > 0) {
         await tx.vehiclePlanLine.createMany({
-          data: plan.lines.map((l: any) => ({ vehiclePlanId: newPlan.id, lineId: l.lineId, lineScheduleId: l.lineScheduleId ?? undefined })),
+          data: plan.lines.map((l: any) => ({ vehiclePlanId: newPlan.id, lineId: l.lineId, lineScheduleId: l.lineScheduleId ?? undefined, summary: l.summary ?? undefined })),
         })
       }
 
@@ -606,10 +606,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const newBlock = await tx.vehicleBlock.create({
           data: {
             vehiclePlanId: newPlan.id,
+            branchId:      block.branchId ?? undefined,
             blockNumber:   block.blockNumber,
             depotId:       block.depotId,
             vehicleType:   block.vehicleType,
             summary:       block.summary ?? undefined,
+            constraints:   block.constraints ?? undefined,
           },
         })
 
