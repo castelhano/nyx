@@ -1,6 +1,7 @@
 import { z } from 'zod'
+import { withMeta } from '../with-meta'
 
-export const generalSettingsSchema = z.object({
+export const generalSettingsSchema = withMeta(z.object({
   operationalDayStartHour:        z.number().int().min(0).max(6).default(3),
   demandModifier:                 z.number().min(0.5).max(3.0).default(1.0),
   // when true, persisting a change to a route's primary trajectory (reprocess,
@@ -15,6 +16,11 @@ export const generalSettingsSchema = z.object({
   // when the route doesn't define its own layoverPolicy (DEFAULT) — hold in place
   // (HOLD) or return to the depot (DEPOT)
   defaultLayoverPolicy:           z.enum(['HOLD', 'DEPOT']).default('HOLD'),
+}), {
+  // Servido junto de Planning/Schedule pela página custom `transit/settings` — não deve
+  // aparecer como resource próprio no sidebar/discovery.
+  label:  'Configurações Gerais',
+  hidden: true,
 })
 
 export type GeneralSettings = z.infer<typeof generalSettingsSchema>

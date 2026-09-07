@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { withMeta } from '../with-meta'
 
 // Banded reward — value maps to [0,1] via floor/idealMin/idealMax/ceiling, weighted
 // by `modifier` in the score's weighted average. Used both for criteria with a fixed
@@ -61,7 +62,7 @@ const lineDefault = {
   fleetUsage:           { active: true, idealMaxOverPercent: 10, ceilingOverPercent: 50, weight: 25 },
 }
 
-export const planningSettingsSchema = z.object({
+export const planningSettingsSchema = withMeta(z.object({
   stopNoImprovementMinutes: z.number().int().min(1).max(60).default(10),
   stopMaxTotalMinutes:      z.number().int().min(1).max(1440).default(240),
 
@@ -87,6 +88,11 @@ export const planningSettingsSchema = z.object({
     distributionVariance: rangeCriterionSchema,
     fleetUsage:           anchoredCriterionSchema,
   }).default(lineDefault),
+}), {
+  // Servido junto de General/Schedule pela página custom `transit/settings` — não deve
+  // aparecer como resource próprio no sidebar/discovery.
+  label:  'Configurações de Planejamento',
+  hidden: true,
 })
 
 export type PlanningSettings   = z.infer<typeof planningSettingsSchema>

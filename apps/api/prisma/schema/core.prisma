@@ -152,7 +152,11 @@ model Job {
   @@map("jobs")
 }
 
-// Configuracoes do app
+// App settings, one JSON blob per (key, scope) — no migration needed to add/remove/rename a
+// field inside `value`. Modules must not read/write this table directly: extend
+// `BaseSettingsService<T>` (apps/api/src/core/base-settings.service.ts) with a Zod schema
+// instead, which gives schema drift handling, discovery/metadata registration, and
+// referential-integrity checks for free. See that class's own doc comment for the contract.
 model Settings {
   key       String
   scope     String   @default("global") // 'global' | branchId

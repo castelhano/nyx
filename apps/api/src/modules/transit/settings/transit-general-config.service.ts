@@ -1,27 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import { generalSettingsSchema, GeneralSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
+import { BaseSettingsService } from '../../../core/base-settings.service'
 
 @Injectable()
-export class TransitGeneralConfigService {
-  private readonly key = 'transit.general'
-
-  constructor(private readonly prisma: PrismaService) {}
-
-  async get(): Promise<GeneralSettings> {
-    const row = await this.prisma.settings.findUnique({
-      where: { key_scope: { key: this.key, scope: 'global' } },
-    })
-    return generalSettingsSchema.parse(row?.value ?? {})
-  }
-
-  async put(dto: unknown): Promise<GeneralSettings> {
-    const validated = generalSettingsSchema.parse(dto)
-    const row = await this.prisma.settings.upsert({
-      where:  { key_scope: { key: this.key, scope: 'global' } },
-      update: { value: validated },
-      create: { key: this.key, scope: 'global', value: validated },
-    })
-    return row.value as GeneralSettings
+export class TransitGeneralConfigService extends BaseSettingsService<GeneralSettings> {
+  constructor(prisma: PrismaService) {
+    super(prisma, 'transit.general', 'transit', generalSettingsSchema, 'global')
   }
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { withMeta } from '../with-meta'
 import { rangeCriterionSchema } from './settings-planning.schema'
 
 const rangeDefault = {
@@ -10,7 +11,7 @@ const rangeDefault = {
   driverPrefTech:     { active: true, modifier: 1.0, floor: 90,  idealMin: 90,  idealMax: 100, ceiling: 100 },
 }
 
-export const scheduleSettingsSchema = z.object({
+export const scheduleSettingsSchema = withMeta(z.object({
   range: z.object({
     layover:            rangeCriterionSchema,
     shiftBreak:         rangeCriterionSchema,
@@ -19,6 +20,11 @@ export const scheduleSettingsSchema = z.object({
     driverPrefLine:     rangeCriterionSchema,
     driverPrefTech:     rangeCriterionSchema,
   }).default(rangeDefault),
+}), {
+  // Servido junto de General/Planning pela página custom `transit/settings` — não deve
+  // aparecer como resource próprio no sidebar/discovery.
+  label:  'Configurações de Escala',
+  hidden: true,
 })
 
 export type ScheduleSettings = z.infer<typeof scheduleSettingsSchema>
