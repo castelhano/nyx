@@ -15,6 +15,19 @@ interface ColorPickerProps {
   className?:  string
 }
 
+// The palettes fed into this component (pastel marking colors, saturated route
+// colors) span very different luminance ranges — a fixed check-mark color reads
+// fine on some and nearly disappears on others (e.g. white on light pastels).
+// Picking it from the swatch's own luminance keeps it legible across all of them.
+function checkColorFor(hex: string): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex)
+  if (!match) return '#ffffff'
+  const n = parseInt(match[1], 16)
+  const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.6 ? '#1f2937' : '#ffffff'
+}
+
 function Swatch({ color, selected, title, disabled, onClick }: {
   color: string; selected: boolean; title: string; disabled?: boolean; onClick: () => void
 }) {
@@ -31,7 +44,7 @@ function Swatch({ color, selected, title, disabled, onClick }: {
       )}
       style={{ backgroundColor: color }}
     >
-      {selected && <Icons.Check className="w-3.5 h-3.5 text-white drop-shadow" />}
+      {selected && <Icons.Check className="w-3.5 h-3.5 drop-shadow" style={{ color: checkColorFor(color) }} />}
     </button>
   )
 }

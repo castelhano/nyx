@@ -54,6 +54,7 @@ interface HeaderDraft {
 
 const DIRECTION_LABELS: Record<Route['direction'], string>       = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 const VEHICLE_LABELS:   Record<VehicleType, string>               = { STANDARD: 'Ônibus', MICRO_BUS: 'Micro-ônibus', MINIBUS: 'Miniônibus', VAN: 'Van' }
+const UNSET_VEHICLE_TYPE = '__unset__' // sentinel option value for the bulk-edit "Não especificado" choice
 const STATUS_LABELS:    Record<LineSchedule['status'], string>    = { DRAFT: 'Rascunho', APPROVED: 'Aprovada', SUPERSEDED: 'Substituída', ARCHIVED: 'Arquivada' }
 
 // same closed palette as TripMarkingsModal.tsx (docs/proposal/plan_trip_markings_v1.md)
@@ -379,10 +380,15 @@ export default function LineScheduleDetailPage() {
     setDraft(prev => prev ? prev.map(d => (selectedIds.has(d.id) ? { ...d, departureMinutes: Math.max(0, d.departureMinutes + delta) } : d)) : prev)
   }
 
-  function addMarkingToFocused(marking: TripMarking) {
-    if (!focused) return
-    if ((focused.markings ?? []).some(m => m.legendText === marking.legendText)) return
+  // Returns whether the marking was actually added — callers use this to decide
+  // whether to clear the input (previously cleared unconditionally, which made a
+  // no-op — no focused departure, or a duplicate legendText — look like the typed
+  // text had silently vanished).
+  function addMarkingToFocused(marking: TripMarking): boolean {
+    if (!focused) return false
+    if ((focused.markings ?? []).some(m => m.legendText === marking.legendText)) return false
     patchDeparture(focused.id, { markings: [...(focused.markings ?? []), marking] })
+    return true
   }
 
   // ── top-level actions ──────────────────────────────────────────────────
@@ -432,26 +438,39 @@ export default function LineScheduleDetailPage() {
         create.push(toPayload(d))
       } else {
         const base = baselineById.get(d.id)
-        if (!base || JSON.stringify(base) !== JSON.stringify(d)) {
-          update.push({ id: d.id, data: toPayload(d) })
-        }
+        const dirty = !base || JSON.stringify(base) !== JSON.stringify(d)
+        if (dirty) update.push({ id: d.id, data: toPayload(d) })
       }
+    }
+
+    const payload = {
+      header: headerDirty ? { dayTypeId: header.dayTypeId, approvalRef: header.approvalRef, notes: header.notes } : undefined,
+      create, update, deleteIds,
     }
 
     try {
       const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/${id}/departures-batch`, {
         method: 'PATCH',
-        body:   JSON.stringify({
-          header: headerDirty ? { dayTypeId: header.dayTypeId, approvalRef: header.approvalRef, notes: header.notes } : undefined,
-          create, update, deleteIds,
-        }),
+        body:   JSON.stringify(payload),
       })
       if (!res.ok) { const json = await res.json().catch(() => ({})); throw json }
+      const result: { schedule: LineSchedule; departures: LineDeparture[] } = await res.json()
 
-      setDraft(null); setBaseline(null); setHeader(null); setBaselineHeader(null)
+      // Seed local buffers straight from the mutation response instead of
+      // nulling them and relying on invalidateQueries + the seed effects below:
+      // that path raced the still-cached (pre-save) query data — clearing
+      // draft/header triggered the seed effect immediately, before the
+      // refetch resolved, so it re-seeded from stale data and the fresh
+      // response was silently discarded (fixed only by a manual F5).
+      const seedHeader: HeaderDraft = { dayTypeId: result.schedule.dayTypeId, approvalRef: result.schedule.approvalRef, notes: result.schedule.notes ?? '' }
+      const seedDraft = result.departures.map(toDraft)
+
+      queryClient.setQueryData([DOMAIN, RESOURCE, id], result.schedule)
+      queryClient.setQueryData(['transit', 'line-departure', id], { data: result.departures })
+
+      setHeader(seedHeader); setBaselineHeader(seedHeader)
+      setDraft(seedDraft); setBaseline(seedDraft)
       setDeletedIds(new Set()); setFocusedId(null); setSelectedIds(new Set())
-      await queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE, id] })
-      await queryClient.invalidateQueries({ queryKey: ['transit', 'line-departure', id] })
       toast.success(msgs.saved('Quadro de horários'))
     } catch (err) {
       toast.error(extractError(err as Record<string, unknown>, msgs.error.save()))
@@ -764,8 +783,16 @@ export default function LineScheduleDetailPage() {
 
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Veículo requerido</label>
-                    <Select size="sm" defaultValue="" onChange={e => applyVehicleTypeToSelected((e.target.value || undefined) as VehicleType | undefined)}>
-                      <option value="">Aplicar a todas — sem alterar</option>
+                    <Select
+                      size="sm"
+                      defaultValue=""
+                      onChange={e => {
+                        if (e.target.value === '') return // "Manter atual" — no-op
+                        applyVehicleTypeToSelected(e.target.value === UNSET_VEHICLE_TYPE ? undefined : e.target.value as VehicleType)
+                      }}
+                    >
+                      <option value="">Manter atual</option>
+                      <option value={UNSET_VEHICLE_TYPE}>Não especificado</option>
                       {(Object.keys(VEHICLE_LABELS) as VehicleType[]).map(v => <option key={v} value={v}>{VEHICLE_LABELS[v]}</option>)}
                     </Select>
                   </div>
@@ -844,37 +871,46 @@ export default function LineScheduleDetailPage() {
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Marcações</label>
                     <div className="space-y-1.5">
                       {(focused.markings ?? []).map((m, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5 border border-border rounded-md p-1.5">
-                          <span className="flex-1 text-xs truncate">{m.legendText}</span>
-                          <Select
-                            size="sm"
-                            className="text-[11px] w-28"
-                            value={m.fontStyle ?? ''}
-                            onChange={e => {
-                              const style = (e.target.value || undefined) as TripMarkingFontStyle | undefined
-                              patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, fontStyle: style } : mm) })
-                            }}
-                          >
-                            <option value="">Estilo</option>
-                            {FONT_STYLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                          </Select>
-                          <ColorPicker
-                            value={m.bgColor ? BG_COLOR_OPTIONS.find(o => o.value === m.bgColor)!.hex : null}
-                            onChange={hex => {
-                              const bgColor = hex ? BG_COLOR_OPTIONS.find(o => o.hex === hex)!.value : undefined
-                              patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, bgColor } : mm) })
-                            }}
-                            palette={BG_COLOR_OPTIONS.map(o => o.hex)}
-                            autoColor="#e5e7eb"
-                            autoLabel="Sem cor"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => patchDeparture(focused.id, { markings: (focused.markings ?? []).filter((_, i) => i !== idx) })}
-                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                          >
-                            <Icons.X className="w-3.5 h-3.5" />
-                          </button>
+                        <div key={idx} className="border border-border rounded-md p-1.5 space-y-1.5">
+                          <div className="flex items-start gap-1.5">
+                            <textarea
+                              rows={2}
+                              value={m.legendText}
+                              onChange={e => patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, legendText: e.target.value } : mm) })}
+                              className="flex-1 text-xs rounded px-1.5 py-1 resize-none border border-input bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => patchDeparture(focused.id, { markings: (focused.markings ?? []).filter((_, i) => i !== idx) })}
+                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            >
+                              <Icons.X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-start gap-2 mt-2 mb-1">
+                            <Select
+                              size="sm"
+                              className="text-[11px] w-30"
+                              value={m.fontStyle ?? ''}
+                              onChange={e => {
+                                const style = (e.target.value || undefined) as TripMarkingFontStyle | undefined
+                                patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, fontStyle: style } : mm) })
+                              }}
+                            >
+                              <option value="">Estilo</option>
+                              {FONT_STYLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </Select>
+                            <ColorPicker
+                              value={m.bgColor ? BG_COLOR_OPTIONS.find(o => o.value === m.bgColor)!.hex : null}
+                              onChange={hex => {
+                                const bgColor = hex ? BG_COLOR_OPTIONS.find(o => o.hex === hex)!.value : undefined
+                                patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, bgColor } : mm) })
+                              }}
+                              palette={BG_COLOR_OPTIONS.map(o => o.hex)}
+                              autoColor="#e5e7eb"
+                              autoLabel="Sem cor"
+                            />
+                          </div>
                         </div>
                       ))}
                       <div className="flex gap-1.5">
@@ -888,8 +924,7 @@ export default function LineScheduleDetailPage() {
                             onChange={e => setMarkingDraft(e.target.value)}
                             onKeyDown={e => {
                               if (e.key !== 'Enter' || !markingDraft.trim()) return
-                              addMarkingToFocused({ legendText: markingDraft.trim() })
-                              setMarkingDraft('')
+                              if (addMarkingToFocused({ legendText: markingDraft.trim() })) setMarkingDraft('')
                             }}
                           />
                           <KeyHint k="k" />
@@ -899,8 +934,7 @@ export default function LineScheduleDetailPage() {
                           variant="outline"
                           onClick={() => {
                             if (!markingDraft.trim()) return
-                            addMarkingToFocused({ legendText: markingDraft.trim() })
-                            setMarkingDraft('')
+                            if (addMarkingToFocused({ legendText: markingDraft.trim() })) setMarkingDraft('')
                           }}
                         >
                           <Icons.Plus className="w-3.5 h-3.5" />
@@ -909,15 +943,16 @@ export default function LineScheduleDetailPage() {
                       {markingQuickPicks.filter(q => !(focused.markings ?? []).some(m => m.legendText === q.legendText)).length > 0 && (
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground">Já usadas neste quadro:</p>
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-col gap-1.5">
                             {markingQuickPicks
                               .filter(q => !(focused.markings ?? []).some(m => m.legendText === q.legendText))
                               .map(q => (
                                 <button
                                   key={q.legendText}
                                   type="button"
+                                  title={q.legendText}
                                   onClick={() => addMarkingToFocused(q)}
-                                  className="text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
+                                  className="w-full truncate text-left text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
                                 >
                                   {q.legendText}
                                 </button>
@@ -934,15 +969,6 @@ export default function LineScheduleDetailPage() {
                 </p>
               )}
             </div>
-          </div>
-
-          <div className="border-t border-border px-6 py-2 text-[11px] text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
-            <span>ctrl+← → ↑ ↓ navegar</span>
-            <span>ctrl+shift+seta selecionar intervalo</span>
-            <span>ctrl+shift+letra focar campo</span>
-            <span>delete excluir/restaurar</span>
-            <span>alt+n nova partida</span>
-            <span className={cn(isDirty && 'text-foreground font-medium')}>alt+g salvar{isDirty ? ' (pendente)' : ''}</span>
           </div>
         </>
       )}

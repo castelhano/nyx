@@ -435,10 +435,14 @@ export class KeywatchCore {
       const tagName    = target?.nodeName.toLowerCase() ?? ''
       const isInputLike = ['input', 'textarea', 'select'].includes(tagName)
       const cm          = this._composedMatch as [string, string[]]
-      const isComposed  = this._composedMatch.length === 0 || !cm[1].includes(ev.type)
 
-      if (handler.composed && isComposed && isInputLike) {
-        // Aguarda composedTrigger antes de disparar
+      // Composed handlers must never fire while focus is inside a form field —
+      // the keystroke belongs to the input instead. This used to also require
+      // `isComposed` (derived from _composedMatch), which flipped to true again
+      // after a single keypress — so a second bare-key press in a row (e.g.
+      // hitting Delete twice while editing a text field) fell through this
+      // guard and fired the shortcut anyway.
+      if (handler.composed && isInputLike) {
         if (this._composedMatch.length === 0) {
           this._composedMatch = [resolvedScope, [ev.type]]
         } else if (!cm[1].includes(ev.type)) {
