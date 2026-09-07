@@ -42,6 +42,17 @@ export class VehiclePlanExportService {
       signatures: osoConfig.signatures ?? [],
     }
 
+    // the LineSchedule pinned to this line within this plan (VehiclePlanLine.lineScheduleId)
+    // supplies the "vigência" (validFrom) printed in the header — null while the line has no
+    // approved schedule pinned yet
+    const planLines = await db.vehiclePlanLine.findMany({
+      where:  { vehiclePlanId, lineId: { in: lineIds } },
+      select: { lineId: true, lineSchedule: { select: { validFrom: true } } },
+    })
+    const validFromByLineId = new Map<string, Date | null>(
+      planLines.map((pl: any) => [pl.lineId, pl.lineSchedule?.validFrom ?? null]),
+    )
+
     const built = await Promise.all(lineIds.map(async (lineId) => {
       const line = lineById.get(lineId)!
       const assembled     = await assembleOso(this.prisma, vehiclePlanId, lineId)
@@ -49,7 +60,8 @@ export class VehiclePlanExportService {
       const bands         = bandCarros(assembled, layouts)
       const summary       = await computeOsoSummary(this.prisma, assembled)
       const observations  = computeOsoObservations(assembled)
-      return { line, assembled, layouts, bands, summary, observations }
+      const validFrom     = validFromByLineId.get(lineId) ?? null
+      return { line, assembled, layouts, bands, summary, observations, validFrom }
     }))
 
     built.sort((a, b) => {
@@ -59,10 +71,10 @@ export class VehiclePlanExportService {
         || a.line.code.localeCompare(b.line.code, undefined, { numeric: true })
     })
 
-    const sheets: RenderOsoSheetInput[] = built.map(({ line, assembled, layouts, bands, summary, observations }) => ({
+    const sheets: RenderOsoSheetInput[] = built.map(({ line, assembled, layouts, bands, summary, observations, validFrom }) => ({
       lineCode: line.code,
       lineName: line.name,
-      assembled, layouts, bands, summary, observations,
+      assembled, layouts, bands, summary, observations, validFrom,
       scope:    scopeConfig,
     }))
 

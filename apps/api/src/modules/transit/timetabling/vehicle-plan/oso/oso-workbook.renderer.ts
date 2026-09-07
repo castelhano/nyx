@@ -40,6 +40,9 @@ export interface RenderOsoSheetInput {
   summary:       OsoSummary
   observations:  OsoObservations
   scope:         OsoScopeConfig
+  // LineSchedule.validFrom pinned to this line in this plan (VehiclePlanLine.lineScheduleId) —
+  // its year is printed in A3, null while no approved schedule is pinned yet
+  validFrom?:    Date | null
 }
 
 const FONT_NAME    = 'Arial'
@@ -384,7 +387,7 @@ function renderOsoSheet(
   labelByRouteLocalityId:   Map<string, string>,
   minutesBeforeDestination: Map<string, number>,
 ): void {
-  const { lineCode, lineName, assembled, layouts, bands, summary, observations, scope } = input
+  const { lineCode, lineName, assembled, layouts, bands, summary, observations, scope, validFrom } = input
   const resumoStart   = HEADER_ROWS + 1 + bands.length * BAND_BLOCK_ROWS
   const lastResumoRow = resumoStart + RESUMO_ROWS - 1
 
@@ -432,7 +435,7 @@ function renderOsoSheet(
   // own B4:Q4 span), not just the one cell the text sits in
   for (let c = 1; c <= 17; c++) ws.getCell(addr(c, 2)).border = { ...ws.getCell(addr(c, 2)).border, bottom: MEDIUM }
 
-  setCell(ws, 'A3', '', {
+  setCell(ws, 'A3', validFrom ? validFrom.getFullYear() : '', {
     font: baseFont({ bold: true }), align: { horizontal: 'center', vertical: 'middle', textRotation: 90 },
     border: BOX, merge: 'A3:A6',
   })
