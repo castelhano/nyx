@@ -14,7 +14,7 @@ export class BranchService extends BaseService<Branch, CreateBranchDto, UpdateBr
     return this.prisma.branch.findMany({
       where:   { companyId },
       orderBy: { name: 'asc' },
-    }) as Promise<Branch[]>
+    })
   }
 
   async deactivate(id: string): Promise<Branch> {
@@ -22,7 +22,7 @@ export class BranchService extends BaseService<Branch, CreateBranchDto, UpdateBr
     return this.prisma.branch.update({
       where: { id },
       data:  { isActive: false },
-    }) as Promise<Branch>
+    })
   }
 
   protected buildSearchWhere(search: string) {

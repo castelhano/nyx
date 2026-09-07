@@ -199,7 +199,7 @@ export class VehiclePlanImportService {
       }
     }
 
-    let matrixMap: Record<string, { minutes: number; km: number }> = {}
+    const matrixMap: Record<string, { minutes: number; km: number }> = {}
     let idealIntervalMin = 5
 
     if (normalize) {
@@ -453,23 +453,6 @@ export class VehiclePlanImportService {
               })
             }
           }
-        }
-      }
-
-      let firstDep = Infinity, lastArr = -Infinity
-      let productiveMinutes = 0, deadrunMinutes = 0
-      let productiveKm = 0,      deadrunKm = 0
-
-      for (const e of perBlockEntries) {
-        if (e.departureMinutes < firstDep) firstDep = e.departureMinutes
-        if (e.arrivalMinutes   > lastArr)  lastArr  = e.arrivalMinutes
-        const mins = e.arrivalMinutes - e.departureMinutes
-        if (e.kind === 'deadrun') {
-          deadrunMinutes += mins
-          deadrunKm      += e.km
-        } else {
-          productiveMinutes += mins
-          productiveKm      += e.km
         }
       }
 

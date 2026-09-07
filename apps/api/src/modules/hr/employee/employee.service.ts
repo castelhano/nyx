@@ -23,11 +23,11 @@ export class EmployeeService extends BaseService<Employee, CreateEmployeeDto, Up
   }
 
   async update(id: string, dto: UpdateEmployeeDto): Promise<Employee> {
-    const current = await this.findOne(id) as Employee
+    const current = await this.findOne(id)
     const result  = await super.update(id, dto)
 
     const oldUrl = current.photoUrl
-    const newUrl = (result as Employee).photoUrl
+    const newUrl = result.photoUrl
     if (oldUrl && oldUrl !== newUrl && oldUrl.startsWith('/api/uploads/')) {
       const filePath = path.join(process.cwd(), oldUrl.replace('/api/', ''))
       fs.promises.unlink(filePath).catch(() => {})

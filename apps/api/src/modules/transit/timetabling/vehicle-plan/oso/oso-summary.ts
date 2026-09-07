@@ -150,7 +150,7 @@ export async function computeOsoSummary(
     db.transitLine.findUnique({ where: { id: assembled.family[0].id }, select: { metrics: true } }),
     computeExtensionOciosaKm(prisma, assembled),
   ])
-  const extensionUtilKm = (rootLine?.metrics as any)?.extensionKm ?? {}
+  const extensionUtilKm = rootLine?.metrics?.extensionKm ?? {}
 
   const byOperator = new Map<string, typeof assembled.carros>()
   for (const carro of assembled.carros) {

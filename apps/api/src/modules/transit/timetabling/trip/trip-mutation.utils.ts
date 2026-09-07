@@ -63,7 +63,7 @@ async function recomputeDriftForTrip(db: any, tripId: string, lineId: string): P
 
 // Two-step so the caller's own update() write (sanitizeDto'd generic update, or a
 // narrow direct Prisma update from applyDiff) sits between them.
-export async function beforeTripUpdate(db: any, id: string): Promise<{ route: { lineId: string } } | null> {
+export function beforeTripUpdate(db: any, id: string): Promise<{ route: { lineId: string } } | null> {
   return db.transitTrip.findUnique({
     where:  { id },
     select: { route: { select: { lineId: true } } },

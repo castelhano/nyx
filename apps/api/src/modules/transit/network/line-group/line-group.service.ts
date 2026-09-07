@@ -38,7 +38,7 @@ export class LineGroupService extends BaseService<LineGroup, CreateLineGroupDto,
   override async findOne(id: string): Promise<LineGroup> {
     const group = await super.findOne(id) as any
     const map = await this.fetchLineIds([id])
-    return { ...group, lineIds: map.get(id) ?? [] } as any
+    return { ...group, lineIds: map.get(id) ?? [] }
   }
 
   override async create(dto: CreateLineGroupDto): Promise<LineGroup> {

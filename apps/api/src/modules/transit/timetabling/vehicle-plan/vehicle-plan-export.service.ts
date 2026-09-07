@@ -34,7 +34,7 @@ export class VehiclePlanExportService {
     )
 
     const scope     = await db.scope.findUniqueOrThrow({ where: { id: plan.scopeId }, select: { name: true, logoUrl: true, osoConfig: true } })
-    const osoConfig = (scope.osoConfig as any) ?? {}
+    const osoConfig = scope.osoConfig ?? {}
     const scopeConfig = {
       name:       scope.name,
       logoUrl:    scope.logoUrl,

@@ -71,7 +71,7 @@ function deriveChildren(resource: string): ChildResourceDef[] | undefined {
 
 function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
   return Object.entries(shape).map(([name, rawField]) => {
-    const field = rawField as ZodType
+    const field = rawField
     const meta  = (field as any).meta?.() ?? {}
     const inner = unwrap(field)
 

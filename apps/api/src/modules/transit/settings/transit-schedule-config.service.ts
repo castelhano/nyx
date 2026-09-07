@@ -17,9 +17,9 @@ export class TransitScheduleConfigService {
       const globalRow = await this.prisma.settings.findUnique({
         where: { key_scope: { key: this.key, scope: 'global' } },
       })
-      return scheduleSettingsSchema.parse(globalRow?.value ?? {}) as ScheduleSettings
+      return scheduleSettingsSchema.parse(globalRow?.value ?? {})
     }
-    return scheduleSettingsSchema.parse(row?.value ?? {}) as ScheduleSettings
+    return scheduleSettingsSchema.parse(row?.value ?? {})
   }
 
   async put(dto: unknown, branchId?: string): Promise<ScheduleSettings> {
@@ -27,8 +27,8 @@ export class TransitScheduleConfigService {
     const validated  = scheduleSettingsSchema.parse(dto)
     const row = await this.prisma.settings.upsert({
       where:  { key_scope: { key: this.key, scope: scopeValue } },
-      update: { value: validated as object },
-      create: { key: this.key, scope: scopeValue, value: validated as object },
+      update: { value: validated },
+      create: { key: this.key, scope: scopeValue, value: validated },
     })
     return row.value as ScheduleSettings
   }

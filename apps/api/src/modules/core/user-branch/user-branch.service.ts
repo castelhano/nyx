@@ -14,14 +14,14 @@ export class UserBranchService extends BaseService<UserBranch, CreateUserBranchD
     return this.prisma.userBranch.findMany({
       where:   { userId },
       orderBy: { createdAt: 'asc' },
-    }) as Promise<UserBranch[]>
+    })
   }
 
   findByBranch(branchId: string): Promise<UserBranch[]> {
     return this.prisma.userBranch.findMany({
       where:   { branchId },
       orderBy: { createdAt: 'asc' },
-    }) as Promise<UserBranch[]>
+    })
   }
 
   // Substitui todos os vínculos do usuário atomicamente

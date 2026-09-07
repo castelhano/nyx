@@ -21,12 +21,12 @@ export class UserService extends BaseService<User, CreateUserDto, UpdateUserDto>
   }
 
   findByUsername(username: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { username } }) as Promise<User | null>
+    return this.prisma.user.findUnique({ where: { username } })
   }
 
   async findAll(query: import('@nyx/types').PaginationQuery) {
     const result = await super.findAll(query)
-    return { ...result, data: result.data.map(this.sanitize) }
+    return { ...result, data: result.data.map(u => this.sanitize(u)) }
   }
 
   async findOne(id: string): Promise<User> {

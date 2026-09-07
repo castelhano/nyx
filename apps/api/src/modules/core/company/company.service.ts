@@ -12,7 +12,7 @@ export class CompanyService extends BaseService<Company, CreateCompanyDto, Updat
 
   async deactivate(id: string): Promise<Company> {
     await this.findOne(id)
-    return this.prisma.company.update({ where: { id }, data: { isActive: false } }) as Promise<Company>
+    return this.prisma.company.update({ where: { id }, data: { isActive: false } })
   }
 
   protected buildSearchWhere(search: string) {

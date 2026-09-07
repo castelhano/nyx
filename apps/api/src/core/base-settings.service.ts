@@ -42,9 +42,14 @@ export abstract class BaseSettingsService<T> {
   async put(dto: unknown, branchId?: string): Promise<T> {
     const scopeValue = this.scope === 'branch' && branchId ? branchId : 'global'
     const validated  = this.schema.parse(dto)
+    // eslint's type-aware check disagrees with tsc here — `as object` looks redundant to it,
+    // but the generic `T` really does make tsc reject `validated` against Prisma's Json input
+    // type without it (confirmed: removing it breaks `tsc --noEmit`).
     const row = await this.prisma.settings.upsert({
       where:  { key_scope: { key: this.key, scope: scopeValue } },
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       update: { value: validated as object },
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       create: { key: this.key, scope: scopeValue, value: validated as object },
     })
     return row.value as T

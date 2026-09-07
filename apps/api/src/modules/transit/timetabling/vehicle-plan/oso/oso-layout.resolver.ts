@@ -91,9 +91,9 @@ interface RouteMeta {
   isPrimary:             boolean
 }
 
-async function loadRouteMeta(prisma: PrismaService, lineIds: string[]): Promise<RouteMeta[]> {
+function loadRouteMeta(prisma: PrismaService, lineIds: string[]): Promise<RouteMeta[]> {
   const db = prisma as any
-  if (lineIds.length === 0) return []
+  if (lineIds.length === 0) return Promise.resolve([])
   return db.transitRoute.findMany({
     where:  { lineId: { in: lineIds } },
     select: { id: true, lineId: true, direction: true, originLocalityId: true, destinationLocalityId: true, isPrimary: true },

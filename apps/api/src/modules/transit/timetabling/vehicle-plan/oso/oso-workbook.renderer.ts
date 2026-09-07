@@ -378,12 +378,12 @@ function colLetter(n: number): string {
 function addr(col: number, row: number): string { return `${colLetter(col)}${row}` }
 function rangeAddr(c1: number, r1: number, c2: number, r2: number): string { return `${addr(c1, r1)}:${addr(c2, r2)}` }
 
-async function renderOsoSheet(
+function renderOsoSheet(
   ws:     ExcelJS.Worksheet,
   input:  RenderOsoSheetInput,
   labelByRouteLocalityId:   Map<string, string>,
   minutesBeforeDestination: Map<string, number>,
-): Promise<void> {
+): void {
   const { lineCode, lineName, assembled, layouts, bands, summary, observations, scope } = input
   const resumoStart   = HEADER_ROWS + 1 + bands.length * BAND_BLOCK_ROWS
   const lastResumoRow = resumoStart + RESUMO_ROWS - 1
@@ -427,7 +427,7 @@ async function renderOsoSheet(
       { font: baseFont({ size: 11 }), text: 'Operadora: ' },
       { font: baseFont({ size: 11, bold: true }), text: (operatorNames.join(' / ') || '—').toUpperCase() },
     ],
-  } as any, { align: { horizontal: 'left' }, border: { left: MEDIUM } })
+  }, { align: { horizontal: 'left' }, border: { left: MEDIUM } })
   // the underline below "Operadora:" runs the header's full width (through Q, matching row4's
   // own B4:Q4 span), not just the one cell the text sits in
   for (let c = 1; c <= 17; c++) ws.getCell(addr(c, 2)).border = { ...ws.getCell(addr(c, 2)).border, bottom: MEDIUM }
@@ -478,7 +478,7 @@ async function renderOsoSheet(
         tl: { nativeCol: left.native, nativeColOff: left.nativeOff, nativeRow: top.native, nativeRowOff: top.nativeOff } as any,
         ext: { width: imageWidthCm * CM_TO_PX, height: imageHeightCm * CM_TO_PX },
         editAs: 'oneCell',
-      } as any)
+      })
     }
   }
 
@@ -783,7 +783,7 @@ export async function renderOsoWorkbook(
 
   for (const sheet of sheets) {
     const ws = workbook.addWorksheet(sheet.lineCode.slice(0, 31))
-    await renderOsoSheet(ws, sheet, labelByRouteLocalityId, minutesBeforeDestination)
+    renderOsoSheet(ws, sheet, labelByRouteLocalityId, minutesBeforeDestination)
   }
 
   return workbook

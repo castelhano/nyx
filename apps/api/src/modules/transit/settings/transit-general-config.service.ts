@@ -12,15 +12,15 @@ export class TransitGeneralConfigService {
     const row = await this.prisma.settings.findUnique({
       where: { key_scope: { key: this.key, scope: 'global' } },
     })
-    return generalSettingsSchema.parse(row?.value ?? {}) as GeneralSettings
+    return generalSettingsSchema.parse(row?.value ?? {})
   }
 
   async put(dto: unknown): Promise<GeneralSettings> {
     const validated = generalSettingsSchema.parse(dto)
     const row = await this.prisma.settings.upsert({
       where:  { key_scope: { key: this.key, scope: 'global' } },
-      update: { value: validated as object },
-      create: { key: this.key, scope: 'global', value: validated as object },
+      update: { value: validated },
+      create: { key: this.key, scope: 'global', value: validated },
     })
     return row.value as GeneralSettings
   }

@@ -7,11 +7,22 @@
     "lint": "turbo run lint"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.4",
+    "globals": "^17.12.0",
     "turbo": "latest",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.70.0"
   },
   "packageManager": "pnpm@10.33.2",
   "pnpm": {
-    "onlyBuiltDependencies": ["@swc/core", "argon2", "esbuild", "sharp"]
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "argon2",
+      "esbuild",
+      "sharp"
+    ]
   }
 }

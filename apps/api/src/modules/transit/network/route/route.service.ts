@@ -66,15 +66,15 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     // internal disambiguator for multiple route variants sharing (lineId, direction) —
     // never user-facing, assigned here so it survives export/import as a stable identity
     const ordinal = await this.prisma.transitRoute.count({ where: { lineId: dto.lineId, direction: dto.direction } })
-    const data = { ...this.sanitizeDto(dto as Record<string, unknown>), ordinal } as Prisma.TransitRouteUncheckedCreateInput
+    const data = { ...this.sanitizeDto(dto), ordinal } as Prisma.TransitRouteUncheckedCreateInput
 
-    if (!dto.isPrimary) return this.prisma.transitRoute.create({ data }) as unknown as Route
+    if (!dto.isPrimary) return this.prisma.transitRoute.create({ data })
     return this.prisma.$transaction(async (tx) => {
       await tx.transitRoute.updateMany({
         where: { lineId: dto.lineId, direction: dto.direction, isPrimary: true },
         data:  { isPrimary: false },
       })
-      return tx.transitRoute.create({ data }) as unknown as Route
+      return tx.transitRoute.create({ data })
     })
   }
 
@@ -87,7 +87,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
             where: { lineId: current.lineId, direction: dto.direction ?? current.direction, isPrimary: true, id: { not: id } },
             data:  { isPrimary: false },
           })
-          return tx.transitRoute.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) as Prisma.TransitRouteUncheckedUpdateInput }) as unknown as Route
+          return tx.transitRoute.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) })
         })
       : await super.update(id, dto)
 
@@ -166,7 +166,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
       where:   { routeId },
       orderBy: { sequence: 'asc' },
       include: { locality: { select: { id: true, name: true, code: true, abbr: true, lat: true, lng: true } } },
-    }) as Promise<RouteLocalityWithLocality[]>
+    })
   }
 
   private coordsFromLocalities(localities: RouteLocalityWithLocality[]): { lat: number; lng: number }[] {
@@ -196,7 +196,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
           })
         }
         const leg = result.legs[i - 1]
-        const updates: Record<string, unknown> = { geometry: leg.geometry as unknown }
+        const updates: Record<string, unknown> = { geometry: leg.geometry }
         if (opts.forceAll || rl.deltaSource !== 'MANUAL') {
           updates.deltaMinutes = Math.ceil(leg.duration / 60)
           updates.deltaKm      = Math.round(leg.distance / 10) / 100
@@ -249,7 +249,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
         const toCoords   = this.coordsFromLocalities([toRl])[0]
         const result = await this.osrm.getRoute([fromCoords, toCoords])
         const leg    = result.legs[0]
-        const updates: Record<string, unknown> = { geometry: leg.geometry as unknown }
+        const updates: Record<string, unknown> = { geometry: leg.geometry }
         if (opts.forceAll || toRl.deltaSource !== 'MANUAL') {
           updates.deltaMinutes = Math.ceil(leg.duration / 60)
           updates.deltaKm      = Math.round(leg.distance / 10) / 100

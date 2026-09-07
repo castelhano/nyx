@@ -174,7 +174,7 @@ export class OsrmService {
           },
         },
       })
-    }).filter(Boolean)
+    }).filter((u): u is NonNullable<typeof u> => u !== null)
 
     await Promise.all(snapUpdates)
 

@@ -145,7 +145,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       .filter(b => isAdmin || !b.branchId || userBranchIds.includes(b.branchId))
       .map(b => ({
         depotId:     b.depotId,
-        vehicleType: b.vehicleType as string,
+        vehicleType: b.vehicleType,
         tripIds:     b.blockTrips.map(bt => bt.tripId).filter(id => tripSet.has(id)),
         locked:      !!(b.constraints as any)?.locked,
       }))
@@ -203,33 +203,35 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     // when redistributeTrips is false, skip construction — score current plan only
     if (!params.redistributeTrips) {
-      setImmediate(async () => {
-        try {
-          await this.recalculate(planId)
-          const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
-          if (!plan?.summary) { messages$.complete(); return }
+      setImmediate(() => {
+        void (async () => {
+          try {
+            await this.recalculate(planId)
+            const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
+            if (!plan?.summary) { messages$.complete(); return }
 
-          const summary = plan.summary as VehiclePlanSummary
-          const syntheticResult: SolverResult = {
-            blocks:            [],
-            score:             summary.score,
-            fleetCount:        summary.fleetCount,
-            deadrunKm:         summary.deadrunKm,
-            productiveKm:      summary.productiveKm,
-            totalKm:           summary.totalKm,
-            deadrunMinutes:    summary.deadrunMinutes,
-            productiveMinutes: summary.productiveMinutes,
-            totalMinutes:      summary.totalMinutes,
+            const summary = plan.summary as VehiclePlanSummary
+            const syntheticResult: SolverResult = {
+              blocks:            [],
+              score:             summary.score,
+              fleetCount:        summary.fleetCount,
+              deadrunKm:         summary.deadrunKm,
+              productiveKm:      summary.productiveKm,
+              totalKm:           summary.totalKm,
+              deadrunMinutes:    summary.deadrunMinutes,
+              productiveMinutes: summary.productiveMinutes,
+              totalMinutes:      summary.totalMinutes,
+            }
+            job.best = syntheticResult
+            messages$.next({ type: 'proposal', stage: 0, stageLabel: 'Plano atual', scenario: syntheticResult, proposalIndex: 1 })
+            messages$.next({ type: 'done', stopReason: 'max_time', totalAttempts: 0 })
+            messages$.complete()
+            setTimeout(() => this.jobs.delete(jobId), 30 * 60 * 1000)
+          } catch (err) {
+            messages$.error(err)
+            this.jobs.delete(jobId)
           }
-          job.best = syntheticResult
-          messages$.next({ type: 'proposal', stage: 0, stageLabel: 'Plano atual', scenario: syntheticResult, proposalIndex: 1 })
-          messages$.next({ type: 'done', stopReason: 'max_time', totalAttempts: 0 })
-          messages$.complete()
-          setTimeout(() => this.jobs.delete(jobId), 30 * 60 * 1000)
-        } catch (err) {
-          messages$.error(err)
-          this.jobs.delete(jobId)
-        }
+        })()
       })
       return
     }
@@ -681,7 +683,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
   }
 
-  async stop(jobId: string): Promise<void> {
+  stop(jobId: string): void {
     const job = this.jobs.get(jobId)
     if (!job) return
     job.worker?.postMessage({ type: 'stop' })

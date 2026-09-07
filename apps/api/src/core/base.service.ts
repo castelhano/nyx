@@ -63,7 +63,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const where = {
       ...(query.search ? this.buildSearchWhere(query.search) : {}),
       ...contextFilters,
-      ...buildFilterWhere(this.schema, query as Record<string, unknown>),
+      ...buildFilterWhere(this.schema, query),
     }
 
     const include    = this.buildRelationIncludes()
@@ -122,11 +122,11 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
       const isOptional = (rawField as ZodType) instanceof ZodOptional || (rawField as ZodType) instanceof ZodNullable
       if (unwrapped instanceof ZodDate) {
         if (!dto[name]) continue
-        result[name] = typeof dto[name] === 'string' ? new Date(dto[name] as string) : dto[name]
+        result[name] = typeof dto[name] === 'string' ? new Date(dto[name]) : dto[name]
       } else if (unwrapped instanceof ZodNumber && typeof dto[name] === 'string') {
         if (dto[name] === '') continue
         const isInt = (unwrapped._def.checks as unknown as { kind: string }[])?.some((c) => c.kind === 'int') ?? false
-        result[name] = isInt ? parseInt(dto[name] as string, 10) : parseFloat(dto[name] as string)
+        result[name] = isInt ? parseInt(dto[name], 10) : parseFloat(dto[name])
       } else if (unwrapped instanceof ZodBoolean && typeof dto[name] === 'string') {
         result[name] = dto[name] === 'true'
       } else if (isOptional && dto[name] === '') {
@@ -138,7 +138,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     return result
   }
 
-  async create(dto: CreateDTO): Promise<T> {
+  create(dto: CreateDTO): Promise<T> {
     return this.model.create({ data: this.sanitizeDto(dto as Record<string, unknown>) })
   }
 

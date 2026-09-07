@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nodemon --watch src --watch ../../packages/schemas --watch ../../packages/types",
     "build": "nest build",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "lint": "eslint .",
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:push": "prisma db push && prisma generate",
     "db:generate": "prisma generate",

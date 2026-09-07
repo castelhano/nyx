@@ -25,8 +25,8 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     super(prisma, 'lineSchedule', lineScheduleSchema, 'transit')
   }
 
-  override async create(dto: CreateLineScheduleDto): Promise<LineSchedule> {
-    const data = this.sanitizeDto(dto as Record<string, unknown>)
+  override create(dto: CreateLineScheduleDto): Promise<LineSchedule> {
+    const data = this.sanitizeDto(dto)
     return this.model.create({ data: { ...data, status: 'DRAFT' } })
   }
 
@@ -34,7 +34,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     const schedule = await this.prisma.lineSchedule.findUnique({ where: { id } })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
 
-    const data = this.sanitizeDto(dto as Record<string, unknown>)
+    const data = this.sanitizeDto(dto)
     return this.model.update({ where: { id }, data })
   }
 
@@ -130,7 +130,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
 
     await this.prisma.$transaction(async tx => {
       if (dto.header) {
-        const data = this.sanitizeDto(dto.header as Record<string, unknown>)
+        const data = this.sanitizeDto(dto.header)
         if (Object.keys(data).length > 0) await tx.lineSchedule.update({ where: { id }, data })
       }
 

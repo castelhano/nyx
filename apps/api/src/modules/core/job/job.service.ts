@@ -12,10 +12,10 @@ export class JobService extends BaseService<Job, never, never> {
 
   async findAllForUser(query: PaginationQuery, user: AuthUser) {
     if (user.role === 'admin') return this.findAll(query)
-    return this.findAll({ ...query, createdById: user.id } as unknown as PaginationQuery)
+    return this.findAll({ ...query, createdById: user.id })
   }
 
-  async createJob(data: {
+  createJob(data: {
     type:        string
     domain:      string
     resource:    string
@@ -25,7 +25,9 @@ export class JobService extends BaseService<Job, never, never> {
     return (this.prismaService as any).job.create({ data })
   }
 
-  async run(jobId: string, handler: () => Promise<unknown>): Promise<void> {
+  // Fire-and-forget by design — callers get the job id back immediately and poll
+  // progress separately, they never await this.
+  run(jobId: string, handler: () => Promise<unknown>): void {
     void this.executeAsync(jobId, handler)
   }
 

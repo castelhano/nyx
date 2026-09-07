@@ -47,7 +47,7 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     const merged = { ...(current.metrics as object ?? {}), ...dto.metrics }
     return this.model.update({
       where: { id },
-      data:  this.sanitizeDto({ ...dto, metrics: merged } as Record<string, unknown>),
+      data:  this.sanitizeDto({ ...dto, metrics: merged }),
     }) as Promise<Line>
   }
 

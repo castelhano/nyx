@@ -105,7 +105,7 @@ export class ContractService extends BaseService<Contract, CreateContractDto, Up
           // open contract that starts AT or AFTER newStart — can't be auto-closed, real overlap
           { endDate: null, startDate: { gte: start } },
           // open contract that starts BEFORE newStart but newEnd exists — overlaps if openStart <= newEnd
-          ...(end ? [{ endDate: null as null, startDate: { lt: start, lte: end } }] : []),
+          ...(end ? [{ endDate: null, startDate: { lt: start, lte: end } }] : []),
           // closed contract: existingStart <= newEnd AND existingEnd >= newStart
           {
             endDate:   { not: null, gte: start },
