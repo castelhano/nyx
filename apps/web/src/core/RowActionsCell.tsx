@@ -43,6 +43,8 @@ export function RowActionsCell({ row, actions, onExecute }: Props) {
         onClick={() => onExecute(action, row)}
         title={action.label}
       >
+        {/* Icon is an existing component reference picked from a lookup table. */}
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="w-3.5 h-3.5" />
         {action.label}
       </Button>

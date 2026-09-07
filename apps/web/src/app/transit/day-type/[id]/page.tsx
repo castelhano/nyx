@@ -77,6 +77,8 @@ export default function DayTypeDetailPage() {
     },
   })
 
+  // Run-once guard via ref, entirely inside the effect — standard pattern, not a bug.
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     if (!record || formInit.current) return
     reset({

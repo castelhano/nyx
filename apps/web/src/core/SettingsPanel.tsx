@@ -109,6 +109,9 @@ export function SettingsPanel({ domain, resource }: Props) {
   const { handleSubmit, watch, setValue, reset } = useForm<Record<string, unknown>>({
     defaultValues: {},
   })
+  // React Compiler isn't enabled in this project — react-hook-form's watch() is a
+  // known incompatibility with it, not a bug here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const values = watch()
 
   useEffect(() => {

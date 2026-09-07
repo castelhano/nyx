@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { login } from '@/lib/auth'
@@ -97,12 +98,12 @@ export default function LoginPage() {
                   <span className="text-sm text-muted-foreground">Permanecer conectado</span>
                 </label>
 
-                <a
+                <Link
                   href="/login/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
                   Recuperar senha
-                </a>
+                </Link>
               </div>
 
               <Button type="submit" disabled={loading} className="w-full" size="default">

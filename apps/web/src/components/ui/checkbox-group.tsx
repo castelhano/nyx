@@ -129,8 +129,7 @@ export function CheckboxGroup({ sections, value, onChange }: Props) {
                       <span className="flex items-center justify-between group/row">
                         {resource.label}
                         {(() => {
-                          const allOn = ACTIONS.every((a) => value.has(`${resource.key}:${a.key}`))
-                          const Icon  = resolveIcon('ArrowRightFromLine')
+                          const Icon = resolveIcon('ArrowRightFromLine')
                           return (
                             <button
                               type="button"

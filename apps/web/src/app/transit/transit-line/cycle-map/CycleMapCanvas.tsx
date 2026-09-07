@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTheme }      from 'next-themes'
 import { CycleEngine }   from './cycle-engine'
 import { markOutliers, type Methodology } from './cycle-utils'
-import type { Direction, DotCluster, DotClickInfo, MarqueeSelection } from './types'
+import type { Direction, DotCluster, MarqueeSelection } from './types'
 
 const DIR_LABEL: Record<Direction, string> = {
   OUTBOUND: 'IDA',
@@ -94,9 +94,10 @@ export function CycleMapCanvas({
     e.onSubCutsChange = onSubCutsChange
   }, [onCutsChange, onSubCutsChange])
 
-  // sync data to engine when props change
+  // sync data to engine (a non-React canvas drawing object) when props change
   useEffect(() => {
     engineRef.current?.setData(hourClusters, cuts, subCuts, methodology)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMarquee(null)
     engineRef.current?.clearSelection()
   }, [hourClusters, cuts, subCuts, methodology])

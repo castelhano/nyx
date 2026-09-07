@@ -234,6 +234,9 @@ export default function LineScheduleDetailPage() {
 
   const shiftAnchorRef = useRef<string | null>(null)
 
+  // Both effects below seed an editable draft once its query result loads —
+  // legitimate async-query dependency, not computable during render.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (schedule && !header) {
       const seed: HeaderDraft = { dayTypeId: schedule.dayTypeId, approvalRef: schedule.approvalRef, notes: schedule.notes ?? '' }
@@ -249,8 +252,10 @@ export default function LineScheduleDetailPage() {
       setBaseline(seeded)
     }
   }, [departuresPage, draft])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!viewRouteId && routes.length > 0) setViewRouteId(routes[0].id)
   }, [routes, viewRouteId])
 

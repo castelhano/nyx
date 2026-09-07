@@ -17,8 +17,6 @@ export default function TransitLineListPage() {
   const { guardNode, meta } = usePageGuard('transit', 'transit-line')
   const [showDemandModal, setShowDemandModal] = useState(false)
 
-  if (guardNode) return guardNode
-
   async function handleDownloadCsv() {
     if (!meta) return
     const params = new URLSearchParams({ page: '1', pageSize: '9999' })
@@ -70,6 +68,8 @@ export default function TransitLineListPage() {
     icon:   Icons.Download,
     origin: 'apps/web/src/app/transit/transit-line/page',
   })
+
+  if (guardNode) return guardNode
 
   return (
     <div className="p-6 space-y-4">

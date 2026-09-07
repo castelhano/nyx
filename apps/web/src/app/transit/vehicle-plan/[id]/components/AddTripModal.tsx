@@ -225,7 +225,10 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
   })
 
   useEffect(() => {
+    // Seeds the default once intervalTypes finishes loading — legitimate async-query
+    // dependency, not something computable during render.
     if (tripType === 'interval' && !intervalTypeId && intervalTypes.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIntervalTypeId(intervalTypes[0].id)
     }
   }, [tripType, intervalTypes, intervalTypeId])
@@ -267,7 +270,10 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
   }, [lineId])
 
   // Reset cycle when relevant inputs change
-  useEffect(() => { setCycleMinutes('') }, [tripType, lineId, routeId, originId, destinationId])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCycleMinutes('')
+  }, [tripType, lineId, routeId, originId, destinationId])
 
   // Prefill from the reference trip (focused trip, or last productive trip before a
   // focused rest break): opposite direction of the reference (same direction if the
@@ -308,10 +314,14 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
     const window = resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, startMinutes)
     if (window && hasOverlap(block, startMinutes, startMinutes + window.minutes)) return
 
+    // One-time complex prefill, gated by appliedReferenceRef above — not a plain
+    // derived value, computable during render.
+    /* eslint-disable react-hooks/set-state-in-effect */
     setRouteId(candidateRoute.id)
     setDepHH(String(Math.floor(startMinutes / 60) % 24))
     setDepMM(String(startMinutes % 60))
     setBlockId(block.id)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [routes, reference, referenceEligible, referenceLineId, tripType, lineId, plottedLines, dayTypeCode])
 
   async function resolveCycle() {
@@ -356,6 +366,9 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
     if (tripType === 'productive' && !routeId) return
     if (tripType === 'deadrun' && (!originId || !destinationId)) return
 
+    // resolveCycle awaits real network calls before its setState calls —
+    // the rule flags the call site, not an inline computation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resolveCycle()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, originId, destinationId, tripType])

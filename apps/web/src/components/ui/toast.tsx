@@ -10,6 +10,8 @@ function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)')
+    // window isn't available during render (SSR) — has to run in an effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMobile(mq.matches)
     const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
     mq.addEventListener('change', handler)
@@ -115,7 +117,11 @@ export function Toaster() {
   const isMobile = useIsMobile()
   const [mounted, setMounted] = useState(false)
 
-  useEffect(() => { setMounted(true) }, [])
+  // Hydration-mount guard — can only be known client-side, after commit.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true)
+  }, [])
   if (!mounted) return null
 
   const groups = new Map<Position, ToastItem[]>()

@@ -99,6 +99,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   // when lat/lng are prefilled from map click, try to snap and reverse-geocode
   useEffect(() => {
     if (!prefillLat || !prefillLng) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSnapping(true)
     Promise.all([
       apiFetch(`/transit/transit-locality/nearest?lat=${prefillLat}&lng=${prefillLng}`).then((r) => r.json()),

@@ -48,12 +48,18 @@ export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate 
   const [branchId,    setBranchId]    = useState(block.branchId ?? '')
   const [locked,      setLocked]      = useState(block.constraints?.locked === true)
 
-  useEffect(() => {
+  // Adjusting state during render (react.dev/learn/you-might-not-need-an-effect)
+  // instead of an effect, so the draft reflects a changed `block` (e.g. right
+  // after a save elsewhere refetches it) on the same render, not one late.
+  const [prevBlock, setPrevBlock] = useState(block)
+  if (block.vehicleType !== prevBlock.vehicleType || block.depotId !== prevBlock.depotId ||
+      block.branchId !== prevBlock.branchId || block.constraints !== prevBlock.constraints) {
+    setPrevBlock(block)
     setVehicleType(block.vehicleType)
     setDepotId(block.depotId)
     setBranchId(block.branchId ?? '')
     setLocked(block.constraints?.locked === true)
-  }, [block.vehicleType, block.depotId, block.branchId, block.constraints])
+  }
 
   const { data: depots } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['transit', 'transit-locality', 'select-list', 'depots'],

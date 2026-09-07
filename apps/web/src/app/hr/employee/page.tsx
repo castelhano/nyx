@@ -18,7 +18,6 @@ export default function EmployeeListPage() {
   const [syncOpen, setSyncOpen] = useState(false)
 
   const { guardNode, meta } = usePageGuard('hr', 'employee')
-  if (guardNode) return guardNode
 
   const filters: Record<string, string> = {}
   for (const [key, value] of searchParams.entries()) {
@@ -64,6 +63,8 @@ export default function EmployeeListPage() {
     icon:   Icons.Download,
     origin: 'app/hr/employee/page',
   })
+
+  if (guardNode) return guardNode
 
   return (
     <div className="p-6 space-y-4">

@@ -12,7 +12,7 @@ import { FieldRenderer } from './FieldRenderer'
 import { Button } from '@/components/ui/button'
 import type { MetadataField } from '@nyx/types'
 
-interface SyncField extends MetadataField {}
+type SyncField = MetadataField
 
 interface JobProgress {
   processed: number

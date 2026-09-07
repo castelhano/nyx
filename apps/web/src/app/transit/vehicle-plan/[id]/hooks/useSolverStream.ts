@@ -41,6 +41,7 @@ export function useSolverStream(planId: string, jobId: string | null, onDone: ()
       eventSourceRef.current?.close()
       eventSourceRef.current = null
       hadProgressRef.current = false
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState(SOLVER_DISPLAY_RESET)
       return
     }

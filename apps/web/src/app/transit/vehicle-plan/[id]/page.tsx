@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Icons }             from '@/lib/icons'
@@ -135,9 +135,9 @@ export default function VehiclePlanPage() {
   // Gantt (see LineFreqPanel.tsx), no focus/selection of its own
   const [lineFreqOpen,  setLineFreqOpen]  = useState(false)
 
-  const ganttBoardRef       = useRef<GanttBoardHandle>(null)
-  const shiftAnchorRef      = useRef<string | null>(null)
-  const groupAnchorSegIdRef = useRef<string | null>(null)
+  const ganttBoardRef  = useRef<GanttBoardHandle>(null)
+  const shiftAnchorRef = useRef<string | null>(null)
+  const [groupAnchorSegId, setGroupAnchorSegId] = useState<string | null>(null)
 
   useVehiclePlanShortcuts({
     canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
@@ -332,15 +332,18 @@ export default function VehiclePlanPage() {
   // Tracks the segment whose data the panel shows: the single selected/focused
   // segment, or — once a group (interval) selection starts — the segment that
   // was selected right before it grew into a group, kept fixed while it grows.
+  // Adjusting state during render (react.dev/learn/you-might-not-need-an-effect)
+  // instead of mutating a ref, so `summarySegId` below is consistent with it on
+  // this same render rather than lagging a render behind via an effect.
   if (!selection) {
-    groupAnchorSegIdRef.current = null
+    if (groupAnchorSegId !== null) setGroupAnchorSegId(null)
   } else if (selection.type === 'trip') {
-    groupAnchorSegIdRef.current = selection.segment.id
-  } else if (!groupAnchorSegIdRef.current) {
-    groupAnchorSegIdRef.current = selection.from.id
+    if (groupAnchorSegId !== selection.segment.id) setGroupAnchorSegId(selection.segment.id)
+  } else if (!groupAnchorSegId) {
+    setGroupAnchorSegId(selection.from.id)
   }
 
-  const summarySegId = selection ? groupAnchorSegIdRef.current : focusedSegId
+  const summarySegId = selection ? groupAnchorSegId : focusedSegId
 
   let summaryTrip:    GanttBlockTrip     | null = null
   let summaryDeadrun: GanttBlockDeadrun  | null = null

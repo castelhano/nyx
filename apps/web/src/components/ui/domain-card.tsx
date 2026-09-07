@@ -23,6 +23,9 @@ export function DomainCard({ label, icon, href, active, badge }: DomainCardProps
       )}
     >
       <div className="flex items-center justify-between">
+        {/* Icon is an existing component reference picked from a lookup table, not
+            a new component defined on each render. */}
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon className="h-5 w-5 text-muted-foreground" />
         {badge != null && badge > 0 && (
           <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-medium text-destructive-foreground leading-none">

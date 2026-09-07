@@ -529,7 +529,7 @@ export class KeywatchCore {
   }
 
   private _getScope(scope: string): [string[], string] {
-    let keys  = scope.split(this.splitKey)
+    const keys  = scope.split(this.splitKey)
     let index = keys.lastIndexOf('')
     // Reconstrói teclas que contêm o próprio splitKey (ex: ctrl++)
     while (index >= 0) {
@@ -543,7 +543,7 @@ export class KeywatchCore {
   }
 
   private _getMultipleKeys(scope: string): string[] {
-    let keys  = scope.split(this.separator)
+    const keys  = scope.split(this.separator)
     let index = keys.lastIndexOf('')
     while (index >= 0) {
       keys[index - 1] += ';'

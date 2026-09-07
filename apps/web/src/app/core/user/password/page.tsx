@@ -61,6 +61,9 @@ export default function ChangePasswordPage() {
     defaultValues: { currentPassword: '', newPassword: '', confirmPassword: '' },
   })
 
+  // React Compiler isn't enabled in this project — react-hook-form's watch() is a
+  // known incompatibility with it, not a bug here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const newPasswordValue     = watch('newPassword')
   const confirmPasswordValue = watch('confirmPassword')
 

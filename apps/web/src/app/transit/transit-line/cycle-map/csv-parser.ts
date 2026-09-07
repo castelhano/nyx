@@ -28,7 +28,7 @@ export function parseCsv(text: string): CsvData {
   const commas     = (firstRow.match(/,/g) ?? []).length
   const delim      = semicolons >= commas ? ';' : ','
 
-  const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, '').replace(/^﻿/, '')
+  const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, '').replace(/^\uFEFF/, '')
   const header  = firstRow.split(delim).map(unquote)
   const col     = (name: string) => header.indexOf(name)
 

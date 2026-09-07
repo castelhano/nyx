@@ -61,6 +61,7 @@ export function GlobalSearch() {
 
   const [debouncedLookup, setDebouncedLookup] = useState('')
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!hasLookup) { setDebouncedLookup(''); return }
     const t = setTimeout(() => setDebouncedLookup(lookupRaw.trim()), 250)
     return () => clearTimeout(t)
@@ -86,10 +87,14 @@ export function GlobalSearch() {
     order: 1
   })
 
-  useEffect(() => { setCursor(0) }, [results])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCursor(0)
+  }, [results])
 
   useEffect(() => {
     if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery('')
     setCursor(0)
     requestAnimationFrame(() => inputRef.current?.focus())

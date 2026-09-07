@@ -393,10 +393,14 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       ))
     }
     setFiltersReady(true)
+    // Deliberately keyed off meta?.resource, not the whole meta object — meta gets a
+    // new reference on every refetch even for the same resource, and we don't want
+    // to re-apply default filters just because of that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta?.resource])
 
   const visibleRowActions = useMemo(
-    () => (meta?.rowActions ?? []).filter((a) => meta!.permissions[a.permission]),
+    () => (meta?.rowActions ?? []).filter((a) => meta?.permissions?.[a.permission]),
     [meta?.rowActions, meta?.permissions],
   )
   const handleRowAction = useCallback(async (action: RowActionDef, row: Row) => {
@@ -456,6 +460,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
       if (f.listVisibility === 'hidden') initial[f.name] = false
     }
     setVisibility(initial)
+    // Same reasoning as the effect above — keyed off resource identity, not meta itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta?.resource])
 
   useEffect(() => { setFocusedRow(null) }, [page, sorting, filters, debouncedActiveFilters])
@@ -547,6 +553,9 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
     [meta?.fields, sorting, handleSort, dateFormat, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
   )
 
+  // React Compiler isn't enabled in this project — TanStack Table's useReactTable()
+  // is a known incompatibility with it, not a bug here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data:                    data?.data ?? [],
     columns,

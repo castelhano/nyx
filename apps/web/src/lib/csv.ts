@@ -30,8 +30,8 @@ export function downloadCsv(
   }).join(';'))
   const csv     = [headers, ...lines].join('\n')
 
-  // BOM UTF-8 (﻿) garante que o Excel abra acentos e cedilha corretamente
-  const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' })
+  // BOM UTF-8 (U+FEFF) garante que o Excel abra acentos e cedilha corretamente
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' })
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url

@@ -72,6 +72,8 @@ function AvatarUpload({
               className="w-14 h-14 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border border-border hover:opacity-80 transition-opacity disabled:cursor-not-allowed"
             >
               {previewUrl
+                // next/image can't optimize blob: URLs from a freshly-picked File
+                // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={previewUrl} alt="Avatar" className="w-full h-full object-cover" />
                 : <Icons.UserRound className="w-7 h-7 text-muted-foreground" />
               }
@@ -204,6 +206,10 @@ function RelationSelectControl({
     prevRef.current = dependsOnValue
   }, [dependsOnValue]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // `ctrl` is react-hook-form's Controller field render-prop object (value/onChange/
+  // onBlur/ref), not a React ref — react-hooks/refs' heuristic mistakes its `.ref`
+  // shape for one below.
+  /* eslint-disable react-hooks/refs */
   const isDisabled = readonly || (!!field.dependsOn && !dependsOnValue && !ctrl.value)
   const labelField = field.labelField ?? 'name'
 
@@ -246,6 +252,7 @@ function RelationSelectControl({
       <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
     </div>
   )
+  /* eslint-enable react-hooks/refs */
 }
 
 function RelationSelect({
@@ -315,6 +322,9 @@ function RelationComboboxControl({
     prevRef.current = dependsOnValue
   }, [dependsOnValue]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Same as RelationSelectControl above: `ctrl` is react-hook-form's field
+  // render-prop object, not a React ref.
+  /* eslint-disable react-hooks/refs */
   const isDisabled = readonly || (!!field.dependsOn && !dependsOnValue && !ctrl.value)
 
   const extraParams: Record<string, string> = {}
@@ -356,6 +366,7 @@ function RelationComboboxControl({
       {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
     </div>
   )
+  /* eslint-enable react-hooks/refs */
 }
 
 function RelationCombobox({

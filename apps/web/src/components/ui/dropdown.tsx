@@ -2,7 +2,7 @@
 
 import {
   useEffect, useRef, useState, useCallback,
-  type ReactNode, type RefObject,
+  type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
@@ -113,6 +113,7 @@ export function Dropdown({
 
   // Recalcula quando o conteúdo monta (dimensões reais disponíveis)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!open) { setReady(false); return }
     // Defer para o conteúdo ter dimensões reais
     const id = requestAnimationFrame(reposition)

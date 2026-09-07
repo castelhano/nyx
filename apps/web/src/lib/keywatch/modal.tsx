@@ -269,7 +269,11 @@ export function ShortcutsModal({ onClose }: ShortcutsModalProps) {
   const [openId, setOpenId]         = useState<symbol | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const searchRef                   = useRef<HTMLInputElement>(null)
-  const core                        = coreRef.current
+  // The provider lazily creates `core` synchronously during its own render (see
+  // context.tsx), before this modal (its descendant) ever mounts, so it's safe to
+  // snapshot into state here once instead of reading the ref during render.
+  // eslint-disable-next-line react-hooks/refs
+  const [core]                      = useState(() => coreRef.current)
 
   useEffect(() => {
     const timer = setTimeout(() => searchRef.current?.focus(), 60)

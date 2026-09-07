@@ -24,11 +24,13 @@ export function Sidebar() {
   const [openModules, setOpenModules] = useState<Set<string>>(new Set())
   const prefApplied = useRef(false)
 
-  // Expande o módulo activo ao carregar domains
+  // Expande o módulo activo ao carregar domains — deliberately keyed off domains
+  // loading only, not pathname (a route change alone shouldn't re-collapse others).
   useEffect(() => {
     const initial = new Set<string>()
     const active  = domains.find((d) => pathname.startsWith(`/${d.key}`))
     if (active) initial.add(active.key)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpenModules(initial)
   }, [domains]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -57,7 +59,8 @@ export function Sidebar() {
   function toggleModule(key: string) {
     setOpenModules((prev) => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }

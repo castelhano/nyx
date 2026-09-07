@@ -84,6 +84,9 @@ export default function TransitLocalityDetailPage() {
 
   const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
 
+  // React Compiler isn't enabled in this project — this manual useMemo's broader
+  // deps than what it infers are conservative, not a bug.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const effectiveListPath = useMemo(() => {
     if (contextQuery || !meta?.breadcrumb?.length || !record) return listPath
     const params = new URLSearchParams()

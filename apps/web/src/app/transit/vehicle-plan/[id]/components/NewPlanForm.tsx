@@ -45,11 +45,14 @@ export function NewPlanForm() {
     staleTime: 60_000,
   })
 
+  // Both seed a default once their query finishes loading.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!scopeId && scopes.length > 0) setScopeId(scopes[0].id)
   }, [scopes, scopeId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!dayTypeId && dayTypes.length > 0) setDayTypeId(dayTypes[0].id)
   }, [dayTypes, dayTypeId])
 

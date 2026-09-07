@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user?.forcePasswordChange && pathname !== '/core/user/password') {
       router.replace('/core/user/password')
     }
-  }, [user?.forcePasswordChange, pathname])
+  }, [user?.forcePasswordChange, pathname, router])
 
   const updatePreferences = useCallback(async (patch: Partial<UserPreferences>) => {
     queryClient.setQueryData<CurrentUser | null>(['auth', 'me'], (prev) =>

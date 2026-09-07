@@ -82,6 +82,8 @@ export function FrequencyPanel({ data, vp, focusedTripId }: Props) {
   ]
 
   // Focused trip — highlights its own tick below instead of the whole row.
+  // React Compiler isn't enabled in this project; this diagnostic is advisory only.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const focused = useMemo(() => {
     if (!focusedTripId) return null
     for (const block of data.blocks) {

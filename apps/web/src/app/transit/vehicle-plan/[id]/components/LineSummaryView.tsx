@@ -12,7 +12,7 @@ import { Icons } from '@/lib/icons'
 import { Select } from '@/components/ui/select'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
-import { BG_COLOR_OPTIONS, FONT_STYLE_OPTIONS } from './TripMarkingsModal'
+import { BG_COLOR_OPTIONS } from './TripMarkingsModal'
 import type { TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 interface LineComparisonSummary {

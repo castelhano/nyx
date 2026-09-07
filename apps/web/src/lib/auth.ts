@@ -41,6 +41,10 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
 
   if (res.status === 401 && typeof window !== 'undefined') {
     clearToken()
+    // Plain utility function, no router available — a hard navigation is also
+    // deliberate here, forcing a full reload that drops all in-memory state
+    // (query cache included) on a forced logout.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login'
   }
 

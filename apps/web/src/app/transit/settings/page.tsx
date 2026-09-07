@@ -415,10 +415,14 @@ export default function TransitSettingsPage() {
   })
 
   // ── sync server → form ─────────────────────────────────────────────────────
+  // resetSignal is bumped by the "reset" action to force a re-sync even when the
+  // server value's identity hasn't changed — needs an effect, not just a query load.
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (serverGeneral)  setGeneral(serverGeneral)   }, [serverGeneral,  resetSignal])
   useEffect(() => { if (serverPlanning) setPlanning(serverPlanning) }, [serverPlanning, resetSignal])
   useEffect(() => { if (serverSchedule) setSchedule(serverSchedule) }, [serverSchedule, resetSignal])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── save ───────────────────────────────────────────────────────────────────
 

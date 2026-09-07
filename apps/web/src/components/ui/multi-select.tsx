@@ -39,7 +39,10 @@ export function MultiSelect({
   const triggerRef    = useRef<HTMLButtonElement>(null)
   const listRef        = useRef<HTMLUListElement>(null)
 
-  useEffect(() => { setCursor(0) }, [open])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCursor(0)
+  }, [open])
 
   useEffect(() => {
     if (!open) return

@@ -361,7 +361,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
     if (!blockDetail) return
     const updated = data.blocks.find(b => b.id === blockDetail.block.id)
     if (updated) setBlockDetail(prev => prev ? { ...prev, block: updated } : null)
-  }, [data])
+  }, [data, blockDetail])
 
   function handleRowInfo(row: LayoutRow) {
     const block   = row.data as GanttBlock

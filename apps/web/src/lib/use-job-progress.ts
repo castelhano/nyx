@@ -18,7 +18,7 @@ export interface JobData {
 
 export function useJobProgress(jobId: string | null, onDone?: (job: JobData) => void) {
   const onDoneRef = useRef(onDone)
-  onDoneRef.current = onDone
+  useEffect(() => { onDoneRef.current = onDone })
 
   const { data: job } = useQuery<JobData>({
     queryKey:        ['job', jobId],

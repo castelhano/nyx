@@ -54,8 +54,11 @@ export function KeywatchProvider({
     if (coreRef.current) coreRef.current.pressed = []
   }, [])
 
-  // Inicialização lazy síncrona — core disponível antes de qualquer effect filho
+  // Inicialização lazy síncrona — core disponível antes de qualquer effect filho.
+  // The documented React exception (react.dev/reference/react/useRef#avoiding-recreating-the-ref-contents):
+  // guarded by `=== null`, safe under Strict Mode's double-render.
   const coreRef = useRef<KeywatchCore | null>(null)
+  // eslint-disable-next-line react-hooks/refs
   if (coreRef.current === null) {
     const core = new KeywatchCore({
       ...options,
@@ -68,6 +71,7 @@ export function KeywatchProvider({
       origin:  'Keywatch',
       order:   0,
     })
+    // eslint-disable-next-line react-hooks/refs, react-hooks/immutability
     coreRef.current = core
   }
 
@@ -91,8 +95,10 @@ export function KeywatchProvider({
     }
   }, [])
 
-  // Bloqueia o core enquanto o modal estiver aberto
+  // Blocks the core while the modal is open — mutates the non-React
+  // KeywatchCore instance from inside an effect, not during render
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     if (coreRef.current) coreRef.current.locked = isModalOpen
   }, [isModalOpen])
 

@@ -53,10 +53,13 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
 
   // switching direction can make an explicitly picked color coincide with the new
   // direction's default — fold it back into "Automático" so it isn't orphaned
-  // (its swatch was just filtered out of the grid above)
-  useEffect(() => {
+  // (its swatch was just filtered out of the grid above). Adjusted during render
+  // (react.dev/learn/you-might-not-need-an-effect) instead of an effect.
+  const [prevAutoColor, setPrevAutoColor] = useState(autoColor)
+  if (autoColor !== prevAutoColor) {
+    setPrevAutoColor(autoColor)
     if (color === autoColor) setColor(null)
-  }, [autoColor]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   useShortcutContext('create_route_md')
 

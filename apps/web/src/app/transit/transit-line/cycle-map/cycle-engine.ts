@@ -177,7 +177,7 @@ export class CycleEngine {
     this.drawAvgLines(avg, yMin, yMax)
 
     // cut lines
-    this.drawCuts(yMin, yMax)
+    this.drawCuts()
 
     // 30min sub-cut lines
     this.drawSubCuts()
@@ -312,7 +312,7 @@ export class CycleEngine {
     return half ? mid + cW / 2 : mid
   }
 
-  private drawCuts(yMin: number, yMax: number): void {
+  private drawCuts(): void {
     const { ctx, height: H } = this
     ctx.save()
     ctx.lineWidth = 2

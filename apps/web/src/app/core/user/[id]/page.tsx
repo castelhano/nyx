@@ -89,7 +89,6 @@ export default function UserDetailPage() {
   const lbl = (name: string) => f(name)?.label       ?? name
   const ph  = (name: string) => f(name)?.placeholder ?? ''
   const cls = (name: string) => f(name)?.className   ?? ''
-  const hlp = (name: string) => f(name)?.helpText    ?? ''
   const { data: discovery } = useDiscovery()
 
   const { data: allBranches } = useQuery({
@@ -245,6 +244,9 @@ export default function UserDetailPage() {
     }
   }
 
+  // React Compiler isn't enabled in this project — react-hook-form's watch() is a
+  // known incompatibility with it, not a bug here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const passwordValue    = watch('password')
   const newPasswordValue = watch('newPassword')
   const recordName       = user ? String(user.name ?? '') : undefined
@@ -643,7 +645,8 @@ export default function UserDetailPage() {
                                     onChange={(e) => {
                                       setCopyDomains((prev) => {
                                         const next = new Set(prev)
-                                        e.target.checked ? next.add(domain.key) : next.delete(domain.key)
+                                        if (e.target.checked) next.add(domain.key)
+                                        else next.delete(domain.key)
                                         return next
                                       })
                                     }}

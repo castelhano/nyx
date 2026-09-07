@@ -67,17 +67,14 @@ export function AssociationList({ items, onChange, branches, companies = [] }: P
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const associatedIds = new Set(items.map((i) => i.branchId))
-
-  const available = useMemo(
-    () =>
-      branches.filter(
-        (b) =>
-          !associatedIds.has(b.id) &&
-          b.name.toLowerCase().includes(search.toLowerCase()),
-      ),
-    [branches, associatedIds, search],
-  )
+  const available = useMemo(() => {
+    const associatedIds = new Set(items.map((i) => i.branchId))
+    return branches.filter(
+      (b) =>
+        !associatedIds.has(b.id) &&
+        b.name.toLowerCase().includes(search.toLowerCase()),
+    )
+  }, [items, branches, search])
 
   // Available branches grouped by company (for the dropdown)
   const availableGroups = useMemo(

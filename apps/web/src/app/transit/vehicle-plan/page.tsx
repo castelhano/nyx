@@ -31,7 +31,6 @@ export default function VehiclePlanListPage() {
   const [importScopeName, setImportScopeName] = useState<string | null>(null)
 
   const { guardNode, meta } = usePageGuard('transit', 'vehicle-plan')
-  if (guardNode) return guardNode
 
   const filters: Record<string, string> = {}
   for (const [key, value] of searchParams.entries()) {
@@ -106,6 +105,8 @@ export default function VehiclePlanListPage() {
       }
     }
   }, [confirm, queryClient, toast])
+
+  if (guardNode) return guardNode
 
   return (
     <div className="p-6 space-y-4">

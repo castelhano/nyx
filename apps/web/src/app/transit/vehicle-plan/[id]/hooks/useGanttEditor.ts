@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
@@ -155,7 +155,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
     let extraBlockCount  = 0
 
-    let blocks = plottedData.blocks.map(b => {
+    const blocks = plottedData.blocks.map(b => {
       const addTrips    = pendingAdds.filter((a): a is PendingAddTrip     => a._kind === 'trip'    && a.blockId === b.id)
       const addDeadruns = pendingAdds.filter((a): a is PendingAddDeadrun  => a._kind === 'deadrun' && a.blockId === b.id)
       const addBreaks   = pendingAdds.filter((a): a is PendingAddInterval => a._kind === 'break'   && a.blockId === b.id)
@@ -455,6 +455,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // Focus/selection can go stale when the data underneath changes (e.g. a pending
   // add gets discarded via alt+l) — without this, keyboard nav gets stuck since
   // most arrow shortcuts require a valid focus and no dangling selection.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!editBarOpen) return
     const flatIds = new Set(navBlocks.flatMap(block => block.map(i => i.segId)))
@@ -470,10 +471,13 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       if (selIds.some(id => !flatIds.has(id))) setSelection(null)
     }
   }, [navBlocks, editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Reference trip for the "add trip" modal prefill: the focused trip itself, or —
   // when focus is on a rest break — the last productive trip before it in the same
   // block/vehicle (see AddTripModal's `reference` prop).
+  // React Compiler isn't enabled in this project; this diagnostic is advisory only.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const addTripReference = useMemo(() => {
     if (!mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return null
 
@@ -521,7 +525,10 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   }
 
   // Reset move target whenever selection changes
-  useEffect(() => { setMoveTargetBlockId(null) }, [selection])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMoveTargetBlockId(null)
+  }, [selection])
 
   // Shortcut hints shown alongside the move-target row highlight
   const moveTargetHints = useMemo<RowHintEntry[]>(() => (

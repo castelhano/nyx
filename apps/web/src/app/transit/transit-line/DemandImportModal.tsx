@@ -130,7 +130,6 @@ export function DemandImportModal({ onClose, onApplied }: Props) {
     setParsing(true)
     try {
       const demandByCode = await parseAndAggregate(files)
-      const codeSet      = new Set(systemLines.map((l) => l.code))
       const lineByCode   = new Map(systemLines.map((l) => [l.code, l]))
 
       const newMatched:   MatchedRow[] = []

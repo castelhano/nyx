@@ -85,8 +85,6 @@ export function createVehiclesActionSpec(
       const deadrunIds = drSegs.map(s => (s.data as GanttBlockDeadrun).id)
       const breakIds   = bkSegs.map(s => (s.data as GanttBlockInterval).id)
 
-      const blockTripIds = tripSegs.map(s => (s.data as GanttBlockTrip).id)
-
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
         ...(tripIds.length > 0 ? [makeMarkingsAction(tripIds, deps)] : []),
@@ -311,11 +309,6 @@ function makeDeleteIntervalAction(
 function hasConstraints(c: TripConstraints | null | undefined): boolean {
   if (!c) return false
   return (c.locked?.length ?? 0) > 0
-}
-
-function isFullyLocked(c: TripConstraints | null | undefined): boolean {
-  if (!c) return false
-  return ALL_LOCKED_FIELDS.every(f => c.locked?.includes(f))
 }
 
 function toggleField(

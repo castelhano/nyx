@@ -96,7 +96,9 @@ function ActionButton({ action }: { action: ActionItem }) {
         action.disabled ? 'opacity-50 pointer-events-none' : '',
       ].join(' ')}
     >
+      {/* Icon is an existing component reference picked from a lookup table. */}
       {(action.variant === 'icon' || action.variant === 'both') && Icon && (
+        // eslint-disable-next-line react-hooks/static-components
         <Icon className="w-4 h-4 shrink-0" />
       )}
       {(action.variant === 'text' || action.variant === 'both') && action.label && (
@@ -138,7 +140,9 @@ function SplitButton({
           action.disabled ? 'opacity-50 pointer-events-none' : '',
         ].join(' ')}
       >
+        {/* Icon is an existing component reference picked from a lookup table. */}
         {(action.variant === 'icon' || action.variant === 'both') && Icon && (
+          // eslint-disable-next-line react-hooks/static-components
           <Icon className="w-4 h-4 shrink-0" />
         )}
         {(action.variant === 'text' || action.variant === 'both') && action.label && (

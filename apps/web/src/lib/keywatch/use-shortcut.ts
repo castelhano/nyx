@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type DependencyList, type RefObject } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useKeywatch } from './context'
 import type { HandlerOptions } from './core'
 
@@ -24,8 +24,10 @@ export function useShortcut(
   // Mantém o callback sempre atualizado sem re-registrar
   useEffect(() => { handlerRef.current = handler })
 
-  // Grupo único por instância do hook para cleanup cirúrgico
-  const groupRef = useRef(`_hook_${Math.random().toString(36).slice(2, 9)}`)
+  // Single group per hook instance for surgical cleanup — useState's lazy 
+  // initializer (unlike useRef's plain argument) is guaranteed to run only once, 
+  // which is the sanctioned place to call something impure like Math.random()
+  const [group] = useState(() => `_hook_${Math.random().toString(36).slice(2, 9)}`)
 
   useEffect(() => {
     const core = coreRef.current
@@ -35,10 +37,10 @@ export function useShortcut(
 
     core.bind(scope, wrapped, {
       ...opts,
-      group: opts.group ?? groupRef.current,
+      group: opts.group ?? group,
     })
 
-    return () => { core.unbindGroup(groupRef.current) }
+    return () => { core.unbindGroup(group) }
   }, [scope, enabled]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 

@@ -245,13 +245,14 @@ export function LineScheduleGeneratorModal({
 
   const routeByDirection = useMemo(() => new Map(lineRoutes.map(r => [r.direction, r])), [lineRoutes])
 
-  const demandByDir = line?.metrics?.demand?.[dayTypeCode] ?? {}
+  const demandByDir = useMemo(() => line?.metrics?.demand?.[dayTypeCode] ?? {}, [line, dayTypeCode])
 
   // ── local editable state — seeded once from server data as it arrives ──────
 
   const [activeTab, setActiveTab] = useState<TabKey>('janelas')
   const [windows,   setWindows]   = useState<GenWindow[]>([])
   const [mergeTolerance, setMergeTolerance] = useState<ToleranceLevel>(1) // Baixa by default
+  const [vehicleCapacity, setVehicleCapacity] = useState(80)
   const windowsSeededRef = useRef(false)
 
   function seedWindows(l: LineRecord | undefined, tolerance: ToleranceLevel): GenWindow[] {
@@ -281,7 +282,6 @@ export function LineScheduleGeneratorModal({
 
   const [opStart,             setOpStart]             = useState(240)  // 04:00
   const [opEnd,               setOpEnd]               = useState(1410) // 23:30
-  const [vehicleCapacity,     setVehicleCapacity]      = useState(80)
   const [renewalIndex,        setRenewalIndex]         = useState<Partial<Record<Direction, number>>>({})
   const renewalSeededRef = useRef(false)
 
@@ -319,6 +319,8 @@ export function LineScheduleGeneratorModal({
   const [maneuverMargin, setManeuverMargin] = useState(DEFAULT_MANEUVER_MARGIN_MINUTES)
 
   useEffect(() => {
+    // Seeds the default once intervalTypes finishes loading.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!intervalTypeId && intervalTypes.length > 0) setIntervalTypeId(intervalTypes[0].id)
   }, [intervalTypes, intervalTypeId])
 

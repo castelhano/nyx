@@ -39,9 +39,14 @@ export function DemandChartModal({ demand, onClose }: Props) {
 
   const dirs = activeDay ? Object.keys(demand[activeDay] ?? {}) : []
 
-  useEffect(() => {
+  // Adjusting state during render instead of an effect (react.dev/learn/
+  // you-might-not-need-an-effect) — only reacts to activeDay actually changing,
+  // same as the effect's deliberately narrow [activeDay] deps did.
+  const [prevActiveDay, setPrevActiveDay] = useState(activeDay)
+  if (activeDay !== prevActiveDay) {
+    setPrevActiveDay(activeDay)
     if (dirs.length && !dirs.includes(activeDir)) setActiveDir(dirs[0])
-  }, [activeDay]) // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
