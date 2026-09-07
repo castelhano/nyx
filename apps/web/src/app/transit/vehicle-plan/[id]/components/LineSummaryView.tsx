@@ -67,8 +67,20 @@ interface HourRow {
   isPeak:     boolean
 }
 
+interface DirectionHourPoint {
+  hour:   number
+  demand: number
+  supply: number
+}
+
+interface DirectionSeries {
+  direction: string
+  hours:     DirectionHourPoint[]
+}
+
 interface HourlyResponse {
-  hours: HourRow[]
+  hours:       HourRow[]
+  byDirection: DirectionSeries[]
   kpis: {
     totalDailyDemand:    number
     totalDailySupply:    number
@@ -419,10 +431,15 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
   const scoreDelta     = atual && proposta ? goodnessFor('score', atual.score, proposta.score) : null
 
   const chartData = hourly?.hours.map(h => ({ ...h, hourLabel: `${String(h.hour).padStart(2, '0')}h` })) ?? []
-  const domainMax = chartData.length > 0 ? Math.min(2.0, Math.max(...chartData.map(d => d.loadFactor)) + 0.15) : 2.0
   const peakSupplyHour = chartData.reduce<typeof chartData[number] | null>(
     (max, h) => (!max || h.supply > max.supply) ? h : max, null,
   )
+
+  const directionCharts = (hourly?.byDirection ?? []).map(d => ({
+    direction: d.direction,
+    label:     DIR_LABEL[d.direction] ?? d.direction,
+    data:      d.hours.map(h => ({ ...h, hourLabel: `${String(h.hour).padStart(2, '0')}h` })),
+  }))
 
   const lfStatus =
     !hourly ? '' :
@@ -503,9 +520,11 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-[1400px] mx-auto space-y-5">
 
-            {/* summary cards */}
-            <div className={cn('grid gap-4 items-stretch', hasReference ? 'grid-cols-1 lg:grid-cols-[1fr_48px_1fr]' : 'grid-cols-1 max-w-sm mx-auto')}>
-              {hasReference && (
+            {/* summary cards — always the two-column "Atual → Ativo/Rascunho" layout, even
+                when this plan IS the active one, so the panel doesn't collapse into a lone
+                off-center box; the left slot becomes an explainer instead of a comparison. */}
+            <div className="grid gap-4 items-stretch grid-cols-1 lg:grid-cols-[1fr_48px_1fr]">
+              {hasReference ? (
                 <div className="bg-muted/30 border border-border rounded-xl p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Atual</span>
@@ -517,17 +536,21 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                     <p className="text-sm text-muted-foreground py-2">Nenhum plano ativo para esta linha/dia ainda.</p>
                   )}
                 </div>
-              )}
-
-              {hasReference && (
-                <div className="flex lg:flex-col items-center justify-center gap-2 py-6">
-                  <div className="flex-1 h-px lg:w-px lg:h-auto bg-border" />
-                  <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/25 flex items-center justify-center shrink-0">
-                    <Icons.ArrowRight className="w-4 h-4 text-primary" />
-                  </div>
-                  <div className="flex-1 h-px lg:w-px lg:h-auto bg-border" />
+              ) : (
+                <div className="bg-muted/30 border border-dashed border-border rounded-xl p-5 flex flex-col items-center justify-center text-center gap-2 min-h-[160px]">
+                  <Icons.CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  <p className="text-sm font-medium text-foreground/80">Este já é o plano ativo</p>
+                  <p className="text-xs text-muted-foreground">Não há uma versão anterior para comparar.</p>
                 </div>
               )}
+
+              <div className="flex lg:flex-col items-center justify-center gap-2 py-6">
+                <div className="flex-1 h-px lg:w-px lg:h-auto bg-border" />
+                <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/25 flex items-center justify-center shrink-0">
+                  <Icons.ArrowRight className="w-4 h-4 text-primary" />
+                </div>
+                <div className="flex-1 h-px lg:w-px lg:h-auto bg-border" />
+              </div>
 
               <div className={cn('bg-primary/5 border border-primary/30 rounded-xl p-5 space-y-3', hasReference && 'shadow-[0_0_32px_hsl(var(--primary)/0.08)]')}>
                 <div className="flex items-center justify-between">
@@ -787,36 +810,40 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                   ))}
                 </div>
 
-                {/* Demand vs Supply chart */}
-                <div className="bg-card border border-border rounded-xl p-5">
-                  <div className="flex items-center gap-3 mb-5">
-                    <h3 className="font-semibold text-sm">Oferta × Demanda por Hora</h3>
-                    <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'var(--series-oferta)' }} />
-                        Oferta
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-3 h-0.5 rounded inline-block" style={{ background: 'var(--series-demanda)' }} />
-                        Demanda
-                      </span>
+                {/* Demand vs Supply charts — one per direction, stacked, since demand is captured separately per sentido */}
+                <div className="space-y-5">
+                  {directionCharts.map(dc => (
+                    <div key={dc.direction} className="bg-card border border-border rounded-xl p-5">
+                      <div className="flex items-center gap-3 mb-5">
+                        <h3 className="font-semibold text-sm">Oferta × Demanda por Hora — {dc.label}</h3>
+                        <div className="ml-auto flex items-center gap-4 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'var(--series-oferta)' }} />
+                            Oferta
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-3 h-0.5 rounded inline-block" style={{ background: 'var(--series-demanda)' }} />
+                            Demanda
+                          </span>
+                        </div>
+                      </div>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <ComposedChart data={dc.data} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                          <XAxis dataKey="hourLabel" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis
+                            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                            axisLine={false} tickLine={false}
+                            tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                            width={38}
+                          />
+                          <Tooltip content={<ChartTooltip />} />
+                          <Bar dataKey="supply" name="Oferta (cap.)" fill="var(--series-oferta)" fillOpacity={0.8} radius={[2, 2, 0, 0]} maxBarSize={26} />
+                          <Line dataKey="demand" name="Demanda" stroke="var(--series-demanda)" strokeWidth={2} dot={{ r: 4, fill: 'var(--series-demanda)' }} activeDot={{ r: 5 }} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
                     </div>
-                  </div>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <ComposedChart data={chartData} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="hourLabel" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <YAxis
-                        tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                        axisLine={false} tickLine={false}
-                        tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                        width={38}
-                      />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Bar dataKey="supply" name="Oferta (cap.)" fill="var(--series-oferta)" fillOpacity={0.8} radius={[2, 2, 0, 0]} maxBarSize={26} />
-                      <Line dataKey="demand" name="Demanda" stroke="var(--series-demanda)" strokeWidth={2} dot={{ r: 4, fill: 'var(--series-demanda)' }} activeDot={{ r: 5 }} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  ))}
                 </div>
 
                 {/* Load factor chart */}
@@ -832,7 +859,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                       <YAxis
                         tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
                         axisLine={false} tickLine={false}
-                        domain={[0, domainMax]}
+                        domain={[0, 1]}
                         tickFormatter={v => v.toFixed(1)}
                         width={32}
                       />

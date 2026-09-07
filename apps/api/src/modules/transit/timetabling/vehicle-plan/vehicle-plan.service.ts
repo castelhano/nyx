@@ -1478,7 +1478,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   private computeHourlySeries(
     dayTypeCode:       string | undefined,
     lineMetrics:       unknown,
-    trips:             { departureMinutes: number; vehicleType: string }[],
+    trips:             { departureMinutes: number; vehicleType: string; direction: string }[],
     blockVehicleTypes: string[],
   ) {
     const metrics = lineMetrics as {
@@ -1490,10 +1490,18 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const capacity = (vehicleType: string) => (VEHICLE_TYPE_CAPACITY as Record<string, number>)[vehicleType] ?? 0
 
-    const supplyByHour = new Array(24).fill(0)
+    // Supply bucketed both overall (for the aggregate hours/kpis below) and per
+    // direction (for the "Oferta · Demanda" tab's per-direction charts) — demand is
+    // already saved per direction (line.metrics.demand[dayType][direction][hour]).
+    const supplyByHour    = new Array(24).fill(0)
+    const supplyByHourDir = new Map<string, number[]>()
     for (const t of trips) {
-      const hour = Math.floor(t.departureMinutes / 60) % 24
-      supplyByHour[hour] += capacity(t.vehicleType) * (1 + renewal / 100)
+      const hour   = Math.floor(t.departureMinutes / 60) % 24
+      const amount = capacity(t.vehicleType) * (1 + renewal / 100)
+      supplyByHour[hour] += amount
+      const dirArr = supplyByHourDir.get(t.direction) ?? new Array(24).fill(0)
+      dirArr[hour] += amount
+      supplyByHourDir.set(t.direction, dirArr)
     }
     const capacities  = blockVehicleTypes.map(capacity)
     const avgCapacity = capacities.length > 0 ? Math.round(capacities.reduce((a, b) => a + b, 0) / capacities.length) : 0
@@ -1525,8 +1533,25 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const totalUnmetDemand   = hours.reduce((s, h) => s + h.deficit, 0)
     const peakLoadFactor     = hours.reduce((m, h) => Math.max(m, h.loadFactor), 0)
 
+    const directionOrder = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
+    const directions = [...new Set([...Object.keys(demandByDir ?? {}), ...supplyByHourDir.keys()])]
+      .sort((a, b) => directionOrder.indexOf(a) - directionOrder.indexOf(b))
+    const byDirection = directions.map(direction => {
+      const demandHours = demandByDir?.[direction] ?? {}
+      const supplyArr    = supplyByHourDir.get(direction) ?? new Array(24).fill(0)
+      return {
+        direction,
+        hours: Array.from({ length: 24 }, (_, hour) => ({
+          hour,
+          demand: Math.round(demandHours[String(hour)] ?? 0),
+          supply: Math.round(supplyArr[hour]),
+        })),
+      }
+    })
+
     return {
       hours,
+      byDirection,
       kpis: {
         totalDailyDemand, totalDailySupply, avgLoadFactor, saturatedHoursCount, totalUnmetDemand, peakLoadFactor,
         avgCapacity, renewalIndex: renewal,
@@ -1545,12 +1570,16 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const blockTrips = await this.prisma.blockTrip.findMany({
       where:  { vehicleBlock: { vehiclePlanId: planId }, trip: { route: { lineId } } },
       select: {
-        trip:         { select: { departureMinutes: true } },
+        trip:         { select: { departureMinutes: true, route: { select: { direction: true } } } },
         vehicleBlock: { select: { id: true, vehicleType: true } },
       },
     })
 
-    const trips = blockTrips.map(bt => ({ departureMinutes: bt.trip.departureMinutes, vehicleType: bt.vehicleBlock.vehicleType }))
+    const trips = blockTrips.map(bt => ({
+      departureMinutes: bt.trip.departureMinutes,
+      vehicleType:       bt.vehicleBlock.vehicleType,
+      direction:         bt.trip.route.direction,
+    }))
     const blockVehicleTypes = Array.from(new Map(blockTrips.map(bt => [bt.vehicleBlock.id, bt.vehicleBlock.vehicleType])).values())
     return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes)
   }
@@ -1563,7 +1592,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const trips = dto.blocks.flatMap(b => {
       const vehicleType = this.resolveVehicleType(b.vehicleType)
-      return b.trips.map(t => ({ departureMinutes: t.departureMinutes, vehicleType }))
+      return b.trips.map(t => ({ departureMinutes: t.departureMinutes, vehicleType, direction: t.direction }))
     })
     const blockVehicleTypes = dto.blocks.map(b => this.resolveVehicleType(b.vehicleType))
     return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes)
