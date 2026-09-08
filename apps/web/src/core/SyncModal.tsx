@@ -8,6 +8,7 @@ import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { apiFetch, getToken } from '@/lib/auth'
 import { useJobProgress } from '@/lib/use-job-progress'
+import { useShortcutContext } from '@/lib/keywatch'
 import { FieldRenderer } from './FieldRenderer'
 import { Button } from '@/components/ui/button'
 import type { MetadataField } from '@nyx/types'
@@ -59,6 +60,7 @@ function downloadCsv(errors: ImportError[]) {
 }
 
 export function SyncModal({ domain, resource, label, submitLabel = 'Sincronizar', outputLabels, extraBody, readonlyFields, onClose }: Props) {
+  useShortcutContext('sync_md')
   const ol = { created: 'Criados', updated: 'Atualizados', deactivated: 'Desligados', ...outputLabels }
   const [file,       setFile]       = useState<File | null>(null)
   const [jobId,      setJobId]      = useState<string | null>(null)
