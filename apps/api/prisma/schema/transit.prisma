@@ -107,12 +107,7 @@ model TransitLine {
   //       "INBOUND":{...}, "CIRCULAR":{...}
   //     }, ...
   //   },
-  //   "renewalIndex": {
-  //     "OUTBOUND":{"value":81.25,"peakPax":145,"peakTripId":"trip_1399","tripCount":159,
-  //                 "avgPax":41.75,"assumedCapacity":80,"method":"cut_planned_end",
-  //                 "computedAt":"2026-08-17T14:46:16","sourceFile":"FULL_2026_08_03_....json"},
-  //     "INBOUND":{...}, "CIRCULAR":{...}, "overall":{...}
-  //   }
+  //   "renewalIndex": {"overall":30.25,"OUTBOUND"?:21.12,"INBOUND"?:number,"CIRCULAR"?:number}
   // }
   metrics   Json?
   createdAt DateTime @default(now())

@@ -2,20 +2,6 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
-// inferido a partir da conciliação bilhetagem x GPS: excedente de embarques na
-// viagem de maior ocupação sobre a capacidade assumida do veículo — ver docs/architecture
-const renewalIndexStatSchema = z.object({
-  value:           z.number().meta({ label: 'Índice (%)' }),
-  peakPax:         z.number().meta({ label: 'Pico de embarques' }),
-  peakTripId:      z.string().meta({ label: 'Viagem de pico', showInForm: false }),
-  tripCount:       z.number().meta({ label: 'Viagens amostradas' }),
-  avgPax:          z.number().meta({ label: 'Média de embarques' }),
-  assumedCapacity: z.number().meta({ label: 'Capacidade assumida' }),
-  method:          z.enum(['real_window', 'cut_planned_end']).meta({ label: 'Método', showInForm: false }),
-  computedAt:      z.string().meta({ label: 'Calculado em', showInForm: false }),
-  sourceFile:      z.string().meta({ label: 'Arquivo fonte', showInForm: false }),
-})
-
 const windowEntrySchema = z.object({
   from:            z.number().min(0).max(23.5).default(0).meta({ label: 'De',             min: 0, max: 23.5 }),
   to:              z.number().min(0).max(23.5).default(23.5).meta({ label: 'Até',           min: 0, max: 23.5 }),
@@ -103,12 +89,14 @@ export const lineSchema = withMeta(
         INBOUND:  z.array(windowEntrySchema).optional().meta({ label: 'Volta' }),
         CIRCULAR: z.array(windowEntrySchema).optional().meta({ label: 'Circular' }),
       })).optional().meta({ label: 'Janelas de Ciclo' }),
+      // used for supply calculation; the breakdown by direction is for informational purposes only
+      // and is not currently being used
       renewalIndex: z.object({
-        OUTBOUND: renewalIndexStatSchema.optional().meta({ label: 'Ida' }),
-        INBOUND:  renewalIndexStatSchema.optional().meta({ label: 'Volta' }),
-        CIRCULAR: renewalIndexStatSchema.optional().meta({ label: 'Circular' }),
-        overall:  renewalIndexStatSchema.optional().meta({ label: 'Geral' }),
-      }).optional().meta({ label: 'Índice de Renovação' }),
+        overall:  z.number().optional().meta({ label: 'Geral' }),
+        OUTBOUND: z.number().optional().meta({ label: 'Ida' }),
+        INBOUND:  z.number().optional().meta({ label: 'Volta' }),
+        CIRCULAR: z.number().optional().meta({ label: 'Circular' }),
+      }).optional().meta({ label: 'Índice de Renovação (%)' }),
     }).optional().meta({
       label:          'Métricas',
       widget:         'object-editor',

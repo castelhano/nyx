@@ -249,8 +249,8 @@ export function buildLineAggregates(
       const tripKm     = extMetrics?.extensionKm?.[route.direction]
         ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
         ?? 0
-      const renewal = (route.line.metrics as { renewalIndex?: { overall?: { value?: number } } } | null)
-        ?.renewalIndex?.overall?.value ?? 0
+      const renewal = (route.line.metrics as { renewalIndex?: { overall?: number } } | null)
+        ?.renewalIndex?.overall ?? 0
       const supply = (vehicleTypeCapacity[block.vehicleType] ?? 0) * (1 + renewal / 100)
 
       agg.blockIds.add(block.id)

@@ -110,8 +110,8 @@ function ObjectValueEditor({
   const allLeaf  = children.length > 0 && children.every((f) => isLeaf(f.type))
   // array/record children render as tables/blocks that read badly packed side by side
   // (e.g. metrics.windows.<dayType> = { OUTBOUND, INBOUND, CIRCULAR }, each an array) —
-  // those always stack full-width; only a group of nested named objects (e.g.
-  // metrics.renewalIndex = { OUTBOUND, INBOUND, CIRCULAR, overall }, each all-leaf) flows inline.
+  // those always stack full-width; a group of plain leaf fields (e.g.
+  // metrics.renewalIndex = { overall, OUTBOUND, INBOUND, CIRCULAR }, all numbers) flows inline.
   const hasWideChild = children.some((f) => f.type === 'array' || f.type === 'record')
 
   return (

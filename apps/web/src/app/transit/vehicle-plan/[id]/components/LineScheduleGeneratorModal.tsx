@@ -49,9 +49,7 @@ interface LineRecord {
     // metrics.demand is keyed by dayTypeCode first — see prisma schema comment
     // on TransitLine.metrics — then by direction, then by hour (string keys).
     demand?:       Record<string, Partial<Record<Direction, Record<string, number>>>>
-    // inferido da conciliação bilhetagem x GPS — só .value (%) é usado aqui, o resto
-    // (peakPax, peakTripId, ...) é proveniência exibida apenas no form da linha
-    renewalIndex?: Partial<Record<Direction | 'overall', { value: number }>>
+    renewalIndex?: Partial<Record<Direction | 'overall', number>>
   } | null
 }
 
@@ -262,7 +260,7 @@ export function LineScheduleGeneratorModal({
     const absorbed   = absorbPartialGaps(base)
     const toleranced = mergeByTolerance(absorbed, TOLERANCE_MINUTES[tolerance])
     const demand  = l?.metrics?.demand?.[dayTypeCode] ?? {}
-    const renewal = l?.metrics?.renewalIndex?.overall?.value ?? 0
+    const renewal = l?.metrics?.renewalIndex?.overall ?? 0
     return deriveFleetBands(toleranced, demand, vehicleCapacity, renewal)
   }
 
@@ -285,7 +283,7 @@ export function LineScheduleGeneratorModal({
   useEffect(() => {
     if (!line || renewalSeededRef.current) return
     renewalSeededRef.current = true
-    setRenewalIndex(line.metrics?.renewalIndex?.overall?.value ?? 0)
+    setRenewalIndex(line.metrics?.renewalIndex?.overall ?? 0)
   }, [line])
 
   const [includeAccessReturn, setIncludeAccessReturn]  = useState(false)

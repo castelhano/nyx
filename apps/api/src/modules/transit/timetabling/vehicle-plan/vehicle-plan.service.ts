@@ -1484,10 +1484,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     blockVehicleTypes: string[],
   ) {
     const metrics = lineMetrics as {
-      renewalIndex?: { overall?: { value?: number } }
+      renewalIndex?: { overall?: number }
       demand?:       Record<string, Record<string, Record<string, number>>>
     } | null
-    const renewal     = metrics?.renewalIndex?.overall?.value ?? 0
+    const renewal     = metrics?.renewalIndex?.overall ?? 0
     const demandByDir = dayTypeCode ? metrics?.demand?.[dayTypeCode] : undefined
 
     const capacity = (vehicleType: string) => (VEHICLE_TYPE_CAPACITY as Record<string, number>)[vehicleType] ?? 0
