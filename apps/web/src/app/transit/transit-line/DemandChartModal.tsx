@@ -35,7 +35,9 @@ export function DemandChartModal({ demand, onClose }: Props) {
   const dayCodes = Object.keys(demand)
 
   const [activeDay, setActiveDay]       = useState(dayCodes[0] ?? '')
-  const [activeDir, setActiveDir]       = useState('')
+  const [activeDir, setActiveDir]       = useState(() =>
+    Object.keys(demand[dayCodes[0] ?? ''] ?? {})[0] ?? '',
+  )
 
   const dirs = activeDay ? Object.keys(demand[activeDay] ?? {}) : []
 
