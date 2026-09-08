@@ -360,7 +360,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
   useEffect(() => {
     if (!blockDetail) return
     const updated = data.blocks.find(b => b.id === blockDetail.block.id)
-    if (updated) setBlockDetail(prev => prev ? { ...prev, block: updated } : null)
+    if (updated && updated !== blockDetail.block) setBlockDetail(prev => prev ? { ...prev, block: updated } : null)
   }, [data, blockDetail])
 
   function handleRowInfo(row: LayoutRow) {
