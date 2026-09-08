@@ -27,13 +27,12 @@ export interface ComboboxProps {
   className?: string
   containerClassName?: string
   emptyMessage?: string
-  onCommitNext?: () => void
   onBlur?: () => void
 }
 
 export const Combobox = forwardRef(function Combobox({
   id, value, displayValue, search, onSearchChange, options, isLoading, onSelect,
-  placeholder, disabled, autoFocus, className, containerClassName, emptyMessage, onCommitNext, onBlur,
+  placeholder, disabled, autoFocus, className, containerClassName, emptyMessage, onBlur,
 }: ComboboxProps, ref: Ref<HTMLInputElement>) {
   const [open, setOpen]     = useState(false)
   const [cursor, setCursor] = useState(0)
@@ -64,7 +63,6 @@ export const Combobox = forwardRef(function Combobox({
   function commit(option: ComboboxOption) {
     onSelect(option)
     setOpen(false)
-    onCommitNext?.()
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {

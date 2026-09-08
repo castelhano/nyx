@@ -219,23 +219,7 @@ function RelationSelectControl({
         id={field.name}
         autoFocus={autoFocus}
         value={ctrl.value ?? ''}
-        onChange={(e) => {
-          const val = e.currentTarget.value
-          // Capture next field id before ctrl.onChange may unmount this element
-          const form = e.currentTarget.closest('form')
-          const all = form ? Array.from(form.querySelectorAll<HTMLElement>('input, select, textarea')) : []
-          const idx = all.indexOf(e.currentTarget)
-          const nextId = all[idx + 1]?.id ?? null
-
-          ctrl.onChange(e)
-
-          if (val && nextId) {
-            setTimeout(() => {
-              const next = document.getElementById(nextId)
-              if (next && !(next as HTMLInputElement).disabled) next.focus()
-            }, 0)
-          }
-        }}
+        onChange={ctrl.onChange}
         onBlur={ctrl.onBlur}
         ref={ctrl.ref}
         disabled={isDisabled}
@@ -285,19 +269,6 @@ function RelationSelect({
       )}
     />
   )
-}
-
-function focusNextField(currentId: string) {
-  const el   = document.getElementById(currentId)
-  const form = el?.closest('form')
-  const all  = form ? Array.from(form.querySelectorAll<HTMLElement>('input, select, textarea')) : []
-  const idx  = all.indexOf(el as HTMLElement)
-  const nextId = all[idx + 1]?.id ?? null
-  if (!nextId) return
-  setTimeout(() => {
-    const next = document.getElementById(nextId)
-    if (next && !(next as HTMLInputElement).disabled) next.focus()
-  }, 0)
 }
 
 function RelationComboboxControl({
@@ -360,7 +331,6 @@ function RelationComboboxControl({
         disabled={isDisabled}
         autoFocus={autoFocus}
         className={cn(fieldInputCls, field.keybind && 'md:pr-20', isDisabled && readonlyCls)}
-        onCommitNext={() => focusNextField(field.name)}
         onBlur={ctrl.onBlur}
       />
       {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
