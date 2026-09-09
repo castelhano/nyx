@@ -249,7 +249,7 @@ export function SwitchLineScheduleModal({
       const depRes = await apiFetch(`/transit/line-departure?lineScheduleId=${targetId}&pageSize=999`)
       if (!depRes.ok) throw new Error('Erro ao buscar partidas da OSO')
       const depJson = await depRes.json()
-      const rows: Array<{ id: string; routeId: string; departureMinutes: number; requiredVehicleType?: string | null; stopPattern?: string }> = depJson.data ?? []
+      const rows: Array<{ id: string; routeId: string; departureMinutes: number; requiredVehicleType?: string | null; stopPattern?: 'LOCAL' | 'LIMITED' | 'EXPRESS' }> = depJson.data ?? []
 
       const routes     = routesQueries[idx].data ?? []
       const routeById  = new Map(routes.map(r => [r.id, r]))

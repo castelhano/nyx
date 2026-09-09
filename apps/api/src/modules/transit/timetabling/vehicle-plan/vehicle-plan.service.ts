@@ -800,9 +800,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const patch: { departureMinutes?: number; arrivalMinutes?: number } = {}
         if (u.departureMinutes !== undefined) patch.departureMinutes = u.departureMinutes
         if (u.arrivalMinutes   !== undefined) patch.arrivalMinutes   = u.arrivalMinutes
-        const data: typeof patch & { constraints?: unknown; markings?: unknown } = { ...patch }
+        const data: typeof patch & { constraints?: unknown; markings?: unknown; notes?: unknown; stopPattern?: unknown } = { ...patch }
         if (u.constraints !== undefined) data.constraints = u.constraints
         if (u.markings    !== undefined) data.markings    = u.markings
+        if (u.notes       !== undefined) data.notes       = u.notes
+        if (u.stopPattern !== undefined) data.stopPattern = u.stopPattern
         const existing = await beforeTripUpdate(tx, u.id)
         const result   = await tx.transitTrip.update({ where: { id: u.id }, data })
         await afterTripUpdate(tx, u.id, existing, patch, result)

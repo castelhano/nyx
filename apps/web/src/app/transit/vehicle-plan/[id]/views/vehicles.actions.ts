@@ -6,7 +6,7 @@ const ALL_LOCKED_FIELDS = ['departureMinutes', 'cycleTime']
 
 export interface VehiclesActionDeps {
   onUpdateConstraints: (tripIds: string[], patches: TripConstraints | null | TripConstraints[]) => void
-  onOpenMarkings:      (tripIds: string[]) => void
+  onOpenTripDetails:   (tripIds: string[]) => void
   onDeleteTrips:       (tripIds: string[]) => void
   onDeleteDeadruns:    (deadrunIds: string[], blockId: string) => void
   onDeleteBreaks:      (breakIds: string[], blockId: string) => void
@@ -69,7 +69,7 @@ export function createVehiclesActionSpec(
 
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
-          makeMarkingsAction([bt.trip.id], deps),
+          makeTripDetailsAction([bt.trip.id], deps),
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddInterval(bt, block) ? [makeAddIntervalAction(bt.id, block.id, deps)] : []),
@@ -87,7 +87,7 @@ export function createVehiclesActionSpec(
 
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
-        ...(tripIds.length > 0 ? [makeMarkingsAction(tripIds, deps)] : []),
+        ...(tripIds.length > 0 ? [makeTripDetailsAction(tripIds, deps)] : []),
         makeDeleteIntervalAction(tripIds, deadrunIds, breakIds, selection.rowId, deps),
       ]
     },
@@ -152,15 +152,15 @@ function makeLockAction(
   }
 }
 
-// ── markings button ────────────────────────────────────────────────────────────
+// ── trip details button ─────────────────────────────────────────────────────────
 
-function makeMarkingsAction(tripIds: string[], deps: VehiclesActionDeps): ActionItem {
+function makeTripDetailsAction(tripIds: string[], deps: VehiclesActionDeps): ActionItem {
   return {
-    id:      'markings',
+    id:      'trip-details',
     icon:    'Tag',
     variant: 'icon',
-    label:   'Marcações',
-    onClick: () => deps.onOpenMarkings(tripIds),
+    label:   'Detalhes',
+    onClick: () => deps.onOpenTripDetails(tripIds),
   }
 }
 

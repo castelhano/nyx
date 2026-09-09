@@ -9,7 +9,7 @@ import { buildLineFreqIndex } from '../views/line-freq.view'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from '../components/AddTripModal'
 import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
-import type { TripMarking } from '@nyx/schemas'
+import type { TripMarking, Trip } from '@nyx/schemas'
 import { resolveCycleWindow } from '../views/vehicles.view'
 import { createVehiclesActionSpec, canAddAccess, canAddReturn } from '../views/vehicles.actions'
 import type { Selection, RowHintEntry } from '../engine/gantt.types'
@@ -67,7 +67,8 @@ export function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): stri
 
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { blockTripId: string; blockId: string }
-export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null }
+export type StopPattern = Trip['stopPattern']
+export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern }
 export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
@@ -98,7 +99,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   const [selection,             setSelection]             = useState<Selection | null>(null)
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
   const [addIntervalModal,      setAddIntervalModal]      = useState<AddIntervalModalState | null>(null)
-  const [markingsModalTripIds,  setMarkingsModalTripIds]  = useState<string[] | null>(null)
+  const [tripDetailsModalTripIds, setTripDetailsModalTripIds] = useState<string[] | null>(null)
   const [moveTargetBlockId,     setMoveTargetBlockId]     = useState<string | null>(null)
   const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
@@ -177,6 +178,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
               arrivalMinutes:   a.arrivalMinutes,
               constraints:      null,
               markings:         null,
+              notes:            null,
+              stopPattern:      a.stopPattern ?? 'LOCAL',
               route: {
                 direction:           a.direction,
                 line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
@@ -268,6 +271,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
             arrivalMinutes:   a.arrivalMinutes,
             constraints:      null,
             markings:         null,
+            notes:            null,
+            stopPattern:      a.stopPattern ?? 'LOCAL',
             route: {
               direction:           a.direction,
               line:                { id: a.lineId, code: a.lineCode, name: a.lineName, metrics: a.lineMetrics },
@@ -569,8 +574,28 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     })
   }
 
-  function handleOpenMarkings(tripIds: string[]) {
-    setMarkingsModalTripIds(tripIds)
+  function handleOpenTripDetails(tripIds: string[]) {
+    setTripDetailsModalTripIds(tripIds)
+  }
+
+  // Uniform apply only — unlike constraints/markings, notes and stopPattern are never
+  // swept across other trips in the panel, so a single shared value is all callers need.
+  function handleUpdateNotes(tripIds: string[], value: string | null) {
+    if (!canEditGantt) return
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      tripIds.forEach(tripId => next.set(tripId, { ...next.get(tripId), notes: value }))
+      return next
+    })
+  }
+
+  function handleUpdateStopPattern(tripIds: string[], value: StopPattern) {
+    if (!canEditGantt) return
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      tripIds.forEach(tripId => next.set(tripId, { ...next.get(tripId), stopPattern: value }))
+      return next
+    })
   }
 
   // Two passes: already-saved blocks (from ganttData — not plottedData/
@@ -1738,7 +1763,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   const vehiclesActionSpec = useMemo(
     () => createVehiclesActionSpec({
       onUpdateConstraints: handleUpdateConstraints,
-      onOpenMarkings:      handleOpenMarkings,
+      onOpenTripDetails:   handleOpenTripDetails,
       onDeleteTrips:       handleDeleteTrips,
       onDeleteDeadruns:    handleDeleteDeadruns,
       onDeleteBreaks:      handleDeleteBreaks,
@@ -1761,7 +1786,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
-    markingsModalTripIds, setMarkingsModalTripIds, handleUpdateMarkings,
+    tripDetailsModalTripIds, setTripDetailsModalTripIds, handleUpdateMarkings, handleUpdateNotes, handleUpdateStopPattern,
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,

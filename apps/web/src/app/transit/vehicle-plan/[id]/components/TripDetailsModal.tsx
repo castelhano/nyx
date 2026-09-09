@@ -3,10 +3,18 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Button }       from '@/components/ui/button'
 import { ColorPicker }  from '@/components/ui/color-picker'
+import { Switch }       from '@/components/ui/switch'
 import { Icons }        from '@/lib/icons'
-import { useShortcutContext } from '@/lib/keywatch'
+import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { TripMarking, TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
+import type { StopPattern } from '../hooks/useGanttEditor'
+
+const STOP_PATTERN_OPTIONS: { value: StopPattern; label: string }[] = [
+  { value: 'LOCAL',   label: 'Paradora' },
+  { value: 'LIMITED', label: 'Semiexpressa' },
+  { value: 'EXPRESS', label: 'Expressa' },
+]
 
 // Paleta fechada (docs/proposal/plan_trip_markings_v1.md, regra 5) — mesmos tons usados
 // no export OSO (oso-workbook.renderer.ts BG_COLOR_FILLS), sem o canal alfa do ARGB.
@@ -46,7 +54,9 @@ interface Row {
 interface Props {
   tripIds:          string[]
   mergedPlottedData: VehiclePlanGanttData
-  onUpdateMarkings: (tripIds: string[], patches: (TripMarking[] | null)[]) => void
+  onUpdateMarkings:    (tripIds: string[], patches: (TripMarking[] | null)[]) => void
+  onUpdateStopPattern: (tripIds: string[], value: StopPattern) => void
+  onUpdateNotes:       (tripIds: string[], value: string | null) => void
   onClose:          () => void
 }
 
@@ -54,8 +64,8 @@ function newRowKey(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `row-${Math.random().toString(36).slice(2)}`
 }
 
-export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings, onClose }: Props) {
-  useShortcutContext('trip_markings_md')
+export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings, onUpdateStopPattern, onUpdateNotes, onClose }: Props) {
+  useShortcutContext('trip_details_md')
 
   const allBlockTrips = useMemo(
     () => mergedPlottedData.blocks.flatMap(b => b.blockTrips),
@@ -63,6 +73,32 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
   )
 
   const selectionSet = useMemo(() => new Set(tripIds), [tripIds])
+
+  const selectedTrips = useMemo(
+    () => allBlockTrips.filter(bt => selectionSet.has(bt.trip.id)).map(bt => bt.trip),
+    [allBlockTrips, selectionSet],
+  )
+
+  // ── stopPattern — always uniform on save, same all-or-nothing treatment as
+  // markings below. Seeded from the first selected trip when the selection agrees;
+  // otherwise from whichever trip happens to be first (low-stakes closed enum, no
+  // conflict UI needed — unlike notes, there's no free-text data to lose).
+  const [stopPatternValue, setStopPatternValue] = useState<StopPattern>(
+    () => selectedTrips[0]?.stopPattern ?? 'LOCAL',
+  )
+
+  // ── notes — free text, one value per trip, never swept like markings. A
+  // divergent selection needs explicit opt-in before a single value overwrites
+  // every trip's own text (see notesConflict below).
+  const distinctNotes = useMemo(
+    () => [...new Set(selectedTrips.map(t => t.notes ?? ''))],
+    [selectedTrips],
+  )
+  const notesConflict = distinctNotes.length > 1
+  const [notesValue, setNotesValue] = useState<string>(
+    () => notesConflict ? distinctNotes.filter(n => n.length > 0).join('; ') : (distinctNotes[0] ?? ''),
+  )
+  const [notesReplicate, setNotesReplicate] = useState(false)
 
   const [rows, setRows] = useState<Row[]>(() => {
     const byText = new Map<string, Row>()
@@ -134,6 +170,7 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
   }
 
   const textInputRef = useRef<HTMLInputElement>(null)
+  const formRef      = useRef<HTMLFormElement>(null)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -188,25 +225,90 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
     }))
     const finalValue = finalMarkings.length > 0 ? finalMarkings : null
     onUpdateMarkings(tripIds, tripIds.map(() => finalValue))
+
+    onUpdateStopPattern(tripIds, stopPatternValue)
+
+    // notes: uniform write same as markings/stopPattern above, except when the
+    // selection started out divergent and the user left "replicar" off — then
+    // every trip's own text is left untouched instead of being overwritten.
+    if (!notesConflict || notesReplicate) {
+      const trimmed = notesValue.trim()
+      onUpdateNotes(tripIds, trimmed.length > 0 ? trimmed : null)
+    }
+
     onClose()
   }
+
+  useShortcut('alt+g', () => formRef.current?.requestSubmit(), {
+    desc:    'Salvar detalhes da viagem',
+    icon:    Icons.Save,
+    context: 'trip_details_md',
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/components/TripDetailsModal.tsx',
+  })
 
   const availableQuickPicks = quickPicks.filter(q => !rows.some(r => r.legendText === q.legendText))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-lg mx-4 p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+      <form
+        ref={formRef}
+        onSubmit={e => { e.preventDefault(); handleSave() }}
+        className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-lg mx-4 p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">
-            Marcações {tripIds.length > 1 ? `(${tripIds.length} viagens)` : ''}
+            Detalhes da Viagem {tripIds.length > 1 ? `(${tripIds.length} viagens)` : ''}
           </h2>
           <button type="button" onClick={onClose} className="p-0.5 rounded hover:bg-accent text-muted-foreground">
             <Icons.X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Perfil de embarque</label>
+          <div className="relative">
+            <select
+              value={stopPatternValue}
+              onChange={e => setStopPatternValue(e.target.value as StopPattern)}
+              autoFocus
+              className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              {STOP_PATTERN_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-muted-foreground">Observações</label>
+            {notesConflict && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <span className="text-xs text-muted-foreground">{notesReplicate ? 'Replicar' : 'Não replicar'}</span>
+                <Switch checked={notesReplicate} onToggle={() => setNotesReplicate(v => !v)} />
+              </label>
+            )}
+          </div>
+          {notesConflict && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Viagens selecionadas têm observações diferentes — escolha o texto final e ligue &quot;Replicar&quot; para aplicar a todas.
+            </p>
+          )}
+          <textarea
+            value={notesValue}
+            onChange={e => setNotesValue(e.target.value)}
+            disabled={notesConflict && !notesReplicate}
+            rows={2}
+            placeholder="Observações..."
+            className="w-full border border-input rounded-sm text-sm bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+          />
+        </div>
+
+        <div className="border-t border-border pt-3 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground">Marcações</p>
           {rows.length === 0 && (
             <p className="text-xs text-muted-foreground">Nenhuma marcação nesta seleção.</p>
           )}
@@ -266,63 +368,64 @@ export function TripMarkingsModal({ tripIds, mergedPlottedData, onUpdateMarkings
               </div>
             )
           })}
-        </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            ref={textInputRef}
-            placeholder="Nova marcação…"
-            onKeyDown={e => {
-              if (e.key !== 'Enter') return
-              const el = e.currentTarget
-              if (!el.value.trim()) return
-              addRow({ legendText: el.value.trim() })
-              el.value = ''
-            }}
-            className="flex-1 border border-input rounded-sm text-sm bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const val = textInputRef.current?.value.trim()
-              if (!val) return
-              addRow({ legendText: val })
-              if (textInputRef.current) textInputRef.current.value = ''
-            }}
-          >
-            <Icons.Plus className="w-3.5 h-3.5" /> Adicionar
-          </Button>
-        </div>
-
-        {availableQuickPicks.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">Já usados neste painel:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {availableQuickPicks.map(q => (
-                <button
-                  key={q.legendText}
-                  type="button"
-                  onClick={() => addRow(q)}
-                  className="text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
-                >
-                  {q.legendText}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={textInputRef}
+              placeholder="Nova marcação…"
+              data-keywatch="none"
+              onKeyDown={e => {
+                if (e.key !== 'Enter') return
+                const el = e.currentTarget
+                if (!el.value.trim()) return
+                addRow({ legendText: el.value.trim() })
+                el.value = ''
+              }}
+              className="flex-1 border border-input rounded-sm text-sm bg-input-bg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const val = textInputRef.current?.value.trim()
+                if (!val) return
+                addRow({ legendText: val })
+                if (textInputRef.current) textInputRef.current.value = ''
+              }}
+            >
+              <Icons.Plus className="w-3.5 h-3.5" /> Adicionar
+            </Button>
           </div>
-        )}
+
+          {availableQuickPicks.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">Já usados neste painel:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {availableQuickPicks.map(q => (
+                  <button
+                    key={q.legendText}
+                    type="button"
+                    onClick={() => addRow(q)}
+                    className="text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
+                  >
+                    {q.legendText}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="cancel" size="sm" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="button" size="sm" onClick={handleSave}>
+          <Button type="submit" size="sm">
             Salvar
           </Button>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

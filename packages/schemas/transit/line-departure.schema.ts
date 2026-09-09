@@ -46,7 +46,7 @@ export const lineDepartureSchema = withMeta(
     }),
 
     stopPattern: z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).default('LOCAL').meta({
-      label:          'Padrão de Parada',
+      label:          'Perfil de embarque',
       listVisibility: 'visible',
       filter:         true,
       className:      'md:w-40',

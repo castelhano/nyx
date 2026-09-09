@@ -59,6 +59,8 @@ export const vehiclePlanDiffSchema = z.object({
     arrivalMinutes:   z.number().optional(),
     constraints:      z.object({ locked: z.array(z.string()).optional() }).nullable().optional(),
     markings:         z.array(tripMarkingSchema).nullable().optional(),
+    notes:            z.string().nullable().optional(),
+    stopPattern:      z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
   })).default([]),
   deadrunUpdates:  z.array(timeUpdateSchema).default([]),
   intervalUpdates: z.array(timeUpdateSchema).default([]),

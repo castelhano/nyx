@@ -58,7 +58,7 @@ const VEHICLE_LABELS:   Record<VehicleType, string>               = { STANDARD: 
 const UNSET_VEHICLE_TYPE = '__unset__' // sentinel option value for the bulk-edit "Não especificado" choice
 const STATUS_LABELS:    Record<LineSchedule['status'], string>    = { DRAFT: 'Rascunho', APPROVED: 'Aprovada', SUPERSEDED: 'Substituída', ARCHIVED: 'Arquivada' }
 
-// same closed palette as TripMarkingsModal.tsx (docs/proposal/plan_trip_markings_v1.md)
+// same closed palette as TripDetailsModal.tsx (docs/proposal/plan_trip_markings_v1.md)
 const BG_COLOR_OPTIONS: { value: TripMarkingBgColor; hex: string }[] = [
   { value: 'AZUL',     hex: '#BDD7EE' },
   { value: 'VERDE',    hex: '#C6E0B4' },

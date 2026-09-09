@@ -32,7 +32,7 @@ export interface GanttSegment {
   // (see vehiclesView.getSegments / useOsoCoverage).
   offSchedule?: boolean
   // Trip has one or more entries in TripMarking[] (docs/proposal/plan_trip_markings_v1.md) —
-  // one dash regardless of how many markings, count is only visible in TripMarkingsModal.
+  // one dash regardless of how many markings, count is only visible in TripDetailsModal.
   marked?:     boolean
   label:       string
   color:       string

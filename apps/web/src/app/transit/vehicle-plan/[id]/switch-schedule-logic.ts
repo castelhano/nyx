@@ -14,7 +14,7 @@ export interface LineDepartureForSwitch {
   routeId:              string
   departureMinutes:     number
   requiredVehicleType?: string | null
-  stopPattern?:         string
+  stopPattern?:         'LOCAL' | 'LIMITED' | 'EXPRESS'
   route: {
     direction:             string
     originLocalityId:      string

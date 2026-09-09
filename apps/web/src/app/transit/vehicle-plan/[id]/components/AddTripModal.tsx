@@ -56,7 +56,7 @@ export interface PendingAddTrip {
   arrivalMinutes:      number
   blockId:             string
   requiredVehicleType?: string
-  stopPattern?:        string
+  stopPattern?:        'LOCAL' | 'LIMITED' | 'EXPRESS'
   access?: { localityId: string; travelMinutes: number }
   return?: { localityId: string; travelMinutes: number }
 }
@@ -198,6 +198,7 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
   const [depMM,        setDepMM]        = useState('')
   const [cycleMinutes, setCycleMinutes] = useState('')
   const [blockId,      setBlockId]      = useState<'new' | string>('new')
+  const [stopPattern,  setStopPattern]  = useState<'LOCAL' | 'LIMITED' | 'EXPRESS'>('LOCAL')
   const [tripsCount,   setTripsCount]   = useState('1')
   const [isResolving,  setIsResolving]  = useState(false)
   const resolveRef  = useRef(0)
@@ -459,11 +460,12 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
           departureMinutes:    curDep,
           arrivalMinutes:      curArr,
           blockId:             nextBlockId(),
+          stopPattern,
         })
         virtual.blockTrips.push({
           id: tempId, sequence: 0,
           trip: {
-            id: `${tempId}:trip`, routeId: curRoute.id, departureMinutes: curDep, arrivalMinutes: curArr, constraints: null, markings: null,
+            id: `${tempId}:trip`, routeId: curRoute.id, departureMinutes: curDep, arrivalMinutes: curArr, constraints: null, markings: null, notes: null, stopPattern,
             route: { direction: curRoute.direction, line: { id: lineId, code: lineCode, name: lineName, metrics: lineMetrics }, originLocality, destinationLocality },
           },
         })
@@ -827,18 +829,37 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
           </div>
         </div>
 
-        {/* Bloco */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Bloco</label>
-          <div className="relative">
-            <select value={blockId} onChange={e => setBlockId(e.target.value)} className={selectCls}>
-              <option value="new">Novo bloco</option>
-              {eligibleBlocks.map(b => (
-                <option key={b.id} value={b.id}>Bloco {b.blockNumber}</option>
-              ))}
-            </select>
-            <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <div className={tripType === 'productive' ? 'grid grid-cols-2 gap-3' : 'space-y-1.5'}>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Bloco</label>
+            <div className="relative">
+              <select value={blockId} onChange={e => setBlockId(e.target.value)} className={selectCls}>
+                <option value="new">Novo bloco</option>
+                {eligibleBlocks.map(b => (
+                  <option key={b.id} value={b.id}>Bloco {b.blockNumber}</option>
+                ))}
+              </select>
+              <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            </div>
           </div>
+
+          {tripType === 'productive' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Perfil de embarque</label>
+              <div className="relative">
+                <select
+                  value={stopPattern}
+                  onChange={e => setStopPattern(e.target.value as 'LOCAL' | 'LIMITED' | 'EXPRESS')}
+                  className={selectCls}
+                >
+                  <option value="LOCAL">Paradora</option>
+                  <option value="LIMITED">Semiexpressa</option>
+                  <option value="EXPRESS">Expressa</option>
+                </select>
+                <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* actions */}

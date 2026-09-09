@@ -30,7 +30,7 @@ import { TripSummaryPanel }  from './components/TripSummaryPanel'
 import { OptimizeModal }         from './components/OptimizeModal'
 import { AccessModal }           from './components/AccessModal'
 import { AddIntervalModal }      from './components/AddIntervalModal'
-import { TripMarkingsModal }     from './components/TripMarkingsModal'
+import { TripDetailsModal }      from './components/TripDetailsModal'
 import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
@@ -97,7 +97,7 @@ export default function VehiclePlanPage() {
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
-    markingsModalTripIds, setMarkingsModalTripIds, handleUpdateMarkings,
+    tripDetailsModalTripIds, setTripDetailsModalTripIds, handleUpdateMarkings, handleUpdateNotes, handleUpdateStopPattern,
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
@@ -452,12 +452,14 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {markingsModalTripIds && mergedPlottedData && (
-        <TripMarkingsModal
-          tripIds={markingsModalTripIds}
+      {tripDetailsModalTripIds && mergedPlottedData && (
+        <TripDetailsModal
+          tripIds={tripDetailsModalTripIds}
           mergedPlottedData={mergedPlottedData}
           onUpdateMarkings={handleUpdateMarkings}
-          onClose={() => setMarkingsModalTripIds(null)}
+          onUpdateStopPattern={handleUpdateStopPattern}
+          onUpdateNotes={handleUpdateNotes}
+          onClose={() => setTripDetailsModalTripIds(null)}
         />
       )}
 

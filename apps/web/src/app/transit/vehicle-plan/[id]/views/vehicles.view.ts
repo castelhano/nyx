@@ -83,6 +83,8 @@ export interface GanttBlockTrip {
     arrivalMinutes:   number
     constraints:      TripConstraints | null
     markings:         TripMarking[] | null
+    notes:            string | null
+    stopPattern:      'LOCAL' | 'LIMITED' | 'EXPRESS'
     route: {
       direction:           string
       line:                { id: string; code: string; name: string; metrics: LineMetrics | null }

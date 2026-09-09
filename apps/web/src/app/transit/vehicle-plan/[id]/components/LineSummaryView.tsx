@@ -12,7 +12,7 @@ import { Icons } from '@/lib/icons'
 import { Select } from '@/components/ui/select'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
-import { BG_COLOR_OPTIONS } from './TripMarkingsModal'
+import { BG_COLOR_OPTIONS } from './TripDetailsModal'
 import type { TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 interface LineComparisonSummary {
@@ -300,7 +300,7 @@ interface MarkingGroup {
   legendText:   string
   trips:        MarkingGroupTrip[]
   // >1 quando a mesma legenda aparece com fontStyle/bgColor diferentes entre viagens
-  // desta linha — nunca deveria acontecer após uma edição via TripMarkingsModal
+  // desta linha — nunca deveria acontecer após uma edição via TripDetailsModal
   // (que replica texto e estilo juntos), mas pode surgir de dados legados/importados.
   styleVariants: number
 }
