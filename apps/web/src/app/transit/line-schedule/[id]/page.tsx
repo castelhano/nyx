@@ -1,11 +1,9 @@
 'use client'
 
 // Single editor for a Schedule (LineSchedule + LineDeparture) — replaces the
-// generic form + breadcrumb-linked departure list. See
-// docs/proposal/plan_line_schedule_editor_v1.md for the decision history and the
-// prototype that validated the interaction (apps/web/src/app/playground/page.tsx,
-// commit "Plan"). Header edits LineSchedule; grid + side panel edit LineDeparture,
-// with a local buffer (dirty-tracking) and a single commit to `/departures-batch`.
+// generic form + breadcrumb-linked departure list. Header edits LineSchedule;
+// grid + side panel edit LineDeparture, with a local buffer (dirty-tracking)
+// and a single commit to `/departures-batch`.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
@@ -73,8 +71,6 @@ const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[] = [
   { value: 'UNDERLINE',     label: 'Sublinhado' },
   { value: 'STRIKETHROUGH', label: 'Tachado' },
 ]
-
-const COLS = 10 // fixed approximation for ↑/↓ navigation (matches grid-cols-10 below)
 
 function minutesToHHMM(m: number): string {
   const h  = Math.floor(m / 60)
@@ -233,6 +229,24 @@ export default function LineScheduleDetailPage() {
   const [viewRouteId,    setViewRouteId]    = useState<string | null>(null)
 
   const shiftAnchorRef = useRef<string | null>(null)
+  const gridRef         = useRef<HTMLDivElement>(null)
+  const [gridCols, setGridCols] = useState(10)
+
+  // Grid is responsive (auto-fill columns) — measure the actually rendered column
+  // count instead of assuming a fixed value, so ctrl+↑/↓ lands on the right chip
+  // at any screen width.
+  useEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const measure = () => {
+      const cols = getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length
+      if (cols > 0) setGridCols(cols)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Both effects below seed an editable draft once its query result loads —
   // legitimate async-query dependency, not computable during render.
@@ -421,11 +435,11 @@ export default function LineScheduleDetailPage() {
     if (!draft || !baseline || !header || !baselineHeader || !schedule) return
     if (!isDirty) return
 
-    if (schedule.status === 'APPROVED') {
+    if (schedule.status !== 'DRAFT') {
       const ok = await confirm({
         title:        'Salvar alterações no quadro de horários',
-        description:  'Esta OSO já está aprovada e em vigor. As alterações valem imediatamente para este quadro.',
-        badge:        'OSO APROVADA',
+        description:  'Esta OSO não está mais em rascunho. As alterações valem imediatamente para este quadro.',
+        badge:        'OSO ATIVA',
         confirmLabel: 'Salvar mesmo assim',
         cancelLabel:  'Cancelar',
         variant:      'default',
@@ -576,12 +590,12 @@ export default function LineScheduleDetailPage() {
   // grid (no "modal closed" moment to isolate the two contexts, unlike vehicle-plan).
   useShortcut('ctrl+→', () => moveFocus(1, false),     { desc: 'Próxima partida',  icon: Icons.ArrowRight, origin, enabled: !isNew, section: SEC_NAV })
   useShortcut('ctrl+←', () => moveFocus(-1, false),    { desc: 'Partida anterior', icon: Icons.ArrowLeft,  origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+↓', () => moveFocus(COLS, false),  { desc: 'Uma linha abaixo', icon: Icons.ArrowDown,  origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+↑', () => moveFocus(-COLS, false), { desc: 'Uma linha acima',  icon: Icons.ArrowUp,    origin, enabled: !isNew, section: SEC_NAV })
+  useShortcut('ctrl+↓', () => moveFocus(gridCols, false),  { desc: 'Uma linha abaixo', icon: Icons.ArrowDown,  origin, enabled: !isNew, section: SEC_NAV })
+  useShortcut('ctrl+↑', () => moveFocus(-gridCols, false), { desc: 'Uma linha acima',  icon: Icons.ArrowUp,    origin, enabled: !isNew, section: SEC_NAV })
   useShortcut('ctrl+shift+→', () => moveFocus(1, true),     { desc: 'Estender seleção →', origin, enabled: !isNew, section: SEC_NAV })
   useShortcut('ctrl+shift+←', () => moveFocus(-1, true),    { desc: 'Estender seleção ←', origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+shift+↓', () => moveFocus(COLS, true),  { desc: 'Estender seleção ↓', origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+shift+↑', () => moveFocus(-COLS, true), { desc: 'Estender seleção ↑', origin, enabled: !isNew, section: SEC_NAV })
+  useShortcut('ctrl+shift+↓', () => moveFocus(gridCols, true),  { desc: 'Estender seleção ↓', origin, enabled: !isNew, section: SEC_NAV })
+  useShortcut('ctrl+shift+↑', () => moveFocus(-gridCols, true), { desc: 'Estender seleção ↑', origin, enabled: !isNew, section: SEC_NAV })
 
   useShortcut('delete', () => toggleDeleteSelected(), {
     desc: 'Excluir/restaurar partida(s) selecionada(s)', icon: Icons.Trash2, origin,
@@ -753,7 +767,7 @@ export default function LineScheduleDetailPage() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-10 gap-1.5">
+              <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(4.25rem,1fr))] gap-1.5">
                 {currentRouteDepartures.map(dep => (
                   <DepartureChip
                     key={dep.id}
@@ -766,7 +780,7 @@ export default function LineScheduleDetailPage() {
                   />
                 ))}
                 {currentRouteDepartures.length === 0 && (
-                  <p className="col-span-10 text-xs text-muted-foreground">Nenhuma partida neste sentido.</p>
+                  <p className="col-span-full text-xs text-muted-foreground">Nenhuma partida neste sentido.</p>
                 )}
               </div>
             </div>

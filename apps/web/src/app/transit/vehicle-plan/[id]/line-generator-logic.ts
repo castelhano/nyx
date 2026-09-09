@@ -1,7 +1,5 @@
 // Pure helpers for the per-line schedule generator (see
-// docs/proposal/vehicle-plan-line-schedule-generator.md). Prototyped against
-// mock data in apps/web/src/app/playground/ before landing here unchanged —
-// only the imports changed to point at real app types.
+// docs/proposal/vehicle-plan-line-schedule-generator.md).
 
 import type { CycleWindow, LineMetrics } from './views/vehicles.view'
 import { resolveCycleWindow } from './views/vehicles.view'

@@ -29,7 +29,6 @@ export class LineScheduleController extends BaseController<LineSchedule, CreateL
   }
 
   // Schedule editor — single commit for header + departures
-  // (docs/proposal/plan_line_schedule_editor_v1.md)
   @Patch(':id/departures-batch')
   async saveDeparturesBatch(
     @Req() req: { user?: AuthUser },
