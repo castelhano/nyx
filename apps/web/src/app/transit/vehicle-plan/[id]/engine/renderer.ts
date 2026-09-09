@@ -17,6 +17,9 @@ const MARK_DASH_WIDTH        = 8
 const MARK_DASH_HEIGHT       = 3
 const MARK_DASH_COLOR        = '#ffffff'  // white — a violet tried first washed out against the palette's own purple line color; white holds contrast on every line color, incl. the lightened INBOUND variant
 const MARK_DASH_MIN_WIDTH    = 12  // skip below this segment width, same threshold as the lock dot
+const STOP_PATTERN_COLOR     = '#ffffff'  // white — same reasoning as the mark dash, holds contrast on every line color
+const STOP_PATTERN_SIZE      = 3   // px — chevron half-height/width, top-left corner (the one still free)
+const STOP_PATTERN_MIN_WIDTH = 12  // skip below this segment width, same threshold as lock/marked
 const MOVE_TARGET_COLOR      = '#3b82f6'
 const MOVE_TARGET_FILL       = 'rgba(59, 130, 246, 0.08)'
 const MOVE_TARGET_WIDTH      = 2
@@ -163,6 +166,7 @@ export class Renderer {
     const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
     const driftRibbons: Array<{ x: number; y: number; w: number; h: number; radius: number; dimmed: boolean }> = []
     const markDashes: Array<{ x: number; y: number; dimmed: boolean }> = []
+    const stopPatternMarks: Array<{ x: number; y: number; pattern: 'LIMITED' | 'EXPRESS'; dimmed: boolean }> = []
     let focusRect: { x: number; y: number; w: number; h: number; radius: number } | null = null
 
     for (const seg of segments) {
@@ -243,8 +247,16 @@ export class Renderer {
         ctx.fillStyle = seg.kind === 'deadhead' ? '#6b7280' : '#fff'
         const labelAlpha = dimmed ? DIM_ALPHA : 1
         if (labelAlpha < 1) ctx.globalAlpha = labelAlpha
-        ctx.fillText(seg.label, x + 5, y + h / 2, Math.max(0, w - 10))
-        ctx.globalAlpha = 1
+        // 'middle' baseline centers on the font's em-box (which reserves room for
+        // descenders like g/y/p), not the glyphs actually drawn — a label with none
+        // (e.g. a line code like "107") ends up looking shifted up. Measuring the
+        // real ink box and centering on that instead holds regardless of the label.
+        ctx.textBaseline = 'alphabetic'
+        const metrics = ctx.measureText(seg.label)
+        const optical = (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2
+        ctx.fillText(seg.label, x + 5, y + h / 2 + optical, Math.max(0, w - 10))
+        ctx.textBaseline = 'middle'
+        ctx.globalAlpha  = 1
       }
 
       if (isSelected) rings.push({ x, y, w, h, radius })
@@ -260,6 +272,10 @@ export class Renderer {
 
       if (seg.offSchedule && seg.kind === 'trip' && w > DRIFT_RIBBON_MIN_WIDTH) {
         driftRibbons.push({ x, y, w, h, radius, dimmed })
+      }
+
+      if (seg.stopPattern && seg.stopPattern !== 'LOCAL' && seg.kind === 'trip' && w > STOP_PATTERN_MIN_WIDTH) {
+        stopPatternMarks.push({ x, y, pattern: seg.stopPattern, dimmed })
       }
 
       if (seg.marked && seg.kind === 'trip' && w > MARK_DASH_MIN_WIDTH) {
@@ -335,6 +351,31 @@ export class Renderer {
         ctx.beginPath()
         ctx.roundRect(x, y, MARK_DASH_WIDTH, MARK_DASH_HEIGHT, MARK_DASH_HEIGHT / 2)
         ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    // chevron pass: stopPattern indicator — top-left corner (the one still free; lock
+    // is top-right, drift bottom-right, marking bottom-left). No color channel, since
+    // line identity already owns color (see vehiclesView) — one chevron for LIMITED,
+    // two for EXPRESS, none for LOCAL (the common case, kept unmarked to avoid clutter).
+    if (stopPatternMarks.length > 0) {
+      ctx.strokeStyle = STOP_PATTERN_COLOR
+      ctx.lineWidth   = 1.4
+      ctx.lineCap     = 'round'
+      ctx.lineJoin    = 'round'
+      for (const { x, y, pattern, dimmed } of stopPatternMarks) {
+        ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
+        const cy = y + 8
+        const chevron = (cx: number) => {
+          ctx.beginPath()
+          ctx.moveTo(cx, cy - STOP_PATTERN_SIZE)
+          ctx.lineTo(cx + STOP_PATTERN_SIZE, cy)
+          ctx.lineTo(cx, cy + STOP_PATTERN_SIZE)
+          ctx.stroke()
+        }
+        chevron(x + 6)
+        if (pattern === 'EXPRESS') chevron(x + 10)
       }
       ctx.globalAlpha = 1
     }

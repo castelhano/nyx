@@ -239,6 +239,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         locked:      (c?.locked?.length ?? 0) > 0,
         offSchedule: data.offScheduleTripIds?.has(bt.trip.id) ?? false,
         marked:      (bt.trip.markings?.length ?? 0) > 0,
+        stopPattern: bt.trip.stopPattern,
         label:       bt.trip.route.line.code,
         color:       segColor,
         data:        bt,

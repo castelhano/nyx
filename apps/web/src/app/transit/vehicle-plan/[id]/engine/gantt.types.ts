@@ -34,6 +34,9 @@ export interface GanttSegment {
   // Trip has one or more entries in TripMarking[] (docs/proposal/plan_trip_markings_v1.md) —
   // one dash regardless of how many markings, count is only visible in TripDetailsModal.
   marked?:     boolean
+  // Boarding pattern of the trip — undefined for non-'trip' kinds. No color
+  // channel: color is already spoken for by line identity (see vehiclesView).
+  stopPattern?: 'LOCAL' | 'LIMITED' | 'EXPRESS'
   label:       string
   color:       string
   data:        unknown

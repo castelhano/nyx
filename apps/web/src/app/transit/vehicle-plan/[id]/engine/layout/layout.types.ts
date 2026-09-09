@@ -19,6 +19,7 @@ export interface LayoutSegment {
   locked?:     boolean
   offSchedule?: boolean
   marked?:     boolean
+  stopPattern?: 'LOCAL' | 'LIMITED' | 'EXPRESS'
   label:       string
   color:       string
   data:        unknown
