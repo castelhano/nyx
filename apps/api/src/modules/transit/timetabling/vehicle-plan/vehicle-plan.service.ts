@@ -565,7 +565,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                   select: {
                     id: true, routeId: true, dayTypeId: true,
                     departureMinutes: true, arrivalMinutes: true,
-                    requiredVehicleType: true, constraints: true, notes: true, markings: true,
+                    requiredVehicleType: true, stopPattern: true, constraints: true, notes: true, markings: true,
                   },
                 },
               },
@@ -629,6 +629,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                   departureMinutes:    bt.trip.departureMinutes,
                   arrivalMinutes:      bt.trip.arrivalMinutes,
                   requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
+                  stopPattern:         bt.trip.stopPattern ?? undefined,
                   constraints:         bt.trip.constraints ?? undefined,
                   notes:               bt.trip.notes ?? undefined,
                   markings:            bt.trip.markings ?? undefined,
@@ -881,6 +882,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               departureMinutes:    entry.departureMinutes,
               arrivalMinutes:      entry.arrivalMinutes,
               requiredVehicleType: entry.requiredVehicleType,
+              stopPattern:         entry.stopPattern,
             },
           })
 
@@ -1095,10 +1097,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayTypeId:     plan.dayTypeId,
         route:         { lineId },
       },
-      select: { routeId: true, departureMinutes: true, requiredVehicleType: true },
+      select: { routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true },
     })
 
-    const departureByKey = new Map<string, { routeId: string; departureMinutes: number; requiredVehicleType: string | null }>()
+    const departureByKey = new Map<string, { routeId: string; departureMinutes: number; requiredVehicleType: string | null; stopPattern: string }>()
     for (const t of existingTrips as any[]) {
       const key = `${t.routeId}:${t.departureMinutes}`
       if (!departureByKey.has(key)) departureByKey.set(key, t)
@@ -1121,6 +1123,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             routeId:             d.routeId,
             departureMinutes:    d.departureMinutes,
             requiredVehicleType: d.requiredVehicleType ?? undefined,
+            stopPattern:         d.stopPattern,
           })),
         })
       }
@@ -1165,7 +1168,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayTypeId:     plan.dayTypeId,
         route:         { lineId },
       },
-      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true },
+      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true },
     })
 
     const tripByKey = new Map<string, any>()
@@ -1201,6 +1204,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             routeId:             t.routeId,
             departureMinutes:    t.departureMinutes,
             requiredVehicleType: t.requiredVehicleType ?? undefined,
+            stopPattern:         t.stopPattern,
           },
         })
       }
@@ -1241,7 +1245,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayTypeId:     plan.dayTypeId,
         route:         { lineId },
       },
-      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true },
+      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true },
     })
 
     const departureByKey = new Map<string, any>()
@@ -1266,6 +1270,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             routeId:             d.routeId,
             departureMinutes:    d.departureMinutes,
             requiredVehicleType: d.requiredVehicleType ?? undefined,
+            stopPattern:         d.stopPattern,
           },
         })
       }

@@ -56,6 +56,7 @@ export interface PendingAddTrip {
   arrivalMinutes:      number
   blockId:             string
   requiredVehicleType?: string
+  stopPattern?:        string
   access?: { localityId: string; travelMinutes: number }
   return?: { localityId: string; travelMinutes: number }
 }

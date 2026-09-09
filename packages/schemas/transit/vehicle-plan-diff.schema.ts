@@ -17,6 +17,7 @@ const pendingAddTripSchema = z.object({
   departureMinutes:    z.number(),
   arrivalMinutes:      z.number(),
   requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional(),
+  stopPattern:         z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
   access: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
   return: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
 })

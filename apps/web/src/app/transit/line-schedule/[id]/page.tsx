@@ -35,11 +35,14 @@ const RESOURCE = 'line-schedule'
 
 type VehicleType = NonNullable<LineDeparture['requiredVehicleType']>
 
+type StopPattern = LineDeparture['stopPattern']
+
 interface DraftDeparture {
   id:                   string
   routeId:              string
   departureMinutes:     number
   requiredVehicleType?: VehicleType
+  stopPattern:          StopPattern
   notes?:               string
   markings?:            TripMarking[]
 }
@@ -96,6 +99,7 @@ function toDraft(d: LineDeparture): DraftDeparture {
     routeId:              d.routeId,
     departureMinutes:     d.departureMinutes,
     requiredVehicleType:  d.requiredVehicleType,
+    stopPattern:          d.stopPattern,
     notes:                d.notes,
     markings:             d.markings,
   }
@@ -106,6 +110,7 @@ function toPayload(d: DraftDeparture) {
     routeId:             d.routeId,
     departureMinutes:    d.departureMinutes,
     requiredVehicleType: d.requiredVehicleType,
+    stopPattern:         d.stopPattern,
     notes:               d.notes,
     markings:            d.markings,
   }
@@ -383,7 +388,7 @@ export default function LineScheduleDetailPage() {
   function addDeparture(routeId: string) {
     const list = departuresFor(routeId)
     const last = list[list.length - 1]
-    const item: DraftDeparture = { id: newId(), routeId, departureMinutes: last ? last.departureMinutes + 10 : 300 }
+    const item: DraftDeparture = { id: newId(), routeId, departureMinutes: last ? last.departureMinutes + 10 : 300, stopPattern: 'LOCAL' }
     setDraft(prev => (prev ? [...prev, item] : [item]))
     setFocusedId(item.id)
     setSelectedIds(new Set())

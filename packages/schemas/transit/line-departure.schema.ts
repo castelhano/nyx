@@ -45,6 +45,18 @@ export const lineDepartureSchema = withMeta(
       },
     }),
 
+    stopPattern: z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).default('LOCAL').meta({
+      label:          'Padrão de Parada',
+      listVisibility: 'visible',
+      filter:         true,
+      className:      'md:w-40',
+      optionLabels: {
+        LOCAL:   'Paradora',
+        LIMITED: 'Semiexpressa',
+        EXPRESS: 'Expressa',
+      },
+    }),
+
     notes: z.string().optional().meta({
       label:          'Observações',
       widget:         'textarea',

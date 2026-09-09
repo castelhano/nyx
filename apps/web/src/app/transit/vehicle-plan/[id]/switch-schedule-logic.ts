@@ -14,6 +14,7 @@ export interface LineDepartureForSwitch {
   routeId:              string
   departureMinutes:     number
   requiredVehicleType?: string | null
+  stopPattern?:         string
   route: {
     direction:             string
     originLocalityId:      string
@@ -58,6 +59,7 @@ export async function computeScheduleSwitch(
       // unset (assignFixedTripsToBlocks treats that as no gap required).
       intervalMinutes:       window?.intervalMinutes,
       requiredVehicleType:   d.requiredVehicleType ?? undefined,
+      stopPattern:           d.stopPattern,
     })
   }
 

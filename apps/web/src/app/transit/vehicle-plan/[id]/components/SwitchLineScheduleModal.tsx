@@ -249,7 +249,7 @@ export function SwitchLineScheduleModal({
       const depRes = await apiFetch(`/transit/line-departure?lineScheduleId=${targetId}&pageSize=999`)
       if (!depRes.ok) throw new Error('Erro ao buscar partidas da OSO')
       const depJson = await depRes.json()
-      const rows: Array<{ id: string; routeId: string; departureMinutes: number; requiredVehicleType?: string | null }> = depJson.data ?? []
+      const rows: Array<{ id: string; routeId: string; departureMinutes: number; requiredVehicleType?: string | null; stopPattern?: string }> = depJson.data ?? []
 
       const routes     = routesQueries[idx].data ?? []
       const routeById  = new Map(routes.map(r => [r.id, r]))
@@ -264,6 +264,7 @@ export function SwitchLineScheduleModal({
           routeId:             d.routeId,
           departureMinutes:    d.departureMinutes,
           requiredVehicleType: d.requiredVehicleType,
+          stopPattern:         d.stopPattern,
           route: { direction: route.direction, originLocalityId: route.originLocalityId, destinationLocalityId: route.destinationLocalityId },
         })
       }
@@ -292,6 +293,7 @@ export function SwitchLineScheduleModal({
             arrivalMinutes:      trip.arrivalMinutes,
             blockId:             anchorTempId ? `pending:${anchorTempId}` : 'new',
             requiredVehicleType: trip.requiredVehicleType,
+            stopPattern:         trip.stopPattern,
           })
           if (!anchorTempId) anchorTempId = trip._tempId
         }

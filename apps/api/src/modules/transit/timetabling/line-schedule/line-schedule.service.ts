@@ -76,6 +76,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
             routeId:             d.routeId,
             departureMinutes:    d.departureMinutes,
             requiredVehicleType: d.requiredVehicleType ?? undefined,
+            stopPattern:         d.stopPattern,
             notes:               d.notes ?? undefined,
           })),
         })

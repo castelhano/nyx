@@ -861,6 +861,7 @@ export interface FixedTripCandidate {
   departureMinutes:      number
   arrivalMinutes:        number
   requiredVehicleType?:  string
+  stopPattern?:          string
   // Minimum gap required, after this trip's arrival, before the next trip in the
   // same block can depart (the registered turnback/interval time for this trip's
   // own direction/cycle window) — 0/undefined when unknown, which enforces no gap

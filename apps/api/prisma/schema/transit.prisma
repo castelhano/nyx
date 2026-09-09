@@ -42,6 +42,12 @@ enum LayoverPolicy {
   DEPOT
 }
 
+enum TripStopPattern {
+  LOCAL
+  LIMITED
+  EXPRESS
+}
+
 // A point in the network — bus stop, terminal, or depot. Shared by routes (as stops),
 // travel-time matrix entries, and vehicle blocks/deadruns (as depot/origin/destination).
 // isDepot marks it as eligible for a block's home depot and for deadrun endpoints.
@@ -328,6 +334,7 @@ model LineDeparture {
   routeId          String
   departureMinutes Int
   requiredVehicleType VehicleType?
+  stopPattern      TripStopPattern @default(LOCAL)
   notes            String?
   // TripMarking[] (packages/schemas/transit/trip-marking.schema.ts) — molde copiado
   // (cópia unidirecional, uma vez) para o TransitTrip materializado a partir desta
@@ -357,6 +364,7 @@ model TransitTrip {
   departureMinutes    Int
   arrivalMinutes      Int
   requiredVehicleType VehicleType?
+  stopPattern         TripStopPattern @default(LOCAL)
   // TripConstraints (packages/schemas/transit/trip.schema.ts) — { locked?: string[] },
   // field names the solver must not modify, e.g. {"locked":["departureMinutes"]}
   constraints         Json?
