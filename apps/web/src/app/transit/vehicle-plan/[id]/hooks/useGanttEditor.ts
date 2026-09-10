@@ -740,8 +740,13 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         for (let i = 0; i < events.length - 1; i++) {
           const curr = events[i]
           const next = events[i + 1]
-          const gap  = next.departureMinutes - curr.arrivalMinutes
-          if (gap < min || gap > max) continue
+          const departureMinutes = curr.arrivalMinutes + INTERVAL_EDGE_BUFFER_MINUTES
+          const arrivalMinutes   = next.departureMinutes - INTERVAL_EDGE_BUFFER_MINUTES
+          // gate on the stored duration, not the raw gap — a gap landing exactly on
+          // minMinutes would otherwise produce an interval short of it (see
+          // computeIntervalIrregularity's comment in vehicles.view.ts)
+          const duration = arrivalMinutes - departureMinutes
+          if (duration < min || duration > max) continue
           // already covered by a break staged earlier this session (e.g. manual add)
           const alreadyPending = pendingAdds.some(a =>
             a._kind === 'break' && a.blockId === block.id &&
@@ -757,8 +762,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
             isPaid:           defaultIntervalType.isPaid,
             minMinutes:       defaultIntervalType.minMinutes,
             maxMinutes:       defaultIntervalType.maxMinutes,
-            departureMinutes: curr.arrivalMinutes + INTERVAL_EDGE_BUFFER_MINUTES,
-            arrivalMinutes:   next.departureMinutes - INTERVAL_EDGE_BUFFER_MINUTES,
+            departureMinutes,
+            arrivalMinutes,
             blockId:          block.id,
           })
         }

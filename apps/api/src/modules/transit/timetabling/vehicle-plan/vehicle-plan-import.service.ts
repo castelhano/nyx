@@ -491,8 +491,12 @@ export class VehiclePlanImportService {
       }
 
       // Internal gaps between consecutive events (perBlockEntries is chronological
-      // end to end) that fall inside the default IntervalType's [min,max] become a
-      // BlockInterval — outside that range it's either normal terminal turnaround
+      // end to end) become a BlockInterval when the *stored* duration — the gap
+      // minus the 1min edge buffer left on each side, same convention as the
+      // frontend's INTERVAL_EDGE_BUFFER_MINUTES (vehicles.view.ts) — falls inside
+      // the default IntervalType's [min,max]. Gating on the raw gap instead would
+      // let a boundary-exact gap produce an interval that's actually short of
+      // minMinutes. Outside that range it's either normal terminal turnaround
       // (too short) or a likely modeling gap (too long), left for manual review.
       if (defaultIntervalType) {
         const min = defaultIntervalType.minMinutes ?? 0
@@ -500,17 +504,16 @@ export class VehiclePlanImportService {
         for (let i = 0; i < perBlockEntries.length - 1; i++) {
           const curr = perBlockEntries[i]
           const next = perBlockEntries[i + 1]
-          const gap  = next.departureMinutes - curr.arrivalMinutes
-          if (gap < min || gap > max) continue
-          // 1min edge buffer on each side, same convention as the frontend's
-          // INTERVAL_EDGE_BUFFER_MINUTES (vehicles.view.ts) — keep both in sync, or
-          // a gap landing exactly on minMinutes gets misflagged "under" in the Gantt.
+          const departureMinutes = curr.arrivalMinutes + 1
+          const arrivalMinutes   = next.departureMinutes - 1
+          const duration = arrivalMinutes - departureMinutes
+          if (duration < min || duration > max) continue
           blockIntervalRows.push({
             id:               randomUUID(),
             vehicleBlockId:   blockId,
             intervalTypeId:   defaultIntervalType.id,
-            departureMinutes: curr.arrivalMinutes + 1,
-            arrivalMinutes:   next.departureMinutes - 1,
+            departureMinutes,
+            arrivalMinutes,
           })
         }
       }

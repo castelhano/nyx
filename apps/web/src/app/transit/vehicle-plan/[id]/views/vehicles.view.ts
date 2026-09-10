@@ -139,8 +139,10 @@ export interface GanttBlock {
 
 // Every interval-creation flow (handleConfirmAddInterval, the import-service and
 // Finalizar Plano gap-detection passes) leaves this many minutes clear on each
-// side of the preceding/following event — so a gap that lands exactly on
-// minMinutes still ends up stored 2×this shorter than the gap itself.
+// side of the preceding/following event. Those flows must gate [min,max] against
+// the resulting stored duration, not the raw gap it was carved from — otherwise
+// a gap landing exactly on minMinutes produces an interval that's actually
+// 2×this short of it, and computeIntervalIrregularity is right to flag it.
 export const INTERVAL_EDGE_BUFFER_MINUTES = 1
 
 // Irregularidade é sempre informativa (nunca bloqueia) — ver
@@ -153,9 +155,7 @@ export function computeIntervalIrregularity(
   if (maxMinutes != null && duration > maxMinutes) {
     return { severity: 'over', excessFromMinute: bi.departureMinutes + maxMinutes }
   }
-  // discount the edge buffer on both sides so a gap that exactly met minMinutes
-  // isn't misflagged just because the stored interval is 2 min shorter than it
-  if (minMinutes != null && duration + 2 * INTERVAL_EDGE_BUFFER_MINUTES < minMinutes) {
+  if (minMinutes != null && duration < minMinutes) {
     return { severity: 'under' }
   }
   return null
