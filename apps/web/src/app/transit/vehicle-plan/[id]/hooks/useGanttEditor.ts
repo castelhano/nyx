@@ -11,7 +11,7 @@ import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInte
 import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 import type { TripMarking, Trip } from '@nyx/schemas'
-import { resolveCycleWindow } from '../views/vehicles.view'
+import { resolveCycleWindow, INTERVAL_EDGE_BUFFER_MINUTES } from '../views/vehicles.view'
 import { createVehiclesActionSpec, canAddAccess, canAddReturn } from '../views/vehicles.actions'
 import type { Selection, RowHintEntry } from '../engine/gantt.types'
 import { getTravelTime } from '../travel-time'
@@ -757,8 +757,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
             isPaid:           defaultIntervalType.isPaid,
             minMinutes:       defaultIntervalType.minMinutes,
             maxMinutes:       defaultIntervalType.maxMinutes,
-            departureMinutes: curr.arrivalMinutes + 1,
-            arrivalMinutes:   next.departureMinutes - 1,
+            departureMinutes: curr.arrivalMinutes + INTERVAL_EDGE_BUFFER_MINUTES,
+            arrivalMinutes:   next.departureMinutes - INTERVAL_EDGE_BUFFER_MINUTES,
             blockId:          block.id,
           })
         }

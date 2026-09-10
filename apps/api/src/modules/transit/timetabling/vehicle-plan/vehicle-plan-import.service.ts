@@ -502,6 +502,9 @@ export class VehiclePlanImportService {
           const next = perBlockEntries[i + 1]
           const gap  = next.departureMinutes - curr.arrivalMinutes
           if (gap < min || gap > max) continue
+          // 1min edge buffer on each side, same convention as the frontend's
+          // INTERVAL_EDGE_BUFFER_MINUTES (vehicles.view.ts) — keep both in sync, or
+          // a gap landing exactly on minMinutes gets misflagged "under" in the Gantt.
           blockIntervalRows.push({
             id:               randomUUID(),
             vehicleBlockId:   blockId,
