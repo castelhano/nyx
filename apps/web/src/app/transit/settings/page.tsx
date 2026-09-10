@@ -340,6 +340,7 @@ function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData
 // ── Branch type ──────────────────────────────────────────────────────────────
 
 interface Branch { id: string; name: string }
+interface IntervalTypeOption { id: string; name: string }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -375,6 +376,16 @@ export default function TransitSettingsPage() {
       const res = await apiFetch('/transit/settings/general')
       if (!res.ok) throw new Error()
       return res.json()
+    },
+  })
+
+  const { data: intervalTypes = [] } = useQuery<IntervalTypeOption[]>({
+    queryKey: ['transit', 'interval-type', 'all'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/interval-type?pageSize=999')
+      if (!res.ok) return []
+      const json = await res.json()
+      return json.data ?? []
     },
   })
 
@@ -639,6 +650,28 @@ export default function TransitSettingsPage() {
               <option value="DEPOT">Recolher</option>
             </Select>
               <span className="text-sm text-muted-foreground w-6"></span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Tipo de Intervalo Padrão</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Usado para inserir automaticamente um BlockInterval em paradas longas entre viagens de um bloco (na importação e ao Finalizar Plano)
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                value={general?.defaultIntervalTypeId ?? ''}
+                onChange={(e) => setGeneral((prev) => prev ? { ...prev, defaultIntervalTypeId: e.target.value || null } : null)}
+                size="sm"
+                className="w-56"
+                disabled={!general}
+              >
+                <option value="">Nenhum (desativado)</option>
+                {intervalTypes.map((it) => (
+                  <option key={it.id} value={it.id}>{it.name}</option>
+                ))}
+              </Select>
             </div>
           </div>
         </div>

@@ -16,6 +16,16 @@ export const generalSettingsSchema = withMeta(z.object({
   // when the route doesn't define its own layoverPolicy (DEFAULT) — hold in place
   // (HOLD) or return to the depot (DEPOT)
   defaultLayoverPolicy:           z.enum(['HOLD', 'DEPOT']).default('HOLD'),
+  // IntervalType used when auto-detecting long gaps between block events (import,
+  // Finalizar Plano) and converting them into a BlockInterval — see
+  // docs/proposal/plan_block_interval_autodetect_v1.md
+  defaultIntervalTypeId: z.uuid().nullable().optional().meta({
+    label:      'Tipo de Intervalo Padrão (detecção automática)',
+    widget:     'select',
+    resource:   'interval-type',
+    domain:     'transit',
+    labelField: 'name',
+  }),
 }), {
   // Servido junto de Planning/Schedule pela página custom `transit/settings` — não deve
   // aparecer como resource próprio no sidebar/discovery.

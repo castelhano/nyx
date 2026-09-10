@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
@@ -126,6 +127,28 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // solver) — the page uses isSaving to show a spinner overlay only while the
   // pending state is being persisted, without mixing with the Otimizar UI.
   const [isSaving,          setIsSaving]          = useState(false)
+
+  // Default IntervalType for auto-detecting long internal gaps on Finalizar Plano
+  // — see docs/proposal/plan_block_interval_autodetect_v1.md
+  const { data: generalSettings } = useQuery<{ defaultIntervalTypeId?: string | null }>({
+    queryKey: ['transit', 'settings', 'general'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/general')
+      if (!res.ok) return {}
+      return res.json()
+    },
+    staleTime: 300_000,
+  })
+  const { data: intervalTypes = [] } = useQuery<IntervalType[]>({
+    queryKey: ['transit', 'interval-type', 'all'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/interval-type?pageSize=999')
+      if (!res.ok) return []
+      const json = await res.json()
+      return json.data ?? []
+    },
+    staleTime: 60_000,
+  })
 
   // ── trip-sequence selection (shift+pagedown/pageup) — anchor + current focus
   // form a range over allTrips filtered by direction (same traversal as plain
@@ -694,14 +717,64 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
     const totalFailed = savedFailed + pendingFailed + skippedNoDepot
 
-    if (newDeadrunEntries.length === 0 && pendingUsable.length === 0) {
+    // ── pass 3: internal gaps → BlockInterval (saved blocks only — a brand-new
+    // pending block has no persisted event sequence to scan yet). Same gate as
+    // the import service: only gaps inside the default IntervalType's [min,max]
+    // are converted; short ones are normal turnaround, long ones a likely
+    // modeling gap — both left for manual review via AddIntervalModal.
+    const defaultIntervalType = generalSettings?.defaultIntervalTypeId
+      ? intervalTypes.find(it => it.id === generalSettings.defaultIntervalTypeId) ?? null
+      : null
+
+    const intervalEntries: PendingAddInterval[] = []
+    if (defaultIntervalType) {
+      const min = defaultIntervalType.minMinutes ?? 0
+      const max = defaultIntervalType.maxMinutes ?? Infinity
+      for (const block of ganttData.blocks) {
+        const events = [
+          ...block.blockTrips.map(bt => ({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes })),
+          ...block.blockDeadruns.map(dr => ({ departureMinutes: dr.departureMinutes, arrivalMinutes: dr.arrivalMinutes })),
+          ...block.blockIntervals.map(bi => ({ departureMinutes: bi.departureMinutes, arrivalMinutes: bi.arrivalMinutes })),
+        ].sort((a, b) => a.departureMinutes - b.departureMinutes)
+
+        for (let i = 0; i < events.length - 1; i++) {
+          const curr = events[i]
+          const next = events[i + 1]
+          const gap  = next.departureMinutes - curr.arrivalMinutes
+          if (gap < min || gap > max) continue
+          // already covered by a break staged earlier this session (e.g. manual add)
+          const alreadyPending = pendingAdds.some(a =>
+            a._kind === 'break' && a.blockId === block.id &&
+            a.departureMinutes < next.departureMinutes && a.arrivalMinutes > curr.arrivalMinutes,
+          )
+          if (alreadyPending) continue
+          intervalEntries.push({
+            _kind:            'break',
+            _tempId:          crypto.randomUUID(),
+            intervalTypeId:   defaultIntervalType.id,
+            intervalTypeCode: defaultIntervalType.code,
+            intervalTypeName: defaultIntervalType.name,
+            isPaid:           defaultIntervalType.isPaid,
+            minMinutes:       defaultIntervalType.minMinutes,
+            maxMinutes:       defaultIntervalType.maxMinutes,
+            departureMinutes: curr.arrivalMinutes + 1,
+            arrivalMinutes:   next.departureMinutes - 1,
+            blockId:          block.id,
+          })
+        }
+      }
+    }
+
+    if (newDeadrunEntries.length === 0 && pendingUsable.length === 0 && intervalEntries.length === 0) {
       if (totalFailed > 0) toast.error(`Nenhuma lacuna pôde ser preparada — ${totalFailed} sem garagem ou mapeamento de viagem compatível`)
-      else toast.success('Nenhuma lacuna de acesso/recolhida encontrada — plano já está completo')
+      else toast.success('Nenhuma lacuna de acesso/recolhida/intervalo encontrada — plano já está completo')
       return
     }
 
     setPendingAdds(prev => {
-      const withDeadruns = newDeadrunEntries.length > 0 ? [...prev, ...newDeadrunEntries] : prev
+      const withDeadruns = (newDeadrunEntries.length > 0 || intervalEntries.length > 0)
+        ? [...prev, ...newDeadrunEntries, ...intervalEntries]
+        : prev
       if (pendingUsable.length === 0) return withDeadruns
       // Separate maps per kind — a single-trip block can need both access AND
       // return on the very same PendingAddTrip, with different travel times
@@ -719,11 +792,13 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       })
     })
 
-    const accessCount = newDeadrunEntries.filter(e => e.type === 'ACCESS').length + pendingUsable.filter(r => r.kind === 'access').length
-    const returnCount = newDeadrunEntries.filter(e => e.type === 'RETURN').length + pendingUsable.filter(r => r.kind === 'return').length
+    const accessCount   = newDeadrunEntries.filter(e => e.type === 'ACCESS').length + pendingUsable.filter(r => r.kind === 'access').length
+    const returnCount   = newDeadrunEntries.filter(e => e.type === 'RETURN').length + pendingUsable.filter(r => r.kind === 'return').length
+    const intervalCount = intervalEntries.length
     const parts = [
-      accessCount > 0 ? `${accessCount} ${accessCount === 1 ? 'acesso' : 'acessos'}`       : null,
-      returnCount > 0 ? `${returnCount} ${returnCount === 1 ? 'recolhida' : 'recolhidas'}` : null,
+      accessCount > 0   ? `${accessCount} ${accessCount === 1 ? 'acesso' : 'acessos'}`       : null,
+      returnCount > 0   ? `${returnCount} ${returnCount === 1 ? 'recolhida' : 'recolhidas'}` : null,
+      intervalCount > 0 ? `${intervalCount} ${intervalCount === 1 ? 'intervalo' : 'intervalos'}` : null,
     ].filter(Boolean).join(' e ')
     toast.success(`${parts} preparados` + (fallbackDepotName && pendingUsable.length > 0 ? ` (novos blocos usando garagem ${fallbackDepotName})` : '') + ' — use Salvar para persistir'
       + (totalFailed > 0 ? ` (${totalFailed} sem garagem ou mapeamento compatível)` : ''))

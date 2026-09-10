@@ -4,6 +4,7 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import { JobService } from '../../../core/job/job.service'
 import { VehiclePlanService } from './vehicle-plan.service'
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
+import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
 
 interface ImportOutput {
@@ -42,6 +43,7 @@ export class VehiclePlanImportService {
     private readonly jobService:      JobService,
     private readonly vehiclePlanSvc:  VehiclePlanService,
     private readonly planningConfig:  TransitPlanningConfigService,
+    private readonly generalConfig:   TransitGeneralConfigService,
   ) {}
 
   async import(
@@ -213,6 +215,17 @@ export class VehiclePlanImportService {
       idealIntervalMin = planningCfg.range.tripInterval.idealMin
     }
 
+    // Gate for auto-inserting a BlockInterval into long internal gaps — see
+    // docs/proposal/plan_block_interval_autodetect_v1.md. Disabled (no rows
+    // created) when no default IntervalType is configured.
+    const generalCfg = await this.generalConfig.get()
+    const defaultIntervalType = generalCfg.defaultIntervalTypeId
+      ? await (this.prisma as any).intervalType.findUnique({
+          where:  { id: generalCfg.defaultIntervalTypeId },
+          select: { id: true, minMinutes: true, maxMinutes: true },
+        })
+      : null
+
     let plan: { id: string }
     let blockNumber = 1
 
@@ -252,6 +265,7 @@ export class VehiclePlanImportService {
     const deadrunRows:       Array<{ id: string; vehicleBlockId: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }> = []
     const blockRows:         Array<{ id: string; vehiclePlanId: string; branchId: string; blockNumber: number; depotId: string; vehicleType: string; summary?: object; isStale: boolean }> = []
     const blockTripRows:     Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
+    const blockIntervalRows: Array<{ id: string; vehicleBlockId: string; intervalTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
 
     for (const [, tabRows] of blockMap.entries()) {
       tabRows.sort((a, b) => {
@@ -475,6 +489,28 @@ export class VehiclePlanImportService {
           deadrunRows.push({ id: e.id, vehicleBlockId: blockId, type: e.type, originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId, departureMinutes: e.departureMinutes, arrivalMinutes: e.arrivalMinutes })
         }
       }
+
+      // Internal gaps between consecutive events (perBlockEntries is chronological
+      // end to end) that fall inside the default IntervalType's [min,max] become a
+      // BlockInterval — outside that range it's either normal terminal turnaround
+      // (too short) or a likely modeling gap (too long), left for manual review.
+      if (defaultIntervalType) {
+        const min = defaultIntervalType.minMinutes ?? 0
+        const max = defaultIntervalType.maxMinutes ?? Infinity
+        for (let i = 0; i < perBlockEntries.length - 1; i++) {
+          const curr = perBlockEntries[i]
+          const next = perBlockEntries[i + 1]
+          const gap  = next.departureMinutes - curr.arrivalMinutes
+          if (gap < min || gap > max) continue
+          blockIntervalRows.push({
+            id:               randomUUID(),
+            vehicleBlockId:   blockId,
+            intervalTypeId:   defaultIntervalType.id,
+            departureMinutes: curr.arrivalMinutes + 1,
+            arrivalMinutes:   next.departureMinutes - 1,
+          })
+        }
+      }
     }
 
     await (this.prisma as any).lineDeparture.createMany({ data: lineDepartureRows })
@@ -482,6 +518,7 @@ export class VehiclePlanImportService {
     await (this.prisma as any).vehicleBlock.createMany({ data: blockRows })
     await (this.prisma as any).blockTrip.createMany({ data: blockTripRows })
     await (this.prisma as any).blockDeadrun.createMany({ data: deadrunRows })
+    await (this.prisma as any).blockInterval.createMany({ data: blockIntervalRows })
 
     await this.vehiclePlanSvc.recalculate(plan.id)
 
