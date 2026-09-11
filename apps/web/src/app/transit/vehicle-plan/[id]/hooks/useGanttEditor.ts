@@ -1767,47 +1767,75 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   }
 
   // Direção 1 ("Reservado") — docs/proposal/plan_trip_deadrun_conversion_v1.md.
-  // Same departureMinutes as the trip; duration from the matrix to wherever the
-  // block needs to be next (first upcoming event with a locality — trip or deadrun,
-  // an interval has none), falling back to the trip's own original duration when
-  // there's no matrix entry or no next event at all. Never invades the very next
-  // event regardless of kind — clamped to 1min before it, with a toast explaining
-  // the reduction. Dependency cascade (ACCESS/RETURN/interval anchored to this trip)
-  // is intentional, no confirm — queueTripDeletes already stages it.
+  // With both a previous AND a next productive trip in the block, the removed
+  // trip's own route is irrelevant — the deadrun just bridges straight from where
+  // the vehicle actually finished its last run to where it's needed for the next
+  // one: origin = previous trip's destination, destination = next trip's origin,
+  // departure = previous trip's arrival + 1min, duration from the matrix (falling
+  // back to the trip's own original duration if that pair isn't mapped). Missing
+  // either neighbor falls through to the old trip's-own-timing behavior. Either
+  // way, never invades whatever comes next chronologically — clamped to 1min
+  // before it, with a toast explaining the reduction. Dependency cascade
+  // (ACCESS/RETURN/interval anchored to this trip) is intentional, no confirm —
+  // queueTripDeletes already stages it.
   async function handleConvertToDeadrun(tripId: string, blockId: string) {
     if (!canEditGantt || !mergedPlottedData) return
     const block = mergedPlottedData.blocks.find(b => b.id === blockId)
     const bt    = block?.blockTrips.find(bt => bt.trip.id === tripId)
     if (!block || !bt) return
 
-    type Event = { departureMinutes: number; originLocality: { id: string; name: string } | null }
-    const events: Event[] = [
-      ...block.blockTrips.filter(o => o.trip.id !== tripId).map(o => ({ departureMinutes: o.trip.departureMinutes, originLocality: o.trip.route.originLocality })),
-      ...block.blockDeadruns.map(dr => ({ departureMinutes: dr.departureMinutes, originLocality: dr.originLocality })),
-      ...block.blockIntervals.map(bi => ({ departureMinutes: bi.departureMinutes, originLocality: null })),
-    ]
-    const upcoming        = events.filter(e => e.departureMinutes > bt.trip.arrivalMinutes).sort((a, b) => a.departureMinutes - b.departureMinutes)
-    const nextBoundary     = upcoming[0] ?? null
-    const nextWithLocality = upcoming.find(e => e.originLocality)
+    const originalDuration = bt.trip.arrivalMinutes - bt.trip.departureMinutes
+    const sortedOtherTrips = block.blockTrips
+      .filter(o => o.trip.id !== tripId)
+      .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+    const prevTrip = [...sortedOtherTrips].reverse().find(o => o.trip.departureMinutes < bt.trip.departureMinutes)
+    const nextTrip = sortedOtherTrips.find(o => o.trip.departureMinutes > bt.trip.departureMinutes)
 
-    const departureMinutes = bt.trip.departureMinutes
-    const originLocality    = bt.trip.route.originLocality
-    const originalDuration  = bt.trip.arrivalMinutes - bt.trip.departureMinutes
+    let departureMinutes:  number
+    let originLocality:    { id: string; name: string }
+    let destinationLocality: { id: string; name: string }
+    let duration:           number
 
-    let duration            = originalDuration
-    let destinationLocality = bt.trip.route.destinationLocality
-    if (nextWithLocality?.originLocality) {
-      const travelMinutes = await getTravelTime(originLocality.id, nextWithLocality.originLocality.id)
-      if (travelMinutes != null) {
-        duration            = travelMinutes
-        destinationLocality = nextWithLocality.originLocality
+    if (prevTrip && nextTrip) {
+      departureMinutes    = prevTrip.trip.arrivalMinutes + 1
+      originLocality       = prevTrip.trip.route.destinationLocality
+      destinationLocality  = nextTrip.trip.route.originLocality
+      const travelMinutes = await getTravelTime(originLocality.id, destinationLocality.id)
+      duration = travelMinutes ?? originalDuration
+    } else {
+      departureMinutes    = bt.trip.departureMinutes
+      originLocality       = bt.trip.route.originLocality
+      destinationLocality  = bt.trip.route.destinationLocality
+      duration = originalDuration
+
+      type Event = { departureMinutes: number; originLocality: { id: string; name: string } | null }
+      const events: Event[] = [
+        ...sortedOtherTrips.map(o => ({ departureMinutes: o.trip.departureMinutes, originLocality: o.trip.route.originLocality })),
+        ...block.blockDeadruns.map(dr => ({ departureMinutes: dr.departureMinutes, originLocality: dr.originLocality })),
+        ...block.blockIntervals.map(bi => ({ departureMinutes: bi.departureMinutes, originLocality: null })),
+      ]
+      const nextWithLocality = events
+        .filter(e => e.departureMinutes > bt.trip.arrivalMinutes)
+        .sort((a, b) => a.departureMinutes - b.departureMinutes)
+        .find(e => e.originLocality)
+      if (nextWithLocality?.originLocality) {
+        const travelMinutes = await getTravelTime(originLocality.id, nextWithLocality.originLocality.id)
+        if (travelMinutes != null) {
+          duration            = travelMinutes
+          destinationLocality = nextWithLocality.originLocality
+        }
       }
     }
 
     let arrivalMinutes = departureMinutes + duration
-    if (nextBoundary && arrivalMinutes >= nextBoundary.departureMinutes) {
+    const nextBoundaryDep = [
+      ...sortedOtherTrips.map(o => o.trip.departureMinutes),
+      ...block.blockDeadruns.map(dr => dr.departureMinutes),
+      ...block.blockIntervals.map(bi => bi.departureMinutes),
+    ].filter(d => d > departureMinutes).sort((a, b) => a - b)[0]
+    if (nextBoundaryDep != null && arrivalMinutes >= nextBoundaryDep) {
       const before = arrivalMinutes - departureMinutes
-      arrivalMinutes = nextBoundary.departureMinutes - 1
+      arrivalMinutes = nextBoundaryDep - 1
       const after = arrivalMinutes - departureMinutes
       toast.info(`Duração do deslocamento reduzida de ${before} para ${after} min — colidia com o próximo evento do bloco`)
     }

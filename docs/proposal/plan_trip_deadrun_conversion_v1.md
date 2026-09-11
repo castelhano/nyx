@@ -28,26 +28,35 @@ endpoint novo é necessário, porque `apply-diff` já aceita `tripDeletes` +
 
 1. Usuário aciona "Reservado" numa viagem selecionada
    (ação nova, não um valor do `stopPattern`, ver §UI abaixo).
-2. Sistema monta o `BlockDeadrun` (DISPLACEMENT):
-   - `departureMinutes` = `departureMinutes` original da viagem.
-   - `originLocality`   = origem da própria viagem
-     (`bt.trip.route.originLocality`).
-   - destino/duração: busca o tempo de percurso na `TravelTimeMatrix`
-     (`getTravelTime`, `apps/web/.../travel-time.ts`) até a localidade de
-     origem do **próximo evento do bloco** (viagem, deadrun ou intervalo —
-     o que vier primeiro cronologicamente; a leitura literal seria só
-     "próxima viagem", mas confirmado que o caso de o próximo evento não
-     ser uma viagem é raro porém possível, então generalizei). Se a matriz
-     não tiver essa combinação (`getTravelTime` retorna `null`), cai no
-     fallback: repete a duração original da viagem
-     (`arrivalMinutes - departureMinutes`).
-   - Se a viagem for a última do bloco (sem próximo evento), não há o que
-     buscar na matriz — usa direto o fallback (duração original).
+2. Sistema monta o `BlockDeadrun` (DISPLACEMENT). Regra revisada (a
+   primeira versão usava a própria viagem como base — virou fallback, ver
+   abaixo):
+   - **Com viagem anterior E posterior no bloco** (ambas necessárias):
+     - `originLocality` = destino da viagem **anterior**
+       (onde o veículo realmente terminou o último trajeto produtivo).
+     - `destinationLocality` = origem da viagem **posterior**
+       (onde ele precisa estar em seguida).
+     - `departureMinutes` = `arrivalMinutes` da viagem anterior + 1min.
+     - duração = `getTravelTime(origin, destination)` — a rota da viagem
+       removida em si não importa mais, o deslocamento liga direto de onde
+       o veículo parou até onde ele é necessário. Sem essa combinação na
+       matriz, cai no fallback: repete a duração original da viagem
+       (`arrivalMinutes - departureMinutes`).
+   - **Faltando viagem anterior OU posterior** (ex. primeira/última do
+     bloco): comportamento da v1 original — `departureMinutes`/
+     `originLocality` da própria viagem, destino/duração pela matriz até a
+     localidade do **próximo evento do bloco** (viagem, deadrun ou
+     intervalo — o que vier primeiro cronologicamente), fallback pra
+     duração original se a matriz não tiver a combinação ou não houver
+     próximo evento.
 3. `queueTripDeletes([tripId])` + `handlePendingAdd(deadrunEntry)` — ambos
    empilhados juntos na mesma ação, não em dois passos do usuário.
 4. Viagens posteriores nunca são deslocadas — mas o novo deadrun também
-   nunca pode invadir o horário do próximo evento. Se a duração calculada
-   (matriz ou fallback) ultrapassar `next.departureMinutes`, o
+   nunca pode invadir o horário do próximo evento cronológico a partir do
+   seu próprio `departureMinutes` (que no ramo com as duas viagens vizinhas
+   é o da viagem anterior + 1min, não mais o da viagem removida — útil pro
+   caso raro de haver um intervalo/deadrun entre a anterior e a removida).
+   Se a duração calculada (matriz ou fallback) ultrapassar `next.departureMinutes`, o
    `arrivalMinutes` do deadrun é limitado a `next.departureMinutes - 1`, e
    um alerta informa a redução ("duração reduzida de X para Y min por
    colisão com a próxima viagem"). Se o resultado for um gap (deadrun mais
