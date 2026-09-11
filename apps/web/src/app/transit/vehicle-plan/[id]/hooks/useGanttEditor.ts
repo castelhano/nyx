@@ -11,7 +11,7 @@ import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInte
 import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 import type { TripMarking, Trip } from '@nyx/schemas'
-import { resolveCycleWindow, INTERVAL_EDGE_BUFFER_MINUTES } from '../views/vehicles.view'
+import { resolveCycleWindow } from '../views/vehicles.view'
 import { createVehiclesActionSpec, canAddAccess, canAddReturn } from '../views/vehicles.actions'
 import type { Selection, RowHintEntry } from '../engine/gantt.types'
 import { getTravelTime } from '../travel-time'
@@ -740,11 +740,10 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         for (let i = 0; i < events.length - 1; i++) {
           const curr = events[i]
           const next = events[i + 1]
-          const departureMinutes = curr.arrivalMinutes + INTERVAL_EDGE_BUFFER_MINUTES
-          const arrivalMinutes   = next.departureMinutes - INTERVAL_EDGE_BUFFER_MINUTES
-          // gate on the stored duration, not the raw gap — a gap landing exactly on
-          // minMinutes would otherwise produce an interval short of it (see
-          // computeIntervalIrregularity's comment in vehicles.view.ts)
+          // unlike ACCESS/RETURN/DISPLACEMENT, a BlockInterval may butt right up
+          // against its neighbors — no 1min edge buffer — so it spans the gap exactly
+          const departureMinutes = curr.arrivalMinutes
+          const arrivalMinutes   = next.departureMinutes
           const duration = arrivalMinutes - departureMinutes
           if (duration < min || duration > max) continue
           // already covered by a break staged earlier this session (e.g. manual add)

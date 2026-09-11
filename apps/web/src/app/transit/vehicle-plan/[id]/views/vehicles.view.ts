@@ -137,14 +137,6 @@ export interface GanttBlock {
   blockIntervals: GanttBlockInterval[]
 }
 
-// Every interval-creation flow (handleConfirmAddInterval, the import-service and
-// Finalizar Plano gap-detection passes) leaves this many minutes clear on each
-// side of the preceding/following event. Those flows must gate [min,max] against
-// the resulting stored duration, not the raw gap it was carved from — otherwise
-// a gap landing exactly on minMinutes produces an interval that's actually
-// 2×this short of it, and computeIntervalIrregularity is right to flag it.
-export const INTERVAL_EDGE_BUFFER_MINUTES = 1
-
 // Irregularidade é sempre informativa (nunca bloqueia) — ver
 // docs/proposal/vehicle-plan-block-intervals.md §5.3.
 export function computeIntervalIrregularity(
