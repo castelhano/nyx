@@ -121,12 +121,25 @@ export interface AddTripReference {
   referenceTrip: GanttBlockTrip
 }
 
+// Seed for the "Produtiva" deadrun->trip conversion (docs/proposal/
+// plan_trip_deadrun_conversion_v1.md) — direction is a suggestion resolved from
+// block context by the caller, applied once routes for lineId load; the user
+// reviews/edits everything (including switching tripType away from 'productive')
+// before confirming, same as any other prefill in this form.
+export interface AddTripSeed {
+  blockId:          string
+  departureMinutes: number
+  lineId?:          string
+  direction?:       'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
+}
+
 interface Props {
   planId:        string
   dayTypeCode:   string
   plottedLines:  PlanLine[]
   plottedBlocks: GanttBlock[]
   reference:     AddTripReference | null
+  seed?:         AddTripSeed | null
   onClose:       () => void
   onPendingAdd:  (entry: PendingAddEntry) => void
 }
@@ -178,7 +191,7 @@ const inputCls = 'w-full text-sm rounded-sm border border-input bg-input-bg px-2
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, reference, onClose, onPendingAdd }: Props) {
+export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, reference, seed, onClose, onPendingAdd }: Props) {
   const { toast } = useToast()
   useShortcutContext('add_trip_md')
 
@@ -187,17 +200,20 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
   const referenceLineId = reference?.referenceTrip.trip.route.line.id ?? null
   const referenceEligible = !!referenceLineId && plottedLines.some(l => l.lineId === referenceLineId)
   const appliedReferenceRef = useRef(false)
+  // seed.lineId is already gated by the caller (only set when that line is plotted) —
+  // see handleOpenConvertToTrip in useGanttEditor.ts
+  const appliedSeedRef = useRef(false)
 
   const [tripType,     setTripType]     = useState<'productive' | 'deadrun' | 'interval'>('productive')
-  const [lineId,       setLineId]       = useState(referenceEligible ? referenceLineId! : (plottedLines[0]?.lineId ?? ''))
+  const [lineId,       setLineId]       = useState(seed?.lineId ?? (referenceEligible ? referenceLineId! : (plottedLines[0]?.lineId ?? '')))
   const [routeId,      setRouteId]      = useState('')
   const [originId,     setOriginId]     = useState('')
   const [destinationId, setDestinationId] = useState('')
   const [intervalTypeId, setIntervalTypeId] = useState('')
-  const [depHH,        setDepHH]        = useState('')
-  const [depMM,        setDepMM]        = useState('')
+  const [depHH,        setDepHH]        = useState(seed ? String(Math.floor(seed.departureMinutes / 60) % 24) : '')
+  const [depMM,        setDepMM]        = useState(seed ? String(seed.departureMinutes % 60) : '')
   const [cycleMinutes, setCycleMinutes] = useState('')
-  const [blockId,      setBlockId]      = useState<'new' | string>('new')
+  const [blockId,      setBlockId]      = useState<'new' | string>(seed?.blockId ?? 'new')
   const [stopPattern,  setStopPattern]  = useState<'LOCAL' | 'LIMITED' | 'EXPRESS'>('LOCAL')
   const [tripsCount,   setTripsCount]   = useState('1')
   const [isResolving,  setIsResolving]  = useState(false)
@@ -325,6 +341,23 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
     setBlockId(block.id)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [routes, reference, referenceEligible, referenceLineId, tripType, lineId, plottedLines, dayTypeCode])
+
+  // Prefill from a "Produtiva" (deadrun->trip) seed: departure/block are already set
+  // from initial state above — this only resolves routeId once routes for the
+  // seeded lineId finish loading, picking the sibling route matching the suggested
+  // direction. No-ops (leaves routeId blank) if that direction doesn't exist on the
+  // line — the user picks manually in that case, same as an unseeded modal.
+  useEffect(() => {
+    if (appliedSeedRef.current) return
+    if (!seed?.direction || tripType !== 'productive' || lineId !== seed.lineId) return
+    if (routes.length === 0) return
+
+    appliedSeedRef.current = true
+    const candidateRoute = routes.find(r => r.direction === seed.direction)
+    if (!candidateRoute) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRouteId(candidateRoute.id)
+  }, [routes, seed, tripType, lineId])
 
   async function resolveCycle() {
     if (tripType === 'interval') return
@@ -612,7 +645,7 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
       >
         {/* header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Adicionar viagem</h2>
+          <h2 className="text-sm font-semibold">{seed ? 'Converter em viagem' : 'Adicionar viagem'}</h2>
           <button type="button" onClick={onClose} className="p-0.5 rounded hover:bg-accent text-muted-foreground">
             <Icons.X className="w-4 h-4" />
           </button>

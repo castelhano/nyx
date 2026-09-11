@@ -66,6 +66,39 @@ export function findAnchoredBreakIds(block: GanttBlock, tripIds: string[]): stri
   return anchored
 }
 
+// A BlockDeadrun has no FK to the trip(s) it's anchored to either — like above, but
+// the rule differs per type: ACCESS anchors to the block's first trip (by sequence —
+// block.blockTrips arrives sequence-ordered from /gantt-data), RETURN to its last,
+// DISPLACEMENT to the nearest preceding trip (same rule as breaks). Mirrors
+// apps/api/.../vehicle-plan/block-deadrun.utils.ts. See docs/proposal/
+// plan_trip_deadrun_conversion_v1.md.
+export function findAnchoredDeadrunIds(block: GanttBlock, tripIds: string[]): string[] {
+  if (tripIds.length === 0 || block.blockDeadruns.length === 0 || block.blockTrips.length === 0) return []
+  const tripIdSet   = new Set(tripIds)
+  const firstTripId = block.blockTrips[0].trip.id
+  const lastTripId  = block.blockTrips[block.blockTrips.length - 1].trip.id
+  const sortedTrips  = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+
+  const anchored: string[] = []
+  for (const dr of block.blockDeadruns) {
+    if (dr.type === 'ACCESS') {
+      if (tripIdSet.has(firstTripId)) anchored.push(dr.id)
+      continue
+    }
+    if (dr.type === 'RETURN') {
+      if (tripIdSet.has(lastTripId)) anchored.push(dr.id)
+      continue
+    }
+    let anchorTripId: string | null = null
+    for (const bt of sortedTrips) {
+      if (bt.trip.arrivalMinutes <= dr.departureMinutes) anchorTripId = bt.trip.id
+      else break
+    }
+    if (anchorTripId && tripIdSet.has(anchorTripId)) anchored.push(dr.id)
+  }
+  return anchored
+}
+
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { blockTripId: string; blockId: string }
 export type StopPattern = Trip['stopPattern']
@@ -1733,6 +1766,103 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setSelection(null)
   }
 
+  // Direção 1 ("Reservado") — docs/proposal/plan_trip_deadrun_conversion_v1.md.
+  // Same departureMinutes as the trip; duration from the matrix to wherever the
+  // block needs to be next (first upcoming event with a locality — trip or deadrun,
+  // an interval has none), falling back to the trip's own original duration when
+  // there's no matrix entry or no next event at all. Never invades the very next
+  // event regardless of kind — clamped to 1min before it, with a toast explaining
+  // the reduction. Dependency cascade (ACCESS/RETURN/interval anchored to this trip)
+  // is intentional, no confirm — queueTripDeletes already stages it.
+  async function handleConvertToDeadrun(tripId: string, blockId: string) {
+    if (!canEditGantt || !mergedPlottedData) return
+    const block = mergedPlottedData.blocks.find(b => b.id === blockId)
+    const bt    = block?.blockTrips.find(bt => bt.trip.id === tripId)
+    if (!block || !bt) return
+
+    type Event = { departureMinutes: number; originLocality: { id: string; name: string } | null }
+    const events: Event[] = [
+      ...block.blockTrips.filter(o => o.trip.id !== tripId).map(o => ({ departureMinutes: o.trip.departureMinutes, originLocality: o.trip.route.originLocality })),
+      ...block.blockDeadruns.map(dr => ({ departureMinutes: dr.departureMinutes, originLocality: dr.originLocality })),
+      ...block.blockIntervals.map(bi => ({ departureMinutes: bi.departureMinutes, originLocality: null })),
+    ]
+    const upcoming        = events.filter(e => e.departureMinutes > bt.trip.arrivalMinutes).sort((a, b) => a.departureMinutes - b.departureMinutes)
+    const nextBoundary     = upcoming[0] ?? null
+    const nextWithLocality = upcoming.find(e => e.originLocality)
+
+    const departureMinutes = bt.trip.departureMinutes
+    const originLocality    = bt.trip.route.originLocality
+    const originalDuration  = bt.trip.arrivalMinutes - bt.trip.departureMinutes
+
+    let duration            = originalDuration
+    let destinationLocality = bt.trip.route.destinationLocality
+    if (nextWithLocality?.originLocality) {
+      const travelMinutes = await getTravelTime(originLocality.id, nextWithLocality.originLocality.id)
+      if (travelMinutes != null) {
+        duration            = travelMinutes
+        destinationLocality = nextWithLocality.originLocality
+      }
+    }
+
+    let arrivalMinutes = departureMinutes + duration
+    if (nextBoundary && arrivalMinutes >= nextBoundary.departureMinutes) {
+      const before = arrivalMinutes - departureMinutes
+      arrivalMinutes = nextBoundary.departureMinutes - 1
+      const after = arrivalMinutes - departureMinutes
+      toast.info(`Duração do deslocamento reduzida de ${before} para ${after} min — colidia com o próximo evento do bloco`)
+    }
+
+    queueTripDeletes([tripId])
+    handlePendingAdd({
+      _kind:   'deadrun',
+      _tempId: crypto.randomUUID(),
+      originLocality, destinationLocality,
+      departureMinutes, arrivalMinutes,
+      blockId,
+    })
+  }
+
+  // Direção 2 ("Produtiva") — resolves a line/direction suggestion from the nearest
+  // neighboring trip in the block (previous, else next), flipping OUTBOUND<->INBOUND
+  // (CIRCULAR repeats), but only when that line is already selected for display —
+  // AddTripModal's Linha <select> only lists plottedLines, so anything else couldn't
+  // be offered anyway. The rest (route, cycle) is resolved by AddTripModal itself,
+  // same as any manual add; the user always confirms/edits before creating.
+  const [convertToTripSeed, setConvertToTripSeed] = useState<{
+    blockId: string; deadrunId: string; departureMinutes: number
+    lineId?: string; direction?: 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
+  } | null>(null)
+
+  function handleOpenConvertToTrip(deadrunId: string, blockId: string) {
+    if (!canEditGantt || !mergedPlottedData) return
+    const block = mergedPlottedData.blocks.find(b => b.id === blockId)
+    const dr    = block?.blockDeadruns.find(dr => dr.id === deadrunId)
+    if (!block || !dr) return
+
+    const sortedTrips = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+    const prevTrip = [...sortedTrips].reverse().find(bt => bt.trip.arrivalMinutes <= dr.departureMinutes)
+    const nextTrip = sortedTrips.find(bt => bt.trip.departureMinutes >= dr.arrivalMinutes)
+    const neighbor = prevTrip ?? nextTrip ?? null
+
+    let lineId: string | undefined
+    let direction: 'OUTBOUND' | 'INBOUND' | 'CIRCULAR' | undefined
+    if (neighbor && selectedLineIds.has(neighbor.trip.route.line.id)) {
+      lineId = neighbor.trip.route.line.id
+      const d = neighbor.trip.route.direction
+      direction = d === 'OUTBOUND' ? 'INBOUND' : d === 'INBOUND' ? 'OUTBOUND' : 'CIRCULAR'
+    }
+
+    setConvertToTripSeed({ blockId, deadrunId, departureMinutes: dr.departureMinutes, lineId, direction })
+  }
+
+  // Wraps handlePendingAdd for the convert-to-trip AddTripModal instance only — the
+  // deadrun is only queued for deletion once the user actually confirms a new trip
+  // (AddTripModal never calls onPendingAdd on Cancel), never on opening the modal.
+  function handleConvertToTripPendingAdd(entry: PendingAddEntry) {
+    handlePendingAdd(entry)
+    if (convertToTripSeed) queueDeadrunDeletes([convertToTripSeed.deadrunId])
+  }
+
   // Pending (unsaved) trips/deadruns aren't real persisted ids — deleting them means
   // dropping the pendingAdds entry outright, mirroring discardBreaks (below) for breaks.
   function queueTripDeletes(tripIds: string[]) {
@@ -1752,6 +1882,23 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         for (const id of realIds) next.delete(id)
         return next
       })
+
+      // applyTripRemoval cascade-deletes any BlockInterval/BlockDeadrun positionally
+      // anchored to a deleted trip server-side on Salvar regardless — stage that here
+      // too, so an orphan doesn't keep rendering in the grid until then. See
+      // docs/proposal/plan_trip_deadrun_conversion_v1.md.
+      if (mergedPlottedData) {
+        const breakIdsToOrphan   = new Set<string>()
+        const deadrunIdsToOrphan = new Set<string>()
+        for (const block of mergedPlottedData.blocks) {
+          const tripsInBlock = realIds.filter(id => block.blockTrips.some(bt => bt.trip.id === id))
+          if (tripsInBlock.length === 0) continue
+          for (const bid of findAnchoredBreakIds(block, tripsInBlock))   breakIdsToOrphan.add(bid)
+          for (const did of findAnchoredDeadrunIds(block, tripsInBlock)) deadrunIdsToOrphan.add(did)
+        }
+        if (breakIdsToOrphan.size > 0)   discardBreaks([...breakIdsToOrphan])
+        if (deadrunIdsToOrphan.size > 0) queueDeadrunDeletes([...deadrunIdsToOrphan])
+      }
     }
   }
 
@@ -1839,21 +1986,29 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setSelection(null)
   }
 
-  const vehiclesActionSpec = useMemo(
-    () => createVehiclesActionSpec({
-      onUpdateConstraints: handleUpdateConstraints,
-      onOpenTripDetails:   handleOpenTripDetails,
-      onDeleteTrips:       handleDeleteTrips,
-      onDeleteDeadruns:    handleDeleteDeadruns,
-      onDeleteBreaks:      handleDeleteBreaks,
-      onDeleteInterval:    handleDeleteInterval,
-      onAddAccess:         handleAddAccess,
-      onAddReturn:         handleAddReturn,
-      onAddInterval:       handleAddInterval,
-    }, canEditGantt),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canEditGantt],
-  )
+  // Previously memoized on canEditGantt alone, which froze every deps.onX handler to
+  // whichever closure existed the one time canEditGantt last flipped (usually very
+  // early, before any line was selected) — invisible for handlers that only write
+  // state via setX(prev=>...) updaters, but onConvertToDeadrun/onConvertToTrip (and,
+  // transitively, onDeleteTrips/onDeleteInterval via queueTripDeletes' orphan-cascade
+  // lookup) read mergedPlottedData directly, so a frozen closure meant .blocks stuck
+  // at whatever it was that one early render (often []) — silent no-op forever after.
+  // createVehiclesActionSpec is a cheap factory (two closures over deps); nothing
+  // downstream keys off this object's identity across renders, so building it fresh
+  // every render is the simplest fix, not just a workaround for the two new handlers.
+  const vehiclesActionSpec = createVehiclesActionSpec({
+    onUpdateConstraints: handleUpdateConstraints,
+    onOpenTripDetails:   handleOpenTripDetails,
+    onDeleteTrips:       handleDeleteTrips,
+    onDeleteDeadruns:    handleDeleteDeadruns,
+    onDeleteBreaks:      handleDeleteBreaks,
+    onDeleteInterval:    handleDeleteInterval,
+    onAddAccess:         handleAddAccess,
+    onAddReturn:         handleAddReturn,
+    onAddInterval:       handleAddInterval,
+    onConvertToDeadrun:  handleConvertToDeadrun,
+    onConvertToTrip:     handleOpenConvertToTrip,
+  }, canEditGantt)
 
   // onAddAccess/onAddReturn/onAddInterval/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
   // onDeleteInterval/onUpdateConstraints and the raw handleSavePending aren't returned —
@@ -1866,6 +2021,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
     tripDetailsModalTripIds, setTripDetailsModalTripIds, handleUpdateMarkings, handleUpdateNotes, handleUpdateStopPattern,
+    handleConvertToDeadrun, convertToTripSeed, setConvertToTripSeed, handleConvertToTripPendingAdd,
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,

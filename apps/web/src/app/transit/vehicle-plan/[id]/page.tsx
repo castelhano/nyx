@@ -98,6 +98,7 @@ export default function VehiclePlanPage() {
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
     tripDetailsModalTripIds, setTripDetailsModalTripIds, handleUpdateMarkings, handleUpdateNotes, handleUpdateStopPattern,
+    handleConvertToDeadrun, convertToTripSeed, setConvertToTripSeed, handleConvertToTripPendingAdd,
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
@@ -459,6 +460,7 @@ export default function VehiclePlanPage() {
           onUpdateMarkings={handleUpdateMarkings}
           onUpdateStopPattern={handleUpdateStopPattern}
           onUpdateNotes={handleUpdateNotes}
+          onConvertToDeadrun={handleConvertToDeadrun}
           onClose={() => setTripDetailsModalTripIds(null)}
         />
       )}
@@ -472,6 +474,23 @@ export default function VehiclePlanPage() {
           reference={addTripReference}
           onClose={() => setAddTripOpen(false)}
           onPendingAdd={handlePendingAdd}
+        />
+      )}
+
+      {/* "Produtiva" — Direção 2 de docs/proposal/plan_trip_deadrun_conversion_v1.md.
+          Same modal as above, seeded from the deadrun being converted; the deadrun is
+          only queued for deletion once the user actually confirms a trip (see
+          handleConvertToTripPendingAdd), never just from opening this. */}
+      {convertToTripSeed && mergedPlottedData && (
+        <AddTripModal
+          planId={id}
+          dayTypeCode={ganttData?.plan?.dayType?.code ?? 'U'}
+          plottedLines={mergedPlottedData.plan.lines.filter(l => selectedLineIds.has(l.lineId))}
+          plottedBlocks={mergedPlottedData.blocks}
+          reference={null}
+          seed={convertToTripSeed}
+          onClose={() => setConvertToTripSeed(null)}
+          onPendingAdd={handleConvertToTripPendingAdd}
         />
       )}
 

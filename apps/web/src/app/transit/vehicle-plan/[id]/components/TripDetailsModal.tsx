@@ -57,6 +57,9 @@ interface Props {
   onUpdateMarkings:    (tripIds: string[], patches: (TripMarking[] | null)[]) => void
   onUpdateStopPattern: (tripIds: string[], value: StopPattern) => void
   onUpdateNotes:       (tripIds: string[], value: string | null) => void
+  // docs/proposal/plan_trip_deadrun_conversion_v1.md — only wired for a single-trip
+  // selection (see `reserved` toggle below)
+  onConvertToDeadrun: (tripId: string, blockId: string) => void
   onClose:          () => void
 }
 
@@ -64,7 +67,7 @@ function newRowKey(): string {
   return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `row-${Math.random().toString(36).slice(2)}`
 }
 
-export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings, onUpdateStopPattern, onUpdateNotes, onClose }: Props) {
+export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings, onUpdateStopPattern, onUpdateNotes, onConvertToDeadrun, onClose }: Props) {
   useShortcutContext('trip_details_md')
 
   const allBlockTrips = useMemo(
@@ -78,6 +81,15 @@ export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings,
     () => allBlockTrips.filter(bt => selectionSet.has(bt.trip.id)).map(bt => bt.trip),
     [allBlockTrips, selectionSet],
   )
+
+  // "Reservado" toggle — Direção 1 do docs/proposal/plan_trip_deadrun_conversion_v1.md.
+  // Single-trip only: the conversion needs one specific block/next-event context, so
+  // it doesn't generalize to a multi-trip selection the way markings/stopPattern do.
+  const singleBlockId = useMemo(() => {
+    if (tripIds.length !== 1) return null
+    return mergedPlottedData.blocks.find(b => b.blockTrips.some(bt => bt.trip.id === tripIds[0]))?.id ?? null
+  }, [tripIds, mergedPlottedData])
+  const [reserved, setReserved] = useState(false)
 
   // ── stopPattern — always uniform on save, same all-or-nothing treatment as
   // markings below. Seeded from the first selected trip when the selection agrees;
@@ -181,6 +193,12 @@ export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings,
   }, [onClose])
 
   function handleSave() {
+    if (reserved) {
+      if (singleBlockId) onConvertToDeadrun(tripIds[0], singleBlockId)
+      onClose()
+      return
+    }
+
     const cleanRows = rows
       .map(r => ({ ...r, legendText: r.legendText.trim() }))
       .filter(r => r.legendText.length > 0)
@@ -265,6 +283,20 @@ export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings,
           </button>
         </div>
 
+        {singleBlockId && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Reservado</p>
+              <p className="text-xs text-muted-foreground">
+                Remove esta viagem e insere um deslocamento (deadrun) no lugar — perfil de embarque, observações e marcações deixam de se aplicar.
+              </p>
+            </div>
+            <Switch checked={reserved} onToggle={() => setReserved(v => !v)} />
+          </div>
+        )}
+
+        {!reserved && (
+        <>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Perfil de embarque</label>
           <div className="relative">
@@ -416,6 +448,8 @@ export function TripDetailsModal({ tripIds, mergedPlottedData, onUpdateMarkings,
             </div>
           )}
         </div>
+        </>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="cancel" size="sm" onClick={onClose}>

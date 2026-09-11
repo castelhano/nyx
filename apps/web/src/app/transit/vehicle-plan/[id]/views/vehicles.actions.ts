@@ -16,6 +16,9 @@ export interface VehiclesActionDeps {
   onAddAccess:         (blockTripId: string, blockId: string) => void
   onAddReturn:         (blockTripId: string, blockId: string) => void
   onAddInterval:       (blockTripId: string, blockId: string) => void
+  // docs/proposal/plan_trip_deadrun_conversion_v1.md — trip <-> DISPLACEMENT deadrun
+  onConvertToDeadrun:  (tripId: string, blockId: string) => void
+  onConvertToTrip:     (deadrunId: string, blockId: string) => void
 }
 
 export function createVehiclesActionSpec(
@@ -49,11 +52,17 @@ export function createVehiclesActionSpec(
       if (!canEdit) return []
 
       if (selection.type === 'trip') {
-        // deadrun segment selected (single click only)
+        // deadrun segment selected (single click only) — "Produtiva" only makes sense
+        // for a DISPLACEMENT (mid-block deadhead); ACCESS/RETURN aren't a stand-in for
+        // a productive run, see docs/proposal/plan_trip_deadrun_conversion_v1.md
         if (selection.segment.id.endsWith(':dr')) {
           const d     = selection.segment.data as GanttBlockDeadrun
           const block = data.blocks.find(b => b.id === selection.segment.rowId)
-          return block ? [makeDeleteDeadrunsAction([d.id], block.id, deps)] : []
+          if (!block) return []
+          return [
+            ...(d.type === 'DISPLACEMENT' ? [makeConvertToTripAction(d.id, block.id, deps)] : []),
+            makeDeleteDeadrunsAction([d.id], block.id, deps),
+          ]
         }
 
         // break (intervalo) segment selected (single click only) — sem lock próprio,
@@ -73,6 +82,7 @@ export function createVehiclesActionSpec(
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddInterval(bt, block) ? [makeAddIntervalAction(bt.id, block.id, deps)] : []),
+          ...(block ? [makeConvertToDeadrunAction(bt.trip.id, block.id, deps)] : []),
           makeDeleteAction([bt.trip.id], deps),
         ]
       }
@@ -249,6 +259,31 @@ function makeAddIntervalAction(blockTripId: string, blockId: string, deps: Vehic
     icon:    'Coffee',
     variant: 'both',
     onClick: () => deps.onAddInterval(blockTripId, blockId),
+  }
+}
+
+// ── trip <-> deadrun conversion buttons ─────────────────────────────────────────
+// docs/proposal/plan_trip_deadrun_conversion_v1.md — no canX gate: available for
+// any single trip/DISPLACEMENT, dependency cascade (anchored interval/access/
+// recolhida) is intentional, no confirm needed.
+
+function makeConvertToDeadrunAction(tripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'convert-to-deadrun',
+    label:   'Reservado',
+    icon:    'Ban',
+    variant: 'both',
+    onClick: () => deps.onConvertToDeadrun(tripId, blockId),
+  }
+}
+
+function makeConvertToTripAction(deadrunId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'convert-to-trip',
+    label:   'Produtiva',
+    icon:    'Bus',
+    variant: 'both',
+    onClick: () => deps.onConvertToTrip(deadrunId, blockId),
   }
 }
 
