@@ -300,3 +300,54 @@ export function interleaveDeltaGroup(params: InterleaveParams): Map<string, Gene
 
 export const DEFAULT_MIN_TRUNK_HEADWAY_MINUTES = 3
 export const DEFAULT_MAX_SHIFT_FRACTION = 0.5
+
+// ── 4.4 — flexible start ─────────────────────────────────────────────────────
+
+/** Cap (minutes, either direction) on how far a "Início flexível" line's
+ *  operating start can drift from the informed value while searching for a
+ *  better phase against the rest of its delta group(s) — a fixed budget, not
+ *  proportional to frequency (unlike interleaveDeltaGroup's per-round
+ *  maxShiftFraction), since this is a one-time whole-line rephasing decided
+ *  before any interleaving happens, not a per-round nudge. */
+export const FLEXIBLE_START_RANGE_MINUTES = 30
+export const FLEXIBLE_START_STEP_MINUTES = 1
+
+/** Earliest crossing-instant among a line's generated rounds for one
+ *  direction, or null when that direction never appears — used by the
+ *  flexible-start search (4.4) to check whether a candidate start would
+ *  reorder which group participant reaches the delta first. */
+export function earliestCrossingMinutes(
+  rounds: GeneratedRound[],
+  direction: Direction,
+  offsetMinutes: number,
+): number | null {
+  let earliest: number | null = null
+  for (const r of rounds) {
+    const leg = r.legs.find(l => l.direction === direction)
+    if (!leg) continue
+    const crossing = leg.departureMinutes + offsetMinutes
+    if (earliest == null || crossing < earliest) earliest = crossing
+  }
+  return earliest
+}
+
+/** Total absolute movement interleaveDeltaGroup applied to a set of rounds —
+ *  compares each round's anchor-leg departure before/after. Used as the
+ *  scoring function for the flexible-start search (4.4): the candidate start
+ *  that leaves the least work for the interleave sweep is the
+ *  best-phase-aligned one. */
+export function measureInterleaveShift(
+  before: Map<string, GeneratedRound[]>,
+  after:  Map<string, GeneratedRound[]>,
+): number {
+  let total = 0
+  for (const [lineId, afterRounds] of after) {
+    const beforeRounds = before.get(lineId)
+    if (!beforeRounds) continue
+    afterRounds.forEach((r, i) => {
+      const b = beforeRounds[i]
+      if (b) total += Math.abs(r.legs[0].departureMinutes - b.legs[0].departureMinutes)
+    })
+  }
+  return total
+}

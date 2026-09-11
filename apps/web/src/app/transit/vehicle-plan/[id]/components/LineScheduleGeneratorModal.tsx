@@ -24,8 +24,9 @@ import {
   type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock,
 } from '../line-generator-logic'
 import {
-  detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup,
+  detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup, measureInterleaveShift, earliestCrossingMinutes,
   DEFAULT_MIN_TRUNK_HEADWAY_MINUTES, DEFAULT_MAX_SHIFT_FRACTION,
+  FLEXIBLE_START_RANGE_MINUTES, FLEXIBLE_START_STEP_MINUTES,
   type DeltaGroup, type PriorityMode, type RouteLegRef,
 } from '../multiline-delta-logic'
 
@@ -161,6 +162,12 @@ interface LineGenState {
   maneuverMargin:      number
   depotAllocations:    DepotAllocation[]
   depotAutoSync:       boolean
+  // 4.4 — lets the generator pick the actual first-round start within
+  // FLEXIBLE_START_RANGE_MINUTES of opStart, to better phase this line
+  // against the rest of its delta group(s). Meaningless for the Principal
+  // line (it's the fixed reference in Priority Delta) — forced back to
+  // false whenever this line is (re)marked Principal.
+  flexibleStart:       boolean
 }
 
 function seedWindowsFor(
@@ -193,6 +200,7 @@ function makeInitialLineState(line: LineRecord | undefined, dayTypeCode: string)
     maneuverMargin:      DEFAULT_MANEUVER_MARGIN_MINUTES,
     depotAllocations:    [],
     depotAutoSync:       true,
+    flexibleStart:       false,
   }
 }
 
@@ -672,6 +680,7 @@ export function LineScheduleGeneratorModal({
     // Fase 3, unchanged: each line generates its own rounds independently first.
     const perLineRounds = new Map<string, ReturnType<typeof generateRounds>['rounds']>()
     const perLineWarnings = new Map<string, string[]>()
+    const effectiveOpStartByLineId = new Map<string, number>()
     for (const lineId of lineIds) {
       const st = lineStates[lineId]!
       const { rounds, warnings } = generateRounds(st.windows, st.opStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
@@ -681,22 +690,110 @@ export function LineScheduleGeneratorModal({
       }
       perLineRounds.set(lineId, rounds)
       perLineWarnings.set(lineId, warnings)
+      effectiveOpStartByLineId.set(lineId, st.opStart)
     }
 
-    // Fase 4.3 — entrelaçamento no delta, uma passada por sentido em que o grupo se aplica.
+    // Delta-group crossing offsets (4.2) — resolved once, shared by the flexible-start
+    // search (4.4) below and the interleave pass (4.3) that follows it.
+    const groupOffsets = new Map<DeltaGroup, Map<string, number>>()
     if (isMultiline) {
       for (const group of activeDeltaGroups) {
         const participants = group.lineIds.filter(id => lineIds.includes(id))
         if (participants.length < 2) continue
-
         const offsets = await resolveGroupOffsets(
           { ...group, lineIds: participants },
           legsByLineDirection,
           (lineId, direction) => routeByDirectionByLineId.get(lineId)?.get(direction)?.originLocalityId ?? null,
           getTravelTime,
         )
-        if (offsets.size < 2) continue
+        if (offsets.size >= 2) groupOffsets.set(group, offsets)
+      }
+    }
 
+    // Fase 4.4 — início flexível: for each flagged line, search a start within
+    // ±FLEXIBLE_START_RANGE_MINUTES of the informed opStart that minimizes the
+    // interleave work needed across every delta group the line participates in
+    // (the Principal line, if any, is never eligible — the UI already keeps its
+    // switch off/disabled). Only replaces perLineRounds/opStart when a candidate
+    // actually scores better than the informed start.
+    if (isMultiline) {
+      for (const lineId of lineIds) {
+        const st = lineStates[lineId]!
+        if (!st.flexibleStart || (priorityMode === 'delta' && principalLineId === lineId)) continue
+
+        const myGroups = [...groupOffsets].filter(([group]) => group.lineIds.includes(lineId))
+        if (myGroups.length === 0) continue
+
+        // Per group this line belongs to: whether its informed (unshifted) start
+        // already crosses the delta before every other participant — the search
+        // below must preserve that ordering, never flip who's first, only refine
+        // the gap (see the 308/308B report: an unconstrained global-shift search
+        // could find a smaller total interleave cost by sliding a line's whole
+        // day earlier until its first trip preceded a line that was supposed to
+        // start before it, which reads as broken even though no headway rule was
+        // technically violated).
+        const orderGuards = myGroups.flatMap(([group, offsets]) => {
+          const offset = offsets.get(lineId)
+          if (offset == null) return []
+          let othersFirst = Infinity
+          for (const otherId of group.lineIds) {
+            if (otherId === lineId || !offsets.has(otherId)) continue
+            const otherFirst = earliestCrossingMinutes(perLineRounds.get(otherId) ?? [], group.direction, offsets.get(otherId)!)
+            if (otherFirst != null) othersFirst = Math.min(othersFirst, otherFirst)
+          }
+          if (othersFirst === Infinity) return []
+          const baselineFirst = earliestCrossingMinutes(perLineRounds.get(lineId) ?? [], group.direction, offset)
+          if (baselineFirst == null) return []
+          return [{ direction: group.direction, offset, othersFirst, wasBefore: baselineFirst < othersFirst }]
+        })
+
+        let bestOffset = 0
+        let bestScore = Infinity
+        let bestRounds = perLineRounds.get(lineId)!
+        let bestWarnings = perLineWarnings.get(lineId)!
+
+        for (let off = -FLEXIBLE_START_RANGE_MINUTES; off <= FLEXIBLE_START_RANGE_MINUTES; off += FLEXIBLE_START_STEP_MINUTES) {
+          const candStart = st.opStart + off
+          if (candStart < 0 || candStart >= st.opEnd) continue
+          const cand = generateRounds(st.windows, candStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
+          if (cand.rounds.length === 0) continue
+
+          const violatesOrder = orderGuards.some(g => {
+            const myFirst = earliestCrossingMinutes(cand.rounds, g.direction, g.offset)
+            return myFirst != null && (myFirst < g.othersFirst) !== g.wasBefore
+          })
+          if (violatesOrder) continue
+
+          let score = 0
+          for (const [group, offsets] of myGroups) {
+            const subset = new Map([...perLineRounds].filter(([id]) => offsets.has(id)))
+            subset.set(lineId, cand.rounds)
+            const interleaved = interleaveDeltaGroup({
+              perLineRounds:          subset,
+              crossingOffsetMinutes:  offsets,
+              direction:              group.direction,
+              minTrunkHeadwayMinutes,
+              maxShiftFraction,
+              mode:                   priorityMode,
+              principalLineId:        priorityMode === 'delta' ? (principalLineId ?? undefined) : undefined,
+            })
+            score += measureInterleaveShift(subset, interleaved)
+          }
+
+          if (score < bestScore) { bestScore = score; bestOffset = off; bestRounds = cand.rounds; bestWarnings = cand.warnings }
+        }
+
+        if (bestOffset !== 0) {
+          perLineRounds.set(lineId, bestRounds)
+          perLineWarnings.set(lineId, bestWarnings)
+          effectiveOpStartByLineId.set(lineId, st.opStart + bestOffset)
+        }
+      }
+    }
+
+    // Fase 4.3 — entrelaçamento no delta, uma passada por sentido em que o grupo se aplica.
+    if (isMultiline) {
+      for (const [group, offsets] of groupOffsets) {
         const subset = new Map([...perLineRounds].filter(([id]) => offsets.has(id)))
         const interleaved = interleaveDeltaGroup({
           perLineRounds:         subset,
@@ -779,6 +876,8 @@ export function LineScheduleGeneratorModal({
               params: {
                 opStart: st.opStart, opEnd: st.opEnd, firstTripDirection: st.firstTripDirection,
                 lastTripDirection: st.lastTripDirection, maneuverMargin: st.maneuverMargin, mergeTolerance: st.mergeTolerance,
+                flexibleStart: isMultiline ? st.flexibleStart : undefined,
+                effectiveOpStart: effectiveOpStartByLineId.get(lineId) ?? st.opStart,
                 multiline: isMultiline ? { priorityMode, principalLineId, minTrunkHeadwayMinutes, maxShiftFraction } : null,
               },
               windows: st.windows,
@@ -1350,12 +1449,27 @@ export function LineScheduleGeneratorModal({
                             className="flex items-center gap-2"
                             onClick={e => e.stopPropagation()}
                           >
+                            <label
+                              className={`flex items-center gap-1.5 text-xs text-muted-foreground ${principalLineId === lineId ? 'opacity-40' : ''}`}
+                              title="Motor pode ajustar o início de operação informado (dentro de ±30min) para melhor encaixe na frequência do delta"
+                            >
+                              Início flexível
+                              <Switch
+                                checked={principalLineId === lineId ? false : (st?.flexibleStart ?? false)}
+                                disabled={principalLineId === lineId}
+                                onToggle={() => updateLineState(lineId, st => ({ flexibleStart: !st.flexibleStart }))}
+                              />
+                            </label>
                             {priorityMode === 'delta' && (
                               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                 Principal
                                 <Switch
                                   checked={principalLineId === lineId}
-                                  onToggle={() => setPrincipalLineId(prev => prev === lineId ? null : lineId)}
+                                  onToggle={() => setPrincipalLineId(prev => {
+                                    const next = prev === lineId ? null : lineId
+                                    if (next === lineId) updateLineState(lineId, { flexibleStart: false })
+                                    return next
+                                  })}
                                 />
                               </label>
                             )}
