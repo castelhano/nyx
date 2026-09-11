@@ -2065,7 +2065,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
     plottedData, mergedPlottedData,
-    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex,
+    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
     pendingCount, isSaving,
     stepMoveTarget,

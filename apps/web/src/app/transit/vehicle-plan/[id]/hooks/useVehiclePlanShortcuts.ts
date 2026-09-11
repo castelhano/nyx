@@ -11,6 +11,7 @@ import type { GanttBoardHandle } from '../components/GanttBoard'
 import type { PendingAddEntry } from '../components/AddTripModal'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
 import type { Selection, GanttActionSpec } from '../engine/gantt.types'
+import type { ResolvedDeltaGroup } from '../views/line-freq.view'
 
 // ── shortcut modal sections (see docs/TODO.md) ───────────────────────────────
 const SEC_GERAL:   ShortcutSection = { label: 'Geral' } // no hint — same bucket as the "no section" fallback on any page
@@ -65,7 +66,10 @@ interface UseVehiclePlanShortcutsParams {
   setPendingDeadrunChanges: Dispatch<SetStateAction<Map<string, DeadrunPatch>>>
   pendingCount:         number
 
+  freqPanelOpen:        boolean
   setFreqPanelOpen:     Dispatch<SetStateAction<boolean>>
+  setFreqDeltaView:     Dispatch<SetStateAction<boolean>>
+  deltaGroups:          ResolvedDeltaGroup[]
   setAddTripOpen:       Dispatch<SetStateAction<boolean>>
   setLineFreqOpen:      Dispatch<SetStateAction<boolean>>
   setLinesPanelOpen:    Dispatch<SetStateAction<boolean>>
@@ -94,7 +98,8 @@ export function useVehiclePlanShortcuts({
   moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, allTrips,
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
-  pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
+  pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
+  setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
   summaryLineIds, setSummaryLineIds, setRedistributeModal,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
@@ -145,6 +150,20 @@ export function useVehiclePlanShortcuts({
     desc:   'Frequência de atendimento',
     icon:   Icons.BarChart2,
     origin: 'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    section: SEC_PAINEIS,
+  })
+
+  // Not ctrl+shift+; — keywatch matches on the literal ev.key, and Shift held on
+  // a punctuation key changes what ev.key actually is (';' → ':' on a US layout,
+  // something else on others), so that combo can never fire on a real keyboard —
+  // unlike ctrl+shift+arrow elsewhere in this file, where the arrow's ev.key
+  // ("ArrowLeft") doesn't change when Shift is held. Alt doesn't remap the base
+  // character the way Shift does, so ctrl+alt+; stays ';' across layouts.
+  useShortcut('ctrl+alt+;', () => setFreqDeltaView(v => !v), {
+    desc:    'Alternar visão no delta',
+    icon:    Icons.MapPin,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: freqPanelOpen && deltaGroups.length > 0,
     section: SEC_PAINEIS,
   })
 

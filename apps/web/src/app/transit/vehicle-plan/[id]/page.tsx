@@ -109,7 +109,7 @@ export default function VehiclePlanPage() {
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
     plottedData, mergedPlottedData,
-    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex,
+    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
     pendingCount, isSaving,
     stepMoveTarget,
@@ -124,6 +124,10 @@ export default function VehiclePlanPage() {
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
   const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
+  // Fase 4 — FrequencyPanel can plot the delta-crossing instant instead of the
+  // raw departure for rows whose direction has a resolved delta group; off by
+  // default (see FrequencyPanel.tsx for why raw departure stays the default).
+  const [freqDeltaView,     setFreqDeltaView]     = useState(false)
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [exportOsoModalOpen, setExportOsoModalOpen] = useState(false)
@@ -146,7 +150,8 @@ export default function VehiclePlanPage() {
     moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, allTrips,
     mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
-    pendingCount, setFreqPanelOpen, setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
+    pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
+    setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
     summaryLineIds, setSummaryLineIds, setRedistributeModal,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
@@ -669,7 +674,10 @@ export default function VehiclePlanPage() {
           </div>
 
           {freqPanelOpen && plottedData && (
-            <FrequencyPanel data={mergedPlottedData ?? plottedData} vp={ganttVp} focusedTripId={focusedSegId} />
+            <FrequencyPanel
+              data={mergedPlottedData ?? plottedData} vp={ganttVp} focusedTripId={focusedSegId}
+              deltaGroups={deltaGroups} deltaView={freqDeltaView}
+            />
           )}
         </div>
 
