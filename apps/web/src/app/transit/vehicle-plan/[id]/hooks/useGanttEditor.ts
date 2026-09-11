@@ -7,6 +7,7 @@ import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
 import { extractError } from '@/lib/utils'
 import { buildLineFreqIndex } from '../views/line-freq.view'
+import { useDeltaGroups } from './useDeltaGroups'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from '../components/AddTripModal'
 import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
@@ -508,9 +509,13 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // headway pre-computed in a single pass (see line-freq.view.ts). The panel
   // is read-only: it locates the focusedSegId's line/direction/position in
   // O(1) via segIndex, with no focus/selection state of its own.
+  // Fase 4 — when every currently selected line shares a delta, LineFreqPanel
+  // gets a combined "Multilinha" entry alongside the regular per-line ones.
+  const { groups: deltaGroups } = useDeltaGroups([...selectedLineIds])
+
   const freqIndex = useMemo(
-    () => mergedPlottedData ? buildLineFreqIndex(mergedPlottedData) : null,
-    [mergedPlottedData],
+    () => mergedPlottedData ? buildLineFreqIndex(mergedPlottedData, deltaGroups) : null,
+    [mergedPlottedData, deltaGroups],
   )
 
   // Focus/selection can go stale when the data underneath changes (e.g. a pending

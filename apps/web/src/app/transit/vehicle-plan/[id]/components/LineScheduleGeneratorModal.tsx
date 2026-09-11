@@ -24,7 +24,7 @@ import {
   type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock,
 } from '../line-generator-logic'
 import {
-  detectDeltaGroups, sumDeltaMinutesToLocality, interleaveDeltaGroup,
+  detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup,
   DEFAULT_MIN_TRUNK_HEADWAY_MINUTES, DEFAULT_MAX_SHIFT_FRACTION,
   type DeltaGroup, type PriorityMode, type RouteLegRef,
 } from '../multiline-delta-logic'
@@ -689,16 +689,12 @@ export function LineScheduleGeneratorModal({
         const participants = group.lineIds.filter(id => lineIds.includes(id))
         if (participants.length < 2) continue
 
-        const offsets = new Map<string, number>()
-        for (const lineId of participants) {
-          const legs = legsByLineDirection.get(lineId)?.[group.direction] ?? []
-          const sum  = sumDeltaMinutesToLocality(legs, group.deltaLocalityId)
-          if (sum?.complete) { offsets.set(lineId, sum.minutes); continue }
-          const originId = routeByDirectionByLineId.get(lineId)?.get(group.direction)?.originLocalityId
-          if (!originId) continue
-          const fallback = await getTravelTime(originId, group.deltaLocalityId)
-          if (fallback != null) offsets.set(lineId, fallback)
-        }
+        const offsets = await resolveGroupOffsets(
+          { ...group, lineIds: participants },
+          legsByLineDirection,
+          (lineId, direction) => routeByDirectionByLineId.get(lineId)?.get(direction)?.originLocalityId ?? null,
+          getTravelTime,
+        )
         if (offsets.size < 2) continue
 
         const subset = new Map([...perLineRounds].filter(([id]) => offsets.has(id)))

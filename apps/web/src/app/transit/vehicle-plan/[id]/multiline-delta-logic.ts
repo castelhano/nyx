@@ -18,7 +18,13 @@ export interface RouteLegRef {
 /** First shared stop (walking from the end) between two same-direction stop
  *  sequences — the point past which the two lines run the same trunk. Only
  *  real stops are compared (waypoints ignored); returns null when the routes
- *  don't even share a destination (no common suffix at all). */
+ *  don't share a destination at all, *or* when the only thing they share is
+ *  the destination itself with nothing before it in common — that's not a
+ *  trunk, just where both trips happen to end. A rider can't be waiting to
+ *  board either line there; the ride is already over, so it isn't a delta
+ *  (contrast with commonPrefixLocality, where a single shared point — the
+ *  origin — still is one, since it's about simultaneous dispatch, not
+ *  boarding). */
 export function commonSuffixLocality(routeA: RouteLegRef[], routeB: RouteLegRef[]): string | null {
   const realA = [...routeA].filter(r => r.localityId != null).sort((a, b) => a.sequence - b.sequence)
   const realB = [...routeB].filter(r => r.localityId != null).sort((a, b) => a.sequence - b.sequence)
@@ -26,14 +32,50 @@ export function commonSuffixLocality(routeA: RouteLegRef[], routeB: RouteLegRef[
   let i = realA.length - 1
   let j = realB.length - 1
   let commonStart: string | null = null
+  let matchCount = 0
 
   while (i >= 0 && j >= 0 && realA[i].localityId === realB[j].localityId) {
     commonStart = realA[i].localityId
+    matchCount++
     i--
     j--
   }
 
-  return commonStart
+  return matchCount >= 2 ? commonStart : null
+}
+
+/** Mirror of commonSuffixLocality for a shared *origin* instead of a shared
+ *  destination — two lines dispatched from the same terminal that diverge
+ *  from there (never reconverging) are just as real a delta as two lines
+ *  converging onto a common destination (see "origem e/ou destino iguais" in
+ *  the plan doc — origin-in-common is the other degenerate case, not a
+ *  lesser one). Walks forward from the start, returning the last stop still
+ *  shared before the routes diverge. */
+export function commonPrefixLocality(routeA: RouteLegRef[], routeB: RouteLegRef[]): string | null {
+  const realA = [...routeA].filter(r => r.localityId != null).sort((a, b) => a.sequence - b.sequence)
+  const realB = [...routeB].filter(r => r.localityId != null).sort((a, b) => a.sequence - b.sequence)
+
+  let i = 0
+  let j = 0
+  let commonEnd: string | null = null
+
+  while (i < realA.length && j < realB.length && realA[i].localityId === realB[j].localityId) {
+    commonEnd = realA[i].localityId
+    i++
+    j++
+  }
+
+  return commonEnd
+}
+
+/** Either kind of shared point between two routes — destination-anchored
+ *  (commonSuffixLocality) checked first since a passenger waiting mid-trunk
+ *  is the primary scenario the plan describes, falling back to an
+ *  origin-anchored match (commonPrefixLocality) when the destinations
+ *  differ. A pair can only ever contribute one delta candidate, never both,
+ *  to keep 4.5's "one delta per direction" grouping well-defined. */
+export function commonDeltaLocality(routeA: RouteLegRef[], routeB: RouteLegRef[]): string | null {
+  return commonSuffixLocality(routeA, routeB) ?? commonPrefixLocality(routeA, routeB)
 }
 
 export interface DeltaGroup {
@@ -45,7 +87,7 @@ export interface DeltaGroup {
 /** 4.5 — groups the given lines per direction by whether they share one exact
  *  delta point. Per direction: picks the line with the longest real-stop
  *  sequence as the anchor (most likely the trunk+ramal "parent"), computes
- *  commonSuffixLocality against every other line with a route in that
+ *  commonDeltaLocality against every other line with a route in that
  *  direction, then keeps only the largest cluster that agrees on the same
  *  locality — per the resolved doubt, a direction always closes on a single
  *  delta, never a chain of several. Lines that disagree, or have no route in
@@ -67,7 +109,7 @@ export function detectDeltaGroups(
     const votes = new Map<string, string[]>()
     for (const id of withRoute) {
       if (id === anchor) continue
-      const delta = commonSuffixLocality(routesByLine.get(anchor)![direction]!, routesByLine.get(id)![direction]!)
+      const delta = commonDeltaLocality(routesByLine.get(anchor)![direction]!, routesByLine.get(id)![direction]!)
       if (!delta) continue
       const list = votes.get(delta) ?? []
       list.push(id)
@@ -109,6 +151,31 @@ export function sumDeltaMinutesToLocality(routeLocalities: RouteLegRef[], target
     sum += dm
   }
   return { minutes: sum, complete: true }
+}
+
+/** Resolves the crossing-instant offset (4.2) for every line in a group: the
+ *  per-leg sum when complete, falling back to a single origin↔delta
+ *  TravelTimeMatrix lookup otherwise (same pattern as resolveNearestDepot).
+ *  Shared between the generator modal and the read-only frequency panels so
+ *  the two never drift apart on how an offset is derived. A line silently
+ *  drops out of the returned map when neither source can resolve it. */
+export async function resolveGroupOffsets(
+  group:               Pick<DeltaGroup, 'direction' | 'deltaLocalityId' | 'lineIds'>,
+  legsByLineDirection: Map<string, Partial<Record<Direction, RouteLegRef[]>>>,
+  getOriginLocalityId: (lineId: string, direction: Direction) => string | null,
+  getTravelTimeFn:     (originId: string, destinationId: string) => Promise<number | null>,
+): Promise<Map<string, number>> {
+  const offsets = new Map<string, number>()
+  for (const lineId of group.lineIds) {
+    const legs = legsByLineDirection.get(lineId)?.[group.direction] ?? []
+    const sum  = sumDeltaMinutesToLocality(legs, group.deltaLocalityId)
+    if (sum?.complete) { offsets.set(lineId, sum.minutes); continue }
+    const originId = getOriginLocalityId(lineId, group.direction)
+    if (!originId) continue
+    const fallback = await getTravelTimeFn(originId, group.deltaLocalityId)
+    if (fallback != null) offsets.set(lineId, fallback)
+  }
+  return offsets
 }
 
 // ── 4.3 — interleave without recolliding ────────────────────────────────────

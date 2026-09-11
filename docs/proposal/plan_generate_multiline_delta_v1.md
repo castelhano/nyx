@@ -116,6 +116,17 @@ Roda para cada par de rotas de mesmo sentido dentro do grupo de linhas seleciona
 boa forma de **sugerir** candidatos automaticamente na UI (linhas da mesma família quase
 sempre compartilham tronco).
 
+> CORREÇÃO (achada testando com 308/308B real): `commonSuffixLocality` sozinho só cobre
+> convergência por **destino** comum. Duas linhas que compartilham a **origem** (mesmo
+> terminal) e divergem dali pra frente — caso real 308/308B na IDA, ambas saindo de "Term Cpa
+> 3" — não tinham delta nenhum detectado nesse sentido, mesmo esse sendo exatamente o caso
+> degenerado "origem em comum" já previsto no conceito original. Adicionado
+> `commonPrefixLocality` (espelho andando do início pra frente) + `commonDeltaLocality`
+> (tenta sufixo primeiro, cai pro prefixo se não houver destino comum). Resultado real após a
+> correção: IDA usa "Term Cpa 3" como origem comum (offset 0 para as duas linhas), VOLTA usa
+> "Term Cpa 3" como destino comum (mesmo terminal, agora como ponto de retorno) — os dois
+> sentidos do grupo combinado passam a existir.
+
 Não precisa de campo novo no schema — é derivado sob demanda, mesmo espírito de manter a
 Fase 3 sem endpoint dedicado (`vehicle-plan-fleet-window-redesign.md` / considerações finais
 do doc de impl.).
