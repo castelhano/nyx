@@ -127,7 +127,7 @@ export default function VehiclePlanPage() {
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [exportOsoModalOpen, setExportOsoModalOpen] = useState(false)
-  const [generateLineModal, setGenerateLineModal] = useState<{ lineId: string } | null>(null)
+  const [generateLineModal, setGenerateLineModal] = useState<{ lineIds: string[] } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
   const [osoCoverageModal,  setOsoCoverageModal]   = useState<{ lineId: string } | null>(null)
@@ -235,8 +235,8 @@ export default function VehiclePlanPage() {
           icon:     Icons.Play,
           size:     'sm' as const,
           variant:  'ghost' as const,
-          onClick:  () => setGenerateLineModal({ lineId: [...selectedLineIds][0] }),
-          disabled: selectedLineIds.size !== 1,
+          onClick:  () => setGenerateLineModal({ lineIds: [...selectedLineIds] }),
+          disabled: selectedLineIds.size === 0,
           menu: [
             {
               label:    'Ajustar Ciclo',
@@ -710,12 +710,12 @@ export default function VehiclePlanPage() {
         {generateLineModal && (
           <LineScheduleGeneratorModal
             planId={id}
-            lineId={generateLineModal.lineId}
+            lineIds={generateLineModal.lineIds}
             dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
             existingTripIds={
               (ganttData?.blocks ?? [])
                 .flatMap(b => b.blockTrips)
-                .filter(bt => bt.trip.route.line.id === generateLineModal.lineId)
+                .filter(bt => generateLineModal.lineIds.includes(bt.trip.route.line.id))
                 .map(bt => bt.trip.id)
             }
             hasPendingChanges={pendingCount > 0}

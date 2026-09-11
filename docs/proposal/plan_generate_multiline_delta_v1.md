@@ -1,8 +1,31 @@
 # Proposta — Atendimento multilinha (intercalação no delta)
 
-Aprofunda a Fase 4 de `docs/proposal/plan_generate_proposal_v1_impl.md` (marcada lá como
-"escopo maior, tratar como sub-iniciativa própria"). Fases 0–3 daquele plano estão
-implementadas; este documento é o plano detalhado da Fase 4.
+> **STATUS (2026-09-11):** 4.1/4.2/4.3/4.5 implementados em
+> `multiline-delta-logic.ts`, e 4.4 implementado em `LineScheduleGeneratorModal.tsx` +
+> `page.tsx` (accordion por linha, switch Principal, painel Multilinha,
+> `Priority=Delta` funcional na v1 — não ficou como placeholder). Validado ao vivo
+> contra o par real 206/206B (delta detectado automaticamente: locality "APAE") e
+> contra outro par (107/203) com geração completa ponta a ponta. Pendente: as duas
+> últimas linhas de 4.4 — `FrequencyPanel.tsx` (agrupar por cruzamento no delta) e
+> `LineFreqPanel.tsx`/`line-freq.view.ts` (modo "Multilinha") — ficaram para uma
+> próxima etapa, não bloqueiam a geração. Achado colateral, fora de escopo deste
+> plano: uma linha com só um sentido cadastrado (ex. 206B, só OUTBOUND) não consegue
+> gerar sozinha porque o select de sentido nunca oferece "Circular" quando há apenas
+> uma direção registrada — bug pré-existente, não introduzido aqui, deixado para
+> tratar separadamente.
+
+Casos a serem coberto:
+1) Gerar um planejamento com mais de uma linha, permitindo intercalação a partir de um ponto final ou delta
+2) Geração pode dar prioridade a linha base e fazer pequenos ajustes para adequar ao delta (default), ou priorizar o delta em relação a linha base, neste caso a frequencia do delta eh tratada como prioridade
+3) Linha no modal deixa de ser um label e vira o header de um accordion / collapse na aba de janelas (e talvez nas demans tbm), esse header deve ser construido pensando em abrigar controles, um deles já deve ser um swith "Principal" ao marcar uma linha como principal ela sera a primeira a ser gerada garantindo inicio e fim de operação mais fieis ao informado e as demais vao entrar intercaladas a esta (aqui é o desenho inicial, quero ouvir se tiver ideia melhor)
+
+> RESPOSTA 3 (consolidado): o switch "Principal" só se aplica/aparece quando o direcionamento
+> (item 2) está em `Priority=Delta` — no padrão (`Priority=Base`), não existe linha principal,
+> vale o ajuste bidirecional sutil descrito em 4.3. `Priority=Delta` **exige** uma linha marcada
+> como Principal (não pode ser selecionado sem isso — validar no modal). Ver detalhamento em
+> 4.3.
+
+
 
 Caso real usado como referência (conferido no banco em 2026-08-20):
 
@@ -18,7 +41,7 @@ Linha 206B (Florianopolis x Centro, parentLineId = 206)
 > Relação de pai e filha não é necessária neste contexto, unico critério é que linhas tenham origem e/ou destinos iguais, ou que haja convergência em algum ponto
 
 
-`Jd Florianopolis` (`d5ba0921-16e4-4875-bf9c-ef51408181f0`) é parada intermediária da 206
+`Jd Florianopolis` (`ddd0c568-8cc7-4b5f-a7ac-94fdca1a3cad`) é parada intermediária da 206
 (sequência no meio da rota) e é a origem exata da 206B. As duas linhas correm juntas no
 trecho `Jd Florianopolis → Est Bispo A` ("tronco"); 206 tem um ramal adicional
 `Term Cpa 1 → Jd Florianopolis` que 206B não roda ("delta"). Quem espera no tronco pega
@@ -126,16 +149,17 @@ Duas abordagens possíveis; recomendo a primeira para a v1:
    `(lineId, crossingMinutes)`.
 3. Junta e ordena todos os cruzamentos do grupo, por sentido. Percorre a lista: sempre que dois
    cruzamentos consecutivos — de linhas diferentes — ficarem mais próximos que um novo
-   parâmetro `minTrunkHeadwayMinutes`, empurra o mais atrasado dos dois para frente (mesma
-   técnica de retiming já usada no "closing pass" de `generateRounds`,
-   `line-generator-logic.ts:712-777`, aplicando o deslocamento a toda a corrente de pernas
-   daquele round).
-4. Desempate de qual round empurrar: prioriza empurrar o que se afasta menos do seu próprio
-   headway "natural" (equidistante dentro da própria linha) — isso é o que produz o
-   "equilíbrio", já que impede que uma linha sempre absorva o ajuste.
-5. Se o deslocamento necessário excede um teto (ex.: metade do headway próprio daquela linha),
-   não força — registra warning (mesmo padrão de `generalWarnings`/toast já usado na Fase 3.4)
-   em vez de degradar a grade silenciosamente.
+   parâmetro `minTrunkHeadwayMinutes`, ajusta os dois em direções opostas (mesma técnica de
+   retiming já usada no "closing pass" de `generateRounds`, `line-generator-logic.ts:712-777`,
+   aplicando o deslocamento a toda a corrente de pernas daquele round em cada linha) —
+   `Priority=Delta` é o caso degenerado em que um dos dois lados (a linha Principal) tem
+   deslocamento sempre zero, então o outro absorve 100% (ver CONSIDERAÇÃO 4).
+4. Reparto do deslocamento entre os dois: cada linha cede proporcionalmente à sua própria folga
+   (distância até ficar equidistante dentro do próprio headway natural) — só uma cede tudo
+   quando a outra não tem folga nenhuma. Isso evita que uma linha sempre absorva o ajuste.
+5. Se o deslocamento necessário excede um teto configurável (default: metade do headway próprio
+   daquela linha — exposto no modal, ver 4.4), não força além do teto — sem warning, o usuário
+   ajusta manualmente o que achar relevante.
 6. Só depois disso roda `assignRoundsToBlocks()` por linha, normalmente — blocos continuam
    sendo por linha (frota de 206 não vira frota de 206B), a interferência acontece só nos
    horários antes da distribuição em blocos.
@@ -147,9 +171,17 @@ grupo são muito desiguais (ex. 206 a cada 20', 206B a cada 5'), "equilíbrio" n
 só "não colidir" — a intercalação fina fica limitada pela linha mais rara.
 
 > CONSIDERAÇÕES:
-1) No modal (multilinha) adicionar controle Prioridade: Base | Delta (disabled inicialmente), sendo base default, que assume o comportamento descrito, cria tabelas e apenas desvia levemente as viagens para buscar intercalação (mesmo que parcial) no delta;
+1) No modal (multilinha) adicionar controle Prioridade: Base | Delta, sendo base default, que assume o comportamento descrito, cria tabelas e apenas desvia levemente as viagens para buscar intercalação (mesmo que parcial) no delta. ATUALIZAÇÃO: `Delta` entra funcional na v1 (não fica desabilitado — ver item 4 abaixo e a atualização na seção B), reaproveitando a mesma estrutura desta abordagem A;
 2) Com relação ao item 4 acima (Desempate de viagens) não é necessário escolher uma viagem para desempate, ideal eh ajustaar ambas (cada um em direções opostas) priorizando uma apenas se tiver margem de folga para isso, mais em geral ajustar ambas gera menos impacto da frequencia das linhas base
 3) Esse direcionamento não precisa gerar warnings para nao poluir a tela, otimiza o máximo possivel e usuario edita manualmente o que achar relevante
+4) `Priority=Base` (default) é o comportamento acima (ajuste bidirecional, cada linha cede
+   proporcionalmente à sua própria folga). `Priority=Delta` é um modo diferente, não uma
+   variação de peso do mesmo algoritmo: a linha marcada "Principal" (caso 3) gera e mantém seus
+   rounds fixos como referência; as demais linhas do grupo é que absorvem o retiming integral
+   para se encaixar na frequência dela no delta — sem split bidirecional. `Priority=Delta` sem
+   uma linha Principal definida não é um estado válido (bloquear no modal). O teto do passo 5
+   continua valendo em `Priority=Delta`, mas só do lado de quem absorve (a Principal nunca se
+   move) — mesmo comportamento silencioso (sem warning) quando excedido.
 
 
 **B. Grade de tronco compartilhada (mais pesada, não recomendada para v1)**
@@ -163,13 +195,23 @@ demanda de grupo. Guardar como evolução futura se a abordagem A se mostrar ins
 produção.
 
 > CONSIDERAÇÃO: Prioridade descrita no item acima já preve este caso (opção Delta no select), fica para implementação futura, mais ja vamos deixar comentario no fragmento gerado com ideia geral
+>
+> ATUALIZAÇÃO (consolidado): a abordagem B (grade de tronco compartilhada, com repartição
+> round-robin ponderada por demanda) continua adiada — isso não mudou. O que muda é que
+> `Priority=Delta` **não depende dela** para ser funcional na v1: a variante "Principal fixo +
+> demais absorvem o retiming" (4.3, CONSIDERAÇÃO 4) é uma extensão leve da própria abordagem A
+> (mesma geração independente por linha, só troca a regra de quem cede no retiming) e entra
+> como algoritmo real na v1. B permanece reservada para o caso em que a abordagem A/Delta se
+> mostrar insuficiente em produção (grupos com frequências muito desiguais, ver risco já
+> descrito em A).
 
 ### 4.4 Mudanças de UI
 
 | Componente | Mudança |
 |---|---|
-| `page.tsx:191-192` | Relaxar `disabled: selectedLineIds.size !== 1` — permitir abrir o gerador com N linhas selecionadas quando formam (ou o usuário força) um grupo de delta |
-| `LineScheduleGeneratorModal.tsx` | Hoje recebe `lineId: string` único (`Props`, linha 138-144) — precisa aceitar `lineIds: string[]`, carregar rotas/janelas por linha, e ganhar uma seção "Multilinha": ponto de delta sugerido por sentido (editável, resultado de 4.1) + `minTrunkHeadwayMinutes` |
+| `page.tsx:191-192` | Relaxar `disabled: selectedLineIds.size !== 1` para `size === 0` (mesma condição já usada pelas outras ações da toolbar) — abre sempre com 1+ linhas; a checagem de grupo válido (4.1/4.5) acontece dentro do modal, não aqui |
+| `LineScheduleGeneratorModal.tsx` | Hoje recebe `lineId: string` único (`Props`, linha 138-144) — precisa aceitar `lineIds: string[]`, carregar rotas/janelas por linha, e ganhar uma seção "Multilinha": ponto de delta sugerido por sentido (editável, resultado de 4.1), `minTrunkHeadwayMinutes`, teto de deslocamento configurável (passo 4.3.5, default = metade do headway próprio) e o select Prioridade Base\|Delta |
+| Aba de janelas (por linha) do modal | Header de cada linha deixa de ser label e vira accordion/collapse (caso 3) — abriga o switch "Principal" (habilitado só quando `Priority=Delta`, obrigatório escolher uma) e demais controles por linha |
 | `FrequencyPanel.tsx` | Nova opção de visualização: em vez de agrupar só por `direction`, agrupar por cruzamento no delta quando as linhas plotadas pertencem a um grupo — mostra os traços das duas linhas na mesma faixa, cores diferentes |
 | `LineFreqPanel.tsx` / `line-freq.view.ts` | Entrada "Multilinha" no seletor (setas de troca de linha) — quando ativa, mostra a grade combinada no ponto de delta em vez da grade bruta de uma linha só |
 
@@ -186,6 +228,15 @@ Conforme documento original: linhas compartilham origem OU destino OU delta mape
 prática, com 4.1 implementado, "origem/destino em comum" é só o caso degenerado de "delta = a
 própria origem/destino" — não precisa de lógica separada, o algoritmo do sufixo comum já cobre
 os três casos.
+
+> RESPOSTA (consolidado): a geração por sentido sempre fecha em **um único** delta — não há
+> encadeamento de múltiplos pontos de delta ao longo do tronco na v1 (ex.: três linhas
+> convergindo em três localities diferentes não formam um grupo triplo só porque estão no mesmo
+> corredor). Uma linha só entra no grupo daquele sentido se o seu `commonSuffixLocality` (4.1)
+> bater exatamente com o delta comum às demais. IDA e VOLTA são avaliados independentemente e
+> podem ter conjuntos de linhas / delta diferentes — inclusive uma linha pode participar do
+> grupo só na IDA (delta ali) e ficar de fora na VOLTA se não compartilhar o mesmo ponto (ver
+> também Dúvida 1 nas respostas abaixo).
 
 ---
 
