@@ -103,13 +103,13 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
   const allChecked  = planLines.length > 0 && planLines.every(l => selectedLineIds.has(l.lineId))
   const someChecked = !allChecked && planLines.some(l => selectedLineIds.has(l.lineId))
 
-  // Enter with search narrowed down to exactly one line loads it straight
-  // away instead of making the user reach for the checkbox — the common case
-  // for F6 is "find this one line and go", not browsing a filtered list.
+  // Enter selects every line currently visible (the filtered set, or all of
+  // them when there's no filter) instead of making the user reach for each
+  // checkbox — the common case for F6 is "find these lines and go".
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter' || visibleLines.length !== 1) return
+    if (e.key !== 'Enter' || visibleLines.length === 0) return
     const next = new Set(selectedLineIds)
-    next.add(visibleLines[0].lineId)
+    for (const l of visibleLines) next.add(l.lineId)
     onSelectionChange(next)
     onClose()
   }
