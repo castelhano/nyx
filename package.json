@@ -2,7 +2,7 @@
   "name": "nyx",
   "private": true,
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "bash scripts/dev.sh",
     "build": "turbo run build",
     "lint": "turbo run lint"
   },

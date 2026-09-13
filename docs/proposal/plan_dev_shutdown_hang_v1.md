@@ -129,34 +129,40 @@ pra esse cenário e não foi suficiente).
 
 ---
 
-## Solução proposta (ainda não implementada)
+## Solução implementada — `scripts/dev.sh`
 
 Não dá pra confiar que `turbo`/`nodemon` vão cooperar pra encerrar tudo sozinhos. A saída
-prática é parar de depender disso: envolver `turbo run dev` num script wrapper que **garante**
-a limpeza no Ctrl+C, independente do que `turbo`/`nodemon` conseguiram fazer por conta própria.
-
-Esboço:
+prática é parar de depender disso: `scripts/dev.sh` envolve `turbo run dev` e **garante** a
+limpeza no Ctrl+C, independente do que `turbo`/`nodemon` conseguiram fazer por conta própria.
 
 ```bash
 #!/usr/bin/env bash
-set -m
 turbo run dev &
 TURBO_PID=$!
+
 cleanup() {
   kill -TERM "$TURBO_PID" 2>/dev/null
   sleep 1
-  pkill -9 -f 'nodemon|turbo run dev|next-server|src/main.ts' 2>/dev/null
+  pkill -9 -f 'nodemon|turbo run dev|next dev|next-server|src/main\.ts' 2>/dev/null
+  true
 }
 trap cleanup INT TERM
+
 wait "$TURBO_PID"
 cleanup
 ```
 
-`package.json` raiz passaria a rodar esse script em vez de `turbo run dev` diretamente
-(`pnpm dev` continua sendo o comando que o usuário digita). No Ctrl+C: dá 1s pro `turbo`
-encerrar do jeito normal, depois varre e mata à força qualquer processo remanescente por
-padrão de nome, garantindo que a porta 3001/3000 sempre fique livre depois do Ctrl+C,
-independente do bug upstream.
+`package.json` raiz roda esse script em vez de `turbo run dev` diretamente (`"dev": "bash
+scripts/dev.sh"` — `pnpm dev` continua sendo o comando que o usuário digita). No Ctrl+C: dá 1s
+pro `turbo` encerrar do jeito normal, depois varre e mata à força qualquer processo
+remanescente por padrão de nome, garantindo que a porta 3001/3000 sempre fique livre depois do
+Ctrl+C, independente do bug upstream.
+
+**Validado em 2026-09-13**: subi `pnpm dev` (via o wrapper), simulei uso real (conexão HTTP
+com polling contínuo a cada 1s, como o TanStack Query faz) e mandei `SIGINT` pro grupo de
+processos inteiro do terminal (`kill -INT -<pgid>`, o mais fiel possível a um Ctrl+C real sem
+ser literalmente digitado num terminal interativo) — encerramento completo em ~1s, sem
+processo remanescente, portas 3000/3001 livres.
 
 **Alternativa considerada e descartada por ora**: eliminar o `nodemon` de vez, trocando por
 `node --watch --watch-path=... -r @swc-node/register -r tsconfig-paths/register src/main.ts`

@@ -1,4 +1,12 @@
 ### TODO
+```
+# Lista processos em execucao
+ss -tlnp | grep -E ':(3000|3001)\b'
+
+# Mata processo
+fuser -k 3001/tcp 3000/tcp
+```
+
 
 ---
 # Outros
