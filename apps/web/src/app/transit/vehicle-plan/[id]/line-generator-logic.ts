@@ -17,6 +17,27 @@ export interface GenWindow {
   inboundKnown:      boolean // same as outboundKnown, for volta
   inboundInterval:   number // stop/turnback time back at the origin end, before starting the next ida
   fleetCount:        number // vehicles operating in this band (shared across both directions)
+  // Reserved-counterflow (lines that only ever run one direction for real, like a
+  // line that operates mornings-only and always returns deadheaded): when set, this
+  // is the direction actually operated in this band — the other direction is a
+  // deadrun (DISPLACEMENT), not a passenger trip. null = normal, both directions real.
+  reservedFlow:             'OUTBOUND' | 'INBOUND' | null
+  // Manual override for the reserved deadrun's travel time, in minutes. null = resolve
+  // from the travel-time matrix at generation time (see effectiveCycleWindow).
+  reservedOverrideMinutes:  number | null
+}
+
+/** Materializes a reserved-counterflow window for cycle math: substitutes the
+ *  non-operated direction's cycle time with the resolved deadrun duration
+ *  (matrix lookup or manual override, decided by the caller) so every existing
+ *  cycle/frequency/round calculation can stay oblivious to the reserved-flow
+ *  concept and just read outboundMinutes/inboundMinutes as always. A no-op for
+ *  windows that aren't reserved. */
+export function effectiveCycleWindow(w: GenWindow, deadrunMinutes: number): GenWindow {
+  if (!w.reservedFlow) return w
+  return w.reservedFlow === 'OUTBOUND'
+    ? { ...w, inboundMinutes: deadrunMinutes, inboundKnown: true }
+    : { ...w, outboundMinutes: deadrunMinutes, outboundKnown: true }
 }
 
 /** Full round-trip duration for a window: both travel legs plus both
@@ -103,7 +124,7 @@ export function buildUnifiedWindows(outbound: CycleWindow[], inbound: CycleWindo
       id: crypto.randomUUID(), from: slot, to: slot + SLOT_STEP,
       outboundMinutes: obMinutes, outboundKnown: obWindow != null, outboundInterval: obInterval,
       inboundMinutes:  ibMinutes, inboundKnown:  ibWindow != null, inboundInterval:  ibInterval,
-      fleetCount: 1,
+      fleetCount: 1, reservedFlow: null, reservedOverrideMinutes: null,
     })
   }
   return rows
@@ -359,6 +380,8 @@ export function deriveFleetBands(
     inboundKnown:     b.row.inboundKnown,
     inboundInterval:  b.row.inboundInterval,
     fleetCount:       b.fleet,
+    reservedFlow:             null,
+    reservedOverrideMinutes:  null,
   }))
 }
 
@@ -440,6 +463,11 @@ export function mergeWithNext(rows: GenWindow[], index: number): GenWindow[] {
     inboundKnown:     a.inboundKnown || b.inboundKnown,
     inboundInterval:  Math.max(a.inboundInterval,  b.inboundInterval),
     fleetCount:       Math.max(a.fleetCount, b.fleetCount),
+    // Merging two reserved-flow windows into one keeps the flag only when both
+    // agree on which direction is real — a mismatch (or either side normal)
+    // just falls back to normal, same "never fabricate" rule as elsewhere here.
+    reservedFlow:             a.reservedFlow && a.reservedFlow === b.reservedFlow ? a.reservedFlow : null,
+    reservedOverrideMinutes:  null,
   }
   return [...rows.slice(0, index), merged, ...rows.slice(index + 2)]
 }
@@ -561,6 +589,10 @@ export interface GeneratedLeg {
   direction:        Direction
   departureMinutes: number
   arrivalMinutes:   number
+  // true when this leg falls in a band whose reservedFlow marks the OTHER
+  // direction as the one actually operated — this leg is a deadrun
+  // (DISPLACEMENT), not a passenger trip. See GenWindow.reservedFlow.
+  isDeadrun:        boolean
 }
 
 /** One full round-trip: either 2 legs (anchor direction + its pair — the
@@ -599,8 +631,16 @@ function buildRound(
   firstTripDirection: Direction,
   pairedDirection:    Direction | null,
 ): GeneratedRound {
+  // A band's reservedFlow names the direction actually operated — the other
+  // direction, within that same band, is a deadrun rather than a passenger leg.
+  const deadDirection = (b: GenWindow): Direction | null =>
+    b.reservedFlow ? (b.reservedFlow === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND') : null
+
   const anchorArr = anchorDep + (firstTripDirection === 'INBOUND' ? band.inboundMinutes : band.outboundMinutes)
-  const legs: GeneratedLeg[] = [{ direction: firstTripDirection, departureMinutes: anchorDep, arrivalMinutes: anchorArr }]
+  const legs: GeneratedLeg[] = [{
+    direction: firstTripDirection, departureMinutes: anchorDep, arrivalMinutes: anchorArr,
+    isDeadrun: deadDirection(band) === firstTripDirection,
+  }]
 
   let readyAgainMinutes: number
   if (pairedDirection) {
@@ -610,7 +650,10 @@ function buildRound(
     const pairedMinutes  = pairedDirection === 'INBOUND' ? pairedBand.inboundMinutes  : pairedBand.outboundMinutes
     const pairedTurnback = pairedDirection === 'INBOUND' ? pairedBand.inboundInterval : pairedBand.outboundInterval
     const pairedArr = pairedDep + pairedMinutes
-    legs.push({ direction: pairedDirection, departureMinutes: pairedDep, arrivalMinutes: pairedArr })
+    legs.push({
+      direction: pairedDirection, departureMinutes: pairedDep, arrivalMinutes: pairedArr,
+      isDeadrun: deadDirection(pairedBand) === pairedDirection,
+    })
     readyAgainMinutes = pairedArr + pairedTurnback
   } else {
     const anchorTurnback = band.outboundInterval // circular-only lines reuse the outbound fields (see GenWindow)

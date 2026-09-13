@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -8,6 +8,7 @@ import {
 } from 'recharts'
 import { Button }              from '@/components/ui/button'
 import { Switch }               from '@/components/ui/switch'
+import { Dropdown, DropdownItem, DropdownSeparator, DropdownLabel } from '@/components/ui/dropdown'
 import { Icons }                from '@/lib/icons'
 import { apiFetch }             from '@/lib/auth'
 import { useToast }             from '@/lib/toast-context'
@@ -18,10 +19,10 @@ import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInte
 import {
   buildUnifiedWindows, absorbPartialGaps, mergeByTolerance, deriveFleetBands,
   updateWindowBoundary, computeBoundaryFlags, mergeWithNext, splitWindow, closeFrequency, totalCycleMinutes,
-  computeOfertaSeries, estimateGeneration, generateRounds, assignRoundsToBlocks,
+  effectiveCycleWindow, computeOfertaSeries, estimateGeneration, generateRounds, assignRoundsToBlocks,
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour,
   TOLERANCE_MINUTES, TOLERANCE_LABELS, DEFAULT_MANEUVER_MARGIN_MINUTES,
-  type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock,
+  type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock, type GeneratedLeg,
 } from '../line-generator-logic'
 import {
   detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup, measureInterleaveShift, earliestCrossingMinutes,
@@ -32,6 +33,13 @@ import {
 
 const DIR_LABEL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 const DIR_ORDER: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
+
+// Every round generateRounds produces closes with this direction — a real trip, or a
+// reserved-counterflow deadrun when that side has no route of its own — whenever the
+// line isn't circular; a circular line's only leg is, naturally, itself.
+function pairedDirectionOf(d: Direction): Direction {
+  return d === 'OUTBOUND' ? 'INBOUND' : d === 'INBOUND' ? 'OUTBOUND' : 'CIRCULAR'
+}
 const TOLERANCE_LEVELS: ToleranceLevel[] = [0, 1, 2, 3]
 
 const TABS = [
@@ -180,6 +188,17 @@ function seedWindowsFor(
   const demand  = line?.metrics?.demand?.[dayTypeCode] ?? {}
   const renewal = line?.metrics?.renewalIndex?.overall ?? 0
   return deriveFleetBands(toleranced, demand, vehicleCapacity, renewal)
+}
+
+// Reserved-counterflow windows carry no real cycle time for the non-operated
+// direction — this substitutes the resolved deadrun duration (manual override,
+// else whatever the matrix lookup has resolved to so far, else 0 while it's
+// still resolving) so every cycle/frequency/round calculation downstream can
+// keep reading outboundMinutes/inboundMinutes exactly as before.
+function effectiveWindows(windows: GenWindow[], resolvedByWindowId: Map<string, number | null>): GenWindow[] {
+  return windows.map(w => w.reservedFlow
+    ? effectiveCycleWindow(w, w.reservedOverrideMinutes ?? resolvedByWindowId.get(w.id) ?? 0)
+    : w)
 }
 
 function makeInitialLineState(line: LineRecord | undefined, dayTypeCode: string): LineGenState {
@@ -445,10 +464,17 @@ export function LineScheduleGeneratorModal({
       if (routes.length === 0 || !st || directionsSeededRef.current.has(lineId)) continue
       directionsSeededRef.current.add(lineId)
       const has = (d: Direction) => routes.some(r => r.direction === d)
+      const firstTripDirection: Direction = has('OUTBOUND') ? 'OUTBOUND' : 'CIRCULAR'
       next[lineId] = {
         ...st,
-        firstTripDirection: has('OUTBOUND') ? 'OUTBOUND' : 'CIRCULAR',
-        lastTripDirection:  has('INBOUND')  ? 'INBOUND'  : 'CIRCULAR',
+        firstTripDirection,
+        // The generator always closes every round with the paired direction —
+        // as a real trip, or as a reserved-counterflow deadrun when that
+        // direction has no route of its own (see reservedFlow) — whenever the
+        // line isn't circular. Deriving it from firstTripDirection instead of
+        // checking for a registered INBOUND route is what keeps this correct
+        // for a line like 206B, which never registers that route at all.
+        lastTripDirection: pairedDirectionOf(firstTripDirection),
       }
       changed = true
     }
@@ -506,6 +532,58 @@ export function LineScheduleGeneratorModal({
     })
   }, [depots, lineIds, lineStates])
 
+  // Reserved-counterflow windows without a manual override need the matrix
+  // travel time between the operated route's own endpoints, reversed — fetched
+  // live so the Janelas preview and Oferta×Demanda chart reflect the real
+  // deadrun duration as soon as it resolves, not just at Gerar time. Grouped by
+  // locality pair (not one query per window) since every window reserved for
+  // the same direction of the same line shares the exact same pair — the
+  // common case for a line that's reserved all day, like 206B — so this is one
+  // request per distinct pair, reused for every window that needs it, instead
+  // of one query per window with the same key (which React Query warns about
+  // as "duplicate queries" and does not meaningfully dedupe on its own).
+  const reservedLookupsByPair = useMemo(() => {
+    const pairs = new Map<string, { fromId: string; toId: string; windowIds: string[] }>()
+    const noRouteWindowIds = new Set<string>()
+    for (const lineId of lineIds) {
+      const st = lineStates[lineId]
+      const routeByDir = routeByDirectionByLineId.get(lineId)
+      if (!st) continue
+      for (const w of st.windows) {
+        if (!w.reservedFlow || w.reservedOverrideMinutes != null) continue
+        const realRoute = routeByDir?.get(w.reservedFlow)
+        if (!realRoute) { noRouteWindowIds.add(w.id); continue }
+        const key = `${realRoute.destinationLocalityId}:${realRoute.originLocalityId}`
+        const existing = pairs.get(key)
+        if (existing) existing.windowIds.push(w.id)
+        else pairs.set(key, { fromId: realRoute.destinationLocalityId, toId: realRoute.originLocalityId, windowIds: [w.id] })
+      }
+    }
+    return { pairs: [...pairs.values()], noRouteWindowIds }
+  }, [lineIds, lineStates, routeByDirectionByLineId])
+
+  const reservedLookupQueries = useQueries({
+    queries: reservedLookupsByPair.pairs.map(p => ({
+      queryKey: ['transit', 'travel-time', p.fromId, p.toId],
+      queryFn:  () => getTravelTime(p.fromId, p.toId),
+      staleTime: 300_000,
+    })),
+  })
+
+  // null (as opposed to the key being absent) means the matrix lookup already
+  // finished but found nothing — distinct from still loading, so the cell can
+  // stop spinning and prompt for a manual value instead of waiting forever.
+  const resolvedDeadrunMinutesByWindowId = useMemo(() => {
+    const m = new Map<string, number | null>()
+    reservedLookupsByPair.pairs.forEach((p, i) => {
+      const q = reservedLookupQueries[i]
+      if (!q.isSuccess) return
+      for (const windowId of p.windowIds) m.set(windowId, q.data ?? null)
+    })
+    return m
+  }, [reservedLookupsByPair, reservedLookupQueries])
+  const noRouteWindowIds = reservedLookupsByPair.noRouteWindowIds
+
   const [activeTab, setActiveTab] = useState<TabKey>('janelas')
   // Which line's Ajuste/Frota/Oferta×Demanda tab content is shown — those tabs edit
   // one line at a time even in multiline mode, picked via the small pill selector.
@@ -540,13 +618,18 @@ export function LineScheduleGeneratorModal({
 
   const ofertaSeries = useMemo(
     () => activeState
-      ? computeOfertaSeries(activeState.windows, activeState.vehicleCapacity, activeState.renewalIndex, activeState.opStart, activeState.opEnd)
+      ? computeOfertaSeries(
+          effectiveWindows(activeState.windows, resolvedDeadrunMinutesByWindowId),
+          activeState.vehicleCapacity, activeState.renewalIndex, activeState.opStart, activeState.opEnd,
+        )
       : {},
-    [activeState],
+    [activeState, resolvedDeadrunMinutesByWindowId],
   )
   const preview = useMemo(
-    () => activeState ? estimateGeneration(activeState.windows, activeState.opStart, activeState.opEnd) : { trips: 0, peakFleet: 0 },
-    [activeState],
+    () => activeState
+      ? estimateGeneration(effectiveWindows(activeState.windows, resolvedDeadrunMinutesByWindowId), activeState.opStart, activeState.opEnd)
+      : { trips: 0, peakFleet: 0 },
+    [activeState, resolvedDeadrunMinutesByWindowId],
   )
   const demandByDirActive = useMemo(
     () => linesById.get(activeLineId)?.metrics?.demand?.[dayTypeCode] ?? {},
@@ -581,15 +664,121 @@ export function LineScheduleGeneratorModal({
   function doSplit(lineId: string, index: number) {
     updateLineState(lineId, st => ({ windows: splitWindow(st.windows, index) }))
   }
+  // closeFrequency computes off outboundMinutes/inboundMinutes directly, but a
+  // reserved-counterflow window's dead side never carries a real number there
+  // (that's the whole point — it's resolved live from the matrix or a manual
+  // override, see effectiveWindows). Feeding it the raw window would round
+  // against a cycle nobody's looking at; feeding it the effective one and only
+  // keeping the resulting inboundInterval avoids also baking the resolved
+  // deadrun minutes into a field that's supposed to stay unused while reserved.
   function doCloseFrequency(lineId: string, index: number) {
-    updateLineState(lineId, st => ({ windows: closeFrequency(st.windows, index) }))
+    updateLineState(lineId, st => {
+      const closed = closeFrequency(effectiveWindows(st.windows, resolvedDeadrunMinutesByWindowId), index)
+      const newInterval = closed[index]?.inboundInterval
+      if (newInterval == null) return {}
+      return { windows: st.windows.map((w, i) => i === index ? { ...w, inboundInterval: newInterval } : w) }
+    })
   }
   function doCloseFrequencyAll(lineId: string) {
     updateLineState(lineId, st => {
-      let acc = st.windows
+      let acc = effectiveWindows(st.windows, resolvedDeadrunMinutesByWindowId)
       for (let i = 0; i < acc.length; i++) acc = closeFrequency(acc, i)
-      return { windows: acc }
+      return { windows: st.windows.map((w, i) => ({ ...w, inboundInterval: acc[i].inboundInterval })) }
     })
+  }
+  function setWindowFlow(lineId: string, index: number, flow: 'OUTBOUND' | 'INBOUND' | null) {
+    updateLineState(lineId, st => ({
+      windows: st.windows.map((w, i) => i === index ? { ...w, reservedFlow: flow, reservedOverrideMinutes: null } : w),
+    }))
+  }
+  function setAllWindowsFlow(lineId: string, flow: 'OUTBOUND' | 'INBOUND' | null) {
+    updateLineState(lineId, st => ({
+      windows: st.windows.map(w => ({ ...w, reservedFlow: flow, reservedOverrideMinutes: null })),
+    }))
+  }
+  function setReservedOverride(lineId: string, index: number, minutes: number | null) {
+    updateLineState(lineId, st => ({
+      windows: st.windows.map((w, i) => i === index ? { ...w, reservedOverrideMinutes: minutes } : w),
+    }))
+  }
+
+  // Cell shown in place of the non-operated direction's cycle input for a
+  // reserved-counterflow window — same width as a normal cycle cell (value +
+  // "+" + interval, no extra icon or button) so columns stay aligned. The
+  // "≈" prefix on a resolved value is the only thing marking it as fetched
+  // rather than typed — a color tint on the box plus a tooltip on the whole
+  // cell explain the rest. Double-clicking the value toggles manual entry on
+  // or off, instead of a dedicated pencil button that would widen the cell.
+  function renderReservedCell(lineId: string, index: number, w: GenWindow, side: 'outbound' | 'inbound') {
+    const interval  = side === 'outbound' ? w.outboundInterval : w.inboundInterval
+    const manual    = w.reservedOverrideMinutes != null
+    const hasRoute  = !noRouteWindowIds.has(w.id)
+    const resolution = !hasRoute ? 'no-route' as const
+      : resolvedDeadrunMinutesByWindowId.has(w.id) ? (resolvedDeadrunMinutesByWindowId.get(w.id) ?? 'not-found' as const)
+      : 'loading' as const
+
+    const toManual = () => setReservedOverride(lineId, index, typeof resolution === 'number' ? resolution : 0)
+    const toMatrix = () => setReservedOverride(lineId, index, null)
+
+    let valueSlot: ReactNode
+    if (manual) {
+      valueSlot = (
+        <input
+          type="number" min={0}
+          title="Tempo informado manualmente — duplo clique para voltar a usar a matriz"
+          value={w.reservedOverrideMinutes ?? 0}
+          onChange={e => setReservedOverride(lineId, index, Number(e.target.value) || 0)}
+          onDoubleClick={toMatrix}
+          className="w-14 bg-transparent px-1.5 py-1 text-right focus:outline-none"
+        />
+      )
+    } else if (resolution === 'no-route' || resolution === 'not-found') {
+      valueSlot = (
+        <span
+          onDoubleClick={toManual}
+          className="w-14 flex items-center justify-center py-1 cursor-pointer"
+          title={
+            resolution === 'no-route'
+              ? 'Rota do sentido operado ainda não cadastrada — duplo clique para informar o tempo manualmente'
+              : 'Sem trajeto cadastrado na matriz de deslocamento para esse par — duplo clique para informar o tempo manualmente'
+          }
+        >
+          <Icons.AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+        </span>
+      )
+    } else if (resolution === 'loading') {
+      valueSlot = (
+        <span className="w-14 flex items-center justify-center py-1" title="Buscando tempo na matriz de deslocamento…">
+          <Icons.Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+        </span>
+      )
+    } else {
+      valueSlot = (
+        <span
+          onDoubleClick={toManual}
+          className="w-14 px-1.5 py-1 text-right italic text-ring cursor-pointer"
+          title="Obtido da matriz de tempos de deslocamento — duplo clique para informar manualmente"
+        >
+          ≈{resolution}
+        </span>
+      )
+    }
+
+    return (
+      <div
+        className={`inline-flex items-center rounded-sm border ${manual ? 'border-input bg-input-bg' : 'border-ring/40 bg-ring/5'}`}
+        title="Janela reservada no contrafluxo — o outro sentido é deslocamento, não viagem de passageiros"
+      >
+        {valueSlot}
+        <span className="text-muted-foreground px-0.5 select-none">+</span>
+        <input
+          type="number" min={0} title="Intervalo (min)"
+          value={interval}
+          onChange={e => updateWindow(lineId, index, side === 'outbound' ? { outboundInterval: Number(e.target.value) || 0 } : { inboundInterval: Number(e.target.value) || 0 })}
+          className="w-12 bg-transparent px-1.5 py-1 text-right focus:outline-none border-l border-input"
+        />
+      </div>
+    )
   }
   function changeTolerance(lineId: string, level: ToleranceLevel) {
     updateLineState(lineId, st => ({ mergeTolerance: level, windows: seedWindowsFor(linesById.get(lineId), dayTypeCode, level, st.vehicleCapacity) }))
@@ -605,7 +794,7 @@ export function LineScheduleGeneratorModal({
             id: crypto.randomUUID(), from: 0, to: 24,
             outboundMinutes: 60, outboundKnown: true, outboundInterval: 1,
             inboundMinutes:  60, inboundKnown:  true, inboundInterval:  1,
-            fleetCount: 1,
+            fleetCount: 1, reservedFlow: null, reservedOverrideMinutes: null,
           }],
         }
       }
@@ -670,11 +859,68 @@ export function LineScheduleGeneratorModal({
         st.firstTripDirection === 'CIRCULAR' ? null : st.firstTripDirection === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'
       const anchorRoute = routeByDir.get(st.firstTripDirection)
       const pairedRoute = pairedDirection ? routeByDir.get(pairedDirection) : null
-      if (!anchorRoute || (pairedDirection && !pairedRoute)) {
+      // A window reserved for the anchor direction never touches the paired route at
+      // all (its counterflow is a deadrun reversing the anchor route) — so the paired
+      // route is only required when some window either runs both directions for real
+      // (reservedFlow null) or is itself reserved for the paired direction.
+      const needsPairedRoute = pairedDirection != null && st.windows.some(w => w.reservedFlow !== st.firstTripDirection)
+      if (!anchorRoute || (needsPairedRoute && !pairedRoute)) {
         toast.error(`${linesById.get(lineId)?.code ?? lineId}: sentido selecionado não possui rota cadastrada`)
         return
       }
       routeInfo.set(lineId, { anchorRoute, pairedRoute: pairedRoute ?? null })
+    }
+
+    // Resolves each line's reserved-counterflow windows into "effective" windows —
+    // the non-operated direction's cycle time replaced by the manual override or the
+    // travel-time matrix between the operated route's own endpoints, reversed — so
+    // generateRounds below never needs to know reserved-flow exists.
+    const generalWarnings = new Set<string>()
+    let noMatrixWarned = false
+
+    // Distinct locality pairs first (every window reserved for the same direction of
+    // the same line — the common case for a line reserved all day — shares the exact
+    // same pair), resolved in parallel, instead of one sequential await per window:
+    // getTravelTime's own cache would make repeats free either way, but the first hit
+    // of each distinct pair would otherwise block the loop one at a time.
+    const pendingPairs = new Map<string, Promise<number | null>>()
+    for (const lineId of lineIds) {
+      const st = lineStates[lineId]!
+      const routeByDir = routeByDirectionByLineId.get(lineId)
+      for (const w of st.windows) {
+        if (!w.reservedFlow || w.reservedOverrideMinutes != null) continue
+        const realRoute = routeByDir?.get(w.reservedFlow)
+        if (!realRoute) continue
+        const key = `${realRoute.destinationLocalityId}:${realRoute.originLocalityId}`
+        if (!pendingPairs.has(key)) pendingPairs.set(key, getTravelTime(realRoute.destinationLocalityId, realRoute.originLocalityId))
+      }
+    }
+    const pairKeys = [...pendingPairs.keys()]
+    const pairResults = await Promise.all(pendingPairs.values())
+    const matrixMinutesByPair = new Map(pairKeys.map((key, i) => [key, pairResults[i]]))
+
+    const effectiveWindowsByLineId = new Map<string, GenWindow[]>()
+    for (const lineId of lineIds) {
+      const st = lineStates[lineId]!
+      const routeByDir = routeByDirectionByLineId.get(lineId)
+      const resolved: GenWindow[] = []
+      for (const w of st.windows) {
+        if (!w.reservedFlow) { resolved.push(w); continue }
+        let minutes = w.reservedOverrideMinutes
+        if (minutes == null) {
+          const realRoute = routeByDir?.get(w.reservedFlow)
+          minutes = realRoute ? matrixMinutesByPair.get(`${realRoute.destinationLocalityId}:${realRoute.originLocalityId}`) ?? null : null
+          if (minutes == null) {
+            minutes = 0
+            if (!noMatrixWarned) {
+              noMatrixWarned = true
+              generalWarnings.add('Tempo de deslocamento reservado não mapeado na matriz em uma ou mais janelas — usado 0min, revise manualmente')
+            }
+          }
+        }
+        resolved.push(effectiveCycleWindow(w, minutes))
+      }
+      effectiveWindowsByLineId.set(lineId, resolved)
     }
 
     // Fase 3, unchanged: each line generates its own rounds independently first.
@@ -683,7 +929,7 @@ export function LineScheduleGeneratorModal({
     const effectiveOpStartByLineId = new Map<string, number>()
     for (const lineId of lineIds) {
       const st = lineStates[lineId]!
-      const { rounds, warnings } = generateRounds(st.windows, st.opStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
+      const { rounds, warnings } = generateRounds(effectiveWindowsByLineId.get(lineId)!, st.opStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
       if (rounds.length === 0) {
         toast.error(`${linesById.get(lineId)?.code ?? lineId}: nenhuma viagem gerada — revise as janelas e o horário de operação`)
         return
@@ -755,7 +1001,7 @@ export function LineScheduleGeneratorModal({
         for (let off = -FLEXIBLE_START_RANGE_MINUTES; off <= FLEXIBLE_START_RANGE_MINUTES; off += FLEXIBLE_START_STEP_MINUTES) {
           const candStart = st.opStart + off
           if (candStart < 0 || candStart >= st.opEnd) continue
-          const cand = generateRounds(st.windows, candStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
+          const cand = generateRounds(effectiveWindowsByLineId.get(lineId)!, candStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
           if (cand.rounds.length === 0) continue
 
           const violatesOrder = orderGuards.some(g => {
@@ -824,7 +1070,6 @@ export function LineScheduleGeneratorModal({
       if (existingTripIds.length > 0) onPendingDeleteTrips(existingTripIds)
 
       let generatedTrips = 0
-      const generalWarnings = new Set<string>()
       let noDepotWarned = false
 
       for (const lineId of lineIds) {
@@ -834,6 +1079,21 @@ export function LineScheduleGeneratorModal({
         const { anchorRoute, pairedRoute } = routeInfo.get(lineId)!
         const routeFor    = (dir: Direction) => (dir === st.firstTripDirection ? anchorRoute : pairedRoute!)
         const localityRef = (id: string) => ({ id, name: localityNameById.get(id) ?? '?' })
+        // Physical origin/destination for any leg, real or deadrun. A deadrun leg has
+        // no route of its own — it reverses whichever route IS registered for the
+        // direction actually operated in that window, so its endpoints (and the
+        // layover policy/home depot governing its arrival point) come from that real
+        // route, swapped. `route` is always the real, registered route — never null —
+        // so callers can safely read layoverPolicy/homeDepotId off it either way.
+        const legEndpoints = (leg: GeneratedLeg) => {
+          if (!leg.isDeadrun) {
+            const route = routeFor(leg.direction)
+            return { originLocalityId: route.originLocalityId, destinationLocalityId: route.destinationLocalityId, route }
+          }
+          const realDirection: Direction = leg.direction === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'
+          const route = realDirection === st.firstTripDirection ? anchorRoute : pairedRoute!
+          return { originLocalityId: route.destinationLocalityId, destinationLocalityId: route.originLocalityId, route }
+        }
         const selectedIntervalType = intervalTypes.find(it => it.id === st.intervalTypeId) ?? null
 
         for (const w of (perLineWarnings.get(lineId) ?? []).filter(w => !w.startsWith('Última viagem ('))) {
@@ -900,9 +1160,28 @@ export function LineScheduleGeneratorModal({
 
           for (let i = 0; i < allLegs.length; i++) {
             const leg    = allLegs[i]
-            const route  = routeFor(leg.direction)
             const tempId = crypto.randomUUID()
 
+            // Reserved counterflow — this leg has no registered route of its own, so
+            // it isn't a passenger trip: it's a deadrun reversing whichever route IS
+            // registered for the direction actually operated in this window.
+            if (leg.isDeadrun) {
+              const { originLocalityId, destinationLocalityId } = legEndpoints(leg)
+              const deadrunEntry: PendingAddDeadrun = {
+                _kind:               'deadrun',
+                _tempId:             tempId,
+                originLocality:      localityRef(originLocalityId),
+                destinationLocality: localityRef(destinationLocalityId),
+                departureMinutes:    Math.round(leg.departureMinutes),
+                arrivalMinutes:      Math.round(leg.arrivalMinutes),
+                blockId:             anchorTempId ? `pending:${anchorTempId}` : 'new',
+              }
+              onPendingAdd(deadrunEntry)
+              if (i === 0) anchorTempId = tempId
+              continue
+            }
+
+            const route  = routeFor(leg.direction)
             const entry: PendingAddTrip = {
               _kind:               'trip',
               _tempId:             tempId,
@@ -947,7 +1226,7 @@ export function LineScheduleGeneratorModal({
               if (gapEnd <= gapStart) continue
 
               const lastLeg   = prevRound.legs[prevRound.legs.length - 1]
-              const fromRoute = routeFor(lastLeg.direction)
+              const { destinationLocalityId: fromLocalityId, route: fromRoute } = legEndpoints(lastLeg)
               const effectivePolicy = fromRoute.layoverPolicy === 'DEFAULT'
                 ? (generalSettings?.defaultLayoverPolicy ?? 'HOLD')
                 : fromRoute.layoverPolicy
@@ -957,8 +1236,7 @@ export function LineScheduleGeneratorModal({
                 continue
               }
 
-              const fromLocalityId = fromRoute.destinationLocalityId
-              const toLocalityId   = routeFor(nextRound.legs[0].direction).originLocalityId
+              const toLocalityId = legEndpoints(nextRound.legs[0]).originLocalityId
               const resolved = await resolveNearestDepot(fromRoute.homeDepotId, fromLocalityId, toLocalityId, gapEnd - gapStart, depots)
 
               if (!resolved) {
@@ -1181,7 +1459,13 @@ export function LineScheduleGeneratorModal({
                               />
                               <select
                                 value={st.firstTripDirection}
-                                onChange={e => updateLineState(lineId, { firstTripDirection: e.target.value as Direction })}
+                                onChange={e => {
+                                  const dir = e.target.value as Direction
+                                  // lastTripDirection always tracks the paired direction — see
+                                  // pairedDirectionOf — so it can't drift out of sync with a manual
+                                  // change here and fire a spurious "last trip mismatch" warning.
+                                  updateLineState(lineId, { firstTripDirection: dir, lastTripDirection: pairedDirectionOf(dir) })
+                                }}
                                 title="Sentido da primeira viagem do dia"
                                 className="w-24 appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                               >
@@ -1200,13 +1484,11 @@ export function LineScheduleGeneratorModal({
                               />
                               <select
                                 value={st.lastTripDirection}
-                                onChange={e => updateLineState(lineId, { lastTripDirection: e.target.value as Direction })}
-                                title="Sentido da última viagem do dia"
-                                className="w-24 appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                                disabled
+                                title="Sentido da última viagem do dia — sempre o par do sentido inicial (viagem real ou deslocamento reservado)"
+                                className="w-24 appearance-none rounded-sm border border-input bg-muted/30 px-2 py-1 text-sm text-muted-foreground disabled:cursor-default"
                               >
-                                {((lineRoutesByLineId.get(lineId) ?? []).length > 0 ? (lineRoutesByLineId.get(lineId) ?? []).map(r => r.direction) : DIR_ORDER).map(d => (
-                                  <option key={d} value={d}>{DIR_LABEL[d]}</option>
-                                ))}
+                                <option value={pairedDirectionOf(st.firstTripDirection)}>{DIR_LABEL[pairedDirectionOf(st.firstTripDirection)]}</option>
                               </select>
                             </label>
                           </div>
@@ -1258,6 +1540,24 @@ export function LineScheduleGeneratorModal({
                               >
                                 <Icons.RefreshCw className="w-3 h-3" /> Restaurar do ciclo
                               </button>
+                              {st.firstTripDirection !== 'CIRCULAR' && (
+                                <Dropdown
+                                  trigger={
+                                    <button
+                                      type="button"
+                                      title="Marcar todas as janelas como reservadas no contrafluxo, ou voltar a Ida + Volta"
+                                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                    >
+                                      <Icons.Route className="w-3 h-3" /> Fluxo
+                                    </button>
+                                  }
+                                >
+                                  <DropdownLabel>Aplicar a todas as janelas</DropdownLabel>
+                                  <DropdownItem onClick={() => setAllWindowsFlow(lineId, null)}>Ida • Volta</DropdownItem>
+                                  <DropdownItem onClick={() => setAllWindowsFlow(lineId, 'INBOUND')}>Ida Reservado</DropdownItem>
+                                  <DropdownItem onClick={() => setAllWindowsFlow(lineId, 'OUTBOUND')}>Volta Reservado</DropdownItem>
+                                </Dropdown>
+                              )}
                             </div>
                           </div>
                           {st.windows.length === 0 ? (
@@ -1283,8 +1583,17 @@ export function LineScheduleGeneratorModal({
                                 <tbody className="divide-y divide-border">
                                   {st.windows.map((w, i) => {
                                     const flags = isOpen ? computeBoundaryFlags(st.windows)[i] : { fromMismatch: false, toMismatch: false }
-                                    const cycleTotal = totalCycleMinutes(w)
+                                    // Reserved counterflow: whichever direction isn't w.reservedFlow has no real
+                                    // cycle data of its own — cycleTotal/frequência fold in the resolved deadrun
+                                    // duration (matrix or manual override) instead, same as at generation time.
+                                    const deadSide: 'outbound' | 'inbound' | null =
+                                      w.reservedFlow === 'OUTBOUND' ? 'inbound' : w.reservedFlow === 'INBOUND' ? 'outbound' : null
+                                    const effectiveW = w.reservedFlow
+                                      ? effectiveCycleWindow(w, w.reservedOverrideMinutes ?? resolvedDeadrunMinutesByWindowId.get(w.id) ?? 0)
+                                      : w
+                                    const cycleTotal = totalCycleMinutes(effectiveW)
                                     const freqMin    = w.fleetCount > 0 ? cycleTotal / w.fleetCount : 0
+                                    const canReserveFlow = st.firstTripDirection !== 'CIRCULAR'
                                     return (
                                       <tr key={w.id} className="hover:bg-muted/20">
                                         <td className="px-2 py-2 text-muted-foreground">{i + 1}</td>
@@ -1329,48 +1638,56 @@ export function LineScheduleGeneratorModal({
                                           )}
                                         </td>
                                         <td className="px-2 py-2">
-                                          <div
-                                            className={`inline-flex items-center rounded-sm border focus-within:ring-1 focus-within:ring-ring ${
-                                              w.outboundKnown ? 'border-input bg-input-bg' : 'border-amber-500/60 bg-amber-500/10'
-                                            }`}
-                                            title={w.outboundKnown ? undefined : 'Sem janela de ciclo registrada para a ida nesta faixa — defina manualmente'}
-                                          >
-                                            <input
-                                              type="number" min={1} title="Ciclo (min)"
-                                              value={w.outboundMinutes}
-                                              onChange={e => updateWindow(lineId, i, { outboundMinutes: Number(e.target.value) || 0, outboundKnown: true })}
-                                              className="w-14 bg-transparent px-1.5 py-1 text-right focus:outline-none"
-                                            />
-                                            <span className="text-muted-foreground px-0.5 select-none">+</span>
-                                            <input
-                                              type="number" min={1} title="Intervalo de parada (min)"
-                                              value={w.outboundInterval}
-                                              onChange={e => updateWindow(lineId, i, { outboundInterval: Number(e.target.value) || 0, outboundKnown: true })}
-                                              className="w-12 bg-transparent px-1.5 py-1 text-right focus:outline-none border-l border-input"
-                                            />
-                                          </div>
+                                          {deadSide === 'outbound' ? (
+                                            renderReservedCell(lineId, i, w, 'outbound')
+                                          ) : (
+                                            <div
+                                              className={`inline-flex items-center rounded-sm border focus-within:ring-1 focus-within:ring-ring ${
+                                                w.outboundKnown ? 'border-input bg-input-bg' : 'border-amber-500/60 bg-amber-500/10'
+                                              }`}
+                                              title={w.outboundKnown ? undefined : 'Sem janela de ciclo registrada para a ida nesta faixa — defina manualmente'}
+                                            >
+                                              <input
+                                                type="number" min={1} title="Ciclo (min)"
+                                                value={w.outboundMinutes}
+                                                onChange={e => updateWindow(lineId, i, { outboundMinutes: Number(e.target.value) || 0, outboundKnown: true })}
+                                                className="w-14 bg-transparent px-1.5 py-1 text-right focus:outline-none"
+                                              />
+                                              <span className="text-muted-foreground px-0.5 select-none">+</span>
+                                              <input
+                                                type="number" min={1} title="Intervalo de parada (min)"
+                                                value={w.outboundInterval}
+                                                onChange={e => updateWindow(lineId, i, { outboundInterval: Number(e.target.value) || 0, outboundKnown: true })}
+                                                className="w-12 bg-transparent px-1.5 py-1 text-right focus:outline-none border-l border-input"
+                                              />
+                                            </div>
+                                          )}
                                         </td>
                                         <td className="px-2 py-2">
-                                          <div
-                                            className={`inline-flex items-center rounded-sm border focus-within:ring-1 focus-within:ring-ring ${
-                                              w.inboundKnown ? 'border-input bg-input-bg' : 'border-amber-500/60 bg-amber-500/10'
-                                            }`}
-                                            title={w.inboundKnown ? undefined : 'Sem janela de ciclo registrada para a volta nesta faixa — defina manualmente'}
-                                          >
-                                            <input
-                                              type="number" min={1} title="Ciclo (min)"
-                                              value={w.inboundMinutes}
-                                              onChange={e => updateWindow(lineId, i, { inboundMinutes: Number(e.target.value) || 0, inboundKnown: true })}
-                                              className="w-14 bg-transparent px-1.5 py-1 text-right focus:outline-none"
-                                            />
-                                            <span className="text-muted-foreground px-0.5 select-none">+</span>
-                                            <input
-                                              type="number" min={1} title="Intervalo de parada (min)"
-                                              value={w.inboundInterval}
-                                              onChange={e => updateWindow(lineId, i, { inboundInterval: Number(e.target.value) || 0, inboundKnown: true })}
-                                              className="w-12 bg-transparent px-1.5 py-1 text-right focus:outline-none border-l border-input"
-                                            />
-                                          </div>
+                                          {deadSide === 'inbound' ? (
+                                            renderReservedCell(lineId, i, w, 'inbound')
+                                          ) : (
+                                            <div
+                                              className={`inline-flex items-center rounded-sm border focus-within:ring-1 focus-within:ring-ring ${
+                                                w.inboundKnown ? 'border-input bg-input-bg' : 'border-amber-500/60 bg-amber-500/10'
+                                              }`}
+                                              title={w.inboundKnown ? undefined : 'Sem janela de ciclo registrada para a volta nesta faixa — defina manualmente'}
+                                            >
+                                              <input
+                                                type="number" min={1} title="Ciclo (min)"
+                                                value={w.inboundMinutes}
+                                                onChange={e => updateWindow(lineId, i, { inboundMinutes: Number(e.target.value) || 0, inboundKnown: true })}
+                                                className="w-14 bg-transparent px-1.5 py-1 text-right focus:outline-none"
+                                              />
+                                              <span className="text-muted-foreground px-0.5 select-none">+</span>
+                                              <input
+                                                type="number" min={1} title="Intervalo de parada (min)"
+                                                value={w.inboundInterval}
+                                                onChange={e => updateWindow(lineId, i, { inboundInterval: Number(e.target.value) || 0, inboundKnown: true })}
+                                                className="w-12 bg-transparent px-1.5 py-1 text-right focus:outline-none border-l border-input"
+                                              />
+                                            </div>
+                                          )}
                                         </td>
                                         <td className="px-2 py-2">
                                           <input
@@ -1393,13 +1710,6 @@ export function LineScheduleGeneratorModal({
                                               <Icons.Sparkles className="w-4 h-4" />
                                             </button>
                                             <button
-                                              type="button" title="Dividir faixa"
-                                              onClick={() => doSplit(lineId, i)}
-                                              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-                                            >
-                                              <Icons.Scissors className="w-4 h-4" />
-                                            </button>
-                                            <button
                                               type="button" title="Unir com a próxima"
                                               disabled={i === st.windows.length - 1}
                                               onClick={() => doMerge(lineId, i)}
@@ -1407,14 +1717,47 @@ export function LineScheduleGeneratorModal({
                                             >
                                               <Icons.ArrowRightLeft className="w-4 h-4" />
                                             </button>
-                                            <button
-                                              type="button" title="Remover faixa"
-                                              disabled={st.windows.length === 1}
-                                              onClick={() => removeWindow(lineId, i)}
-                                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:pointer-events-none"
+                                            <Dropdown
+                                              trigger={
+                                                <button
+                                                  type="button" title="Mais opções"
+                                                  className={`p-1 rounded hover:bg-accent hover:text-foreground ${
+                                                    w.reservedFlow ? 'text-ring' : 'text-muted-foreground'
+                                                  }`}
+                                                >
+                                                  <Icons.EllipsisVertical className="w-4 h-4" />
+                                                </button>
+                                              }
                                             >
-                                              <Icons.Trash2 className="w-4 h-4" />
-                                            </button>
+                                              {canReserveFlow && (
+                                                <>
+                                                  <DropdownLabel>Fluxo</DropdownLabel>
+                                                  <DropdownItem onClick={() => setWindowFlow(lineId, i, null)}>
+                                                    <span className="w-3.5 flex-none">{w.reservedFlow === null && <Icons.Check className="w-3.5 h-3.5" />}</span>
+                                                    Ida • Volta
+                                                  </DropdownItem>
+                                                  <DropdownItem onClick={() => setWindowFlow(lineId, i, 'INBOUND')}>
+                                                    <span className="w-3.5 flex-none">{w.reservedFlow === 'INBOUND' && <Icons.Check className="w-3.5 h-3.5" />}</span>
+                                                    Ida Reservado
+                                                  </DropdownItem>
+                                                  <DropdownItem onClick={() => setWindowFlow(lineId, i, 'OUTBOUND')}>
+                                                    <span className="w-3.5 flex-none">{w.reservedFlow === 'OUTBOUND' && <Icons.Check className="w-3.5 h-3.5" />}</span>
+                                                    Volta Reservado
+                                                  </DropdownItem>
+                                                  <DropdownSeparator />
+                                                </>
+                                              )}
+                                              <DropdownItem onClick={() => doSplit(lineId, i)}>
+                                                <Icons.Scissors className="w-3.5 h-3.5" /> Dividir faixa
+                                              </DropdownItem>
+                                              <DropdownItem
+                                                destructive
+                                                disabled={st.windows.length === 1}
+                                                onClick={() => removeWindow(lineId, i)}
+                                              >
+                                                <Icons.Trash2 className="w-3.5 h-3.5" /> Remover faixa
+                                              </DropdownItem>
+                                            </Dropdown>
                                           </div>
                                         </td>
                                       </tr>
