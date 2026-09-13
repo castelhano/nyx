@@ -1090,9 +1090,9 @@ export function LineScheduleGeneratorModal({
                           <select
                             value={priorityMode}
                             onChange={e => setPriorityMode(e.target.value as PriorityMode)}
-                            className="appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                            className="appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                           >
-                            <option value="base">Base (padrão)</option>
+                            <option value="base">Base</option>
                             <option value="delta">Delta</option>
                           </select>
                         </label>
@@ -1153,8 +1153,8 @@ export function LineScheduleGeneratorModal({
                       )}
 
                       {priorityMode === 'delta' && (
-                        <p className="text-xs text-muted-foreground">
-                          Marque a linha Principal no header de cada linha abaixo — as demais se ajustam a ela.
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          Marque uma das linhas como Principal — as demais se ajustam a ela.
                         </p>
                       )}
                     </section>
