@@ -10,8 +10,7 @@ Referência completa: `docs/architecture/ARCHITECTURE.md`
 |--------|------|
 | Backend | NestJS + Prisma 7 (multi-file schema) + Zod |
 | Frontend | Next.js App Router + TanStack Query + React Hook Form + Tailwind CSS |
-| DB dev | SQLite via LibSQL adapter |
-| DB prod | PostgreSQL |
+| DB (dev e prod) | PostgreSQL |
 | Monorepo | pnpm workspaces — `apps/api`, `apps/web`, `packages/schemas`, `packages/types` |
 
 ---

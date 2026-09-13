@@ -1,13 +1,9 @@
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 import * as argon2 from 'argon2'
 
-const url      = process.env.DATABASE_URL!
-const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
-  ? new PrismaPg({ connectionString: url })
-  : new PrismaLibSql({ url })
+const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter })
 
 async function main() {

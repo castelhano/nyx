@@ -1,6 +1,5 @@
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { assembleOso } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-assembler'
 import { resolveLayouts } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-layout.resolver'
@@ -13,10 +12,7 @@ import { renderOsoWorkbook } from '../src/modules/transit/timetabling/vehicle-pl
 // be inspected/opened, same spirit as oso-debug.ts for layers 1-5. Usage:
 //   pnpm oso:render <lineCode> [vehiclePlanId]
 
-const url     = process.env.DATABASE_URL!
-const adapter = url.startsWith('postgresql://') || url.startsWith('postgres://')
-  ? new PrismaPg({ connectionString: url })
-  : new PrismaLibSql({ url })
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma  = new PrismaClient({ adapter }) as any
 
 async function main() {

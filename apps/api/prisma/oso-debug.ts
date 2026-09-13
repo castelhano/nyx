@@ -1,6 +1,5 @@
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { assembleOso } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-assembler'
 import { resolveLayouts } from '../src/modules/transit/timetabling/vehicle-plan/oso/oso-layout.resolver'
@@ -13,10 +12,7 @@ import { computeOsoSummary } from '../src/modules/transit/timetabling/vehicle-pl
 //   pnpm oso:debug <lineCode> [vehiclePlanId]
 // vehiclePlanId defaults to the most recently updated ACTIVE plan.
 
-const url      = process.env.DATABASE_URL!
-const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
-  ? new PrismaPg({ connectionString: url })
-  : new PrismaLibSql({ url })
+const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter }) as any
 
 function fmt(m: number): string {

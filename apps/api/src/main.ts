@@ -25,6 +25,15 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3001
   await app.listen(port)
+
+  // http.Server#close() only stops accepting new connections — it waits forever for
+  // existing keep-alive sockets to go idle, which they never do while the frontend
+  // keeps polling. Force them shut so Ctrl+C/turbo's SIGINT actually exits promptly.
+  const server = app.getHttpServer()
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => server.closeAllConnections())
+  }
+
   console.log(`API running on http://localhost:${port}/api`)
 }
 

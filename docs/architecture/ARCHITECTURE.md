@@ -170,10 +170,7 @@ nyx/
 
 ### Database
 
-| Environment | Driver |
-|-------------|--------|
-| **Dev** | SQLite via LibSQL adapter (`@prisma/adapter-libsql`) |
-| **Prod** | PostgreSQL — `provider = "postgresql"` in `_base.prisma` |
+PostgreSQL for both dev and prod — `provider = "postgresql"` in `_base.prisma`, connected via `@prisma/adapter-pg`.
 
 All text searches use `mode: 'insensitive'` to ensure consistent case-insensitive behavior on PostgreSQL.
 
@@ -202,7 +199,7 @@ export default defineConfig({
 | `prisma/schema/_base.prisma` | Generator config + datasource declaration (underscore ensures it loads first) |
 | `prisma/schema/core.prisma` | User, Company, Branch, UserBranch, UserPermission, UserPasswordHistory models |
 | `prisma/migrations/` | Migration history — unaffected by folder structure change |
-| `prisma.config.ts` | Prisma CLI config: schema folder path, LibSQL adapter, seed |
+| `prisma.config.ts` | Prisma CLI config: schema folder path, migrations path, seed |
 | `src/prisma/prisma.service.ts` | NestJS service extending `PrismaClient`, injected globally |
 
 **Convention:** one `.prisma` file per domain module. When adding a new domain, create `prisma/schema/<domain>.prisma`.

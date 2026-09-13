@@ -2,17 +2,13 @@ import 'dotenv/config'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { PrismaClient, Prisma } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 // Restores prisma/fixtures/transit.json written by transit-export.ts. Upserts by
 // natural key, so it's safe to re-run. Requires prisma/seed-core.ts to have already
 // run (ScopeOperator resolves branches by taxId).
 
-const url      = process.env.DATABASE_URL!
-const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
-  ? new PrismaPg({ connectionString: url })
-  : new PrismaLibSql({ url })
+const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter })
 
 const FIXTURE_PATH = join(__dirname, 'fixtures', 'transit.json')

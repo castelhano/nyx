@@ -2,7 +2,6 @@ import 'dotenv/config'
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 // Snapshots the transit cadastro domain — TransitLocality, DayType, IntervalType, Scope,
@@ -17,10 +16,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 // table), so only the transit.* keys are exported — never the whole table.
 const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.schedule']
 
-const url      = process.env.DATABASE_URL!
-const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
-  ? new PrismaPg({ connectionString: url })
-  : new PrismaLibSql({ url })
+const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter })
 
 const FIXTURE_PATH = join(__dirname, 'fixtures', 'transit.json')
