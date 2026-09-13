@@ -1223,27 +1223,72 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       }
     }
 
-    // Push only the deadruns/breaks that sit between the marked trip and the next productive trip
-    function pushLeadingDeadruns(delta: number) {
-      for (const item of subsequent) {
-        if (item.kind === 'deadrun')     setDr((item as DItem).drId, item.dep + delta, item.arr + delta)
-        else if (item.kind === 'break')  setBk((item as BItem).bkId, item.dep + delta, item.arr + delta)
-        else break
-      }
-    }
-
     function setMarked(dep: number, arr: number) {
       if (marked.kind === 'trip')       setTrip((marked as TItem).tripId, dep, arr)
       else if (marked.kind === 'break') setBk((marked as BItem).bkId,     dep, arr)
     }
 
+    // Tries to make 1 minute of room against whichever item sits immediately
+    // before the marked one — used only by the ops that move the marked item's
+    // own start toward it (pull/pullOnly) without a shiftSubsequent to carry it
+    // along, so the gap on this side would otherwise shrink. A trip is always a
+    // hard wall. A "real" deadrun (one with another productive trip somewhere
+    // before it, i.e. prevProd is set) behaves the same way — it's an actual
+    // vehicle movement, not something to shove around. The one exception is a
+    // deadrun with no productive trip before it at all (the block's own leading
+    // item, e.g. an access pull-out) — that one has no boundary of its own, so
+    // it just tags along, same as it always has. A break instead gives way:
+    // its own end moves 1min closer, shrinking it, until it hits its 1-minute
+    // floor — from there it's a wall too. Returns false to reject the step
+    // outright (nothing moves, nothing shrinks).
+    function makeRoomBefore(): boolean {
+      if (!itemBefore) return true
+      if (itemBefore.kind === 'break') {
+        if (itemBefore.arr - itemBefore.dep > 1) {
+          setBk((itemBefore as BItem).bkId, itemBefore.dep, itemBefore.arr - 1)
+          return true
+        }
+        return marked.dep - itemBefore.arr > 1
+      }
+      if (itemBefore.kind === 'deadrun' && !prevProd) {
+        setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        return true
+      }
+      return marked.dep - itemBefore.arr > 1
+    }
+
+    // Mirrors makeRoomBefore for the ops that grow/move the marked item's own
+    // end toward whatever comes right after it (growOnly/pushOnly) with no
+    // shiftSubsequent to carry that neighbor along. Same rules, opposite side:
+    // a break's start moves 1min closer instead of its end, and the tag-along
+    // exception is a trailing deadrun with no productive trip after it (e.g. a
+    // return pull-in) rather than a leading one.
+    function makeRoomAfter(): boolean {
+      if (!nextItem) return true
+      if (nextItem.kind === 'break') {
+        if (nextItem.arr - nextItem.dep > 1) {
+          setBk((nextItem as BItem).bkId, nextItem.dep + 1, nextItem.arr)
+          return true
+        }
+        return nextItem.dep - marked.arr > 1
+      }
+      if (nextItem.kind === 'deadrun' && !nextProd) {
+        setDr((nextItem as DItem).drId, nextItem.dep + 1, nextItem.arr + 1)
+        return true
+      }
+      return nextItem.dep - marked.arr > 1
+    }
+
     switch (op) {
       case 'grow': {
+        // Propagates — shiftSubsequent carries every item after it along by the
+        // same delta, so the gap on that side never changes. Nothing to check.
         setMarked(marked.dep, marked.arr + 1)
         shiftSubsequent(1)
         break
       }
       case 'shrink': {
+        // Propagates the other way — same reasoning, gap stays constant.
         if (marked.arr - marked.dep <= 1) return
         if (!prevProd && itemBefore?.kind === 'deadrun')
           setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
@@ -1252,40 +1297,38 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         break
       }
       case 'push': {
+        // Marked moves away from itemBefore (never closer) and shiftSubsequent
+        // carries the forward chain along with it — safe on both sides.
         setMarked(marked.dep + 1, marked.arr + 1)
         shiftSubsequent(1)
         break
       }
       case 'pull': {
-        if (prevProd && marked.dep - prevProd.arr <= 1) return
-        if (!prevProd && itemBefore?.kind === 'deadrun')
-          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        if (!makeRoomBefore()) return
         setMarked(marked.dep - 1, marked.arr - 1)
         shiftSubsequent(-1)
         break
       }
       case 'growOnly': {
-        if (nextProd && nextProd.dep - marked.arr <= 1) return
-        pushLeadingDeadruns(1)
+        if (!makeRoomAfter()) return
         setMarked(marked.dep, marked.arr + 1)
         break
       }
       case 'shrinkOnly': {
+        // Only the end retreats, with nothing carried along — the gap after it
+        // only ever grows, and the start never moves. Safe on both sides.
         if (marked.arr - marked.dep <= 1) return
         if (prevProd && marked.dep - prevProd.arr <= 1) return
         setMarked(marked.dep, marked.arr - 1)
         break
       }
       case 'pushOnly': {
-        if (nextProd && nextProd.dep - marked.arr <= 1) return
-        pushLeadingDeadruns(1)
+        if (!makeRoomAfter()) return
         setMarked(marked.dep + 1, marked.arr + 1)
         break
       }
       case 'pullOnly': {
-        if (prevProd && marked.dep - prevProd.arr <= 1) return
-        if (!prevProd && itemBefore?.kind === 'deadrun')
-          setDr((itemBefore as DItem).drId, itemBefore.dep - 1, itemBefore.arr - 1)
+        if (!makeRoomBefore()) return
         setMarked(marked.dep - 1, marked.arr - 1)
         break
       }
