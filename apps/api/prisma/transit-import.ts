@@ -36,6 +36,7 @@ interface Fixture {
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
   routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
+  settings: Array<{ key: string; branchTaxId: string | null; value: Record<string, unknown> }>
 }
 
 async function main() {
@@ -71,6 +72,7 @@ async function main() {
       create: { code: i.code, name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes },
     })
   }
+  const intervalTypeMap = new Map((await prisma.intervalType.findMany({ select: { id: true, code: true } })).map(i => [i.code, i.id]))
   console.log(`  ✓ interval types (${fixture.intervalTypes.length})`)
 
   // ── scopes + operators ──────────────────────────────────────────────────────
@@ -173,6 +175,29 @@ async function main() {
     await prisma.lineGroupLine.createMany({ data: lineIds.map(lineId => ({ lineGroupId: group.id, lineId })) })
   }
   console.log(`  ✓ line groups (${fixture.lineGroups.length})`)
+
+  // ── settings (transit.general/planning/schedule) ───────────────────────────
+  for (const s of fixture.settings) {
+    const value = { ...s.value }
+    if (s.key === 'transit.general' && typeof value.defaultIntervalTypeId === 'string') {
+      value.defaultIntervalTypeId = intervalTypeMap.get(value.defaultIntervalTypeId) ?? null
+    }
+    let scope = 'global'
+    if (s.branchTaxId) {
+      const branch = await prisma.branch.findUnique({ where: { taxId: s.branchTaxId } })
+      if (!branch) {
+        console.warn(`  ! filial ${s.branchTaxId} não encontrada — rode prisma/seed-core.ts antes`)
+        continue
+      }
+      scope = branch.id
+    }
+    await prisma.settings.upsert({
+      where:  { key_scope: { key: s.key, scope } },
+      update: { value: value as Prisma.InputJsonValue },
+      create: { key: s.key, scope, value: value as Prisma.InputJsonValue },
+    })
+  }
+  console.log(`  ✓ settings (${fixture.settings.length})`)
 
   console.log('Transit import complete.')
 }

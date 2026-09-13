@@ -6,10 +6,16 @@ import { PrismaLibSql } from '@prisma/adapter-libsql'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 // Snapshots the transit cadastro domain — TransitLocality, DayType, IntervalType, Scope,
-// ScopeOperator, TransitLine, TransitRoute, RouteLocality, LineGroup — keyed by natural keys
-// (code, not id) so it survives a `prisma migrate reset` and imports cleanly on
-// any machine. Run after making cadastro edits in the app; commit the resulting
-// fixture so the other machine can `pnpm db:import-transit` it back.
+// ScopeOperator, TransitLine, TransitRoute, RouteLocality, LineGroup — plus the transit
+// Settings rows (transit.general/planning/schedule, the generic core Settings table —
+// see apps/api/prisma/schema/core.prisma) — keyed by natural keys (code, not id) so it
+// survives a `prisma migrate reset` and imports cleanly on any machine. Run after making
+// cadastro edits in the app; commit the resulting fixture so the other machine can
+// `pnpm db:import-transit` it back.
+//
+// Settings is shared across domains (e.g. core's password-policy lives in the same
+// table), so only the transit.* keys are exported — never the whole table.
+const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.schedule']
 
 const url      = process.env.DATABASE_URL!
 const adapter  = url.startsWith('postgresql://') || url.startsWith('postgres://')
@@ -31,7 +37,7 @@ function readLogo(logoUrl: string | null): { path: string; data: string } | null
 }
 
 async function main() {
-  const [localities, dayTypes, intervalTypes, scopes, lines, routes, routeLocalities, lineGroups] = await Promise.all([
+  const [localities, dayTypes, intervalTypes, scopes, lines, routes, routeLocalities, lineGroups, settings] = await Promise.all([
     prisma.transitLocality.findMany({ orderBy: { code: 'asc' } }),
     prisma.dayType.findMany({ orderBy: { code: 'asc' } }),
     prisma.intervalType.findMany({ orderBy: { code: 'asc' } }),
@@ -62,7 +68,17 @@ async function main() {
       include: { branch: { select: { taxId: true } }, lines: { include: { line: { select: { code: true } } } } },
       orderBy: { name: 'asc' },
     }),
+    prisma.settings.findMany({ where: { key: { in: TRANSIT_SETTINGS_KEYS } } }),
   ])
+
+  // branch-scoped settings (transit.planning/schedule) store `scope` as a branchId —
+  // resolve to taxId for portability, same as ScopeOperator/LineGroup above
+  const branchIds  = settings.map(s => s.scope).filter(s => s !== 'global')
+  const branches   = branchIds.length
+    ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, taxId: true } })
+    : []
+  const branchTaxIdById = new Map(branches.map(b => [b.id, b.taxId]))
+  const intervalTypeCodeById = new Map(intervalTypes.map(i => [i.id, i.code]))
 
   const fixture = {
     exportedAt: new Date().toISOString(),
@@ -103,6 +119,18 @@ async function main() {
       name: g.name, branchTaxId: g.branch?.taxId ?? null, notes: g.notes,
       lineCodes: g.lines.map(l => l.line.code),
     })),
+    settings: settings.map(s => {
+      const value = { ...(s.value as Record<string, unknown>) }
+      // resource-pointer field — not portable as an id across databases
+      if (s.key === 'transit.general' && typeof value.defaultIntervalTypeId === 'string') {
+        value.defaultIntervalTypeId = intervalTypeCodeById.get(value.defaultIntervalTypeId) ?? null
+      }
+      return {
+        key:        s.key,
+        branchTaxId: s.scope === 'global' ? null : (branchTaxIdById.get(s.scope) ?? null),
+        value,
+      }
+    }),
   }
 
   mkdirSync(join(__dirname, 'fixtures'), { recursive: true })
@@ -111,7 +139,7 @@ async function main() {
   console.log(`Exported to ${FIXTURE_PATH}`)
   console.log(`  localities=${localities.length} dayTypes=${dayTypes.length} intervalTypes=${intervalTypes.length} scopes=${scopes.length}`)
   console.log(`  lines=${lines.length} routes=${routes.length} routeLocalities=${routeLocalities.length}`)
-  console.log(`  lineGroups=${lineGroups.length}`)
+  console.log(`  lineGroups=${lineGroups.length} settings=${settings.length}`)
 }
 
 main()
