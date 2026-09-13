@@ -622,16 +622,22 @@ export function useVehiclePlanShortcuts({
   // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
   const isTripFocused  = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
   const isBreakFocused = editBarOpen && !!focusedSegId && focusedSegId.endsWith(':bk')
+  // Deadruns and breaks can now be nudged the same way trips are (grow/shrink/
+  // push/pull, see handleTripTimingOp) — so the timing shortcuts just need
+  // something focused at all, not specifically a trip. Kept separate from
+  // isTripFocused, which still gates the trip-only actions below (lock,
+  // details, add access/return/interval — none of those apply to a deadrun).
+  const isTimingFocused = editBarOpen && !!focusedSegId
 
   const editOrigin = 'apps/web/src/app/transit/vehicle-plan/[id]/page'
-  useShortcut('+',              () => handleTripTimingOp('grow'),      { desc: 'Crescer viagem (propaga)',                      icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut('-',              () => handleTripTimingOp('shrink'),    { desc: 'Encolher viagem  (propaga)',                    icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut(' ',              () => handleTripTimingOp('push'),      { desc: 'Empurrar viagem (propaga)',                     icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
-  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { desc: 'Puxar viagem (propaga)',                        icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
-  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { desc: 'Crescer viagem',                                icon: Icons.Plus,               origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ desc: 'Encolher viagem',                               icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTripFocused, section: SEC_EDICAO })
-  useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { desc: 'Empurrar só o início',                          icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
-  useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { desc: 'Puxar só o início',                             icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTripFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('+',              () => handleTripTimingOp('grow'),      { desc: 'Crescer viagem (propaga)',                      icon: Icons.Plus,               origin: editOrigin, enabled: isTimingFocused, section: SEC_EDICAO })
+  useShortcut('-',              () => handleTripTimingOp('shrink'),    { desc: 'Encolher viagem  (propaga)',                    icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTimingFocused, section: SEC_EDICAO })
+  useShortcut(' ',              () => handleTripTimingOp('push'),      { desc: 'Empurrar viagem (propaga)',                     icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTimingFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('backspace',      () => handleTripTimingOp('pull'),      { desc: 'Puxar viagem (propaga)',                        icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTimingFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('shift++',        () => handleTripTimingOp('growOnly'),  { desc: 'Crescer viagem',                                icon: Icons.Plus,               origin: editOrigin, enabled: isTimingFocused, section: SEC_EDICAO })
+  useShortcut('shift+-',        () => handleTripTimingOp('shrinkOnly'),{ desc: 'Encolher viagem',                               icon: Icons.MinusSquare,        origin: editOrigin, enabled: isTimingFocused, section: SEC_EDICAO })
+  useShortcut('shift+ ',        () => handleTripTimingOp('pushOnly'),  { desc: 'Empurrar só o início',                          icon: Icons.ArrowRightFromLine, origin: editOrigin, enabled: isTimingFocused, preventDefault: true, section: SEC_EDICAO })
+  useShortcut('shift+backspace',() => handleTripTimingOp('pullOnly'),  { desc: 'Puxar só o início',                             icon: Icons.ArrowLeft,          origin: editOrigin, enabled: isTimingFocused, preventDefault: true, section: SEC_EDICAO })
 
   // Extends the focused break up to the next item in the block (trip, deadrun or
   // another break), minus 1min, capped at its IntervalType.maxMinutes.

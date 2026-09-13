@@ -1104,16 +1104,20 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   const handleTripTimingOp = useCallback((
     op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext',
   ) => {
-    if (!canEditGantt || !mergedPlottedData || !focusedSegId || focusedSegId.endsWith(':dr')) return
+    if (!canEditGantt || !mergedPlottedData || !focusedSegId) return
 
-    const isBreakFocus = focusedSegId.endsWith(':bk')
-    const breakId       = isBreakFocus ? focusedSegId.slice(0, -3) : null
+    const isBreakFocus   = focusedSegId.endsWith(':bk')
+    const isDeadrunFocus = focusedSegId.endsWith(':dr')
+    const breakId        = isBreakFocus   ? focusedSegId.slice(0, -3) : null
+    const deadrunId      = isDeadrunFocus ? focusedSegId.slice(0, -3) : null
 
     let foundBlock: typeof mergedPlottedData.blocks[0] | null = null
     for (const block of mergedPlottedData.blocks) {
       const hasFocused = isBreakFocus
         ? block.blockIntervals.some(bi => bi.id === breakId)
-        : block.blockTrips.some(bt => bt.id === focusedSegId)
+        : isDeadrunFocus
+          ? block.blockDeadruns.some(dr => dr.id === deadrunId)
+          : block.blockTrips.some(bt => bt.id === focusedSegId)
       if (hasFocused) { foundBlock = block; break }
     }
     if (!foundBlock) return
@@ -1139,8 +1143,10 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     ].sort((a, b) => a.dep - b.dep)
 
     const markedIdx = isBreakFocus
-      ? items.findIndex(i => i.kind === 'break' && i.id === breakId)
-      : items.findIndex(i => i.kind === 'trip'  && i.id === focusedSegId)
+      ? items.findIndex(i => i.kind === 'break'   && i.id === breakId)
+      : isDeadrunFocus
+        ? items.findIndex(i => i.kind === 'deadrun' && i.id === deadrunId)
+        : items.findIndex(i => i.kind === 'trip'    && i.id === focusedSegId)
     if (markedIdx === -1) return
     const marked = items[markedIdx]
 
@@ -1224,8 +1230,9 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     }
 
     function setMarked(dep: number, arr: number) {
-      if (marked.kind === 'trip')       setTrip((marked as TItem).tripId, dep, arr)
-      else if (marked.kind === 'break') setBk((marked as BItem).bkId,     dep, arr)
+      if (marked.kind === 'trip')          setTrip((marked as TItem).tripId, dep, arr)
+      else if (marked.kind === 'break')    setBk((marked as BItem).bkId,     dep, arr)
+      else                                  setDr((marked as DItem).drId,    dep, arr)
     }
 
     // Tries to make 1 minute of room against whichever item sits immediately
@@ -1279,7 +1286,21 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       return nextItem.dep - marked.arr > 1
     }
 
-    switch (op) {
+    // A deadrun or a break never drags other trips along — there's no schedule
+    // of its own to propagate, it's just dead time for one vehicle. So for
+    // anything but a trip, the propagating variant of an op behaves exactly
+    // like its "Only" counterpart — same as if shift had been held — instead
+    // of cascading into a productive trip the marked item has no business
+    // moving.
+    const effectiveOp = marked.kind === 'trip' ? op : (
+      op === 'grow'  ? 'growOnly'  :
+      op === 'shrink' ? 'shrinkOnly' :
+      op === 'push'  ? 'pushOnly'  :
+      op === 'pull'  ? 'pullOnly'  :
+      op
+    )
+
+    switch (effectiveOp) {
       case 'grow': {
         // Propagates — shiftSubsequent carries every item after it along by the
         // same delta, so the gap on that side never changes. Nothing to check.
