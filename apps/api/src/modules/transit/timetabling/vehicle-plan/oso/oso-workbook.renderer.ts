@@ -302,6 +302,8 @@ function buildCarroRows(
         row[0] = 'RECO'
       }
       rows.push(row)
+      // blank spacer row after an INTERV, visually separating it from the sequence that follows
+      if (e.kind === 'interval') rows.push(new Array(layout.columns.length).fill(null))
     }
     return rows
   }
@@ -353,6 +355,8 @@ function buildCarroRows(
         cur[firstCols.length] = slot
         flush()
       }
+      // blank spacer row after an INTERV, visually separating it from the sequence that follows
+      if (e.kind === 'interval') rows.push(new Array(G).fill(null))
     }
   }
   // a pending ida with no more family events at all (no volta, no deadrun/interval ever

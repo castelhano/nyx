@@ -193,9 +193,19 @@ export async function assembleOso(
       })
     }
 
+    // the block's own true last trip of this family, chronologically — once it arrives, this
+    // family is recolhida in this block (real or synthetic RETURN below marks that same point).
+    // A DISPLACEMENT anchored at/after that arrival isn't repositioning within this family's
+    // service anymore, it's the block heading off into another line entirely, so it's not part
+    // of this OSO — only a DISPLACEMENT that still has a family trip ahead of it belongs here.
+    const allBlockTripsForAnchor = block.blockTrips as any[]
+    const lastFamilyBlockTripForAnchor = [...allBlockTripsForAnchor].reverse().find(bt => familyLineIds.has(bt.trip.route.lineId))
+    const familyClosesAt = lastFamilyBlockTripForAnchor?.trip.arrivalMinutes as number | undefined
+
     for (const dr of block.blockDeadruns as any[]) {
       if (dr.type !== 'RETURN' && dr.type !== 'DISPLACEMENT') continue
       if (!anchoredDeadrunIdSet.has(dr.id)) continue
+      if (dr.type === 'DISPLACEMENT' && familyClosesAt !== undefined && dr.departureMinutes >= familyClosesAt) continue
       events.push({
         kind:             'deadrun',
         id:                dr.id,
@@ -223,9 +233,8 @@ export async function assembleOso(
     // From this line's own OSO there's no more of it left in the block, so that's exactly
     // "recolhida" as far as this sheet is concerned: a synthetic RETURN closes the family's
     // event stream here instead of leaving its last trip open-ended with no volta/RECO at all.
-    const allBlockTrips      = block.blockTrips as any[]
-    const lastBlockTripId    = allBlockTrips[allBlockTrips.length - 1]?.trip.id as string | undefined
-    const lastFamilyBlockTrip = [...allBlockTrips].reverse().find(bt => familyLineIds.has(bt.trip.route.lineId))
+    const lastBlockTripId    = allBlockTripsForAnchor[allBlockTripsForAnchor.length - 1]?.trip.id as string | undefined
+    const lastFamilyBlockTrip = lastFamilyBlockTripForAnchor
     if (lastFamilyBlockTrip && lastFamilyBlockTrip.trip.id !== lastBlockTripId) {
       events.push({
         kind:             'deadrun',
