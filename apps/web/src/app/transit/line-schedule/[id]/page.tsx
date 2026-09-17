@@ -59,6 +59,7 @@ interface PendingNew {
   requiredVehicleType?: VehicleType
   stopPattern:          StopPattern
   notes?:               string
+  markings?:            TripMarking[]
   times:                string[]
 }
 
@@ -82,6 +83,12 @@ const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[] = [
   { value: 'BOLD_ITALIC',   label: 'Negrito + itálico' },
   { value: 'UNDERLINE',     label: 'Sublinhado' },
   { value: 'STRIKETHROUGH', label: 'Tachado' },
+]
+// same options as TripDetailsModal.tsx (vehicle-plan)
+const STOP_PATTERN_OPTIONS: { value: StopPattern; label: string }[] = [
+  { value: 'LOCAL',   label: 'Paradora' },
+  { value: 'LIMITED', label: 'Semiexpressa' },
+  { value: 'EXPRESS', label: 'Expressa' },
 ]
 
 function minutesToHHMM(m: number): string {
@@ -274,6 +281,7 @@ export default function LineScheduleDetailPage() {
   const [pendingNew,     setPendingNew]     = useState<PendingNew | null>(null)
 
   const shiftAnchorRef = useRef<string | null>(null)
+  const lastEscapeAtRef = useRef(0)
   const gridRef         = useRef<HTMLDivElement>(null)
   const [gridCols, setGridCols] = useState(10)
 
@@ -338,7 +346,13 @@ export default function LineScheduleDetailPage() {
   // Typed-but-unconfirmed bulk-add input isn't part of `draft` yet, so it doesn't
   // make handleSave do anything — but it's still local work the user would lose,
   // so alt+l/"Limpar" and the exit-without-saving guard must also react to it.
-  const pendingNewDirty = !!pendingNew && (pendingNew.times.length > 0 || !!pendingNew.requiredVehicleType || !!pendingNew.notes?.trim())
+  const pendingNewDirty = !!pendingNew && (
+    pendingNew.times.length > 0 ||
+    !!pendingNew.requiredVehicleType ||
+    !!pendingNew.notes?.trim() ||
+    pendingNew.stopPattern !== 'LOCAL' ||
+    (pendingNew.markings?.length ?? 0) > 0
+  )
   const hasUnsavedWork  = isDirty || pendingNewDirty
   const pendingValidCount = pendingNew ? splitValidTimes(pendingNew.times).valid.length : 0
 
@@ -430,6 +444,12 @@ export default function LineScheduleDetailPage() {
     setFocusedId(dep.id)
   }
 
+  function closeFocused() {
+    setFocusedId(null)
+    setSelectedIds(new Set())
+    shiftAnchorRef.current = null
+  }
+
   function toggleDeleteSelected() {
     const ids = selectedIds.size > 0 ? selectedIds : (focusedId ? new Set([focusedId]) : new Set<string>())
     if (ids.size === 0) return
@@ -468,6 +488,7 @@ export default function LineScheduleDetailPage() {
       requiredVehicleType:  pendingNew.requiredVehicleType,
       stopPattern:          pendingNew.stopPattern,
       notes:                pendingNew.notes,
+      markings:             pendingNew.markings,
     }))
     setDraft(prev => (prev ? [...prev, ...items] : items))
     // leftover invalid tokens stay in the panel so the user can fix/remove them
@@ -493,6 +514,15 @@ export default function LineScheduleDetailPage() {
     if (!focused) return false
     if ((focused.markings ?? []).some(m => m.legendText === marking.legendText)) return false
     patchDeparture(focused.id, { markings: [...(focused.markings ?? []), marking] })
+    return true
+  }
+
+  // Same shape as addMarkingToFocused, but for the bulk-add panel — markings
+  // typed here apply uniformly to every departure created from the batch.
+  function addMarkingToPendingNew(marking: TripMarking): boolean {
+    if (!pendingNew) return false
+    if ((pendingNew.markings ?? []).some(m => m.legendText === marking.legendText)) return false
+    patchPendingNew({ markings: [...(pendingNew.markings ?? []), marking] })
     return true
   }
 
@@ -696,6 +726,21 @@ export default function LineScheduleDetailPage() {
   useShortcut('escape', () => { setSelectedIds(new Set()); shiftAnchorRef.current = null }, {
     desc: 'Limpar seleção', icon: Icons.X, origin, enabled: !isNew && selectedIds.size > 0, section: SEC_ED,
   })
+  // Double-tap: a lone Escape is easy to hit by accident while typing in the
+  // side panel, so closing only happens on a second press within 500ms — the
+  // first press just arms it.
+  useShortcut('escape', () => {
+    const now = Date.now()
+    if (now - lastEscapeAtRef.current < 500) {
+      lastEscapeAtRef.current = 0
+      if (pendingNew) cancelPendingNew(); else closeFocused()
+    } else {
+      lastEscapeAtRef.current = now
+    }
+  }, {
+    desc: 'Fechar painel (esc duplo)', icon: Icons.X, origin,
+    enabled: !isNew && selectedIds.size === 0 && (!!pendingNew || !!focusedId), section: SEC_ED,
+  })
   useShortcut('alt+n', () => { if (viewRouteId) openPendingNew(viewRouteId) }, {
     desc: 'Nova partida no sentido ativo', icon: Icons.Plus, origin, enabled: !isNew && !!viewRouteId, section: SEC_ED,
   })
@@ -715,6 +760,7 @@ export default function LineScheduleDetailPage() {
     { key: 'e', fieldId: 'ls-notes' },                // LineSchedule.notes
     { key: 's', fieldId: 'ld-departureMinutes' },    // LineDeparture.departureMinutes
     { key: 'v', fieldId: 'ld-requiredVehicleType' }, // LineDeparture.requiredVehicleType
+    { key: 'p', fieldId: 'ld-stopPattern' },          // LineDeparture.stopPattern
     { key: 'a', fieldId: 'ld-notes' },                // LineDeparture.notes
     { key: 'k', fieldId: 'ld-markingInput' },         // new marking field
   ], origin)
@@ -974,6 +1020,19 @@ export default function LineScheduleDetailPage() {
                     </div>
 
                     <div className="space-y-1.5">
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Perfil de embarque</label>
+                      <Select
+                        id="ld-stopPattern"
+                        size="sm"
+                        keybind="p"
+                        value={pendingNew.stopPattern}
+                        onChange={e => patchPendingNew({ stopPattern: e.target.value as StopPattern })}
+                      >
+                        {STOP_PATTERN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Observações</label>
                       <div className="relative">
                         <textarea
@@ -992,6 +1051,103 @@ export default function LineScheduleDetailPage() {
                       {pendingValidCount > 0 ? ` Adicionar ${pendingValidCount} partida${pendingValidCount === 1 ? '' : 's'}` : ' Adicionar partidas'}
                     </Button>
                   </form>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Marcações</label>
+                    <p className="text-[10px] text-muted-foreground">Aplicadas a todas as partidas deste lote.</p>
+                    <div className="space-y-1.5">
+                      {(pendingNew.markings ?? []).map((m, idx) => (
+                        <div key={idx} className="border border-border rounded-md p-1.5 space-y-1.5">
+                          <div className="flex items-start gap-1.5">
+                            <textarea
+                              rows={2}
+                              value={m.legendText}
+                              onChange={e => patchPendingNew({ markings: (pendingNew.markings ?? []).map((mm, i) => i === idx ? { ...mm, legendText: e.target.value } : mm) })}
+                              className="flex-1 text-xs rounded px-1.5 py-1 resize-none border border-input bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => patchPendingNew({ markings: (pendingNew.markings ?? []).filter((_, i) => i !== idx) })}
+                              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            >
+                              <Icons.X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-start gap-2 mt-2 mb-1">
+                            <Select
+                              size="sm"
+                              className="text-[11px] w-30"
+                              value={m.fontStyle ?? ''}
+                              onChange={e => {
+                                const style = (e.target.value || undefined) as TripMarkingFontStyle | undefined
+                                patchPendingNew({ markings: (pendingNew.markings ?? []).map((mm, i) => i === idx ? { ...mm, fontStyle: style } : mm) })
+                              }}
+                            >
+                              <option value="">Estilo</option>
+                              {FONT_STYLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </Select>
+                            <ColorPicker
+                              value={m.bgColor ? BG_COLOR_OPTIONS.find(o => o.value === m.bgColor)!.hex : null}
+                              onChange={hex => {
+                                const bgColor = hex ? BG_COLOR_OPTIONS.find(o => o.hex === hex)!.value : undefined
+                                patchPendingNew({ markings: (pendingNew.markings ?? []).map((mm, i) => i === idx ? { ...mm, bgColor } : mm) })
+                              }}
+                              palette={BG_COLOR_OPTIONS.map(o => o.hex)}
+                              autoColor="#e5e7eb"
+                              autoLabel="Sem cor"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex gap-1.5">
+                        <div className="relative flex-1">
+                          <Input
+                            id="ld-markingInput"
+                            size="sm"
+                            className="w-full md:pr-10"
+                            placeholder="Nova marcação…"
+                            value={markingDraft}
+                            onChange={e => setMarkingDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key !== 'Enter' || !markingDraft.trim()) return
+                              if (addMarkingToPendingNew({ legendText: markingDraft.trim() })) setMarkingDraft('')
+                            }}
+                          />
+                          <KeyHint k="k" />
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            if (!markingDraft.trim()) return
+                            if (addMarkingToPendingNew({ legendText: markingDraft.trim() })) setMarkingDraft('')
+                          }}
+                        >
+                          <Icons.Plus className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      {markingQuickPicks.filter(q => !(pendingNew.markings ?? []).some(m => m.legendText === q.legendText)).length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground">Já usadas neste quadro:</p>
+                          <div className="flex flex-col gap-1.5">
+                            {markingQuickPicks
+                              .filter(q => !(pendingNew.markings ?? []).some(m => m.legendText === q.legendText))
+                              .map(q => (
+                                <button
+                                  key={q.legendText}
+                                  type="button"
+                                  title={q.legendText}
+                                  onClick={() => addMarkingToPendingNew(q)}
+                                  className="w-full truncate text-left text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
+                                >
+                                  {q.legendText}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </>
               ) : focused ? (
                 <>
@@ -1000,14 +1156,24 @@ export default function LineScheduleDetailPage() {
                       <Icons.Timer className="w-3.5 h-3.5 text-muted-foreground" />
                       {DIRECTION_LABELS[routes.find(r => r.id === focused.routeId)?.direction ?? 'OUTBOUND']}
                     </h3>
-                    <button
-                      type="button"
-                      title={deletedIds.has(focused.id) ? 'Restaurar' : 'Excluir'}
-                      onClick={toggleDeleteSelected}
-                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                    >
-                      {deletedIds.has(focused.id) ? <Icons.Undo2 className="w-4 h-4" /> : <Icons.Trash2 className="w-4 h-4" />}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        title={deletedIds.has(focused.id) ? 'Restaurar' : 'Excluir'}
+                        onClick={toggleDeleteSelected}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      >
+                        {deletedIds.has(focused.id) ? <Icons.Undo2 className="w-4 h-4" /> : <Icons.Trash2 className="w-4 h-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        title="Fechar"
+                        onClick={closeFocused}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                      >
+                        <Icons.X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <form onSubmit={e => e.preventDefault()} className="space-y-4">
@@ -1041,6 +1207,19 @@ export default function LineScheduleDetailPage() {
                       >
                         <option value="">Padrão da linha</option>
                         {(Object.keys(VEHICLE_LABELS) as VehicleType[]).map(v => <option key={v} value={v}>{VEHICLE_LABELS[v]}</option>)}
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Perfil de embarque</label>
+                      <Select
+                        id="ld-stopPattern"
+                        size="sm"
+                        keybind="p"
+                        value={focused.stopPattern}
+                        onChange={e => patchDeparture(focused.id, { stopPattern: e.target.value as StopPattern })}
+                      >
+                        {STOP_PATTERN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </Select>
                     </div>
 
