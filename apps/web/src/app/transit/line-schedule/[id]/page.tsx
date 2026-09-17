@@ -327,6 +327,11 @@ export default function LineScheduleDetailPage() {
     [header, baselineHeader],
   )
   const isDirty = departuresDirty || headerDirty
+  // Typed-but-unconfirmed bulk-add input isn't part of `draft` yet, so it doesn't
+  // make handleSave do anything — but it's still local work the user would lose,
+  // so alt+l/"Limpar" and the exit-without-saving guard must also react to it.
+  const pendingNewDirty = !!pendingNew && (pendingNew.times.length > 0 || !!pendingNew.requiredVehicleType || !!pendingNew.notes?.trim())
+  const hasUnsavedWork  = isDirty || pendingNewDirty
 
   function departuresFor(routeId: string | null): DraftDeparture[] {
     if (!draft || !routeId) return []
@@ -569,7 +574,7 @@ export default function LineScheduleDetailPage() {
   }
 
   async function handleDiscard() {
-    if (!isDirty || !baseline || !baselineHeader) return
+    if (!hasUnsavedWork || !baseline || !baselineHeader) return
     const ok = await confirm({
       title:        'Reverter alterações',
       description:  'Volta ao último estado salvo. As alterações pendentes serão perdidas.',
@@ -587,7 +592,7 @@ export default function LineScheduleDetailPage() {
   }
 
   async function handleBack() {
-    if (isDirty) {
+    if (hasUnsavedWork) {
       const ok = await confirm({
         title:        'Sair sem salvar',
         description:  'Existem alterações pendentes que serão descartadas.',
@@ -648,10 +653,10 @@ export default function LineScheduleDetailPage() {
       : [
           ...(canCreate ? [{ label: 'Duplicar', icon: Icons.Copy, overflow: true, onClick: () => { void handleDuplicate() }, variant: 'outline' as const }] : []),
           ...(schedule?.status === 'DRAFT' && canUpdate ? [{ label: 'Aprovar', icon: Icons.Check, onClick: () => { void handleApprove(false) } }] : []),
-          { label: 'Limpar', icon: Icons.Undo2, onClick: () => { void handleDiscard() }, variant: 'outline', disabled: !isDirty },
+          { label: 'Limpar', icon: Icons.Undo2, onClick: () => { void handleDiscard() }, variant: 'outline', disabled: !hasUnsavedWork },
           { label: 'Salvar', icon: Icons.Save, onClick: () => { void handleSave() }, primary: true, disabled: !isDirty || !canUpdate },
         ],
-    [isNew, creating, schedule?.status, isDirty, canCreate, canUpdate, header, draft, deletedIds],
+    [isNew, creating, schedule?.status, isDirty, hasUnsavedWork, canCreate, canUpdate, header, draft, deletedIds],
   )
 
   // ── shortcuts ────────────────────────────────────────────────────────────
@@ -704,7 +709,7 @@ export default function LineScheduleDetailPage() {
     desc: 'Salvar', icon: Icons.Save, origin, enabled: isNew ? !creating : isDirty, section: SEC_GERAL,
   })
   useShortcut('alt+l', () => { void handleDiscard() }, {
-    desc: 'Reverter alterações', icon: Icons.Undo2, origin, enabled: !isNew && isDirty, section: SEC_GERAL,
+    desc: 'Reverter alterações', icon: Icons.Undo2, origin, enabled: !isNew && hasUnsavedWork, section: SEC_GERAL,
   })
   useShortcut('alt+v', () => { void handleBack() }, {
     desc: 'Voltar', icon: Icons.ArrowLeft, origin, section: SEC_GERAL,
