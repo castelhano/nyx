@@ -340,6 +340,7 @@ export default function LineScheduleDetailPage() {
   // so alt+l/"Limpar" and the exit-without-saving guard must also react to it.
   const pendingNewDirty = !!pendingNew && (pendingNew.times.length > 0 || !!pendingNew.requiredVehicleType || !!pendingNew.notes?.trim())
   const hasUnsavedWork  = isDirty || pendingNewDirty
+  const pendingValidCount = pendingNew ? splitValidTimes(pendingNew.times).valid.length : 0
 
   function departuresFor(routeId: string | null): DraftDeparture[] {
     if (!draft || !routeId) return []
@@ -718,8 +719,19 @@ export default function LineScheduleDetailPage() {
     { key: 'k', fieldId: 'ld-markingInput' },         // new marking field
   ], origin)
 
-  useShortcut('alt+g', () => { void (isNew ? handleCreate() : handleSave()) }, {
-    desc: 'Salvar', icon: Icons.Save, origin, enabled: isNew ? !creating : isDirty, section: SEC_GERAL,
+  // While the bulk-add panel has confirmable times, alt+g submits that inline
+  // form first (same as clicking "Adicionar") — matching its usual "submit the
+  // form in focus" job — and only saves to the server on a second press, once
+  // there's nothing left pending in the panel.
+  const pendingNewSubmittable = !isNew && !!pendingNew && pendingValidCount > 0
+  useShortcut('alt+g', () => {
+    if (pendingNewSubmittable) { confirmPendingNew(); return }
+    void (isNew ? handleCreate() : handleSave())
+  }, {
+    desc: pendingNewSubmittable ? 'Adicionar partidas pendentes' : 'Salvar',
+    icon: Icons.Save, origin,
+    enabled: isNew ? !creating : (isDirty || pendingNewSubmittable),
+    section: SEC_GERAL,
   })
   useShortcut('alt+l', () => { void handleDiscard() }, {
     desc: 'Reverter alterações', icon: Icons.Undo2, origin, enabled: !isNew && hasUnsavedWork, section: SEC_GERAL,
@@ -760,7 +772,6 @@ export default function LineScheduleDetailPage() {
   const isReady = !!schedule && !!header && !!draft
   const isBulk  = selectedIds.size > 1
   const currentRouteDepartures = departuresFor(viewRouteId)
-  const pendingValidCount = pendingNew ? splitValidTimes(pendingNew.times).valid.length : 0
 
   return (
     <div className="min-h-full bg-background text-foreground flex flex-col">
