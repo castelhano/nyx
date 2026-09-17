@@ -107,6 +107,16 @@ function parseTime(token: string): number | { error: string } {
   return m != null ? m : { error: 'Horário inválido' }
 }
 
+// Digits-only shorthand ("422", "0422") -> "HH:MM", last 2 digits are minutes.
+// Anything else (already has ":", wrong length, non-digits) passes through
+// unchanged and is left for parseTime to accept or flag.
+function normalizeTime(raw: string): string {
+  if (!/^\d{3,4}$/.test(raw)) return raw
+  const mm = raw.slice(-2)
+  const hh = raw.slice(0, -2).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
 // Mirrors the TagInput's own validity check (parse + allowDuplicates=false) so the
 // materialized departures match what the chips show — a duplicate stays excluded
 // here exactly like its chip renders invalid, instead of silently slipping through.
@@ -573,6 +583,7 @@ export default function LineScheduleDetailPage() {
     setDeletedIds(new Set())
     setSelectedIds(new Set())
     setFocusedId(null)
+    setPendingNew(null)
   }
 
   async function handleBack() {
@@ -912,6 +923,7 @@ export default function LineScheduleDetailPage() {
                           value={pendingNew.times}
                           onChange={times => patchPendingNew({ times })}
                           parse={parseTime}
+                          normalize={normalizeTime}
                           allowDuplicates={false}
                         />
                         <KeyHint k="s" />

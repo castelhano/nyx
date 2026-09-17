@@ -21,6 +21,7 @@ export interface TagInputProps<T = unknown> {
   value:               string[]
   onChange:            (value: string[]) => void
   parse?:              (token: string) => T | { error: string }
+  normalize?:          (raw: string) => string
   separators?:         string[]
   placeholder?:        string
   disabled?:           boolean
@@ -36,7 +37,7 @@ function isParseError(result: unknown): result is { error: string } {
 }
 
 export function TagInput<T = unknown>({
-  id, value, onChange, parse, separators = DEFAULT_SEPARATORS, placeholder, disabled,
+  id, value, onChange, parse, normalize, separators = DEFAULT_SEPARATORS, placeholder, disabled,
   size = 'default', className, containerClassName, maxItems, allowDuplicates = true,
 }: TagInputProps<T>) {
   const [text, setText] = useState('')
@@ -57,10 +58,10 @@ export function TagInput<T = unknown>({
   }
 
   function commit(raw: string) {
-    const token = raw.trim()
+    const trimmed = raw.trim()
     setText('')
-    if (!token || (maxItems != null && value.length >= maxItems)) return
-    onChange([...value, token])
+    if (!trimmed || (maxItems != null && value.length >= maxItems)) return
+    onChange([...value, normalize ? normalize(trimmed) : trimmed])
   }
 
   function removeAt(index: number) {
@@ -90,7 +91,7 @@ export function TagInput<T = unknown>({
     if (!pasted) return
     const splitChars = [...STRUCTURAL_SPLIT, ...separators]
     const regex = new RegExp(`[${splitChars.map(c => `\\${c}`).join('')}]`)
-    const parts = pasted.split(regex).map(s => s.trim()).filter(Boolean)
+    const parts = pasted.split(regex).map(s => s.trim()).filter(Boolean).map(s => (normalize ? normalize(s) : s))
     if (parts.length <= 1) return // no delimiter found — let the browser paste into the text field normally
     e.preventDefault()
     setText('')
@@ -140,6 +141,7 @@ export function TagInput<T = unknown>({
       <input
         ref={inputRef}
         id={id}
+        data-keywatch="none"
         value={text}
         disabled={disabled || atMax}
         onChange={e => setText(e.target.value)}
