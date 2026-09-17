@@ -17,6 +17,7 @@ import { Icons } from '@/lib/icons'
 import { Button } from '@/components/ui/button'
 import { Input, inputBaseCls } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { TagInput } from '@/components/ui/tag-input'
 import { ColorPicker } from '@/components/ui/color-picker'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { KeyHint } from '@/core/FieldRenderer'
@@ -51,6 +52,14 @@ interface HeaderDraft {
   dayTypeId:   string
   approvalRef: string
   notes:       string
+}
+
+interface PendingNew {
+  routeId:              string
+  requiredVehicleType?: VehicleType
+  stopPattern:          StopPattern
+  notes?:               string
+  times:                string[]
 }
 
 const DIRECTION_LABELS: Record<Route['direction'], string>       = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
@@ -91,6 +100,26 @@ function hhmmToMinutes(s: string): number | null {
 
 function newId(): string {
   return `new-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`
+}
+
+function parseTime(token: string): number | { error: string } {
+  const m = hhmmToMinutes(token)
+  return m != null ? m : { error: 'Horário inválido' }
+}
+
+// Mirrors the TagInput's own validity check (parse + allowDuplicates=false) so the
+// materialized departures match what the chips show — a duplicate stays excluded
+// here exactly like its chip renders invalid, instead of silently slipping through.
+function splitValidTimes(times: string[]): { valid: string[]; invalid: string[] } {
+  const valid: string[] = [], invalid: string[] = []
+  const seen = new Set<string>()
+  for (const t of times) {
+    const key = t.trim().toLowerCase()
+    const duplicate = seen.has(key)
+    seen.add(key)
+    ;(!duplicate && hhmmToMinutes(t) != null ? valid : invalid).push(t)
+  }
+  return { valid, invalid }
 }
 
 function toDraft(d: LineDeparture): DraftDeparture {
@@ -232,6 +261,7 @@ export default function LineScheduleDetailPage() {
   const [markingDraft,   setMarkingDraft]   = useState('')
   const [bulkShiftMin,   setBulkShiftMin]   = useState('')
   const [viewRouteId,    setViewRouteId]    = useState<string | null>(null)
+  const [pendingNew,     setPendingNew]     = useState<PendingNew | null>(null)
 
   const shiftAnchorRef = useRef<string | null>(null)
   const gridRef         = useRef<HTMLDivElement>(null)
@@ -317,6 +347,7 @@ export default function LineScheduleDetailPage() {
       setSelectedIds(new Set())
       shiftAnchorRef.current = null
     }
+    if (pendingNew && pendingNew.routeId !== routeId) setPendingNew(null)
   }
 
   function cycleTab(delta: number) {
@@ -364,6 +395,7 @@ export default function LineScheduleDetailPage() {
   }
 
   function handleChipClick(dep: DraftDeparture, e: React.MouseEvent) {
+    if (pendingNew) setPendingNew(null)
     if (e.shiftKey && focused && focused.routeId === dep.routeId) {
       if (!shiftAnchorRef.current) shiftAnchorRef.current = focused.id
       setSelectedIds(selectRange(dep.routeId, shiftAnchorRef.current, dep.id))
@@ -385,14 +417,39 @@ export default function LineScheduleDetailPage() {
     })
   }
 
-  function addDeparture(routeId: string) {
-    const list = departuresFor(routeId)
-    const last = list[list.length - 1]
-    const item: DraftDeparture = { id: newId(), routeId, departureMinutes: last ? last.departureMinutes + 10 : 300, stopPattern: 'LOCAL' }
-    setDraft(prev => (prev ? [...prev, item] : [item]))
-    setFocusedId(item.id)
+  function openPendingNew(routeId: string) {
+    if (pendingNew?.routeId === routeId) return // already open for this route — don't wipe typed-but-unconfirmed times
+    setPendingNew({ routeId, stopPattern: 'LOCAL', times: [] })
+    setFocusedId(null)
     setSelectedIds(new Set())
-    shiftAnchorRef.current = item.id
+    shiftAnchorRef.current = null
+  }
+
+  function patchPendingNew(patch: Partial<PendingNew>) {
+    setPendingNew(prev => (prev ? { ...prev, ...patch } : prev))
+  }
+
+  function cancelPendingNew() {
+    setPendingNew(null)
+  }
+
+  function confirmPendingNew() {
+    if (!pendingNew) return
+    const { valid, invalid } = splitValidTimes(pendingNew.times)
+    if (valid.length === 0) return
+    const items: DraftDeparture[] = valid.map(t => ({
+      id:                   newId(),
+      routeId:              pendingNew.routeId,
+      departureMinutes:     hhmmToMinutes(t)!,
+      requiredVehicleType:  pendingNew.requiredVehicleType,
+      stopPattern:          pendingNew.stopPattern,
+      notes:                pendingNew.notes,
+    }))
+    setDraft(prev => (prev ? [...prev, ...items] : items))
+    // leftover invalid tokens stay in the panel so the user can fix/remove them
+    setPendingNew(invalid.length > 0 ? { ...pendingNew, times: invalid } : null)
+    setFocusedId(null)
+    setSelectedIds(new Set())
   }
 
   function applyVehicleTypeToSelected(type: VehicleType | undefined) {
@@ -609,7 +666,7 @@ export default function LineScheduleDetailPage() {
   useShortcut('escape', () => { setSelectedIds(new Set()); shiftAnchorRef.current = null }, {
     desc: 'Limpar seleção', icon: Icons.X, origin, enabled: !isNew && selectedIds.size > 0, section: SEC_ED,
   })
-  useShortcut('alt+n', () => { if (viewRouteId) addDeparture(viewRouteId) }, {
+  useShortcut('alt+n', () => { if (viewRouteId) openPendingNew(viewRouteId) }, {
     desc: 'Nova partida no sentido ativo', icon: Icons.Plus, origin, enabled: !isNew && !!viewRouteId, section: SEC_ED,
   })
 
@@ -674,6 +731,7 @@ export default function LineScheduleDetailPage() {
   const isReady = !!schedule && !!header && !!draft
   const isBulk  = selectedIds.size > 1
   const currentRouteDepartures = departuresFor(viewRouteId)
+  const pendingValidCount = pendingNew ? splitValidTimes(pendingNew.times).valid.length : 0
 
   return (
     <div className="min-h-full bg-background text-foreground flex flex-col">
@@ -765,7 +823,7 @@ export default function LineScheduleDetailPage() {
                 ))}
                 <Button
                   variant="ghost" size="sm" className="ml-auto self-center"
-                  onClick={() => viewRouteId && addDeparture(viewRouteId)}
+                  onClick={() => viewRouteId && openPendingNew(viewRouteId)}
                   disabled={!viewRouteId}
                 >
                   <Icons.Plus className="w-3.5 h-3.5" /> Partida
@@ -824,6 +882,75 @@ export default function LineScheduleDetailPage() {
                   <Button variant="destructive" size="sm" onClick={toggleDeleteSelected} className="w-full">
                     <Icons.Trash2 className="w-3.5 h-3.5" /> Excluir/restaurar selecionadas
                   </Button>
+                </>
+              ) : pendingNew ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                      <Icons.Timer className="w-3.5 h-3.5 text-muted-foreground" />
+                      Nova(s) partida(s) — {DIRECTION_LABELS[routes.find(r => r.id === pendingNew.routeId)?.direction ?? 'OUTBOUND']}
+                    </h3>
+                    <button
+                      type="button"
+                      title="Cancelar"
+                      onClick={cancelPendingNew}
+                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                    >
+                      <Icons.X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={e => { e.preventDefault(); confirmPendingNew() }} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Partida(s)</label>
+                      <div className="relative">
+                        <TagInput
+                          id="ld-departureMinutes"
+                          size="sm"
+                          containerClassName="w-full md:pr-10"
+                          placeholder="HH:MM | cole uma lista ou digite"
+                          value={pendingNew.times}
+                          onChange={times => patchPendingNew({ times })}
+                          parse={parseTime}
+                          allowDuplicates={false}
+                        />
+                        <KeyHint k="s" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Veículo requerido</label>
+                      <Select
+                        id="ld-requiredVehicleType"
+                        size="sm"
+                        keybind="v"
+                        value={pendingNew.requiredVehicleType ?? ''}
+                        onChange={e => patchPendingNew({ requiredVehicleType: (e.target.value || undefined) as VehicleType | undefined })}
+                      >
+                        <option value="">Padrão da linha</option>
+                        {(Object.keys(VEHICLE_LABELS) as VehicleType[]).map(v => <option key={v} value={v}>{VEHICLE_LABELS[v]}</option>)}
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Observações</label>
+                      <div className="relative">
+                        <textarea
+                          id="ld-notes"
+                          rows={2}
+                          value={pendingNew.notes ?? ''}
+                          onChange={e => patchPendingNew({ notes: e.target.value })}
+                          className={cn(inputBaseCls, 'w-full resize-none md:pr-10')}
+                        />
+                        <KeyHint k="a" className="top-3 -translate-y-0" />
+                      </div>
+                    </div>
+
+                    <Button type="submit" size="sm" className="w-full" disabled={pendingValidCount === 0}>
+                      <Icons.Plus className="w-3.5 h-3.5" />
+                      {pendingValidCount > 0 ? ` Adicionar ${pendingValidCount} partida${pendingValidCount === 1 ? '' : 's'}` : ' Adicionar partidas'}
+                    </Button>
+                  </form>
                 </>
               ) : focused ? (
                 <>
