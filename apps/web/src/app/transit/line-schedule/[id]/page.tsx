@@ -318,6 +318,14 @@ export default function LineScheduleDetailPage() {
     if (!viewRouteId && routes.length > 0) setViewRouteId(routes[0].id)
   }, [routes, viewRouteId])
 
+  // Jump straight into the times field when the bulk-add panel opens, so the
+  // user can start typing/pasting without an extra click.
+  useEffect(() => {
+    if (pendingNew) document.getElementById('ld-departureMinutes')?.focus()
+    // only re-focus when a *new* bulk-add session opens, not on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNew?.routeId])
+
   const departuresDirty = useMemo(
     () => !!draft && !!baseline && (JSON.stringify(draft) !== JSON.stringify(baseline) || deletedIds.size > 0),
     [draft, baseline, deletedIds],
@@ -575,19 +583,24 @@ export default function LineScheduleDetailPage() {
 
   async function handleDiscard() {
     if (!hasUnsavedWork || !baseline || !baselineHeader) return
-    const ok = await confirm({
-      title:        'Reverter alterações',
-      description:  'Volta ao último estado salvo. As alterações pendentes serão perdidas.',
-      confirmLabel: 'Reverter',
-      cancelLabel:  'Cancelar',
-      variant:      'destructive',
-    })
-    if (!ok) return
-    setDraft(baseline)
-    setHeader(baselineHeader)
-    setDeletedIds(new Set())
-    setSelectedIds(new Set())
-    setFocusedId(null)
+    // Only ask for confirmation when there's actually-saved-shape data to lose
+    // (draft/header vs. baseline) — an open bulk-add panel with unconfirmed
+    // chips is scratch input, closing it doesn't need a destructive prompt.
+    if (isDirty) {
+      const ok = await confirm({
+        title:        'Reverter alterações',
+        description:  'Volta ao último estado salvo. As alterações pendentes serão perdidas.',
+        confirmLabel: 'Reverter',
+        cancelLabel:  'Cancelar',
+        variant:      'destructive',
+      })
+      if (!ok) return
+      setDraft(baseline)
+      setHeader(baselineHeader)
+      setDeletedIds(new Set())
+      setSelectedIds(new Set())
+      setFocusedId(null)
+    }
     setPendingNew(null)
   }
 
