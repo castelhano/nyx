@@ -103,7 +103,10 @@ export class VehiclePlanImportService {
 
     const blockMap = new Map<string, typeof rows>()
     for (const row of rows) {
-      const key = row.vehicleNumber || row.lineCode
+      // Fall back to lineCode+tabId, not lineCode alone — a blank vehicleNumber
+      // still means one tab is one vehicle's duty; falling back to lineCode alone
+      // merged every driver's tab for that line into one fictitious block.
+      const key = row.vehicleNumber || `${row.lineCode}:${row.tabId}`
       if (!blockMap.has(key)) blockMap.set(key, [])
       blockMap.get(key)!.push(row)
     }
@@ -268,12 +271,13 @@ export class VehiclePlanImportService {
     const blockIntervalRows: Array<{ id: string; vehicleBlockId: string; intervalTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
 
     for (const [, tabRows] of blockMap.entries()) {
+      // depDay only bumps on a genuine midnight crossing within the file's own row
+      // order (see ImportRow.depDay), so it's a reliable primary sort key — unlike a
+      // fixed clock-time cutoff, which misorders a tab whose first trip legitimately
+      // departs before 03:00 while a later trip in the same tab departs after it.
       tabRows.sort((a, b) => {
-        const da   = parseHHMM(a.departureHHMM)
-        const db   = parseHHMM(b.departureHHMM)
-        const adjA = da < 180 ? da + 1440 : da
-        const adjB = db < 180 ? db + 1440 : db
-        return adjA - adjB
+        if (a.depDay !== b.depDay) return a.depDay - b.depDay
+        return parseHHMM(a.departureHHMM) - parseHHMM(b.departureHHMM)
       })
 
       const blockId = randomUUID()

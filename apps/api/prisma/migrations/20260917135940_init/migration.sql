@@ -52,6 +52,12 @@ CREATE TYPE "LineScheduleStatus" AS ENUM ('DRAFT', 'APPROVED', 'SUPERSEDED', 'AR
 -- CreateEnum
 CREATE TYPE "transit_deadrun_type" AS ENUM ('ACCESS', 'RETURN', 'DISPLACEMENT');
 
+-- CreateEnum
+CREATE TYPE "LayoverPolicy" AS ENUM ('DEFAULT', 'HOLD', 'DEPOT');
+
+-- CreateEnum
+CREATE TYPE "TripStopPattern" AS ENUM ('LOCAL', 'LIMITED', 'EXPRESS');
+
 -- CreateTable
 CREATE TABLE "users" (
     "id" TEXT NOT NULL,
@@ -328,7 +334,11 @@ CREATE TABLE "transit_routes" (
     "originLocalityId" TEXT NOT NULL,
     "destinationLocalityId" TEXT NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "ordinal" INTEGER NOT NULL DEFAULT 0,
     "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+    "color" TEXT,
+    "layoverPolicy" "LayoverPolicy" NOT NULL DEFAULT 'DEFAULT',
+    "homeDepotId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -348,6 +358,7 @@ CREATE TABLE "transit_route_localities" (
     "deltaSource" "TravelTimeSource" NOT NULL DEFAULT 'OSRM',
     "geometry" JSONB,
     "allowsCrewChange" BOOLEAN NOT NULL DEFAULT false,
+    "includeInOso" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -430,7 +441,9 @@ CREATE TABLE "transit_line_departures" (
     "routeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "requiredVehicleType" "VehicleType",
+    "stopPattern" "TripStopPattern" NOT NULL DEFAULT 'LOCAL',
     "notes" TEXT,
+    "markings" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -440,14 +453,16 @@ CREATE TABLE "transit_line_departures" (
 -- CreateTable
 CREATE TABLE "transit_trips" (
     "id" TEXT NOT NULL,
+    "vehiclePlanId" TEXT NOT NULL,
     "routeId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
-    "lineDepartureId" TEXT,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
     "requiredVehicleType" "VehicleType",
+    "stopPattern" "TripStopPattern" NOT NULL DEFAULT 'LOCAL',
     "constraints" JSONB,
     "notes" TEXT,
+    "markings" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -505,6 +520,8 @@ CREATE TABLE "transit_scopes" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
+    "logoUrl" TEXT,
+    "osoConfig" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -530,6 +547,7 @@ CREATE TABLE "transit_vehicle_plan_lines" (
     "lineId" TEXT NOT NULL,
     "lineScheduleId" TEXT,
     "isDrifted" BOOLEAN NOT NULL DEFAULT false,
+    "summary" JSONB,
 
     CONSTRAINT "transit_vehicle_plan_lines_pkey" PRIMARY KEY ("vehiclePlanId","lineId")
 );
@@ -647,6 +665,9 @@ CREATE UNIQUE INDEX "transit_localities_code_key" ON "transit_localities"("code"
 CREATE UNIQUE INDEX "transit_lines_code_key" ON "transit_lines"("code");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "transit_routes_lineId_direction_ordinal_key" ON "transit_routes"("lineId", "direction", "ordinal");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "transit_route_localities_routeId_sequence_key" ON "transit_route_localities"("routeId", "sequence");
 
 -- CreateIndex
@@ -662,10 +683,16 @@ CREATE UNIQUE INDEX "transit_line_schedules_lineId_dayTypeId_approvalRef_key" ON
 CREATE UNIQUE INDEX "transit_interval_types_code_key" ON "transit_interval_types"("code");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "transit_scopes_name_key" ON "transit_scopes"("name");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "transit_scope_operators_scopeId_branchId_key" ON "transit_scope_operators"("scopeId", "branchId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_vehicle_blocks_vehiclePlanId_blockNumber_key" ON "transit_vehicle_blocks"("vehiclePlanId", "blockNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_line_groups_name_key" ON "transit_line_groups"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_block_trips_vehicleBlockId_sequence_key" ON "transit_block_trips"("vehicleBlockId", "sequence");
@@ -728,6 +755,9 @@ ALTER TABLE "transit_routes" ADD CONSTRAINT "transit_routes_originLocalityId_fke
 ALTER TABLE "transit_routes" ADD CONSTRAINT "transit_routes_destinationLocalityId_fkey" FOREIGN KEY ("destinationLocalityId") REFERENCES "transit_localities"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "transit_routes" ADD CONSTRAINT "transit_routes_homeDepotId_fkey" FOREIGN KEY ("homeDepotId") REFERENCES "transit_localities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "transit_route_localities" ADD CONSTRAINT "transit_route_localities_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -764,13 +794,13 @@ ALTER TABLE "transit_line_departures" ADD CONSTRAINT "transit_line_departures_li
 ALTER TABLE "transit_line_departures" ADD CONSTRAINT "transit_line_departures_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "transit_trips" ADD CONSTRAINT "transit_trips_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "transit_trips" ADD CONSTRAINT "transit_trips_routeId_fkey" FOREIGN KEY ("routeId") REFERENCES "transit_routes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "transit_trips" ADD CONSTRAINT "transit_trips_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "transit_trips" ADD CONSTRAINT "transit_trips_lineDepartureId_fkey" FOREIGN KEY ("lineDepartureId") REFERENCES "transit_line_departures"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "transit_block_intervals" ADD CONSTRAINT "transit_block_intervals_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
