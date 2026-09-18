@@ -2,15 +2,18 @@
 
 import { Button } from '@/components/ui/button'
 import { PointDetails } from './PointDetails'
+import { PointEditFields } from './PointEditFields'
 import type { RouteLocality } from './types'
 
 interface Props {
   rl: RouteLocality
   position: number
+  isOrigin?: boolean
+  isDestination?: boolean
   onClose: () => void
 }
 
-export function PointDetailModal({ rl, position, onClose }: Props) {
+export function PointDetailModal({ rl, position, isOrigin = false, isDestination = false, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
@@ -19,6 +22,7 @@ export function PointDetailModal({ rl, position, onClose }: Props) {
       >
         <h3 className="text-sm font-semibold">{rl.locality?.abbr || rl.locality?.name || 'Waypoint'}</h3>
         <PointDetails rl={rl} position={position} />
+        <PointEditFields rl={rl} isOrigin={isOrigin} isDestination={isDestination} />
         <div className="flex justify-end pt-1">
           <Button type="button" variant="cancel" size="sm" onClick={onClose}>Fechar</Button>
         </div>

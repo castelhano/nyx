@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css'
 import { DIR_LABEL, REPOSITION_COLOR, SUGGEST_COLOR, getCoord, getRouteColor, getRouteMarkColor, type PendingPoint, type RouteLocality, type SuggestedLocality, type TransitRoute } from './types'
 import { stopGlyphMarkup } from './StopGlyph'
 import { PointDetails } from './PointDetails'
+import { PointEditFields } from './PointEditFields'
 import { DirectionArrows } from './DirectionArrows'
 import { Dropdown, DropdownLabel, DropdownSeparator } from '@/components/ui/dropdown'
 import { Icons } from '@/lib/icons'
@@ -207,7 +208,10 @@ export default function MapCanvas({
                       <Tooltip permanent direction="top" offset={[0, -10]} className="!py-0 !px-1 !text-[10px] !leading-tight">
                         {position}
                       </Tooltip>
-                      <Popup><PointDetails rl={rl} position={position} /></Popup>
+                      <Popup>
+                        <PointDetails rl={rl} position={position} />
+                        <PointEditFields rl={rl} isOrigin={isOrigin} isDestination={isDestination} />
+                      </Popup>
                     </Marker>
                   )
                 }
@@ -230,7 +234,10 @@ export default function MapCanvas({
                       <Tooltip permanent direction="top" offset={[0, -8]} className="!py-0 !px-1 !text-[10px] !leading-tight">
                         {position}
                       </Tooltip>
-                      <Popup><PointDetails rl={rl} position={position} /></Popup>
+                      <Popup>
+                        <PointDetails rl={rl} position={position} />
+                        <PointEditFields rl={rl} isOrigin={isOrigin} isDestination={isDestination} />
+                      </Popup>
                     </Marker>
                   )
                 }
@@ -254,7 +261,10 @@ export default function MapCanvas({
                     <Tooltip permanent direction="top" offset={[0, -6]} className="!py-0 !px-1 !text-[10px] !leading-tight">
                       {position}
                     </Tooltip>
-                    <Popup><PointDetails rl={rl} position={position} /></Popup>
+                    <Popup>
+                      <PointDetails rl={rl} position={position} />
+                      <PointEditFields rl={rl} isOrigin={isOrigin} isDestination={isDestination} />
+                    </Popup>
                   </CircleMarker>
                 )
               })}

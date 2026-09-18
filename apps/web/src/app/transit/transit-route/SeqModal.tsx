@@ -32,7 +32,7 @@ function targetRow(s: SuggestedLocality): RouteLocality {
   return {
     id: NEW_ID, routeId: '', localityId: s.id, lat: null, lng: null, sequence: -1,
     deltaMinutes: null, deltaKm: null, deltaSource: 'OSRM', geometry: null,
-    allowsCrewChange: false, updatedAt: '',
+    allowsCrewChange: false, includeInOso: false, updatedAt: '',
     locality: { id: s.id, name: s.name, code: s.code, abbr: null, lat: s.lat, lng: s.lng },
   }
 }

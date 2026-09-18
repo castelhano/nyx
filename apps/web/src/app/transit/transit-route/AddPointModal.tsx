@@ -50,6 +50,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   const [code,       setCode]       = useState('')
   const [abbr,       setAbbr]       = useState('')
   const [allowsCrewChange, setAllowsCrewChange] = useState(false)
+  const [includeInOso, setIncludeInOso] = useState(false)
   const [afterKey,   setAfterKey]   = useState<string | null>(() => insertOptions.at(-1)?.value ?? null)
   const [snapping,   setSnapping]   = useState(false)
   const codeTouched = useRef(false)
@@ -129,6 +130,7 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
       lng:                 resolvedLng,
       isWaypoint:          mode === 'waypoint',
       allowsCrewChange:    mode === 'stop' && allowsCrewChange,
+      includeInOso:        mode === 'stop' && includeInOso,
       insertAfterKey:      afterKey,
     })
     onClose()
@@ -193,6 +195,18 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
               onChange={(e) => setAllowsCrewChange(e.target.checked)}
             />
             Troca de motorista
+          </label>
+        )}
+
+        {mode === 'stop' && (
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded-sm border-input"
+              checked={includeInOso}
+              onChange={(e) => setIncludeInOso(e.target.checked)}
+            />
+            Ponto de controle
           </label>
         )}
 

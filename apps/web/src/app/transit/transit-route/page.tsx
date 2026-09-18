@@ -275,7 +275,7 @@ export default function TransitRoutePage() {
         } else {
           const p = item.p
           ops.push((async () => {
-            const body: Record<string, unknown> = { routeId, sequence: seq, allowsCrewChange: p.allowsCrewChange }
+            const body: Record<string, unknown> = { routeId, sequence: seq, allowsCrewChange: p.allowsCrewChange, includeInOso: p.includeInOso }
             if (p.localityId) {
               body.localityId = p.localityId
             } else if (p.code) {

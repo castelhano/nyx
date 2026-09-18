@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react'
 import { Button }          from '@/components/ui/button'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { ColorPicker }     from '@/components/ui/color-picker'
+import { Switch }          from '@/components/ui/switch'
 import { useComboboxSearch } from '@/core/useComboboxSearch'
 import { useRelationLabel } from '@/core/useRelationLabel'
 import { apiFetch }        from '@/lib/auth'
 import { extractError }    from '@/lib/utils'
 import { Icons }           from '@/lib/icons'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
-import { DIR_COLOR, DIR_LABEL, ROUTE_COLOR_PALETTE, type RouteDirection, type TransitRoute } from './types'
+import { DIR_COLOR, DIR_LABEL, ROUTE_COLOR_PALETTE, type RouteDirection, type RouteLocality, type TransitRoute } from './types'
 
 interface Props {
   lineId: string
@@ -32,6 +33,23 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const [destLabelOverride,   setDestLabelOverride]   = useState<string | null>(null)
   const [isPending,   setIsPending]   = useState(false)
   const [error,       setError]       = useState<string | null>(null)
+
+  // the destination's own RouteLocality row (CHEGADA in the OSO export lives on it, not on
+  // TransitRoute itself) — only known once fetched, since a route can be edited from the list
+  // without its trajectory already being loaded on screen (RoutePanel.onEdit isn't gated on
+  // the route being the one currently selected)
+  const [destRouteLocalityId, setDestRouteLocalityId] = useState<string | null>(null)
+  const [destIncludeInOso,    setDestIncludeInOso]    = useState(false)
+  const [destLoaded,          setDestLoaded]          = useState(false)
+
+  useEffect(() => {
+    if (!route) return
+    apiFetch(`/transit/transit-route/${route.id}/trajectory`).then((r) => r.json()).then((rows: RouteLocality[]) => {
+      const last = rows[rows.length - 1]
+      if (last) { setDestRouteLocalityId(last.id); setDestIncludeInOso(last.includeInOso) }
+      setDestLoaded(true)
+    }).catch(() => setDestLoaded(true))
+  }, [route])
 
   const { search: originSearch, setSearch: setOriginSearch, rows: originRows, isLoading: originLoading } =
     useComboboxSearch('transit', 'transit-locality')
@@ -88,6 +106,14 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
       })
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j as Record<string, unknown>, isEditing ? 'Erro ao editar sentido' : 'Erro ao criar sentido')) }
       const saved = await res.json()
+
+      if (isEditing && destRouteLocalityId) {
+        await apiFetch(`/transit/route-locality/${destRouteLocalityId}`, {
+          method: 'PATCH',
+          body:   JSON.stringify({ includeInOso: destIncludeInOso }),
+        })
+      }
+
       onSaved(saved)
     } catch (err) {
       setError(err instanceof Error ? err.message : (isEditing ? 'Erro ao editar sentido' : 'Erro ao criar sentido'))
@@ -185,6 +211,18 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
               placeholder="Selecione…"
               className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
             />
+
+            {isEditing && (
+              <div className="flex items-center gap-2.5 pt-3">
+                <Switch checked={destIncludeInOso} onToggle={() => setDestIncludeInOso((v) => !v)} disabled={!destLoaded} />
+                <span
+                  className="text-sm cursor-pointer select-none"
+                  onClick={() => destLoaded && setDestIncludeInOso((v) => !v)}
+                >
+                  Listar chegada na OSO
+                </span>
+              </div>
+            )}
           </div>
         )}
 

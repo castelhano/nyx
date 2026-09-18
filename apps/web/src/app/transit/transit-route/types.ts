@@ -21,6 +21,7 @@ export interface RouteLocality {
   deltaSource: 'OSRM' | 'MANUAL'
   geometry: GeoJSONLineString | null
   allowsCrewChange: boolean
+  includeInOso: boolean
   updatedAt: string
   locality: RouteLocalityLocality | null
 }
@@ -65,6 +66,7 @@ export interface PendingPoint {
   lng: number
   isWaypoint: boolean
   allowsCrewChange: boolean
+  includeInOso: boolean
   // RouteLocality.id or another pending point's _pendingId to insert after;
   // null = insert as the very first stop, before the origin
   insertAfterKey: string | null

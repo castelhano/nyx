@@ -18,7 +18,7 @@ function RulerRow({ route, localities }: {
 }) {
   const color = getRouteColor(route)
   const opacity = 1   // all fully visible in ruler
-  const [detail, setDetail] = useState<{ rl: RouteLocality; position: number } | null>(null)
+  const [detail, setDetail] = useState<{ rl: RouteLocality; position: number; isOrigin: boolean; isDestination: boolean } | null>(null)
 
   // Only bus stops (localityId != null) appear in the ruler
   const stops = localities.filter((rl) => rl.localityId !== null)
@@ -72,7 +72,7 @@ function RulerRow({ route, localities }: {
                 className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer"
                 style={{ left: `${pct}%` }}
                 title={stop.locality?.name ?? `Seq ${stop.sequence}`}
-                onClick={() => setDetail({ rl: stop, position: i })}
+                onClick={() => setDetail({ rl: stop, position: i, isOrigin, isDestination: isDest })}
               >
                 <div className="flex flex-col items-center">
                   <span className="text-[9px] leading-none text-muted-foreground mb-0.5">{i}</span>
@@ -101,7 +101,13 @@ function RulerRow({ route, localities }: {
       </div>
 
       {detail && (
-        <PointDetailModal rl={detail.rl} position={detail.position} onClose={() => setDetail(null)} />
+        <PointDetailModal
+          rl={detail.rl}
+          position={detail.position}
+          isOrigin={detail.isOrigin}
+          isDestination={detail.isDestination}
+          onClose={() => setDetail(null)}
+        />
       )}
     </>
   )
