@@ -57,6 +57,7 @@ interface TooltipState {
 
 interface BlockDetailState {
   block:   GanttBlock
+  label:   string
   screenY: number
   screenX: number
 }
@@ -375,7 +376,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
     const block   = row.data as GanttBlock
     const screenY = RULER_HEIGHT + row.y - vp.scrollY
     const screenX = LABEL_WIDTH + 8
-    setBlockDetail({ block, screenY, screenX })
+    setBlockDetail({ block, label: row.label, screenY, screenX })
   }
 
   const moveTargetRect = useMemo(() => {
@@ -442,6 +443,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
       {blockDetail && (
         <BlockDetailPopover
           block={blockDetail.block}
+          label={blockDetail.label}
           screenY={blockDetail.screenY}
           screenX={blockDetail.screenX}
           onClose={() => setBlockDetail(null)}

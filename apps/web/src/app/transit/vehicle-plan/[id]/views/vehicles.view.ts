@@ -210,9 +210,16 @@ let _colorCacheMap:    Map<string, string> | null = null
 
 export const vehiclesView: GanttView<VehiclePlanGanttData> = {
   getRows(data): GanttRow[] {
-    return data.blocks.map((b) => ({
+    // "Carro N" (position in the currently displayed set, 1-based) instead of
+    // the raw blockNumber — blockNumber is a global identifier across the
+    // whole plan (e.g. 99, 100…) and means nothing to the end user once a
+    // line/time filter narrows the view down to a handful of vehicles. The
+    // real blockNumber is still shown as a badge in BlockDetailPopover.
+    // data.blocks arrives blockNumber-ascending (API orderBy), so this stays
+    // a stable, sensible sequence even as the filtered set changes.
+    return data.blocks.map((b, i) => ({
       id:    b.id,
-      label: `Bloco ${b.blockNumber}`,
+      label: `Carro ${String(i + 1).padStart(2, '0')}`,
       data:  b,
     }))
   },
