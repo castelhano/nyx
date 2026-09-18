@@ -86,7 +86,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     })
   }
 
-  async approve(id: string, force = false): Promise<{ conflict: { id: string; approvalRef: string } } | null> {
+  async approve(id: string, force = false): Promise<{ conflict: { id: string; approvalRef: string } | null }> {
     const schedule = await this.prisma.lineSchedule.findUnique({ where: { id } })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
     if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be approved')
@@ -109,7 +109,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
       await tx.lineSchedule.update({ where: { id }, data: { status: 'APPROVED', validFrom: now, approvedAt: now } })
     })
 
-    return null
+    return { conflict: null }
   }
 
   // Single commit for the schedule editor (header + departures). No status guard: editing an
