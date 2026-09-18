@@ -415,10 +415,14 @@ export default function LineScheduleDetailPage() {
   }
 
   function moveFocus(delta: number, extend: boolean) {
-    // Ctrl+arrow is also the browser's native shortcut (jump word) inside a text
-    // field — without this, the input's cursor moves along with the departure
-    // focus. Blurring the DOM focus avoids the double effect.
-    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    // Ctrl(+Shift)+arrow is also the browser's native shortcut (jump word /
+    // select word) inside a text field — while actually editing one (notes,
+    // approvalRef...), let that native behavior happen untouched instead of
+    // blurring the field and hijacking the keystroke for grid navigation.
+    const active  = document.activeElement as HTMLElement | null
+    const tagName = active?.nodeName.toLowerCase() ?? ''
+    if (active?.isContentEditable || ['input', 'textarea', 'select'].includes(tagName)) return
+
     if (!focused) {
       const first = departuresFor(viewRouteId)[0]
       if (first) setFocusedId(first.id)
@@ -743,14 +747,16 @@ export default function LineScheduleDetailPage() {
   // Navigating between departures uses ctrl+arrows — plain arrows stay free for
   // editing text in the side panel fields, which is always mounted next to the
   // grid (no "modal closed" moment to isolate the two contexts, unlike vehicle-plan).
-  useShortcut('ctrl+→', () => moveFocus(1, false),     { desc: 'Próxima partida',  icon: Icons.ArrowRight, origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+←', () => moveFocus(-1, false),    { desc: 'Partida anterior', icon: Icons.ArrowLeft,  origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+↓', () => moveFocus(gridCols, false),  { desc: 'Uma linha abaixo', icon: Icons.ArrowDown,  origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+↑', () => moveFocus(-gridCols, false), { desc: 'Uma linha acima',  icon: Icons.ArrowUp,    origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+shift+→', () => moveFocus(1, true),     { desc: 'Estender seleção →', origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+shift+←', () => moveFocus(-1, true),    { desc: 'Estender seleção ←', origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+shift+↓', () => moveFocus(gridCols, true),  { desc: 'Estender seleção ↓', origin, enabled: !isNew, section: SEC_NAV })
-  useShortcut('ctrl+shift+↑', () => moveFocus(-gridCols, true), { desc: 'Estender seleção ↑', origin, enabled: !isNew, section: SEC_NAV })
+  // preventDefault:false — when focus is in a text field, moveFocus() bails out and
+  // the browser's own ctrl(+shift)+arrow behavior (jump/select word) must go through.
+  useShortcut('ctrl+→', () => moveFocus(1, false),     { desc: 'Próxima partida',  icon: Icons.ArrowRight, origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+←', () => moveFocus(-1, false),    { desc: 'Partida anterior', icon: Icons.ArrowLeft,  origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+↓', () => moveFocus(gridCols, false),  { desc: 'Uma linha abaixo', icon: Icons.ArrowDown,  origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+↑', () => moveFocus(-gridCols, false), { desc: 'Uma linha acima',  icon: Icons.ArrowUp,    origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+shift+→', () => moveFocus(1, true),     { desc: 'Estender seleção →', origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+shift+←', () => moveFocus(-1, true),    { desc: 'Estender seleção ←', origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+shift+↓', () => moveFocus(gridCols, true),  { desc: 'Estender seleção ↓', origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
+  useShortcut('ctrl+shift+↑', () => moveFocus(-gridCols, true), { desc: 'Estender seleção ↑', origin, enabled: !isNew, section: SEC_NAV, preventDefault: false })
 
   useShortcut('delete', () => toggleDeleteSelected(), {
     desc: 'Excluir/restaurar partida(s) selecionada(s)', icon: Icons.Trash2, origin,
