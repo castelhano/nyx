@@ -150,6 +150,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | Letter | Browser action |
 |--------|---------------|
 | `B` | Toggle bookmarks bar |
+| `H` | Opens History in Edge & FF (Ctrl+Shift+H) |
 | `I` | Open DevTools |
 | `J` | Open Downloads panel |
 | `N` | New incognito / private window |
@@ -164,7 +165,6 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 
 | Letter | Risk |
 |--------|------|
-| `H` | Opens History in Edge (Ctrl+Shift+H); safe in Chrome |
 | `M` | Guest profile switcher in some Chrome versions |
 | `U` | Unicode input on Linux; safe on Windows |
 

@@ -221,14 +221,16 @@ export default function LineScheduleDetailPage() {
   // ── creation (isNew) ───────────────────────────────────────────────────
   const [newDayTypeId,   setNewDayTypeId]   = useState('')
   const [newApprovalRef, setNewApprovalRef] = useState('')
+  const [newNotes,       setNewNotes]       = useState('')
   const [creating,       setCreating]       = useState(false)
+  const [deleting,       setDeleting]       = useState(false)
 
   // ── data ──────────────────────────────────────────────────────────────
   const { data: schedule, error: scheduleError } = useRecordQuery<LineSchedule>(
     [DOMAIN, RESOURCE, id], `/${DOMAIN}/${RESOURCE}/${id}`, { enabled: !isNew },
   )
 
-  const { guardNode, canCreate, canUpdate } = usePageGuard(DOMAIN, RESOURCE, isNew, scheduleError ?? undefined)
+  const { guardNode, canCreate, canUpdate, canDelete } = usePageGuard(DOMAIN, RESOURCE, isNew, scheduleError ?? undefined)
 
   const lineId = isNew ? lineIdParam : schedule?.lineId
 
@@ -325,6 +327,10 @@ export default function LineScheduleDetailPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!viewRouteId && routes.length > 0) setViewRouteId(routes[0].id)
   }, [routes, viewRouteId])
+
+  useEffect(() => {
+    if (isNew) document.getElementById('ls-approvalRef')?.focus()
+  }, [isNew])
 
   // Jump straight into the times field when the bulk-add panel opens, so the
   // user can start typing/pasting without an extra click.
@@ -535,7 +541,12 @@ export default function LineScheduleDetailPage() {
     try {
       const res = await apiFetch(`/${DOMAIN}/${RESOURCE}`, {
         method: 'POST',
-        body:   JSON.stringify({ lineId: lineIdParam, dayTypeId: newDayTypeId, approvalRef: newApprovalRef.trim() }),
+        body:   JSON.stringify({
+          lineId:      lineIdParam,
+          dayTypeId:   newDayTypeId,
+          approvalRef: newApprovalRef.trim(),
+          notes:       newNotes.trim() || undefined,
+        }),
       })
       if (!res.ok) { const json = await res.json().catch(() => ({})); throw json }
       const created = await res.json()
@@ -661,6 +672,27 @@ export default function LineScheduleDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    const ok = await confirm({
+      title:        'Excluir quadro de horários',
+      description:  'Esta ação não pode ser desfeita. Todas as partidas deste quadro serão removidas.',
+      confirmLabel: 'Excluir',
+      cancelLabel:  'Cancelar',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    setDeleting(true)
+    try {
+      const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(msgs.error.delete())
+      toast.success(msgs.deleted('Quadro de horários'))
+      router.push(lineId ? `/${DOMAIN}/${RESOURCE}?lineId=${lineId}` : `/${DOMAIN}/${RESOURCE}`)
+    } catch {
+      toast.error(msgs.error.delete())
+      setDeleting(false)
+    }
+  }
+
   async function handleApprove(force = false) {
     try {
       const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/${id}/approve`, {
@@ -697,10 +729,11 @@ export default function LineScheduleDetailPage() {
       : [
           ...(canCreate ? [{ label: 'Duplicar', icon: Icons.Copy, overflow: true, onClick: () => { void handleDuplicate() }, variant: 'outline' as const }] : []),
           ...(schedule?.status === 'DRAFT' && canUpdate ? [{ label: 'Aprovar', icon: Icons.Check, onClick: () => { void handleApprove(false) } }] : []),
+          ...(canDelete ? [{ label: deleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, overflow: true, onClick: () => { void handleDelete() }, variant: 'destructive' as const, disabled: deleting }] : []),
           { label: 'Limpar', icon: Icons.Undo2, onClick: () => { void handleDiscard() }, variant: 'outline', disabled: !hasUnsavedWork },
           { label: 'Salvar', icon: Icons.Save, onClick: () => { void handleSave() }, primary: true, disabled: !isDirty || !canUpdate },
         ],
-    [isNew, creating, schedule?.status, isDirty, hasUnsavedWork, canCreate, canUpdate, header, draft, deletedIds],
+    [isNew, creating, deleting, schedule?.status, isDirty, hasUnsavedWork, canCreate, canUpdate, canDelete, header, draft, deletedIds],
   )
 
   // ── shortcuts ────────────────────────────────────────────────────────────
@@ -758,9 +791,9 @@ export default function LineScheduleDetailPage() {
     { key: 'o', fieldId: 'ls-approvalRef' },         // LineSchedule.approvalRef
     { key: 'd', fieldId: 'ls-dayTypeId' },           // LineSchedule.dayTypeId
     { key: 'e', fieldId: 'ls-notes' },                // LineSchedule.notes
-    { key: 's', fieldId: 'ld-departureMinutes' },    // LineDeparture.departureMinutes
+    { key: 'l', fieldId: 'ld-departureMinutes' },    // LineDeparture.departureMinutes
     { key: 'v', fieldId: 'ld-requiredVehicleType' }, // LineDeparture.requiredVehicleType
-    { key: 'p', fieldId: 'ld-stopPattern' },          // LineDeparture.stopPattern
+    { key: 's', fieldId: 'ld-stopPattern' },          // LineDeparture.stopPattern
     { key: 'a', fieldId: 'ld-notes' },                // LineDeparture.notes
     { key: 'k', fieldId: 'ld-markingInput' },         // new marking field
   ], origin)
@@ -792,22 +825,60 @@ export default function LineScheduleDetailPage() {
 
   if (isNew) {
     return (
-      <div className="p-6 space-y-4 max-w-lg">
-        <AutoBreadcrumb domain={DOMAIN} resource={RESOURCE} contextParams={contextParams} />
-        <h1 className="text-sm font-semibold">Novo Quadro de Horários</h1>
-        {line && <p className="text-xs text-muted-foreground">Linha {line.code} — {line.name}</p>}
-        <div className="space-y-3">
-          <div>
-            <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-1">OSO</label>
-            <Input size="sm" className="w-full" placeholder="No do processo" value={newApprovalRef} onChange={e => setNewApprovalRef(e.target.value)} />
+      <div className="min-h-full bg-background text-foreground flex flex-col">
+        <div className="px-6 pt-4">
+          <AutoBreadcrumb domain={DOMAIN} resource={RESOURCE} contextParams={contextParams} />
+        </div>
+
+        <div className="border-b border-border px-6 py-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Linha</div>
+              <div className="text-sm font-semibold">{line ? `${line.code} — ${line.name}` : '…'}</div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full border bg-muted text-muted-foreground border-border">
+                Novo
+              </span>
+            </div>
           </div>
-          <div>
-            <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-1">Tipo de Dia</label>
-            <Select size="sm" className="w-full" value={newDayTypeId} onChange={e => setNewDayTypeId(e.target.value)}>
+
+          <form onSubmit={e => e.preventDefault()} className="flex items-center gap-2">
+            <div className="relative w-40">
+              <Input
+                id="ls-approvalRef"
+                size="sm"
+                className="w-full md:pr-10"
+                placeholder="No do processo"
+                value={newApprovalRef}
+                onChange={e => setNewApprovalRef(e.target.value)}
+              />
+              <KeyHint k="o" />
+            </div>
+            <Select
+              id="ls-dayTypeId"
+              size="sm"
+              className="w-36"
+              keybind="d"
+              value={newDayTypeId}
+              onChange={e => setNewDayTypeId(e.target.value)}
+            >
               <option value="">Selecione…</option>
               {dayTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
             </Select>
-          </div>
+            <div className="relative flex-1">
+              <Input
+                id="ls-notes"
+                size="sm"
+                className="w-full md:pr-10"
+                placeholder="Observações"
+                value={newNotes}
+                onChange={e => setNewNotes(e.target.value)}
+              />
+              <KeyHint k="e" />
+            </div>
+          </form>
         </div>
       </div>
     )
@@ -1001,7 +1072,7 @@ export default function LineScheduleDetailPage() {
                           normalize={normalizeTime}
                           allowDuplicates={false}
                         />
-                        <KeyHint k="s" />
+                        <KeyHint k="l" />
                       </div>
                     </div>
 
@@ -1024,7 +1095,7 @@ export default function LineScheduleDetailPage() {
                       <Select
                         id="ld-stopPattern"
                         size="sm"
-                        keybind="p"
+                        keybind="s"
                         value={pendingNew.stopPattern}
                         onChange={e => patchPendingNew({ stopPattern: e.target.value as StopPattern })}
                       >
