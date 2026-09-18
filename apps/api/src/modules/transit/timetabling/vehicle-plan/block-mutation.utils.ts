@@ -110,6 +110,15 @@ export async function applyMoveTrip(
   if (deadrunIds.length > 0) {
     await tx.blockDeadrun.updateMany({ where: { id: { in: deadrunIds }, vehicleBlockId: blockId }, data: { vehicleBlockId: targetBlockId } })
   }
-  await tx.vehicleBlock.update({ where: { id: blockId },       data: { isStale: true } })
+
+  // Same rule as applyTripRemoval/removeTripsFromPlan: a source block left with no
+  // trips is deleted outright (cascades any leftover blockDeadruns/blockIntervals)
+  // instead of surviving as an empty, isStale husk.
+  const remaining = await tx.blockTrip.count({ where: { vehicleBlockId: blockId } })
+  if (remaining === 0) {
+    await tx.vehicleBlock.delete({ where: { id: blockId } })
+  } else {
+    await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
+  }
   await tx.vehicleBlock.update({ where: { id: targetBlockId }, data: { isStale: true } })
 }
