@@ -588,7 +588,7 @@ function renderOsoSheet(
         const blockCol = col + block * G
         for (let j = 0; j < G; j++) {
           const column = layout.columns[j]
-          const label  = column.timing === 'ARRIVAL' ? 'Chegada' : (labelByRouteLocalityId.get(column.routeLocalityId) ?? '')
+          const label  = column.timing === 'ARRIVAL' ? 'CHEGADA' : (labelByRouteLocalityId.get(column.routeLocalityId) ?? '')
           setCell(ws, addr(blockCol + j, gridStart - 1), label, {
             font: baseFont({ bold: true, size: 8 }), align: { wrapText: true, vertical: 'middle' },
             border: { top: MEDIUM, bottom: MEDIUM, left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN },
