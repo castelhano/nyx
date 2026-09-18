@@ -555,7 +555,6 @@ function renderOsoSheet(
 
     frameRow(gridStart - 2, MEDIUM, MEDIUM)
     frameRow(gridStart - 1, MEDIUM, MEDIUM)
-    ws.getRow(gridStart - 1).height = 22 // room for the column label to wrap onto a 2nd line instead of clipping
     for (let i = 0; i < gridRows; i++) frameRow(gridStart + i, i === 0 ? MEDIUM : THIN, i === gridRows - 1 ? MEDIUM : THIN)
     frameRow(eRow, THIN, THIN)
     frameRow(vRow, THIN, THIN)
@@ -588,8 +587,10 @@ function renderOsoSheet(
       for (let block = 0; block < layout.tripsPerRow; block++) {
         const blockCol = col + block * G
         for (let j = 0; j < G; j++) {
-          setCell(ws, addr(blockCol + j, gridStart - 1), labelByRouteLocalityId.get(layout.columns[j].routeLocalityId) ?? '', {
-            font: baseFont({ bold: true, size: 8 }), align: { wrapText: true },
+          const column = layout.columns[j]
+          const label  = column.timing === 'ARRIVAL' ? 'Chegada' : (labelByRouteLocalityId.get(column.routeLocalityId) ?? '')
+          setCell(ws, addr(blockCol + j, gridStart - 1), label, {
+            font: baseFont({ bold: true, size: 8 }), align: { wrapText: true, vertical: 'middle' },
             border: { top: MEDIUM, bottom: MEDIUM, left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN },
           })
         }
