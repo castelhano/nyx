@@ -270,15 +270,41 @@ export class VehiclePlanImportService {
     const blockTripRows:     Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
     const blockIntervalRows: Array<{ id: string; vehicleBlockId: string; intervalTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
 
-    for (const [, tabRows] of blockMap.entries()) {
-      // depDay only bumps on a genuine midnight crossing within the file's own row
-      // order (see ImportRow.depDay), so it's a reliable primary sort key — unlike a
-      // fixed clock-time cutoff, which misorders a tab whose first trip legitimately
-      // departs before 03:00 while a later trip in the same tab departs after it.
-      tabRows.sort((a, b) => {
-        if (a.depDay !== b.depDay) return a.depDay - b.depDay
-        return parseHHMM(a.departureHHMM) - parseHHMM(b.departureHHMM)
-      })
+    for (const [, rawTabRows] of blockMap.entries()) {
+      // depDay is not a trustworthy calendar-day counter: in practice it can flip
+      // 1->2->1 mid-tab with no midnight crossing at all (e.g. a mid-shift interval
+      // marker), so it can't be used as a sort key. Row order *within* a single
+      // (lineCode, tabId) run is reliable — it's produced by the source system in real
+      // sequence, including a genuine midnight crossing at the tail of that run. But two
+      // runs can interleave row-by-row, not just as whole blocks: the same driver can
+      // alternate between a trunk line and its branch variant leg by leg within one tab
+      // (same tabId, two lineCodes), so reordering whole runs isn't enough — each row
+      // needs its own place in the merged timeline.
+      const runs = new Map<string, typeof rawTabRows>()
+      for (const row of rawTabRows) {
+        const runKey = `${row.lineCode}:${row.tabId}`
+        if (!runs.has(runKey)) runs.set(runKey, [])
+        runs.get(runKey)!.push(row)
+      }
+
+      // Give every row a sort key derived from its own run's departure sequence, bumping
+      // +1440 only when time goes backward *inside that run* — never across runs, since
+      // that's exactly the false signal depDay gave us. Runs are then merged by that key,
+      // which lets two runs interleave freely while keeping each run's own midnight
+      // crossing anchored at its true (late) position instead of sorting to the front.
+      const keyedRows: Array<{ row: (typeof rawTabRows)[number]; sortKey: number }> = []
+      for (const run of runs.values()) {
+        let runOffset = 0
+        let prevKey  = -Infinity
+        for (const row of run) {
+          const dep = parseHHMM(row.departureHHMM)
+          if (dep + runOffset < prevKey) runOffset += 1440
+          const sortKey = dep + runOffset
+          prevKey = sortKey
+          keyedRows.push({ row, sortKey })
+        }
+      }
+      const tabRows = keyedRows.sort((a, b) => a.sortKey - b.sortKey).map(k => k.row)
 
       const blockId = randomUUID()
       const perBlockEntries: BlockEntry[] = []

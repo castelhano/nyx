@@ -52,6 +52,11 @@ export function parseVehiclePlanFile(buffer: Buffer): ParseResult {
     // Skip driver shift-change markers (troca de turno) — skipped now, reserved for crew scheduling
     if (entryType === '2') continue
 
+    // entryType '11' with departure === arrival is a punctual reference mark (e.g. a control
+    // point or landmark abbreviation the ERP logs for timing reference), not a real movement.
+    // It carries no duration and must not affect block ordering or day-rollover inference.
+    if (entryType === '11' && c[11]?.trim() === c[12]?.trim()) continue
+
     const tabId = c[4]?.trim() ?? ''
     if (!tabId) {
       skipped.push({ line: i + 1, record: lineCode, reason: 'tabId vazio' })
