@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo }   from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { AutoForm }           from '@/core/AutoForm'
 import { AutoBreadcrumb }     from '@/core/AutoBreadcrumb'
@@ -33,6 +34,7 @@ export default function TransitLineDetailPage() {
   const [chartOpen,    setChartOpen]    = useState(false)
   const { toast }  = useToast()
   const confirm    = useConfirm()
+  const queryClient = useQueryClient()
 
   const contextParams:   Record<string, string>  = {}
   const derivedDefaults: Record<string, unknown> = {}
@@ -175,8 +177,11 @@ export default function TransitLineDetailPage() {
       if (isNew && meta?.afterCreate) {
         const redirect = meta.afterCreate.replace(/\{(\w+)\}/g, (_, key) => String(created[key] ?? ''))
         router.push(redirect)
+      } else if (isNew) {
+        router.push(`/${DOMAIN}/${RESOURCE}/${created.id}`)
       } else {
-        router.push(effectiveListPath)
+        queryClient.setQueryData([DOMAIN, RESOURCE, id], created)
+        setIsPending(false)
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : msgs.error.save())
