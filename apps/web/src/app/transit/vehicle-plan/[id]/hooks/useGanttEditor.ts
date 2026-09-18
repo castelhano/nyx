@@ -538,6 +538,22 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       .filter((row): row is NonNullable<typeof row> => row != null)
   }, [mergedPlottedData, visibleBlockIds, navBlocks])
 
+  // Same restriction as visibleNavBlocks, but over allTrips (PageUp/PageDown
+  // same-direction nav) — without this, PageUp/PageDown can walk focus straight
+  // into a block hidden by the filter (allTrips ignores it entirely), leaving
+  // it "stuck" the next time ↑/↓ tries to find that segId in visibleNavBlocks.
+  const visibleAllTrips = useMemo(() => {
+    if (!mergedPlottedData || !visibleBlockIds) return allTrips
+    return mergedPlottedData.blocks
+      .filter(block => visibleBlockIds.has(block.id))
+      .flatMap(block => block.blockTrips.map(bt => ({
+        segId:     bt.id,
+        dep:       bt.trip.departureMinutes,
+        direction: bt.trip.route.direction,
+      })))
+      .sort((a, b) => a.dep - b.dep)
+  }, [mergedPlottedData, visibleBlockIds, allTrips])
+
   // Activating the filter (null → non-null) auto-pins the block owning the
   // current selection/focus, so turning it on never yanks away what's
   // currently in view without explanation — RESPOSTA in the proposal doc §6.
@@ -2234,7 +2250,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     plottedData, mergedPlottedData,
     allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
-    blockFilter, setBlockFilter, pinnedBlockIds, togglePinnedBlock, clearPinnedBlocks, visibleBlockIds, visibleNavBlocks, filterMatchCount,
+    blockFilter, setBlockFilter, pinnedBlockIds, togglePinnedBlock, clearPinnedBlocks, visibleBlockIds, visibleNavBlocks, visibleAllTrips, filterMatchCount,
     pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,

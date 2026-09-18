@@ -58,7 +58,11 @@ interface UseVehiclePlanShortcutsParams {
   // filter active. Used for ↑/↓ block-to-block navigation only — focus
   // recovery stays on the full navBlocks (in useGanttEditor).
   visibleNavBlocks:     NavItem[][]
-  allTrips:             TripItem[]
+  // Same restriction as visibleNavBlocks, but over allTrips (PageUp/PageDown
+  // and shift+Home/End, same-direction nav) — without it those would walk
+  // focus straight into a block hidden by the filter, since the unfiltered
+  // allTrips ignores it entirely.
+  visibleAllTrips:      TripItem[]
   mergedPlottedData:    VehiclePlanGanttData | null
   moveTargetBlocks:     { allBlockIds: string[]; sourceIndex: number } | null
   pendingAdds:          PendingAddEntry[]
@@ -106,7 +110,7 @@ interface UseVehiclePlanShortcutsParams {
 export function useVehiclePlanShortcuts({
   canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
   selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
-  moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, visibleNavBlocks, allTrips,
+  moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, visibleNavBlocks, visibleAllTrips,
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
   pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
@@ -129,7 +133,10 @@ export function useVehiclePlanShortcuts({
       shiftAnchorRef.current = null
       return
     }
-    const first = navBlocks[0]
+    // visibleNavBlocks, not navBlocks — landing focus on a block hidden by an
+    // active filter left it "stuck": that segId never appears in
+    // visibleNavBlocks, so ↑/↓ (which walks visibleNavBlocks) never finds it.
+    const first = visibleNavBlocks[0]
     if (first?.length) setFocusedSegId(first[0].segId)
   }, [editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -528,11 +535,11 @@ export function useVehiclePlanShortcuts({
   useShortcut('pagedown', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
     setTripSeqAnchor(null)
-    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = allTrips[curIdx].direction
-    for (let i = curIdx + 1; i < allTrips.length; i++) {
-      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    const dir = visibleAllTrips[curIdx].direction
+    for (let i = curIdx + 1; i < visibleAllTrips.length; i++) {
+      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
     }
   }, {
     desc:    'Próxima viagem sentido',
@@ -545,11 +552,11 @@ export function useVehiclePlanShortcuts({
   useShortcut('shift+pagedown', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
     if (tripSeqAnchor == null) setTripSeqAnchor(focusedSegId)
-    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = allTrips[curIdx].direction
-    for (let i = curIdx + 1; i < allTrips.length; i++) {
-      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    const dir = visibleAllTrips[curIdx].direction
+    for (let i = curIdx + 1; i < visibleAllTrips.length; i++) {
+      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
     }
   }, {
     desc:    'Estende seleção até próxima viagem mesmo sentido',
@@ -562,11 +569,11 @@ export function useVehiclePlanShortcuts({
   useShortcut('pageup', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
     setTripSeqAnchor(null)
-    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = allTrips[curIdx].direction
+    const dir = visibleAllTrips[curIdx].direction
     for (let i = curIdx - 1; i >= 0; i--) {
-      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
     }
   }, {
     desc:    'Viagem anterior mesmo sentido',
@@ -579,11 +586,11 @@ export function useVehiclePlanShortcuts({
   useShortcut('shift+pageup', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
     if (tripSeqAnchor == null) setTripSeqAnchor(focusedSegId)
-    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = allTrips[curIdx].direction
+    const dir = visibleAllTrips[curIdx].direction
     for (let i = curIdx - 1; i >= 0; i--) {
-      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
     }
   }, {
     desc:    'Estende seleção até viagem anterior mesmo sentido',
@@ -605,8 +612,10 @@ export function useVehiclePlanShortcuts({
   useShortcut('home', () => {
     // Earliest item across the whole day, not just block 0 — blocks aren't
     // ordered by the time range they cover, so the block first in the array
-    // isn't necessarily the one starting earliest.
-    const first = navBlocks.flat().reduce<NavItem | null>((min, item) => (!min || item.dep < min.dep) ? item : min, null)
+    // isn't necessarily the one starting earliest. visibleNavBlocks (not
+    // navBlocks) — landing on an item from a block hidden by the filter would
+    // leave focus stuck, same issue as the editBarOpen effect above.
+    const first = visibleNavBlocks.flat().reduce<NavItem | null>((min, item) => (!min || item.dep < min.dep) ? item : min, null)
     if (first) { setFocusedSegId(first.segId); setSelection(null); shiftAnchorRef.current = null }
   }, {
     desc:    'Primeiro item do dia',
@@ -618,7 +627,7 @@ export function useVehiclePlanShortcuts({
 
   useShortcut('end', () => {
     // Same reasoning as 'home' above, mirrored for the latest item of the day.
-    const last = navBlocks.flat().reduce<NavItem | null>((max, item) => (!max || item.dep > max.dep) ? item : max, null)
+    const last = visibleNavBlocks.flat().reduce<NavItem | null>((max, item) => (!max || item.dep > max.dep) ? item : max, null)
     if (last) { setFocusedSegId(last.segId); setSelection(null); shiftAnchorRef.current = null }
   }, {
     desc:    'Último item do dia',
@@ -630,10 +639,10 @@ export function useVehiclePlanShortcuts({
 
   useShortcut('shift+home', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
-    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = allTrips[curIdx].direction
-    const first = allTrips.find(t => t.direction === dir)
+    const dir = visibleAllTrips[curIdx].direction
+    const first = visibleAllTrips.find(t => t.direction === dir)
     if (first) setFocusedSegId(first.segId)
   }, {
     desc:    'Primeira viagem do sentido',
@@ -645,11 +654,11 @@ export function useVehiclePlanShortcuts({
 
   useShortcut('shift+end', () => {
     if (!focusedSegId || focusedSegId.endsWith(':dr')) return
-    const curIdx = allTrips.findIndex(t => t.segId === focusedSegId)
+    const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = allTrips[curIdx].direction
-    for (let i = allTrips.length - 1; i >= 0; i--) {
-      if (allTrips[i].direction === dir) { setFocusedSegId(allTrips[i].segId); break }
+    const dir = visibleAllTrips[curIdx].direction
+    for (let i = visibleAllTrips.length - 1; i >= 0; i--) {
+      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
     }
   }, {
     desc:    'Última viagem do sentido',
