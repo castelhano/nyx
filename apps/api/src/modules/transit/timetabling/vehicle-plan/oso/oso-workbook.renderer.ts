@@ -97,8 +97,6 @@ const BOX    = { top: MEDIUM, bottom: MEDIUM, left: MEDIUM, right: MEDIUM }
 
 const FIRST_DATA_COL   = 2  // column B
 const LAST_DATA_COL    = 21 // column U — fixed page width regardless of how many carros are used
-const GRID_ROWS        = 20 // rows 7..26 — trip rows per band (rule 4's MAX_ROWS_PER_BAND)
-const BAND_BLOCK_ROWS  = 23 // grid (20) + E/V/H (3)
 const HEADER_ROWS      = 6
 const RESUMO_ROWS      = 18
 const SIGNATURE_GAP    = 2
@@ -392,7 +390,44 @@ function renderOsoSheet(
   minutesBeforeDestination: Map<string, number>,
 ): void {
   const { lineCode, lineName, assembled, layouts, bands, summary, observations, scope, validFrom } = input
-  const resumoStart   = HEADER_ROWS + 1 + bands.length * BAND_BLOCK_ROWS
+
+  // Grid height is inferred per band from real usage instead of a fixed 20 rows (no reason to
+  // print 18 empty rows under a 2-trip carro) — computed once up front, both to size each
+  // band's own grid and to avoid calling buildCarroRows twice per carro below. A tripsPerRow:2
+  // carro folds into two side-by-side column blocks, so IT only needs half its own row count
+  // (rounded up); +1 on the band's tallest carro keeps the last real row off the E/V/H block.
+  const rowsByBlockId = new Map<string, Slot[][]>()
+  for (const carro of assembled.carros) {
+    const layout = layouts.get(carro.blockId)
+    if (layout) rowsByBlockId.set(carro.blockId, buildCarroRows(carro, layout, minutesBeforeDestination))
+  }
+  const gridRowsByBand = bands.map(band => {
+    const needed = band.blockIds.map(blockId => {
+      const layout = layouts.get(blockId)!
+      const rows   = rowsByBlockId.get(blockId)!
+      return layout.tripsPerRow === 2 ? Math.ceil(rows.length / 2) : rows.length
+    })
+    return Math.max(1, ...needed) + 1
+  })
+  const bandBlockRows = gridRowsByBand.map(gridRows => gridRows + 3) // + E/V/H
+
+  // Band 0's own 2-row "ordinal number + column label" prefix (gridStart-2/-1) lands in rows
+  // 5-6, inside HEADER_ROWS' reserved space but past the header's own real content (rows 1-4)
+  // — free real estate, not double-booked. Every band after that has no such free prefix: its
+  // own -2/-1 rows must be carved out with an *extra* 2-row gap on top of its block, or they
+  // land on the previous band's V/H rows instead (ExcelJS then throws "Cannot merge already
+  // merged cells" — reproduced exporting a line whose carros need a 2nd band).
+  const EXTRA_BAND_GAP = 2
+  const bandTops: number[] = []
+  {
+    let top = HEADER_ROWS + 1
+    for (let i = 0; i < bands.length; i++) {
+      bandTops.push(top)
+      top += bandBlockRows[i] + EXTRA_BAND_GAP
+    }
+  }
+  const bandTop       = (bandIdx: number) => bandTops[bandIdx]
+  const resumoStart   = bands.length > 0 ? bandTops[bands.length - 1] + bandBlockRows[bands.length - 1] : HEADER_ROWS + 1
   const lastResumoRow = resumoStart + RESUMO_ROWS - 1
 
   const CM_TO_IN = 1 / 2.54
@@ -508,22 +543,25 @@ function renderOsoSheet(
     }
   }
 
-  // --- bands: each is its own 23-row block (20 trip rows + E/V/H), stacked vertically ---
+  // --- bands: each is its own block (E/V/H + as many trip rows as its tallest carro needs),
+  // stacked vertically ---
   for (let bandIdx = 0; bandIdx < bands.length; bandIdx++) {
     const band = bands[bandIdx]
-    const gridStart = HEADER_ROWS + 1 + bandIdx * BAND_BLOCK_ROWS
-    const eRow = gridStart + GRID_ROWS
+    const gridStart = bandTop(bandIdx)
+    const gridRows  = gridRowsByBand[bandIdx]
+    const eRow = gridStart + gridRows
     const vRow = eRow + 1
     const hRow = eRow + 2
 
     frameRow(gridStart - 2, MEDIUM, MEDIUM)
     frameRow(gridStart - 1, MEDIUM, MEDIUM)
-    for (let i = 0; i < GRID_ROWS; i++) frameRow(gridStart + i, i === 0 ? MEDIUM : THIN, i === GRID_ROWS - 1 ? MEDIUM : THIN)
+    ws.getRow(gridStart - 1).height = 22 // room for the column label to wrap onto a 2nd line instead of clipping
+    for (let i = 0; i < gridRows; i++) frameRow(gridStart + i, i === 0 ? MEDIUM : THIN, i === gridRows - 1 ? MEDIUM : THIN)
     frameRow(eRow, THIN, THIN)
     frameRow(vRow, THIN, THIN)
     frameRow(hRow, THIN, MEDIUM)
 
-    for (let i = 0; i < GRID_ROWS; i++) {
+    for (let i = 0; i < gridRows; i++) {
       setCell(ws, addr(1, gridStart + i), i + 1, {
         font: baseFont(), align: { horizontal: 'right' }, numFmt: '0º',
         border: { left: MEDIUM, top: i === 0 ? MEDIUM : THIN, bottom: THIN },
@@ -540,7 +578,7 @@ function renderOsoSheet(
       const layout       = layouts.get(blockId)!
       const G            = layout.columns.length
       const width         = G * layout.tripsPerRow
-      const rows          = buildCarroRows(carro, layout, minutesBeforeDestination)
+      const rows          = rowsByBlockId.get(blockId)!
 
       setCell(ws, addr(col, gridStart - 2), carroIndex + 1, {
         font: baseFont({ bold: true }), numFmt: '0º', fill: TAN_FILL, border: BOX,
@@ -551,11 +589,12 @@ function renderOsoSheet(
         const blockCol = col + block * G
         for (let j = 0; j < G; j++) {
           setCell(ws, addr(blockCol + j, gridStart - 1), labelByRouteLocalityId.get(layout.columns[j].routeLocalityId) ?? '', {
-            font: baseFont({ bold: true, size: 8 }), border: { top: MEDIUM, bottom: MEDIUM, left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN },
+            font: baseFont({ bold: true, size: 8 }), align: { wrapText: true },
+            border: { top: MEDIUM, bottom: MEDIUM, left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN },
           })
         }
-        for (let i = 0; i < GRID_ROWS; i++) {
-          const row = rows[block * GRID_ROWS + i]
+        for (let i = 0; i < gridRows; i++) {
+          const row = rows[block * gridRows + i]
           for (let j = 0; j < G; j++) {
             const value = row?.[j] ?? null
             const cellAddr = addr(blockCol + j, gridStart + i)
