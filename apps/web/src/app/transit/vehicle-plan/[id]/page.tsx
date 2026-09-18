@@ -21,6 +21,7 @@ import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { HeadwayRangeBar }   from './components/HeadwayRangeBar'
+import { BlockFilterBar }    from './components/BlockFilterBar'
 import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './components/LineFreqPanel'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
@@ -31,7 +32,6 @@ import { OptimizeModal }         from './components/OptimizeModal'
 import { AccessModal }           from './components/AccessModal'
 import { AddIntervalModal }      from './components/AddIntervalModal'
 import { TripDetailsModal }      from './components/TripDetailsModal'
-import { SolverProposalDialog }  from './components/SolverProposalDialog'
 import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
 import { RedistributeModal }          from './components/RedistributeModal'
@@ -111,6 +111,7 @@ export default function VehiclePlanPage() {
     plottedData, mergedPlottedData,
     allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
+    blockFilter, setBlockFilter, pinnedBlockIds, togglePinnedBlock, clearPinnedBlocks, visibleBlockIds, visibleNavBlocks, filterMatchCount,
     pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
@@ -122,6 +123,7 @@ export default function VehiclePlanPage() {
   } = editor
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
+  const [blockFilterOpen,   setBlockFilterOpen]   = useState(false)
   const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   // Fase 4 — FrequencyPanel can plot the delta-crossing instant instead of the
@@ -147,12 +149,13 @@ export default function VehiclePlanPage() {
   useVehiclePlanShortcuts({
     canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
     selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
-    moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, allTrips,
+    moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, visibleNavBlocks, allTrips,
     mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
     pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
     setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
     summaryLineIds, setSummaryLineIds, setRedistributeModal,
+    blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -167,10 +170,13 @@ export default function VehiclePlanPage() {
   // that would defeat its memo() and retrigger a full engine.setView layout
   // pass on every frame. offScheduleTripIds is itself stable across unrelated
   // renders (see useOsoCoverage), so this only changes when something real does.
-  const boardData = useMemo(
-    () => mergedPlottedData ? { ...mergedPlottedData, offScheduleTripIds } : null,
-    [mergedPlottedData, offScheduleTripIds],
-  )
+  const boardData = useMemo(() => {
+    if (!mergedPlottedData) return null
+    const blocks = visibleBlockIds
+      ? mergedPlottedData.blocks.filter(b => visibleBlockIds.has(b.id))
+      : mergedPlottedData.blocks
+    return { ...mergedPlottedData, blocks, offScheduleTripIds }
+  }, [mergedPlottedData, offScheduleTripIds, visibleBlockIds])
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -179,19 +185,13 @@ export default function VehiclePlanPage() {
     activeJobId,
     isSolverDone,
     optimizeModalOpen, setOptimizeModalOpen,
-    detailsOpen, setDetailsOpen,
-    baselineSnapshot,
-    solverProgress,
-    handleOptimize, handleClearMetrics, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
+    handleOptimize, handleClearMetrics, handleStop, handleDelete, handleActivate,
   } = solver
 
   // ── topbar ───────────────────────────────────────────────────────────────────
 
   const planLines        = ganttData?.plan?.lines ?? []
   const hasCustomMetrics = !!( (record as Record<string, unknown> | undefined)?.metrics )
-  const fleetDelta       = baselineSnapshot != null && solverProgress.bestScenario != null
-    ? solverProgress.bestScenario.fleetCount - baselineSnapshot.fleetCount
-    : null
 
   useTopbarActions([
     // edit-bar toggle — always visible, aligned to the start
@@ -203,6 +203,21 @@ export default function VehiclePlanPage() {
       disabled: !editBarOpen && selectedLineIds.size === 0,
       variant:  (editBarOpen ? 'default' : 'ghost') as 'default' | 'ghost',
       keybind:  'F9',
+      position: 'start' as const,
+    }] : []),
+
+    // block filter toggle — always visible, not gated to edit mode (browsing
+    // the Gantt happens in normal mode too). See BlockFilterBar.tsx.
+    ...(!isNew ? [{
+      label:    'Filtro de blocos',
+      icon:     Icons.Filter,
+      size:     'icon' as const,
+      onClick:  () => setBlockFilterOpen(v => {
+        if (v) { setBlockFilter(null); clearPinnedBlocks() }
+        return !v
+      }),
+      variant:  (blockFilterOpen ? 'default' : 'ghost') as 'default' | 'ghost',
+      keybind:  'F7',
       position: 'start' as const,
     }] : []),
 
@@ -332,7 +347,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds])
+  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -499,24 +514,13 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {detailsOpen && (
-        <SolverProposalDialog
-          baseline={baselineSnapshot}
-          proposal={solverProgress.bestScenario}
-          proposalCount={solverProgress.proposalCount}
-          isPending={isPending}
-          canDiscard={isSolverDone || solverProgress.bestScenario != null}
-          onClose={() => setDetailsOpen(false)}
-          onAssume={handleAssumeBest}
-          onDiscard={handleDiscard}
-        />
-      )}
-
       <div className="px-6 pt-4 pb-2 shrink-0 flex items-start justify-between gap-4">
         <div className="space-y-1 min-w-0 flex-1">
           <AutoBreadcrumb domain="transit" resource="vehicle-plan" id={id} recordName={recordName} />
 
-          {/* summary bar */}
+          {/* plan name — the rest of the old summary bar (status/type/counts,
+              solver progress) was removed; the block filter now lives at this
+              same height, over the Gantt (see BlockFilterBar below). */}
           {record && (
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <InlineDescription
@@ -534,61 +538,6 @@ export default function VehiclePlanPage() {
                   await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
                 }}
               />
-              <span>
-                Status:{' '}
-                <span className={status === 'ACTIVE' ? 'text-green-600 font-medium' : 'font-medium'}>
-                  {status === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
-                </span>
-              </span>
-              {ganttData?.plan?.dayType && (
-                <span>Tipo: <span className="font-medium">{ganttData.plan.dayType.code}</span></span>
-              )}
-              {ganttData?.plan?.lines != null && (
-                <span>{ganttData.plan.lines.length} {ganttData.plan.lines.length === 1 ? 'linha' : 'linhas'}</span>
-              )}
-              {ganttData?.blocks != null && (
-                <span>{ganttData.blocks.length} {ganttData.blocks.length === 1 ? 'bloco' : 'blocos'}</span>
-              )}
-              {ganttData?.blocks != null && (
-                <span>
-                  {ganttData.blocks.reduce((sum, b) => sum + b.blockTrips.length, 0)} viagens produtivas
-                </span>
-              )}
-              {activeJobId && (
-                <span className="flex items-center gap-1.5 font-mono text-xs tabular-nums">
-                  <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                    isSolverDone
-                      ? 'bg-muted text-muted-foreground'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                  }`}>
-                    LVL {solverProgress.currentLevel} {solverProgress.currentLevelLabel}
-                  </span>
-                  <span className="text-muted-foreground">—</span>
-                  <span className={!isSolverDone ? 'text-blue-600 animate-pulse' : 'text-muted-foreground'}>
-                    {solverProgress.totalIterations.toLocaleString('pt-BR')}
-                  </span>
-                  <span className="bg-muted rounded px-1 py-0.5 text-muted-foreground">
-                    [{solverProgress.proposalCount}]
-                  </span>
-                  {fleetDelta != null && (
-                    <span className={`rounded px-1 py-0.5 ${
-                      fleetDelta < 0
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                        : fleetDelta > 0
-                          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
-                          : 'bg-muted text-muted-foreground'
-                    }`}>
-                      [{fleetDelta > 0 ? '+' : ''}{fleetDelta}]
-                    </span>
-                  )}
-                  <button
-                    onClick={() => setDetailsOpen(true)}
-                    className="rounded px-1 py-0.5 bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-                  >
-                    [Detalhes]
-                  </button>
-                </span>
-              )}
             </div>
           )}
         </div>
@@ -631,6 +580,9 @@ export default function VehiclePlanPage() {
                       highlightedSegIds={editBarOpen ? tripSeqRangeIds : null}
                       // +8 for LineFreqPanel's `right-2` offset from the container edge
                       rightInset={lineFreqOpen ? LINE_FREQ_PANEL_WIDTH + 8 : 0}
+                      filterBarOpen={blockFilterOpen}
+                      pinnedBlockIds={pinnedBlockIds}
+                      onTogglePin={togglePinnedBlock}
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -643,6 +595,15 @@ export default function VehiclePlanPage() {
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                     Carregando…
                   </div>
+                )}
+
+                {blockFilterOpen && (
+                  <BlockFilterBar
+                    filter={blockFilter}
+                    onChange={setBlockFilter}
+                    matchCount={filterMatchCount}
+                    onClose={() => { setBlockFilterOpen(false); setBlockFilter(null); clearPinnedBlocks() }}
+                  />
                 )}
 
                 {editBarOpen && selection && mergedPlottedData && (

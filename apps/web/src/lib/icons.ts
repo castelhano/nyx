@@ -46,6 +46,7 @@ const iconNames = [
   'FileQuestion',
   'FileSpreadsheet',
   'FileText',
+  'Filter',
   'Gauge',
   'GitBranch',
   'Home',

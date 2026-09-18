@@ -5,10 +5,16 @@ import type { LayoutRow } from '../engine/layout/layout.types'
 import type { GanttBlock } from '../views/vehicles.view'
 
 interface Props {
-  rows:         LayoutRow[]
-  scrollY:      number
-  height:       number
-  onInfoClick?: (row: LayoutRow) => void
+  rows:              LayoutRow[]
+  scrollY:           number
+  height:            number
+  onInfoClick?:      (row: LayoutRow) => void
+  // Pin toggle (docs/proposal/plan_vehicle_plan_block_filter_v1.md §2) — only
+  // rendered while the block filter bar is open, otherwise it has no function
+  // and is just visual noise.
+  showPinToggle?:    boolean
+  pinnedBlockIds?:   Set<string>
+  onTogglePin?:      (blockId: string) => void
 }
 
 function fmtMinutes(m: number): string {
@@ -17,7 +23,7 @@ function fmtMinutes(m: number): string {
   return r > 0 ? `${h}h${String(r).padStart(2, '0')}` : `${h}h`
 }
 
-export function RowList({ rows, scrollY, height, onInfoClick }: Props) {
+export function RowList({ rows, scrollY, height, onInfoClick, showPinToggle, pinnedBlockIds, onTogglePin }: Props) {
   return (
     <div
       className="overflow-hidden select-none shrink-0"
@@ -43,19 +49,34 @@ export function RowList({ rows, scrollY, height, onInfoClick }: Props) {
                 </div>
               </div>
 
-              {/* icon column: info / lock */}
-              <div className="flex flex-col items-center gap-0.5 shrink-0 ml-1">
+              {/* icon column: pin, info, lock — side by side */}
+              <div className="flex flex-row items-center gap-0.5 shrink-0 ml-1">
+                {showPinToggle && onTogglePin && (() => {
+                  const pinned = pinnedBlockIds?.has(block.id) ?? false
+                  return (
+                    <button
+                      onClick={() => onTogglePin(block.id)}
+                      title={pinned ? 'Desafixar bloco (some ao aplicar o filtro)' : 'Fixar bloco (sempre visível, mesmo filtrado)'}
+                      className={[
+                        'p-1 rounded',
+                        pinned ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      ].join(' ')}
+                    >
+                      {pinned ? <Icons.Eye className="w-3.5 h-3.5" /> : <Icons.EyeOff className="w-3.5 h-3.5" />}
+                    </button>
+                  )
+                })()}
                 {onInfoClick && (
                   <button
                     onClick={() => onInfoClick(row)}
-                    className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
                   >
-                    <Icons.Info className="w-3 h-3" />
+                    <Icons.Info className="w-3.5 h-3.5" />
                   </button>
                 )}
                 {locked && (
-                  <span className="p-0.5 text-amber-500">
-                    <Icons.Lock className="w-3 h-3" />
+                  <span className="p-1 text-amber-500">
+                    <Icons.Lock className="w-3.5 h-3.5" />
                   </span>
                 )}
               </div>

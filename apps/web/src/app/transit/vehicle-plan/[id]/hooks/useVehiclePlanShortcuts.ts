@@ -6,7 +6,7 @@ import { Icons } from '@/lib/icons'
 import { useShortcut } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
 import { useConfirm } from '@/lib/confirm-context'
-import { findAnchoredBreakIds, type TripPatch, type DeadrunPatch } from './useGanttEditor'
+import { findAnchoredBreakIds, type TripPatch, type DeadrunPatch, type BlockFilter } from './useGanttEditor'
 import type { GanttBoardHandle } from '../components/GanttBoard'
 import type { PendingAddEntry } from '../components/AddTripModal'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
@@ -52,6 +52,12 @@ interface UseVehiclePlanShortcutsParams {
   setSelectedLineIds:   Dispatch<SetStateAction<Set<string>>>
   linesPanelOpen:       boolean
   navBlocks:            NavItem[][]
+  // Same shape as navBlocks, restricted to blocks visible under the active
+  // block filter (filtered ∪ pinned) — see docs/proposal/
+  // plan_vehicle_plan_block_filter_v1.md §4. Equal to navBlocks with no
+  // filter active. Used for ↑/↓ block-to-block navigation only — focus
+  // recovery stays on the full navBlocks (in useGanttEditor).
+  visibleNavBlocks:     NavItem[][]
   allTrips:             TripItem[]
   mergedPlottedData:    VehiclePlanGanttData | null
   moveTargetBlocks:     { allBlockIds: string[]; sourceIndex: number } | null
@@ -77,6 +83,11 @@ interface UseVehiclePlanShortcutsParams {
   setSummaryLineIds:    Dispatch<SetStateAction<string[] | null>>
   setRedistributeModal: Dispatch<SetStateAction<{ lineId: string } | null>>
 
+  blockFilterOpen:      boolean
+  setBlockFilterOpen:   Dispatch<SetStateAction<boolean>>
+  setBlockFilter:       Dispatch<SetStateAction<BlockFilter | null>>
+  clearPinnedBlocks:    () => void
+
   clearAllPending:            () => void
   handleSavePendingWithConfirm:    () => void
   handleDiscardPendingWithConfirm: () => void
@@ -95,12 +106,13 @@ interface UseVehiclePlanShortcutsParams {
 export function useVehiclePlanShortcuts({
   canEdit, canEditGantt, isNew, ganttBoardRef, shiftAnchorRef,
   selection, setSelection, focusedSegId, setFocusedSegId, tripSeqAnchor, setTripSeqAnchor,
-  moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, allTrips,
+  moveTargetBlockId, setMoveTargetBlockId, editBarOpen, selectedLineIds, setSelectedLineIds, linesPanelOpen, navBlocks, visibleNavBlocks, allTrips,
   mergedPlottedData, moveTargetBlocks, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
   pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
   setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
   summaryLineIds, setSummaryLineIds, setRedistributeModal,
+  blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
   handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -233,6 +245,34 @@ export function useVehiclePlanShortcuts({
     section: SEC_PAINEIS,
   })
 
+  // Closing the bar (F7 again, or Esc below) clears the filter and any pins
+  // too — simpler than keeping an "invisible" filter running in the
+  // background, or letting pins outlive the session that created them.
+  useShortcut('f7', () => {
+    setBlockFilterOpen(v => {
+      if (v) { setBlockFilter(null); clearPinnedBlocks() }
+      return !v
+    })
+  }, {
+    desc:    'Filtro de blocos por horário',
+    icon:    Icons.Filter,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: !isNew,
+    section: SEC_PAINEIS,
+  })
+
+  useShortcut('esc', () => {
+    setBlockFilterOpen(false)
+    setBlockFilter(null)
+    clearPinnedBlocks()
+  }, {
+    desc:    'Fecha e limpa o filtro de blocos',
+    icon:    Icons.X,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: blockFilterOpen,
+    section: SEC_PAINEIS,
+  })
+
   useShortcut('alt+;', () => setSummaryLineIds(v => v ? null : [...selectedLineIds]), {
     desc:    'Resumo comparativo da linha',
     icon:    Icons.BarChart2,
@@ -304,11 +344,11 @@ export function useVehiclePlanShortcuts({
   useShortcut('↑', () => {
     if (!focusedSegId) return
     setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
-    for (let bi = 1; bi < navBlocks.length; bi++) {
-      const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
+    for (let bi = 1; bi < visibleNavBlocks.length; bi++) {
+      const idx = visibleNavBlocks[bi].findIndex(i => i.segId === focusedSegId)
       if (idx === -1) continue
-      const curDep = navBlocks[bi][idx].dep
-      const prev   = navBlocks[bi - 1]
+      const curDep = visibleNavBlocks[bi][idx].dep
+      const prev   = visibleNavBlocks[bi - 1]
       if (!prev.length) break
       const nearest = prev.reduce((best, item) =>
         Math.abs(item.dep - curDep) < Math.abs(best.dep - curDep) ? item : best
@@ -327,11 +367,11 @@ export function useVehiclePlanShortcuts({
   useShortcut('↓', () => {
     if (!focusedSegId) return
     setSelection(null); shiftAnchorRef.current = null; setTripSeqAnchor(null)
-    for (let bi = 0; bi < navBlocks.length - 1; bi++) {
-      const idx = navBlocks[bi].findIndex(i => i.segId === focusedSegId)
+    for (let bi = 0; bi < visibleNavBlocks.length - 1; bi++) {
+      const idx = visibleNavBlocks[bi].findIndex(i => i.segId === focusedSegId)
       if (idx === -1) continue
-      const curDep = navBlocks[bi][idx].dep
-      const next   = navBlocks[bi + 1]
+      const curDep = visibleNavBlocks[bi][idx].dep
+      const next   = visibleNavBlocks[bi + 1]
       if (!next.length) break
       const nearest = next.reduce((best, item) =>
         Math.abs(item.dep - curDep) < Math.abs(best.dep - curDep) ? item : best

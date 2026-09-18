@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
@@ -100,6 +100,34 @@ export function findAnchoredDeadrunIds(block: GanttBlock, tripIds: string[]): st
   return anchored
 }
 
+// docs/proposal/plan_vehicle_plan_block_filter_v1.md — matches on the block's
+// own service window: 'start' is its first productive trip's departure, 'end'
+// its last productive trip's arrival (deadruns/breaks never enter it). Not
+// "does any trip match" — a block runs trips all day, so that reading matched
+// almost every block and never actually narrowed anything down.
+export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number }
+
+function blockMatchesFilter(block: GanttBlock, filter: BlockFilter): boolean {
+  const trips = block.blockTrips
+  if (trips.length === 0) return false
+  const value = filter.field === 'start'
+    ? trips.reduce((min, bt) => Math.min(min, bt.trip.departureMinutes), Infinity)
+    : trips.reduce((max, bt) => Math.max(max, bt.trip.arrivalMinutes), -Infinity)
+  return filter.relation === 'after' ? value > filter.minutes : value < filter.minutes
+}
+
+function findBlockForSegId(blocks: GanttBlock[], segId: string): GanttBlock | undefined {
+  if (segId.endsWith(':dr')) {
+    const drId = segId.slice(0, -3)
+    return blocks.find(b => b.blockDeadruns.some(dr => dr.id === drId))
+  }
+  if (segId.endsWith(':bk')) {
+    const bkId = segId.slice(0, -3)
+    return blocks.find(b => b.blockIntervals.some(bi => bi.id === bkId))
+  }
+  return blocks.find(b => b.blockTrips.some(bt => bt.id === segId))
+}
+
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { blockTripId: string; blockId: string }
 export type StopPattern = Trip['stopPattern']
@@ -192,6 +220,27 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
   // Lines selection for display — checked lines are plotted immediately
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
+
+  // Block filter by schedule (docs/proposal/plan_vehicle_plan_block_filter_v1.md)
+  // — UI-only, resets on reload/plan change, never persisted. Pins survive
+  // *clearing* the filter criteria while the bar stays open (so a refined
+  // search keeps what you'd already marked) but reset when the bar is
+  // actually closed (X) — that's a deliberate "start fresh" action.
+  const [blockFilter,    setBlockFilter]    = useState<BlockFilter | null>(null)
+  const [pinnedBlockIds, setPinnedBlockIds] = useState<Set<string>>(new Set())
+
+  function togglePinnedBlock(blockId: string) {
+    setPinnedBlockIds(prev => {
+      const next = new Set(prev)
+      if (next.has(blockId)) next.delete(blockId)
+      else next.add(blockId)
+      return next
+    })
+  }
+
+  function clearPinnedBlocks() {
+    setPinnedBlockIds(new Set())
+  }
 
   // Filtered data: only blocks that have at least one productive trip from a selected line
   const plottedData = useMemo<VehiclePlanGanttData | null>(() => {
@@ -460,6 +509,55 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     ].sort((a, b) => a.dep - b.dep))
   }, [mergedPlottedData])
 
+  // visibleBlockIds = null means "no filter, everything visible". When a filter
+  // is active, it's the set of blocks that matched ∪ pinned blocks — see
+  // docs/proposal/plan_vehicle_plan_block_filter_v1.md §2. filterMatchCount is
+  // the match-only count (excludes pins), shown as "N blocos" on BlockFilterBar.
+  const { visibleBlockIds, filterMatchCount } = useMemo(() => {
+    if (!mergedPlottedData || !blockFilter) return { visibleBlockIds: null as Set<string> | null, filterMatchCount: 0 }
+    const matched = new Set<string>()
+    for (const block of mergedPlottedData.blocks) {
+      if (blockMatchesFilter(block, blockFilter)) matched.add(block.id)
+    }
+    const visible = new Set(matched)
+    for (const id of pinnedBlockIds) visible.add(id)
+    return { visibleBlockIds: visible, filterMatchCount: matched.size }
+  }, [mergedPlottedData, blockFilter, pinnedBlockIds])
+
+  // Navigation-only view of navBlocks, restricted to visible blocks — kept
+  // separate from navBlocks itself, which stays over the full block set so the
+  // focus-recovery effect below doesn't treat a block hidden by the filter as
+  // "gone" and reset focus. Same reference as navBlocks when no filter is
+  // active (§4 of the proposal doc).
+  const visibleNavBlocks = useMemo(() => {
+    // visibleBlockIds is null exactly when there's no active filter — same
+    // condition, no need to also check blockFilter here.
+    if (!mergedPlottedData || !visibleBlockIds) return navBlocks
+    return mergedPlottedData.blocks
+      .map((block, i) => visibleBlockIds.has(block.id) ? navBlocks[i] : null)
+      .filter((row): row is NonNullable<typeof row> => row != null)
+  }, [mergedPlottedData, visibleBlockIds, navBlocks])
+
+  // Activating the filter (null → non-null) auto-pins the block owning the
+  // current selection/focus, so turning it on never yanks away what's
+  // currently in view without explanation — RESPOSTA in the proposal doc §6.
+  const wasFilterActiveRef = useRef(false)
+  useEffect(() => {
+    const isActive = blockFilter !== null
+    if (isActive && !wasFilterActiveRef.current && mergedPlottedData) {
+      const anchorSegId = selection
+        ? (selection.type === 'trip' ? selection.segment.id : selection.from.id)
+        : focusedSegId
+      const owner = anchorSegId ? findBlockForSegId(mergedPlottedData.blocks, anchorSegId) : undefined
+      if (owner) {
+        const ownerId = owner.id
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setPinnedBlockIds(prev => prev.has(ownerId) ? prev : new Set(prev).add(ownerId))
+      }
+    }
+    wasFilterActiveRef.current = isActive
+  }, [blockFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // shift+pagedown/pageup range: window [anchor, focus] over allTrips,
   // restricted to the anchor's direction — same traversal (all lines) plain
   // pagedown already does, just materialized as a set for highlighting.
@@ -571,12 +669,17 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // relative to the source block's own position (skipping the source itself).
   const moveTargetBlocks = useMemo(() => {
     if (!mergedPlottedData || !selection) return null
-    const sourceId     = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
-    const allBlockIds  = mergedPlottedData.blocks.map(b => b.id)
+    const sourceId    = selection.type === 'trip' ? selection.segment.rowId : selection.rowId
+    // Restricted to visible blocks while a filter is active — cycling move
+    // targets (↑/↓ with a selection) should only reach what's on screen.
+    const baseBlocks  = visibleBlockIds
+      ? mergedPlottedData.blocks.filter(b => visibleBlockIds.has(b.id))
+      : mergedPlottedData.blocks
+    const allBlockIds  = baseBlocks.map(b => b.id)
     const sourceIndex  = allBlockIds.indexOf(sourceId)
     if (sourceIndex === -1) return null
     return { allBlockIds, sourceIndex }
-  }, [mergedPlottedData, selection])
+  }, [mergedPlottedData, selection, visibleBlockIds])
 
   // Step the move-target cursor by ±1, skipping over the source block and
   // clamping (not wrapping) at the array boundaries.
@@ -2131,6 +2234,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     plottedData, mergedPlottedData,
     allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
+    blockFilter, setBlockFilter, pinnedBlockIds, togglePinnedBlock, clearPinnedBlocks, visibleBlockIds, visibleNavBlocks, filterMatchCount,
     pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,

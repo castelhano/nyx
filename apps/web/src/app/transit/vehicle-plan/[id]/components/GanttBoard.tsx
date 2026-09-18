@@ -39,6 +39,14 @@ interface Props {
   moveTargetHints?:   RowHintEntry[]
   highlightedSegIds?: Set<string> | null
   rightInset?:        number // px reserved by an overlay covering the right edge (e.g. LineFreqPanel)
+  // Block filter pin toggle — see RowList.tsx and docs/proposal/
+  // plan_vehicle_plan_block_filter_v1.md §2. Gated to the filter bar being
+  // *open*, not to a filter being active: a block hidden by a live filter has
+  // no row left to click, so pinning has to happen before/while typing the
+  // criteria, not after.
+  filterBarOpen?:     boolean
+  pinnedBlockIds?:    Set<string>
+  onTogglePin?:       (blockId: string) => void
 }
 
 interface TooltipState {
@@ -73,7 +81,7 @@ function refreshSelection(sel: Selection, freshSegs: LayoutSegment[]): Selection
 }
 
 export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function GanttBoard(
-  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS, highlightedSegIds, rightInset = 0 }: Props,
+  { data, onViewportChange, selection, onSelectionChange, actionSpec, onBlockUpdate, focusedSegId, moveTargetBlockId, moveTargetHints = EMPTY_HINTS, highlightedSegIds, rightInset = 0, filterBarOpen, pinnedBlockIds, onTogglePin }: Props,
   ref,
 ) {
   const canvasRef             = useRef<HTMLCanvasElement>(null)
@@ -402,6 +410,9 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
             scrollY={vp.scrollY}
             height={canvasH}
             onInfoClick={handleRowInfo}
+            showPinToggle={filterBarOpen}
+            pinnedBlockIds={pinnedBlockIds}
+            onTogglePin={onTogglePin}
           />
         </div>
 
