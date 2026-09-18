@@ -433,6 +433,10 @@ model VehiclePlan {
   dayTypeId   String
   description String?
   status      VehiclePlanStatus @default(DRAFT)
+  // vigencia — set when the plan is activated
+  validFrom   DateTime?
+  // set when superseded by another plan activated for the same scope+dayType
+  validTo     DateTime?
   // VehiclePlanSummary (packages/schemas/transit/vehicle-plan.schema.ts) — populated by
   // the solver after generation:
   // {"fleetCount":102,"score":0,"deadrunKm":0,"productiveKm":23249.58,"totalKm":23249.58,

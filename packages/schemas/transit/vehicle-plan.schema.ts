@@ -92,6 +92,18 @@ export const vehiclePlanSchema = withMeta(
       },
     }),
 
+    validFrom: z.date().optional().nullable().meta({
+      label:          'Vigência Início',
+      showInForm:     false,
+      listVisibility: 'visible',
+    }),
+
+    validTo: z.date().optional().nullable().meta({
+      label:          'Vigência Fim',
+      showInForm:     false,
+      listVisibility: 'visible',
+    }),
+
     metrics: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Métricas',
       listVisibility: 'never',

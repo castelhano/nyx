@@ -1378,11 +1378,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       return { conflict: { id: conflict.id, description: conflict.description } }
     }
 
+    const now = new Date()
+
     await this.prisma.$transaction(async (tx) => {
       if (conflict) {
-        await tx.vehiclePlan.update({ where: { id: conflict.id }, data: { status: 'DRAFT' } })
+        await tx.vehiclePlan.update({ where: { id: conflict.id }, data: { status: 'DRAFT', validTo: now } })
       }
-      await tx.vehiclePlan.update({ where: { id: planId }, data: { status: 'ACTIVE' } })
+      await tx.vehiclePlan.update({ where: { id: planId }, data: { status: 'ACTIVE', validFrom: now, validTo: null } })
     })
 
     return null
