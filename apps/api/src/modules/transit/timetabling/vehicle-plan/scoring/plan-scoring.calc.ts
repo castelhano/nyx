@@ -68,23 +68,55 @@ export function peakVehicleRequirement(trips: { departureMinutes: number; arriva
 const PEAK_HOURS: [number, number][] = [[5.5, 8], [15.5, 18]]
 const isPeakHour = (hour: number) => PEAK_HOURS.some(([from, to]) => hour >= from && hour < to)
 
-// Actual headway within [bandFrom, bandTo) — avg gap between consecutive departures
-// that fall in the band, per direction, then averaged across directions (equal
-// weight per direction, same convention as the old registered-window average).
-// Unlike TransitLine.metrics.windows (the line's registered target, identical
-// across every plan), this reads the real scheduled departures for this specific
-// side of the comparison — so draft/active/preview can actually differ.
-function bandHeadway(
-  tripsByDirection: Record<string, { departureMinutes: number }[]>,
+// A block whose whole footprint inside [bandFrom, bandTo) is at most one trip per
+// direction (at most a single round trip — or a single trip on a CIRCULAR line,
+// which has only one direction) doesn't represent the line's steady-state service
+// in that band; a lone reinforcement run would otherwise skew both the average
+// headway and the peak-fleet count for the whole band. Threshold is evaluated
+// jointly across every direction the line has — a block with 1 OUTBOUND + 1
+// INBOUND trip in the band is still "isolated" (docs/proposal/plan_dop_v1.md,
+// "Dúvidas nos apontamentos" — confirmed with the user).
+function excludeIsolatedReinforcement(
+  tripsByDirection: Record<string, { departureMinutes: number; arrivalMinutes: number; blockId: string }[]>,
   bandFrom: number,
   bandTo:   number,
-): number | null {
+): Record<string, { departureMinutes: number; arrivalMinutes: number }[]> {
+  const directions = Object.keys(tripsByDirection)
+  const inBand: Record<string, { departureMinutes: number; arrivalMinutes: number; blockId: string }[]> = {}
+  for (const dir of directions) {
+    inBand[dir] = tripsByDirection[dir].filter(t => { const h = t.departureMinutes / 60; return h >= bandFrom && h < bandTo })
+  }
+
+  const countByBlock = new Map<string, Map<string, number>>()
+  for (const dir of directions) {
+    for (const t of inBand[dir]) {
+      let byDir = countByBlock.get(t.blockId)
+      if (!byDir) { byDir = new Map(); countByBlock.set(t.blockId, byDir) }
+      byDir.set(dir, (byDir.get(dir) ?? 0) + 1)
+    }
+  }
+
+  const isolatedBlocks = new Set<string>()
+  for (const [blockId, byDir] of countByBlock) {
+    if (directions.every(dir => (byDir.get(dir) ?? 0) <= 1)) isolatedBlocks.add(blockId)
+  }
+
+  const filtered: Record<string, { departureMinutes: number; arrivalMinutes: number }[]> = {}
+  for (const dir of directions) filtered[dir] = inBand[dir].filter(t => !isolatedBlocks.has(t.blockId))
+  return filtered
+}
+
+// Actual headway within a band — avg gap between consecutive departures that fall
+// in the band (isolated-reinforcement blocks already excluded — see
+// excludeIsolatedReinforcement), per direction, then averaged across directions
+// (equal weight per direction, same convention as the old registered-window
+// average). Unlike TransitLine.metrics.windows (the line's registered target,
+// identical across every plan), this reads the real scheduled departures for this
+// specific side of the comparison — so draft/active/preview can actually differ.
+function bandHeadway(bandTrips: Record<string, { departureMinutes: number }[]>): number | null {
   const perDirection: number[] = []
-  for (const trips of Object.values(tripsByDirection)) {
-    const departures = trips
-      .map(t => t.departureMinutes)
-      .filter(m => { const h = m / 60; return h >= bandFrom && h < bandTo })
-      .sort((a, b) => a - b)
+  for (const trips of Object.values(bandTrips)) {
+    const departures = trips.map(t => t.departureMinutes).sort((a, b) => a - b)
     if (departures.length < 2) continue
     let gapSum = 0
     for (let i = 1; i < departures.length; i++) gapSum += departures[i] - departures[i - 1]
@@ -92,6 +124,12 @@ function bandHeadway(
   }
   if (perDirection.length === 0) return null
   return Math.round(perDirection.reduce((s, v) => s + v, 0) / perDirection.length)
+}
+
+// Peak concurrent fleet within a band — same sweep-line as peakVehicleRequirement,
+// applied to the band's own (reinforcement-excluded) trips across every direction.
+function peakFleetBand(bandTrips: Record<string, { departureMinutes: number; arrivalMinutes: number }[]>): number {
+  return peakVehicleRequirement(Object.values(bandTrips).flat())
 }
 
 export interface AggregateScoreResult {
@@ -193,8 +231,10 @@ export interface LineAggregate {
   maxArrival:        number
   totalSupply:       number
   demand:            Record<string, Record<string, number>> | undefined
-  // per direction: each trip's window + capacity, for headway/gap/PVR/peak-concentration
-  tripsByDirection:  Record<string, { departureMinutes: number; arrivalMinutes: number; supply: number }[]>
+  // per direction: each trip's window + capacity, for headway/gap/PVR/peak-concentration.
+  // blockId is only needed by excludeIsolatedReinforcement (per-band reinforcement
+  // detection) — everything else here ignores it.
+  tripsByDirection:  Record<string, { departureMinutes: number; arrivalMinutes: number; supply: number; blockId: string }[]>
 }
 
 export interface LineAggregateBlockInput {
@@ -263,7 +303,7 @@ export function buildLineAggregates(
       agg.totalSupply       += supply
 
       const list = agg.tripsByDirection[route.direction] ?? (agg.tripsByDirection[route.direction] = [])
-      list.push({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes, supply })
+      list.push({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes, supply, blockId: block.id })
     }
   }
 
@@ -357,14 +397,17 @@ function computeLineScore(agg: LineAggregate, cfg: SolverPlanningConfig['line'])
 }
 
 export function computeLineSummary(
-  agg: LineAggregate | undefined,
-  cfg: SolverPlanningConfig['line'],
+  agg:    LineAggregate | undefined,
+  cfg:    SolverPlanningConfig['line'],
+  idleKm: number = 0,
 ): VehiclePlanLineSummary {
   if (!agg || agg.tripCount === 0) {
     return {
       fleetSize: 0, dailyTrips: 0, operatingHours: 0, dailyKm: 0, avgSpeed: 0,
       occupancyIndex: 0, serviceFrequencyIndex: 0, peakPassengersPerHour: 0,
       peakMorningInterval: null, peakAfternoonInterval: null, offPeakInterval: null,
+      peakFleetMorning: 0, peakFleetAfternoon: 0, peakFleetOffPeak: 0,
+      idleKm: r2(idleKm), idlePct: idleKm > 0 ? 1 : 0,
       score: 0,
     }
   }
@@ -381,6 +424,10 @@ export function computeLineSummary(
     }
   }
 
+  const morningTrips   = excludeIsolatedReinforcement(agg.tripsByDirection, PEAK_HOURS[0][0], PEAK_HOURS[0][1])
+  const afternoonTrips = excludeIsolatedReinforcement(agg.tripsByDirection, PEAK_HOURS[1][0], PEAK_HOURS[1][1])
+  const offPeakTrips   = excludeIsolatedReinforcement(agg.tripsByDirection, PEAK_HOURS[0][1], PEAK_HOURS[1][0])
+
   return {
     fleetSize:             agg.blockIds.size,
     dailyTrips:            agg.tripCount,
@@ -390,9 +437,14 @@ export function computeLineSummary(
     occupancyIndex:        agg.totalSupply  > 0 ? r2(totalDemand / agg.totalSupply)     : 0,
     serviceFrequencyIndex: operatingHours   > 0 ? r2(agg.tripCount / operatingHours)    : 0,
     peakPassengersPerHour,
-    peakMorningInterval:   bandHeadway(agg.tripsByDirection, PEAK_HOURS[0][0], PEAK_HOURS[0][1]),
-    peakAfternoonInterval: bandHeadway(agg.tripsByDirection, PEAK_HOURS[1][0], PEAK_HOURS[1][1]),
-    offPeakInterval:       bandHeadway(agg.tripsByDirection, PEAK_HOURS[0][1], PEAK_HOURS[1][0]),
+    peakMorningInterval:   bandHeadway(morningTrips),
+    peakAfternoonInterval: bandHeadway(afternoonTrips),
+    offPeakInterval:       bandHeadway(offPeakTrips),
+    peakFleetMorning:      peakFleetBand(morningTrips),
+    peakFleetAfternoon:    peakFleetBand(afternoonTrips),
+    peakFleetOffPeak:      peakFleetBand(offPeakTrips),
+    idleKm:                r2(idleKm),
+    idlePct:               (idleKm + agg.productiveKm) > 0 ? r2(idleKm / (idleKm + agg.productiveKm)) : 0,
     score: computeLineScore(agg, cfg),
   }
 }

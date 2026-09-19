@@ -18,6 +18,7 @@ import type { PreviewLineScoreDto } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
+import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
@@ -400,6 +401,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           },
           blockDeadruns: {
             select: {
+              type:                  true,
               originLocalityId:      true,
               destinationLocalityId: true,
               departureMinutes:      true,
@@ -430,13 +432,36 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const dayTypeCode = plan.dayType?.code
     const lineAgg      = buildLineAggregates(blocksWithTrips, matrixKm, dayTypeCode, VEHICLE_TYPE_CAPACITY)
 
+    // ── idle km rated to each line — see scoring/idle-km-rateio.calc.ts ─────────
+    const idleKmByLine = new Map<string, number>()
+    for (const block of blocksWithTrips) {
+      const productiveKmByLine = new Map<string, number>()
+      const trips: IdleTripInput[] = []
+      for (const bt of block.blockTrips as any[]) {
+        const route  = bt.trip.route
+        const extMetrics = route.line.metrics as { extensionKm?: Record<string, number> } | null
+        const tripKm     = extMetrics?.extensionKm?.[route.direction]
+          ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
+          ?? 0
+        productiveKmByLine.set(route.lineId, (productiveKmByLine.get(route.lineId) ?? 0) + tripKm)
+        trips.push({ lineId: route.lineId, departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes })
+      }
+      const deadruns: IdleDeadrunInput[] = (block.blockDeadruns as any[]).map(dr => ({
+        type:             dr.type,
+        departureMinutes: dr.departureMinutes,
+        km:               matrixKm[`${dr.originLocalityId}:${dr.destinationLocalityId}`] ?? 0,
+      }))
+      const idleForBlock = attributeIdleKmByLine(trips, deadruns, productiveKmByLine)
+      for (const [lineId, km] of idleForBlock) idleKmByLine.set(lineId, (idleKmByLine.get(lineId) ?? 0) + km)
+    }
+
     // ── VehicleBlock.summary + VehiclePlan.summary — from BlockAggregate ────────
     const planMetrics = plan.metrics as Partial<SolverPlanningConfig> | null
     const resolvedCfg = (planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg) as SolverPlanningConfig
 
     const lineSummaries = new Map<string, VehiclePlanLineSummary>()
     for (const { lineId } of planLines) {
-      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), resolvedCfg.line))
+      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), resolvedCfg.line, idleKmByLine.get(lineId) ?? 0))
     }
 
     const planTrips = blocksWithTrips.flatMap((b: any) =>

@@ -38,6 +38,18 @@ export const vehiclePlanLineSummarySchema = z.object({
   peakMorningInterval:   z.number().nullable(),
   peakAfternoonInterval: z.number().nullable(),
   offPeakInterval:       z.number().nullable(),
+  // Peak concurrent fleet within each band (same reinforcement-exclusion rule as
+  // the *Interval fields above — a block with <=1 trip per direction in the band
+  // doesn't count) — DOP's "frota por pico" (docs/proposal/plan_dop_v1.md).
+  peakFleetMorning:      z.number(),
+  peakFleetAfternoon:    z.number(),
+  peakFleetOffPeak:      z.number(),
+  // Idle (deadrun) km rated to this line — ACCESS/RETURN proportional to the
+  // line's share of each block's productive km, DISPLACEMENT split between the
+  // two trips it connects (100% when same line, 50/50 otherwise). idlePct =
+  // idleKm / (idleKm + dailyKm). See plan_dop_v1.md, nota [1].
+  idleKm:                z.number(),
+  idlePct:               z.number(),
   score:                 z.number(),
 })
 export type VehiclePlanLineSummary = z.infer<typeof vehiclePlanLineSummarySchema>

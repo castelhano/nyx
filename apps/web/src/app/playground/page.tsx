@@ -161,8 +161,16 @@ function occupancyStatus(v: number): keyof typeof STATUS_CLS {
   return 'success'
 }
 
-const CHART_GREEN = '#10b981' // emerald-500 — produtiva (status "good")
-const CHART_AMBER = '#f59e0b' // amber-500   — ociosa (status "warning")
+// dark: um tom mais escuro (600 em vez de 500) — o 500 sozinho fica muito
+// luminoso em fundo escuro
+const CHART_GREEN_CLS = 'bg-emerald-500 dark:bg-emerald-600' // produtiva (status "good")
+const CHART_AMBER_CLS = 'bg-amber-500 dark:bg-amber-600'     // ociosa (status "warning")
+
+// bg sutil pra distinguir a linha de grupo (Frota|Viagens, Útil|Sáb|Dom|Mês) do
+// resto do header — dois tons de --muted, mesma cor em light/dark, só a
+// opacidade cresce um passo entre o rótulo do grupo e o subcabeçalho embaixo
+const HEADER_GROUP_BG    = 'bg-muted/40'
+const HEADER_SUBGROUP_BG = 'bg-muted/60'
 
 // ── pedaços de UI ────────────────────────────────────────────────────────────
 
@@ -195,9 +203,9 @@ function SplitBar({ produtiva, ociosa }: { produtiva: number; ociosa: number }) 
   const idlePct = 100 - prodPct
   return (
     <div className="flex h-4 w-full rounded-sm overflow-hidden">
-      <div style={{ width: `${prodPct}%`, background: CHART_GREEN }} />
+      <div className={CHART_GREEN_CLS} style={{ width: `${prodPct}%` }} />
       {idlePct > 0 && <div className="w-[2px] shrink-0 bg-card" />}
-      <div style={{ width: `${idlePct}%`, background: CHART_AMBER }} />
+      <div className={CHART_AMBER_CLS} style={{ width: `${idlePct}%` }} />
     </div>
   )
 }
@@ -318,8 +326,8 @@ export default function PlaygroundPage() {
               <p className="text-[11px] text-muted-foreground">Produtiva x ociosa, % do total do período</p>
             </div>
             <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_GREEN }} />Produtiva</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHART_AMBER }} />Ociosa</span>
+              <span className="flex items-center gap-1.5"><span className={cn('w-2.5 h-2.5 rounded-sm', CHART_GREEN_CLS)} />Produtiva</span>
+              <span className="flex items-center gap-1.5"><span className={cn('w-2.5 h-2.5 rounded-sm', CHART_AMBER_CLS)} />Ociosa</span>
             </div>
           </div>
           <div className="space-y-3">
@@ -406,12 +414,12 @@ export default function PlaygroundPage() {
                 <>
                   <tr className="text-[11px] text-muted-foreground">
                     <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom">Linha</th>
-                    <th colSpan={3} className="text-center font-medium px-2 py-1 border-b border-border">Dia útil</th>
-                    <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', GROUP_DIVIDER)}>Sábado</th>
-                    <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', GROUP_DIVIDER)}>Domingo</th>
-                    <th colSpan={4} className={cn('text-center font-medium px-2 py-1 border-b border-border', GROUP_DIVIDER)}>Mês</th>
+                    <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG)}>Dia útil</th>
+                    <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Sábado</th>
+                    <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Domingo</th>
+                    <th colSpan={4} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Mês</th>
                   </tr>
-                  <tr className="text-[11px] text-muted-foreground border-b border-border">
+                  <tr className={cn('text-[11px] text-muted-foreground border-b border-border', HEADER_SUBGROUP_BG)}>
                     <KmGroupHeader label="Útil" />
                     <KmGroupHeader label="Sáb" divider />
                     <KmGroupHeader label="Dom" divider />
@@ -424,10 +432,10 @@ export default function PlaygroundPage() {
                 <>
                   <tr className="text-[11px] text-muted-foreground">
                     <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom">Linha</th>
-                    <th colSpan={3} className="text-center font-medium px-2 py-1 border-b border-border">Frota</th>
-                    <th colSpan={4} className={cn('text-center font-medium px-2 py-1 border-b border-border', GROUP_DIVIDER)}>Viagens</th>
+                    <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG)}>Frota</th>
+                    <th colSpan={4} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Viagens</th>
                   </tr>
-                  <tr className="text-[11px] text-muted-foreground border-b border-border">
+                  <tr className={cn('text-[11px] text-muted-foreground border-b border-border', HEADER_SUBGROUP_BG)}>
                     <th className="text-right font-medium px-2 py-1">Útil</th>
                     <th className="text-right font-medium px-2 py-1">Sáb</th>
                     <th className="text-right font-medium px-2 py-1">Dom</th>
