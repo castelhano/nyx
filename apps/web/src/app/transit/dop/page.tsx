@@ -2,10 +2,9 @@
 
 // Dados Operacionais Previstos — Fase 3 (docs/proposal/plan_dop_v1.md). Reaproveita a
 // composição visual validada no protótipo (/playground), agora com dado real do
-// endpoint `GET /transit/dop`. "Km por empresa" foi deliberadamente deixado de fora
-// (decisão registrada no doc — precisa de uma camada de rateio linha×bloco×branch
-// ainda não construída); "Km por tipo de dia" ocupa o espaço que era da empresa,
-// com os mesmos componentes visuais (SplitBar + tabela).
+// endpoint `GET /transit/dop`. "Km por empresa" (gráfico) usa VehicleBlock.branchId
+// — cada bloco pertence a uma única empresa, sem rateio entre elas (ao contrário do
+// rateio de km ociosa entre linhas, que ainda se aplica dentro de cada bloco).
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -67,7 +66,7 @@ function lastDayOfMonth(month: string): string {
 // ── formatting ────────────────────────────────────────────────────────────
 
 function fmtKm(v: number): string { return Math.round(v).toLocaleString('pt-BR') }
-function fmtPct(v: number): string { return `${Math.round(v * 100)}%` }
+function fmtPct(v: number, decimals = 0): string { return `${(v * 100).toFixed(decimals)}%` }
 function fmtSpeed(v: number | null): string {
   return v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 }
@@ -177,6 +176,73 @@ function KmGroupCells({ block, divider, withTotal }: { block: DopLineDayTypeBrea
       {withTotal && <td className="px-2 py-1.5 text-right font-medium">{fmtKm(block.kmProdutiva + block.kmOciosa)}</td>}
     </>
   )
+}
+
+// ── CSV export — uma linha por linha de ônibus, colunas de todas as 3 visões juntas ──
+
+function csvCell(value: string | number): string {
+  const s = String(value)
+  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function exportDopCsv(data: DopPeriodSummary, dayTypes: DopPeriodSummary['calendar']) {
+  const headwayCell = (v: number | null) => (v == null ? '' : String(v))
+
+  const header = [
+    'Código', 'Linha',
+    ...dayTypes.map(dt => `Frota ${dt.dayTypeCode}`),
+    ...dayTypes.map(dt => `Viagens ${dt.dayTypeCode}`),
+    'Viagens Mês',
+    ...dayTypes.flatMap(dt => [`Km Produtiva ${dt.dayTypeCode}`, `Km Ociosa ${dt.dayTypeCode}`, `Km % Ociosa ${dt.dayTypeCode}`]),
+    'Km Produtiva Mês', 'Km Ociosa Mês', 'Km % Ociosa Mês', 'Km Total Mês',
+    'Vel. Média', 'Ocupação %', 'Headway Manhã', 'Headway Entrepico', 'Headway Tarde',
+  ]
+
+  const rows = data.lines.map(line => {
+    const byDayType = new Map(line.byDayType.map(bd => [bd.dayTypeId, bd]))
+    const kmTotalMes = line.kmProdutivaMes + line.kmOciosaMes
+    return [
+      line.lineCode, line.lineName,
+      ...dayTypes.map(dt => byDayType.get(dt.dayTypeId)?.fleet ?? ''),
+      ...dayTypes.map(dt => byDayType.get(dt.dayTypeId)?.trips ?? 0),
+      line.tripsMes,
+      ...dayTypes.flatMap(dt => {
+        const bd = byDayType.get(dt.dayTypeId) ?? { kmProdutiva: 0, kmOciosa: 0 }
+        return [Math.round(bd.kmProdutiva), Math.round(bd.kmOciosa), (kmPct(bd) * 100).toFixed(1)]
+      }),
+      Math.round(line.kmProdutivaMes), Math.round(line.kmOciosaMes), (kmPct({ kmProdutiva: line.kmProdutivaMes, kmOciosa: line.kmOciosaMes }) * 100).toFixed(1), Math.round(kmTotalMes),
+      line.avgSpeed == null ? '' : line.avgSpeed.toFixed(1),
+      line.occupancyIndex == null ? '' : (line.occupancyIndex * 100).toFixed(0),
+      headwayCell(line.peakMorningInterval), headwayCell(line.offPeakInterval), headwayCell(line.peakAfternoonInterval),
+    ]
+  })
+
+  const dayTypeSummary = dayTypes.map(dt => {
+    let kmProdutiva = 0, kmOciosa = 0, fleet = 0, trips = 0
+    for (const line of data.lines) {
+      const bd = line.byDayType.find(b => b.dayTypeId === dt.dayTypeId)
+      if (bd) { kmProdutiva += bd.kmProdutiva; kmOciosa += bd.kmOciosa; fleet += bd.fleet ?? 0; trips += bd.trips }
+    }
+    return { kmProdutiva, kmOciosa, fleet, trips }
+  })
+  const totalRow = [
+    '', 'Total',
+    ...dayTypeSummary.map(dt => dt.fleet || ''),
+    ...dayTypeSummary.map(dt => dt.trips),
+    data.totals.tripsMes,
+    ...dayTypeSummary.flatMap(dt => [Math.round(dt.kmProdutiva), Math.round(dt.kmOciosa), (kmPct(dt) * 100).toFixed(1)]),
+    Math.round(data.totals.kmProdutivaMes), Math.round(data.totals.kmOciosaMes), (kmPct({ kmProdutiva: data.totals.kmProdutivaMes, kmOciosa: data.totals.kmOciosaMes }) * 100).toFixed(1), Math.round(data.totals.kmProdutivaMes + data.totals.kmOciosaMes),
+    '', '', '', '', '',
+  ]
+
+  const csv = '﻿' + [header, ...rows, totalRow].map(r => r.map(csvCell).join(';')).join('\r\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `dop_${data.scopeId}_${data.from}_${data.to}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export default function DopPage() {
@@ -305,20 +371,19 @@ export default function DopPage() {
 
           {/* ── KPI hero row ── */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <StatTile icon={Icons.Bus}   label="Frota operacional"    value={String(data.totals.fleetOperacional)} />
+            <StatTile icon={Icons.Bus}   label="Frota operacional"    value={data.totals.fleetOperacional.toLocaleString('pt-BR')} />
             <StatTile icon={Icons.Route} label="Km planejada (mês)"   value={`${fmtKm(kmTotalMes)} km`} />
             <StatTile icon={Icons.Gauge} label="% Ociosidade"         value={fmtPct(idlePctPlan)} sub={`${fmtKm(data.totals.kmOciosaMes)} km`} />
             <StatTile icon={Icons.ClipboardList} label="Viagens no período" value={data.totals.tripsMes.toLocaleString('pt-BR')} />
             <StatTile icon={Icons.Ruler} label="PMM" value={`${fmtKm(pmm)} km`} sub="por veículo/mês" />
           </div>
 
-          {/* ── km por tipo de dia — gráfico (placeholder pra resumo de empresa, mais
-               tarde) + tabela, mesmo par de painéis do protótipo (Fase 0) ── */}
+          {/* ── km por empresa (gráfico) + km por tipo de dia (tabela) ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-md border border-border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h2 className="text-sm font-semibold">Km por tipo de dia</h2>
+                  <h2 className="text-sm font-semibold">Km por empresa</h2>
                   <p className="text-[11px] text-muted-foreground">Produtiva x ociosa, consolidado de todas as linhas do escopo</p>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
@@ -327,13 +392,14 @@ export default function DopPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                {dayTypeSummary.map(dt => (
-                  <div key={dt.dayTypeId} className="space-y-1">
+                {data.byBranch.length === 0 && <p className="text-xs text-muted-foreground">Sem dados de empresa para o período.</p>}
+                {data.byBranch.map(b => (
+                  <div key={b.branchId ?? 'unassigned'} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium">{dt.dayTypeName} <span className="text-muted-foreground font-normal">({dt.days}x)</span></span>
-                      <span className="tabular-nums text-muted-foreground">{fmtKm(dt.kmProdutiva + dt.kmOciosa)} km</span>
+                      <span className="font-medium">{b.branchName}</span>
+                      <span className="tabular-nums text-muted-foreground">{fmtPct(kmPct(b), 2)}</span>
                     </div>
-                    <SplitBar produtiva={dt.kmProdutiva} ociosa={dt.kmOciosa} />
+                    <SplitBar produtiva={b.kmProdutiva} ociosa={b.kmOciosa} />
                   </div>
                 ))}
               </div>
@@ -393,14 +459,19 @@ export default function DopPage() {
                   </button>
                 ))}
               </div>
-              {tab === 'indicadores' && (
-                <span className="text-[11px] text-muted-foreground flex items-center gap-2.5">
-                  Headway:
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" />manhã</span>
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />entrepico</span>
-                  <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" />tarde</span>
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {tab === 'indicadores' && (
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-2.5">
+                    Headway:
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" />manhã</span>
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />entrepico</span>
+                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" />tarde</span>
+                  </span>
+                )}
+                <Button size="sm" variant="outline" onClick={() => exportDopCsv(data, dayTypes)}>
+                  <Icons.Download className="w-3.5 h-3.5" />CSV
+                </Button>
+              </div>
             </div>
 
             <div className="overflow-auto max-h-[480px]">
@@ -461,10 +532,14 @@ export default function DopPage() {
                         </td>
 
                         {tab === 'frota' && (<>
-                          {dayTypes.map(dt => <td key={`f-${dt.dayTypeId}`} className="px-2 py-2 text-right">{byDayType.get(dt.dayTypeId)?.fleet ?? '—'}</td>)}
-                          {dayTypes.map((dt, di) => (
-                            <td key={`v-${dt.dayTypeId}`} className={cn('px-2 py-2 text-right', di === 0 && GROUP_DIVIDER)}>{byDayType.get(dt.dayTypeId)?.trips || '—'}</td>
-                          ))}
+                          {dayTypes.map(dt => {
+                            const fleet = byDayType.get(dt.dayTypeId)?.fleet
+                            return <td key={`f-${dt.dayTypeId}`} className="px-2 py-2 text-right">{fleet ? fleet.toLocaleString('pt-BR') : '—'}</td>
+                          })}
+                          {dayTypes.map((dt, di) => {
+                            const trips = byDayType.get(dt.dayTypeId)?.trips
+                            return <td key={`v-${dt.dayTypeId}`} className={cn('px-2 py-2 text-right', di === 0 && GROUP_DIVIDER)}>{trips ? trips.toLocaleString('pt-BR') : '—'}</td>
+                          })}
                           <td className="px-2 py-2 text-right font-medium">{line.tripsMes.toLocaleString('pt-BR')}</td>
                         </>)}
 
@@ -494,7 +569,7 @@ export default function DopPage() {
                   <tfoot className="sticky bottom-0 bg-muted z-10">
                     <tr className="border-t border-border font-medium">
                       <td className="px-3 py-2">Total</td>
-                      {dayTypeSummary.map(dt => <td key={`tf-${dt.dayTypeId}`} className="px-2 py-2 text-right">{dt.fleet || '—'}</td>)}
+                      {dayTypeSummary.map(dt => <td key={`tf-${dt.dayTypeId}`} className="px-2 py-2 text-right">{dt.fleet ? dt.fleet.toLocaleString('pt-BR') : '—'}</td>)}
                       {dayTypeSummary.map((dt, di) => (
                         <td key={`tv-${dt.dayTypeId}`} className={cn('px-2 py-2 text-right', di === 0 && GROUP_DIVIDER)}>{dt.trips.toLocaleString('pt-BR')}</td>
                       ))}

@@ -50,6 +50,15 @@ export const vehiclePlanLineSummarySchema = z.object({
   // idleKm / (idleKm + dailyKm). See plan_dop_v1.md, nota [1].
   idleKm:                z.number(),
   idlePct:               z.number(),
+  // Km (produtiva + ociosa) desta linha rateada por empresa (VehicleBlock.branchId)
+  // — cada bloco pertence 100% a uma única empresa, então não há rateio entre
+  // empresas, só a soma dos blocos dessa linha agrupada por branchId. Blocos sem
+  // branchId caem no bucket 'unassigned' (docs/proposal/plan_dop_v1.md).
+  byBranch: z.array(z.object({
+    branchId:    z.string().nullable(),
+    kmProdutiva: z.number(),
+    kmOciosa:    z.number(),
+  })),
   score:                 z.number(),
 })
 export type VehiclePlanLineSummary = z.infer<typeof vehiclePlanLineSummarySchema>
@@ -158,6 +167,16 @@ export const vehiclePlanSchema = withMeta(
         permission: 'create',
         method:     'POST',
         endpoint:   (row) => `/transit/vehicle-plan/${row.id}/duplicate`,
+      },
+      {
+        // Sem visibleWhen — disponível em qualquer status, inclusive ACTIVE (ao
+        // contrário das demais rowActions abaixo, restritas a DRAFT).
+        action:     'recalculate',
+        label:      'Recalcular',
+        icon:       'RefreshCw',
+        permission: 'update',
+        method:     'POST',
+        endpoint:   (row) => `/transit/vehicle-plan/${row.id}/recalculate`,
       },
       {
         action:      'import',

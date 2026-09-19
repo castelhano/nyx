@@ -433,8 +433,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const lineAgg      = buildLineAggregates(blocksWithTrips, matrixKm, dayTypeCode, VEHICLE_TYPE_CAPACITY)
 
     // ── idle km rated to each line — see scoring/idle-km-rateio.calc.ts ─────────
+    // A block belongs 100% to one empresa (VehicleBlock.branchId) — no rateio needed
+    // between empresas, just tagging each block's per-line km with its branchId (or
+    // 'unassigned' when the block has none — docs/proposal/plan_dop_v1.md).
     const idleKmByLine = new Map<string, number>()
-    for (const block of blocksWithTrips) {
+    const kmByLineBranch = new Map<string, Map<string, { kmProdutiva: number; kmOciosa: number }>>()
+    for (const block of blocksWithTrips as any[]) {
       const productiveKmByLine = new Map<string, number>()
       const trips: IdleTripInput[] = []
       for (const bt of block.blockTrips as any[]) {
@@ -453,6 +457,17 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }))
       const idleForBlock = attributeIdleKmByLine(trips, deadruns, productiveKmByLine)
       for (const [lineId, km] of idleForBlock) idleKmByLine.set(lineId, (idleKmByLine.get(lineId) ?? 0) + km)
+
+      const branchKey = block.branchId ?? 'unassigned'
+      const lineIds   = new Set([...productiveKmByLine.keys(), ...idleForBlock.keys()])
+      for (const lineId of lineIds) {
+        let byBranch = kmByLineBranch.get(lineId)
+        if (!byBranch) { byBranch = new Map(); kmByLineBranch.set(lineId, byBranch) }
+        const entry = byBranch.get(branchKey) ?? { kmProdutiva: 0, kmOciosa: 0 }
+        entry.kmProdutiva += productiveKmByLine.get(lineId) ?? 0
+        entry.kmOciosa    += idleForBlock.get(lineId) ?? 0
+        byBranch.set(branchKey, entry)
+      }
     }
 
     // ── VehicleBlock.summary + VehiclePlan.summary — from BlockAggregate ────────
@@ -461,7 +476,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const lineSummaries = new Map<string, VehiclePlanLineSummary>()
     for (const { lineId } of planLines) {
-      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), resolvedCfg.line, idleKmByLine.get(lineId) ?? 0))
+      const byBranch = Array.from(kmByLineBranch.get(lineId)?.entries() ?? []).map(([branchKey, km]) => ({
+        branchId: branchKey === 'unassigned' ? null : branchKey,
+        ...km,
+      }))
+      lineSummaries.set(lineId, computeLineSummary(lineAgg.get(lineId), resolvedCfg.line, idleKmByLine.get(lineId) ?? 0, byBranch))
     }
 
     const planTrips = blocksWithTrips.flatMap((b: any) =>

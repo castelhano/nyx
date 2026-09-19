@@ -98,6 +98,18 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.activate(id, force ?? false)
   }
 
+  // Manual trigger for the full recalculation (VehiclePlanLine/VehicleBlock/VehiclePlan
+  // summaries) — everywhere else it only runs as a side effect of an edit (apply-diff,
+  // trip change, import, solve). Exposed as a grid row action (any status, including
+  // ACTIVE) so a plan's numbers can be refreshed after a change to shared reference
+  // data (e.g. TravelTimeMatrix, line metrics) without needing to touch the plan itself.
+  @Post(':id/recalculate')
+  @HttpCode(200)
+  async recalculate(@Param('id') id: string) {
+    await this.vehiclePlanService.recalculate(id)
+    return { success: true }
+  }
+
   // Single transactional entry point for the Gantt "Salvar" flow — replaces the old
   // add-trip/add-deadrun/add-interval/move-trip/deadruns/intervals/rescore endpoints.
   // See docs/proposal/vehicle-plan-summary-score-consolidation.md §2.4.

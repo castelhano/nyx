@@ -397,9 +397,10 @@ function computeLineScore(agg: LineAggregate, cfg: SolverPlanningConfig['line'])
 }
 
 export function computeLineSummary(
-  agg:    LineAggregate | undefined,
-  cfg:    SolverPlanningConfig['line'],
-  idleKm: number = 0,
+  agg:      LineAggregate | undefined,
+  cfg:      SolverPlanningConfig['line'],
+  idleKm:   number = 0,
+  byBranch: VehiclePlanLineSummary['byBranch'] = [],
 ): VehiclePlanLineSummary {
   if (!agg || agg.tripCount === 0) {
     return {
@@ -408,6 +409,7 @@ export function computeLineSummary(
       peakMorningInterval: null, peakAfternoonInterval: null, offPeakInterval: null,
       peakFleetMorning: 0, peakFleetAfternoon: 0, peakFleetOffPeak: 0,
       idleKm: r2(idleKm), idlePct: idleKm > 0 ? 1 : 0,
+      byBranch: byBranch.map(b => ({ ...b, kmProdutiva: r2(b.kmProdutiva), kmOciosa: r2(b.kmOciosa) })),
       score: 0,
     }
   }
@@ -445,6 +447,7 @@ export function computeLineSummary(
     peakFleetOffPeak:      peakFleetBand(offPeakTrips),
     idleKm:                r2(idleKm),
     idlePct:               (idleKm + agg.productiveKm) > 0 ? r2(idleKm / (idleKm + agg.productiveKm)) : 0,
+    byBranch:              byBranch.map(b => ({ ...b, kmProdutiva: r2(b.kmProdutiva), kmOciosa: r2(b.kmOciosa) })),
     score: computeLineScore(agg, cfg),
   }
 }

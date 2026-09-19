@@ -35,6 +35,16 @@ export interface DopLineDayTypeBreakdown extends DopDayTypeCount {
   kmOciosa:    number
 }
 
+// Scope-level, cross-line km per empresa (VehicleBlock.branchId). branchId is null
+// for the 'Não informado' bucket — blocks with no branch assigned (docs/proposal/
+// plan_dop_v1.md, "Km por empresa").
+export interface DopBranchBreakdown {
+  branchId:    string | null
+  branchName:  string
+  kmProdutiva: number
+  kmOciosa:    number
+}
+
 export interface DopLineSummary {
   lineId:   string
   lineCode: string
@@ -65,6 +75,7 @@ export interface DopPeriodSummary {
 
   calendar: DopDayTypeCount[]
   lines:    DopLineSummary[]
+  byBranch: DopBranchBreakdown[]
 
   totals: {
     fleetOperacional: number

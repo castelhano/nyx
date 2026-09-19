@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import type { VehiclePlanLineSummary, DopPeriodSummary, DopLineDayTypeBreakdown } from '@nyx/schemas'
+import type { VehiclePlanLineSummary, DopPeriodSummary, DopLineDayTypeBreakdown, DopBranchBreakdown } from '@nyx/schemas'
 import { dopSchema } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { resourceRegistry } from '../../../../core/resource-registry'
@@ -22,7 +22,7 @@ export class DopService {
   async getPeriodSummary(scopeId: string, from: Date, to: Date): Promise<DopPeriodSummary> {
     const db = this.prisma as any
 
-    const [lines, activePlans, calendar] = await Promise.all([
+    const [lines, activePlans, calendar, scopeOperators] = await Promise.all([
       db.transitLine.findMany({
         where:   { scopeId, isActive: true },
         select:  { id: true, code: true, name: true },
@@ -39,7 +39,10 @@ export class DopService {
         },
       }),
       this.dayTypeService.getCalendarComposition(from, to),
+      db.scopeOperator.findMany({ where: { scopeId }, select: { branchId: true, branch: { select: { name: true } } } }),
     ])
+
+    const branchNameById = new Map<string, string>(scopeOperators.map((so: any) => [so.branchId, so.branch.name]))
 
     const lineIds        = lines.map((l: any) => l.id)
     const resolveDayType = await this.dayTypeService.buildDayTypeResolver(from, to, lineIds)
@@ -54,6 +57,8 @@ export class DopService {
         && (!p.validTo || p.validTo >= date)
         && p.lines.some((l: any) => l.lineId === lineId),
       ) ?? null
+
+    const branchAcc = new Map<string, { branchId: string | null; kmProdutiva: number; kmOciosa: number }>()
 
     const lineSummaries = lines.map((line: any) => {
       const byDayType = new Map<string, DopLineDayTypeBreakdown>()
@@ -85,6 +90,16 @@ export class DopService {
           kmProdutivaMes    += summary.dailyKm
           kmOciosaMes       += idleKm
           latest = summary
+
+          // byBranch is new (same change as idleKm) — a plan summary generated
+          // before it exists just contributes nothing to the empresa breakdown.
+          for (const b of summary.byBranch ?? []) {
+            const key = b.branchId ?? 'unassigned'
+            const cur = branchAcc.get(key) ?? { branchId: b.branchId, kmProdutiva: 0, kmOciosa: 0 }
+            cur.kmProdutiva += b.kmProdutiva
+            cur.kmOciosa    += b.kmOciosa
+            branchAcc.set(key, cur)
+          }
         }
       }
 
@@ -115,12 +130,22 @@ export class DopService {
       totals.fleetOperacional += dominant?.fleet ?? 0
     }
 
+    const byBranch: DopBranchBreakdown[] = Array.from(branchAcc.values())
+      .map(b => ({
+        branchId:    b.branchId,
+        branchName:  b.branchId ? (branchNameById.get(b.branchId) ?? b.branchId) : 'Não informado',
+        kmProdutiva: b.kmProdutiva,
+        kmOciosa:    b.kmOciosa,
+      }))
+      .sort((a, b) => (b.kmProdutiva + b.kmOciosa) - (a.kmProdutiva + a.kmOciosa))
+
     return {
       scopeId,
       from: from.toISOString().slice(0, 10),
       to:   to.toISOString().slice(0, 10),
       calendar: calendar.map(c => ({ dayTypeId: c.dayTypeId, dayTypeCode: c.code, dayTypeName: c.name, days: c.days })),
       lines: lineSummaries,
+      byBranch,
       totals,
     }
   }
