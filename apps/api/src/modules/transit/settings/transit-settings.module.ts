@@ -4,7 +4,8 @@ import { withMeta } from '@nyx/schemas'
 import { resourceRegistry } from '../../../core/resource-registry'
 import { TransitGeneralConfigService }  from './transit-general-config.service'
 import { TransitPlanningConfigService } from './transit-planning-config.service'
-import { TransitScheduleConfigService } from './transit-schedule-config.service'
+import { TransitCrewConfigService }     from './transit-crew-config.service'
+import { TransitRosterConfigService }   from './transit-roster-config.service'
 import { TransitSettingsController }    from './transit-settings.controller'
 
 const transitSettingsEntrySchema = withMeta(
@@ -17,12 +18,14 @@ const transitSettingsEntrySchema = withMeta(
   providers: [
     TransitGeneralConfigService,
     TransitPlanningConfigService,
-    TransitScheduleConfigService,
+    TransitCrewConfigService,
+    TransitRosterConfigService,
   ],
   exports: [
     TransitGeneralConfigService,
     TransitPlanningConfigService,
-    TransitScheduleConfigService,
+    TransitCrewConfigService,
+    TransitRosterConfigService,
   ],
 })
 export class TransitSettingsModule implements OnModuleInit {

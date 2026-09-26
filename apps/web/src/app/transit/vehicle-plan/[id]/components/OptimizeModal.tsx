@@ -21,13 +21,13 @@ const DEFAULT_PARAMS: SolverParams = {
 }
 
 interface Props {
-  hasCustomMetrics: boolean
+  hasCustomSettings: boolean
   onConfirm:        (params: SolverParams) => void
-  onClearMetrics:   () => void
+  onClearSettings:   () => void
   onClose:          () => void
 }
 
-export function OptimizeModal({ hasCustomMetrics, onConfirm, onClearMetrics, onClose }: Props) {
+export function OptimizeModal({ hasCustomSettings, onConfirm, onClearSettings, onClose }: Props) {
   const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS)
   useShortcutContext('optimize_md')
 
@@ -146,13 +146,13 @@ export function OptimizeModal({ hasCustomMetrics, onConfirm, onClearMetrics, onC
           </div>
         </div>
 
-        {/* custom metrics notice */}
-        {hasCustomMetrics && (
+        {/* custom settings notice */}
+        {hasCustomSettings && (
           <div className="flex items-center justify-between rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
             <span>Configuração personalizada ativa — ignorando padrão global</span>
             <button
               type="button"
-              onClick={onClearMetrics}
+              onClick={onClearSettings}
               className="ml-2 underline underline-offset-2 hover:no-underline whitespace-nowrap"
             >
               Limpar

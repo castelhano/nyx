@@ -51,12 +51,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
   }
 
-  // summary/constraints/metrics are only ever written by recalculate()/applyDiff — a
+  // summary/constraints/settings are only ever written by recalculate()/applyDiff — a
   // generic PATCH here must not be able to overwrite them directly (they'd go stale
   // with no isStale marker to signal it). See docs/proposal/vehicle-plan-summary-
   // score-consolidation.md §2.3.
   override async update(id: string, dto: UpdateVehiclePlanDto): Promise<VehiclePlan> {
-    const { summary: _summary, constraints: _constraints, metrics: _metrics, ...rest } = dto as any
+    const { summary: _summary, constraints: _constraints, settings: _settings, ...rest } = dto as any
     return super.update(id, rest)
   }
 
@@ -152,10 +152,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }))
       .filter(b => b.tripIds.length > 0)
 
-    // plan-level metrics override the global planning config
-    const planMetrics  = plan.metrics as Partial<SolverPlanningConfig> | null
-    const resolvedCfg  = planMetrics
-      ? { ...globalPlanningCfg, ...planMetrics }
+    // plan-level settings override the global planning config
+    const planSettings = plan.settings as Partial<SolverPlanningConfig> | null
+    const resolvedCfg  = planSettings
+      ? { ...globalPlanningCfg, ...planSettings }
       : globalPlanningCfg
 
     // apply direction weight adjustments
@@ -373,7 +373,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const [plan, blocks, matrix, planLines, planningCfg] = await Promise.all([
       db.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { dayType: { select: { code: true } }, metrics: true },
+        select: { dayType: { select: { code: true } }, settings: true },
       }),
       db.vehicleBlock.findMany({
         where:   { vehiclePlanId: planId },
@@ -471,8 +471,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     }
 
     // ── VehicleBlock.summary + VehiclePlan.summary — from BlockAggregate ────────
-    const planMetrics = plan.metrics as Partial<SolverPlanningConfig> | null
-    const resolvedCfg = (planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg) as SolverPlanningConfig
+    const planSettings = plan.settings as Partial<SolverPlanningConfig> | null
+    const resolvedCfg = (planSettings ? { ...planningCfg, ...planSettings } : planningCfg) as SolverPlanningConfig
 
     const lineSummaries = new Map<string, VehiclePlanLineSummary>()
     for (const { lineId } of planLines) {
@@ -528,7 +528,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const [plan, line] = await Promise.all([
       this.prisma.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { dayType: { select: { code: true } }, metrics: true },
+        select: { dayType: { select: { code: true } }, settings: true },
       }),
       this.prisma.transitLine.findUnique({
         where:  { id: lineId },
@@ -588,8 +588,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     }))
 
     const planningCfg = await this.planningConfig.get()
-    const planMetrics = plan.metrics as Partial<SolverPlanningConfig> | null
-    const resolvedCfg = (planMetrics ? { ...planningCfg, ...planMetrics } : planningCfg) as SolverPlanningConfig
+    const planSettings = plan.settings as Partial<SolverPlanningConfig> | null
+    const resolvedCfg = (planSettings ? { ...planningCfg, ...planSettings } : planningCfg) as SolverPlanningConfig
 
     const lineAgg = buildLineAggregates(blockInputs, matrixKm, plan.dayType?.code, VEHICLE_TYPE_CAPACITY)
     return computeLineSummary(lineAgg.get(lineId), resolvedCfg.line)
@@ -629,7 +629,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           dayTypeId:   plan.dayTypeId,
           description: plan.description ?? undefined,
           status:      'DRAFT',
-          metrics:     plan.metrics     ?? undefined,
+          settings:    plan.settings    ?? undefined,
           summary:     plan.summary     ?? undefined,
           generatedAt: plan.generatedAt ?? undefined,
           constraints: plan.constraints ?? undefined,

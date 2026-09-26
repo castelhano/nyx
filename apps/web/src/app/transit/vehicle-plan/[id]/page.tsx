@@ -185,13 +185,13 @@ export default function VehiclePlanPage() {
     activeJobId,
     isSolverDone,
     optimizeModalOpen, setOptimizeModalOpen,
-    handleOptimize, handleClearMetrics, handleStop, handleDelete, handleActivate,
+    handleOptimize, handleClearSettings, handleStop, handleDelete, handleActivate,
   } = solver
 
   // ── topbar ───────────────────────────────────────────────────────────────────
 
   const planLines        = ganttData?.plan?.lines ?? []
-  const hasCustomMetrics = !!( (record as Record<string, unknown> | undefined)?.metrics )
+  const hasCustomSettings = !!( (record as Record<string, unknown> | undefined)?.settings )
 
   useTopbarActions([
     // edit-bar toggle — always visible, aligned to the start
@@ -423,9 +423,9 @@ export default function VehiclePlanPage() {
 
       {optimizeModalOpen && (
         <OptimizeModal
-          hasCustomMetrics={hasCustomMetrics}
+          hasCustomSettings={hasCustomSettings}
           onConfirm={handleOptimize}
-          onClearMetrics={handleClearMetrics}
+          onClearSettings={handleClearSettings}
           onClose={() => setOptimizeModalOpen(false)}
         />
       )}

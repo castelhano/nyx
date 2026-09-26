@@ -32,8 +32,11 @@ interface Fixture {
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
   routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
-  settings: Array<{ key: string; branchTaxId: string | null; value: Record<string, unknown> }>
+  // scopeName: transit.crew rows (keyed by transit Scope); absent in fixtures exported before it
+  settings: Array<{ key: string; branchTaxId: string | null; scopeName?: string | null; value: Record<string, unknown> }>
 }
+
+const IMPORTABLE_SETTINGS_KEYS = new Set(['transit.general', 'transit.planning', 'transit.crew', 'transit.roster'])
 
 async function main() {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as Fixture
@@ -172,14 +175,24 @@ async function main() {
   }
   console.log(`  ✓ line groups (${fixture.lineGroups.length})`)
 
-  // ── settings (transit.general/planning/schedule) ───────────────────────────
+  // ── settings (transit.general/planning/crew/roster) ────────────────────────
   for (const s of fixture.settings) {
+    // older fixtures may still carry retired keys (e.g. transit.schedule, split into
+    // transit.crew/roster) — skip anything no BaseSettingsService reads anymore
+    if (!IMPORTABLE_SETTINGS_KEYS.has(s.key)) continue
     const value = { ...s.value }
     if (s.key === 'transit.general' && typeof value.defaultIntervalTypeId === 'string') {
       value.defaultIntervalTypeId = intervalTypeMap.get(value.defaultIntervalTypeId) ?? null
     }
     let scope = 'global'
-    if (s.branchTaxId) {
+    if (s.scopeName) {
+      const scopeId = scopeMap.get(s.scopeName)
+      if (!scopeId) {
+        console.warn(`  ! scope ${s.scopeName} não encontrado no fixture`)
+        continue
+      }
+      scope = scopeId
+    } else if (s.branchTaxId) {
       const branch = await prisma.branch.findUnique({ where: { taxId: s.branchTaxId } })
       if (!branch) {
         console.warn(`  ! filial ${s.branchTaxId} não encontrada — rode prisma/seed-core.ts antes`)

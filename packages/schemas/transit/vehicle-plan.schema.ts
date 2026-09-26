@@ -125,8 +125,8 @@ export const vehiclePlanSchema = withMeta(
       listVisibility: 'visible',
     }),
 
-    metrics: z.record(z.string(), z.unknown()).optional().meta({
-      label:          'Métricas',
+    settings: z.record(z.string(), z.unknown()).optional().meta({
+      label:          'Configuração personalizada',
       listVisibility: 'never',
       showInForm:     false,
     }),

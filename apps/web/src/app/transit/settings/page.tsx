@@ -14,7 +14,7 @@ import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
 import { cn } from '@/lib/utils'
-import type { GeneralSettings, PlanningSettings, ScheduleSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
+import type { GeneralSettings, PlanningSettings, CrewSettings, RosterSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
@@ -44,13 +44,35 @@ const LINE_FLEET_META: Record<'fleetUsage', { label: string; unit: string; hint:
   fleetUsage: { label: 'Uso de Frota', unit: '% sobre mínimo', hint: 'Frota da linha sobre o mínimo teórico (requisito de pico de veículos simultâneos, só desta linha).' },
 }
 
-const SCHEDULE_META: Record<keyof ScheduleSettings['range'], { label: string; unit: string; hint: string }> = {
-  layover:            { label: 'Duração do Turno',        unit: 'min', hint: 'Duração total do turno (minutos).' },
-  shiftBreak:         { label: 'Pausa no Turno',          unit: 'min', hint: 'Duração da pausa dentro do turno (minutos).' },
-  interShiftRest:     { label: 'Descanso entre Turnos',   unit: 'min', hint: 'Descanso entre turnos consecutivos do mesmo condutor (minutos).' },
-  splitShiftInterval: { label: 'Intervalo Turno Partido', unit: 'min', hint: 'Intervalo entre as partes de um turno partido (minutos).' },
-  driverPrefLine:     { label: 'Linha Preferencial',      unit: '%',   hint: '% de viagens do turno nas linhas preferenciais do condutor.' },
-  driverPrefTech:     { label: 'Tech Preferencial',       unit: '%',   hint: '% de viagens do turno com tecnologia de veículo preferencial do condutor.' },
+const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit: string; hint: string }> = {
+  workTime:       { label: 'Duração da Jornada',      unit: 'min',    hint: 'Minutos trabalhados na jornada (pegadas + atividades pagas).' },
+  spread:         { label: 'Amplitude',               unit: 'min',    hint: 'Da apresentação ao encerramento da jornada, incluindo intervalos.' },
+  mealBreak:      { label: 'Intervalo Intrajornada',  unit: 'min',    hint: 'Duração do intervalo de refeição dentro da jornada.' },
+  splitInterval:  { label: 'Intervalo Dupla Pegada',  unit: 'min',    hint: 'Intervalo entre as pegadas de uma jornada em dupla pegada.' },
+  overtimeRatio:  { label: 'Horas Extras',            unit: '%',      hint: 'Minutos extras sobre o total trabalhado no plano.' },
+  splitRatio:     { label: 'Jornadas em Dupla Pegada', unit: '%',     hint: 'Proporção de jornadas em dupla pegada no plano.' },
+  vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
+}
+
+const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
+  dutyCount:  { label: 'Nº de Jornadas', unit: '% sobre mínimo', hint: 'Jornadas do plano sobre o mínimo teórico (minutos de bloco ÷ duração ideal mínima da jornada).' },
+  efficiency: { label: 'Eficiência',     unit: '% sobre mínimo', hint: 'Minutos pagos sobre os minutos de bloco cobertos.' },
+}
+
+const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes' | 'minPieceMinutes' | 'maxContinuousDrivingMinutes' | 'nightStartHour' | 'nightEndHour'; label: string; hint: string; unit: string; max: number }[] = [
+  { key: 'signOnMinutes',               label: 'Apresentação',              unit: 'min', max: 120,  hint: 'Tempo antes da primeira pegada da jornada' },
+  { key: 'signOffMinutes',              label: 'Encerramento',              unit: 'min', max: 120,  hint: 'Tempo após a última pegada da jornada' },
+  { key: 'handoverMinutes',             label: 'Sobreposição na Rendição',  unit: 'min', max: 60,   hint: 'Sobreposição tolerada entre pegadas do mesmo papel no mesmo carro' },
+  { key: 'minPieceMinutes',             label: 'Pegada Mínima',             unit: 'min', max: 1440, hint: 'Pegadas mais curtas são sinalizadas' },
+  { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: 'min', max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
+  { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
+  { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
+]
+
+const ROSTER_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
+  interShiftRest: { label: 'Descanso entre Jornadas', unit: 'min', hint: 'Descanso entre jornadas consecutivas da mesma pessoa.' },
+  driverPrefLine: { label: 'Linha Preferencial',      unit: '%',   hint: '% de viagens da jornada nas linhas preferenciais da pessoa.' },
+  driverPrefTech: { label: 'Tech Preferencial',       unit: '%',   hint: '% de viagens da jornada com tecnologia de veículo preferencial da pessoa.' },
 }
 
 // ── Small components ─────────────────────────────────────────────────────────
@@ -340,6 +362,7 @@ function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData
 // ── Branch type ──────────────────────────────────────────────────────────────
 
 interface Branch { id: string; name: string }
+interface TransitScope { id: string; name: string }
 interface IntervalTypeOption { id: string; name: string }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -356,7 +379,10 @@ export default function TransitSettingsPage() {
   // form state
   const [general,  setGeneral]  = useState<GeneralSettings  | null>(null)
   const [planning, setPlanning] = useState<PlanningSettings | null>(null)
-  const [schedule, setSchedule] = useState<ScheduleSettings | null>(null)
+  const [crew,     setCrew]     = useState<CrewSettings     | null>(null)
+  const [roster,   setRoster]   = useState<RosterSettings   | null>(null)
+  // crew rules are keyed by transit Scope (CCT), independent from the branch selector above
+  const [crewScope, setCrewScope] = useState<string>('global')
 
   // ── remote data ────────────────────────────────────────────────────────────
 
@@ -407,19 +433,38 @@ export default function TransitSettingsPage() {
     },
   })
 
-  const { data: globalSchedule } = useQuery<ScheduleSettings>({
-    queryKey: ['transit', 'settings', 'schedule', 'global'],
+  const { data: transitScopes } = useQuery<TransitScope[]>({
+    queryKey: ['transit', 'scope', 'all'],
     queryFn:  async () => {
-      const res = await apiFetch('/transit/settings/schedule?scope=global')
+      const res = await apiFetch('/transit/scope?pageSize=999')
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      return json.data ?? json
+    },
+  })
+
+  const { data: globalCrew } = useQuery<CrewSettings>({
+    queryKey: ['transit', 'settings', 'crew', 'global'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/crew?scope=global')
       if (!res.ok) throw new Error()
       return res.json()
     },
   })
 
-  const { data: serverSchedule } = useQuery<ScheduleSettings>({
-    queryKey: ['transit', 'settings', 'schedule', scope],
+  const { data: serverCrew } = useQuery<CrewSettings>({
+    queryKey: ['transit', 'settings', 'crew', crewScope],
     queryFn:  async () => {
-      const res = await apiFetch(`/transit/settings/schedule?scope=${scope}`)
+      const res = await apiFetch(`/transit/settings/crew?scope=${crewScope}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: serverRoster } = useQuery<RosterSettings>({
+    queryKey: ['transit', 'settings', 'roster'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/roster')
       if (!res.ok) throw new Error()
       return res.json()
     },
@@ -432,21 +477,23 @@ export default function TransitSettingsPage() {
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (serverGeneral)  setGeneral(serverGeneral)   }, [serverGeneral,  resetSignal])
   useEffect(() => { if (serverPlanning) setPlanning(serverPlanning) }, [serverPlanning, resetSignal])
-  useEffect(() => { if (serverSchedule) setSchedule(serverSchedule) }, [serverSchedule, resetSignal])
+  useEffect(() => { if (serverCrew)     setCrew(serverCrew)         }, [serverCrew,     resetSignal])
+  useEffect(() => { if (serverRoster)   setRoster(serverRoster)     }, [serverRoster,   resetSignal])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── save ───────────────────────────────────────────────────────────────────
 
   async function handleSave() {
-    if (!general || !planning || !schedule) return
+    if (!general || !planning || !crew || !roster) return
     setSaving(true)
     try {
-      const [r1, r2, r3] = await Promise.all([
+      const responses = await Promise.all([
         apiFetch('/transit/settings/general', { method: 'PUT', body: JSON.stringify(general) }),
         apiFetch(`/transit/settings/planning?scope=${scope}`, { method: 'PUT', body: JSON.stringify(planning) }),
-        apiFetch(`/transit/settings/schedule?scope=${scope}`, { method: 'PUT', body: JSON.stringify(schedule) }),
+        apiFetch(`/transit/settings/crew?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crew) }),
+        apiFetch('/transit/settings/roster', { method: 'PUT', body: JSON.stringify(roster) }),
       ])
-      if (!r1.ok || !r2.ok || !r3.ok) throw new Error()
+      if (responses.some((r) => !r.ok)) throw new Error()
       queryClient.invalidateQueries({ queryKey: ['transit', 'settings'] })
       toast.success(msgs.saved())
     } catch {
@@ -460,7 +507,7 @@ export default function TransitSettingsPage() {
 
   useTopbarActions([
     { label: 'Salvar', icon: Icons.Save, onClick: handleSave, primary: true, disabled: saving, keybind: 'ALT+G' },
-  ], [general, planning, schedule, saving, scope])
+  ], [general, planning, crew, roster, saving, scope, crewScope])
 
   useShortcut('alt+g', handleSave, { desc: 'Salvar configurações', icon: Icons.Save, origin: 'TransitSettingsPage' })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: 'TransitSettingsPage' })
@@ -496,8 +543,22 @@ export default function TransitSettingsPage() {
     } : null)
   }
 
-  function updateScheduleRange(key: keyof ScheduleSettings['range'], field: keyof RangeCriterion, value: unknown) {
-    setSchedule((prev) => prev ? {
+  function updateCrewRange(key: keyof CrewSettings['range'], field: keyof RangeCriterion, value: unknown) {
+    setCrew((prev) => prev ? {
+      ...prev,
+      range: { ...prev.range, [key]: { ...prev.range[key], [field]: value } },
+    } : null)
+  }
+
+  function updateCrewAnchored(key: keyof CrewSettings['anchored'], field: keyof AnchoredCriterion, value: unknown) {
+    setCrew((prev) => prev ? {
+      ...prev,
+      anchored: { ...prev.anchored, [key]: { ...prev.anchored[key], [field]: value } },
+    } : null)
+  }
+
+  function updateRosterRange(key: keyof RosterSettings['range'], field: keyof RangeCriterion, value: unknown) {
+    setRoster((prev) => prev ? {
       ...prev,
       range: { ...prev.range, [key]: { ...prev.range[key], [field]: value } },
     } : null)
@@ -505,7 +566,8 @@ export default function TransitSettingsPage() {
 
   const isBranch   = scope !== 'global'
   const gPlanning  = globalPlanning ?? planning
-  const gSchedule  = globalSchedule ?? schedule
+  const isCrewScoped = crewScope !== 'global'
+  const gCrew        = globalCrew ?? crew
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -805,15 +867,99 @@ export default function TransitSettingsPage() {
       <hr className='mt-2' />
 
       {/* ── Escala ── */}
-      <section className="flex flex-col gap-3 mb-20">
+      <section className="flex flex-col gap-6 mb-20">
         <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 02 - Escala de operadores</h1>
-        {schedule && gSchedule && (
-          <RangeTable
-            data={schedule.range}
-            globalData={isBranch ? gSchedule.range : schedule.range}
-            meta={SCHEDULE_META}
-            onChange={updateScheduleRange}
-          />
+
+        {/* Transit Scope selector — CCT rules are shared by every operator of the Scope */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">Scope</span>
+          <Select
+            value={crewScope}
+            onChange={(e) => setCrewScope(e.target.value)}
+            size="sm"
+            className="w-56"
+          >
+            <option value="global">Global</option>
+            {transitScopes?.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </Select>
+          {isCrewScoped && (
+            <span className="flex items-center gap-x-2 text-xs text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
+              <span>Diferentes do Global</span>
+            </span>
+          )}
+        </div>
+
+        {crew && gCrew && (
+          <div className="flex flex-col gap-3">
+            <SectionHeader label="Parâmetros da Jornada" sub="Regras da CCT aplicadas à escala lógica" />
+            <div className="rounded-lg border border-border divide-y divide-border">
+              {CREW_PARAMS.map((p) => (
+                <div key={p.key} className="flex items-center justify-between gap-6 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <DiffDot show={isCrewScoped && crew[p.key] !== gCrew[p.key]} />
+                    <div>
+                      <p className="text-sm font-medium">{p.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{p.hint}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <NumberInput
+                      value={crew[p.key]}
+                      onChange={(v) => setCrew((prev) => prev ? { ...prev, [p.key]: Math.round(v) } : null)}
+                      min={0}
+                      max={p.max}
+                    />
+                    <span className="text-sm text-muted-foreground w-6">{p.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {crew && gCrew && (
+          <div className="flex flex-col gap-3">
+            <SectionHeader
+              label="Critérios Ancorados na Escala"
+              sub="Piso inferido do próprio plano — Ideal/Ceiling em % acima desse piso."
+            />
+            <AnchoredTable
+              data={crew.anchored}
+              globalData={isCrewScoped ? gCrew.anchored : crew.anchored}
+              meta={CREW_ANCHORED_META}
+              onChange={updateCrewAnchored}
+            />
+          </div>
+        )}
+
+        {crew && gCrew && (
+          <div className="flex flex-col gap-3">
+            <SectionHeader
+              label="Critérios por Jornada"
+              sub="Fora do ideal → alerta; fora de Floor/Ceiling → erro. Nenhum bloqueia o save da jornada."
+            />
+            <RangeTable
+              data={crew.range}
+              globalData={isCrewScoped ? gCrew.range : crew.range}
+              meta={CREW_RANGE_META}
+              onChange={updateCrewRange}
+            />
+          </div>
+        )}
+
+        {roster && (
+          <div className="flex flex-col gap-3 mt-4">
+            <SectionHeader label="Escala Nominal" sub="Global — ainda sem uso, reservado para a atribuição de pessoas às jornadas" />
+            <RangeTable
+              data={roster.range}
+              globalData={roster.range}
+              meta={ROSTER_META}
+              onChange={updateRosterRange}
+            />
+          </div>
         )}
       </section>
     </div>

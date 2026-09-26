@@ -4,7 +4,7 @@ import type { ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
 import { resourceRegistry } from './resource-registry'
-import { settingsRegistry } from './settings-registry'
+import { settingsRegistry, SettingsScope } from './settings-registry'
 import { getResourcePointerFields } from './settings-reference.utils'
 
 // Base class for every Settings-backed module (Settings.value, apps/api/prisma/schema/
@@ -28,7 +28,7 @@ export abstract class BaseSettingsService<T> {
     private readonly key: string,
     private readonly domain: string,
     private readonly schema: ZodObject<any>,
-    private readonly scope: 'global' | 'branch' = 'global',
+    private readonly scope: SettingsScope = 'global',
   ) {
     // Marca o schema como singleton para que discovery e metadata o reflitam
     ;(schema as any)._schemaMeta = {
@@ -39,12 +39,14 @@ export abstract class BaseSettingsService<T> {
     resourceRegistry.push({ domain, resource: key, schema })
   }
 
-  async get(branchId?: string): Promise<T> {
-    const scopeValue = this.scope === 'branch' && branchId ? branchId : 'global'
+  // scopeId = branchId ('branch') or transit Scope.id ('transitScope'); ignored for 'global'.
+  // A scoped read with no row of its own falls back to the global row.
+  async get(scopeId?: string): Promise<T> {
+    const scopeValue = this.resolveScope(scopeId)
     const row = await this.prisma.settings.findUnique({
       where: { key_scope: { key: this.key, scope: scopeValue } },
     })
-    if (!row && this.scope === 'branch' && branchId) {
+    if (!row && scopeValue !== 'global') {
       const globalRow = await this.prisma.settings.findUnique({
         where: { key_scope: { key: this.key, scope: 'global' } },
       })
@@ -54,8 +56,8 @@ export abstract class BaseSettingsService<T> {
     return this.schema.parse(row?.value ?? {}) as T
   }
 
-  async put(dto: unknown, branchId?: string): Promise<T> {
-    const scopeValue = this.scope === 'branch' && branchId ? branchId : 'global'
+  async put(dto: unknown, scopeId?: string): Promise<T> {
+    const scopeValue = this.resolveScope(scopeId)
     const validated  = this.schema.parse(dto)
     await this.assertReferencedRecordsExist(validated)
     // eslint's type-aware check disagrees with tsc here — `as object` looks redundant to it,
@@ -69,6 +71,10 @@ export abstract class BaseSettingsService<T> {
       create: { key: this.key, scope: scopeValue, value: validated as object },
     })
     return row.value as T
+  }
+
+  private resolveScope(scopeId?: string): string {
+    return this.scope !== 'global' && scopeId ? scopeId : 'global'
   }
 
   getMetadata(): ResourceMetadata {

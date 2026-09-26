@@ -14,7 +14,9 @@ import { PrismaPg } from '@prisma/adapter-pg'
 //
 // Settings is shared across domains (e.g. core's password-policy lives in the same
 // table), so only the transit.* keys are exported — never the whole table.
-const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.schedule']
+const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.crew', 'transit.roster']
+// keys whose Settings.scope is a transit Scope.id (not a branchId) — see BaseSettingsService
+const SCOPE_KEYED_SETTINGS = new Set(['transit.crew'])
 
 const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter })
@@ -67,13 +69,15 @@ async function main() {
     prisma.settings.findMany({ where: { key: { in: TRANSIT_SETTINGS_KEYS } } }),
   ])
 
-  // branch-scoped settings (transit.planning/schedule) store `scope` as a branchId —
-  // resolve to taxId for portability, same as ScopeOperator/LineGroup above
-  const branchIds  = settings.map(s => s.scope).filter(s => s !== 'global')
+  // branch-scoped settings (transit.planning) store `scope` as a branchId — resolve to
+  // taxId for portability, same as ScopeOperator/LineGroup above. transit.crew stores a
+  // transit Scope.id instead — resolved to the (unique) Scope name.
+  const branchIds  = settings.filter(s => !SCOPE_KEYED_SETTINGS.has(s.key)).map(s => s.scope).filter(s => s !== 'global')
   const branches   = branchIds.length
     ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, taxId: true } })
     : []
   const branchTaxIdById = new Map(branches.map(b => [b.id, b.taxId]))
+  const scopeNameById   = new Map(scopes.map(s => [s.id, s.name]))
   const intervalTypeCodeById = new Map(intervalTypes.map(i => [i.id, i.code]))
 
   const fixture = {
@@ -121,9 +125,11 @@ async function main() {
       if (s.key === 'transit.general' && typeof value.defaultIntervalTypeId === 'string') {
         value.defaultIntervalTypeId = intervalTypeCodeById.get(value.defaultIntervalTypeId) ?? null
       }
+      const scoped = s.scope !== 'global'
       return {
-        key:        s.key,
-        branchTaxId: s.scope === 'global' ? null : (branchTaxIdById.get(s.scope) ?? null),
+        key:         s.key,
+        branchTaxId: scoped && !SCOPE_KEYED_SETTINGS.has(s.key) ? (branchTaxIdById.get(s.scope) ?? null) : null,
+        scopeName:   scoped && SCOPE_KEYED_SETTINGS.has(s.key)  ? (scopeNameById.get(s.scope)   ?? null) : null,
         value,
       }
     }),

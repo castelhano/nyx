@@ -42,6 +42,32 @@ enum LayoverPolicy {
   DEPOT
 }
 
+enum CrewPlanStatus {
+  DRAFT
+  ACTIVE
+}
+
+enum CrewRole {
+  DRIVER
+  FARE_COLLECTOR
+  ASSISTANT
+}
+
+enum DutyKind {
+  STRAIGHT
+  SPLIT
+  TRIPPER
+  STANDBY
+}
+
+enum DutyActivityType {
+  SIGN_ON
+  SIGN_OFF
+  BREAK
+  TRAVEL
+  STANDBY
+}
+
 enum TripStopPattern {
   LOCAL
   LIMITED
@@ -67,15 +93,19 @@ model TransitLocality {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  travelTimesFrom      TravelTimeMatrix[] @relation("TravelTimeOrigin")
-  travelTimesTo        TravelTimeMatrix[] @relation("TravelTimeDestination")
-  routesAsOrigin       TransitRoute[]     @relation("RouteOrigin")
-  routesAsDestination  TransitRoute[]     @relation("RouteDestination")
-  routesAsHomeDepot    TransitRoute[]     @relation("RouteHomeDepot")
-  routeLocalities      RouteLocality[]
-  vehicleBlocks        VehicleBlock[]
-  deadrunsAsOrigin     BlockDeadrun[]     @relation("DeadrunOrigin")
-  deadrunsAsDestination BlockDeadrun[]    @relation("DeadrunDestination")
+  travelTimesFrom             TravelTimeMatrix[] @relation("TravelTimeOrigin")
+  travelTimesTo               TravelTimeMatrix[] @relation("TravelTimeDestination")
+  routesAsOrigin              TransitRoute[]     @relation("RouteOrigin")
+  routesAsDestination         TransitRoute[]     @relation("RouteDestination")
+  routesAsHomeDepot           TransitRoute[]     @relation("RouteHomeDepot")
+  routeLocalities             RouteLocality[]
+  vehicleBlocks               VehicleBlock[]
+  deadrunsAsOrigin            BlockDeadrun[]     @relation("DeadrunOrigin")
+  deadrunsAsDestination       BlockDeadrun[]     @relation("DeadrunDestination")
+  dutyPiecesAsStart           DutyPiece[]        @relation("DutyPieceStart")
+  dutyPiecesAsEnd             DutyPiece[]        @relation("DutyPieceEnd")
+  dutyActivitiesAsOrigin      DutyActivity[]     @relation("DutyActivityOrigin")
+  dutyActivitiesAsDestination DutyActivity[]     @relation("DutyActivityDestination")
 
   @@map("transit_localities")
 }
@@ -400,6 +430,7 @@ model IntervalType {
   updatedAt  DateTime @updatedAt
 
   blockIntervals BlockInterval[]
+  dutyActivities DutyActivity[]
 
   @@map("transit_interval_types")
 }
@@ -449,7 +480,7 @@ model VehiclePlan {
   // Partial<SolverPlanningConfig> (solver/solver.types.ts) — per-plan override snapshot
   // of the global planning settings, applied on top of TransitSettings when this plan
   // is (re)generated
-  metrics     Json?
+  settings    Json?
   notes       String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -459,6 +490,7 @@ model VehiclePlan {
   lines   VehiclePlanLine[]
   blocks  VehicleBlock[]
   trips   TransitTrip[]
+  crewPlans CrewPlan[]
 
   @@map("transit_vehicle_plans")
 }
@@ -559,6 +591,7 @@ model VehicleBlock {
   blockTrips     BlockTrip[]
   blockDeadruns  BlockDeadrun[]
   blockIntervals BlockInterval[]
+  dutyPieces     DutyPiece[]
 
   @@unique([vehiclePlanId, blockNumber])
   @@map("transit_vehicle_blocks")
@@ -626,4 +659,130 @@ model BlockDeadrun {
   destinationLocality TransitLocality @relation("DeadrunDestination", fields: [destinationLocalityId], references: [id])
 
   @@map("transit_block_deadruns")
+}
+
+// Logical crew schedule built on top of one VehiclePlan's blocks — duties ("tabelas")
+// with no person assigned yet. N versions per VehiclePlan, at most one ACTIVE (only
+// while the VehiclePlan itself is ACTIVE). Built manually for now; generatedAt and
+// constraints are reserved for a future solver. See docs/proposal/plan_crew_plan_v1.md.
+model CrewPlan {
+  id            String         @id @default(uuid())
+  vehiclePlanId String
+  description   String?
+  status        CrewPlanStatus @default(DRAFT)
+  // vigencia — set when the crew plan is activated
+  validFrom     DateTime?
+  // set when superseded, or when its VehiclePlan stops being ACTIVE
+  validTo       DateTime?
+  // CrewPlanSummary (packages/schemas/transit/crew-plan.schema.ts) — { dutyCount, byRole,
+  // byKind, workMinutes, paidMinutes, overtimeMinutes, nightMinutes, uncoveredMinutes,
+  // uncovered: [{ vehicleBlockId, startMinutes, endMinutes }], staleDutyCount,
+  // issueDutyCount, score }
+  summary       Json?
+  // CrewSettings (packages/schemas/transit/settings-crew.schema.ts) — full snapshot of the
+  // effective settings when customized for this plan; null = inherits Scope/global live
+  settings      Json?
+  // reserved for the solver — unused while crew plans are built manually
+  constraints   Json?
+  generatedAt   DateTime?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  vehiclePlan VehiclePlan @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  duties      Duty[]
+
+  @@map("transit_crew_plans")
+}
+
+// A duty ("tabela") — one crew member's workday within a CrewPlan: pieces of vehicle
+// blocks (DutyPiece) plus off-vehicle activities (DutyActivity). dutyNumber is numbered
+// per role and displayed with the role prefix (D10, C10, A10 — never stored).
+model Duty {
+  id          String   @id @default(uuid())
+  crewPlanId  String
+  role        CrewRole @default(DRIVER)
+  dutyNumber  Int
+  kind        DutyKind @default(STRAIGHT)
+  branchId    String?
+  // DutySummary — numbers only: { spreadMinutes, workMinutes, paidMinutes, breakMinutes,
+  // overtimeMinutes, nightMinutes, pieceCount, vehicleChanges, lineChanges }
+  summary     Json?
+  // structural divergence from the VehiclePlan — true when any piece is stale;
+  // denormalized from DutyPiece.isStale for filtering/listing
+  isStale     Boolean  @default(false)
+  // DutyIssue[] — rules not met (CCT ranges, operator mismatch...): [{ code, severity,
+  // value, limit?, pieceId? }]. Never blocks a save — flagged for user review
+  issues      Json?
+  // denormalized from issues (length > 0) for filtering/listing
+  hasIssues   Boolean  @default(false)
+  // reserved for the solver
+  constraints Json?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  crewPlan   CrewPlan       @relation(fields: [crewPlanId], references: [id], onDelete: Cascade)
+  branch     Branch?        @relation("BranchDuties", fields: [branchId], references: [id])
+  pieces     DutyPiece[]
+  activities DutyActivity[]
+
+  @@unique([crewPlanId, role, dutyNumber])
+  @@map("transit_duties")
+}
+
+// A piece of work — a continuous span of ONE VehicleBlock between two relief points
+// (route endpoints, allowsCrewChange stops, deadrun endpoints). Referenced by time window
+// + locality rather than by BlockTrip, so a relief can happen mid-trip. sequence is
+// assigned by DutyPieceService (chronological), never user-set.
+model DutyPiece {
+  id              String   @id @default(uuid())
+  dutyId          String
+  // null = block removed from the VehiclePlan — the piece is kept (isStale, BLOCK_REMOVED)
+  // so the user sees what was there and reassigns it, instead of vanishing via cascade
+  vehicleBlockId  String?
+  sequence        Int
+  startMinutes    Int
+  endMinutes      Int
+  startLocalityId String
+  endLocalityId   String
+  // set when a VehiclePlan edit makes this piece no longer fit its block; cleared when
+  // the piece is saved again (re-validated)
+  isStale         Boolean  @default(false)
+  // BLOCK_REMOVED | OUT_OF_BLOCK_WINDOW | INVALID_RELIEF_POINT
+  staleReason     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  duty          Duty            @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  vehicleBlock  VehicleBlock?   @relation(fields: [vehicleBlockId], references: [id], onDelete: SetNull)
+  startLocality TransitLocality @relation("DutyPieceStart", fields: [startLocalityId], references: [id])
+  endLocality   TransitLocality @relation("DutyPieceEnd", fields: [endLocalityId], references: [id])
+
+  @@unique([dutyId, sequence])
+  @@map("transit_duty_pieces")
+}
+
+// Off-vehicle time within a duty — sign-on/off, breaks (classified by IntervalType),
+// travel between relief points, standby. Distinct from BlockInterval: a crew break
+// can happen while the vehicle keeps running with another crew member.
+model DutyActivity {
+  id                    String           @id @default(uuid())
+  dutyId                String
+  type                  DutyActivityType
+  // required when type = BREAK (enforced in DutyActivityService)
+  intervalTypeId        String?
+  startMinutes          Int
+  endMinutes            Int
+  originLocalityId      String?
+  destinationLocalityId String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  duty                Duty             @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  intervalType        IntervalType?    @relation(fields: [intervalTypeId], references: [id], onDelete: Restrict)
+  originLocality      TransitLocality? @relation("DutyActivityOrigin", fields: [originLocalityId], references: [id])
+  destinationLocality TransitLocality? @relation("DutyActivityDestination", fields: [destinationLocalityId], references: [id])
+
+  @@map("transit_duty_activities")
 }

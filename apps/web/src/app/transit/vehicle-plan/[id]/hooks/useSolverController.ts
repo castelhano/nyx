@@ -92,11 +92,11 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
     }
   }
 
-  async function handleClearMetrics() {
+  async function handleClearSettings() {
     try {
       const res = await apiFetch(`/transit/vehicle-plan/${id}`, {
         method: 'PATCH',
-        body:   JSON.stringify({ metrics: null }),
+        body:   JSON.stringify({ settings: null }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -228,6 +228,6 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
     detailsOpen, setDetailsOpen,
     baselineSnapshot,
     solverProgress,
-    handleOptimize, handleClearMetrics, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
+    handleOptimize, handleClearSettings, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
   }
 }

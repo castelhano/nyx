@@ -55,9 +55,9 @@ Controls which stage and scoring weights are emphasized:
 
 ### Advanced
 
-Displays the full `SolverPlanningConfig`, allowing per-plan overrides of any individual parameter. Customized values are persisted as a **full config copy** to `vehiclePlan.metrics` — not a diff. When a plan has custom metrics, the global `transitSettings.planningConfig` is ignored entirely for that plan.
+Displays the full `SolverPlanningConfig`, allowing per-plan overrides of any individual parameter. Customized values are persisted as a **full config copy** to `vehiclePlan.settings` — not a diff. When a plan has custom settings, the global `transitSettings.planningConfig` is ignored entirely for that plan.
 
-Plans with custom metrics are visually flagged in both the list view and the grid. A **Clear customization** button removes the plan-level overrides and restores the global settings default for the next generation.
+Plans with custom settings are visually flagged in both the list view and the grid. A **Clear customization** button removes the plan-level overrides and restores the global settings default for the next generation.
 
 ---
 
@@ -68,7 +68,7 @@ Plans with custom metrics are visually flagged in both the list view and the gri
 | Field | Type | Description |
 |-------|------|-------------|
 | `planId` | `string` | The plan being solved |
-| `config` | `SolverPlanningConfig` | Stop conditions and scoring criteria (from `vehiclePlan.metrics` or global settings) |
+| `config` | `SolverPlanningConfig` | Stop conditions and scoring criteria (from `vehiclePlan.settings` or global settings) |
 | `trips` | `SolverTrip[]` | All in-scope trips — every trip must appear in exactly one block in the result |
 | `matrix` | `Record<string, SolverMatrixEntry>` | Pre-computed travel times and km between localities |
 | `depots` | `string[]` | Locality IDs eligible as block starting points |
@@ -323,7 +323,7 @@ generate(planId, jobId, mode, params):
   apply branch scope filter — exclude blocks from inaccessible branches
   extract locked blocks → initialBlocks
   compute tripKm per trip: line.metrics.extensionKm[direction] ?? matrix[o:d].km ?? 0
-  resolve config: vehiclePlan.metrics ?? globalSettings.planningConfig
+  resolve config: vehiclePlan.settings ?? globalSettings.planningConfig
   adjust flat weights based on Direction param
   spawn Worker(workerFile, { workerData: solverConfig })
   jobs.set(jobId, { worker, proposals: [], planId, messages$ })

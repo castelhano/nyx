@@ -78,6 +78,7 @@ model Branch {
   vehicleBlocks  VehicleBlock[]  @relation("BranchVehicleBlocks")
   lineGroups     LineGroup[]     @relation("BranchLineGroups")
   scopeOperators ScopeOperator[] @relation("BranchScopeOperators")
+  duties         Duty[]          @relation("BranchDuties")
 
   @@map("branches")
 }

@@ -1,0 +1,66 @@
+import { z } from 'zod'
+import { withMeta } from '../with-meta'
+import { rangeCriterionSchema, anchoredCriterionSchema } from './settings-planning.schema'
+
+// Duty rules (CCT) for the logical crew schedule — per transit Scope: every operator of
+// the Scope follows the same CCT. For now they only validate/flag hand-built duties
+// (Duty.issues) and feed the CrewPlan score — see docs/proposal/plan_crew_plan_v1.md.
+// Ranges: outside [idealMin, idealMax] → `warning` issue; outside [floor, ceiling] → `error`.
+const rangeDefault = {
+  // duty length (minutes worked)
+  workTime:       { active: true, modifier: 25, floor: 360, idealMin: 440, idealMax: 550, ceiling: 560 },
+  // spread — from sign-on to sign-off (minutes)
+  spread:         { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 720, ceiling: 780 },
+  // in-duty break (meal, minutes)
+  mealBreak:      { active: true, modifier: 20, floor: 60,  idealMin: 70,  idealMax: 110, ceiling: 120 },
+  // gap between the pieces of a split duty (minutes)
+  splitInterval:  { active: true, modifier: 10, floor: 60,  idealMin: 60,  idealMax: 240, ceiling: 250 },
+  // overtime minutes as % of total minutes worked in the plan
+  overtimeRatio:  { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 5,   ceiling: 20  },
+  // % of SPLIT duties in the plan
+  splitRatio:     { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 20,  ceiling: 40  },
+  // vehicle changes per duty
+  vehicleChanges: { active: true, modifier: 5,  floor: 0,   idealMin: 0,   idealMax: 1,   ceiling: 3   },
+}
+
+const anchoredDefault = {
+  // realized duties / theoretical minimum (block minutes ÷ workTime.idealMin)
+  dutyCount:  { active: true, idealMaxOverPercent: 5,  ceilingOverPercent: 25, weight: 30 },
+  // paid minutes / covered block minutes
+  efficiency: { active: true, idealMaxOverPercent: 10, ceilingOverPercent: 30, weight: 20 },
+}
+
+export const crewSettingsSchema = withMeta(z.object({
+  // sign-on before the first piece / sign-off after the last one
+  signOnMinutes:               z.number().int().min(0).max(120).default(10),
+  signOffMinutes:              z.number().int().min(0).max(120).default(5),
+  // tolerated overlap between same-role pieces on the same block (handover)
+  handoverMinutes:             z.number().int().min(0).max(60).default(0),
+  minPieceMinutes:             z.number().int().min(0).max(1440).default(60),
+  maxContinuousDrivingMinutes: z.number().int().min(0).max(1440).default(300),
+  // night window (clock hours) — for now only yields informative nightMinutes
+  nightStartHour:              z.number().int().min(0).max(23).default(22),
+  nightEndHour:                z.number().int().min(0).max(23).default(5),
+
+  range: z.object({
+    workTime:       rangeCriterionSchema,
+    spread:         rangeCriterionSchema,
+    mealBreak:      rangeCriterionSchema,
+    splitInterval:  rangeCriterionSchema,
+    overtimeRatio:  rangeCriterionSchema,
+    splitRatio:     rangeCriterionSchema,
+    vehicleChanges: rangeCriterionSchema,
+  }).default(rangeDefault),
+
+  anchored: z.object({
+    dutyCount:  anchoredCriterionSchema,
+    efficiency: anchoredCriterionSchema,
+  }).default(anchoredDefault),
+}), {
+  // Served alongside General/Planning by the custom `transit/settings` page — must not
+  // show up as its own resource in the sidebar/discovery.
+  label:  'Configurações de Escala',
+  hidden: true,
+})
+
+export type CrewSettings = z.infer<typeof crewSettingsSchema>
