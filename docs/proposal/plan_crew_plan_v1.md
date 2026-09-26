@@ -239,7 +239,7 @@ Três sinais, cada um com causa e ação corretiva diferentes — não se mistur
 | Sinal | Pergunta que responde | Causa | Onde fica | Quem recalcula |
 |---|---|---|---|---|
 | **Stale** | "A escala ainda **encaixa** no plano de veículos?" | Edição no `VehiclePlan` (bloco removido, janela do bloco encolheu, viagem mudou e o ponto de troca não existe mais naquele minuto) | `DutyPiece.isStale` + `staleReason`; `Duty.isStale` (agregado); `CrewPlan.summary.staleDutyCount` | Hook no save do `VehiclePlan` (`applyDiff` e afins), só para as pegadas dos blocos afetados |
-| **Issues** | "A jornada **cumpre as regras**?" | Regra de CCT fora da faixa, pegada em bloco de outro operador, etc. | `Duty.issues` (lista) + `Duty.hasIssues`; `CrewPlan.summary.issueDutyCount` | A cada save da jornada; e em lote ao abrir a escala se o settings efetivo mudou (ver dúvida abaixo) |
+| **Issues** | "A jornada **cumpre as regras**?" | Regra de CCT fora da faixa, pegada em bloco de outro operador, etc. | `Duty.issues` (lista) + `Duty.hasIssues`; `CrewPlan.summary.issueDutyCount` | A cada save da jornada; e em lote ao abrir a escala |
 | **Descoberto** | "O plano de veículos está **todo coberto**?" | Trecho de bloco sem pegada `DRIVER` | `CrewPlan.summary.uncovered` (derivado, nunca por pegada) | Junto com o summary do plano |
 
 Considerações:
@@ -429,9 +429,34 @@ hoje só exportam `TransitLine.metrics`, não o do plano.
 
 ## Fases
 
-Fases 1–3 implementadas em 2026-09-26 (migrações `vehicle_plan_settings_rename` e `crew_plan`).
+Fases 1–6 implementadas em 2026-09-26 (migrações `vehicle_plan_settings_rename` e `crew_plan`).
 Endpoints de settings por plano já entraram na fase 3: `GET /transit/crew-plan/:id/settings`
 (`{ settings, isCustom }`), `POST .../settings/customize`, `PUT .../settings`, `DELETE .../settings`.
+
+Decisões tomadas na implementação (fases 4–6):
+
+- **Stale é derivado**, não um flag persistente limpo só no save: `CrewPlanService.recalculate()`
+  re-checa cada pegada contra o bloco atual (bloco existe, janela, ponto de troca) e grava
+  `isStale`/`staleReason`. Roda após toda escrita de jornada/pegada/atividade, ao abrir a escala
+  (`GET /transit/crew-plan/:id/board`), após `VehiclePlanService.recalculate()`/`applyDiff`, e
+  pelo `POST /transit/crew-plan/:id/recalculate`.
+- **Apresentação/encerramento implícitos**: sem atividade `SIGN_ON`/`SIGN_OFF` explícita, o cálculo
+  assume `signOnMinutes`/`signOffMinutes` antes da 1ª / depois da última pegada.
+- **Trabalhado × pago**: trabalhado = pegadas + atividades não-intervalo + apresentação/encerramento;
+  pago = trabalhado + intervalos pagos (`IntervalType.isPaid`); extra = trabalhado acima de
+  `workTime.idealMin`.
+- **Aplicabilidade das regras por tipo de jornada**: `WORK_TIME` não vale para meia jornada/reserva;
+  `MEAL_BREAK` só para corrida; `SPLIT_INTERVAL` só para dupla pegada (maior intervalo entre
+  pegadas). Direção contínua = soma das pegadas encadeadas até um `BREAK` entre elas.
+- **`TRAVEL_GAP`**: pegadas consecutivas em locais diferentes — `error` se o intervalo é menor que
+  a matriz de tempos; `warning` se não há tempo na matriz nem atividade `TRAVEL` declarada.
+- **Score**: mesma fórmula do plano de veículos (`rangeV`/`anchoredV`, 0–9999). `dutyCount` ancora
+  em ⌈minutos de bloco ÷ `workTime.idealMin`⌉ jornadas de motorista; `efficiency` em minutos de
+  bloco cobertos.
+- **Tela**: sem fila de pendências — cada ação grava na hora (o switch fica sempre liberado do lado
+  da escala). Pegada criada clicando dois pontos de troca do mesmo carro; pontos só são
+  renderizados na linha sob o mouse. "Personalizar configuração" copia o settings efetivo, mas a
+  edição dos valores personalizados por plano ainda não tem tela (só `PUT .../settings`).
 
 1. **Rename** `VehiclePlan.metrics → settings` (isolado, antes de tudo).
 2. **Settings** — `crewSettingsSchema` / `rosterSettingsSchema`, modo `'transitScope'` no

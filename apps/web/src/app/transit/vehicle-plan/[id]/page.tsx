@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useMemo } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Icons }             from '@/lib/icons'
 import { AutoBreadcrumb }    from '@/core/AutoBreadcrumb'
@@ -10,6 +10,7 @@ import { useRecordQuery }    from '@/core/useRecordQuery'
 import { useTopbarActions }  from '@/components/layout/topbar-actions-context'
 import { apiFetch }          from '@/lib/auth'
 import { useToast }          from '@/lib/toast-context'
+import { useConfirm }        from '@/lib/confirm-context'
 import { extractError }      from '@/lib/utils'
 import { NewPlanForm }       from './components/NewPlanForm'
 import { InlineDescription } from './components/InlineDescription'
@@ -49,6 +50,8 @@ export default function VehiclePlanPage() {
   const { id }      = useParams<{ id: string }>()
   const queryClient = useQueryClient()
   const { toast }   = useToast()
+  const router      = useRouter()
+  const confirm     = useConfirm()
 
   const isNew = id === 'new'
 
@@ -188,12 +191,52 @@ export default function VehiclePlanPage() {
     handleOptimize, handleClearSettings, handleStop, handleDelete, handleActivate,
   } = solver
 
+  // ── Vehicles ⇄ Crew switch ──────────────────────────────────────────────────
+  // Opens the plan's ACTIVE crew plan (else the latest); with none yet, offers to create
+  // one. Blocked while there are pending Gantt edits (the crew plan is built on the
+  // saved blocks).
+
+  async function handleOpenCrewPlan() {
+    try {
+      const res = await apiFetch(`/transit/crew-plan/for-vehicle-plan/${id}`)
+      if (!res.ok) throw new Error(extractError(await res.json().catch(() => ({}))))
+      const found = await res.json().catch(() => null) as { id: string } | null
+      if (found) { router.push(`/transit/crew-plan/${found.id}`); return }
+
+      const ok = await confirm({
+        title:        'Criar escala',
+        description:  'Este planejamento ainda não tem escala de tripulação. Criar uma agora?',
+        confirmLabel: 'Criar',
+      })
+      if (!ok) return
+      const created = await apiFetch('/transit/crew-plan', {
+        method: 'POST',
+        body:   JSON.stringify({ vehiclePlanId: id, description: 'Escala' }),
+      })
+      const json = await created.json().catch(() => ({}))
+      if (!created.ok) throw new Error(extractError(json))
+      router.push(`/transit/crew-plan/${(json as { id: string }).id}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao abrir a escala')
+    }
+  }
+
   // ── topbar ───────────────────────────────────────────────────────────────────
 
   const planLines        = ganttData?.plan?.lines ?? []
   const hasCustomSettings = !!( (record as Record<string, unknown> | undefined)?.settings )
 
   useTopbarActions([
+    ...(!isNew ? [{
+      label:    'Escala',
+      icon:     Icons.Users,
+      size:     'sm' as const,
+      variant:  'ghost' as const,
+      onClick:  () => void handleOpenCrewPlan(),
+      disabled: pendingCount > 0,
+      position: 'start' as const,
+    }] : []),
+
     // edit-bar toggle — always visible, aligned to the start
     ...(!isNew ? [{
       label:    'Barra Edição',

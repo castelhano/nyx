@@ -23,6 +23,7 @@ import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
+import { CrewPlanService } from '../crew-plan/crew-plan.service'
 
 interface Job {
   worker:    Worker | null
@@ -47,6 +48,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     private readonly generalConfig:  TransitGeneralConfigService,
     private readonly planningConfig: TransitPlanningConfigService,
     private readonly jobService:     JobService,
+    private readonly crewPlans:      CrewPlanService,
   ) {
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
   }
@@ -521,6 +523,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         .filter((b: any) => b.blockTrips.length === 0 && b.isStale)
         .map((b: any) => db.vehicleBlock.update({ where: { id: b.id }, data: { isStale: false } })),
     ])
+
+    // crew plans built on this plan re-check their pieces against the edited blocks —
+    // inside a transaction (applyDiff) this runs after commit instead, see applyDiff
+    if (db === this.prisma) await this.crewPlans.recalculateForVehiclePlan(planId)
   }
 
   // Shared by previewLineScore/previewLineHourly/getLineHourlySeries.
@@ -1022,6 +1028,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       await this.recalculate(planId, tx)
     }, { timeout: 30_000 })
 
+    await this.crewPlans.recalculateForVehiclePlan(planId)
     return { blockIdMap: Object.fromEntries(newBlockIds) }
   }
 
@@ -1427,6 +1434,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     await this.prisma.$transaction(async (tx) => {
       if (conflict) {
         await tx.vehiclePlan.update({ where: { id: conflict.id }, data: { status: 'DRAFT', validTo: now } })
+        // the superseded plan's ACTIVE crew plan is closed along with it
+        await CrewPlanService.closeActive(tx, conflict.id, now)
       }
       await tx.vehiclePlan.update({ where: { id: planId }, data: { status: 'ACTIVE', validFrom: now, validTo: null } })
     })

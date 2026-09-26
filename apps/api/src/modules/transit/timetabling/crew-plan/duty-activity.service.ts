@@ -5,11 +5,15 @@ import {
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
+import { CrewPlanService } from './crew-plan.service'
 import { assertTimeWindow, assertNoDutyOverlap } from './duty-occupancy.utils'
 
 @Injectable()
 export class DutyActivityService extends BaseService<DutyActivity, CreateDutyActivityDto, UpdateDutyActivityDto> {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly crewPlans: CrewPlanService,
+  ) {
     super(prisma, 'dutyActivity', dutyActivitySchema, 'transit')
   }
 
@@ -17,7 +21,9 @@ export class DutyActivityService extends BaseService<DutyActivity, CreateDutyAct
     const parsed = createDutyActivitySchema.safeParse(dto)
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`))
     await this.validate(parsed.data)
-    return super.create(parsed.data)
+    const created = await super.create(parsed.data)
+    await this.recalculatePlanOf(parsed.data.dutyId)
+    return created
   }
 
   override async update(id: string, dto: UpdateDutyActivityDto): Promise<DutyActivity> {
@@ -28,7 +34,20 @@ export class DutyActivityService extends BaseService<DutyActivity, CreateDutyAct
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`))
     await this.validate(parsed.data, id)
     const { dutyId: _dd, ...data } = parsed.data
-    return super.update(id, data)
+    const updated = await super.update(id, data)
+    await this.recalculatePlanOf(current.dutyId)
+    return updated
+  }
+
+  override async remove(id: string): Promise<void> {
+    const current = await this.prisma.dutyActivity.findUnique({ where: { id }, select: { dutyId: true } })
+    await super.remove(id)
+    if (current) await this.recalculatePlanOf(current.dutyId)
+  }
+
+  private async recalculatePlanOf(dutyId: string): Promise<void> {
+    const duty = await this.prisma.duty.findUnique({ where: { id: dutyId }, select: { crewPlanId: true } })
+    if (duty) await this.crewPlans.recalculate(duty.crewPlanId)
   }
 
   private async validate(input: CreateDutyActivityDto, activityId?: string): Promise<void> {

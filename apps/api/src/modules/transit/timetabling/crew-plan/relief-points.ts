@@ -60,15 +60,22 @@ export function isReliefPoint(points: ReliefPoint[], localityId: string, minutes
   return points.some(p => p.localityId === localityId && p.minutes === minutes)
 }
 
-// Loads everything computeBlockRelief needs for a set of blocks in a few queries.
-export async function loadBlockRelief(prisma: PrismaService, blockIds: string[]): Promise<Map<string, BlockReliefData>> {
-  const result = new Map<string, BlockReliefData>()
+export interface LoadedBlockRelief extends BlockReliefData {
+  branchId: string | null
+  trips:    { departureMinutes: number; arrivalMinutes: number; lineId: string }[]
+}
+
+// Loads everything computeBlockRelief needs for a set of blocks in a few queries — plus the
+// block's operator and trip lines, which crew-scoring.calc.ts needs alongside the points.
+export async function loadBlockRelief(prisma: PrismaService, blockIds: string[]): Promise<Map<string, LoadedBlockRelief>> {
+  const result = new Map<string, LoadedBlockRelief>()
   if (blockIds.length === 0) return result
 
   const blocks = await prisma.vehicleBlock.findMany({
     where:  { id: { in: blockIds } },
     select: {
       id: true,
+      branchId: true,
       blockTrips: {
         select: {
           trip: {
@@ -76,7 +83,7 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
               id: true, departureMinutes: true, arrivalMinutes: true,
               route: {
                 select: {
-                  originLocalityId: true, destinationLocalityId: true,
+                  lineId: true, originLocalityId: true, destinationLocalityId: true,
                   localities: {
                     orderBy: { sequence: 'asc' },
                     select:  { localityId: true, deltaMinutes: true, allowsCrewChange: true },
@@ -111,7 +118,7 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
   const matrixMinutes = new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes]))
 
   for (const b of blocks) {
-    result.set(b.id, computeBlockRelief({
+    const relief = computeBlockRelief({
       trips: b.blockTrips.map(({ trip }) => ({
         id:                    trip.id,
         departureMinutes:      trip.departureMinutes,
@@ -123,7 +130,12 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
       deadruns:  b.blockDeadruns,
       intervals: b.blockIntervals,
       matrixMinutes,
-    }))
+    })
+    result.set(b.id, {
+      ...relief,
+      branchId: b.branchId,
+      trips:    b.blockTrips.map(({ trip }) => ({ departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes, lineId: trip.route.lineId })),
+    })
   }
   return result
 }

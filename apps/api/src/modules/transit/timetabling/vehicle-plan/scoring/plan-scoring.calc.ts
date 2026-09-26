@@ -11,9 +11,9 @@ import type { VehiclePlanLineSummary } from '@nyx/schemas'
 // line level — maps to a bounded [0,1] reward, combined as a WEIGHTED AVERAGE (not
 // sum) so the final score stays on a fixed, predictable, always-positive 0–9999 scale
 // regardless of how many criteria are active or how weights are tuned.
-const SCORE_SCALE = 9999
+export const SCORE_SCALE = 9999
 
-function rangeV(value: number, c: RangeCriterionConfig): number {
+export function rangeV(value: number, c: RangeCriterionConfig): number {
   if (value > c.ceiling) return 0
   if (value >= c.idealMin && value <= c.idealMax) return 1
   if (value < c.idealMin) {
@@ -28,7 +28,7 @@ function rangeV(value: number, c: RangeCriterionConfig): number {
 // km, peak vehicle requirement) instead of a config constant — idealMax/ceiling are
 // expressed as % over that floor. Ratio 1.0 = at the theoretical minimum (best
 // achievable). See proposal doc §6.2.
-function anchoredV(realized: number, theoreticalMin: number, c: AnchoredCriterionConfig): number {
+export function anchoredV(realized: number, theoreticalMin: number, c: AnchoredCriterionConfig): number {
   if (theoreticalMin <= 0) return 1
   const ratio = realized / theoreticalMin
   return rangeV(ratio, {

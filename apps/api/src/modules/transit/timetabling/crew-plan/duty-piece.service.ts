@@ -40,9 +40,9 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
       // negative placeholder avoids clashing with @@unique([dutyId, sequence]) until renumbered
       const piece = await tx.dutyPiece.create({ data: { ...this.toData(input), sequence: -1 } })
       await this.renumber(tx, input.dutyId)
-      await this.refreshDutyStale(tx, input.dutyId)
       return piece
     })
+    await this.recalculatePlanOf(input.dutyId)
     return this.findOne(created.id)
   }
 
@@ -55,11 +55,11 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     await this.validate(input, id)
 
     await this.prisma.$transaction(async (tx) => {
-      // saving re-validates the piece — it leaves the stale state
-      await tx.dutyPiece.update({ where: { id }, data: { ...this.toData(input), isStale: false, staleReason: null } })
+      await tx.dutyPiece.update({ where: { id }, data: this.toData(input) })
       await this.renumber(tx, current.dutyId)
-      await this.refreshDutyStale(tx, current.dutyId)
     })
+    // a saved piece was just re-validated — recalculate() clears its stale state
+    await this.recalculatePlanOf(current.dutyId)
     return this.findOne(id)
   }
 
@@ -69,8 +69,13 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     await this.prisma.$transaction(async (tx) => {
       await tx.dutyPiece.delete({ where: { id } })
       await this.renumber(tx, current.dutyId)
-      await this.refreshDutyStale(tx, current.dutyId)
     })
+    await this.recalculatePlanOf(current.dutyId)
+  }
+
+  private async recalculatePlanOf(dutyId: string): Promise<void> {
+    const duty = await this.prisma.duty.findUnique({ where: { id: dutyId }, select: { crewPlanId: true } })
+    if (duty) await this.crewPlans.recalculate(duty.crewPlanId)
   }
 
   private toData(input: PieceInput) {
@@ -149,10 +154,6 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     }
   }
 
-  private async refreshDutyStale(tx: Prisma.TransactionClient, dutyId: string): Promise<void> {
-    const stale = await tx.dutyPiece.count({ where: { dutyId, isStale: true } })
-    await tx.duty.update({ where: { id: dutyId }, data: { isStale: stale > 0 } })
-  }
 }
 
 // partial PATCH — editable fields only, coerced to their proper types

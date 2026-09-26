@@ -2,10 +2,14 @@ import { BadRequestException, Injectable } from '@nestjs/common'
 import { dutySchema, Duty, CreateDutyDto, UpdateDutyDto, CrewRole } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
+import { CrewPlanService } from './crew-plan.service'
 
 @Injectable()
 export class DutyService extends BaseService<Duty, CreateDutyDto, UpdateDutyDto> {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly crewPlans: CrewPlanService,
+  ) {
     super(prisma, 'duty', dutySchema, 'transit')
   }
 
@@ -28,7 +32,9 @@ export class DutyService extends BaseService<Duty, CreateDutyDto, UpdateDutyDto>
     if (!plan) throw new BadRequestException('Escala não encontrada')
     const role = (data.role as CrewRole | undefined) ?? 'DRIVER'
     if (data.dutyNumber == null || data.dutyNumber === '') data.dutyNumber = await this.nextDutyNumber(crewPlanId, role)
-    return super.create(data as CreateDutyDto)
+    const created = await super.create(data as CreateDutyDto)
+    await this.crewPlans.recalculate(crewPlanId)
+    return this.findOne(created.id)
   }
 
   override async update(id: string, dto: UpdateDutyDto): Promise<Duty> {
@@ -38,6 +44,17 @@ export class DutyService extends BaseService<Duty, CreateDutyDto, UpdateDutyDto>
     if (current && data.role && data.role !== current.role && (data.dutyNumber == null || data.dutyNumber === '')) {
       data.dutyNumber = await this.nextDutyNumber(current.crewPlanId, data.role as CrewRole)
     }
-    return super.update(id, data)
+    const updated = await super.update(id, data)
+    if (current) {
+      await this.crewPlans.recalculate(current.crewPlanId)
+      return this.findOne(id)
+    }
+    return updated
+  }
+
+  override async remove(id: string): Promise<void> {
+    const current = await this.prisma.duty.findUnique({ where: { id }, select: { crewPlanId: true } })
+    await super.remove(id)
+    if (current) await this.crewPlans.recalculate(current.crewPlanId)
   }
 }

@@ -10,9 +10,10 @@ import { VehiclePlanExportService } from './vehicle-plan-export.service'
 import { TransitSettingsModule } from '../../settings/transit-settings.module'
 import { JobModule } from '../../../core/job/job.module'
 import { CaslModule } from '../../../../auth/casl.module'
+import { CrewPlanModule } from '../crew-plan/crew-plan.module'
 
 @Module({
-  imports:     [TransitSettingsModule, JobModule, CaslModule],
+  imports:     [TransitSettingsModule, JobModule, CaslModule, CrewPlanModule],
   controllers: [VehiclePlanController, VehicleBlockController, VehiclePlanImportController, VehiclePlanExportController],
   providers:   [VehiclePlanService, VehicleBlockService, VehiclePlanImportService, VehiclePlanExportService],
   exports:     [VehiclePlanService],
