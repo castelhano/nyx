@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import type { CrewRole, ReliefPoint } from '@nyx/schemas'
 import { Icons }            from '@/lib/icons'
@@ -18,6 +18,8 @@ import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
+import { DutyBoard } from './components/DutyBoard'
+import { useTimeRange } from './components/Timeline'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
@@ -42,6 +44,13 @@ async function api(path: string, init?: RequestInit): Promise<unknown> {
 export default function CrewPlanPage() {
   const { id }    = useParams<{ id: string }>()
   const router    = useRouter()
+  // vehicle view (one row per block, default) or duty view (one row per duty) — kept in the
+  // URL so a reload or a shared link opens the same view
+  const view      = useSearchParams().get('view') === 'duties' ? 'duties' : 'vehicles'
+  const setView   = (v: 'vehicles' | 'duties') => {
+    setDraftStart(null) // a piece being picked belongs to the vehicle view
+    router.replace(v === 'duties' ? '?view=duties' : '?', { scroll: false })
+  }
   const { toast } = useToast()
   const confirm   = useConfirm()
 
@@ -65,6 +74,13 @@ export default function CrewPlanPage() {
   const [resetSignal, setResetSignal]       = useState(0)
 
   const selectedDuty = data?.duties.find(d => d.id === selectedDutyId) ?? null
+
+  // one time range for both views, so switching keeps the same scale and position
+  const timeSpans = useMemo(() => [
+    ...(data?.blocks ?? []).map(b => b.window).filter((w): w is NonNullable<typeof w> => !!w),
+    ...(data?.duties ?? []).flatMap(d => [...d.pieces, ...d.activities]),
+  ], [data])
+  const range = useTimeRange(timeSpans)
 
   const localityName = useMemo(() => {
     const map = new Map((data?.localities ?? []).map(l => [l.id, l.abbr || l.name]))
@@ -253,6 +269,16 @@ export default function CrewPlanPage() {
       onClick:  () => router.push(`/transit/vehicle-plan/${data.vehiclePlan.id}`),
       position: 'start' as const,
     }] : []),
+    // view toggle — shows the current view; fixed width so the label swap doesn't reflow
+    ...(data ? [{
+      label:     view === 'duties' ? 'Jornadas' : 'Carros',
+      icon:      view === 'duties' ? Icons.Users : Icons.Bus,
+      size:      'sm' as const,
+      // variant:   'outline' as const,
+      onClick:   () => setView(view === 'duties' ? 'vehicles' : 'duties'),
+      position:  'start' as const,
+      className: 'md:w-25',
+    }] : []),
     ...(data ? [{
       label:   `Versão (${versions.length})`,
       icon:    Icons.GitBranch,
@@ -283,13 +309,6 @@ export default function CrewPlanPage() {
       disabled: saving,
       keybind:  'Alt+G',
     }] : []),
-    ...(canEdit ? [{
-      label:    'Recalcular',
-      icon:     Icons.RefreshCw,
-      onClick:  () => void run(() => api(`/transit/crew-plan/${id}/recalculate`, { method: 'POST' })),
-      disabled: saving,
-      overflow: true,
-    }] : []),
     ...(canEdit && data ? [{
       label:    data.plan.isCustomSettings ? 'Restaurar configuração padrão' : 'Personalizar configuração',
       icon:     Icons.Settings2,
@@ -315,7 +334,7 @@ export default function CrewPlanPage() {
       variant:  'destructive' as const,
       overflow: true,
     }] : []),
-  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx])
+  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view])
 
   useShortcut('alt+g', () => {
     (document.getElementById(DUTY_FORM_ID) as HTMLFormElement | null)?.requestSubmit()
@@ -373,7 +392,9 @@ export default function CrewPlanPage() {
             {summary && summary.staleDutyCount > 0 && (
               <span className="text-red-600 dark:text-red-400">{summary.staleDutyCount} jornada(s) desatualizada(s)</span>
             )}
-            {draftStart
+            {view === 'duties'
+              ? null
+              : draftStart
               ? <span className="text-amber-600 dark:text-amber-400">Selecione o ponto de fim da pegada (Esc cancela)</span>
               : canEdit && <span>Clique num ponto de troca para fechar uma pegada · Shift+clique escolhe o início</span>}
           </div>
@@ -383,8 +404,21 @@ export default function CrewPlanPage() {
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
         <div className="flex-1 min-w-0">
           {data ? (
-            data.blocks.length > 0 ? (
+            view === 'duties' ? (
+              <DutyBoard
+                range={range}
+                blocks={data.blocks}
+                duties={data.duties}
+                signOnMinutes={data.plan.signOnMinutes}
+                signOffMinutes={data.plan.signOffMinutes}
+                localityName={localityName}
+                pxPerMinute={ZOOMS[zoomIdx]}
+                selectedDutyId={selectedDutyId}
+                onSelectDuty={(duty) => setSelectedDutyId(duty.id)}
+              />
+            ) : data.blocks.length > 0 ? (
               <CrewBoard
+                range={range}
                 blocks={data.blocks}
                 duties={data.duties}
                 uncovered={summary?.uncovered ?? []}

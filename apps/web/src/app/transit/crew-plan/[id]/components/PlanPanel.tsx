@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Icons } from '@/lib/icons'
 import type { CrewBoardData, BoardDuty } from '../board.types'
-import { fmtDuration, dutyColor, ROLE_LABEL, KIND_LABEL } from '../board.types'
+import { fmtDuration, dutyColorVars, SWATCH_BG_CLASS, ROLE_LABEL, KIND_LABEL } from '../board.types'
+import { cn } from '@/lib/utils'
 import { Badge } from './DutyPanel'
 
 interface Props {
@@ -60,7 +61,7 @@ export function PlanPanel({ data, canEdit, onSelect, onCreate }: Props) {
                   className="w-full flex items-center justify-between gap-2 text-xs rounded px-2 py-1.5 bg-muted/40 hover:bg-muted text-left"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: dutyColor(d) }} />
+                    <span className={cn('w-2.5 h-2.5 rounded-sm', SWATCH_BG_CLASS)} style={dutyColorVars(d)} />
                     <span className="font-medium">{formatDutyNumber(d.role, d.dutyNumber)}</span>
                     <span className="text-muted-foreground">{KIND_LABEL[d.kind]}</span>
                     {d.summary && <span className="text-muted-foreground">{fmtDuration(d.summary.workMinutes)}</span>}

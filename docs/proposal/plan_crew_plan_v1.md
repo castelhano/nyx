@@ -438,8 +438,7 @@ Decisões tomadas na implementação (fases 4–6):
 - **Stale é derivado**, não um flag persistente limpo só no save: `CrewPlanService.recalculate()`
   re-checa cada pegada contra o bloco atual (bloco existe, janela, ponto de troca) e grava
   `isStale`/`staleReason`. Roda após toda escrita de jornada/pegada/atividade, ao abrir a escala
-  (`GET /transit/crew-plan/:id/board`), após `VehiclePlanService.recalculate()`/`applyDiff`, e
-  pelo `POST /transit/crew-plan/:id/recalculate`.
+  (`GET /transit/crew-plan/:id/board`) e após `VehiclePlanService.recalculate()`/`applyDiff`.
 - **Apresentação/encerramento implícitos**: sem atividade `SIGN_ON`/`SIGN_OFF` explícita, o cálculo
   assume `signOnMinutes`/`signOffMinutes` antes da 1ª / depois da última pegada.
 - **Trabalhado × pago**: trabalhado = pegadas + atividades não-intervalo + apresentação/encerramento;
@@ -461,7 +460,12 @@ Decisões tomadas na implementação (fases 4–6):
   da escala). Pegada criada com um clique no ponto de troca de fim: o início é inferido como o começo do
   trecho descoberto anterior (fim da pegada de motorista anterior no carro, ou início do trecho em
   serviço após intervalo/garagem, o que for mais tarde); Shift+clique escolhe o início explicitamente.
-  Pontos só são renderizados na linha sob o mouse. "Personalizar configuração" copia o settings efetivo, mas a
+  Pontos só são renderizados na linha sob o mouse.
+- **Duas visões** (`?view=duties` na URL, seletor "Carros | Jornadas" ao lado de "Veículos"): por
+  carro (pegadas coloridas por jornada, trechos sem motorista) e por jornada (uma linha por jornada,
+  pegadas coloridas por carro para evidenciar trocas de carro, atividades em estilo neutro, "cabo"
+  de apresentação/encerramento implícitos, pegadas órfãs como "Sem bloco"). A visão por jornada é
+  só leitura/seleção — pegadas são criadas pela visão de carros; a edição fica no painel lateral. "Personalizar configuração" copia o settings efetivo, mas a
   edição dos valores personalizados por plano ainda não tem tela (só `PUT .../settings`).
 
 1. **Rename** `VehiclePlan.metrics → settings` (isolado, antes de tudo).

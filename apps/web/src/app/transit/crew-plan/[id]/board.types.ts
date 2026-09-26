@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole } from '@nyx/schemas'
 
 // Shape of GET /transit/crew-plan/:id/board (CrewPlanService.getBoard)
@@ -57,6 +58,8 @@ export interface CrewBoardData {
     validFrom: string | null; validTo: string | null; notes: string | null
     summary: CrewPlanSummary | null
     isCustomSettings: boolean
+    signOnMinutes:    number
+    signOffMinutes:   number
   }
   vehiclePlan: { id: string; description: string | null; status: string; scopeName: string; dayTypeName: string }
   versions:    { id: string; description: string | null; status: 'DRAFT' | 'ACTIVE'; createdAt: string }[]
@@ -122,8 +125,26 @@ export function parseTime(s: string): number | null {
   return mm < 60 ? Number(match[1]) * 60 + mm : null
 }
 
-// stable per-duty color, readable on both themes
-export function dutyColor(duty: Pick<BoardDuty, 'role' | 'dutyNumber'>): string {
-  const roleOffset = duty.role === 'DRIVER' ? 0 : duty.role === 'FARE_COLLECTOR' ? 120 : 240
-  return `hsl(${(duty.dutyNumber * 47 + roleOffset) % 360} 60% 50%)`
+// Stable swatch colors: fixed, well-spaced hues, muted — one tone per theme (darker and
+// less saturated in dark mode). Apply SWATCH_BG_CLASS together with one of the *ColorVars
+// below. The vehicle view colors pieces per duty, the duty view per vehicle (block).
+const SWATCH_HUES = [212, 152, 38, 0, 268, 188, 92, 22, 328, 238, 168, 292]
+const ROLE_SHIFT: Record<CrewRole, number> = { DRIVER: 0, FARE_COLLECTOR: 4, ASSISTANT: 8 }
+
+export const SWATCH_BG_CLASS = 'bg-(--swatch-bg) dark:bg-(--swatch-bg-dark)'
+
+function swatchVars(index: number): CSSProperties {
+  const hue = SWATCH_HUES[((index % SWATCH_HUES.length) + SWATCH_HUES.length) % SWATCH_HUES.length]
+  return {
+    '--swatch-bg':      `hsl(${hue} 40% 50%)`,
+    '--swatch-bg-dark': `hsl(${hue} 28% 36%)`,
+  } as CSSProperties
+}
+
+export function dutyColorVars(duty: Pick<BoardDuty, 'role' | 'dutyNumber'>): CSSProperties {
+  return swatchVars(duty.dutyNumber - 1 + ROLE_SHIFT[duty.role])
+}
+
+export function blockColorVars(blockNumber: number): CSSProperties {
+  return swatchVars(blockNumber - 1)
 }

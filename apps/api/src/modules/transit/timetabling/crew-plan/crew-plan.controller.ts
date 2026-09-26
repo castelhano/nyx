@@ -29,14 +29,6 @@ export class CrewPlanController extends BaseController<CrewPlan, CreateCrewPlanD
     return this.crewPlanService.getBoard(id)
   }
 
-  @Post(':id/recalculate')
-  @HttpCode(200)
-  async recalculate(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
-    await this.assertAbility(req.user, 'update')
-    await this.crewPlanService.recalculate(id)
-    return this.crewPlanService.findOne(id)
-  }
-
   @Post(':id/activate')
   @HttpCode(200)
   async activate(@Req() req: { user?: AuthUser }, @Param('id') id: string) {

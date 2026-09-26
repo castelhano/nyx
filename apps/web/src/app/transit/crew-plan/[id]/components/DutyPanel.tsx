@@ -10,7 +10,7 @@ import { apiFetch } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import type { BoardDuty, BoardBlock, BoardActivity, CrewBoardData } from '../board.types'
 import {
-  fmtTime, fmtDuration, parseTime, dutyColor,
+  fmtTime, fmtDuration, parseTime, dutyColorVars, SWATCH_BG_CLASS,
   ROLE_LABEL, KIND_LABEL, ACTIVITY_LABEL, ISSUE_LABEL, STALE_LABEL,
 } from '../board.types'
 
@@ -73,7 +73,7 @@ function DutyPanelInner({
     <div className="w-96 shrink-0 border-l border-border flex flex-col min-h-0 bg-background">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: dutyColor(duty) }} />
+          <span className={cn('w-3 h-3 rounded-sm', SWATCH_BG_CLASS)} style={dutyColorVars(duty)} />
           <span className="font-semibold">{formatDutyNumber(duty.role, duty.dutyNumber)}</span>
           <span className="text-sm text-muted-foreground">{ROLE_LABEL[duty.role]}</span>
           {duty.isStale && <Badge tone="red">Desatualizada</Badge>}

@@ -21,6 +21,7 @@ function ActionButton({ action }: { action: TopbarAction }) {
       disabled={action.disabled}
       onClick={action.onClick}
       title={title}
+      className={action.className}
     >
       {Icon && <Icon className="w-3.5 h-3.5" />}
       {!iconOnly && <span className="hidden md:inline">{action.label}</span>}

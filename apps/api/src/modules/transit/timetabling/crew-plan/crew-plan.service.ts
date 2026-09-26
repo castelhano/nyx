@@ -204,7 +204,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     })
     if (!plan) throw new NotFoundException('crewPlan not found')
 
-    const [versions, blockRows, duties, operators, { isCustom }] = await Promise.all([
+    const [versions, blockRows, duties, operators, { settings, isCustom }] = await Promise.all([
       this.prisma.crewPlan.findMany({
         where:   { vehiclePlanId: plan.vehiclePlanId },
         orderBy: { createdAt: 'desc' },
@@ -258,6 +258,9 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         id: plan.id, description: plan.description, status: plan.status,
         validFrom: plan.validFrom, validTo: plan.validTo, summary: plan.summary, notes: plan.notes,
         isCustomSettings: isCustom,
+        // what the duty view needs to draw implicit sign-on/off (see crew-scoring.calc.ts)
+        signOnMinutes:  settings.signOnMinutes,
+        signOffMinutes: settings.signOffMinutes,
       },
       vehiclePlan: {
         id: plan.vehiclePlan.id, description: plan.vehiclePlan.description, status: plan.vehiclePlan.status,

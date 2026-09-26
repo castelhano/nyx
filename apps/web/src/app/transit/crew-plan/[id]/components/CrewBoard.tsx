@@ -5,7 +5,8 @@ import { formatDutyNumber, type ReliefPoint } from '@nyx/schemas'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
-import { fmtTime, fmtDuration, dutyColor, STALE_LABEL } from '../board.types'
+import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
+import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, STALE_LABEL } from '../board.types'
 
 // One row per vehicle block: the vehicle lane on top (trips, deadruns, intervals and the
 // relief points where a piece may start/end) and the crew lane below (DRIVER pieces
@@ -19,6 +20,7 @@ export interface PieceDraftStart {
 }
 
 interface Props {
+  range:          TimeRange
   blocks:         BoardBlock[]
   duties:         BoardDuty[]
   uncovered:      { vehicleBlockId: string; startMinutes: number; endMinutes: number }[]
@@ -31,24 +33,14 @@ interface Props {
   onPieceClick:   (duty: BoardDuty, piece: BoardPiece) => void
 }
 
-const LABEL_W = 88
 const ROW_H   = 44
 
 export function CrewBoard({
-  blocks, duties, uncovered, localityName, pxPerMinute, selectedDutyId, draftStart, canEdit, onPointClick, onPieceClick,
+  range, blocks, duties, uncovered, localityName, pxPerMinute, selectedDutyId, draftStart, canEdit, onPointClick, onPieceClick,
 }: Props) {
   // relief points are only rendered for the hovered row (or the row being picked on) —
   // a plan easily has ~200 blocks × ~100 points each
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
-
-  const range = useMemo(() => {
-    const windows = blocks.map(b => b.window).filter((w): w is NonNullable<typeof w> => !!w)
-    if (windows.length === 0) return { start: 0, end: 1440 }
-    return {
-      start: Math.floor(Math.min(...windows.map(w => w.startMinutes)) / 60) * 60,
-      end:   Math.ceil(Math.max(...windows.map(w => w.endMinutes)) / 60) * 60,
-    }
-  }, [blocks])
 
   // pieces grouped by block, split into the driver lane and the other-roles lane
   const piecesByBlock = useMemo(() => {
@@ -79,22 +71,11 @@ export function CrewBoard({
 
   const x     = (m: number) => (m - range.start) * pxPerMinute
   const width = (range.end - range.start) * pxPerMinute
-  const hours = Array.from({ length: (range.end - range.start) / 60 + 1 }, (_, i) => range.start + i * 60)
 
   return (
     <div className="h-full overflow-auto">
       <div style={{ width: LABEL_W + width }} className="relative">
-        {/* ruler */}
-        <div className="sticky top-0 z-20 flex bg-background border-b border-border h-7">
-          <div style={{ width: LABEL_W }} className="sticky left-0 z-10 shrink-0 bg-background border-r border-border" />
-          <div className="relative" style={{ width }}>
-            {hours.map(h => (
-              <div key={h} className="absolute top-0 bottom-0 border-l border-border/70 text-[10px] text-muted-foreground ps-1 pt-1.5" style={{ left: x(h) }}>
-                {fmtTime(h)}
-              </div>
-            ))}
-          </div>
-        </div>
+        <Ruler range={range} pxPerMinute={pxPerMinute} />
 
         {blocks.map(block => {
           const items      = piecesByBlock.get(block.id) ?? []
@@ -117,7 +98,7 @@ export function CrewBoard({
               </div>
 
               <div className="relative" style={{ width }}>
-                {hours.map(h => <div key={h} className="absolute top-0 bottom-0 border-l border-border/30" style={{ left: x(h) }} />)}
+                <HourGrid range={range} pxPerMinute={pxPerMinute} />
 
                 {/* vehicle lane */}
                 {block.trips.map(t => (
@@ -224,14 +205,18 @@ function PieceBar({ duty, piece, top, height, left, width, selected, hasIssue, l
       onClick={onClick}
       title={title}
       className={cn(
-        'absolute z-[5] rounded-sm text-[10px] font-medium text-white overflow-hidden whitespace-nowrap px-1 text-left',
+        'absolute z-[5] flex items-center justify-between gap-1 rounded-sm text-[10px] font-medium text-white overflow-hidden whitespace-nowrap px-1 text-left',
+        SWATCH_BG_CLASS,
         selected && 'ring-2 ring-offset-1 ring-foreground ring-offset-background',
+        // stale = the piece no longer fits its block (dashed red); issues get an icon instead
         piece.isStale && 'opacity-60 outline outline-2 outline-dashed outline-red-600',
-        !piece.isStale && hasIssue && 'outline outline-2 outline-amber-500',
       )}
-      style={{ top, height, left, width: Math.max(2, width), backgroundColor: dutyColor(duty), lineHeight: `${height}px` }}
+      style={{ ...dutyColorVars(duty), top, height, left, width: Math.max(2, width), lineHeight: `${height}px` }}
     >
-      {height >= 12 ? `${label} • ${duration}` : null}
+      {height >= 12 && <span className="truncate">{label} • {duration}</span>}
+      {height >= 12 && hasIssue && !piece.isStale && (
+        <Icons.AlertTriangle className="w-3 h-3 shrink-0 text-amber-200" aria-label="Com pendências" />
+      )}
     </button>
   )
 }
