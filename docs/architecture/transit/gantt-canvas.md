@@ -342,7 +342,7 @@ The current implementation is `vehiclesView` in `views/vehicles.view.ts`, which 
 | Block trip | `blockTrip.id` | `false` | `GanttBlockTrip` |
 | Deadrun | `${deadrun.id}:dr` | `true` | `GanttBlockDeadrun` (ACCESS / RETURN / DISPLACEMENT) |
 
-Line color is assigned by stable index from a 15-color palette. INBOUND trips receive a lightened variant of their line color (`lightenHex`, +45% toward white).
+Line color comes from the shared muted palette (`apps/web/src/lib/palette.ts`, 12 hues, one tone per theme), indexed by the line's code order among all of the Scope's lines — stable across line selection and identical to the crew plan screen. OUTBOUND trips use the `strong` tone, INBOUND the lighter `mid` tone. Canvas can't read CSS variables, so segments carry both `color` and `colorDark` and the renderer picks by the active theme.
 
 ---
 

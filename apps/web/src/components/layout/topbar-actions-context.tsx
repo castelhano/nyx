@@ -24,7 +24,11 @@ export interface TopbarAction {
   separator?: boolean
   // menu: quando presente, o botão vira um split-button — clique principal mantém
   // onClick normal, e um chevron ao lado abre um dropdown com estes itens
-  menu?: { label: string; icon?: React.ElementType; onClick: () => void; disabled?: boolean }[]
+  // checked: when defined, the item is a toggle — rendered with a check circle and the
+  // menu stays open on click
+  menu?: { label: string; icon?: React.ElementType; onClick: () => void; disabled?: boolean; checked?: boolean }[]
+  // menuOnly: the whole button opens the menu (no main action; onClick is ignored)
+  menuOnly?: boolean
   // className: extra classes on the button itself (e.g. a fixed width for a toggle whose
   // label changes, so the topbar doesn't reflow)
   className?: string

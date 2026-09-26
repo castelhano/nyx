@@ -7,6 +7,7 @@ import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece, BoardActivity } from '../board.types'
 import { fmtTime, fmtDuration, blockColorVars, SWATCH_BG_CLASS, ACTIVITY_LABEL, STALE_LABEL } from '../board.types'
 import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
+import { PinToggle } from './CrewFilterBar'
 
 // One row per duty, whatever vehicles it runs on: its pieces colored per vehicle (so a
 // vehicle change stands out), its off-vehicle activities in neutral styles, and — when the
@@ -23,6 +24,10 @@ interface Props {
   pxPerMinute:    number
   selectedDutyId: string | null
   onSelectDuty:   (duty: BoardDuty) => void
+  // pin toggles shown while the filter bar is open
+  pinnable:       boolean
+  pinnedIds:      Set<string>
+  onTogglePin:    (dutyId: string) => void
 }
 
 const ROW_H = 36
@@ -37,6 +42,7 @@ const ACTIVITY_CLASS: Record<BoardActivity['type'], string> = {
 
 export function DutyBoard({
   range, blocks, duties, signOnMinutes, signOffMinutes, localityName, pxPerMinute, selectedDutyId, onSelectDuty,
+  pinnable, pinnedIds, onTogglePin,
 }: Props) {
   const blockNumber = useMemo(() => new Map(blocks.map(b => [b.id, b.blockNumber])), [blocks])
 
@@ -74,7 +80,10 @@ export function DutyBoard({
               onClick={() => onSelectDuty(duty)}
             >
               <div style={{ width: LABEL_W }} className="sticky left-0 z-10 shrink-0 bg-background border-r border-border flex items-center justify-between gap-1 px-2 text-xs">
-                <span className="font-medium">{formatDutyNumber(duty.role, duty.dutyNumber)}</span>
+                <span className="flex items-center gap-1 font-medium">
+                  {pinnable && <PinToggle pinned={pinnedIds.has(duty.id)} onToggle={() => onTogglePin(duty.id)} noun="jornada" />}
+                  {formatDutyNumber(duty.role, duty.dutyNumber)}
+                </span>
                 <span className="flex items-center gap-1 text-muted-foreground">
                   {duty.summary && fmtDuration(duty.summary.workMinutes)}
                   {duty.isStale && <Icons.AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" aria-label="Desatualizada" />}

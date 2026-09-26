@@ -215,7 +215,7 @@ export class Renderer {
       } else {
         ctx.beginPath()
         ctx.roundRect(x, y, w, h, radius)
-        ctx.fillStyle = seg.color
+        ctx.fillStyle = dark && seg.colorDark ? seg.colorDark : seg.color
         ctx.fill()
       }
 

@@ -22,6 +22,7 @@ export interface LayoutSegment {
   stopPattern?: 'LOCAL' | 'LIMITED' | 'EXPRESS'
   label:       string
   color:       string
+  colorDark?:  string
   data:        unknown
   shape?:      'block' | 'pill'
   fillStyle?:  'solid' | 'outline'

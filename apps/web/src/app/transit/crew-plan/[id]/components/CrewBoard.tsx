@@ -6,7 +6,9 @@ import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
 import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
-import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, STALE_LABEL } from '../board.types'
+import { PinToggle } from './CrewFilterBar'
+import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, LINE_BG_CLASS, STALE_LABEL } from '../board.types'
+import type { CSSProperties } from 'react'
 
 // One row per vehicle block: the vehicle lane on top (trips, deadruns, intervals and the
 // relief points where a piece may start/end) and the crew lane below (DRIVER pieces
@@ -31,12 +33,19 @@ interface Props {
   canEdit:        boolean
   onPointClick:   (block: BoardBlock, point: ReliefPoint, pickStart: boolean) => void
   onPieceClick:   (duty: BoardDuty, piece: BoardPiece) => void
+  // line code → color vars when "Cores das linhas" is on; null = neutral trips
+  lineColors:     Map<string, CSSProperties> | null
+  // pin toggles shown while the filter bar is open
+  pinnable:       boolean
+  pinnedIds:      Set<string>
+  onTogglePin:    (blockId: string) => void
 }
 
 const ROW_H   = 44
 
 export function CrewBoard({
   range, blocks, duties, uncovered, localityName, pxPerMinute, selectedDutyId, draftStart, canEdit, onPointClick, onPieceClick,
+  lineColors, pinnable, pinnedIds, onTogglePin,
 }: Props) {
   // relief points are only rendered for the hovered row (or the row being picked on) —
   // a plan easily has ~200 blocks × ~100 points each
@@ -93,7 +102,10 @@ export function CrewBoard({
               onMouseLeave={() => setHoveredBlockId(h => (h === block.id ? null : h))}
             >
               <div style={{ width: LABEL_W }} className="sticky left-0 z-10 shrink-0 bg-background border-r border-border flex items-center justify-between px-2 text-xs">
-                <span className="font-medium">Carro {block.blockNumber}</span>
+                <span className="flex items-center gap-1 font-medium">
+                  {pinnable && <PinToggle pinned={pinnedIds.has(block.id)} onToggle={() => onTogglePin(block.id)} noun="carro" />}
+                  Carro {block.blockNumber}
+                </span>
                 {blockUncovered.length > 0 && <Icons.AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" aria-label="Trechos sem motorista" />}
               </div>
 
@@ -101,16 +113,24 @@ export function CrewBoard({
                 <HourGrid range={range} pxPerMinute={pxPerMinute} />
 
                 {/* vehicle lane */}
-                {block.trips.map(t => (
-                  <div
-                    key={t.id}
-                    className="absolute top-1 h-4 rounded-sm bg-slate-300 dark:bg-slate-600 text-[9px] leading-4 text-slate-700 dark:text-slate-200 overflow-hidden whitespace-nowrap px-0.5"
-                    style={{ left: x(t.departureMinutes), width: Math.max(1, (t.arrivalMinutes - t.departureMinutes) * pxPerMinute) }}
-                    title={`${t.lineCode} ${fmtTime(t.departureMinutes)}–${fmtTime(t.arrivalMinutes)}`}
-                  >
-                    {t.lineCode}
-                  </div>
-                ))}
+                {block.trips.map(t => {
+                  const lineVars = lineColors?.get(t.lineCode)
+                  return (
+                    <div
+                      key={t.id}
+                      className={cn(
+                        'absolute top-1 h-4 rounded-sm text-[9px] leading-4 overflow-hidden whitespace-nowrap px-0.5',
+                        lineVars
+                          ? cn(LINE_BG_CLASS, 'text-slate-800 dark:text-slate-100')
+                          : 'bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-slate-200',
+                      )}
+                      style={{ ...lineVars, left: x(t.departureMinutes), width: Math.max(1, (t.arrivalMinutes - t.departureMinutes) * pxPerMinute) }}
+                      title={`${t.lineCode} ${fmtTime(t.departureMinutes)}–${fmtTime(t.arrivalMinutes)}`}
+                    >
+                      {t.lineCode}
+                    </div>
+                  )
+                })}
                 {block.deadruns.map(d => (
                   <div
                     key={d.id}

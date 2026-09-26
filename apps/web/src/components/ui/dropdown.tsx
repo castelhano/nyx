@@ -197,10 +197,12 @@ interface DropdownItemProps {
   className?:   string
   destructive?: boolean
   disabled?:    boolean
+  // keeps the menu open after the click (e.g. toggle items)
+  keepOpen?:    boolean
 }
 
 export function DropdownItem({
-  children, onClick, href, className, destructive, disabled,
+  children, onClick, href, className, destructive, disabled, keepOpen,
 }: DropdownItemProps) {
   const itemCls = cn(
     'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
@@ -226,7 +228,7 @@ export function DropdownItem({
       type="button"
       role="menuitem"
       disabled={disabled}
-      onClick={onClick}
+      onClick={(e) => { if (keepOpen) e.stopPropagation(); onClick?.() }}
       className={itemCls}
     >
       {children}

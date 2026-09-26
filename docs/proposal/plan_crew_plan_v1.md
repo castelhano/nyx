@@ -438,7 +438,9 @@ Decisões tomadas na implementação (fases 4–6):
 - **Stale é derivado**, não um flag persistente limpo só no save: `CrewPlanService.recalculate()`
   re-checa cada pegada contra o bloco atual (bloco existe, janela, ponto de troca) e grava
   `isStale`/`staleReason`. Roda após toda escrita de jornada/pegada/atividade, ao abrir a escala
-  (`GET /transit/crew-plan/:id/board`) e após `VehiclePlanService.recalculate()`/`applyDiff`.
+  (`GET /transit/crew-plan/:id/board?recalculate=1`, só na primeira carga — os refetches após
+  edições não recalculam de novo) e após `VehiclePlanService.recalculate()`/`applyDiff`. Grava só
+  as linhas cujo estado derivado mudou.
 - **Apresentação/encerramento implícitos**: sem atividade `SIGN_ON`/`SIGN_OFF` explícita, o cálculo
   assume `signOnMinutes`/`signOffMinutes` antes da 1ª / depois da última pegada.
 - **Trabalhado × pago**: trabalhado = pegadas + atividades não-intervalo + apresentação/encerramento;
@@ -465,7 +467,13 @@ Decisões tomadas na implementação (fases 4–6):
   carro (pegadas coloridas por jornada, trechos sem motorista) e por jornada (uma linha por jornada,
   pegadas coloridas por carro para evidenciar trocas de carro, atividades em estilo neutro, "cabo"
   de apresentação/encerramento implícitos, pegadas órfãs como "Sem bloco"). A visão por jornada é
-  só leitura/seleção — pegadas são criadas pela visão de carros; a edição fica no painel lateral. "Configurações" (topbar) abre um modal com o mesmo editor da página
+  só leitura/seleção — pegadas são criadas pela visão de carros; a edição fica no painel lateral.
+- **Filtro (F7)** no mesmo formato da barra do plano de veículos, com critérios por visão (carros:
+  início/término, operador, "sem motorista"; jornadas: início/término, operador, papel, tipo,
+  "com pendências", "desatualizadas") combinados em E; linhas podem ser fixadas (olho) e continuam
+  visíveis mesmo filtradas. **Exibir › Cores das linhas** colore as viagens por linha (tom mais
+  claro da mesma paleta fosca, cor atribuída pela ordem do código da linha), preferência salva no
+  navegador. "Configurações" (topbar) abre um modal com o mesmo editor da página
   de Configurações (`settings/crew-settings-editor.tsx`): herdando, os valores ficam somente
   leitura com a ação "Customizar" (cópia completa); personalizada, os valores são editáveis
   (marcados onde diferem do herdado) com "Salvar" e "Restaurar padrão".

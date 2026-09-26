@@ -1,5 +1,6 @@
 import type { GanttView, GanttRow, GanttSegment } from '../engine/gantt.types'
 import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking } from '@nyx/schemas'
+import { swatchColor, lineIndexByCode } from '@/lib/palette'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
 
@@ -178,35 +179,29 @@ export interface VehiclePlanGanttData {
 
 // ── color palette ─────────────────────────────────────────────────────────────
 
-const PALETTE = [
-  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6366f1',
-  '#14b8a6', '#a855f7', '#f43f5e', '#0ea5e9', '#22c55e',
-]
 const DEADHEAD_COLOR = '#d1d5db'
 const BREAK_COLOR    = '#64748b'
 
-function lightenHex(hex: string, amount = 0.45): string {
-  const r  = parseInt(hex.slice(1, 3), 16)
-  const g  = parseInt(hex.slice(3, 5), 16)
-  const b  = parseInt(hex.slice(5, 7), 16)
-  const lr = Math.round(r + (255 - r) * amount)
-  const lg = Math.round(g + (255 - g) * amount)
-  const lb = Math.round(b + (255 - b) * amount)
-  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
-}
+// Line colors come from the shared muted palette (lib/palette.ts), indexed by the line's
+// code order among all of the Scope's lines — stable across line selection/filters and the
+// same color the crew plan screen uses. Outbound = strong tone, inbound = lighter (mid).
+interface LineColor { out: string; outDark: string; in: string; inDark: string }
 
-function lineColorMap(blocks: GanttBlock[]): Map<string, string> {
-  const lineIds = [...new Set(blocks.flatMap(b => b.blockTrips.map(bt => bt.trip.route.line.id)))]
-  const map = new Map<string, string>()
-  lineIds.forEach((id, i) => map.set(id, PALETTE[i % PALETTE.length]))
-  return map
+function lineColorMap(plan: VehiclePlanGanttData['plan']): Map<string, LineColor> {
+  const indexByCode = lineIndexByCode(plan.lines.map(l => l.line.code))
+  return new Map(plan.lines.map(l => {
+    const i = indexByCode.get(l.line.code) ?? 0
+    return [l.lineId, {
+      out: swatchColor(i, 'strong', 'light'), outDark: swatchColor(i, 'strong', 'dark'),
+      in:  swatchColor(i, 'mid',    'light'), inDark:  swatchColor(i, 'mid',    'dark'),
+    }]
+  }))
 }
 
 // ── view definition ───────────────────────────────────────────────────────────
 
-let _colorCacheBlocks: GanttBlock[] | null = null
-let _colorCacheMap:    Map<string, string> | null = null
+let _colorCachePlan: VehiclePlanGanttData['plan'] | null = null
+let _colorCacheMap:  Map<string, LineColor> | null = null
 
 export const vehiclesView: GanttView<VehiclePlanGanttData> = {
   getRows(data): GanttRow[] {
@@ -226,16 +221,18 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
 
   getSegments(row, data): GanttSegment[] {
     const block = row.data as GanttBlock
-    if (_colorCacheBlocks !== data.blocks) {
-      _colorCacheBlocks = data.blocks
-      _colorCacheMap    = lineColorMap(data.blocks)
+    if (_colorCachePlan !== data.plan) {
+      _colorCachePlan = data.plan
+      _colorCacheMap  = lineColorMap(data.plan)
     }
     const colors = _colorCacheMap!
     const segs: GanttSegment[] = []
 
     for (const bt of block.blockTrips) {
-      const baseColor = colors.get(bt.trip.route.line.id) ?? PALETTE[0]
-      const segColor  = bt.trip.route.direction === 'INBOUND' ? lightenHex(baseColor) : baseColor
+      const lineColor = colors.get(bt.trip.route.line.id)
+      const inbound   = bt.trip.route.direction === 'INBOUND'
+      const segColor  = lineColor ? (inbound ? lineColor.in : lineColor.out) : swatchColor(0, inbound ? 'mid' : 'strong', 'light')
+      const segDark   = lineColor ? (inbound ? lineColor.inDark : lineColor.outDark) : swatchColor(0, inbound ? 'mid' : 'strong', 'dark')
       const c = bt.trip.constraints
       segs.push({
         id:          bt.id,
@@ -249,6 +246,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         stopPattern: bt.trip.stopPattern,
         label:       bt.trip.route.line.code,
         color:       segColor,
+        colorDark:   segDark,
         data:        bt,
       })
     }

@@ -39,6 +39,8 @@ export interface GanttSegment {
   stopPattern?: 'LOCAL' | 'LIMITED' | 'EXPRESS'
   label:       string
   color:       string
+  // fill used instead of `color` while the dark theme is active (optional)
+  colorDark?:  string
   data:        unknown
   // rendering hints for kind === 'break' — the engine stays display-agnostic
   // (per docs/architecture/transit/gantt-canvas.md), the view decides these.

@@ -41,9 +41,70 @@ const menuTextSize: Record<NonNullable<TopbarAction['size']>, string> = {
   icon:    'text-xs',
 }
 
+// Toggle marker for checkable menu items — muted ring when off, filled with the theme's
+// accent (plus its foreground as border, so it stays visible on the hovered row) when on.
+function CheckCircle({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'w-3.5 h-3.5 shrink-0 rounded-full border',
+        checked ? 'bg-accent border-accent-foreground' : 'border-muted-foreground/50',
+      )}
+    />
+  )
+}
+
+function MenuItems({ action }: { action: TopbarAction }) {
+  const itemTextSize = menuTextSize[action.size ?? 'sm']
+  return (
+    <>
+      {action.menu!.map((item, i) => {
+        const ItemIcon  = item.icon
+        const checkable = item.checked !== undefined
+        return (
+          <DropdownItem
+            key={i} onClick={item.onClick} disabled={item.disabled} className={itemTextSize}
+            keepOpen={checkable}
+          >
+            {checkable ? <CheckCircle checked={!!item.checked} /> : ItemIcon && <ItemIcon className="w-4 h-4" />}
+            {item.label}
+          </DropdownItem>
+        )
+      })}
+    </>
+  )
+}
+
+// Menu-only button — the whole button (label + chevron) opens the dropdown.
+function MenuActionButton({ action }: { action: TopbarAction }) {
+  const Icon = action.icon
+  return (
+    <Dropdown
+      align="end"
+      side="bottom"
+      trigger={
+        <Button
+          type="button"
+          variant={action.variant ?? 'default'}
+          size={action.size ?? 'sm'}
+          disabled={action.disabled}
+          title={action.label}
+          className={action.className}
+        >
+          {Icon && <Icon className="w-3.5 h-3.5" />}
+          <span className="hidden md:inline">{action.label}</span>
+          <Icons.ChevronDown className="w-3.5 h-3.5" />
+        </Button>
+      }
+    >
+      <MenuItems action={action} />
+    </Dropdown>
+  )
+}
+
 function SplitActionButton({ action }: { action: TopbarAction }) {
   const Icon = action.icon
-  const itemTextSize = menuTextSize[action.size ?? 'sm']
   return (
     <div className="inline-flex items-stretch rounded-md overflow-hidden">
       <Button
@@ -75,15 +136,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
           </Button>
         }
       >
-        {action.menu!.map((item, i) => {
-          const ItemIcon = item.icon
-          return (
-            <DropdownItem key={i} onClick={item.onClick} disabled={item.disabled} className={itemTextSize}>
-              {ItemIcon && <ItemIcon className="w-4 h-4" />}
-              {item.label}
-            </DropdownItem>
-          )
-        })}
+        <MenuItems action={action} />
       </Dropdown>
     </div>
   )
@@ -95,6 +148,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
 // mobile) — o autor da página declara uma vez só, sem se preocupar com tela.
 function renderRowAction(action: TopbarAction, key: number) {
   if (action.separator) return <div key={key} className="w-px h-5 bg-border shrink-0" />
+  if (action.menu && action.menuOnly) return <MenuActionButton key={key} action={action} />
   return action.menu
     ? <SplitActionButton key={key} action={action} />
     : <ActionButton key={key} action={action} />
@@ -102,6 +156,8 @@ function renderRowAction(action: TopbarAction, key: number) {
 
 function renderListAction(action: TopbarAction, key: number) {
   if (action.separator) return <DropdownSeparator key={key} />
+  // a menu-only action has no action of its own — list its items instead
+  if (action.menu && action.menuOnly) return <MenuItems key={key} action={action} />
   const Icon = action.icon
   return (
     <DropdownItem key={key} onClick={action.onClick} disabled={action.disabled}>

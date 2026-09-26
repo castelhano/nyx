@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { swatchColor, lineIndexByCode } from '@/lib/palette'
 import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole } from '@nyx/schemas'
 
 // Shape of GET /transit/crew-plan/:id/board (CrewPlanService.getBoard)
@@ -64,6 +65,7 @@ export interface CrewBoardData {
   vehiclePlan: { id: string; description: string | null; status: string; scopeName: string; dayTypeName: string }
   versions:    { id: string; description: string | null; status: 'DRAFT' | 'ACTIVE'; createdAt: string }[]
   operators:   { branchId: string; abbr: string; name: string }[]
+  lineCodes:   string[]
   localities:  { id: string; name: string; abbr: string | null }[]
   blocks:      BoardBlock[]
   duties:      BoardDuty[]
@@ -125,19 +127,17 @@ export function parseTime(s: string): number | null {
   return mm < 60 ? Number(match[1]) * 60 + mm : null
 }
 
-// Stable swatch colors: fixed, well-spaced hues, muted — one tone per theme (darker and
-// less saturated in dark mode). Apply SWATCH_BG_CLASS together with one of the *ColorVars
-// below. The vehicle view colors pieces per duty, the duty view per vehicle (block).
-const SWATCH_HUES = [212, 152, 38, 0, 268, 188, 92, 22, 328, 238, 168, 292]
+// Swatch colors from the shared muted palette (lib/palette.ts), one tone per theme. Apply
+// SWATCH_BG_CLASS together with one of the *ColorVars below. The vehicle view colors
+// pieces per duty, the duty view per vehicle (block).
 const ROLE_SHIFT: Record<CrewRole, number> = { DRIVER: 0, FARE_COLLECTOR: 4, ASSISTANT: 8 }
 
 export const SWATCH_BG_CLASS = 'bg-(--swatch-bg) dark:bg-(--swatch-bg-dark)'
 
 function swatchVars(index: number): CSSProperties {
-  const hue = SWATCH_HUES[((index % SWATCH_HUES.length) + SWATCH_HUES.length) % SWATCH_HUES.length]
   return {
-    '--swatch-bg':      `hsl(${hue} 40% 50%)`,
-    '--swatch-bg-dark': `hsl(${hue} 28% 36%)`,
+    '--swatch-bg':      swatchColor(index, 'strong', 'light'),
+    '--swatch-bg-dark': swatchColor(index, 'strong', 'dark'),
   } as CSSProperties
 }
 
@@ -147,4 +147,18 @@ export function dutyColorVars(duty: Pick<BoardDuty, 'role' | 'dutyNumber'>): CSS
 
 export function blockColorVars(blockNumber: number): CSSProperties {
   return swatchVars(blockNumber - 1)
+}
+
+// "Exibir › Cores das linhas" — a lighter tone of the same hues, so a trip's line color
+// doesn't read as a duty color on the piece right below it. Use with LINE_BG_CLASS and
+// dark text (light theme) / light text (dark theme).
+export const LINE_BG_CLASS = 'bg-(--line-bg) dark:bg-(--line-bg-dark)'
+
+// line code → color vars; pass every line of the Scope (board lineCodes) so the index —
+// and the color — matches the vehicle plan Gantt
+export function lineColorMap(lineCodes: string[]): Map<string, CSSProperties> {
+  return new Map([...lineIndexByCode(lineCodes)].map(([code, i]) => [code, {
+    '--line-bg':      swatchColor(i, 'soft', 'light'),
+    '--line-bg-dark': swatchColor(i, 'soft', 'dark'),
+  } as CSSProperties]))
 }

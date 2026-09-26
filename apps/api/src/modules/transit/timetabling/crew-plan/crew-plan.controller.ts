@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Req, HttpCode, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, HttpCode, UseGuards } from '@nestjs/common'
 import type { AuthUser } from '@nyx/types'
 import { CrewPlan, CreateCrewPlanDto, UpdateCrewPlanDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
@@ -23,10 +23,11 @@ export class CrewPlanController extends BaseController<CrewPlan, CreateCrewPlanD
     return this.crewPlanService.resolveForVehiclePlan(vehiclePlanId)
   }
 
+  // ?recalculate=1 — on opening the plan (see CrewPlanService.getBoard)
   @Get(':id/board')
-  async board(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
+  async board(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Query('recalculate') recalculate?: string) {
     await this.assertAbility(req.user, 'read')
-    return this.crewPlanService.getBoard(id)
+    return this.crewPlanService.getBoard(id, recalculate === '1')
   }
 
   @Post(':id/activate')

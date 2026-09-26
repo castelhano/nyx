@@ -197,11 +197,12 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     return this.prisma.crewPlan.findFirst({ where: { vehiclePlanId }, orderBy: { createdAt: 'desc' }, select: { id: true } })
   }
 
-  // Everything the crew plan screen renders, in one call. Recalculates first — opening the
-  // plan is when upstream changes (Scope/global settings, VehiclePlan edits made through
-  // paths that don't trigger recalculate) get picked up.
-  async getBoard(id: string) {
-    await this.recalculate(id)
+  // Everything the crew plan screen renders, in one call. `recalculate` is set by the screen
+  // when it opens a plan — that's when upstream changes (Scope/global settings, VehiclePlan
+  // edits made through paths that don't trigger recalculate) get picked up. Refetches after
+  // an edit skip it: every duty/piece/activity write already recalculated.
+  async getBoard(id: string, recalculate = false) {
+    if (recalculate) await this.recalculate(id)
 
     const plan = await this.prisma.crewPlan.findUnique({
       where:   { id },
@@ -209,7 +210,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         vehiclePlan: {
           select: {
             id: true, description: true, status: true, scopeId: true,
-            scope: { select: { name: true } }, dayType: { select: { name: true } },
+            scope: { select: { name: true, lines: { select: { code: true } } } }, dayType: { select: { name: true } },
           },
         },
       },
@@ -280,6 +281,9 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       },
       versions,
       operators: operators.map(o => ({ branchId: o.branchId, abbr: o.abbr, name: o.branch.name })),
+      // every line of the Scope — line colors are indexed over this set (same as the
+      // vehicle plan Gantt), so a line has the same color on both screens
+      lineCodes: plan.vehiclePlan.scope.lines.map(l => l.code),
       localities,
       blocks: blockRows.map(b => {
         const r = relief.get(b.id)
@@ -320,7 +324,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
   // Runs after every duty/piece/activity write, when the plan is opened (settings may have
   // changed upstream) and after its VehiclePlan is edited.
   async recalculate(id: string): Promise<void> {
-    const plan = await this.prisma.crewPlan.findUnique({ where: { id }, select: { vehiclePlanId: true } })
+    const plan = await this.prisma.crewPlan.findUnique({ where: { id }, select: { vehiclePlanId: true, summary: true } })
     if (!plan) throw new NotFoundException('crewPlan not found')
 
     const [{ settings }, blockRows, duties] = await Promise.all([
@@ -330,6 +334,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         where:  { crewPlanId: id },
         select: {
           id: true, role: true, kind: true, branchId: true,
+          summary: true, issues: true, isStale: true,
           pieces:     { select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true } },
           activities: { select: { type: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
         },
@@ -361,7 +366,11 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       matrixMinutes: new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes])),
     })
 
+    // only rows whose derived state actually changed are written — a single piece edit
+    // usually touches one or two duties, not the whole plan
+    const same       = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b)
     const piecesById = new Map(duties.flatMap(d => d.pieces).map(p => [p.id, p]))
+    const dutiesById = new Map(duties.map(d => [d.id, d]))
     await this.prisma.$transaction(async (tx) => {
       for (const [pieceId, st] of result.pieces) {
         const cur = piecesById.get(pieceId)!
@@ -370,12 +379,24 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         }
       }
       for (const [dutyId, d] of result.duties) {
+        const cur = dutiesById.get(dutyId)!
+        if (cur.isStale === d.isStale && same(cur.summary, d.summary) && same(cur.issues, d.issues)) continue
         await tx.duty.update({
           where: { id: dutyId },
           data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.length > 0, isStale: d.isStale },
         })
       }
-      await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })
+      if (!same(plan.summary, result.summary)) await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })
     }, { timeout: 30_000 })
   }
+}
+
+// JSON with object keys sorted — jsonb doesn't preserve key order, so comparing a stored
+// value against a freshly computed one needs an order-insensitive form
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  )
 }

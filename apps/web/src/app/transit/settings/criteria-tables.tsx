@@ -19,7 +19,7 @@ export function SectionHeader({ label, sub }: { label: string; sub?: string }) {
   )
 }
 
-export function HintPopover({ hint }: { hint: string }) {
+function HintPopover({ hint }: { hint: string }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos]   = useState({ top: 0, right: 0 })
   const btnRef          = useRef<HTMLButtonElement>(null)
@@ -95,7 +95,7 @@ export function NumberInput({ value, onChange, min = 0, max, step = 1, disabled 
 
 // ── AnchoredTable ────────────────────────────────────────────────────────────
 
-export type AnchoredMeta = Record<string, { label: string; unit: string; hint: string }>
+type AnchoredMeta = Record<string, { label: string; unit: string; hint: string }>
 
 export function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ data, globalData, meta, onChange, disabled }: {
   data:       T
@@ -187,7 +187,7 @@ export function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ dat
 
 // ── RangeTable ───────────────────────────────────────────────────────────────
 
-export type RangeMeta = Record<string, { label: string; unit: string; hint: string }>
+type RangeMeta = Record<string, { label: string; unit: string; hint: string }>
 
 export function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData, meta, onChange, disabled }: {
   data:       T

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import type { CrewRole, ReliefPoint } from '@nyx/schemas'
@@ -21,6 +21,9 @@ import { PlanPanel } from './components/PlanPanel'
 import { CrewSettingsModal } from './components/CrewSettingsModal'
 import { DutyBoard } from './components/DutyBoard'
 import { useTimeRange } from './components/Timeline'
+import { CrewFilterBar } from './components/CrewFilterBar'
+import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, type CrewFilter } from './filters'
+import { lineColorMap } from './board.types'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
@@ -28,6 +31,8 @@ import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDesc
 // and coverage on each write, and the board is refetched from it.
 
 const ORIGIN = 'apps/web/src/app/transit/crew-plan/[id]/page'
+// per-viewer display preferences (Exibir menu) — browser only, never required
+const LINE_COLORS_KEY = 'crew-plan:line-colors'
 // px per minute; ZOOM_100 (1.2) is the 100% reference, ZOOM_DEFAULT (75%) the initial level
 const ZOOMS        = [0.6, 0.9, 1.2, 1.8, 2.4]
 const ZOOM_100     = 2
@@ -55,10 +60,15 @@ export default function CrewPlanPage() {
   const { toast } = useToast()
   const confirm   = useConfirm()
 
+  // the first load of each crew plan asks the server to recalculate (picks up upstream
+  // changes); later refetches follow our own writes, which already recalculated
+  const recalculated = useRef(new Set<string>())
   const { data, error, refetch } = useQuery<CrewBoardData>({
     queryKey: ['transit', 'crew-plan', id, 'board'],
     queryFn:  async () => {
-      const res = await apiFetch(`/transit/crew-plan/${id}/board`)
+      const first = !recalculated.current.has(id)
+      const res   = await apiFetch(`/transit/crew-plan/${id}/board${first ? '?recalculate=1' : ''}`)
+      if (res.ok) recalculated.current.add(id)
       if (!res.ok) throw Object.assign(new Error('Falha ao carregar a escala'), { status: res.status })
       return res.json() as Promise<CrewBoardData>
     },
@@ -74,6 +84,40 @@ export default function CrewPlanPage() {
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
   const [settingsOpen, setSettingsOpen]     = useState(false)
+  const [filterOpen, setFilterOpen]         = useState(false)
+  const [filter, setFilter]                 = useState<CrewFilter>(EMPTY_FILTER)
+  const [pinnedBlockIds, setPinnedBlockIds] = useState<Set<string>>(new Set())
+  const [pinnedDutyIds, setPinnedDutyIds]   = useState<Set<string>>(new Set())
+  const [showLineColors, setShowLineColors] = useState(false)
+
+  // restored after mount — localStorage isn't available during the server render
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem(LINE_COLORS_KEY) === '1') setShowLineColors(true)
+    } catch { /* storage blocked — keep the default */ }
+  }, [])
+
+  function toggleLineColors() {
+    setShowLineColors(v => {
+      try { localStorage.setItem(LINE_COLORS_KEY, v ? '0' : '1') } catch { /* storage blocked */ }
+      return !v
+    })
+  }
+
+  // "X"/F7-close: full reset (criteria + pins), same as the vehicle plan's filter bar
+  function toggleFilter() {
+    if (filterOpen) { setFilter(EMPTY_FILTER); setPinnedBlockIds(new Set()); setPinnedDutyIds(new Set()) }
+    setFilterOpen(v => !v)
+  }
+
+  function togglePin(set: React.Dispatch<React.SetStateAction<Set<string>>>, rowId: string) {
+    set(prev => {
+      const next = new Set(prev)
+      if (next.has(rowId)) next.delete(rowId); else next.add(rowId)
+      return next
+    })
+  }
 
   const selectedDuty = data?.duties.find(d => d.id === selectedDutyId) ?? null
 
@@ -83,6 +127,26 @@ export default function CrewPlanPage() {
     ...(data?.duties ?? []).flatMap(d => [...d.pieces, ...d.activities]),
   ], [data])
   const range = useTimeRange(timeSpans)
+
+  const lineColors = useMemo(
+    () => showLineColors && data ? lineColorMap(data.lineCodes) : null,
+    [showLineColors, data],
+  )
+
+  // rows left after the filter (pinned rows always stay); count excludes pins
+  const { visibleBlocks, visibleDuties, matchCount } = useMemo(() => {
+    const blocks = data?.blocks ?? [], duties = data?.duties ?? []
+    if (!filterOpen || !isFilterActive(filter, view)) return { visibleBlocks: blocks, visibleDuties: duties, matchCount: 0 }
+    if (view === 'vehicles') {
+      const uncoveredIds = new Set((data?.plan.summary?.uncovered ?? []).map(u => u.vehicleBlockId))
+      const matched = blocks.filter(b => blockMatches(filter, b, uncoveredIds.has(b.id)))
+      const ids = new Set(matched.map(b => b.id))
+      return { visibleBlocks: blocks.filter(b => ids.has(b.id) || pinnedBlockIds.has(b.id)), visibleDuties: duties, matchCount: matched.length }
+    }
+    const matched = duties.filter(d => dutyMatches(filter, d))
+    const ids = new Set(matched.map(d => d.id))
+    return { visibleBlocks: blocks, visibleDuties: duties.filter(d => ids.has(d.id) || pinnedDutyIds.has(d.id)), matchCount: matched.length }
+  }, [data, filter, filterOpen, view, pinnedBlockIds, pinnedDutyIds])
 
   const localityName = useMemo(() => {
     const map = new Map((data?.localities ?? []).map(l => [l.id, l.abbr || l.name]))
@@ -282,6 +346,25 @@ export default function CrewPlanPage() {
       className: 'md:w-25',
     }] : []),
     ...(data ? [{
+      label:    'Filtro',
+      icon:     Icons.Filter,
+      size:     'icon' as const,
+      variant:  (filterOpen ? 'default' : 'ghost') as 'default' | 'ghost',
+      onClick:  toggleFilter,
+      keybind:  'F7',
+      position: 'start' as const,
+    }] : []),
+    ...(data ? [{
+      label:    'Exibir',
+      icon:     Icons.Eye,
+      size:     'sm' as const,
+      variant:  'ghost' as const,
+      menuOnly: true,
+      menu: [
+        { label: 'Cores das linhas', onClick: toggleLineColors, checked: showLineColors },
+      ],
+    }] : []),
+    ...(data ? [{
       label:   `Versão (${versions.length})`,
       icon:    Icons.GitBranch,
       size:    'sm' as const,
@@ -332,13 +415,14 @@ export default function CrewPlanPage() {
       variant:  'destructive' as const,
       overflow: true,
     }] : []),
-  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view])
+  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors])
 
   useShortcut('alt+g', () => {
     (document.getElementById(DUTY_FORM_ID) as HTMLFormElement | null)?.requestSubmit()
   }, { desc: 'Salvar jornada', icon: Icons.Save, origin: ORIGIN, enabled: !!selectedDuty && canEdit })
   useShortcut('alt+v', () => router.push('/transit/vehicle-plan'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: ORIGIN })
   useShortcut('alt+l', () => setResetSignal(s => s + 1), { display: false, origin: ORIGIN })
+  useShortcut('f7', toggleFilter, { desc: 'Filtro', icon: Icons.Filter, origin: ORIGIN })
   useShortcut('esc', () => {
     if (draftStart) setDraftStart(null)
     else if (selectedDutyId) setSelectedDutyId(null)
@@ -409,24 +493,40 @@ export default function CrewPlanPage() {
       </div>
 
       <div className="flex flex-1 min-h-0 border-t overflow-hidden">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+          {filterOpen && data && (
+            <div className="shrink-0 px-2 py-1.5 border-b border-border">
+              <CrewFilterBar
+                view={view}
+                filter={filter}
+                onChange={setFilter}
+                matchCount={matchCount}
+                operators={data.operators}
+                onClose={toggleFilter}
+              />
+            </div>
+          )}
+          <div className="flex-1 min-h-0">
           {data ? (
             view === 'duties' ? (
               <DutyBoard
                 range={range}
                 blocks={data.blocks}
-                duties={data.duties}
+                duties={visibleDuties}
                 signOnMinutes={data.plan.signOnMinutes}
                 signOffMinutes={data.plan.signOffMinutes}
                 localityName={localityName}
                 pxPerMinute={ZOOMS[zoomIdx]}
                 selectedDutyId={selectedDutyId}
                 onSelectDuty={(duty) => setSelectedDutyId(duty.id)}
+                pinnable={filterOpen}
+                pinnedIds={pinnedDutyIds}
+                onTogglePin={(dutyId) => togglePin(setPinnedDutyIds, dutyId)}
               />
             ) : data.blocks.length > 0 ? (
               <CrewBoard
                 range={range}
-                blocks={data.blocks}
+                blocks={visibleBlocks}
                 duties={data.duties}
                 uncovered={summary?.uncovered ?? []}
                 localityName={localityName}
@@ -436,6 +536,10 @@ export default function CrewPlanPage() {
                 canEdit={canEdit && !saving}
                 onPointClick={handlePointClick}
                 onPieceClick={(duty) => setSelectedDutyId(duty.id)}
+                lineColors={lineColors}
+                pinnable={filterOpen}
+                pinnedIds={pinnedBlockIds}
+                onTogglePin={(blockId) => togglePin(setPinnedBlockIds, blockId)}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm">O planejamento não tem blocos</div>
@@ -443,6 +547,7 @@ export default function CrewPlanPage() {
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Carregando…</div>
           )}
+          </div>
         </div>
 
         {data && (selectedDuty ? (
