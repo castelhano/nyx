@@ -131,10 +131,10 @@ function DutyPanelInner({
             <ul className="space-y-1 text-xs">
               {duty.issues.map((i, idx) => (
                 <li key={idx} className="flex items-start gap-2">
-                  <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'error' ? 'text-red-600' : 'text-amber-500')} />
+                  <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'error' ? 'text-red-600 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')} />
                   <span>
                     {ISSUE_LABEL[i.code]}
-                    {i.code !== 'BRANCH_MISMATCH' && <> — {i.value}{i.limit != null && <> (limite {i.limit})</>}</>}
+                    {i.code !== 'BRANCH_MISMATCH' && <> — {fmtTime(i.value)}{i.limit != null && <> (limite {fmtTime(i.limit)})</>}</>}
                   </span>
                 </li>
               ))}
@@ -143,14 +143,14 @@ function DutyPanelInner({
         )}
 
         <Section title="Pegadas">
-          {duty.pieces.length === 0 && <p className="text-xs text-muted-foreground">Clique em dois pontos de troca de um carro para adicionar.</p>}
+          {duty.pieces.length === 0 && <p className="text-xs text-muted-foreground">Clique num ponto de troca de um carro para adicionar.</p>}
           <ul className="space-y-1">
             {duty.pieces.map(p => (
               <li key={p.id} className={cn('flex items-center justify-between gap-2 text-xs rounded px-2 py-1 bg-muted/40', p.isStale && 'border border-dashed border-red-600')}>
                 <span className="min-w-0">
                   <span className="font-medium">{blockNumber(p.vehicleBlockId) != null ? `Carro ${blockNumber(p.vehicleBlockId)}` : 'Sem bloco'}</span>
                   {' · '}{fmtTime(p.startMinutes)} {localityName(p.startLocalityId)} → {fmtTime(p.endMinutes)} {localityName(p.endLocalityId)}
-                  {p.isStale && p.staleReason && <span className="block text-red-600">{STALE_LABEL[p.staleReason]}</span>}
+                  {p.isStale && p.staleReason && <span className="block text-red-600 dark:text-red-400">{STALE_LABEL[p.staleReason]}</span>}
                 </span>
                 {canEdit && (
                   <button type="button" onClick={() => onDeletePiece(p.id)} className="text-muted-foreground hover:text-destructive shrink-0" title="Remover pegada">

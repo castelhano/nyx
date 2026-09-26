@@ -18,13 +18,17 @@ import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
+import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
 // is written immediately (no pending queue) — the server recalculates staleness, issues
 // and coverage on each write, and the board is refetched from it.
 
 const ORIGIN = 'apps/web/src/app/transit/crew-plan/[id]/page'
-const ZOOMS  = [0.6, 0.9, 1.2, 1.8, 2.6]
+// px per minute; ZOOM_100 (1.2) is the 100% reference, ZOOM_DEFAULT (75%) the initial level
+const ZOOMS        = [0.6, 0.9, 1.2, 1.8, 2.4]
+const ZOOM_100     = 2
+const ZOOM_DEFAULT = 1
 
 async function api(path: string, init?: RequestInit): Promise<unknown> {
   const res = await apiFetch(path, init)
@@ -57,7 +61,7 @@ export default function CrewPlanPage() {
   const [draftStart, setDraftStart]         = useState<PieceDraftStart | null>(null)
   const [assignDraft, setAssignDraft]       = useState<{ block: BoardBlock; start: ReliefPoint; end: ReliefPoint } | null>(null)
   const [saving, setSaving]                 = useState(false)
-  const [zoomIdx, setZoomIdx]               = useState(2)
+  const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
 
   const selectedDuty = data?.duties.find(d => d.id === selectedDutyId) ?? null
@@ -83,14 +87,47 @@ export default function CrewPlanPage() {
     }
   }, [refetch, toast])
 
-  // ── piece creation: two clicks on relief points of the same block ─────────
+  // ── piece creation ─────────────────────────────────────────────────────────
+  // One click = the piece's end; its start is inferred as the beginning of the uncovered
+  // stretch before it — the end of the previous DRIVER piece on the block, or the start of
+  // the vehicle's service span (after its own interval / depot time), whichever is later.
+  // Shift+click picks the start explicitly instead (then a second click ends the piece).
 
-  function handlePointClick(block: BoardBlock, point: ReliefPoint) {
-    if (!draftStart || draftStart.blockId !== block.id) { setDraftStart({ blockId: block.id, point }); return }
-    const a = draftStart.point
-    if (a.minutes === point.minutes) { setDraftStart(null); return }
-    const [start, end] = a.minutes < point.minutes ? [a, point] : [point, a]
-    setAssignDraft({ block, start, end })
+  function inferStart(block: BoardBlock, end: ReliefPoint): ReliefPoint | null {
+    const span = block.serviceSpans.find(s => end.minutes > s.startMinutes && end.minutes <= s.endMinutes)
+    if (!span || !data) return null
+    let from = span.startMinutes
+    let fromLocalityId: string | null = null
+    for (const duty of data.duties) {
+      if (duty.role !== 'DRIVER') continue
+      for (const p of duty.pieces) {
+        if (p.vehicleBlockId !== block.id || p.isStale) continue
+        if (p.startMinutes < end.minutes && p.endMinutes > end.minutes) return null // point already covered
+        if (p.endMinutes <= end.minutes && p.endMinutes >= from) { from = p.endMinutes; fromLocalityId = p.endLocalityId }
+      }
+    }
+    const candidates = block.points.filter(p => p.minutes >= from && p.minutes < end.minutes)
+    if (candidates.length === 0) return null
+    const first = candidates[0].minutes
+    // relieving at the previous piece's end locality keeps the handover in one place
+    return candidates.find(p => p.minutes === first && p.localityId === fromLocalityId)
+      ?? candidates.find(p => p.minutes === first)!
+  }
+
+  function handlePointClick(block: BoardBlock, point: ReliefPoint, pickStart: boolean) {
+    if (pickStart) { setDraftStart({ blockId: block.id, point }); return }
+
+    if (draftStart && draftStart.blockId === block.id) {
+      const a = draftStart.point
+      if (a.minutes === point.minutes) { setDraftStart(null); return }
+      const [start, end] = a.minutes < point.minutes ? [a, point] : [point, a]
+      setAssignDraft({ block, start, end })
+      return
+    }
+
+    const start = inferStart(block, point)
+    if (start) { setDraftStart(null); setAssignDraft({ block, start, end: point }); return }
+    toast.error('Sem trecho descoberto antes deste ponto — use Shift+clique para escolher o início')
   }
 
   async function handleAssign(target: AssignTarget) {
@@ -233,8 +270,10 @@ export default function CrewPlanPage() {
       ],
     }] : []),
     { label: '', separator: true },
-    ...(zoomIdx > 0 ? [{ label: 'Menos zoom', icon: Icons.ZoomOut, size: 'icon' as const, variant: 'ghost' as const, onClick: () => setZoomIdx(i => Math.max(0, i - 1)) }] : []),
-    ...(zoomIdx < ZOOMS.length - 1 ? [{ label: 'Mais zoom', icon: Icons.ZoomIn, size: 'icon' as const, variant: 'ghost' as const, onClick: () => setZoomIdx(i => Math.min(ZOOMS.length - 1, i + 1)) }] : []),
+    { label: 'Menos zoom', icon: Icons.ZoomOut, size: 'icon' as const, variant: 'ghost' as const, disabled: zoomIdx === 0, onClick: () => setZoomIdx(i => Math.max(0, i - 1)) },
+    // current level — clicking it resets to the initial level
+    { label: `${Math.round((ZOOMS[zoomIdx] / ZOOMS[ZOOM_100]) * 100)}%`, size: 'sm' as const, variant: 'ghost' as const, onClick: () => setZoomIdx(ZOOM_DEFAULT) },
+    { label: 'Mais zoom', icon: Icons.ZoomIn, size: 'icon' as const, variant: 'ghost' as const, disabled: zoomIdx === ZOOMS.length - 1, onClick: () => setZoomIdx(i => Math.min(ZOOMS.length - 1, i + 1)) },
     ...(selectedDuty && canEdit ? [{
       label:    saving ? 'Salvando…' : 'Salvar',
       icon:     Icons.Save,
@@ -318,16 +357,25 @@ export default function CrewPlanPage() {
         />
         {data && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">{data.plan.description || 'Escala'}</span>
+            <InlineDescription
+              value={data.plan.description ?? undefined}
+              disabled={!canEdit}
+              onSave={async (val) => {
+                await api(`/transit/crew-plan/${id}`, { method: 'PATCH', body: JSON.stringify({ description: val }) })
+                await refetch()
+              }}
+            />
             <span>{isActive ? 'Ativa' : 'Rascunho'}</span>
             <span>Planejamento: {data.vehiclePlan.description || data.vehiclePlan.dayTypeName}{data.vehiclePlan.status === 'ACTIVE' ? ' (ativo)' : ''}</span>
             {summary && summary.uncoveredMinutes > 0 && (
-              <span className="text-red-600">{summary.uncovered.length} trecho(s) sem motorista</span>
+              <span className="text-red-600 dark:text-red-400">{summary.uncovered.length} trecho(s) sem motorista</span>
             )}
             {summary && summary.staleDutyCount > 0 && (
-              <span className="text-red-600">{summary.staleDutyCount} jornada(s) desatualizada(s)</span>
+              <span className="text-red-600 dark:text-red-400">{summary.staleDutyCount} jornada(s) desatualizada(s)</span>
             )}
-            {draftStart && <span className="text-amber-600">Selecione o ponto de fim da pegada (Esc cancela)</span>}
+            {draftStart
+              ? <span className="text-amber-600 dark:text-amber-400">Selecione o ponto de fim da pegada (Esc cancela)</span>
+              : canEdit && <span>Clique num ponto de troca para fechar uma pegada · Shift+clique escolhe o início</span>}
           </div>
         )}
       </div>

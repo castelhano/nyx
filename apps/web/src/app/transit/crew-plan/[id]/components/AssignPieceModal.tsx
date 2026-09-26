@@ -26,7 +26,7 @@ interface Props {
 
 export function AssignPieceModal({ block, start, end, duties, defaultDutyId, localityName, saving, onConfirm, onClose }: Props) {
   useShortcutContext('assign_piece_md')
-  const [mode, setMode]         = useState<'existing' | 'new'>(defaultDutyId || duties.length > 0 ? 'existing' : 'new')
+  const [mode, setMode]         = useState<'existing' | 'new'>('new')
   const [dutyId, setDutyId]     = useState(defaultDutyId ?? duties[0]?.id ?? '')
   const [role, setRole]         = useState<CrewRole>('DRIVER')
   const [dutyKind, setDutyKind] = useState<BoardDuty['kind']>('STRAIGHT')

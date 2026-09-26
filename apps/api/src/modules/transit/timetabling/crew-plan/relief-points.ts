@@ -8,8 +8,14 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 // arrivalMinutes minus the minutes from that stop to the route's destination, walking
 // backward through deltaMinutes with TravelTimeMatrix as fallback for missing legs.
 
+type Span = { startMinutes: number; endMinutes: number }
+
 export interface BlockReliefData {
-  window: { startMinutes: number; endMinutes: number } | null
+  window: Span | null
+  // the parts of the window where the vehicle is in service and therefore needs a driver:
+  // the window minus the vehicle's own intervals (BlockInterval) and minus time parked at
+  // the depot between a RETURN deadrun and a later ACCESS one
+  serviceSpans: Span[]
   points: ReliefPoint[]
 }
 
@@ -21,7 +27,7 @@ export function computeBlockRelief(input: {
     originLocalityId: string; destinationLocalityId: string
     stops: StopRow[] // route localities ordered by sequence
   }[]
-  deadruns: { originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
+  deadruns: { type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
   matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes
 }): BlockReliefData {
@@ -52,8 +58,27 @@ export function computeBlockRelief(input: {
   const ends   = [...input.trips, ...input.deadruns, ...input.intervals].map(e => e.arrivalMinutes)
   const window = starts.length ? { startMinutes: Math.min(...starts), endMinutes: Math.max(...ends) } : null
 
+  const idle: Span[] = input.intervals.map(i => ({ startMinutes: i.departureMinutes, endMinutes: i.arrivalMinutes }))
+  const byTime = [...input.deadruns].sort((a, b) => a.departureMinutes - b.departureMinutes)
+  for (const ret of byTime.filter(d => d.type === 'RETURN')) {
+    const nextAccess = byTime.find(d => d.type === 'ACCESS' && d.departureMinutes >= ret.arrivalMinutes)
+    if (nextAccess) idle.push({ startMinutes: ret.arrivalMinutes, endMinutes: nextAccess.departureMinutes })
+  }
+
   points.sort((a, b) => a.minutes - b.minutes)
-  return { window, points }
+  return { window, serviceSpans: window ? subtractSpans(window, idle) : [], points }
+}
+
+function subtractSpans(from: Span, cut: Span[]): Span[] {
+  const out: Span[] = []
+  let cursor = from.startMinutes
+  for (const c of [...cut].sort((a, b) => a.startMinutes - b.startMinutes)) {
+    if (c.endMinutes <= cursor || c.startMinutes >= from.endMinutes) continue
+    if (c.startMinutes > cursor) out.push({ startMinutes: cursor, endMinutes: c.startMinutes })
+    cursor = Math.max(cursor, c.endMinutes)
+  }
+  if (cursor < from.endMinutes) out.push({ startMinutes: cursor, endMinutes: from.endMinutes })
+  return out
 }
 
 export function isReliefPoint(points: ReliefPoint[], localityId: string, minutes: number): boolean {
@@ -94,7 +119,7 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
           },
         },
       },
-      blockDeadruns:  { select: { originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
+      blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
       blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true } },
     },
   })

@@ -49,7 +49,7 @@ export function PlanPanel({ data, canEdit, onSelect, onCreate }: Props) {
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Jornadas</p>
           {data.duties.length === 0 && (
-            <p className="text-xs text-muted-foreground">Nenhuma jornada. Clique em dois pontos de troca de um carro para criar a primeira pegada.</p>
+            <p className="text-xs text-muted-foreground">Nenhuma jornada. Clique num ponto de troca de um carro para criar a primeira pegada.</p>
           )}
           <ul className="space-y-1">
             {data.duties.map(d => (
@@ -94,7 +94,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 're
   return (
     <div className="rounded bg-muted/40 px-2 py-1">
       <p className="text-muted-foreground">{label}</p>
-      <p className={tone === 'red' ? 'font-medium text-red-600' : tone === 'amber' ? 'font-medium text-amber-600' : 'font-medium text-foreground'}>{value}</p>
+      <p className={tone === 'red' ? 'font-medium text-red-600 dark:text-red-400' : tone === 'amber' ? 'font-medium text-amber-600 dark:text-amber-400' : 'font-medium text-foreground'}>{value}</p>
     </div>
   )
 }

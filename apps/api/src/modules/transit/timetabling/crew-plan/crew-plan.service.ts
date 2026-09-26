@@ -270,8 +270,9 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         const r = relief.get(b.id)
         return {
           id: b.id, blockNumber: b.blockNumber, branchId: b.branchId,
-          window: r?.window ?? null,
-          points: r?.points ?? [],
+          window:       r?.window ?? null,
+          serviceSpans: r?.serviceSpans ?? [],
+          points:       r?.points ?? [],
           trips: b.blockTrips
             .map(({ trip }) => ({
               id: trip.id, departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
@@ -336,7 +337,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
 
     const result = computeCrewPlan({
       settings,
-      blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, points: r.points, trips: r.trips })),
+      blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips })),
       duties: duties.map(d => ({
         id: d.id, role: d.role, kind: d.kind, branchId: d.branchId,
         pieces:     d.pieces,

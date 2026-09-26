@@ -43,6 +43,8 @@ export interface BoardBlock {
   blockNumber: number
   branchId:    string | null
   window:      { startMinutes: number; endMinutes: number } | null
+  // where the vehicle needs a driver (window minus its own intervals and depot time)
+  serviceSpans: { startMinutes: number; endMinutes: number }[]
   points:      ReliefPoint[]
   trips:       { id: string; departureMinutes: number; arrivalMinutes: number; lineCode: string; direction: string }[]
   deadruns:    { id: string; type: string; departureMinutes: number; arrivalMinutes: number }[]
@@ -110,7 +112,7 @@ export function fmtTime(m: number): string {
 }
 
 export function fmtDuration(m: number): string {
-  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}h${String(m % 60).padStart(2, '0')}`
 }
 
 export function parseTime(s: string): number | null {

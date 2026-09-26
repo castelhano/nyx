@@ -5,12 +5,13 @@ import { formatDutyNumber, type ReliefPoint } from '@nyx/schemas'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
-import { fmtTime, dutyColor, STALE_LABEL } from '../board.types'
+import { fmtTime, fmtDuration, dutyColor, STALE_LABEL } from '../board.types'
 
 // One row per vehicle block: the vehicle lane on top (trips, deadruns, intervals and the
 // relief points where a piece may start/end) and the crew lane below (DRIVER pieces
 // colored per duty, uncovered spans in red). Pieces of other roles get a thin extra lane.
-// A piece is created by clicking two relief points of the same block (start → end).
+// Clicking a relief point ends a piece there, starting it where the uncovered stretch
+// before it begins; shift+click picks the start explicitly (then a second click ends it).
 
 export interface PieceDraftStart {
   blockId: string
@@ -26,7 +27,7 @@ interface Props {
   selectedDutyId: string | null
   draftStart:     PieceDraftStart | null
   canEdit:        boolean
-  onPointClick:   (block: BoardBlock, point: ReliefPoint) => void
+  onPointClick:   (block: BoardBlock, point: ReliefPoint, pickStart: boolean) => void
   onPieceClick:   (duty: BoardDuty, piece: BoardPiece) => void
 }
 
@@ -112,7 +113,7 @@ export function CrewBoard({
             >
               <div style={{ width: LABEL_W }} className="sticky left-0 z-10 shrink-0 bg-background border-r border-border flex items-center justify-between px-2 text-xs">
                 <span className="font-medium">Carro {block.blockNumber}</span>
-                {blockUncovered.length > 0 && <Icons.AlertTriangle className="w-3.5 h-3.5 text-red-600" aria-label="Trechos sem motorista" />}
+                {blockUncovered.length > 0 && <Icons.AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" aria-label="Trechos sem motorista" />}
               </div>
 
               <div className="relative" style={{ width }}>
@@ -153,7 +154,7 @@ export function CrewBoard({
                     <button
                       key={`${p.localityId}:${p.minutes}:${idx}`}
                       type="button"
-                      onClick={() => onPointClick(block, p)}
+                      onClick={(e) => onPointClick(block, p, e.shiftKey)}
                       className={cn(
                         'absolute top-0 z-10 w-2 h-6 -ms-1 rounded-sm',
                         isStart ? 'bg-amber-500' : 'bg-sky-600/60 hover:bg-sky-500',
@@ -168,10 +169,12 @@ export function CrewBoard({
                 {blockUncovered.map(u => (
                   <div
                     key={`${u.startMinutes}`}
-                    className="absolute top-6 h-3.5 rounded-sm bg-red-500/20 border border-red-500/60"
+                    className="absolute top-6 h-3.5 rounded-sm bg-red-500/20 border border-red-500/60 text-[10px] leading-3 font-medium text-red-700 dark:text-red-300 overflow-hidden whitespace-nowrap px-1"
                     style={{ left: x(u.startMinutes), width: Math.max(1, (u.endMinutes - u.startMinutes) * pxPerMinute) }}
-                    title={`Sem motorista ${fmtTime(u.startMinutes)}–${fmtTime(u.endMinutes)}`}
-                  />
+                    title={`Sem motorista ${fmtTime(u.startMinutes)}–${fmtTime(u.endMinutes)} (${fmtDuration(u.endMinutes - u.startMinutes)})`}
+                  >
+                    {fmtDuration(u.endMinutes - u.startMinutes)}
+                  </div>
                 ))}
 
                 {/* crew lane — driver pieces */}
@@ -206,9 +209,11 @@ function PieceBar({ duty, piece, top, height, left, width, selected, hasIssue, l
   duty: BoardDuty; piece: BoardPiece; top: number; height: number; left: number; width: number
   selected: boolean; hasIssue: boolean; localityName: (id: string) => string; onClick: () => void
 }) {
-  const label = formatDutyNumber(duty.role, duty.dutyNumber)
+  const label    = formatDutyNumber(duty.role, duty.dutyNumber)
+  // this piece's own length only — a duty spread over several blocks shows one per block
+  const duration = fmtDuration(piece.endMinutes - piece.startMinutes)
   const title = [
-    `${label} · ${fmtTime(piece.startMinutes)} ${localityName(piece.startLocalityId)} → ${fmtTime(piece.endMinutes)} ${localityName(piece.endLocalityId)}`,
+    `${label} · ${duration} · ${fmtTime(piece.startMinutes)} ${localityName(piece.startLocalityId)} → ${fmtTime(piece.endMinutes)} ${localityName(piece.endLocalityId)}`,
     piece.isStale && piece.staleReason ? `Desatualizada: ${STALE_LABEL[piece.staleReason]}` : null,
     hasIssue ? 'Com pendências' : null,
   ].filter(Boolean).join('\n')
@@ -226,7 +231,7 @@ function PieceBar({ duty, piece, top, height, left, width, selected, hasIssue, l
       )}
       style={{ top, height, left, width: Math.max(2, width), backgroundColor: dutyColor(duty), lineHeight: `${height}px` }}
     >
-      {height >= 12 ? label : null}
+      {height >= 12 ? `${label} • ${duration}` : null}
     </button>
   )
 }

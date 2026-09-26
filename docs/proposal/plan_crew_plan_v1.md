@@ -448,14 +448,20 @@ Decisões tomadas na implementação (fases 4–6):
 - **Aplicabilidade das regras por tipo de jornada**: `WORK_TIME` não vale para meia jornada/reserva;
   `MEAL_BREAK` só para corrida; `SPLIT_INTERVAL` só para dupla pegada (maior intervalo entre
   pegadas). Direção contínua = soma das pegadas encadeadas até um `BREAK` entre elas.
+- **Cobertura só onde o carro está em serviço**: exige motorista na janela do bloco menos os
+  intervalos do próprio carro (`BlockInterval`) e menos o tempo recolhido na garagem entre um
+  deadrun `RETURN` e um `ACCESS` seguinte (`serviceSpans` em `relief-points.ts`). Descoberto,
+  trava de ativação, `dutyCount` e `efficiency` usam essa mesma base.
 - **`TRAVEL_GAP`**: pegadas consecutivas em locais diferentes — `error` se o intervalo é menor que
   a matriz de tempos; `warning` se não há tempo na matriz nem atividade `TRAVEL` declarada.
 - **Score**: mesma fórmula do plano de veículos (`rangeV`/`anchoredV`, 0–9999). `dutyCount` ancora
   em ⌈minutos de bloco ÷ `workTime.idealMin`⌉ jornadas de motorista; `efficiency` em minutos de
   bloco cobertos.
 - **Tela**: sem fila de pendências — cada ação grava na hora (o switch fica sempre liberado do lado
-  da escala). Pegada criada clicando dois pontos de troca do mesmo carro; pontos só são
-  renderizados na linha sob o mouse. "Personalizar configuração" copia o settings efetivo, mas a
+  da escala). Pegada criada com um clique no ponto de troca de fim: o início é inferido como o começo do
+  trecho descoberto anterior (fim da pegada de motorista anterior no carro, ou início do trecho em
+  serviço após intervalo/garagem, o que for mais tarde); Shift+clique escolhe o início explicitamente.
+  Pontos só são renderizados na linha sob o mouse. "Personalizar configuração" copia o settings efetivo, mas a
   edição dos valores personalizados por plano ainda não tem tela (só `PUT .../settings`).
 
 1. **Rename** `VehiclePlan.metrics → settings` (isolado, antes de tudo).

@@ -21,6 +21,8 @@ export interface CrewCalcBlock {
   id:       string
   branchId: string | null
   window:   { startMinutes: number; endMinutes: number } | null
+  // where the vehicle needs a driver — see BlockReliefData.serviceSpans
+  serviceSpans: { startMinutes: number; endMinutes: number }[]
   points:   ReliefPoint[]
   trips:    { departureMinutes: number; arrivalMinutes: number; lineId: string }[]
 }
@@ -253,18 +255,23 @@ export function computeCrewPlan(input: {
   }
 
   // ── coverage (DRIVER only) ─────────────────────────────────────────────────
+  // only the block's service spans need a driver — its own intervals and time parked at
+  // the depot don't (blockMinutes/coveredMinutes are measured on that same basis)
   const uncovered: CrewPlanSummary['uncovered'] = []
   let blockMinutes = 0, coveredMinutes = 0
   for (const b of input.blocks) {
-    if (!b.window) continue
-    blockMinutes += dur(b.window)
-    let cursor = b.window.startMinutes
-    for (const s of mergeSpans(driverCoverage.get(b.id) ?? [])) {
-      if (s.startMinutes > cursor) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: s.startMinutes })
-      coveredMinutes += Math.min(s.endMinutes, b.window.endMinutes) - Math.max(s.startMinutes, b.window.startMinutes)
-      cursor = Math.max(cursor, s.endMinutes)
+    const coverage = mergeSpans(driverCoverage.get(b.id) ?? [])
+    for (const span of b.serviceSpans) {
+      blockMinutes += dur(span)
+      let cursor = span.startMinutes
+      for (const s of coverage) {
+        if (s.endMinutes <= cursor || s.startMinutes >= span.endMinutes) continue
+        if (s.startMinutes > cursor) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: s.startMinutes })
+        coveredMinutes += Math.min(s.endMinutes, span.endMinutes) - Math.max(s.startMinutes, cursor)
+        cursor = Math.min(span.endMinutes, Math.max(cursor, s.endMinutes))
+      }
+      if (cursor < span.endMinutes) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: span.endMinutes })
     }
-    if (cursor < b.window.endMinutes) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: b.window.endMinutes })
   }
 
   // ── plan-level criteria ────────────────────────────────────────────────────

@@ -10,6 +10,8 @@ import { CrewPlanService } from './crew-plan.service'
 import { loadBlockRelief, isReliefPoint, BlockReliefData } from './relief-points'
 import { assertTimeWindow, assertNoDutyOverlap, overlaps } from './duty-occupancy.utils'
 
+const PLACEHOLDER_SEQUENCE = -1_000_000
+
 type PieceInput = {
   dutyId: string; vehicleBlockId: string | null
   startMinutes: number; endMinutes: number; startLocalityId: string; endLocalityId: string
@@ -37,8 +39,9 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     await this.validate(input)
 
     const created = await this.prisma.$transaction(async (tx) => {
-      // negative placeholder avoids clashing with @@unique([dutyId, sequence]) until renumbered
-      const piece = await tx.dutyPiece.create({ data: { ...this.toData(input), sequence: -1 } })
+      // placeholder outside both the final (1..n) and renumber's first-pass (-1..-n) ranges,
+      // so it can't clash with @@unique([dutyId, sequence]) until renumbered
+      const piece = await tx.dutyPiece.create({ data: { ...this.toData(input), sequence: PLACEHOLDER_SEQUENCE } })
       await this.renumber(tx, input.dutyId)
       return piece
     })
