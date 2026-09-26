@@ -55,6 +55,9 @@ export class DutyActivityService extends BaseService<DutyActivity, CreateDutyAct
     if (input.type === 'BREAK' && !input.intervalTypeId) throw new BadRequestException('Intervalo precisa de um tipo de intervalo')
     const duty = await this.prisma.duty.findUnique({ where: { id: input.dutyId }, select: { id: true } })
     if (!duty) throw new BadRequestException('Jornada não encontrada')
-    await assertNoDutyOverlap(this.prisma, input.dutyId, input.startMinutes, input.endMinutes, { activityId })
+    await assertNoDutyOverlap(
+      this.prisma, input.dutyId, { startMinutes: input.startMinutes, endMinutes: input.endMinutes },
+      { kind: input.type === 'BREAK' ? 'break' : 'activity' }, { activityId },
+    )
   }
 }

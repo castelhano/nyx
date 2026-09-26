@@ -69,7 +69,7 @@ export function computeBlockRelief(input: {
   return { window, serviceSpans: window ? subtractSpans(window, idle) : [], points }
 }
 
-function subtractSpans(from: Span, cut: Span[]): Span[] {
+export function subtractSpans(from: Span, cut: Span[]): Span[] {
   const out: Span[] = []
   let cursor = from.startMinutes
   for (const c of [...cut].sort((a, b) => a.startMinutes - b.startMinutes)) {

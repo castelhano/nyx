@@ -122,7 +122,10 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
       throw new BadRequestException('Fim da pegada não é um ponto de troca válido do bloco')
     }
 
-    await assertNoDutyOverlap(this.prisma, input.dutyId, input.startMinutes, input.endMinutes, { pieceId })
+    await assertNoDutyOverlap(
+      this.prisma, input.dutyId, { startMinutes: input.startMinutes, endMinutes: input.endMinutes },
+      { kind: 'piece', blockId: input.vehicleBlockId }, { pieceId },
+    )
 
     // same role covering the same span of the same block — tolerance = handoverMinutes.
     // Stale pieces don't count (they no longer cover anything, see "Sinalização").

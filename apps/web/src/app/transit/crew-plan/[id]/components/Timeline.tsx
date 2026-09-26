@@ -6,7 +6,7 @@ import { fmtTime } from '../board.types'
 // Shared by the vehicle and duty views: the time range, the sticky hour ruler and the hour
 // grid lines. Minutes are the operational day's (> 1440 = after midnight).
 
-export const LABEL_W = 88
+export const LABEL_W = 116
 
 export interface TimeRange { start: number; end: number }
 

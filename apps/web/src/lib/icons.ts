@@ -32,6 +32,7 @@ const iconNames = [
   'ChevronRight',
   'ChevronUp',
   'ChevronsUpDown',
+  'Circle',
   'ClipboardList',
   'Clock',
   'Coffee',

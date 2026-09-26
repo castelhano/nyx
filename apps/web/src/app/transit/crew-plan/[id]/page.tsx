@@ -16,14 +16,15 @@ import { extractError }     from '@/lib/utils'
 import type { CrewBoardData, BoardBlock, BoardDuty } from './board.types'
 import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
+import { BreakModal, type BreakDraft } from './components/BreakModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
 import { CrewSettingsModal } from './components/CrewSettingsModal'
 import { DutyBoard } from './components/DutyBoard'
-import { useTimeRange } from './components/Timeline'
+import { useTimeRange, LABEL_W } from './components/Timeline'
 import { CrewFilterBar } from './components/CrewFilterBar'
 import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, type CrewFilter } from './filters'
-import { lineColorMap } from './board.types'
+import { lineColorMap, dutyLineCodes } from './board.types'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
@@ -63,6 +64,7 @@ export default function CrewPlanPage() {
   // the first load of each crew plan asks the server to recalculate (picks up upstream
   // changes); later refetches follow our own writes, which already recalculated
   const recalculated = useRef(new Set<string>())
+  const boardScroll  = useRef<HTMLDivElement>(null)
   const { data, error, refetch } = useQuery<CrewBoardData>({
     queryKey: ['transit', 'crew-plan', id, 'board'],
     queryFn:  async () => {
@@ -80,6 +82,7 @@ export default function CrewPlanPage() {
   const [selectedDutyId, setSelectedDutyId] = useState<string | null>(null)
   const [draftStart, setDraftStart]         = useState<PieceDraftStart | null>(null)
   const [assignDraft, setAssignDraft]       = useState<{ block: BoardBlock; start: ReliefPoint; end: ReliefPoint } | null>(null)
+  const [breakDraft, setBreakDraft]         = useState<BreakDraft | null>(null)
   const [saving, setSaving]                 = useState(false)
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
@@ -128,10 +131,42 @@ export default function CrewPlanPage() {
   ], [data])
   const range = useTimeRange(timeSpans)
 
+  // selecting from the duty list: bring the duty into view, roughly centered — its own row on
+  // the duty view, its first vehicle's row on the vehicle view (rows hidden by the filter:
+  // horizontal only); a duty wider than the screen is aligned by its start instead
+  function focusDuty(duty: BoardDuty) {
+    setSelectedDutyId(duty.id)
+    const el = boardScroll.current
+    const spans = [...duty.pieces.filter(p => !p.isStale), ...duty.activities]
+    if (!el || spans.length === 0) return
+    const start = Math.min(...spans.map(s => s.startMinutes)), end = Math.max(...spans.map(s => s.endMinutes))
+    const px    = ZOOMS[zoomIdx]
+    const viewW = el.clientWidth - LABEL_W
+    const left  = (end - start) * px > viewW - 48
+      ? (start - range.start) * px - 24
+      : ((start + end) / 2 - range.start) * px - viewW / 2
+    const rowId = view === 'duties' ? duty.id : duty.pieces.find(p => !p.isStale && p.vehicleBlockId)?.vehicleBlockId
+    const row   = rowId ? el.querySelector<HTMLElement>(`[data-row="${rowId}"]`) : null
+    const top   = row ? row.offsetTop - (el.clientHeight - row.offsetHeight) / 2 : el.scrollTop
+    el.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: 'smooth' })
+  }
+
   const lineColors = useMemo(
     () => showLineColors && data ? lineColorMap(data.lineCodes) : null,
     [showLineColors, data],
   )
+
+  const blockById = useMemo(() => new Map((data?.blocks ?? []).map(b => [b.id, b])), [data?.blocks])
+
+  // lines each duty operates (panel, filter) and the lines the plan runs (filter options)
+  const dutyLines = useMemo(
+    () => new Map((data?.duties ?? []).map(d => [d.id, dutyLineCodes(d, blockById, data?.lineCodes ?? [])])),
+    [data, blockById],
+  )
+  const planLineCodes = useMemo(() => {
+    const used = new Set((data?.blocks ?? []).flatMap(b => b.trips.map(t => t.lineCode)))
+    return (data?.lineCodes ?? []).filter(c => used.has(c))
+  }, [data])
 
   // rows left after the filter (pinned rows always stay); count excludes pins
   const { visibleBlocks, visibleDuties, matchCount } = useMemo(() => {
@@ -143,10 +178,10 @@ export default function CrewPlanPage() {
       const ids = new Set(matched.map(b => b.id))
       return { visibleBlocks: blocks.filter(b => ids.has(b.id) || pinnedBlockIds.has(b.id)), visibleDuties: duties, matchCount: matched.length }
     }
-    const matched = duties.filter(d => dutyMatches(filter, d))
+    const matched = duties.filter(d => dutyMatches(filter, d, dutyLines.get(d.id) ?? []))
     const ids = new Set(matched.map(d => d.id))
     return { visibleBlocks: blocks, visibleDuties: duties.filter(d => ids.has(d.id) || pinnedDutyIds.has(d.id)), matchCount: matched.length }
-  }, [data, filter, filterOpen, view, pinnedBlockIds, pinnedDutyIds])
+  }, [data, dutyLines, filter, filterOpen, view, pinnedBlockIds, pinnedDutyIds])
 
   const localityName = useMemo(() => {
     const map = new Map((data?.localities ?? []).map(l => [l.id, l.abbr || l.name]))
@@ -279,6 +314,13 @@ export default function CrewPlanPage() {
     if (!selectedDuty) return false
     const res = await run(() => api('/transit/duty-activity', { method: 'POST', body: JSON.stringify({ dutyId: selectedDuty.id, ...input }) }).then(() => true))
     return !!res
+  }
+
+  // break inside a piece, from the duty view's idle stretches
+  async function handleAddBreak(input: ActivityInput) {
+    if (!breakDraft) return
+    const res = await run(() => api('/transit/duty-activity', { method: 'POST', body: JSON.stringify({ dutyId: breakDraft.duty.id, ...input }) }).then(() => true), 'Intervalo adicionado')
+    if (res) setBreakDraft(null)
   }
 
   async function handleDeleteActivity(activityId: string) {
@@ -426,7 +468,7 @@ export default function CrewPlanPage() {
   useShortcut('esc', () => {
     if (draftStart) setDraftStart(null)
     else if (selectedDutyId) setSelectedDutyId(null)
-  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !settingsOpen })
+  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !breakDraft && !settingsOpen })
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -456,6 +498,15 @@ export default function CrewPlanPage() {
           saving={saving}
           onConfirm={(t) => void handleAssign(t)}
           onClose={() => setAssignDraft(null)}
+        />
+      )}
+
+      {breakDraft && (
+        <BreakModal
+          draft={breakDraft}
+          saving={saving}
+          onConfirm={(input) => void handleAddBreak(input)}
+          onClose={() => setBreakDraft(null)}
         />
       )}
 
@@ -502,6 +553,7 @@ export default function CrewPlanPage() {
                 onChange={setFilter}
                 matchCount={matchCount}
                 operators={data.operators}
+                lineCodes={planLineCodes}
                 onClose={toggleFilter}
               />
             </div>
@@ -511,7 +563,7 @@ export default function CrewPlanPage() {
             view === 'duties' ? (
               <DutyBoard
                 range={range}
-                blocks={data.blocks}
+                blockById={blockById}
                 duties={visibleDuties}
                 signOnMinutes={data.plan.signOnMinutes}
                 signOffMinutes={data.plan.signOffMinutes}
@@ -519,6 +571,10 @@ export default function CrewPlanPage() {
                 pxPerMinute={ZOOMS[zoomIdx]}
                 selectedDutyId={selectedDutyId}
                 onSelectDuty={(duty) => setSelectedDutyId(duty.id)}
+                lineColors={lineColors}
+                canEdit={canEdit && !saving}
+                onSlotClick={(duty, slot) => { setSelectedDutyId(duty.id); setBreakDraft({ duty, ...slot }) }}
+                scrollRef={boardScroll}
                 pinnable={filterOpen}
                 pinnedIds={pinnedDutyIds}
                 onTogglePin={(dutyId) => togglePin(setPinnedDutyIds, dutyId)}
@@ -537,6 +593,7 @@ export default function CrewPlanPage() {
                 onPointClick={handlePointClick}
                 onPieceClick={(duty) => setSelectedDutyId(duty.id)}
                 lineColors={lineColors}
+                scrollRef={boardScroll}
                 pinnable={filterOpen}
                 pinnedIds={pinnedBlockIds}
                 onTogglePin={(blockId) => togglePin(setPinnedBlockIds, blockId)}
@@ -553,7 +610,8 @@ export default function CrewPlanPage() {
         {data && (selectedDuty ? (
           <DutyPanel
             duty={selectedDuty}
-            blocks={data.blocks}
+            blockById={blockById}
+            lineCodes={dutyLines.get(selectedDuty.id) ?? []}
             operators={data.operators}
             localityName={localityName}
             canEdit={canEdit}
@@ -569,7 +627,7 @@ export default function CrewPlanPage() {
           <PlanPanel
             data={data}
             canEdit={canEdit}
-            onSelect={(d: BoardDuty) => setSelectedDutyId(d.id)}
+            onSelect={focusDuty}
             onCreate={(role) => void handleCreateDuty(role)}
           />
         ))}

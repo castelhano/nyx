@@ -10,6 +10,8 @@ export interface CrewFilter {
   timeRelation:  'after' | 'before'
   minutes:       number | null
   branchId:      string | null
+  // vehicles running / duties operating this line
+  lineCode:      string | null
   // vehicle view
   uncoveredOnly: boolean
   // duty view
@@ -17,20 +19,21 @@ export interface CrewFilter {
   kind:          BoardDuty['kind'] | null
   withIssues:    boolean
   staleOnly:     boolean
+  multiLine:     boolean
 }
 
 export const EMPTY_FILTER: CrewFilter = {
-  timeField: 'start', timeRelation: 'after', minutes: null, branchId: null,
-  uncoveredOnly: false, role: null, kind: null, withIssues: false, staleOnly: false,
+  timeField: 'start', timeRelation: 'after', minutes: null, branchId: null, lineCode: null,
+  uncoveredOnly: false, role: null, kind: null, withIssues: false, staleOnly: false, multiLine: false,
 }
 
 export type CrewView = 'vehicles' | 'duties'
 
 export function isFilterActive(f: CrewFilter, view: CrewView): boolean {
-  if (f.minutes != null || f.branchId) return true
+  if (f.minutes != null || f.branchId || f.lineCode) return true
   return view === 'vehicles'
     ? f.uncoveredOnly
-    : !!f.role || !!f.kind || f.withIssues || f.staleOnly
+    : !!f.role || !!f.kind || f.withIssues || f.staleOnly || f.multiLine
 }
 
 function matchesTime(f: CrewFilter, start: number | null, end: number | null): boolean {
@@ -43,11 +46,13 @@ function matchesTime(f: CrewFilter, start: number | null, end: number | null): b
 export function blockMatches(f: CrewFilter, block: BoardBlock, hasUncovered: boolean): boolean {
   if (!matchesTime(f, block.window?.startMinutes ?? null, block.window?.endMinutes ?? null)) return false
   if (f.branchId && block.branchId !== f.branchId) return false
+  if (f.lineCode && !block.trips.some(t => t.lineCode === f.lineCode)) return false
   if (f.uncoveredOnly && !hasUncovered) return false
   return true
 }
 
-export function dutyMatches(f: CrewFilter, duty: BoardDuty): boolean {
+// lineCodes: the lines the duty operates (dutyLineCodes)
+export function dutyMatches(f: CrewFilter, duty: BoardDuty, lineCodes: string[]): boolean {
   const events = [...duty.pieces, ...duty.activities]
   const start  = events.length ? Math.min(...events.map(e => e.startMinutes)) : null
   const end    = events.length ? Math.max(...events.map(e => e.endMinutes)) : null
@@ -57,5 +62,7 @@ export function dutyMatches(f: CrewFilter, duty: BoardDuty): boolean {
   if (f.kind && duty.kind !== f.kind) return false
   if (f.withIssues && !duty.hasIssues) return false
   if (f.staleOnly && !duty.isStale) return false
+  if (f.lineCode && !lineCodes.includes(f.lineCode)) return false
+  if (f.multiLine && lineCodes.length < 2) return false
   return true
 }

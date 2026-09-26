@@ -59,7 +59,8 @@ Status: **consolidado** — sem dúvidas em aberto (2026-09-26).
    (bloco − pegadas) é **sempre derivada** — trecho sem pegada `DRIVER` = "descoberto".
 
 7. **Intervalo de veículo ≠ intervalo de tripulação.** `BlockInterval` é o carro parado; a
-   refeição do motorista pode ocorrer com o carro rodando. `DutyActivity` é separada.
+   refeição do motorista pode ocorrer com o carro rodando. `DutyActivity` é separada — intervalo
+   da jornada é sempre lançado manualmente, nunca deduzido do `BlockInterval`.
 
 8. **Regras de jornada (CCT) por `Scope` de transit** — todas as empresas do Scope seguem a
    mesma CCT, sem replicar regra por branch. Resolução:
@@ -363,7 +364,9 @@ Tudo que torna o dado **inconsistente**, não "fora da regra":
 - Início/fim da pegada fora de ponto de troca válido (pontas da rota ou `allowsCrewChange`
   da viagem em curso naquele minuto). A UI já só oferece pontos válidos.
 - Pegada fora da janela do bloco.
-- Pegadas da mesma jornada sobrepostas entre si ou com atividades da mesma jornada.
+- Pegadas da mesma jornada sobrepostas entre si ou com atividades da mesma jornada — exceto
+  `BREAK` dentro de uma pegada, desde que inteiro no tempo parado do carro (fora de viagens e
+  deadruns do bloco): o tripulante descansa com o carro (`duty-occupancy.utils.ts`).
 - Duas pegadas do **mesmo papel** cobrindo o mesmo trecho do mesmo bloco (tolerância
   `handoverMinutes`).
 - `BREAK` sem `intervalTypeId`.
@@ -443,12 +446,16 @@ Decisões tomadas na implementação (fases 4–6):
   as linhas cujo estado derivado mudou.
 - **Apresentação/encerramento implícitos**: sem atividade `SIGN_ON`/`SIGN_OFF` explícita, o cálculo
   assume `signOnMinutes`/`signOffMinutes` antes da 1ª / depois da última pegada.
-- **Trabalhado × pago**: trabalhado = pegadas + atividades não-intervalo + apresentação/encerramento;
+- **Intervalos**: só atividades `BREAK`, lançadas manualmente — no vão entre pegadas ou dentro de uma
+  pegada (tempo parado do carro). Intervalo dentro da pegada não descobre o carro.
+- **Trabalhado × pago**: trabalhado = pegadas menos os intervalos dentro delas + atividades
+  não-intervalo + apresentação/encerramento;
   pago = trabalhado + intervalos pagos (`IntervalType.isPaid`); extra = trabalhado acima de
   `workTime.idealMin`.
 - **Aplicabilidade das regras por tipo de jornada**: `WORK_TIME` não vale para meia jornada/reserva;
   `MEAL_BREAK` só para corrida; `SPLIT_INTERVAL` só para dupla pegada (maior intervalo entre
-  pegadas). Direção contínua = soma das pegadas encadeadas até um `BREAK` entre elas.
+  pegadas). Direção contínua = soma dos trechos trabalhados (pegadas menos intervalos) encadeados
+  até um intervalo entre eles — no vão entre pegadas ou dentro de uma pegada.
 - **Cobertura só onde o carro está em serviço**: exige motorista na janela do bloco menos os
   intervalos do próprio carro (`BlockInterval`) e menos o tempo recolhido na garagem entre um
   deadrun `RETURN` e um `ACCESS` seguinte (`serviceSpans` em `relief-points.ts`). Descoberto,
@@ -466,8 +473,11 @@ Decisões tomadas na implementação (fases 4–6):
 - **Duas visões** (`?view=duties` na URL, seletor "Carros | Jornadas" ao lado de "Veículos"): por
   carro (pegadas coloridas por jornada, trechos sem motorista) e por jornada (uma linha por jornada,
   pegadas coloridas por carro para evidenciar trocas de carro, atividades em estilo neutro, "cabo"
-  de apresentação/encerramento implícitos, pegadas órfãs como "Sem bloco"). A visão por jornada é
-  só leitura/seleção — pegadas são criadas pela visão de carros; a edição fica no painel lateral.
+  de apresentação/encerramento implícitos, pegadas órfãs como "Sem bloco", faixa de viagens sob
+  cada pegada e intervalos hachurados). Na visão por jornada, clicar num trecho livre — tempo parado
+  do carro na faixa de viagens, ou o vão entre duas pegadas — insere um intervalo (modal
+  pré-preenchido com o trecho e, como sugestão, o tipo do intervalo do carro se houver); pegadas são criadas pela visão de carros; o resto da edição
+  fica no painel lateral.
 - **Filtro (F7)** no mesmo formato da barra do plano de veículos, com critérios por visão (carros:
   início/término, operador, "sem motorista"; jornadas: início/término, operador, papel, tipo,
   "com pendências", "desatualizadas") combinados em E; linhas podem ser fixadas (olho) e continuam

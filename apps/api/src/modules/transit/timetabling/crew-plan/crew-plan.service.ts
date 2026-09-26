@@ -239,7 +239,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
             },
           },
           blockDeadruns:  { select: { id: true, type: true, departureMinutes: true, arrivalMinutes: true } },
-          blockIntervals: { select: { id: true, departureMinutes: true, arrivalMinutes: true } },
+          blockIntervals: { select: { id: true, departureMinutes: true, arrivalMinutes: true, intervalTypeId: true, intervalType: { select: { name: true } } } },
         },
       }),
       this.prisma.duty.findMany({
@@ -299,7 +299,10 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
             }))
             .sort((x, y) => x.departureMinutes - y.departureMinutes),
           deadruns:  b.blockDeadruns,
-          intervals: b.blockIntervals,
+          intervals: b.blockIntervals.map(i => ({
+            id: i.id, departureMinutes: i.departureMinutes, arrivalMinutes: i.arrivalMinutes,
+            intervalTypeId: i.intervalTypeId, intervalTypeName: i.intervalType.name,
+          })),
         }
       }),
       duties: duties.map(d => ({

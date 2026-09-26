@@ -8,7 +8,7 @@ import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
 import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
 import { PinToggle } from './CrewFilterBar'
 import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, LINE_BG_CLASS, STALE_LABEL } from '../board.types'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, Ref } from 'react'
 
 // One row per vehicle block: the vehicle lane on top (trips, deadruns, intervals and the
 // relief points where a piece may start/end) and the crew lane below (DRIVER pieces
@@ -35,6 +35,7 @@ interface Props {
   onPieceClick:   (duty: BoardDuty, piece: BoardPiece) => void
   // line code → color vars when "Cores das linhas" is on; null = neutral trips
   lineColors:     Map<string, CSSProperties> | null
+  scrollRef:      Ref<HTMLDivElement>
   // pin toggles shown while the filter bar is open
   pinnable:       boolean
   pinnedIds:      Set<string>
@@ -45,7 +46,7 @@ const ROW_H   = 44
 
 export function CrewBoard({
   range, blocks, duties, uncovered, localityName, pxPerMinute, selectedDutyId, draftStart, canEdit, onPointClick, onPieceClick,
-  lineColors, pinnable, pinnedIds, onTogglePin,
+  lineColors, scrollRef, pinnable, pinnedIds, onTogglePin,
 }: Props) {
   // relief points are only rendered for the hovered row (or the row being picked on) —
   // a plan easily has ~200 blocks × ~100 points each
@@ -82,7 +83,7 @@ export function CrewBoard({
   const width = (range.end - range.start) * pxPerMinute
 
   return (
-    <div className="h-full overflow-auto">
+    <div ref={scrollRef} className="h-full overflow-auto">
       <div style={{ width: LABEL_W + width }} className="relative">
         <Ruler range={range} pxPerMinute={pxPerMinute} />
 
@@ -96,6 +97,7 @@ export function CrewBoard({
           return (
             <div
               key={block.id}
+              data-row={block.id}
               className={cn('flex border-b border-border/60', isDraftRow && 'bg-accent/30')}
               style={{ height: ROW_H }}
               onMouseEnter={() => setHoveredBlockId(block.id)}
@@ -235,7 +237,7 @@ function PieceBar({ duty, piece, top, height, left, width, selected, hasIssue, l
     >
       {height >= 12 && <span className="truncate">{label} • {duration}</span>}
       {height >= 12 && hasIssue && !piece.isStale && (
-        <Icons.AlertTriangle className="w-3 h-3 shrink-0 text-amber-200" aria-label="Com pendências" />
+        <Icons.Circle className="w-2.5 h-2.5 shrink-0 fill-current text-amber-200" aria-label="Com pendências" />
       )}
     </button>
   )

@@ -1,16 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { formatDutyNumber, CREW_ROLES, type CrewRole } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Icons } from '@/lib/icons'
-import { apiFetch } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import type { BoardDuty, BoardBlock, BoardActivity, CrewBoardData } from '../board.types'
+import { useIntervalTypes } from './BreakModal'
 import {
-  fmtTime, fmtDuration, parseTime, dutyColorVars, SWATCH_BG_CLASS,
+  fmtTime, fmtDuration, parseTime, dutyColorVars, pieceTrips, SWATCH_BG_CLASS,
   ROLE_LABEL, KIND_LABEL, ACTIVITY_LABEL, ISSUE_LABEL, STALE_LABEL,
 } from '../board.types'
 
@@ -32,7 +31,9 @@ export interface ActivityInput {
 
 interface Props {
   duty:         BoardDuty
-  blocks:       BoardBlock[]
+  blockById:    Map<string, BoardBlock>
+  // lines the duty operates (dutyLineCodes)
+  lineCodes:    string[]
   operators:    CrewBoardData['operators']
   localityName: (id: string) => string
   canEdit:      boolean
@@ -53,7 +54,7 @@ export function DutyPanel(props: Props) {
 }
 
 function DutyPanelInner({
-  duty, blocks, operators, localityName, canEdit,
+  duty, blockById, lineCodes, operators, localityName, canEdit,
   onSave, onDelete, onDeletePiece, onAddActivity, onDeleteActivity, onClose,
 }: Props) {
   const [role, setRole]         = useState<CrewRole>(duty.role)
@@ -61,7 +62,7 @@ function DutyPanelInner({
   const [branchId, setBranchId] = useState(duty.branchId ?? '')
   const [notes, setNotes]       = useState(duty.notes ?? '')
 
-  const blockNumber = (id: string | null) => blocks.find(b => b.id === id)?.blockNumber
+  const blockOf = (id: string | null) => (id ? blockById.get(id) : undefined)
   const s = duty.summary
 
   function handleSubmit(e: React.FormEvent) {
@@ -112,6 +113,10 @@ function DutyPanelInner({
 
         {s && (
           <Section title="Resumo">
+            <p className="text-xs">
+              <span className="text-muted-foreground">Linhas: </span>
+              <span className="font-medium">{lineCodes.length ? lineCodes.join(', ') : '—'}</span>
+            </p>
             <div className="grid grid-cols-3 gap-2 text-xs">
               <Stat label="Trabalhado" value={fmtDuration(s.workMinutes)} />
               <Stat label="Pago"       value={fmtDuration(s.paidMinutes)} />
@@ -145,11 +150,15 @@ function DutyPanelInner({
         <Section title="Pegadas">
           {duty.pieces.length === 0 && <p className="text-xs text-muted-foreground">Clique num ponto de troca de um carro para adicionar.</p>}
           <ul className="space-y-1">
-            {duty.pieces.map(p => (
+            {duty.pieces.map(p => {
+              const block = blockOf(p.vehicleBlockId)
+              const lines = [...new Set(pieceTrips(p, block).map(t => t.lineCode))]
+              return (
               <li key={p.id} className={cn('flex items-center justify-between gap-2 text-xs rounded px-2 py-1 bg-muted/40', p.isStale && 'border border-dashed border-red-600')}>
                 <span className="min-w-0">
-                  <span className="font-medium">{blockNumber(p.vehicleBlockId) != null ? `Carro ${blockNumber(p.vehicleBlockId)}` : 'Sem bloco'}</span>
-                  {' · '}{fmtTime(p.startMinutes)} {localityName(p.startLocalityId)} → {fmtTime(p.endMinutes)} {localityName(p.endLocalityId)}
+                  <span className="font-medium">{block ? `Carro ${block.blockNumber}` : 'Sem bloco'}</span>
+                  {lines.length > 0 && <span className="text-muted-foreground"> · {lines.join(', ')}</span>}
+                  <span className="block">{fmtTime(p.startMinutes)} {localityName(p.startLocalityId)} → {fmtTime(p.endMinutes)} {localityName(p.endLocalityId)}</span>
                   {p.isStale && p.staleReason && <span className="block text-red-600 dark:text-red-400">{STALE_LABEL[p.staleReason]}</span>}
                 </span>
                 {canEdit && (
@@ -158,7 +167,8 @@ function DutyPanelInner({
                   </button>
                 )}
               </li>
-            ))}
+              )
+            })}
           </ul>
         </Section>
 
@@ -198,16 +208,7 @@ function AddActivityForm({ onAdd }: { onAdd: (input: ActivityInput) => Promise<b
   const [start, setStart] = useState('')
   const [end, setEnd]     = useState('')
 
-  const { data: intervalTypes = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['transit', 'interval-type', 'all'],
-    queryFn:  async () => {
-      const res = await apiFetch('/transit/interval-type?pageSize=999')
-      if (!res.ok) return []
-      const json = await res.json()
-      return json.data ?? []
-    },
-    staleTime: 60_000,
-  })
+  const { data: intervalTypes = [] } = useIntervalTypes()
 
   const startMin = parseTime(start), endMin = parseTime(end)
   const valid = startMin != null && endMin != null && endMin > startMin && (type !== 'BREAK' || !!intervalTypeId)

@@ -2,7 +2,7 @@ import type {
   CrewSettings, CrewPlanSummary, DutySummary, DutyIssue, DutyPieceStaleReason, RangeCriterion, ReliefPoint,
 } from '@nyx/schemas'
 import { rangeV, anchoredV, SCORE_SCALE } from '../vehicle-plan/scoring/plan-scoring.calc'
-import { isReliefPoint } from './relief-points'
+import { isReliefPoint, subtractSpans } from './relief-points'
 
 // Pure crew-plan calculation (no Prisma) — the CrewPlan counterpart of plan-scoring.calc.ts.
 // Produces, from persisted state: each piece's staleness against its block, each duty's
@@ -14,8 +14,12 @@ import { isReliefPoint } from './relief-points'
 //   they used to cover shows up as uncovered, the duty shows up as stale.
 // - When a duty has no explicit SIGN_ON/SIGN_OFF activity, settings.signOnMinutes /
 //   signOffMinutes are assumed before its first / after its last piece.
-// - workMinutes = pieces + non-break activities + implicit sign-on/off; paidMinutes adds
-//   paid breaks (IntervalType.isPaid); overtime = workMinutes above workTime.idealMin.
+// - Breaks are the BREAK activities only (the vehicle's own intervals are never assumed as
+//   crew breaks). A break may sit inside a piece (idle time only, enforced by
+//   duty-occupancy.utils.ts): that time is rest, not work, but the vehicle stays covered.
+// - workMinutes = pieces minus the breaks inside them + non-break activities + implicit
+//   sign-on/off; paidMinutes adds paid breaks (IntervalType.isPaid); overtime = workMinutes
+//   above workTime.idealMin.
 
 export interface CrewCalcBlock {
   id:       string
@@ -144,15 +148,17 @@ export function computeCrewPlan(input: {
     const last  = events.length ? Math.max(...events.map(e => e.endMinutes), live.length ? live[live.length - 1].endMinutes + implicitOff : -Infinity) : 0
 
     const breaks       = acts.filter(a => a.type === 'BREAK')
-    const breakMinutes = breaks.reduce((s, a) => s + dur(a), 0)
-    const paidBreak    = breaks.filter(a => a.isPaidBreak).reduce((s, a) => s + dur(a), 0)
-    const pieceMinutes = live.reduce((s, p) => s + dur(p), 0)
+    const breakMinutes = breaks.reduce((s, b) => s + dur(b), 0)
+    const paidBreak    = breaks.filter(b => b.isPaidBreak).reduce((s, b) => s + dur(b), 0)
+    // the time actually worked on vehicles: live pieces minus the breaks taken inside them
+    const segments     = live.flatMap(p => subtractSpans(p, breaks).map(s => ({ ...s, pieceId: p.id })))
+    const pieceMinutes = segments.reduce((s, sg) => s + dur(sg), 0)
     const otherActs    = acts.filter(a => a.type !== 'BREAK')
     const workMinutes  = pieceMinutes + otherActs.reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff
     const paidMinutes  = workMinutes + paidBreak
     const overtime     = Math.max(0, workMinutes - range.workTime.idealMin)
 
-    const workSpans: Span[] = [...live, ...otherActs]
+    const workSpans: Span[] = [...segments, ...otherActs]
     if (implicitOn)  workSpans.push({ startMinutes: live[0].startMinutes - implicitOn, endMinutes: live[0].startMinutes })
     if (implicitOff) workSpans.push({ startMinutes: live[live.length - 1].endMinutes, endMinutes: live[live.length - 1].endMinutes + implicitOff })
     const nightMinutes = workSpans.reduce((s, sp) => s + nightOverlap(sp, settings.nightStartHour, settings.nightEndHour), 0)
@@ -193,15 +199,16 @@ export function computeCrewPlan(input: {
       push(rangeIssue('SPLIT_INTERVAL', gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0, range.splitInterval))
     }
 
-    // continuous driving: pieces chained until a BREAK activity sits in the gap between them
+    // continuous driving: worked segments chained until a break sits between them (in the
+    // gap between pieces or inside a piece)
+    const restsBetween = (prev: Span, next: Span) => breaks.some(b => b.startMinutes < next.startMinutes && b.endMinutes > prev.endMinutes)
     let chain = 0
-    for (let i = 0; i < live.length; i++) {
-      const gap = i > 0 ? gaps[i - 1] : null
-      const rested = gap && breaks.some(b => b.startMinutes < gap.next.startMinutes && b.endMinutes > gap.prev.endMinutes)
-      chain = rested || i === 0 ? dur(live[i]) : chain + dur(live[i])
-      const nextRests = i === live.length - 1 || breaks.some(b => b.startMinutes < live[i + 1].startMinutes && b.endMinutes > live[i].endMinutes)
-      if (nextRests && chain > settings.maxContinuousDrivingMinutes) {
-        push({ code: 'CONTINUOUS_DRIVING', severity: 'error', value: chain, limit: settings.maxContinuousDrivingMinutes, pieceId: live[i].id })
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i]
+      chain = i === 0 || restsBetween(segments[i - 1], seg) ? dur(seg) : chain + dur(seg)
+      const endsChain = i === segments.length - 1 || restsBetween(seg, segments[i + 1])
+      if (endsChain && chain > settings.maxContinuousDrivingMinutes) {
+        push({ code: 'CONTINUOUS_DRIVING', severity: 'error', value: chain, limit: settings.maxContinuousDrivingMinutes, pieceId: seg.pieceId })
       }
     }
 

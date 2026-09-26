@@ -50,7 +50,7 @@ export interface BoardBlock {
   points:      ReliefPoint[]
   trips:       { id: string; departureMinutes: number; arrivalMinutes: number; lineCode: string; direction: string }[]
   deadruns:    { id: string; type: string; departureMinutes: number; arrivalMinutes: number }[]
-  intervals:   { id: string; departureMinutes: number; arrivalMinutes: number }[]
+  intervals:   { id: string; departureMinutes: number; arrivalMinutes: number; intervalTypeId: string; intervalTypeName: string }[]
 }
 
 export interface CrewBoardData {
@@ -104,6 +104,8 @@ export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   TRAVEL_GAP:         'Deslocamento entre pegadas',
   BRANCH_MISMATCH:    'Bloco de outro operador',
 }
+
+export const DIRECTION_LABEL: Record<string, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 
 export const STALE_LABEL: Record<NonNullable<BoardPiece['staleReason']>, string> = {
   BLOCK_REMOVED:        'Bloco removido do planejamento',
@@ -161,4 +163,65 @@ export function lineColorMap(lineCodes: string[]): Map<string, CSSProperties> {
     '--line-bg':      swatchColor(i, 'soft', 'light'),
     '--line-bg-dark': swatchColor(i, 'soft', 'dark'),
   } as CSSProperties]))
+}
+
+// block trips a piece operates — overlap, not containment, since a piece may start/end
+// mid-trip at a relief stop; stale pieces operate nothing
+export function pieceTrips(piece: BoardPiece, block: BoardBlock | undefined): BoardBlock['trips'] {
+  if (!block || piece.isStale) return []
+  return block.trips.filter(t => t.departureMinutes < piece.endMinutes && t.arrivalMinutes > piece.startMinutes)
+}
+
+// distinct line codes a duty operates, in the Scope's line order (board lineCodes)
+export function dutyLineCodes(duty: BoardDuty, blockById: Map<string, BoardBlock>, lineCodes: string[]): string[] {
+  const codes = new Set(duty.pieces.flatMap(p =>
+    pieceTrips(p, p.vehicleBlockId ? blockById.get(p.vehicleBlockId) : undefined).map(t => t.lineCode)))
+  return lineCodes.filter(c => codes.has(c))
+}
+
+type Span = { startMinutes: number; endMinutes: number }
+
+function subtract(from: Span, cut: Span[]): Span[] {
+  const out: Span[] = []
+  let cursor = from.startMinutes
+  for (const c of [...cut].sort((a, b) => a.startMinutes - b.startMinutes)) {
+    if (c.endMinutes <= cursor || c.startMinutes >= from.endMinutes) continue
+    if (c.startMinutes > cursor) out.push({ startMinutes: cursor, endMinutes: c.startMinutes })
+    cursor = Math.max(cursor, c.endMinutes)
+  }
+  if (cursor < from.endMinutes) out.push({ startMinutes: cursor, endMinutes: from.endMinutes })
+  return out
+}
+
+export interface BreakSlot extends Span {
+  // inside a piece (the vehicle's idle time) or in the gap between two pieces
+  inPiece:        boolean
+  // the vehicle's own interval type when the slot holds one — only a default for the form
+  intervalTypeId: string | null
+}
+
+// where a break can be inserted on a duty, minus its existing activities: the idle time of
+// each live piece (its window minus the block's trips/deadruns — same rule as the API's
+// duty-occupancy.utils.ts) and the gaps between consecutive pieces
+export function breakSlots(duty: BoardDuty, blockById: Map<string, BoardBlock>): BreakSlot[] {
+  const taken = duty.activities
+  const live  = duty.pieces.filter(p => !p.isStale).sort((a, b) => a.startMinutes - b.startMinutes)
+  const out: BreakSlot[] = []
+  const push = (spans: Span[], inPiece: boolean, block: BoardBlock | undefined) => {
+    for (const s of spans) {
+      const vehicleInterval = block?.intervals.find(i => i.departureMinutes < s.endMinutes && i.arrivalMinutes > s.startMinutes)
+      out.push({ ...s, inPiece, intervalTypeId: vehicleInterval?.intervalTypeId ?? null })
+    }
+  }
+  for (const p of live) {
+    const block = p.vehicleBlockId ? blockById.get(p.vehicleBlockId) : undefined
+    if (!block) continue
+    const busy = [...block.trips, ...block.deadruns].map(e => ({ startMinutes: e.departureMinutes, endMinutes: e.arrivalMinutes }))
+    push(subtract(p, [...busy, ...taken]), true, block)
+  }
+  for (let i = 1; i < live.length; i++) {
+    const gap = { startMinutes: live[i - 1].endMinutes, endMinutes: live[i].startMinutes }
+    if (gap.endMinutes > gap.startMinutes) push(subtract(gap, taken), false, undefined)
+  }
+  return out
 }

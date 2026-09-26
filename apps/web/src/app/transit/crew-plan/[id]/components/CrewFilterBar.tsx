@@ -15,13 +15,15 @@ interface Props {
   onChange:   (next: CrewFilter) => void
   matchCount: number
   operators:  CrewBoardData['operators']
+  // lines the plan's trips run, in Scope order
+  lineCodes:  string[]
   // "X" — closes the bar entirely (criteria + pins reset by the caller)
   onClose:    () => void
 }
 
 const selectCls = 'h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring'
 
-export function CrewFilterBar({ view, filter, onChange, matchCount, operators, onClose }: Props) {
+export function CrewFilterBar({ view, filter, onChange, matchCount, operators, lineCodes, onClose }: Props) {
   const set = (patch: Partial<CrewFilter>) => onChange({ ...filter, ...patch })
   const active = isFilterActive(filter, view)
   const noun   = view === 'vehicles' ? (matchCount === 1 ? 'carro' : 'carros') : (matchCount === 1 ? 'jornada' : 'jornadas')
@@ -52,6 +54,10 @@ export function CrewFilterBar({ view, filter, onChange, matchCount, operators, o
         <option value="">Operador</option>
         {operators.map(o => <option key={o.branchId} value={o.branchId}>{o.abbr}</option>)}
       </select>
+      <select value={filter.lineCode ?? ''} onChange={e => set({ lineCode: e.target.value || null })} className={selectCls}>
+        <option value="">Linha</option>
+        {lineCodes.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
 
       {view === 'vehicles' ? (
         <Chip on={filter.uncoveredOnly} onClick={() => set({ uncoveredOnly: !filter.uncoveredOnly })}>Sem motorista</Chip>
@@ -67,6 +73,7 @@ export function CrewFilterBar({ view, filter, onChange, matchCount, operators, o
           </select>
           <Chip on={filter.withIssues} onClick={() => set({ withIssues: !filter.withIssues })}>Com pendências</Chip>
           <Chip on={filter.staleOnly} onClick={() => set({ staleOnly: !filter.staleOnly })}>Desatualizadas</Chip>
+          <Chip on={filter.multiLine} onClick={() => set({ multiLine: !filter.multiLine })}>Mais de uma linha</Chip>
         </>
       )}
 
