@@ -465,8 +465,10 @@ Decisões tomadas na implementação (fases 4–6):
   carro (pegadas coloridas por jornada, trechos sem motorista) e por jornada (uma linha por jornada,
   pegadas coloridas por carro para evidenciar trocas de carro, atividades em estilo neutro, "cabo"
   de apresentação/encerramento implícitos, pegadas órfãs como "Sem bloco"). A visão por jornada é
-  só leitura/seleção — pegadas são criadas pela visão de carros; a edição fica no painel lateral. "Personalizar configuração" copia o settings efetivo, mas a
-  edição dos valores personalizados por plano ainda não tem tela (só `PUT .../settings`).
+  só leitura/seleção — pegadas são criadas pela visão de carros; a edição fica no painel lateral. "Configurações" (topbar) abre um modal com o mesmo editor da página
+  de Configurações (`settings/crew-settings-editor.tsx`): herdando, os valores ficam somente
+  leitura com a ação "Customizar" (cópia completa); personalizada, os valores são editáveis
+  (marcados onde diferem do herdado) com "Salvar" e "Restaurar padrão".
 
 1. **Rename** `VehiclePlan.metrics → settings` (isolado, antes de tudo).
 2. **Settings** — `crewSettingsSchema` / `rosterSettingsSchema`, modo `'transitScope'` no

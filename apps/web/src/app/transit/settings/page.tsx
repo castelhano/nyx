@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
@@ -13,8 +13,9 @@ import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
-import { cn } from '@/lib/utils'
 import type { GeneralSettings, PlanningSettings, CrewSettings, RosterSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
+import { SectionHeader, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
+import { CrewSettingsEditor } from './crew-settings-editor'
 
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
@@ -44,319 +45,10 @@ const LINE_FLEET_META: Record<'fleetUsage', { label: string; unit: string; hint:
   fleetUsage: { label: 'Uso de Frota', unit: '% sobre mínimo', hint: 'Frota da linha sobre o mínimo teórico (requisito de pico de veículos simultâneos, só desta linha).' },
 }
 
-const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit: string; hint: string }> = {
-  workTime:       { label: 'Duração da Jornada',      unit: 'min',    hint: 'Minutos trabalhados na jornada (pegadas + atividades pagas).' },
-  spread:         { label: 'Amplitude',               unit: 'min',    hint: 'Da apresentação ao encerramento da jornada, incluindo intervalos.' },
-  mealBreak:      { label: 'Intervalo Intrajornada',  unit: 'min',    hint: 'Duração do intervalo de refeição dentro da jornada.' },
-  splitInterval:  { label: 'Intervalo Dupla Pegada',  unit: 'min',    hint: 'Intervalo entre as pegadas de uma jornada em dupla pegada.' },
-  overtimeRatio:  { label: 'Horas Extras',            unit: '%',      hint: 'Minutos extras sobre o total trabalhado no plano.' },
-  splitRatio:     { label: 'Jornadas em Dupla Pegada', unit: '%',     hint: 'Proporção de jornadas em dupla pegada no plano.' },
-  vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
-}
-
-const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
-  dutyCount:  { label: 'Nº de Jornadas', unit: '% sobre mínimo', hint: 'Jornadas do plano sobre o mínimo teórico (minutos de bloco ÷ duração ideal mínima da jornada).' },
-  efficiency: { label: 'Eficiência',     unit: '% sobre mínimo', hint: 'Minutos pagos sobre os minutos de bloco cobertos.' },
-}
-
-const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes' | 'minPieceMinutes' | 'maxContinuousDrivingMinutes' | 'nightStartHour' | 'nightEndHour'; label: string; hint: string; unit: string; max: number }[] = [
-  { key: 'signOnMinutes',               label: 'Apresentação',              unit: 'min', max: 120,  hint: 'Tempo antes da primeira pegada da jornada' },
-  { key: 'signOffMinutes',              label: 'Encerramento',              unit: 'min', max: 120,  hint: 'Tempo após a última pegada da jornada' },
-  { key: 'handoverMinutes',             label: 'Sobreposição na Rendição',  unit: 'min', max: 60,   hint: 'Sobreposição tolerada entre pegadas do mesmo papel no mesmo carro' },
-  { key: 'minPieceMinutes',             label: 'Pegada Mínima',             unit: 'min', max: 1440, hint: 'Pegadas mais curtas são sinalizadas' },
-  { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: 'min', max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
-  { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
-  { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
-]
-
 const ROSTER_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
   interShiftRest: { label: 'Descanso entre Jornadas', unit: 'min', hint: 'Descanso entre jornadas consecutivas da mesma pessoa.' },
   driverPrefLine: { label: 'Linha Preferencial',      unit: '%',   hint: '% de viagens da jornada nas linhas preferenciais da pessoa.' },
   driverPrefTech: { label: 'Tech Preferencial',       unit: '%',   hint: '% de viagens da jornada com tecnologia de veículo preferencial da pessoa.' },
-}
-
-// ── Small components ─────────────────────────────────────────────────────────
-
-function SectionHeader({ label, sub }: { label: string; sub?: string }) {
-  return (
-    <div className="flex items-baseline gap-3 mb-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      {sub && <p className="text-xs text-muted-foreground/60">{sub}</p>}
-    </div>
-  )
-}
-
-function HintPopover({ hint }: { hint: string }) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos]   = useState({ top: 0, right: 0 })
-  const btnRef          = useRef<HTMLButtonElement>(null)
-
-  function handleOpen() {
-    if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect()
-      setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
-    }
-    setOpen((o) => !o)
-  }
-
-  return (
-    <div>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={handleOpen}
-        className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-      >
-        <Icons.Info className="w-3.5 h-3.5" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            className="fixed z-50 w-56 rounded border bg-popover p-2.5 text-xs text-muted-foreground shadow-md"
-            style={{ top: pos.top, right: pos.right }}
-          >
-            {hint}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-
-function DiffDot({ show }: { show: boolean }) {
-  if (!show) return <span className="w-1.5" />
-  return <span className="w-1.5 h-1.5 rounded-full bg-amber-700 flex-shrink-0" title="Difere do global" />
-}
-
-function NumberInput({ value, onChange, min = 0, max, step = 1, disabled }: {
-  value:     number
-  onChange:  (v: number) => void
-  min?:      number
-  max?:      number
-  step?:     number
-  disabled?: boolean
-}) {
-  return (
-    <input
-      type="number"
-      value={value}
-      min={min}
-      max={max}
-      step={step}
-      disabled={disabled}
-      onChange={(e) => {
-        const v = parseFloat(e.target.value)
-        if (!isNaN(v)) onChange(Math.max(min, max !== undefined ? Math.min(max, v) : v))
-      }}
-      className={cn(
-        'h-8 w-20 rounded-sm border border-input bg-input-bg text-center text-sm',
-        'focus:outline-none focus:ring-1 focus:ring-ring',
-        'disabled:cursor-not-allowed disabled:opacity-60',
-        '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
-      )}
-    />
-  )
-}
-
-// ── AnchoredTable ────────────────────────────────────────────────────────────
-
-type AnchoredMeta = Record<string, { label: string; unit: string; hint: string }>
-
-function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ data, globalData, meta, onChange, disabled }: {
-  data:       T
-  globalData: T
-  meta:       AnchoredMeta
-  onChange?:  (key: keyof T, field: keyof AnchoredCriterion, value: unknown) => void
-  disabled?:  boolean
-}) {
-  const keys = Object.keys(meta) as (keyof T)[]
-
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-max text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/30">
-            <th className="w-1.5" />
-            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Critério</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-16">Ativo</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-28">Ideal até (%)</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-28">Ceiling (%)</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-24">Peso</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-8" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {keys.map((key) => {
-            const m         = meta[key as string]
-            const row       = data[key]
-            const globalRow = globalData[key]
-            const isDiff    = !disabled && (
-              row.active              !== globalRow.active ||
-              row.idealMaxOverPercent !== globalRow.idealMaxOverPercent ||
-              row.ceilingOverPercent  !== globalRow.ceilingOverPercent ||
-              row.weight              !== globalRow.weight
-            )
-
-            const set = (field: keyof AnchoredCriterion, value: unknown) => onChange?.(key, field, value)
-
-            return (
-              <tr key={String(key)} className="group">
-                <td className="pl-2 pr-0">
-                  <div className="flex items-center justify-center h-full py-3">
-                    <DiffDot show={isDiff} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span>{m.label}</span>
-                    <span className="text-xs text-muted-foreground/50">{m.unit}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <Switch
-                      checked={row.active}
-                      onToggle={() => set('active', !row.active)}
-                      disabled={disabled}
-                    />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.idealMaxOverPercent} onChange={(v) => set('idealMaxOverPercent', v)} min={0} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.ceilingOverPercent} onChange={(v) => set('ceilingOverPercent', v)} min={0} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.weight} onChange={(v) => set('weight', v)} min={0} step={5} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <HintPopover hint={m.hint} />
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ── RangeTable ───────────────────────────────────────────────────────────────
-
-type RangeMeta = Record<string, { label: string; unit: string; hint: string }>
-
-function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData, meta, onChange, disabled }: {
-  data:       T
-  globalData: T
-  meta:       RangeMeta
-  onChange?:  (key: keyof T, field: keyof RangeCriterion, value: unknown) => void
-  disabled?:  boolean
-}) {
-  const keys = Object.keys(meta) as (keyof T)[]
-
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-max text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/30">
-            <th className="w-1.5" />
-            <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Critério</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-16">Ativo</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-20">Modifier</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-20">Floor</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-20">Ideal Min</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-20">Ideal Max</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-20">Ceiling</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground w-8" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {keys.map((key) => {
-            const m         = meta[key as string]
-            const row       = data[key]
-            const globalRow = globalData[key]
-            const isDiff    = !disabled && (
-              row.active   !== globalRow.active   ||
-              row.modifier !== globalRow.modifier ||
-              row.floor    !== globalRow.floor    ||
-              row.idealMin !== globalRow.idealMin ||
-              row.idealMax !== globalRow.idealMax ||
-              row.ceiling  !== globalRow.ceiling
-            )
-
-            const set = (field: keyof RangeCriterion, value: unknown) =>
-              onChange?.(key, field, value)
-
-            return (
-              <tr key={String(key)} className="group">
-                <td className="pl-2 pr-0">
-                  <div className="flex items-center justify-center h-full py-3">
-                    <DiffDot show={isDiff} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span>{m.label}</span>
-                    <span className="text-xs text-muted-foreground/50">{m.unit}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <Switch
-                      checked={row.active}
-                      onToggle={() => set('active', !row.active)}
-                      disabled={disabled}
-                    />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.modifier} onChange={(v) => set('modifier', v)} min={0} max={100} step={0.1} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.floor} onChange={(v) => set('floor', v)} min={0} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.idealMin} onChange={(v) => set('idealMin', v)} min={0} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.idealMax} onChange={(v) => set('idealMax', v)} min={0} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <NumberInput value={row.ceiling} onChange={(v) => set('ceiling', v)} min={0} disabled={disabled} />
-                  </div>
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <div className="flex justify-center">
-                    <HintPopover hint={m.hint} />
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
 }
 
 // ── Branch type ──────────────────────────────────────────────────────────────
@@ -540,20 +232,6 @@ export default function TransitSettingsPage() {
     setPlanning((prev) => prev ? {
       ...prev,
       line: { ...prev.line, fleetUsage: { ...prev.line.fleetUsage, [field]: value } },
-    } : null)
-  }
-
-  function updateCrewRange(key: keyof CrewSettings['range'], field: keyof RangeCriterion, value: unknown) {
-    setCrew((prev) => prev ? {
-      ...prev,
-      range: { ...prev.range, [key]: { ...prev.range[key], [field]: value } },
-    } : null)
-  }
-
-  function updateCrewAnchored(key: keyof CrewSettings['anchored'], field: keyof AnchoredCriterion, value: unknown) {
-    setCrew((prev) => prev ? {
-      ...prev,
-      anchored: { ...prev.anchored, [key]: { ...prev.anchored[key], [field]: value } },
     } : null)
   }
 
@@ -893,61 +571,11 @@ export default function TransitSettingsPage() {
         </div>
 
         {crew && gCrew && (
-          <div className="flex flex-col gap-3">
-            <SectionHeader label="Parâmetros da Jornada" sub="Regras da CCT aplicadas à escala lógica" />
-            <div className="rounded-lg border border-border divide-y divide-border">
-              {CREW_PARAMS.map((p) => (
-                <div key={p.key} className="flex items-center justify-between gap-6 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <DiffDot show={isCrewScoped && crew[p.key] !== gCrew[p.key]} />
-                    <div>
-                      <p className="text-sm font-medium">{p.label}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{p.hint}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <NumberInput
-                      value={crew[p.key]}
-                      onChange={(v) => setCrew((prev) => prev ? { ...prev, [p.key]: Math.round(v) } : null)}
-                      min={0}
-                      max={p.max}
-                    />
-                    <span className="text-sm text-muted-foreground w-6">{p.unit}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {crew && gCrew && (
-          <div className="flex flex-col gap-3">
-            <SectionHeader
-              label="Critérios Ancorados na Escala"
-              sub="Piso inferido do próprio plano — Ideal/Ceiling em % acima desse piso."
-            />
-            <AnchoredTable
-              data={crew.anchored}
-              globalData={isCrewScoped ? gCrew.anchored : crew.anchored}
-              meta={CREW_ANCHORED_META}
-              onChange={updateCrewAnchored}
-            />
-          </div>
-        )}
-
-        {crew && gCrew && (
-          <div className="flex flex-col gap-3">
-            <SectionHeader
-              label="Critérios por Jornada"
-              sub="Fora do ideal → alerta; fora de Floor/Ceiling → erro. Nenhum bloqueia o save da jornada."
-            />
-            <RangeTable
-              data={crew.range}
-              globalData={isCrewScoped ? gCrew.range : crew.range}
-              meta={CREW_RANGE_META}
-              onChange={updateCrewRange}
-            />
-          </div>
+          <CrewSettingsEditor
+            value={crew}
+            reference={isCrewScoped ? gCrew : null}
+            onChange={setCrew}
+          />
         )}
 
         {roster && (

@@ -62,6 +62,18 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     return { settings: await this.crewConfig.get(plan.vehiclePlan.scopeId), isCustom: false }
   }
 
+  // For the plan's settings modal: the effective settings plus what the plan would inherit
+  // (Scope/global) without its own copy — the modal diffs against it.
+  async getSettingsView(id: string): Promise<{ settings: CrewSettings; isCustom: boolean; inherited: CrewSettings }> {
+    const plan = await this.prisma.crewPlan.findUnique({ where: { id }, select: { vehiclePlan: { select: { scopeId: true } } } })
+    if (!plan) throw new NotFoundException('crewPlan not found')
+    const [{ settings, isCustom }, inherited] = await Promise.all([
+      this.resolveSettings(id),
+      this.crewConfig.get(plan.vehiclePlan.scopeId),
+    ])
+    return { settings, isCustom, inherited }
+  }
+
   // "Customize": stores a full copy of the effective settings (Scope/global) in the plan
   async customizeSettings(id: string): Promise<{ settings: CrewSettings; isCustom: boolean }> {
     const { settings } = await this.resolveSettings(id)

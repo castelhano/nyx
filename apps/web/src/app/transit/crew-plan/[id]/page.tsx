@@ -18,6 +18,7 @@ import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
+import { CrewSettingsModal } from './components/CrewSettingsModal'
 import { DutyBoard } from './components/DutyBoard'
 import { useTimeRange } from './components/Timeline'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
@@ -72,6 +73,7 @@ export default function CrewPlanPage() {
   const [saving, setSaving]                 = useState(false)
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
+  const [settingsOpen, setSettingsOpen]     = useState(false)
 
   const selectedDuty = data?.duties.find(d => d.id === selectedDutyId) ?? null
 
@@ -309,14 +311,10 @@ export default function CrewPlanPage() {
       disabled: saving,
       keybind:  'Alt+G',
     }] : []),
-    ...(canEdit && data ? [{
-      label:    data.plan.isCustomSettings ? 'Restaurar configuração padrão' : 'Personalizar configuração',
+    ...(data ? [{
+      label:    'Configurações',
       icon:     Icons.Settings2,
-      onClick:  () => void run(
-        () => api(`/transit/crew-plan/${id}/settings${data.plan.isCustomSettings ? '' : '/customize'}`, { method: data.plan.isCustomSettings ? 'DELETE' : 'POST' }),
-        data.plan.isCustomSettings ? 'Configuração padrão restaurada' : 'Configuração copiada para esta escala',
-      ),
-      disabled: saving,
+      onClick:  () => setSettingsOpen(true),
       overflow: true,
     }] : []),
     ...(canEdit && data && !isActive ? [{
@@ -344,7 +342,7 @@ export default function CrewPlanPage() {
   useShortcut('esc', () => {
     if (draftStart) setDraftStart(null)
     else if (selectedDutyId) setSelectedDutyId(null)
-  }, { display: false, origin: ORIGIN, enabled: !assignDraft })
+  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !settingsOpen })
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -354,6 +352,15 @@ export default function CrewPlanPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {settingsOpen && (
+        <CrewSettingsModal
+          crewPlanId={id}
+          canEdit={canEdit}
+          onChanged={() => void refetch()}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       {assignDraft && data && (
         <AssignPieceModal
           block={assignDraft.block}

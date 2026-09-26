@@ -42,11 +42,11 @@ export class CrewPlanController extends BaseController<CrewPlan, CreateCrewPlanD
     return this.crewPlanService.duplicate(id)
   }
 
-  // the plan's effective settings: { settings, isCustom }
+  // the plan's effective settings: { settings, isCustom, inherited }
   @Get(':id/settings')
   async getSettings(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
     await this.assertAbility(req.user, 'read')
-    return this.crewPlanService.resolveSettings(id)
+    return this.crewPlanService.getSettingsView(id)
   }
 
   // "Customize" — copies the effective settings (Scope/global) into the plan
