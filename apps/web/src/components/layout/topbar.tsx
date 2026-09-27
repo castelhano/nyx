@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown'
 import { useSidebar } from './sidebar-context'
 import { useTopbarActionsContext, type TopbarAction } from './topbar-actions-context'
+import { BackgroundJobs } from './background-jobs'
 
 function ActionButton({ action }: { action: TopbarAction }) {
   const Icon     = action.icon
@@ -249,6 +250,7 @@ export function Topbar() {
 
       {/* Right — system controls */}
       <div className="flex items-center gap-1">
+        <BackgroundJobs />
         <button
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           className={cn(

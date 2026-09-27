@@ -37,6 +37,7 @@ interface Job {
   progress:   Extract<CrewSolverMessage, { type: 'progress' }> | null
   // how it ended — null while running
   end:        Done | null
+  endedAt:    number | null
   live$:      Subject<CrewSolverMessage>
 }
 
@@ -49,6 +50,20 @@ export interface CrewSolverJobState {
   stopReason: Extract<CrewSolverMessage, { type: 'done' }>['stopReason'] | null
   error:     string | null
   progress:  Extract<CrewSolverMessage, { type: 'progress' }> | null
+  hasProposal: boolean
+}
+
+// one line of the app-wide background generations list (topbar)
+export interface CrewSolverJobListItem {
+  jobId:       string
+  crewPlanId:  string
+  planLabel:   string
+  running:     boolean
+  startedAt:   number
+  endedAt:     number | null
+  elapsed:     number
+  stopReason:  CrewSolverJobState['stopReason']
+  error:       string | null
   hasProposal: boolean
 }
 
@@ -80,13 +95,14 @@ export class CrewSolverService {
     const previous = this.current.get(crewPlanId)
     if (previous) this.drop(previous)
 
-    const job: Job = { id: jobId, crewPlanId, params, worker, startedAt: Date.now(), best: null, progress: null, end: null, live$: new Subject() }
+    const job: Job = { id: jobId, crewPlanId, params, worker, startedAt: Date.now(), best: null, progress: null, end: null, endedAt: null, live$: new Subject() }
     this.jobs.set(jobId, job)
     this.current.set(crewPlanId, jobId)
 
     const finish = (end: Done) => {
       if (job.end) return
       job.end = end
+      job.endedAt = Date.now()
       job.live$.next(end)
       job.live$.complete()
       void worker.terminate()
@@ -114,6 +130,31 @@ export class CrewSolverService {
       error:      job.end?.type === 'error' ? job.end.message : null,
       progress: job.progress, hasProposal: !!job.best,
     }
+  }
+
+  // every crew plan's generation — running, or ended and not yet used — newest first
+  async listJobs(): Promise<CrewSolverJobListItem[]> {
+    const jobs = [...this.current.values()].flatMap(id => this.jobs.get(id) ?? [])
+    if (!jobs.length) return []
+    const plans = await this.prisma.crewPlan.findMany({
+      where:  { id: { in: jobs.map(j => j.crewPlanId) } },
+      select: { id: true, description: true, vehiclePlan: { select: { scope: { select: { name: true } }, dayType: { select: { name: true } } } } },
+    })
+    const byId = new Map(plans.map(p => [p.id, p]))
+    return jobs
+      .map(job => {
+        const p = byId.get(job.crewPlanId)
+        return {
+          jobId: job.id, crewPlanId: job.crewPlanId,
+          planLabel: p ? [p.description || 'Escala', p.vehiclePlan.scope?.name, p.vehiclePlan.dayType?.name].filter(Boolean).join(' · ') : 'Escala',
+          running: !job.end, startedAt: job.startedAt, endedAt: job.endedAt,
+          elapsed: (job.endedAt ?? Date.now()) - job.startedAt,
+          stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
+          error:      job.end?.type === 'error' ? job.end.message : null,
+          hasProposal: !!job.best,
+        }
+      })
+      .sort((a, b) => b.startedAt - a.startedAt)
   }
 
   // stops the run if needed and forgets it

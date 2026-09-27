@@ -19,6 +19,7 @@ import { AssignPieceModal, type AssignTarget } from './components/AssignPieceMod
 import { BreakModal, type BreakDraft } from './components/BreakModal'
 import { VehicleSwapModal } from './components/VehicleSwapModal'
 import { OptimizeCrewModal, type OptimizeTab, type SolverJob } from './components/OptimizeCrewModal'
+import { BACKGROUND_JOBS_KEY } from '@/components/layout/background-jobs'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
 import { DutyBoard } from './components/DutyBoard'
@@ -65,7 +66,10 @@ export default function CrewPlanPage() {
   const router    = useRouter()
   // vehicle view (one row per block, default) or duty view (one row per duty) — kept in the
   // URL so a reload or a shared link opens the same view
-  const view      = useSearchParams().get('view') === 'duties' ? 'duties' : 'vehicles'
+  const searchParams = useSearchParams()
+  const view      = searchParams.get('view') === 'duties' ? 'duties' : 'vehicles'
+  // ?optimize=1 (from the topbar's background generations) opens the optimize modal on Cenários
+  const optimizeFromUrl = searchParams.get('optimize') === '1'
   const setView   = (v: 'vehicles' | 'duties') => {
     setDraftStart(null) // a piece being picked belongs to the vehicle view
     router.replace(v === 'duties' ? '?view=duties' : '?', { scroll: false })
@@ -95,7 +99,7 @@ export default function CrewPlanPage() {
 
   // the plan's crew solver generation — it runs on the server whether or not the modal is
   // open; polled while running so the Otimizar button shows it
-  const { data: solverJob = null, refetch: refetchSolverJob } = useQuery<SolverJob | null>({
+  const { data: solverJob = null, refetch: refetchSolverJobQuery, isFetched: solverJobFetched } = useQuery<SolverJob | null>({
     queryKey: ['transit', 'crew-plan', id, 'solver-current'],
     queryFn:  async () => {
       const res = await apiFetch(`/transit/crew-plan/${id}/solver/current`)
@@ -105,6 +109,11 @@ export default function CrewPlanPage() {
     enabled:         canEdit,
     refetchInterval: q => (q.state.data?.running ? 3000 : false),
   })
+  // the plan's generation changed — the topbar's list follows
+  const refetchSolverJob = () => {
+    void queryClient.invalidateQueries({ queryKey: BACKGROUND_JOBS_KEY })
+    return refetchSolverJobQuery()
+  }
 
   const [selectedDutyId, setSelectedDutyId] = useState<string | null>(null)
   const [draftStart, setDraftStart]         = useState<PieceDraftStart | null>(null)
@@ -116,7 +125,12 @@ export default function CrewPlanPage() {
   const [resetSignal, setResetSignal]       = useState(0)
   const [activationOpen, setActivationOpen] = useState(false)
   const [swapOpen, setSwapOpen]             = useState(false)
-  const [optimizeTab, setOptimizeTab]       = useState<OptimizeTab | null>(null)
+  const [optimizeTabState, setOptimizeTab]  = useState<OptimizeTab | null>(null)
+  const optimizeTab: OptimizeTab | null = optimizeTabState ?? (optimizeFromUrl && canEdit ? 'scenarios' : null)
+  const closeOptimize = () => {
+    setOptimizeTab(null)
+    if (optimizeFromUrl) router.replace(view === 'duties' ? '?view=duties' : '?', { scroll: false })
+  }
   const [filterOpen, setFilterOpen]         = useState(false)
   const [filter, setFilter]                 = useState<CrewFilter>(EMPTY_FILTER)
   const [pinnedBlockIds, setPinnedBlockIds] = useState<Set<string>>(new Set())
@@ -585,19 +599,19 @@ export default function CrewPlanPage() {
         />
       )}
 
-      {optimizeTab && data && (
+      {optimizeTab && data && solverJobFetched && (
         <OptimizeCrewModal
           crewPlanId={id}
           initialTab={optimizeTab}
           planStatus={data.plan.status}
           job={solverJob}
           onJobChanged={() => void refetchSolverJob()}
-          onApplied={() => { setOptimizeTab(null); setSelectedDutyId(null); void refetchSolverJob(); void refetch(); toast.success('Proposta aplicada na escala') }}
+          onApplied={() => { closeOptimize(); setSelectedDutyId(null); void refetchSolverJob(); void refetch(); toast.success('Proposta aplicada na escala') }}
           current={data.plan.summary}
           lockedCount={data.duties.filter(d => d.locked).length}
           onSettingsSaved={() => void refetch()}
-          onCreated={(newId) => { setOptimizeTab(null); void refetchSolverJob(); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
-          onClose={() => { setOptimizeTab(null); void refetchSolverJob() }}
+          onCreated={(newId) => { closeOptimize(); void refetchSolverJob(); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
+          onClose={() => { closeOptimize(); void refetchSolverJob() }}
         />
       )}
 
