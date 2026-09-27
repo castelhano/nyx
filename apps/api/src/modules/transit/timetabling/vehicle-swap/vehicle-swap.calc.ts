@@ -1,8 +1,7 @@
 import type { ReliefPoint } from '@nyx/schemas'
 import { computeServiceSpans, isReliefPoint, subtractSpans } from '../crew-plan/relief-points'
 
-// Pure "Reduzir trocas de carro" analysis (no Prisma) — see
-// docs/proposal/plan_reduce_vehicle_changes_v1.md.
+// Pure "Reduzir trocas de carro" analysis (no Prisma).
 //
 // For each vehicle change of a DRIVER duty in the ACTIVE crew plan (leaves car X at t1,
 // boards car Y at t2), the candidate swaps everything X does from t1 on with everything

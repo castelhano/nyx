@@ -5,8 +5,7 @@ import { VehiclePlanService } from '../vehicle-plan/vehicle-plan.service'
 import { loadBlockRelief } from '../crew-plan/relief-points'
 import { analyzeVehicleSwaps, type SwapBlock, type SwapCandidate, type SwapWrite, type MatrixEntry } from './vehicle-swap.calc'
 
-// "Otimizar › Reduzir trocas de carro" on the ACTIVE crew plan — see
-// docs/proposal/plan_reduce_vehicle_changes_v1.md. analyze() is read-only; apply() re-runs
+// "Otimizar › Reduzir trocas de carro" on the ACTIVE crew plan. analyze() is read-only; apply() re-runs
 // the analysis on the current state and writes the chosen swaps (VehiclePlan blocks +
 // the pieces of every crew plan) in one transaction, closed by the VehiclePlan recalculate.
 

@@ -88,7 +88,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     })
   }
 
-  // docs/proposal/plan_activation_date_v1.md — approved from `startDate`; the other versions
+  // Approved from `startDate`; the other versions
   // of the line + dayType reaching that day are cut to the day before (SUPERSEDED) or reverted.
   // Without `confirm` nothing is written: the result is the preview.
   async approve(id: string, startDate: unknown, confirm: boolean): Promise<PlanActivationPreview> {

@@ -105,7 +105,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
   }
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
-  // docs/proposal/plan_activation_date_v1.md — the crew plan starts on `startDate`, inside its
+  // The crew plan starts on `startDate`, inside its
   // VehiclePlan's vigência (which may itself start in the future). Without `confirm` nothing is
   // written: the result is the preview. Stale duties or uncovered block spans block the
   // activation (the schedule doesn't fit the vehicle plan); issues don't — the UI asks.

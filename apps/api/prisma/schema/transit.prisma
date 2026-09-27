@@ -470,7 +470,7 @@ model VehiclePlan {
   description String?
   status      VehiclePlanStatus @default(DRAFT)
   // vigencia (dates, end inclusive) — set when the plan is activated; ACTIVE is the latest
-  // activated, possibly starting in the future (docs/proposal/plan_activation_date_v1.md)
+  // activated, possibly starting in the future
   validFrom   DateTime?         @db.Date
   // set when superseded by another plan activated for the same scope+dayType
   validTo     DateTime?         @db.Date
@@ -670,7 +670,7 @@ model BlockDeadrun {
 // Logical crew schedule built on top of one VehiclePlan's blocks — duties ("tabelas")
 // with no person assigned yet. N versions per VehiclePlan, at most one ACTIVE (only
 // while the VehiclePlan itself is ACTIVE). Built manually for now; generatedAt and
-// constraints are reserved for a future solver. See docs/proposal/plan_crew_plan_v1.md.
+// constraints are reserved for a future solver.
 model CrewPlan {
   id            String         @id @default(uuid())
   vehiclePlanId String

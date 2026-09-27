@@ -3,7 +3,7 @@ import { withMeta } from '../with-meta'
 import { rangeCriterionSchema } from './settings-planning.schema'
 
 // Rostering rules (person × date × duty) — not consumed yet, reserved for the stage after
-// the logical crew schedule (docs/proposal/plan_crew_plan_v1.md).
+// the logical crew schedule.
 const rangeDefault = {
   // rest between consecutive duties of the same person (minutes)
   interShiftRest: { active: true, modifier: 1.0, floor: 600, idealMin: 660, idealMax: 960, ceiling: 960 },

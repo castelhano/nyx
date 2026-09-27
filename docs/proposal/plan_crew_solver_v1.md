@@ -3,9 +3,9 @@
 Objetivo: gerar automaticamente as jornadas de uma escala lógica sobre os carros de um
 `VehiclePlan` — **os carros são fixos**: o solver só decide quem dirige cada trecho, nunca move
 viagens. Reduzir trocas de carro redistribuindo viagens é um processo posterior e separado
-(`docs/proposal/plan_reduce_vehicle_changes_v1.md`).
+("Otimizar › Reduzir trocas de carro", já implementado).
 
-Pré-requisitos: escala lógica (`plan_crew_plan_v1.md`) e arquitetura do solver de veículos
+Pré-requisitos: escala lógica (já implementada) e arquitetura do solver de veículos
 (`docs/architecture/transit/solver.md`), que é o modelo a seguir.
 
 Status: **consolidado** — decisões fechadas (2026-09-26); implementação futura.

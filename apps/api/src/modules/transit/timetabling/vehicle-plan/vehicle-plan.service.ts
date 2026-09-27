@@ -1420,7 +1420,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return { plan: planWithLines, blocks }
   }
 
-  // docs/proposal/plan_activation_date_v1.md — the plan starts on `startDate` and becomes the
+  // The plan starts on `startDate` and becomes the
   // ACTIVE (latest) one of its scope + dayType; the others reaching that day are cut to the day
   // before (SUPERSEDED) or reverted, and their crew plans follow. Without `confirm` nothing is
   // written: the result is the preview.

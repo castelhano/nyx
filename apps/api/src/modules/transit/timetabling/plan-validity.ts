@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common'
 
-// Vigência of VehiclePlan, CrewPlan and LineSchedule (docs/proposal/plan_activation_date_v1.md).
+// Vigência of VehiclePlan, CrewPlan and LineSchedule.
 // validFrom/validTo are @db.Date (end inclusive) — Prisma hands them over as UTC midnights,
 // so days are compared as 'YYYY-MM-DD' strings. "What runs on a day" always comes from the
 // window of the non-DRAFT versions (inForceOn), never from the status alone: the ACTIVE one is

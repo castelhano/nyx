@@ -85,7 +85,7 @@ export interface DopPeriodSummary {
   }
 }
 
-// ── visão Escala (docs/proposal/plan_dop_crew_v1.md) ─────────────────────────
+// ── visão Escala ─────────────────────────────────────────────────────────────
 // Every *ByRole map is keyed by CrewRole (DRIVER, FARE_COLLECTOR, ASSISTANT) — the page
 // filters/sums roles itself.
 

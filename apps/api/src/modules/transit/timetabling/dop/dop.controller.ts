@@ -50,7 +50,7 @@ export class DopController {
     return this.dopService.getPeriodSummary(scopeId, fromDate, toDate, branchId || undefined)
   }
 
-  // visão Escala — same params as the vehicle view (docs/proposal/plan_dop_crew_v1.md)
+  // visão Escala — same params as the vehicle view
   @Get('crew')
   async getCrew(
     @Req() req: { user: AuthUser },

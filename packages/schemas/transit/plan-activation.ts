@@ -1,5 +1,5 @@
-// Response of the activate/approve endpoints of VehiclePlan, CrewPlan and LineSchedule
-// (docs/proposal/plan_activation_date_v1.md). Without `confirm` nothing is written — the
+// Response of the activate/approve endpoints of VehiclePlan, CrewPlan and LineSchedule.
+// Without `confirm` nothing is written — the
 // same shape is the preview shown before confirming.
 
 export interface PlanActivationRef {

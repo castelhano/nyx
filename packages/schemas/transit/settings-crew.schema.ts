@@ -4,7 +4,7 @@ import { rangeCriterionSchema, anchoredCriterionSchema } from './settings-planni
 
 // Duty rules (CCT) for the logical crew schedule — per transit Scope: every operator of
 // the Scope follows the same CCT. For now they only validate/flag hand-built duties
-// (Duty.issues) and feed the CrewPlan score — see docs/proposal/plan_crew_plan_v1.md.
+// (Duty.issues) and feed the CrewPlan score.
 // Ranges: outside [idealMin, idealMax] → `warning` issue; outside [floor, ceiling] → `error`.
 const rangeDefault = {
   // duty length (minutes worked)

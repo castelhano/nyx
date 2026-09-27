@@ -1,6 +1,6 @@
 'use client'
 
-// DOP — visão Escala (docs/proposal/plan_dop_crew_v1.md). Consumes GET /transit/dop/crew;
+// DOP — visão Escala. Consumes GET /transit/dop/crew;
 // every *ByRole map is filtered/summed here by the role selector (motorista by default).
 
 import { useMemo, useState } from 'react'

@@ -1,6 +1,6 @@
 'use client'
 
-// Activation with a start date (docs/proposal/plan_activation_date_v1.md), shared by VehiclePlan,
+// Activation with a start date, shared by VehiclePlan,
 // CrewPlan and LineSchedule: every date change asks the endpoint for the preview (no `confirm`,
 // nothing written), confirming sends the same date with `confirm: true`.
 

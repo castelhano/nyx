@@ -2,8 +2,8 @@ import { z } from 'zod'
 import { withMeta } from '../with-meta'
 
 // Crew cost parameters per CrewRole — per transit Scope (one CCT), falling back to global.
-// Always the current values, no vigência: the DOP recomputes past periods with them
-// (docs/proposal/plan_dop_crew_v1.md, "Custos"). Overtime (+50%) and the night premium (20% of
+// Always the current values, no vigência: the DOP recomputes past periods with them.
+// Overtime (+50%) and the night premium (20% of
 // the reduced night hour) are fixed in code.
 
 export const crewRoleCostSchema = z.object({

@@ -14,8 +14,7 @@ import { fmtTime } from '../board.types'
 import { Badge } from './DutyPanel'
 
 // "Otimizar › Reduzir trocas de carro" — lists the tail swaps the API found (an independent
-// set: any combination can be applied) with recommended ones pre-checked. See
-// docs/proposal/plan_reduce_vehicle_changes_v1.md.
+// set: any combination can be applied) with recommended ones pre-checked.
 
 type Junction = 'DIRECT' | 'DEPOT' | 'DISPLACEMENT'
 

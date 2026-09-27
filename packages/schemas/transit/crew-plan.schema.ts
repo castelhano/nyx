@@ -2,7 +2,7 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
-// Logical crew schedule of a VehiclePlan — see docs/proposal/plan_crew_plan_v1.md.
+// Logical crew schedule of a VehiclePlan.
 
 export const crewPlanSummarySchema = z.object({
   dutyCount:        z.number(),
@@ -27,7 +27,7 @@ export const crewPlanSummarySchema = z.object({
   // same, split by the block's branch
   coveredByBranch:  z.array(z.object({ branchId: z.string().nullable(), minutes: z.number() })),
   // each duty split across the lines it operates, in proportion to its trip minutes on each;
-  // lineId null = duties with no trip (docs/proposal/plan_dop_crew_v1.md, decisão 4)
+  // lineId null = duties with no trip
   byLine: z.array(z.object({
     lineId:          z.string().nullable(),
     role:            z.string(),

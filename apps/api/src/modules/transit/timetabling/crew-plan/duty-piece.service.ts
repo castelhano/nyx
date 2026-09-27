@@ -95,8 +95,7 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     }
   }
 
-  // Structural checks — they block the save (docs/proposal/plan_crew_plan_v1.md,
-  // "Validações estruturais"). CCT rules don't belong here: they become issues, never a 400.
+  // Structural checks — they block the save. CCT rules don't belong here: they become issues, never a 400.
   private async validate(input: PieceInput, pieceId?: string): Promise<void> {
     if (!input.vehicleBlockId) throw new BadRequestException('Pegada precisa de um bloco')
     assertTimeWindow(input.startMinutes, input.endMinutes)

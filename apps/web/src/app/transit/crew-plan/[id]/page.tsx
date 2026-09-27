@@ -34,7 +34,7 @@ import { BusyOverlay } from '@/components/ui/busy-overlay'
 import { vigenceBadge } from '@/lib/plan-vigence'
 import { ActivationModal } from '../../activation-modal'
 
-// Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
+// Logical crew schedule of a VehiclePlan. Every edit
 // is written immediately (no pending queue) — the server recalculates staleness, issues
 // and coverage on each write, and the board is refetched from it.
 

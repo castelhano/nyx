@@ -1,7 +1,7 @@
 import type { BadgeColor } from '@/components/ui/badge'
 
-// Badge of a versioned plan (VehiclePlan, CrewPlan, LineSchedule) from its status and vigência
-// (docs/proposal/plan_activation_date_v1.md): the ACTIVE one may still start in the future and a
+// Badge of a versioned plan (VehiclePlan, CrewPlan, LineSchedule) from its status and vigência:
+// the ACTIVE one may still start in the future and a
 // SUPERSEDED one may still be running until its end. Validity comes as @db.Date ISO strings.
 
 export function localToday(): string {

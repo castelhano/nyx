@@ -12,7 +12,7 @@ import { TransitCrewCostConfigService } from '../../settings/transit-crew-cost-c
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import { periodDates, findActivePlan, inForce, formatDay } from './dop-resolution'
 
-// DOP, visão Escala (docs/proposal/plan_dop_crew_v1.md). Same (day, line) resolution as the
+// DOP, visão Escala. Same (day, line) resolution as the
 // vehicle view, plus the VehiclePlan's ACTIVE CrewPlan in force on the day. Per-line numbers
 // come from CrewPlanSummary.byLine; per-duty data (inter-shift rest, averages, multi-line) is
 // read from the duties of the crew plan in force on the latest day of each DayType.

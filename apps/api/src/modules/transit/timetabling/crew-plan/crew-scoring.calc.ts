@@ -7,7 +7,7 @@ import { isReliefPoint, subtractSpans } from './relief-points'
 // Pure crew-plan calculation (no Prisma) — the CrewPlan counterpart of plan-scoring.calc.ts.
 // Produces, from persisted state: each piece's staleness against its block, each duty's
 // summary + issues, and the plan summary (coverage, totals, score). Consumed by
-// CrewPlanService.recalculate(). See docs/proposal/plan_crew_plan_v1.md ("Sinalização").
+// CrewPlanService.recalculate().
 //
 // Conventions:
 // - Stale pieces are left out of everything else (summary, issues, coverage) — the span
