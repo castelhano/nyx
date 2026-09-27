@@ -194,7 +194,19 @@ o **Reduzir trocas de carro** que já existe.
    `timetabling/crew-solver/crew-solver.calc.ts` (`solveCrewPlan`) + `crew-solver.input.ts`
    (`loadCrewSolverInput`). Ver "Núcleo — como ficou".
 3. **Worker + SSE + modal** — execução, progresso, propostas, criação da versão, Completar,
-   replicação de papéis.
+   replicação de papéis. *Implementado (2026-09-27)*: `crew-solver.worker.ts`,
+   `CrewSolverService`/`CrewSolverController` (`POST /transit/crew-plan/:id/solver/start |
+   stop | accept`, SSE `…/solver/stream?jobId=`), `GenerateCrewModal.tsx`. Detalhes:
+   - o job guarda as mensagens (replay) — a construção leva milissegundos e o SSE do cliente
+     pode conectar depois do fim; o SSE não leva as jornadas da proposta, só o resumo;
+   - "Criar versão" grava a nova escala em 3 inserts em lote (ids gerados no servidor) e
+     recalcula: travadas mantêm o número, as geradas pegam os números livres por ordem de
+     início, a réplica de cobrador/auxiliar pega o número do motorista quando livre;
+   - direção: "menos jornadas" dobra `anchored.dutyCount.weight`; "menos horas pagas" dobra
+     `anchored.efficiency.weight` e `range.overtimeRatio.modifier`;
+   - topbar: **Otimizar** é split button — clique principal abre "Gerar escala"; no menu, "Gerar
+     escala" e "Reduzir trocas de carro".
+   - Sem tipo de refeição configurado a geração é recusada (mensagem no modal).
 4. **Melhoria contínua** (destruir e reconstruir).
 
 ---

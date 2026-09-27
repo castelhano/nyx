@@ -123,7 +123,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   }
 
   const duties: SolverDuty[] = []
-  const loose: (SolverPiece & { branchId: string | null })[] = []
+  const loose: { piece: SolverPiece; branchId: string | null }[] = []
   const piece = (v: BlockView, from: number, to: number): SolverPiece => ({
     vehicleBlockId: v.block.id, startMinutes: from, endMinutes: to,
     startLocalityId: v.locality(from), endLocalityId: v.locality(to),
@@ -203,24 +203,24 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         const cut = segEnd - pos <= maxDrive && segEnd - pos <= pieceTarget * 1.5 ? segEnd
           : (fit.length ? fit : reachable).reduce<number | undefined>((b, c) => (b == null || Math.abs(c - pos - pieceTarget) < Math.abs(b - pos - pieceTarget) ? c : b), undefined)
             ?? cuts.find(c => c > pos)!
-        loose.push({ ...piece(v, pos, cut), branchId: v.block.branchId })
+        loose.push({ piece: piece(v, pos, cut), branchId: v.block.branchId })
         pos = cut
       }
     }
   }
 
   // 3. pair loose pieces (same operator), best partner first; what's left is a tripper
-  loose.sort((a, b) => a.startMinutes - b.startMinutes)
+  loose.sort((a, b) => a.piece.startMinutes - b.piece.startMinutes)
   const used = new Set<number>()
   for (let i = 0; i < loose.length; i++) {
     if (used.has(i)) continue
-    const a = loose[i]
+    const { piece: a, branchId } = loose[i]
     const va = views.get(a.vehicleBlockId)!
     let best: { j: number; duty: SolverDuty; cost: number } | null = null
 
     for (let j = i + 1; j < loose.length; j++) {
-      const b = loose[j]
-      if (used.has(j) || b.branchId !== a.branchId || b.startMinutes < a.endMinutes) continue
+      const b = loose[j].piece
+      if (used.has(j) || loose[j].branchId !== branchId || b.startMinutes < a.endMinutes) continue
       const travel = a.endLocalityId === b.startLocalityId ? 0 : input.matrixMinutes.get(`${a.endLocalityId}:${b.startLocalityId}`)
       if (travel == null) continue
       const gap = b.startMinutes - a.endMinutes
@@ -231,9 +231,9 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       let duty: SolverDuty | null = null, penalty = 0
       if (rest >= meal.minMinutes && rest <= meal.maxMinutes && va.mealAllowed(a.endMinutes, a.endLocalityId)) {
         const brk = { startMinutes: a.endMinutes, endMinutes: a.endMinutes + rest }
-        duty = { kind: 'STRAIGHT', branchId: a.branchId, pieces: [a, b], breaks: [brk] }
+        duty = { kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [brk] }
       } else if (range.splitInterval.active && gap >= range.splitInterval.floor && gap <= range.splitInterval.ceiling) {
-        duty = { kind: 'SPLIT', branchId: a.branchId, pieces: [a, b], breaks: [] }
+        duty = { kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }
         penalty = 60 + rangeDistance(gap, range.splitInterval)
       }
       if (!duty) continue
@@ -250,7 +250,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       used.add(best.j)
       duties.push(best.duty)
     } else {
-      duties.push({ kind: 'TRIPPER', branchId: a.branchId, pieces: [a], breaks: [] })
+      duties.push({ kind: 'TRIPPER', branchId, pieces: [a], breaks: [] })
     }
   }
 
