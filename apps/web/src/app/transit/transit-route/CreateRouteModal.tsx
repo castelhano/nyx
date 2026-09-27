@@ -34,23 +34,25 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const [isPending,   setIsPending]   = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
-  // the origin/destination's own RouteLocality rows (CHEGADA in the OSO export and the meal
+  // the origin/destination's own RouteLocality rows (CHEGADA in the OSO export and the stop
   // flags live on them, not on TransitRoute itself) — only known once fetched, since a route
   // can be edited from the list without its trajectory already being loaded on screen
-  // (RoutePanel.onEdit isn't gated on the route being the one currently selected)
+  // (RoutePanel.onEdit isn't gated on the route being the one currently selected). On create
+  // the rows don't exist yet: the flags go in the body (`endpoints`), crew change on by default.
   const [originRl, setOriginRl] = useState<RouteLocality | null>(null)
   const [destRl,   setDestRl]   = useState<RouteLocality | null>(null)
   const [destIncludeInOso, setDestIncludeInOso] = useState(false)
-  const [originMeal,       setOriginMeal]       = useState(false)
-  const [destMeal,         setDestMeal]         = useState(false)
-  const [destLoaded,       setDestLoaded]       = useState(false)
+  const [originFlags, setOriginFlags] = useState<StopFlags>({ allowsCrewChange: !route, allowsMealBreak: false })
+  const [destFlags,   setDestFlags]   = useState<StopFlags>({ allowsCrewChange: !route, allowsMealBreak: false })
+  const [destLoaded,  setDestLoaded]  = useState(false)
+  const flagsReady = !route || destLoaded
 
   useEffect(() => {
     if (!route) return
     apiFetch(`/transit/transit-route/${route.id}/trajectory`).then((r) => r.json()).then((rows: RouteLocality[]) => {
       const first = rows[0], last = rows[rows.length - 1]
-      if (first) { setOriginRl(first); setOriginMeal(first.allowsMealBreak) }
-      if (last)  { setDestRl(last); setDestIncludeInOso(last.includeInOso); setDestMeal(last.allowsMealBreak) }
+      if (first) { setOriginRl(first); setOriginFlags({ allowsCrewChange: first.allowsCrewChange, allowsMealBreak: first.allowsMealBreak }) }
+      if (last)  { setDestRl(last); setDestIncludeInOso(last.includeInOso); setDestFlags({ allowsCrewChange: last.allowsCrewChange, allowsMealBreak: last.allowsMealBreak }) }
       setDestLoaded(true)
     }).catch(() => setDestLoaded(true))
   }, [route])
@@ -103,7 +105,12 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
         originLocalityId:      originId,
         destinationLocalityId: isCircular ? originId : destId,
       }
-      if (!isEditing) body.isActive = true
+      // a circular route's single set of flags applies to both endpoint rows
+      const endDestFlags = isCircular ? originFlags : destFlags
+      if (!isEditing) {
+        body.isActive  = true
+        body.endpoints = { origin: originFlags, destination: endDestFlags }
+      }
       const res = await apiFetch(route ? `/transit/transit-route/${route.id}` : '/transit/transit-route', {
         method: isEditing ? 'PATCH' : 'POST',
         body:   JSON.stringify(body),
@@ -111,15 +118,14 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(extractError(j as Record<string, unknown>, isEditing ? 'Erro ao editar sentido' : 'Erro ao criar sentido')) }
       const saved = await res.json()
 
-      // endpoint rows — a circular route's single meal flag applies to both of them
       const patchRl = (rl: RouteLocality | null, patch: Partial<RouteLocality>) => {
         const changed = rl && Object.entries(patch).some(([k, v]) => rl[k as keyof RouteLocality] !== v)
         return changed ? apiFetch(`/transit/route-locality/${rl.id}`, { method: 'PATCH', body: JSON.stringify(patch) }) : null
       }
       if (isEditing) {
         await Promise.all([
-          patchRl(originRl, { allowsMealBreak: originMeal }),
-          patchRl(destRl, { includeInOso: destIncludeInOso, allowsMealBreak: isCircular ? originMeal : destMeal }),
+          patchRl(originRl, originFlags),
+          patchRl(destRl, { ...endDestFlags, includeInOso: destIncludeInOso }),
         ])
       }
 
@@ -204,7 +210,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
           {isCircular && (
             <p className="text-xs text-muted-foreground">Rota circular — o destino é o mesmo ponto de origem.</p>
           )}
-          {isEditing && <SwitchRow label="Permite refeição" checked={originMeal} onToggle={() => setOriginMeal(v => !v)} disabled={!destLoaded} />}
+          <StopFlagsRow flags={originFlags} onChange={setOriginFlags} disabled={!flagsReady} />
         </div>
 
         {!isCircular && (
@@ -222,9 +228,9 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
               className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
             />
 
+            <StopFlagsRow flags={destFlags} onChange={setDestFlags} disabled={!flagsReady} />
             {isEditing && (
               <>
-                <SwitchRow label="Permite refeição" checked={destMeal} onToggle={() => setDestMeal(v => !v)} disabled={!destLoaded} />
                 <div className="border-t border-border mt-3" />
                 <SwitchRow label="Listar chegada na OSO" checked={destIncludeInOso} onToggle={() => setDestIncludeInOso(v => !v)} disabled={!destLoaded} />
               </>
@@ -245,11 +251,23 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   )
 }
 
+type StopFlags = Pick<RouteLocality, 'allowsCrewChange' | 'allowsMealBreak'>
+
 function SwitchRow({ label, checked, onToggle, disabled }: { label: string; checked: boolean; onToggle: () => void; disabled: boolean }) {
   return (
     <div className="flex items-center gap-2.5 pt-3">
       <Switch checked={checked} onToggle={onToggle} disabled={disabled} />
       <span className="text-sm cursor-pointer select-none" onClick={() => !disabled && onToggle()}>{label}</span>
+    </div>
+  )
+}
+
+// an endpoint stop's flags, side by side
+function StopFlagsRow({ flags, onChange, disabled }: { flags: StopFlags; onChange: (next: StopFlags) => void; disabled: boolean }) {
+  return (
+    <div className="flex items-center gap-6">
+      <SwitchRow label="Troca turno" checked={flags.allowsCrewChange} onToggle={() => onChange({ ...flags, allowsCrewChange: !flags.allowsCrewChange })} disabled={disabled} />
+      <SwitchRow label="Refeição"    checked={flags.allowsMealBreak}  onToggle={() => onChange({ ...flags, allowsMealBreak: !flags.allowsMealBreak })}   disabled={disabled} />
     </div>
   )
 }

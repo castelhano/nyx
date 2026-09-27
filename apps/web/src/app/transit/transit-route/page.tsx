@@ -148,12 +148,14 @@ export default function TransitRoutePage() {
     setShowCreate(false)
     queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
     selectRoute(route.id)
+    toast.success('Sentido criado')
   }
 
   function handleRouteEdited(route: { id: string }) {
     setEditingRoute(null)
     queryClient.invalidateQueries({ queryKey: ['transit', 'transit-route', { lineId }] })
     queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', route.id] })
+    toast.success('Sentido salvo')
   }
 
   // ── pending points ────────────────────────────────────────────────────────

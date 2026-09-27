@@ -26,6 +26,9 @@ export interface RouteLocalityWithLocality {
   locality: { id: string; name: string; code: string; lat: number | null; lng: number | null } | null
 }
 
+interface StopFlags { allowsCrewChange?: boolean; allowsMealBreak?: boolean }
+export interface RouteEndpointFlags { origin?: StopFlags; destination?: StopFlags }
+
 export interface SuggestedLocality {
   id: string
   name: string
@@ -348,7 +351,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     return results.sort((a, b) => a.insertAfterSequence - b.insertAfterSequence || a.distanceM - b.distanceM)
   }
 
-  async buildInitialTrajectory(routeId: string, originId: string, destinationId: string): Promise<void> {
+  async buildInitialTrajectory(routeId: string, originId: string, destinationId: string, endpoints: RouteEndpointFlags = {}): Promise<void> {
     const [origin, destination] = await Promise.all([
       this.prisma.transitLocality.findUnique({ where: { id: originId }, select: { id: true, lat: true, lng: true } }),
       this.prisma.transitLocality.findUnique({ where: { id: destinationId }, select: { id: true, lat: true, lng: true } }),
@@ -359,8 +362,8 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
     const now = new Date()
     await this.prisma.routeLocality.createMany({
       data: [
-        { routeId, localityId: originId,      sequence: 1, allowsCrewChange: false, createdAt: now, updatedAt: now },
-        { routeId, localityId: destinationId, sequence: 2, allowsCrewChange: false, createdAt: now, updatedAt: now },
+        { routeId, localityId: originId,      sequence: 1, ...stopFlags(endpoints.origin),      createdAt: now, updatedAt: now },
+        { routeId, localityId: destinationId, sequence: 2, ...stopFlags(endpoints.destination), createdAt: now, updatedAt: now },
       ],
     })
 
@@ -370,4 +373,9 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
       // OSRM offline — trajectory generated lazily later
     }
   }
+}
+
+// only real booleans reach the database — anything else falls back to false
+function stopFlags(flags: StopFlags | undefined) {
+  return { allowsCrewChange: flags?.allowsCrewChange === true, allowsMealBreak: flags?.allowsMealBreak === true }
 }

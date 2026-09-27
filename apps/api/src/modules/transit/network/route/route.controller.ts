@@ -4,7 +4,7 @@ import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import type { AuthUser } from '@nyx/types'
-import { RouteService } from './route.service'
+import { RouteService, type RouteEndpointFlags } from './route.service'
 
 @Controller('transit/transit-route')
 @UseGuards(JwtAuthGuard)
@@ -18,12 +18,15 @@ export class RouteController extends BaseController<Route, CreateRouteDto, Updat
     super(routeService, caslFactory)
   }
 
+  // body may carry `endpoints` — the origin/destination stop flags, applied when the
+  // initial trajectory creates those RouteLocality rows (they don't exist yet here)
   @Post()
-  override async create(@Req() req: { user?: AuthUser }, @Body() dto: CreateRouteDto): Promise<Route> {
+  override async create(@Req() req: { user?: AuthUser }, @Body() body: CreateRouteDto & { endpoints?: RouteEndpointFlags }): Promise<Route> {
+    const { endpoints, ...dto } = body
     const route = await super.create(req, dto)
     const created = route as unknown as { id: string; originLocalityId: string; destinationLocalityId: string }
     this.routeService
-      .buildInitialTrajectory(created.id, created.originLocalityId, created.destinationLocalityId)
+      .buildInitialTrajectory(created.id, created.originLocalityId, created.destinationLocalityId, endpoints)
       .catch((err) => this.logger.error(`buildInitialTrajectory failed for route ${created.id}: ${err.message}`))
     return route
   }
