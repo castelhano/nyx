@@ -449,9 +449,15 @@ Decisões tomadas na implementação (fases 4–6):
 - **Intervalos**: só atividades `BREAK`, lançadas manualmente — no vão entre pegadas ou dentro de uma
   pegada (tempo parado do carro). Intervalo dentro da pegada não descobre o carro.
 - **Trabalhado × pago**: trabalhado = pegadas menos os intervalos dentro delas + atividades
-  não-intervalo + apresentação/encerramento;
-  pago = trabalhado + intervalos pagos (`IntervalType.isPaid`); extra = trabalhado acima de
-  `workTime.idealMin`.
+  não-intervalo + intervalos remunerados (`IntervalType.isPaid`) + apresentação/encerramento; pago =
+  trabalhado. Intervalo remunerado continua sendo descanso (corta direção contínua, conta como
+  refeição). *(Antes: pago = trabalhado + intervalos pagos — ver `plan_crew_solver_v1.md`, fase 0.)*
+- **Local de refeição**: intervalo do tipo `crew.mealBreakIntervalTypeId` fora de local com
+  `TransitLocality.allowsMealBreak` → `MEAL_LOCATION` (`warning`, com `activityId`); a tela avisa ao
+  lançar. Local derivado: dentro da pegada, onde o carro está parado; entre pegadas, fim da anterior.
+- **Travar jornada**: `Duty.constraints.locked` (`POST /transit/duty/:id/lock`) — o gerador de
+  escala não altera; a edição manual continua livre.
+- **Extra** = trabalhado acima de `workTime.idealMin`.
 - **Aplicabilidade das regras por tipo de jornada**: `WORK_TIME` não vale para meia jornada/reserva;
   `MEAL_BREAK` só para corrida; `SPLIT_INTERVAL` só para dupla pegada (maior intervalo entre
   pegadas). Direção contínua = soma dos trechos trabalhados (pegadas menos intervalos) encadeados

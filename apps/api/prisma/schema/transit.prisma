@@ -85,6 +85,8 @@ model TransitLocality {
   lat       Float?
   lng       Float?
   isDepot   Boolean  @default(false)
+  // terminal with facilities for the crew's meal break (see DutyIssue MEAL_LOCATION)
+  allowsMealBreak Boolean @default(false)
   notes     String?
   // SnapInfo (packages/schemas/transit/locality.schema.ts) — set by OsrmService when
   // snapping this locality's coordinates onto the OSRM road network:
@@ -716,7 +718,7 @@ model Duty {
   issues      Json?
   // denormalized from issues (length > 0) for filtering/listing
   hasIssues   Boolean  @default(false)
-  // reserved for the solver
+  // DutyConstraints — { locked?: true }: the crew solver never changes a locked duty
   constraints Json?
   notes       String?
   createdAt   DateTime @default(now())

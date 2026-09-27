@@ -36,6 +36,8 @@ export interface BoardDuty {
   issues:     DutyIssue[]
   isStale:    boolean
   hasIssues:  boolean
+  // Duty.constraints.locked — the crew solver leaves it alone
+  locked:     boolean
   pieces:     BoardPiece[]
   activities: BoardActivity[]
 }
@@ -103,7 +105,11 @@ export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   MIN_PIECE:          'Pegada curta',
   TRAVEL_GAP:         'Deslocamento entre pegadas',
   BRANCH_MISMATCH:    'Bloco de outro operador',
+  MEAL_LOCATION:      'Refeição fora de local permitido',
 }
+
+// issues with no meaningful value/limit — rendered as the label only
+export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION'])
 
 export const DIRECTION_LABEL: Record<string, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 

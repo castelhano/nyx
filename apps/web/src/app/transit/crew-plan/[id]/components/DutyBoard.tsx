@@ -90,6 +90,7 @@ export function DutyBoard({
                 <span className="flex items-center gap-1 font-medium">
                   {pinnable && <PinToggle pinned={pinnedIds.has(duty.id)} onToggle={() => onTogglePin(duty.id)} noun="jornada" />}
                   {formatDutyNumber(duty.role, duty.dutyNumber)}
+                  {duty.locked && <Icons.Lock className="w-3 h-3 text-muted-foreground" aria-label="Travada" />}
                 </span>
                 <span className="flex items-center gap-1 text-muted-foreground">
                   {duty.summary && fmtDuration(duty.summary.workMinutes)}

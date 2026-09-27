@@ -34,13 +34,15 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 export const dutyIssueSchema = z.object({
   code: z.enum([
     'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL',
-    'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH',
+    'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION',
   ]),
   severity: z.enum(['warning', 'error']),
   value:    z.number(),
   limit:    z.number().optional(),
   // when the rule points at a specific piece — lets the Gantt flag that block span
   pieceId:  z.string().optional(),
+  // when it points at a specific activity (e.g. a meal break outside a meal locality)
+  activityId: z.string().optional(),
 })
 export type DutyIssue = z.infer<typeof dutyIssueSchema>
 
@@ -125,6 +127,7 @@ export const dutySchema = withMeta(
       showInForm:     false,
     }),
 
+    // DutyConstraints — { locked?: true }: the crew solver never changes a locked duty
     constraints: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Restrições',
       listVisibility: 'never',

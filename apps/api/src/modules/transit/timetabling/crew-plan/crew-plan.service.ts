@@ -308,6 +308,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       duties: duties.map(d => ({
         id: d.id, role: d.role, dutyNumber: d.dutyNumber, kind: d.kind, branchId: d.branchId, notes: d.notes,
         summary: d.summary, issues: d.issues ?? [], isStale: d.isStale, hasIssues: d.hasIssues,
+        locked: (d.constraints as { locked?: boolean } | null)?.locked === true,
         pieces: d.pieces.map(p => ({
           id: p.id, vehicleBlockId: p.vehicleBlockId, sequence: p.sequence,
           startMinutes: p.startMinutes, endMinutes: p.endMinutes,
@@ -339,11 +340,16 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           id: true, role: true, kind: true, branchId: true,
           summary: true, issues: true, isStale: true,
           pieces:     { select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true } },
-          activities: { select: { type: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
+          activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
         },
       }),
     ])
-    const relief = await loadBlockRelief(this.prisma, blockRows.map(b => b.id))
+    const [relief, mealLocalities] = await Promise.all([
+      loadBlockRelief(this.prisma, blockRows.map(b => b.id)),
+      settings.mealBreakIntervalTypeId
+        ? this.prisma.transitLocality.findMany({ where: { allowsMealBreak: true }, select: { id: true } })
+        : Promise.resolve([]),
+    ])
 
     // crew travel between the end of a piece and the start of the next, when they differ
     const pairs = new Map<string, { originId: string; destinationId: string }>()
@@ -364,9 +370,13 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       duties: duties.map(d => ({
         id: d.id, role: d.role, kind: d.kind, branchId: d.branchId,
         pieces:     d.pieces,
-        activities: d.activities.map(a => ({ type: a.type, startMinutes: a.startMinutes, endMinutes: a.endMinutes, isPaidBreak: a.type === 'BREAK' && !!a.intervalType?.isPaid })),
+        activities: d.activities.map(a => ({
+          id: a.id, type: a.type, intervalTypeId: a.intervalTypeId, startMinutes: a.startMinutes, endMinutes: a.endMinutes,
+          isPaidBreak: a.type === 'BREAK' && !!a.intervalType?.isPaid,
+        })),
       })),
       matrixMinutes: new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes])),
+      mealLocalityIds: new Set(mealLocalities.map(l => l.id)),
     })
 
     // only rows whose derived state actually changed are written — a single piece edit

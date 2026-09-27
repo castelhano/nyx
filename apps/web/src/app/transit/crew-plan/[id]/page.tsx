@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CrewRole, ReliefPoint } from '@nyx/schemas'
 import { Icons }            from '@/lib/icons'
 import { AutoBreadcrumb }   from '@/core/AutoBreadcrumb'
@@ -60,6 +60,7 @@ export default function CrewPlanPage() {
     router.replace(v === 'duties' ? '?view=duties' : '?', { scroll: false })
   }
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const confirm   = useConfirm()
 
   // the first load of each crew plan asks the server to recalculate (picks up upstream
@@ -312,17 +313,29 @@ export default function CrewPlanPage() {
     await run(() => api(`/transit/duty-piece/${pieceId}`, { method: 'DELETE' }))
   }
 
+  // creates the activity; a meal break away from a meal locality is saved but flagged
+  // (DutyIssue MEAL_LOCATION) — warned right away, read from the board run() just refetched
+  async function createActivity(dutyId: string, input: ActivityInput, success?: string): Promise<boolean> {
+    const created = await run(() => api('/transit/duty-activity', { method: 'POST', body: JSON.stringify({ dutyId, ...input }) }) as Promise<{ id: string }>, success)
+    if (!created) return false
+    const board = queryClient.getQueryData<CrewBoardData>(['transit', 'crew-plan', id, 'board'])
+    const flagged = board?.duties.find(d => d.id === dutyId)?.issues.some(i => i.code === 'MEAL_LOCATION' && i.activityId === created.id)
+    if (flagged) toast.warning('Refeição fora de local permitido — a jornada ficou com pendência')
+    return true
+  }
+
   async function handleAddActivity(input: ActivityInput): Promise<boolean> {
-    if (!selectedDuty) return false
-    const res = await run(() => api('/transit/duty-activity', { method: 'POST', body: JSON.stringify({ dutyId: selectedDuty.id, ...input }) }).then(() => true))
-    return !!res
+    return selectedDuty ? createActivity(selectedDuty.id, input) : false
   }
 
   // break inside a piece, from the duty view's idle stretches
   async function handleAddBreak(input: ActivityInput) {
-    if (!breakDraft) return
-    const res = await run(() => api('/transit/duty-activity', { method: 'POST', body: JSON.stringify({ dutyId: breakDraft.duty.id, ...input }) }).then(() => true), 'Intervalo adicionado')
-    if (res) setBreakDraft(null)
+    if (breakDraft && await createActivity(breakDraft.duty.id, input, 'Intervalo adicionado')) setBreakDraft(null)
+  }
+
+  async function handleToggleLock() {
+    if (!selectedDuty) return
+    await run(() => api(`/transit/duty/${selectedDuty.id}/lock`, { method: 'POST', body: JSON.stringify({ locked: !selectedDuty.locked }) }))
   }
 
   async function handleDeleteActivity(activityId: string) {
@@ -650,6 +663,7 @@ export default function CrewPlanPage() {
             onAddActivity={handleAddActivity}
             onDeleteActivity={(aid) => void handleDeleteActivity(aid)}
             onClose={() => setSelectedDutyId(null)}
+            onToggleLock={() => void handleToggleLock()}
           />
         ) : (
           <PlanPanel

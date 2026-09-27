@@ -1,4 +1,5 @@
-import { Controller, UseGuards } from '@nestjs/common'
+import { Controller, Post, Param, Body, Req, HttpCode, UseGuards } from '@nestjs/common'
+import type { AuthUser } from '@nyx/types'
 import { Duty, CreateDutyDto, UpdateDutyDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -13,5 +14,13 @@ export class DutyController extends BaseController<Duty, CreateDutyDto, UpdateDu
     caslFactory: CaslAbilityFactory,
   ) {
     super(dutyService, caslFactory)
+  }
+
+  // body: { locked: boolean }
+  @Post(':id/lock')
+  @HttpCode(200)
+  async lock(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body() body: { locked?: unknown }) {
+    await this.assertAbility(req.user, 'update')
+    return this.dutyService.setLocked(id, body?.locked === true)
   }
 }

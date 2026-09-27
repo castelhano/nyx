@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { dutySchema, Duty, CreateDutyDto, UpdateDutyDto, CrewRole } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
@@ -14,7 +15,7 @@ export class DutyService extends BaseService<Duty, CreateDutyDto, UpdateDutyDto>
   }
 
   // summary/isStale/issues/hasIssues are derived (scoring + VehiclePlan integration);
-  // constraints belongs to the solver — none of them come from the client.
+  // constraints is only written through setLocked — none of them come from the client.
   private static stripManaged(dto: Record<string, unknown>) {
     const { summary: _s, isStale: _st, issues: _i, hasIssues: _h, constraints: _c, ...rest } = dto
     return rest
@@ -50,6 +51,16 @@ export class DutyService extends BaseService<Duty, CreateDutyDto, UpdateDutyDto>
       return this.findOne(id)
     }
     return updated
+  }
+
+  // { locked: true } keeps the crew solver off this duty; no derived state changes
+  async setLocked(id: string, locked: boolean): Promise<Duty> {
+    const current = await this.prisma.duty.findUnique({ where: { id }, select: { constraints: true } })
+    if (!current) throw new NotFoundException('duty not found')
+    const { locked: _l, ...rest } = (current.constraints ?? {}) as Prisma.JsonObject
+    const constraints: Prisma.JsonObject = locked ? { ...rest, locked: true } : rest
+    await this.prisma.duty.update({ where: { id }, data: { constraints: Object.keys(constraints).length ? constraints : Prisma.DbNull } })
+    return this.findOne(id)
   }
 
   override async remove(id: string): Promise<void> {

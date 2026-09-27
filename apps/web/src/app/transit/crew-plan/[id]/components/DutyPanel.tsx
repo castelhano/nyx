@@ -7,10 +7,10 @@ import { Select } from '@/components/ui/select'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { BoardDuty, BoardBlock, BoardActivity, CrewBoardData } from '../board.types'
-import { useIntervalTypes } from './BreakModal'
+import { useIntervalTypes } from '../../../use-interval-types'
 import {
   fmtTime, fmtDuration, parseTime, dutyColorVars, pieceTrips, SWATCH_BG_CLASS,
-  ROLE_LABEL, KIND_LABEL, ACTIVITY_LABEL, ISSUE_LABEL, STALE_LABEL,
+  ROLE_LABEL, KIND_LABEL, ACTIVITY_LABEL, ISSUE_LABEL, STALE_LABEL, VALUELESS_ISSUES,
 } from '../board.types'
 
 export const DUTY_FORM_ID = 'crew-duty-form'
@@ -45,6 +45,7 @@ interface Props {
   onAddActivity:    (input: ActivityInput) => Promise<boolean>
   onDeleteActivity: (activityId: string) => void
   onClose:          () => void
+  onToggleLock:     () => void
 }
 
 // Remounted per duty (key={duty.id}) and per reset, so the form's initial state is simply
@@ -55,8 +56,9 @@ export function DutyPanel(props: Props) {
 
 function DutyPanelInner({
   duty, blockById, lineCodes, operators, localityName, canEdit,
-  onSave, onDelete, onDeletePiece, onAddActivity, onDeleteActivity, onClose,
+  onSave, onDelete, onDeletePiece, onAddActivity, onDeleteActivity, onClose, onToggleLock,
 }: Props) {
+  const flaggedActivityIds = new Set(duty.issues.map(i => i.activityId).filter(Boolean))
   const [role, setRole]         = useState<CrewRole>(duty.role)
   const [kind, setKind]         = useState<BoardDuty['kind']>(duty.kind)
   const [branchId, setBranchId] = useState(duty.branchId ?? '')
@@ -80,9 +82,20 @@ function DutyPanelInner({
           {duty.isStale && <Badge tone="red">Desatualizada</Badge>}
           {duty.hasIssues && <Badge tone="amber">Pendências</Badge>}
         </div>
-        <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" title="Fechar">
-          <Icons.X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <button
+              type="button" onClick={onToggleLock}
+              className={cn('p-1 rounded', duty.locked ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground')}
+              title={duty.locked ? 'Destravar (o gerador de escala pode alterar esta jornada)' : 'Travar (o gerador de escala não altera esta jornada)'}
+            >
+              {duty.locked ? <Icons.Lock className="w-4 h-4" /> : <Icons.LockOpen className="w-4 h-4" />}
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" title="Fechar">
+            <Icons.X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -139,7 +152,7 @@ function DutyPanelInner({
                   <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'error' ? 'text-red-600 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')} />
                   <span>
                     {ISSUE_LABEL[i.code]}
-                    {i.code !== 'BRANCH_MISMATCH' && <> — {fmtTime(i.value)}{i.limit != null && <> (limite {fmtTime(i.limit)})</>}</>}
+                    {!VALUELESS_ISSUES.has(i.code) && <> — {fmtTime(i.value)}{i.limit != null && <> (limite {fmtTime(i.limit)})</>}</>}
                   </span>
                 </li>
               ))}
@@ -177,6 +190,7 @@ function DutyPanelInner({
             {duty.activities.map(a => (
               <li key={a.id} className="flex items-center justify-between gap-2 text-xs rounded px-2 py-1 bg-muted/40">
                 <span>
+                  {flaggedActivityIds.has(a.id) && <Icons.Circle className="inline w-2 h-2 me-1.5 fill-current text-amber-500 dark:text-amber-400" aria-label="Com pendência" />}
                   <span className="font-medium">{ACTIVITY_LABEL[a.type]}</span>
                   {a.intervalTypeName && <> ({a.intervalTypeName})</>}
                   {' · '}{fmtTime(a.startMinutes)}–{fmtTime(a.endMinutes)}

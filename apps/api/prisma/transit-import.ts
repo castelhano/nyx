@@ -24,7 +24,7 @@ function writeLogo(logo: { path: string; data: string } | null): string | null {
 }
 
 interface Fixture {
-  localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown }>
+  localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; allowsMealBreak?: boolean; notes: string | null; snapInfo: unknown }>
   dayTypes: Array<{ code: string; name: string; pattern: unknown; priority: number; sortOrder: number }>
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
   scopes: Array<{ name: string; description: string | null; osoConfig: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
@@ -46,8 +46,8 @@ async function main() {
   for (const l of fixture.localities) {
     await prisma.transitLocality.upsert({
       where:  { code: l.code },
-      update: { abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
-      create: { code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
+      update: { abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, allowsMealBreak: l.allowsMealBreak ?? false, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
+      create: { code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, allowsMealBreak: l.allowsMealBreak ?? false, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
     })
   }
   const localityMap = new Map((await prisma.transitLocality.findMany({ select: { id: true, code: true } })).map(l => [l.code, l.id]))

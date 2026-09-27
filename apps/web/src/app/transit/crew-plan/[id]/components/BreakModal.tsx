@@ -1,28 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { formatDutyNumber } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { apiFetch } from '@/lib/auth'
 import { useShortcutContext } from '@/lib/keywatch'
 import type { BoardDuty } from '../board.types'
 import { fmtTime, parseTime } from '../board.types'
 import type { ActivityInput } from './DutyPanel'
-
-export function useIntervalTypes() {
-  return useQuery<{ id: string; name: string }[]>({
-    queryKey: ['transit', 'interval-type', 'all'],
-    queryFn:  async () => {
-      const res = await apiFetch('/transit/interval-type?pageSize=999')
-      if (!res.ok) return []
-      const json = await res.json()
-      return json.data ?? []
-    },
-    staleTime: 60_000,
-  })
-}
+import { useIntervalTypes } from '../../../use-interval-types'
 
 export interface BreakDraft {
   duty:           BoardDuty

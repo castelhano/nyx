@@ -41,6 +41,10 @@ export const crewSettingsSchema = withMeta(z.object({
   // night window (clock hours) — for now only yields informative nightMinutes
   nightStartHour:              z.number().int().min(0).max(23).default(22),
   nightEndHour:                z.number().int().min(0).max(23).default(5),
+  // IntervalType placed as the meal (in-duty) break — its min/max decide when an idle gap
+  // becomes a meal; BREAKs of this type are checked against TransitLocality.allowsMealBreak.
+  // range.mealBreak below only scores/flags the duty
+  mealBreakIntervalTypeId:     z.uuid().nullable().default(null),
 
   range: z.object({
     workTime:       rangeCriterionSchema,

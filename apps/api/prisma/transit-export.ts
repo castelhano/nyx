@@ -84,7 +84,7 @@ async function main() {
     exportedAt: new Date().toISOString(),
     localities: localities.map(l => ({
       code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng,
-      isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo,
+      isDepot: l.isDepot, allowsMealBreak: l.allowsMealBreak, notes: l.notes, snapInfo: l.snapInfo,
     })),
     dayTypes: dayTypes.map(d => ({
       code: d.code, name: d.name, pattern: d.pattern, priority: d.priority, sortOrder: d.sortOrder,

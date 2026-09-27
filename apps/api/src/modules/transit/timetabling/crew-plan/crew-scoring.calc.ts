@@ -16,10 +16,14 @@ import { isReliefPoint, subtractSpans } from './relief-points'
 //   signOffMinutes are assumed before its first / after its last piece.
 // - Breaks are the BREAK activities only (the vehicle's own intervals are never assumed as
 //   crew breaks). A break may sit inside a piece (idle time only, enforced by
-//   duty-occupancy.utils.ts): that time is rest, not work, but the vehicle stays covered.
-// - workMinutes = pieces minus the breaks inside them + non-break activities + implicit
-//   sign-on/off; paidMinutes adds paid breaks (IntervalType.isPaid); overtime = workMinutes
-//   above workTime.idealMin.
+//   duty-occupancy.utils.ts): that time is rest, but the vehicle stays covered.
+// - workMinutes = pieces minus the breaks inside them + non-break activities + paid breaks
+//   (IntervalType.isPaid) + implicit sign-on/off; paidMinutes = workMinutes; overtime =
+//   workMinutes above workTime.idealMin. A paid break still is a break: it splits continuous
+//   driving and counts in breakMinutes (MEAL_BREAK).
+// - A break of settings.mealBreakIntervalTypeId away from an allowsMealBreak locality is a
+//   MEAL_LOCATION warning. Where a break happens is derived: inside a piece, where the
+//   vehicle stands (destination of its last arrival); between pieces, the previous piece's end.
 
 export interface CrewCalcBlock {
   id:       string
@@ -46,7 +50,7 @@ export interface CrewCalcDuty {
   kind:       'STRAIGHT' | 'SPLIT' | 'TRIPPER' | 'STANDBY'
   branchId:   string | null
   pieces:     CrewCalcPiece[]
-  activities: { type: string; startMinutes: number; endMinutes: number; isPaidBreak: boolean }[]
+  activities: { id: string; type: string; intervalTypeId: string | null; startMinutes: number; endMinutes: number; isPaidBreak: boolean }[]
 }
 
 export interface CrewCalcResult {
@@ -58,6 +62,19 @@ export interface CrewCalcResult {
 type Span = { startMinutes: number; endMinutes: number }
 
 const dur = (s: Span) => s.endMinutes - s.startMinutes
+
+// where a break happens (see the header) — null when the duty has no live piece
+function breakLocality(b: Span, live: CrewCalcPiece[], blocks: Map<string, CrewCalcBlock>): string | null {
+  const inside = live.find(p => p.startMinutes <= b.startMinutes && p.endMinutes >= b.endMinutes)
+  if (inside) {
+    const arrival = (blocks.get(inside.vehicleBlockId!)?.points ?? [])
+      .filter(pt => (pt.kind === 'TRIP_DESTINATION' || pt.kind === 'DEADRUN_DESTINATION') && pt.minutes <= b.startMinutes)
+      .reduce<ReliefPoint | null>((last, pt) => (!last || pt.minutes >= last.minutes ? pt : last), null)
+    return arrival?.localityId ?? inside.startLocalityId
+  }
+  const prev = live.filter(p => p.endMinutes <= b.startMinutes).at(-1)
+  return prev?.endLocalityId ?? live.find(p => p.startMinutes >= b.endMinutes)?.startLocalityId ?? null
+}
 
 function pieceStaleReason(p: CrewCalcPiece, block: CrewCalcBlock | undefined): DutyPieceStaleReason | null {
   if (!p.vehicleBlockId || !block) return 'BLOCK_REMOVED'
@@ -107,6 +124,7 @@ export function computeCrewPlan(input: {
   blocks:        CrewCalcBlock[]
   settings:      CrewSettings
   matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes (crew travel between relief points)
+  mealLocalityIds: Set<string>       // TransitLocality.allowsMealBreak
 }): CrewCalcResult {
   const { settings } = input
   const range  = settings.range
@@ -149,16 +167,16 @@ export function computeCrewPlan(input: {
 
     const breaks       = acts.filter(a => a.type === 'BREAK')
     const breakMinutes = breaks.reduce((s, b) => s + dur(b), 0)
-    const paidBreak    = breaks.filter(b => b.isPaidBreak).reduce((s, b) => s + dur(b), 0)
-    // the time actually worked on vehicles: live pieces minus the breaks taken inside them
+    const paidBreaks   = breaks.filter(b => b.isPaidBreak)
+    // the time driven: live pieces minus every break taken inside them
     const segments     = live.flatMap(p => subtractSpans(p, breaks).map(s => ({ ...s, pieceId: p.id })))
     const pieceMinutes = segments.reduce((s, sg) => s + dur(sg), 0)
     const otherActs    = acts.filter(a => a.type !== 'BREAK')
-    const workMinutes  = pieceMinutes + otherActs.reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff
-    const paidMinutes  = workMinutes + paidBreak
+    const workMinutes  = pieceMinutes + [...otherActs, ...paidBreaks].reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff
+    const paidMinutes  = workMinutes
     const overtime     = Math.max(0, workMinutes - range.workTime.idealMin)
 
-    const workSpans: Span[] = [...segments, ...otherActs]
+    const workSpans: Span[] = [...segments, ...otherActs, ...paidBreaks]
     if (implicitOn)  workSpans.push({ startMinutes: live[0].startMinutes - implicitOn, endMinutes: live[0].startMinutes })
     if (implicitOff) workSpans.push({ startMinutes: live[live.length - 1].endMinutes, endMinutes: live[live.length - 1].endMinutes + implicitOff })
     const nightMinutes = workSpans.reduce((s, sp) => s + nightOverlap(sp, settings.nightStartHour, settings.nightEndHour), 0)
@@ -226,6 +244,13 @@ export function computeCrewPlan(input: {
         push({ code: 'TRAVEL_GAP', severity: 'error', value: g.minutes, limit: Math.ceil(travel), pieceId: g.next.id })
       } else if (travel == null && !declared) {
         push({ code: 'TRAVEL_GAP', severity: 'warning', value: g.minutes, pieceId: g.next.id })
+      }
+    }
+
+    if (settings.mealBreakIntervalTypeId) {
+      for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {
+        const localityId = breakLocality(b, live, blocks)
+        if (localityId && !input.mealLocalityIds.has(localityId)) push({ code: 'MEAL_LOCATION', severity: 'warning', value: 0, activityId: b.id })
       }
     }
 

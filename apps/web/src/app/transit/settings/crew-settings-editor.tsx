@@ -1,7 +1,9 @@
 'use client'
 
 import type { CrewSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
+import { Select } from '@/components/ui/select'
 import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
+import { useIntervalTypes } from '../use-interval-types'
 
 // Crew (duty/CCT) settings editor — used by the transit settings page (global / per Scope)
 // and by the crew plan's own settings modal (per-plan customization).
@@ -40,6 +42,8 @@ interface Props {
 }
 
 export function CrewSettingsEditor({ value, reference, onChange, disabled }: Props) {
+  const { data: intervalTypes = [] } = useIntervalTypes()
+
   function updateRange(key: keyof CrewSettings['range'], field: keyof RangeCriterion, v: unknown) {
     onChange({ ...value, range: { ...value.range, [key]: { ...value.range[key], [field]: v } } })
   }
@@ -74,6 +78,27 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
               </div>
             </div>
           ))}
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <DiffDot show={!!reference && value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId} />
+              <div>
+                <p className="text-sm font-medium">Tipo de Intervalo de Refeição</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Lançado como intervalo intrajornada; fora de local que permite refeição, a jornada fica com pendência
+                </p>
+              </div>
+            </div>
+            <Select
+              value={value.mealBreakIntervalTypeId ?? ''}
+              onChange={(e) => onChange({ ...value, mealBreakIntervalTypeId: e.target.value || null })}
+              size="sm"
+              wrapperClassName="w-56 shrink-0"
+              disabled={disabled}
+            >
+              <option value="">Não definido</option>
+              {intervalTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+          </div>
         </div>
       </div>
 
