@@ -283,10 +283,13 @@ export class CrewImprover {
   //  - between pieces at different places, the driver walks — within settings.maxWalkMeters and a
   //    gap that fits the walk (unknown distance → no duty);
   //  - at most one long interval: the meal (STRAIGHT — a rest within the meal type's range, at a
-  //    meal stop of the line that arrives) or the split gap (SPLIT, within range.splitInterval);
-  //    the other gaps are shorter than the meal (vehicle/line changes);
+  //    meal stop of the line that arrives; only when settings.mealRule takes the continuous
+  //    form) or the split gap (SPLIT, within range.splitInterval); the other gaps are worked —
+  //    shorter than the meal, or any length when the rule takes a STRAIGHT without a meal break;
   //  - no long interval between pieces: a meal inside a piece, where the vehicle stands idle
-  //    (STRAIGHT), else a TRIPPER — which can't work beyond range.workTime.floor;
+  //    (STRAIGHT); else, working at least range.workTime.floor, a STRAIGHT without a meal break
+  //    when the rule takes one (its stops checked by the evaluation); else a TRIPPER — which
+  //    can't work beyond range.workTime.floor;
   //  - no issue at all from the crew plan's own evaluation (ceilings, travel, branch, …).
   private build(raw: SolverPiece[], branchId: string | null): WorkDuty | null {
     const sorted = [...raw].sort((x, y) => x.startMinutes - y.startMinutes)
@@ -304,6 +307,8 @@ export class CrewImprover {
 
     const { meal, settings, walk } = this.input
     const split = settings.range.splitInterval
+    const rule  = settings.mealRule
+    const plainPossible = rule.fractioned || !rule.continuous
     let kind: SolverDuty['kind'] = 'TRIPPER'
     let breaks: Span[] = []
     for (let i = 1; i < pieces.length; i++) {
@@ -314,19 +319,21 @@ export class CrewImprover {
       const travel = walkMinutes(meters)
       if (gap < travel) return null
       const rest = gap - travel
-      const long = rest >= meal.minMinutes
-      if (long && kind !== 'TRIPPER') return null
-      if (rest >= meal.minMinutes && rest <= meal.maxMinutes && this.views.get(prev.vehicleBlockId)!.mealAllowed(prev.endMinutes, prev.endLocalityId)) {
+      const isMeal  = !!meal && rest >= meal.minMinutes && rest <= meal.maxMinutes && this.views.get(prev.vehicleBlockId)!.mealAllowed(prev.endMinutes, prev.endLocalityId)
+      const isSplit = split.active && gap > (meal?.maxMinutes ?? 0) && gap >= split.floor && gap <= split.ceiling
+      if ((isMeal || isSplit) && kind !== 'TRIPPER') return null
+      if (isMeal) {
         kind = 'STRAIGHT'
         breaks = [{ startMinutes: prev.endMinutes, endMinutes: prev.endMinutes + rest }]
-      } else if (split.active && gap > meal.maxMinutes && gap >= split.floor && gap <= split.ceiling) {
+      } else if (isSplit) {
         kind = 'SPLIT'
-      } else if (long) {
+      } else if (meal && rest >= meal.minMinutes && !plainPossible) {
+        // a meal-sized gap that can't be the meal, with nothing but a meal accepted
         return null
       }
     }
 
-    if (kind === 'TRIPPER') {
+    if (kind === 'TRIPPER' && meal) {
       // meal inside a piece, where the vehicle stands idle — the most balanced one
       const first = pieces[0].startMinutes, last = pieces[pieces.length - 1].endMinutes
       let best: Span | null = null, balance = -1
@@ -342,6 +349,14 @@ export class CrewImprover {
       if (best) { kind = 'STRAIGHT'; breaks = [best] }
     }
 
+    // no meal: a STRAIGHT without a meal break when long enough and the rule takes one
+    if (kind === 'TRIPPER' && plainPossible) {
+      const straight = this.make('STRAIGHT', branchId, pieces, [])
+      if (straight.ev.summary.workMinutes >= settings.range.workTime.floor) {
+        return straight.ev.issues.length || straight.ev.isStale ? null : straight
+      }
+    }
+
     const w = this.make(kind, branchId, pieces, breaks)
     if (w.ev.issues.length || w.ev.isStale) return null
     if (kind === 'TRIPPER' && settings.range.workTime.active && w.ev.summary.workMinutes > settings.range.workTime.floor) return null
@@ -354,7 +369,7 @@ export class CrewImprover {
     const calc: CrewCalcDuty = {
       id, role: 'DRIVER', kind, branchId,
       pieces: pieces.map((p, k) => ({ id: `${id}-${k}`, ...p })),
-      activities: breaks.map((b, k) => ({ id: `${id}-b${k}`, type: 'BREAK', intervalTypeId: meal.intervalTypeId, isPaidBreak: meal.isPaid, ...b })),
+      activities: breaks.map((b, k) => ({ id: `${id}-b${k}`, type: 'BREAK', intervalTypeId: meal!.intervalTypeId, isPaidBreak: meal!.isPaid, ...b })),
     }
     return { kind, branchId, pieces, breaks, calc, ev: evaluateDuty(calc, this.ctx), idx: -1 }
   }

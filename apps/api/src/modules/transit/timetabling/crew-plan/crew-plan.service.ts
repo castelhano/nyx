@@ -408,7 +408,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
 
     const result = computeCrewPlan({
       settings,
-      blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips })),
+      blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips, deadruns: r.deadruns })),
       duties: duties.map(d => ({
         id: d.id, role: d.role, kind: d.kind, branchId: d.branchId,
         pieces:     d.pieces,

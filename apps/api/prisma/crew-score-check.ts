@@ -28,7 +28,7 @@ async function main() {
   for (const plan of plans) {
     console.log(`${plan.description ?? plan.id}`)
     const { settings } = await crewPlans.resolveSettings(plan.id)
-    if (!settings.mealBreakIntervalTypeId) { console.log('  (sem tipo de refeição — ignorada)'); continue }
+    if (settings.mealRule.continuous && !settings.mealBreakIntervalTypeId) { console.log('  (sem tipo de refeição — ignorada)'); continue }
     const input = await loadCrewSolverInput(prisma, plan.id, settings)
     const rows  = await prisma.duty.findMany({
       where:  { crewPlanId: plan.id },

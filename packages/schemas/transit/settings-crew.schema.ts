@@ -56,6 +56,17 @@ export const crewSettingsSchema = withMeta(z.object({
   // becomes a meal; BREAKs of this type are checked against TransitLocality.allowsMealBreak.
   // range.mealBreak below only scores/flags the duty
   mealBreakIntervalTypeId:     z.uuid().nullable().default(null),
+  // How a STRAIGHT duty meets the in-duty rest (intrajornada) — any accepted form will do; none
+  // accepted = no requirement. A SPLIT's own split interval is its rest.
+  //  continuous: a BREAK of mealBreakIntervalTypeId (the type's range, at a meal stop) — unpaid
+  //  fractioned: the duty's stops (vehicle idle within pieces + gaps between them, any length)
+  //              add up to minTotal with one of at least minLongest — paid
+  mealRule: z.object({
+    continuous:           z.boolean(),
+    fractioned:           z.boolean(),
+    fractionedMinTotal:   z.number().int().min(0).max(600),
+    fractionedMinLongest: z.number().int().min(0).max(600),
+  }).default({ continuous: true, fractioned: false, fractionedMinTotal: 30, fractionedMinLongest: 15 }),
   // crew solver's continuous improvement: stops after this long, or this long without a better
   // proposal (same fields as the planning settings)
   stopMaxTotalMinutes:         z.number().int().min(1).max(1440).default(5),

@@ -10,15 +10,19 @@ import type { CrewSolverInput, SolverBlock } from './crew-solver.calc'
 // blocks (relief points, trips, deadruns), its locked duties, the meal break type and meal
 // stops, and the crew walking distances among the relief points' localities.
 export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings): Promise<CrewSolverInput> {
-  if (!settings.mealBreakIntervalTypeId) {
+  // the meal type only matters when the continuous form of the intrajornada is accepted
+  const mealTypeId = settings.mealRule.continuous ? settings.mealBreakIntervalTypeId : null
+  if (settings.mealRule.continuous && !mealTypeId) {
     throw new BadRequestException('Defina o tipo de intervalo de refeição nas configurações da escala')
   }
   const [plan, mealType] = await Promise.all([
     prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true } }),
-    prisma.intervalType.findUnique({ where: { id: settings.mealBreakIntervalTypeId }, select: { minMinutes: true, maxMinutes: true, isPaid: true } }),
+    mealTypeId
+      ? prisma.intervalType.findUnique({ where: { id: mealTypeId }, select: { minMinutes: true, maxMinutes: true, isPaid: true } })
+      : Promise.resolve(null),
   ])
   if (!plan) throw new NotFoundException('crewPlan not found')
-  if (!mealType) throw new BadRequestException('Tipo de intervalo de refeição não encontrado')
+  if (mealTypeId && !mealType) throw new BadRequestException('Tipo de intervalo de refeição não encontrado')
 
   const [blockRows, lockedRows, mealStops] = await Promise.all([
     prisma.vehicleBlock.findMany({ where: { vehiclePlanId: plan.vehiclePlanId }, select: { id: true } }),
@@ -51,13 +55,13 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
 
   return {
     blocks, locked, settings,
-    meal: {
-      intervalTypeId: settings.mealBreakIntervalTypeId,
+    meal: mealTypeId && mealType ? {
+      intervalTypeId: mealTypeId,
       // the type's own range; the CCT meal criterion only scores
       minMinutes: mealType.minMinutes ?? settings.range.mealBreak.floor,
       maxMinutes: mealType.maxMinutes ?? settings.range.mealBreak.ceiling,
       isPaid:     mealType.isPaid,
-    },
+    } : null,
     mealStops:     new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
     walk,
   }

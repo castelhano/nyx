@@ -1,4 +1,4 @@
-import { Controller, Post, Param, Body, Req, Query, Sse, HttpCode, UseGuards, ForbiddenException } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Req, Query, Sse, HttpCode, UseGuards, ForbiddenException } from '@nestjs/common'
 import type { Observable } from 'rxjs'
 import type { AuthUser } from '@nyx/types'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -33,6 +33,21 @@ export class CrewSolverController {
   @HttpCode(200)
   stop(@Body('jobId') jobId: string) {
     this.solver.stop(jobId)
+    return { ok: true }
+  }
+
+  // the plan's generation — running or ended and not yet used — so the screen can pick it up
+  @Get(':id/solver/current')
+  async current(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
+    await this.assert(req.user, 'read')
+    return { job: this.solver.getCurrent(id) }
+  }
+
+  @Post(':id/solver/discard')
+  @HttpCode(200)
+  async discard(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body('jobId') jobId: string) {
+    await this.assert(req.user, 'create')
+    this.solver.discard(id, jobId)
     return { ok: true }
   }
 

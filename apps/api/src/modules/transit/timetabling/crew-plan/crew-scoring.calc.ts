@@ -28,6 +28,11 @@ import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
 // - Between pieces at different places the driver walks (crew-walk.ts), unless a TRAVEL
 //   activity is declared there: beyond settings.maxWalkMeters → WALK_DISTANCE; a gap shorter
 //   than the walk → TRAVEL_GAP.
+// - Stops: the vehicle's idle time within the duty's pieces + the idle gaps between them
+//   (breaks and the split interval aside). A STRAIGHT meets the intrajornada in any form
+//   settings.mealRule accepts — continuous (a meal BREAK) or fractioned (the stops add up to
+//   fractionedMinTotal, one of at least fractionedMinLongest) — else MEAL_REQUIRED. A SPLIT's
+//   own split interval is its rest; none accepted = no requirement.
 // - A break of settings.mealBreakIntervalTypeId is a MEAL_LOCATION warning unless its place is
 //   an allowsMealBreak stop (RouteLocality — per route) of the line that arrives there.
 //   Inside a piece: where the vehicle stands, i.e. its last arrival (a deadrun arrival has no
@@ -41,6 +46,20 @@ export interface CrewCalcBlock {
   serviceSpans: { startMinutes: number; endMinutes: number }[]
   points:   ReliefPoint[]
   trips:    { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
+  deadruns: { departureMinutes: number; arrivalMinutes: number }[]
+}
+
+// a block's trips + deadruns as spans (where the vehicle moves), cached per block object
+const movingCache = new WeakMap<CrewCalcBlock, Span[]>()
+function blockMoving(block: CrewCalcBlock): Span[] {
+  let spans = movingCache.get(block)
+  if (!spans) {
+    spans = [...block.trips, ...block.deadruns]
+      .map(e => ({ startMinutes: e.departureMinutes, endMinutes: e.arrivalMinutes }))
+      .sort((a, b) => a.startMinutes - b.startMinutes)
+    movingCache.set(block, spans)
+  }
+  return spans
 }
 
 export interface CrewCalcPiece {
@@ -269,6 +288,25 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     }
   }
 
+  // stops (fractioned intrajornada): vehicle idle within the pieces + idle gaps, merged
+  const stops = mergeSpans([
+    ...live.flatMap(p => { const b = blocks.get(p.vehicleBlockId!); return b ? subtractSpans(p, [...blockMoving(b), ...acts]) : [] }),
+    ...idleSpans,
+  ]).filter(sp => dur(sp) > 0)
+  const stopMinutes = stops.reduce((s, sp) => s + dur(sp), 0)
+  const longestStop = stops.reduce((m, sp) => Math.max(m, dur(sp)), 0)
+
+  const hasWork = live.length > 0
+  const rule    = settings.mealRule
+  let mealForm: DutySummary['mealForm'] = null
+  if (hasWork && duty.kind === 'STRAIGHT') {
+    const hasMeal = !!settings.mealBreakIntervalTypeId && breaks.some(b => b.intervalTypeId === settings.mealBreakIntervalTypeId)
+    if (rule.continuous && hasMeal) mealForm = 'CONTINUOUS'
+    else if (rule.fractioned && stopMinutes >= rule.fractionedMinTotal && longestStop >= rule.fractionedMinLongest) mealForm = 'FRACTIONED'
+  }
+  // what the meal criterion measures: the break, or the stops when fractioned
+  const mealMinutes = mealForm === 'FRACTIONED' ? stopMinutes : breakMinutes
+
   const summary: DutySummary = {
     spreadMinutes: events.length ? last - first : 0,
     workMinutes, paidMinutes, breakMinutes,
@@ -282,16 +320,23 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     interShiftRestMinutes: ctx.repeatsNextDay && events.length ? first + 1440 - last : null,
     idleMinutes,
     walkMeters: Math.round(walked),
+    stopMinutes,
+    longestStopMinutes: longestStop,
+    mealForm,
   }
 
   // ── issues ───────────────────────────────────────────────────────────────
   const issues: DutyIssue[] = []
   const push = (i: DutyIssue | null) => { if (i) issues.push(i) }
-  const hasWork = live.length > 0
 
   if (hasWork && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') push(rangeIssue('WORK_TIME', workMinutes, range.workTime))
   if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('SPREAD', summary.spreadMinutes, range.spread))
-  if (hasWork && duty.kind === 'STRAIGHT') push(rangeIssue('MEAL_BREAK', breakMinutes, range.mealBreak))
+  if (hasWork && duty.kind === 'STRAIGHT') push(rangeIssue('MEAL_BREAK', mealMinutes, range.mealBreak))
+  if (hasWork && duty.kind === 'STRAIGHT' && (rule.continuous || rule.fractioned) && !mealForm) {
+    push(rule.fractioned
+      ? { code: 'MEAL_REQUIRED', severity: 'error', value: stopMinutes, limit: rule.fractionedMinTotal }
+      : { code: 'MEAL_REQUIRED', severity: 'error', value: breakMinutes })
+  }
   if (hasWork && duty.kind === 'SPLIT') push(rangeIssue('SPLIT_INTERVAL', splitGap, range.splitInterval))
 
   // continuous driving: worked segments chained until a break sits between them (in the
@@ -338,7 +383,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   if (hasWork) {
     if (duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') crit('workTime', range.workTime, workMinutes)
     if (duty.kind !== 'STANDBY') crit('spread', range.spread, summary.spreadMinutes)
-    if (duty.kind === 'STRAIGHT') crit('mealBreak', range.mealBreak, breakMinutes)
+    if (duty.kind === 'STRAIGHT') crit('mealBreak', range.mealBreak, mealMinutes)
     if (duty.kind === 'SPLIT') crit('splitInterval', range.splitInterval, splitGap)
     crit('vehicleChanges', range.vehicleChanges, vehicleChanges)
     crit('lineChanges', range.lineChanges, lineChanges)

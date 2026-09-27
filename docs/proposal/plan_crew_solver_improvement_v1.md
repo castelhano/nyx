@@ -268,6 +268,22 @@ Valem para o cálculo da escala (tela) e para o solver:
 
 ---
 
+## Intrajornada e geração em segundo plano — implementado (2026-09-27)
+
+- **Formas aceitas de intrajornada** (`settings.mealRule`), só para a corrida (a dupla pegada tem o
+  próprio intervalo): **contínua** (intervalo do tipo de refeição, faixa do cadastro do tipo, em
+  local permitido, não pago) e/ou **fracionada** (paradas da jornada, qualquer duração, pagas,
+  somando `fractionedMinTotal` com uma de pelo menos `fractionedMinLongest`). Qualquer forma
+  marcada vale; nenhuma = sem exigência. Não cumprida → `MEAL_REQUIRED` (error). O solver monta
+  corrida sem intervalo lançado quando a regra permite (jornada inteira num carro só primeiro).
+- **Geração pertence à escala**: continua no servidor ao fechar o modal ou sair da tela;
+  `GET …/solver/current` devolve a geração da escala (rodando ou concluída e não usada) e o
+  stream manda o estado dela antes das mensagens novas. Uma por escala (iniciar outra substitui);
+  "Descartar" joga fora. O botão Otimizar mostra "Gerando… mm:ss" / "proposta pronta". Fica em
+  memória: reiniciar a API perde a geração.
+
+---
+
 ## Fora de escopo
 
 - Paralelizar por operador (várias threads) — só se o desempenho pedir.

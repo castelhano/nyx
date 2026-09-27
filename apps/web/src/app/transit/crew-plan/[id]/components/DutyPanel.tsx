@@ -142,6 +142,8 @@ function DutyPanelInner({
               <Stat label="Trocas linha" value={String(s.lineChanges)} />
               <Stat label="À disposição" value={fmtDuration(s.idleMinutes ?? 0)} />
               <Stat label="A pé"         value={`${(s.walkMeters ?? 0).toLocaleString('pt-BR')} m`} />
+              <Stat label="Paradas"      value={`${fmtDuration(s.stopMinutes ?? 0)} (maior ${fmtDuration(s.longestStopMinutes ?? 0)})`} />
+              <Stat label="Intrajornada" value={s.mealForm === 'CONTINUOUS' ? 'Contínua' : s.mealForm === 'FRACTIONED' ? 'Fracionada' : '—'} />
             </div>
           </Section>
         )}

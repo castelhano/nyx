@@ -23,7 +23,11 @@ import { Badge } from './DutyPanel'
 //            leaving the tab; read-only while a generation runs (the solver already read them).
 //  Painel    solver parameters; "Gerar" starts a run (SSE) and jumps to Cenários.
 //  Cenários  the run's best proposal next to the current plan, then "Criar versão" (a new
-//            DRAFT crew plan). A new run replaces it. See docs/proposal/plan_crew_solver_v1.md.
+//            DRAFT crew plan) — or, on a DRAFT plan, "Aplicar nesta escala" (its duties are
+//            replaced, locked ones kept). A new run replaces it. See docs/proposal/plan_crew_solver_v1.md.
+// The generation belongs to the crew plan: closing the modal (or leaving the page) leaves it
+// running on the server; reopening picks it up (`job`, from GET …/solver/current) and the stream
+// replays its state. "Parar" ends it keeping the best proposal, "Descartar" throws it away.
 
 export type OptimizeTab = 'config' | 'panel' | 'scenarios'
 
@@ -71,9 +75,29 @@ const DIRECTIONS: { value: Params['direction']; label: string }[] = [
   { value: 'fewer_paid',   label: 'Menor jornada' },
 ]
 
+// GET /transit/crew-plan/:id/solver/current (CrewSolverJobState)
+export interface SolverJob {
+  jobId:       string
+  params:      Params
+  startedAt:   number
+  running:     boolean
+  stopReason:  StopReason | null
+  error:       string | null
+  progress:    Progress | null
+  hasProposal: boolean
+}
+
 interface Props {
   crewPlanId:      string
   initialTab:      OptimizeTab
+  // a DRAFT plan takes the proposal in place; an ACTIVE one gets a new DRAFT version
+  planStatus:      'DRAFT' | 'ACTIVE' | 'SUPERSEDED'
+  // the plan's generation, running or ended and not yet used
+  job:             SolverJob | null
+  // after a generation starts, ends up accepted or is discarded
+  onJobChanged:    () => void
+  // the proposal was applied to this (DRAFT) plan
+  onApplied:       () => void
   current:         CrewPlanSummary | null
   lockedCount:     number
   // after a settings change — the server already recalculated the plan
@@ -89,7 +113,7 @@ async function callSettings(path: string, init?: RequestInit): Promise<SettingsV
   return json as SettingsView
 }
 
-export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount, onSettingsSaved, onCreated, onClose }: Props) {
+export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJobChanged, onApplied, current, lockedCount, onSettingsSaved, onCreated, onClose }: Props) {
   useShortcutContext('optimize_crew_md')
   const { toast } = useToast()
   const confirm   = useConfirm()
@@ -114,17 +138,37 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
   const isCustom = !!settingsView?.isCustom
 
   // ── generation ──
-  const [params, setParams]           = useState<Params>({ base: 'complete', direction: 'balanced', fareCollector: false, assistant: false })
-  const [jobId, setJobId]             = useState<string | null>(null)
-  const [running, setRunning]         = useState(false)
+  const [params, setParams]           = useState<Params>(job?.params ?? { base: 'complete', direction: 'balanced', fareCollector: false, assistant: false })
+  const [jobId, setJobId]             = useState<string | null>(job?.jobId ?? null)
+  const [running, setRunning]         = useState(job?.running ?? false)
   const [proposal, setProposal]       = useState<{ index: number; summary: CrewPlanSummary } | null>(null)
   const [error, setError]             = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [accepting, setAccepting]     = useState(false)
-  const [progress, setProgress]       = useState<Progress | null>(null)
-  const [stopReason, setStopReason]   = useState<StopReason | null>(null)
+  const [progress, setProgress]       = useState<Progress | null>(job?.progress ?? null)
+  const [stopReason, setStopReason]   = useState<StopReason | null>(job?.stopReason ?? null)
   const esRef = useRef<EventSource | null>(null)
   useEffect(() => () => esRef.current?.close(), [])
+
+  // the stream sends the job's state first, then what comes next
+  function attach(id: string) {
+    esRef.current?.close()
+    const es = new EventSource(`/api${solverBase}/stream?jobId=${id}&token=${encodeURIComponent(getToken())}`)
+    esRef.current = es
+    es.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data) as Message
+      if (msg.type === 'proposal') setProposal(msg.proposal)
+      if (msg.type === 'progress') setProgress(msg)
+      if (msg.type === 'done') setStopReason(msg.stopReason)
+      if (msg.type === 'error') setError(msg.message)
+      if (msg.type === 'done' || msg.type === 'error') { es.close(); setRunning(false) }
+    }
+    es.onerror = () => { es.close(); setRunning(false) }
+  }
+
+  // pick up the plan's generation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (job) attach(job.jobId) }, [])
 
   async function handleStop() {
     if (jobId) await apiFetch(`${solverBase}/stop`, { method: 'POST', body: JSON.stringify({ jobId }) }).catch(() => null)
@@ -153,11 +197,19 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
     setTab(next)
   }
 
+  // the generation keeps running on the server
   async function handleClose() {
     if (tab === 'config' && !(await leaveConfigAllowed())) return
-    if (running && jobId) await handleStop()
     esRef.current?.close()
     onClose()
+  }
+
+  async function handleDiscard() {
+    if (!jobId) return
+    await apiFetch(`${solverBase}/discard`, { method: 'POST', body: JSON.stringify({ jobId }) }).catch(() => null)
+    esRef.current?.close()
+    setJobId(null); setRunning(false); setProposal(null); setProgress(null); setStopReason(null); setError(null); setDescription('')
+    onJobChanged()
   }
 
   useEffect(() => {
@@ -190,7 +242,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
     if (ok) await runSettings(() => callSettings(settingsBase, { method: 'DELETE' }), 'Configuração padrão restaurada')
   }
 
-  // a new run replaces the previous scenario
+  // a new run replaces the previous one (the server drops it)
   async function handleStart() {
     esRef.current?.close()
     setError(null); setProposal(null); setDescription(''); setJobId(null); setProgress(null); setStopReason(null)
@@ -199,28 +251,26 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
     const res = await apiFetch(`${solverBase}/start`, { method: 'POST', body: JSON.stringify({ jobId: id, params }) })
     if (!res.ok) { setError(extractError(await res.json().catch(() => ({})))); return }
     setJobId(id); setRunning(true)
-
-    const es = new EventSource(`/api${solverBase}/stream?jobId=${id}&token=${encodeURIComponent(getToken())}`)
-    esRef.current = es
-    es.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data) as Message
-      if (msg.type === 'proposal') setProposal(msg.proposal)
-      if (msg.type === 'progress') setProgress(msg)
-      if (msg.type === 'done') setStopReason(msg.stopReason)
-      if (msg.type === 'error') setError(msg.message)
-      if (msg.type === 'done' || msg.type === 'error') { es.close(); setRunning(false) }
-    }
-    es.onerror = () => { es.close(); setRunning(false) }
+    attach(id)
+    onJobChanged()
   }
+
+  const inPlace = planStatus === 'DRAFT'
 
   async function handleAccept() {
     if (!jobId) return
+    if (inPlace && !(await confirm({
+      title:        'Aplicar nesta escala',
+      description:  'As jornadas desta escala serão substituídas pela proposta (as travadas são mantidas quando a base é "Completar").',
+      confirmLabel: 'Aplicar',
+    }))) return
     setAccepting(true)
     try {
       const res  = await apiFetch(`${solverBase}/accept`, { method: 'POST', body: JSON.stringify({ jobId, description }) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setError(extractError(json)); return }
-      onCreated((json as { id: string }).id)
+      if (inPlace) onApplied()
+      else onCreated((json as { id: string }).id)
     } finally {
       setAccepting(false)
     }
@@ -321,7 +371,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
                 </label>
               </div>
               <p className="text-xs text-muted-foreground">
-                A escala é montada para motorista e replicada para os papéis marcados, com as regras da aba Config. O resultado vira uma nova versão em rascunho — esta escala não é alterada.
+                A escala é montada para motorista e replicada para os papéis marcados, com as regras da aba Config. {inPlace ? 'O resultado substitui as jornadas desta escala (rascunho) — as travadas são mantidas em "Completar".' : 'O resultado vira uma nova versão em rascunho — esta escala não é alterada.'}
                 {jobId && ' Gerar novamente descarta o cenário atual.'}
               </p>
             </div>
@@ -365,7 +415,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
                   {(Object.entries(s.byKind) as [keyof typeof KIND_LABEL, number][]).map(([k, n]) => `${KIND_LABEL[k]} ${n}`).join(' · ')}
                 </p>
               )}
-              {s && !running && (
+              {s && !running && !inPlace && (
                 <input
                   value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição da nova versão (opcional)"
                   className="w-full h-8 border border-input rounded-sm text-sm bg-input-bg px-2 focus:outline-none focus:ring-1 focus:ring-ring"
@@ -408,6 +458,11 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
               </Button>
             )}
 
+            {tab === 'scenarios' && jobId && (
+              <Button type="button" size="sm" variant="outline" disabled={accepting} onClick={() => void handleDiscard()}>
+                <Icons.Trash2 className="w-3.5 h-3.5 me-1" /> Descartar
+              </Button>
+            )}
             {tab === 'scenarios' && running && (
               <Button type="button" size="sm" variant="outline" onClick={() => void handleStop()}>
                 <Icons.Square className="w-3.5 h-3.5 me-1" /> Parar
@@ -415,7 +470,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
             )}
             {tab === 'scenarios' && s && (
               <Button type="button" size="sm" disabled={accepting || running} onClick={() => void handleAccept()}>
-                {accepting ? 'Criando…' : 'Criar versão'}
+                {accepting ? (inPlace ? 'Aplicando…' : 'Criando…') : (inPlace ? 'Aplicar nesta escala' : 'Criar versão')}
               </Button>
             )}
           </div>

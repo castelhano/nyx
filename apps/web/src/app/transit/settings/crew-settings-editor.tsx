@@ -2,6 +2,7 @@
 
 import type { CrewSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
 import { useIntervalTypes } from '../use-interval-types'
 
@@ -85,26 +86,68 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
               </div>
             </div>
           ))}
+          {/* intrajornada — forms a STRAIGHT duty may meet it in (none = no requirement) */}
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div className="flex items-center gap-2">
-              <DiffDot show={!!reference && value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId} />
+              <DiffDot show={!!reference && (value.mealRule.continuous !== reference.mealRule.continuous || value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId)} />
               <div>
-                <p className="text-sm font-medium">Tipo de Intervalo de Refeição</p>
+                <p className="text-sm font-medium">Intrajornada Contínua</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Lançado como intervalo intrajornada; fora de local que permite refeição, a jornada fica com pendência
+                  Intervalo não pago do tipo escolhido (faixa do cadastro do tipo), em local que permite refeição
                 </p>
               </div>
             </div>
-            <Select
-              value={value.mealBreakIntervalTypeId ?? ''}
-              onChange={(e) => onChange({ ...value, mealBreakIntervalTypeId: e.target.value || null })}
-              size="sm"
-              wrapperClassName="w-56 shrink-0"
-              disabled={disabled}
-            >
-              <option value="">Não definido</option>
-              {intervalTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
+            <div className="flex items-center gap-3 shrink-0">
+              <Select
+                value={value.mealBreakIntervalTypeId ?? ''}
+                onChange={(e) => onChange({ ...value, mealBreakIntervalTypeId: e.target.value || null })}
+                size="sm"
+                wrapperClassName="w-56"
+                disabled={disabled || !value.mealRule.continuous}
+              >
+                <option value="">Não definido</option>
+                {intervalTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </Select>
+              <Switch
+                checked={value.mealRule.continuous}
+                onToggle={() => onChange({ ...value, mealRule: { ...value.mealRule, continuous: !value.mealRule.continuous } })}
+                disabled={disabled}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <DiffDot show={!!reference && JSON.stringify({ ...value.mealRule, continuous: 0 }) !== JSON.stringify({ ...reference.mealRule, continuous: 0 })} />
+              <div>
+                <p className="text-sm font-medium">Intrajornada Fracionada</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Paradas da jornada (qualquer duração, pagas) somam o mínimo, com uma de pelo menos o tamanho indicado.
+                  Sem nenhuma forma ativa não há exigência; vale só para corrida — a dupla pegada usa o próprio intervalo
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-xs text-muted-foreground">soma</span>
+              <NumberInput
+                value={value.mealRule.fractionedMinTotal}
+                onChange={(v) => onChange({ ...value, mealRule: { ...value.mealRule, fractionedMinTotal: Math.round(v) } })}
+                min={0} max={600}
+                disabled={disabled || !value.mealRule.fractioned}
+              />
+              <span className="text-xs text-muted-foreground">maior</span>
+              <NumberInput
+                value={value.mealRule.fractionedMinLongest}
+                onChange={(v) => onChange({ ...value, mealRule: { ...value.mealRule, fractionedMinLongest: Math.round(v) } })}
+                min={0} max={600}
+                disabled={disabled || !value.mealRule.fractioned}
+              />
+              <span className="text-sm text-muted-foreground">min</span>
+              <Switch
+                checked={value.mealRule.fractioned}
+                onToggle={() => onChange({ ...value, mealRule: { ...value.mealRule, fractioned: !value.mealRule.fractioned } })}
+                disabled={disabled}
+              />
+            </div>
           </div>
         </div>
       </div>

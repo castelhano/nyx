@@ -18,7 +18,7 @@ import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
 import { BreakModal, type BreakDraft } from './components/BreakModal'
 import { VehicleSwapModal } from './components/VehicleSwapModal'
-import { OptimizeCrewModal, type OptimizeTab } from './components/OptimizeCrewModal'
+import { OptimizeCrewModal, type OptimizeTab, type SolverJob } from './components/OptimizeCrewModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
 import { DutyBoard } from './components/DutyBoard'
@@ -54,6 +54,12 @@ async function api(path: string, init?: RequestInit): Promise<unknown> {
   return res.status === 204 ? null : res.json().catch(() => null)
 }
 
+// elapsed ms → mm:ss
+const fmtClock = (ms: number) => {
+  const sec = Math.floor(ms / 1000)
+  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
+}
+
 export default function CrewPlanPage() {
   const { id }    = useParams<{ id: string }>()
   const router    = useRouter()
@@ -86,6 +92,19 @@ export default function CrewPlanPage() {
   const { guardNode, canUpdate, canDelete } = usePageGuard('transit', 'crew-plan', false, error ?? undefined)
   // a substituted crew plan is history — read only (the API refuses writes too)
   const canEdit = canUpdate && data?.plan.status !== 'SUPERSEDED'
+
+  // the plan's crew solver generation — it runs on the server whether or not the modal is
+  // open; polled while running so the Otimizar button shows it
+  const { data: solverJob = null, refetch: refetchSolverJob } = useQuery<SolverJob | null>({
+    queryKey: ['transit', 'crew-plan', id, 'solver-current'],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/crew-plan/${id}/solver/current`)
+      if (!res.ok) return null
+      return ((await res.json()) as { job: SolverJob | null }).job
+    },
+    enabled:         canEdit,
+    refetchInterval: q => (q.state.data?.running ? 3000 : false),
+  })
 
   const [selectedDutyId, setSelectedDutyId] = useState<string | null>(null)
   const [draftStart, setDraftStart]         = useState<PieceDraftStart | null>(null)
@@ -469,11 +488,14 @@ export default function CrewPlanPage() {
     // split button — main action: generate a new version (crew solver); tail swaps edit the
     // VehiclePlan, so they are limited to the approved (ACTIVE) crew plan
     ...(canEdit && data ? [{
-      label:    'Otimizar',
-      icon:     Icons.Sparkles,
+      // a generation in progress or waiting to be used shows here; clicking picks it up
+      label:    solverJob?.running
+        ? `Gerando… ${fmtClock(solverJob.progress?.elapsed ?? 0)}`
+        : solverJob?.hasProposal ? 'Otimizar • proposta pronta' : 'Otimizar',
+      icon:     solverJob?.running ? Icons.Loader2 : Icons.Sparkles,
       size:     'sm' as const,
       variant:  'ghost' as const,
-      onClick:  () => setOptimizeTab('panel'),
+      onClick:  () => setOptimizeTab(solverJob ? 'scenarios' : 'panel'),
       menu: [
         { label: 'Gerar escala',  icon: Icons.Play,      onClick: () => setOptimizeTab('panel') },
         { label: 'Configurações', icon: Icons.Settings2, onClick: () => setOptimizeTab('config') },
@@ -517,7 +539,7 @@ export default function CrewPlanPage() {
       variant:  'destructive' as const,
       overflow: true,
     }] : []),
-  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors, visibleDuties, visibleBlocks, blockById])
+  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors, visibleDuties, visibleBlocks, blockById, solverJob])
 
   useShortcut('alt+g', () => {
     (document.getElementById(DUTY_FORM_ID) as HTMLFormElement | null)?.requestSubmit()
@@ -567,11 +589,15 @@ export default function CrewPlanPage() {
         <OptimizeCrewModal
           crewPlanId={id}
           initialTab={optimizeTab}
+          planStatus={data.plan.status}
+          job={solverJob}
+          onJobChanged={() => void refetchSolverJob()}
+          onApplied={() => { setOptimizeTab(null); setSelectedDutyId(null); void refetchSolverJob(); void refetch(); toast.success('Proposta aplicada na escala') }}
           current={data.plan.summary}
           lockedCount={data.duties.filter(d => d.locked).length}
           onSettingsSaved={() => void refetch()}
-          onCreated={(newId) => { setOptimizeTab(null); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
-          onClose={() => setOptimizeTab(null)}
+          onCreated={(newId) => { setOptimizeTab(null); void refetchSolverJob(); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
+          onClose={() => { setOptimizeTab(null); void refetchSolverJob() }}
         />
       )}
 

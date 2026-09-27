@@ -10,11 +10,16 @@ import { CrewImprover } from '../src/modules/transit/timetabling/crew-solver/cre
 // prints construction vs improved side by side. A fixed seed repeats a run, so weights and
 // moves can be compared. Nothing is written.
 // Usage: pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch]
+//        [--meal=continuous|fractioned|both|none] (overrides settings.mealRule's forms)
 
 const KIND = { STRAIGHT: 'Corrida', SPLIT: 'Dupla pegada', TRIPPER: 'Meia jornada' } as const
 
 function metrics(r: CrewSolverResult) {
   const s = r.evaluation.summary
+  // drivers per vehicle: distinct duties with a piece on each block
+  const perBlock = new Map<string, Set<number>>()
+  r.duties.forEach((d, i) => d.pieces.forEach(p => (perBlock.get(p.vehicleBlockId) ?? perBlock.set(p.vehicleBlockId, new Set()).get(p.vehicleBlockId)!).add(i)))
+  const drivers = [...perBlock.values()].map(x => x.size)
   const duties = [...r.evaluation.duties.values()]
   const total = s.criteria.reduce((a, c) => a + c.weight, 0)
   const pct = (n: number) => `${n} (${s.dutyCount ? Math.round((n / s.dutyCount) * 100) : 0}%)`
@@ -26,6 +31,9 @@ function metrics(r: CrewSolverResult) {
       ...Object.fromEntries(Object.entries(KIND).map(([k, label]) => [label, pct(s.byKind[k] ?? 0)])),
       'Com troca de carro':       pct(duties.filter(d => d.summary.vehicleChanges > 0).length),
       'Com troca de linha':       pct(duties.filter(d => d.summary.lineChanges > 0).length),
+      'Condutores por carro':     drivers.length ? (drivers.reduce((a, n) => a + n, 0) / drivers.length).toFixed(2) : '—',
+      'Carros com ≤ 2 condutores': `${drivers.filter(n => n <= 2).length} de ${drivers.length}`,
+      'Intrajornada fracionada':  String(duties.filter(d => d.summary.mealForm === 'FRACTIONED').length),
       'Extra (% do trabalhado)':  `${s.workMinutes ? ((s.overtimeMinutes / s.workMinutes) * 100).toFixed(1) : 0}%`,
       'Com pendência error':      String(duties.filter(d => d.issues.some(i => i.severity === 'error')).length),
       'Sem motorista (min)':      String(s.uncoveredMinutes),
@@ -44,6 +52,11 @@ async function main() {
   const { settings } = await new CrewPlanService(prisma, new TransitCrewConfigService(prisma)).resolveSettings(crewPlanId)
   const input = await loadCrewSolverInput(prisma, crewPlanId, settings)
   if (args.includes('--scratch')) input.locked = []
+  const mealArg = args.find(a => a.startsWith('--meal='))?.slice(7)
+  if (mealArg) {
+    settings.mealRule = { ...settings.mealRule, continuous: mealArg === 'continuous' || mealArg === 'both', fractioned: mealArg === 'fractioned' || mealArg === 'both' }
+    Object.assign(input, await loadCrewSolverInput(prisma, crewPlanId, settings), { locked: input.locked })
+  }
   await prisma.$disconnect()
 
   let t = performance.now()

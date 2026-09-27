@@ -39,6 +39,12 @@ export const dutySummarySchema = z.object({
   idleMinutes:     z.number().default(0),
   // meters walked between pieces at different places
   walkMeters:      z.number().default(0),
+  // the duty's stops — vehicle idle within its pieces + gaps between them (not breaks, not the
+  // split interval): total and longest one (fractioned intrajornada)
+  stopMinutes:        z.number().default(0),
+  longestStopMinutes: z.number().default(0),
+  // how a STRAIGHT duty met the intrajornada (settings.mealRule) — null when it didn't / n.a.
+  mealForm:        z.enum(['CONTINUOUS', 'FRACTIONED']).nullable().default(null),
 })
 export type DutySummary = z.infer<typeof dutySummarySchema>
 
@@ -47,7 +53,7 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 // `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix).
 export const dutyIssueSchema = z.object({
   code: z.enum([
-    'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE',
+    'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE', 'MEAL_REQUIRED',
     'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION',
   ]),
   severity: z.enum(['warning', 'error']),

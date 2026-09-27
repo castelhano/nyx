@@ -103,6 +103,7 @@ export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   MEAL_BREAK:         'Intervalo intrajornada',
   SPLIT_INTERVAL:     'Intervalo da dupla pegada',
   WALK_DISTANCE:      'Deslocamento a pé acima do permitido',
+  MEAL_REQUIRED:      'Intrajornada não cumprida',
   CONTINUOUS_DRIVING: 'Direção contínua',
   MIN_PIECE:          'Pegada curta',
   TRAVEL_GAP:         'Deslocamento entre pegadas',
