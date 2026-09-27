@@ -221,7 +221,11 @@ Com a Fase A, a direção passa a ter efeito real: "Menor quadro" dobra o peso d
 1. **A — Nota e pendências**: nova fórmula (0–9999), perda por critério no resumo, critério de
    cobertura, pendência só fora do piso/teto, script de recálculo. *Implementada (2026-09-27)*:
    `crewPlanSummary.criteria`, "Perdas na nota" no painel da escala, `pnpm crew:recalculate`.
-2. **B — Avaliação incremental**: `evaluateDuty`, agregado, teste de igualdade.
+2. **B — Avaliação incremental**: `evaluateDuty`, agregado, teste de igualdade. *Implementada (2026-09-27)*:
+   `evaluateDuty` + `CrewScoreAggregate` em `crew-scoring.calc.ts` (`computeCrewPlan` usa os
+   dois); `pnpm crew:score-check` confere o agregado contra o cálculo completo e os resumos
+   gravados. No plano de dev: cálculo completo 5–10 ms; um movimento de 2 jornadas (reavaliar +
+   trocar no agregado + nota) ~0,02–0,04 ms, ou seja, dezenas de milhares por segundo.
 3. **C1 — Laço e movimentos baratos**: mover rendição, trocar pontas, unir meias jornadas,
    absorver pegada; simulated annealing; parada (configuração + Parar); progresso e propostas;
    script de bancada.

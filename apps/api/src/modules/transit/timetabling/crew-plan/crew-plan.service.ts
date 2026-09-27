@@ -450,7 +450,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
 
 // JSON with object keys sorted — jsonb doesn't preserve key order, so comparing a stored
 // value against a freshly computed one needs an order-insensitive form
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) =>
     v && typeof v === 'object' && !Array.isArray(v)
       ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
@@ -459,7 +459,7 @@ function canonicalJson(value: unknown): string {
 }
 
 // whether the day type runs on two consecutive days, so a duty can be assumed to repeat the next day
-function repeatsNextDay(pattern: unknown): boolean {
+export function repeatsNextDay(pattern: unknown): boolean {
   const p = dayTypePatternSchema.safeParse(pattern)
   if (!p.success) return false
   if (p.data.type === 'month_window' && !p.data.baseWeekdays) return p.data.days > 1

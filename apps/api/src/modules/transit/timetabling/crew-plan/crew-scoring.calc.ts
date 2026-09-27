@@ -137,6 +137,289 @@ function mergeSpans(spans: Span[]): Span[] {
   return out
 }
 
+// What a duty's evaluation needs besides the duty itself — shared by every duty of a plan.
+export interface CrewCalcContext {
+  settings:      CrewSettings
+  blocks:        Map<string, CrewCalcBlock>
+  matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes (crew travel between relief points)
+  mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
+  // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
+  repeatsNextDay?: boolean
+}
+
+export interface DutyEvaluation {
+  summary:    DutySummary
+  issues:     DutyIssue[]
+  isStale:    boolean
+  pieceState: Map<string, { isStale: boolean; staleReason: DutyPieceStaleReason | null }>
+  // non-stale pieces, by start — the coverage they give
+  live:       CrewCalcPiece[]
+  // trip minutes per line inside the pieces — the duty's split across lines (byLine)
+  lineMinutes: Map<string, number>
+  // the per-duty score criteria that apply to this duty (active only), value 0–1
+  criteria:   { key: string; weight: number; value: number }[]
+}
+
+// One duty on its own: summary, issues and its per-duty score criteria. No plan state — the
+// solver re-evaluates only the duties a move touches.
+export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEvaluation {
+  const { settings, blocks } = ctx
+  const range = settings.range
+
+  const pieceState = new Map<string, { isStale: boolean; staleReason: DutyPieceStaleReason | null }>()
+  const live: CrewCalcPiece[] = []
+  for (const p of duty.pieces) {
+    const reason = pieceStaleReason(p, p.vehicleBlockId ? blocks.get(p.vehicleBlockId) : undefined)
+    pieceState.set(p.id, { isStale: reason != null, staleReason: reason })
+    if (!reason) live.push(p)
+  }
+  live.sort((a, b) => a.startMinutes - b.startMinutes)
+  const acts = [...duty.activities].sort((a, b) => a.startMinutes - b.startMinutes)
+
+  const hasSignOn  = acts.some(a => a.type === 'SIGN_ON')
+  const hasSignOff = acts.some(a => a.type === 'SIGN_OFF')
+  const events     = [...live, ...acts]
+  const implicitOn  = !hasSignOn  && live.length > 0 ? settings.signOnMinutes  : 0
+  const implicitOff = !hasSignOff && live.length > 0 ? settings.signOffMinutes : 0
+
+  // implicit sign-on/off extend the spread only when they fall outside the explicit events
+  const first = events.length ? Math.min(...events.map(e => e.startMinutes), live.length ? live[0].startMinutes - implicitOn : Infinity) : 0
+  const last  = events.length ? Math.max(...events.map(e => e.endMinutes), live.length ? live[live.length - 1].endMinutes + implicitOff : -Infinity) : 0
+
+  const breaks       = acts.filter(a => a.type === 'BREAK')
+  const breakMinutes = breaks.reduce((s, b) => s + dur(b), 0)
+  const paidBreaks   = breaks.filter(b => b.isPaidBreak)
+  // the time driven: live pieces minus every break taken inside them
+  const segments     = live.flatMap(p => subtractSpans(p, breaks).map(s => ({ ...s, pieceId: p.id })))
+  const pieceMinutes = segments.reduce((s, sg) => s + dur(sg), 0)
+  const otherActs    = acts.filter(a => a.type !== 'BREAK')
+  const workMinutes  = pieceMinutes + [...otherActs, ...paidBreaks].reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff
+  const paidMinutes  = workMinutes
+  const overtime     = Math.max(0, workMinutes - range.workTime.idealMin)
+
+  const workSpans: Span[] = [...segments, ...otherActs, ...paidBreaks]
+  if (implicitOn)  workSpans.push({ startMinutes: live[0].startMinutes - implicitOn, endMinutes: live[0].startMinutes })
+  if (implicitOff) workSpans.push({ startMinutes: live[live.length - 1].endMinutes, endMinutes: live[live.length - 1].endMinutes + implicitOff })
+  const nightMinutes = workSpans.reduce((s, sp) => s + nightOverlap(sp, settings.nightStartHour, settings.nightEndHour), 0)
+
+  let vehicleChanges = 0
+  const lineSeq: string[] = []
+  const lineMinutes = new Map<string, number>()
+  for (let i = 0; i < live.length; i++) {
+    if (i > 0 && live[i].vehicleBlockId !== live[i - 1].vehicleBlockId) vehicleChanges++
+    const block = blocks.get(live[i].vehicleBlockId!)
+    const trips = (block?.trips ?? [])
+      .filter(t => t.arrivalMinutes > live[i].startMinutes && t.departureMinutes < live[i].endMinutes)
+      .sort((a, b) => a.departureMinutes - b.departureMinutes)
+    for (const t of trips) {
+      if (lineSeq[lineSeq.length - 1] !== t.lineId) lineSeq.push(t.lineId)
+      const overlap = Math.min(t.arrivalMinutes, live[i].endMinutes) - Math.max(t.departureMinutes, live[i].startMinutes)
+      lineMinutes.set(t.lineId, (lineMinutes.get(t.lineId) ?? 0) + overlap)
+    }
+  }
+  const lineChanges = Math.max(0, lineSeq.length - 1)
+
+  const summary: DutySummary = {
+    spreadMinutes: events.length ? last - first : 0,
+    workMinutes, paidMinutes, breakMinutes,
+    overtimeMinutes: overtime,
+    nightMinutes,
+    pieceCount: live.length,
+    vehicleChanges, lineChanges,
+    lineCount: lineMinutes.size,
+    startMinutes: events.length ? first : null,
+    endMinutes:   events.length ? last : null,
+    interShiftRestMinutes: ctx.repeatsNextDay && events.length ? first + 1440 - last : null,
+  }
+
+  // ── issues ───────────────────────────────────────────────────────────────
+  const issues: DutyIssue[] = []
+  const push = (i: DutyIssue | null) => { if (i) issues.push(i) }
+  const hasWork = live.length > 0
+
+  // gaps between consecutive pieces (for SPLIT interval and travel checks)
+  const gaps = live.slice(1).map((p, i) => ({ prev: live[i], next: p, minutes: p.startMinutes - live[i].endMinutes }))
+  const splitGap = gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0
+
+  if (hasWork && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') push(rangeIssue('WORK_TIME', workMinutes, range.workTime))
+  if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('SPREAD', summary.spreadMinutes, range.spread))
+  if (hasWork && duty.kind === 'STRAIGHT') push(rangeIssue('MEAL_BREAK', breakMinutes, range.mealBreak))
+  if (hasWork && duty.kind === 'SPLIT') push(rangeIssue('SPLIT_INTERVAL', splitGap, range.splitInterval))
+
+  // continuous driving: worked segments chained until a break sits between them (in the
+  // gap between pieces or inside a piece) — or, in a split duty, the split interval itself
+  const splitRest = duty.kind === 'SPLIT' ? range.splitInterval.floor : Infinity
+  const restsBetween = (prev: Span, next: Span) => next.startMinutes - prev.endMinutes >= splitRest
+    || breaks.some(b => b.startMinutes < next.startMinutes && b.endMinutes > prev.endMinutes)
+  let chain = 0
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]
+    chain = i === 0 || restsBetween(segments[i - 1], seg) ? dur(seg) : chain + dur(seg)
+    const endsChain = i === segments.length - 1 || restsBetween(seg, segments[i + 1])
+    if (endsChain && chain > settings.maxContinuousDrivingMinutes) {
+      push({ code: 'CONTINUOUS_DRIVING', severity: 'error', value: chain, limit: settings.maxContinuousDrivingMinutes, pieceId: seg.pieceId })
+    }
+  }
+
+  for (const p of live) {
+    if (dur(p) < settings.minPieceMinutes) {
+      push({ code: 'MIN_PIECE', severity: 'warning', value: dur(p), limit: settings.minPieceMinutes, pieceId: p.id })
+    }
+  }
+
+  for (const g of gaps) {
+    if (g.prev.endLocalityId === g.next.startLocalityId) continue
+    const travel   = ctx.matrixMinutes.get(`${g.prev.endLocalityId}:${g.next.startLocalityId}`)
+    const declared = acts.some(a => a.type === 'TRAVEL' && a.startMinutes >= g.prev.endMinutes && a.endMinutes <= g.next.startMinutes)
+    if (travel != null && g.minutes < travel) {
+      push({ code: 'TRAVEL_GAP', severity: 'error', value: g.minutes, limit: Math.ceil(travel), pieceId: g.next.id })
+    } else if (travel == null && !declared) {
+      push({ code: 'TRAVEL_GAP', severity: 'warning', value: g.minutes, pieceId: g.next.id })
+    }
+  }
+
+  if (settings.mealBreakIntervalTypeId) {
+    for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {
+      if (mealPlaceAllowed(b, live, blocks, ctx.mealStops) === false) push({ code: 'MEAL_LOCATION', severity: 'warning', value: 0, activityId: b.id })
+    }
+  }
+
+  if (duty.branchId) {
+    for (const p of live) {
+      const b = blocks.get(p.vehicleBlockId!)
+      if (b?.branchId && b.branchId !== duty.branchId) push({ code: 'BRANCH_MISMATCH', severity: 'error', value: 0, pieceId: p.id })
+    }
+  }
+
+  // per-duty criteria enter the plan score with the same applicability as the issues
+  const criteria: DutyEvaluation['criteria'] = []
+  const crit = (key: string, c: RangeCriterion, value: number) => {
+    if (c.active) criteria.push({ key, weight: c.modifier, value: rangeV(value, c) })
+  }
+  if (hasWork) {
+    if (duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') crit('workTime', range.workTime, workMinutes)
+    if (duty.kind !== 'STANDBY') crit('spread', range.spread, summary.spreadMinutes)
+    if (duty.kind === 'STRAIGHT') crit('mealBreak', range.mealBreak, breakMinutes)
+    if (duty.kind === 'SPLIT') crit('splitInterval', range.splitInterval, splitGap)
+    crit('vehicleChanges', range.vehicleChanges, vehicleChanges)
+    crit('lineChanges', range.lineChanges, lineChanges)
+  }
+
+  return { summary, issues, isStale: live.length !== duty.pieces.length, pieceState, live, lineMinutes, criteria }
+}
+
+// A block's DRIVER coverage over its service spans — only they need a driver (its own intervals
+// and time parked at the depot don't; blockMinutes/coveredMinutes are measured on that basis).
+function blockCoverage(block: CrewCalcBlock, pieces: Span[]): { covered: number; uncovered: Span[] } {
+  const coverage = mergeSpans(pieces)
+  const uncovered: Span[] = []
+  let covered = 0
+  for (const span of block.serviceSpans) {
+    let cursor = span.startMinutes
+    for (const s of coverage) {
+      if (s.endMinutes <= cursor || s.startMinutes >= span.endMinutes) continue
+      if (s.startMinutes > cursor) uncovered.push({ startMinutes: cursor, endMinutes: s.startMinutes })
+      covered += Math.min(s.endMinutes, span.endMinutes) - Math.max(s.startMinutes, cursor)
+      cursor = Math.min(span.endMinutes, Math.max(cursor, s.endMinutes))
+    }
+    if (cursor < span.endMinutes) uncovered.push({ startMinutes: cursor, endMinutes: span.endMinutes })
+  }
+  return { covered, uncovered }
+}
+
+// Plan state behind the score, kept incrementally: add/remove a duty (with its evaluation) and
+// read the score without walking the plan — what the solver's moves need. computeCrewPlan scores
+// through it too, so the screen and the solver share one rule.
+//
+// Score: every active criterion enters once with its weight — a per-duty one with the mean of
+// its value over the duties it applies to, a plan one with its value. Values are 0–1, so the
+// score is 0–9999 and a criterion costs at most its share (weight ÷ Σ weights).
+export class CrewScoreAggregate {
+  readonly blockMinutes: number
+  private dutyCount = 0
+  private driverDuties = 0
+  private driverPaid = 0
+  private totalWork = 0
+  private totalOvertime = 0
+  private readonly byKind  = new Map<string, number>()
+  private readonly perDuty = new Map<string, { weight: number; sum: number; n: number }>()
+  // DRIVER pieces per block, and each block's covered minutes (recomputed only when touched)
+  private readonly pieces  = new Map<string, CrewCalcPiece[]>()
+  private readonly covered = new Map<string, number>()
+  private readonly dirty   = new Set<string>()
+
+  constructor(private readonly ctx: CrewCalcContext) {
+    let total = 0
+    for (const b of ctx.blocks.values()) for (const s of b.serviceSpans) total += dur(s)
+    this.blockMinutes = total
+  }
+
+  add(duty: Pick<CrewCalcDuty, 'role' | 'kind'>, ev: DutyEvaluation): void { this.apply(duty, ev, 1) }
+
+  remove(duty: Pick<CrewCalcDuty, 'role' | 'kind'>, ev: DutyEvaluation): void { this.apply(duty, ev, -1) }
+
+  private apply(duty: Pick<CrewCalcDuty, 'role' | 'kind'>, ev: DutyEvaluation, sign: 1 | -1): void {
+    this.dutyCount += sign
+    this.byKind.set(duty.kind, (this.byKind.get(duty.kind) ?? 0) + sign)
+    this.totalWork     += sign * ev.summary.workMinutes
+    this.totalOvertime += sign * ev.summary.overtimeMinutes
+    for (const c of ev.criteria) {
+      const cur = this.perDuty.get(c.key) ?? { weight: c.weight, sum: 0, n: 0 }
+      cur.sum += sign * c.value; cur.n += sign
+      this.perDuty.set(c.key, cur)
+    }
+    if (duty.role !== 'DRIVER') return
+    this.driverDuties += sign
+    this.driverPaid   += sign * ev.summary.paidMinutes
+    for (const p of ev.live) {
+      const list = this.pieces.get(p.vehicleBlockId!) ?? []
+      this.pieces.set(p.vehicleBlockId!, sign > 0 ? [...list, p] : list.filter(x => x !== p))
+      this.dirty.add(p.vehicleBlockId!)
+    }
+  }
+
+  piecesOf(blockId: string): CrewCalcPiece[] { return this.pieces.get(blockId) ?? [] }
+
+  get coveredMinutes(): number {
+    for (const id of this.dirty) {
+      const block = this.ctx.blocks.get(id)
+      this.covered.set(id, block ? blockCoverage(block, this.piecesOf(id)).covered : 0)
+    }
+    this.dirty.clear()
+    let total = 0
+    for (const m of this.covered.values()) total += m
+    return total
+  }
+
+  kindCount(kind: string): number { return this.byKind.get(kind) ?? 0 }
+
+  criteria(): CrewPlanSummary['criteria'] {
+    const { range, anchored } = this.ctx.settings
+    const out: CrewPlanSummary['criteria'] = []
+    for (const [key, c] of this.perDuty) if (c.n > 0) out.push({ key, weight: c.weight, value: c.sum / c.n })
+    if (this.dutyCount <= 0) return out
+    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage', value: number) => {
+      if (range[key].active) out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]) })
+    }
+    const covered = this.coveredMinutes
+    plan('overtimeRatio', this.totalWork > 0 ? (this.totalOvertime / this.totalWork) * 100 : 0)
+    plan('splitRatio',   (this.kindCount('SPLIT') / this.dutyCount) * 100)
+    plan('tripperRatio', (this.kindCount('TRIPPER') / this.dutyCount) * 100)
+    if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
+      out.push({ key: 'dutyCount', weight: anchored.dutyCount.weight, value: anchoredV(this.driverDuties, Math.ceil(this.blockMinutes / range.workTime.idealMin), anchored.dutyCount) })
+    }
+    if (anchored.efficiency.active) out.push({ key: 'efficiency', weight: anchored.efficiency.weight, value: anchoredV(this.driverPaid, covered, anchored.efficiency) })
+    if (this.blockMinutes > 0) plan('coverage', (covered / this.blockMinutes) * 100)
+    return out
+  }
+
+  // unrounded — a single duty moves the mean by less than a point
+  score(criteria = this.criteria()): number {
+    const weightTotal = criteria.reduce((s, c) => s + c.weight, 0)
+    return weightTotal > 0 ? (criteria.reduce((s, c) => s + c.weight * c.value, 0) / weightTotal) * SCORE_SCALE : 0
+  }
+}
+
 export function computeCrewPlan(input: {
   duties:        CrewCalcDuty[]
   blocks:        CrewCalcBlock[]
@@ -146,29 +429,16 @@ export function computeCrewPlan(input: {
   // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
   repeatsNextDay?: boolean
 }): CrewCalcResult {
-  const { settings } = input
-  const range  = settings.range
-  const blocks = new Map(input.blocks.map(b => [b.id, b]))
+  const ctx: CrewCalcContext = {
+    settings: input.settings, blocks: new Map(input.blocks.map(b => [b.id, b])),
+    matrixMinutes: input.matrixMinutes, mealStops: input.mealStops, repeatsNextDay: input.repeatsNextDay,
+  }
+  const agg = new CrewScoreAggregate(ctx)
 
   const pieceState = new Map<string, { isStale: boolean; staleReason: DutyPieceStaleReason | null }>()
   const dutyOut    = new Map<string, { summary: DutySummary; issues: DutyIssue[]; isStale: boolean }>()
 
-  // Score: every active criterion enters once with its weight — a per-duty one with the mean of
-  // its value over the duties it applies to, a plan one with its value. Values are 0–1, so the
-  // score is 0–9999 and a criterion costs at most its share (weight ÷ Σ weights).
-  const perDuty = new Map<string, { weight: number; sum: number; n: number }>()
-  const addDuty = (key: string, c: RangeCriterion, value: number) => {
-    if (!c.active) return
-    const cur = perDuty.get(key) ?? { weight: c.modifier, sum: 0, n: 0 }
-    cur.sum += rangeV(value, c); cur.n++
-    perDuty.set(key, cur)
-  }
-  const criteria: CrewPlanSummary['criteria'] = []
-  const addPlan = (key: string, weight: number, value: number) => { criteria.push({ key, weight, value }) }
-
-  const driverCoverage = new Map<string, Span[]>()
   let totalWork = 0, totalPaid = 0, totalOvertime = 0, totalNight = 0
-  let driverDuties = 0, driverPaid = 0
   const byLine   = new Map<string, CrewPlanSummary['byLine'][number]>()
   const byBranch = new Map<string, CrewPlanSummary['byBranch'][number]>()
   const byRole: Record<string, number> = {}
@@ -178,140 +448,18 @@ export function computeCrewPlan(input: {
     byRole[duty.role] = (byRole[duty.role] ?? 0) + 1
     byKind[duty.kind] = (byKind[duty.kind] ?? 0) + 1
 
-    const live: CrewCalcPiece[] = []
-    for (const p of duty.pieces) {
-      const reason = pieceStaleReason(p, p.vehicleBlockId ? blocks.get(p.vehicleBlockId) : undefined)
-      pieceState.set(p.id, { isStale: reason != null, staleReason: reason })
-      if (!reason) live.push(p)
-    }
-    live.sort((a, b) => a.startMinutes - b.startMinutes)
-    const acts = [...duty.activities].sort((a, b) => a.startMinutes - b.startMinutes)
-
-    const hasSignOn  = acts.some(a => a.type === 'SIGN_ON')
-    const hasSignOff = acts.some(a => a.type === 'SIGN_OFF')
-    const events     = [...live, ...acts]
-    const implicitOn  = !hasSignOn  && live.length > 0 ? settings.signOnMinutes  : 0
-    const implicitOff = !hasSignOff && live.length > 0 ? settings.signOffMinutes : 0
-
-    // implicit sign-on/off extend the spread only when they fall outside the explicit events
-    const first = events.length ? Math.min(...events.map(e => e.startMinutes), live.length ? live[0].startMinutes - implicitOn : Infinity) : 0
-    const last  = events.length ? Math.max(...events.map(e => e.endMinutes), live.length ? live[live.length - 1].endMinutes + implicitOff : -Infinity) : 0
-
-    const breaks       = acts.filter(a => a.type === 'BREAK')
-    const breakMinutes = breaks.reduce((s, b) => s + dur(b), 0)
-    const paidBreaks   = breaks.filter(b => b.isPaidBreak)
-    // the time driven: live pieces minus every break taken inside them
-    const segments     = live.flatMap(p => subtractSpans(p, breaks).map(s => ({ ...s, pieceId: p.id })))
-    const pieceMinutes = segments.reduce((s, sg) => s + dur(sg), 0)
-    const otherActs    = acts.filter(a => a.type !== 'BREAK')
-    const workMinutes  = pieceMinutes + [...otherActs, ...paidBreaks].reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff
-    const paidMinutes  = workMinutes
-    const overtime     = Math.max(0, workMinutes - range.workTime.idealMin)
-
-    const workSpans: Span[] = [...segments, ...otherActs, ...paidBreaks]
-    if (implicitOn)  workSpans.push({ startMinutes: live[0].startMinutes - implicitOn, endMinutes: live[0].startMinutes })
-    if (implicitOff) workSpans.push({ startMinutes: live[live.length - 1].endMinutes, endMinutes: live[live.length - 1].endMinutes + implicitOff })
-    const nightMinutes = workSpans.reduce((s, sp) => s + nightOverlap(sp, settings.nightStartHour, settings.nightEndHour), 0)
-
-    let vehicleChanges = 0
-    const lineSeq: string[] = []
-    // trip minutes per line inside the pieces — the duty's split across lines (byLine)
-    const lineMinutes = new Map<string, number>()
-    for (let i = 0; i < live.length; i++) {
-      if (i > 0 && live[i].vehicleBlockId !== live[i - 1].vehicleBlockId) vehicleChanges++
-      const block = blocks.get(live[i].vehicleBlockId!)
-      const trips = (block?.trips ?? [])
-        .filter(t => t.arrivalMinutes > live[i].startMinutes && t.departureMinutes < live[i].endMinutes)
-        .sort((a, b) => a.departureMinutes - b.departureMinutes)
-      for (const t of trips) {
-        if (lineSeq[lineSeq.length - 1] !== t.lineId) lineSeq.push(t.lineId)
-        const overlap = Math.min(t.arrivalMinutes, live[i].endMinutes) - Math.max(t.departureMinutes, live[i].startMinutes)
-        lineMinutes.set(t.lineId, (lineMinutes.get(t.lineId) ?? 0) + overlap)
-      }
-    }
-    const lineChanges = Math.max(0, lineSeq.length - 1)
-
-    const summary: DutySummary = {
-      spreadMinutes: events.length ? last - first : 0,
-      workMinutes, paidMinutes, breakMinutes,
-      overtimeMinutes: overtime,
-      nightMinutes,
-      pieceCount: live.length,
-      vehicleChanges, lineChanges,
-      lineCount: lineMinutes.size,
-      startMinutes: events.length ? first : null,
-      endMinutes:   events.length ? last : null,
-      interShiftRestMinutes: input.repeatsNextDay && events.length ? first + 1440 - last : null,
-    }
-
-    // ── issues ───────────────────────────────────────────────────────────────
-    const issues: DutyIssue[] = []
-    const push = (i: DutyIssue | null) => { if (i) issues.push(i) }
-    const hasWork = live.length > 0
-
-    // gaps between consecutive pieces (for SPLIT interval and travel checks)
-    const gaps = live.slice(1).map((p, i) => ({ prev: live[i], next: p, minutes: p.startMinutes - live[i].endMinutes }))
-
-    if (hasWork && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') push(rangeIssue('WORK_TIME', workMinutes, range.workTime))
-    if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('SPREAD', summary.spreadMinutes, range.spread))
-    if (hasWork && duty.kind === 'STRAIGHT') push(rangeIssue('MEAL_BREAK', breakMinutes, range.mealBreak))
-    if (hasWork && duty.kind === 'SPLIT') {
-      push(rangeIssue('SPLIT_INTERVAL', gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0, range.splitInterval))
-    }
-
-    // continuous driving: worked segments chained until a break sits between them (in the
-    // gap between pieces or inside a piece) — or, in a split duty, the split interval itself
-    const splitRest = duty.kind === 'SPLIT' ? range.splitInterval.floor : Infinity
-    const restsBetween = (prev: Span, next: Span) => next.startMinutes - prev.endMinutes >= splitRest
-      || breaks.some(b => b.startMinutes < next.startMinutes && b.endMinutes > prev.endMinutes)
-    let chain = 0
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i]
-      chain = i === 0 || restsBetween(segments[i - 1], seg) ? dur(seg) : chain + dur(seg)
-      const endsChain = i === segments.length - 1 || restsBetween(seg, segments[i + 1])
-      if (endsChain && chain > settings.maxContinuousDrivingMinutes) {
-        push({ code: 'CONTINUOUS_DRIVING', severity: 'error', value: chain, limit: settings.maxContinuousDrivingMinutes, pieceId: seg.pieceId })
-      }
-    }
-
-    for (const p of live) {
-      if (dur(p) < settings.minPieceMinutes) {
-        push({ code: 'MIN_PIECE', severity: 'warning', value: dur(p), limit: settings.minPieceMinutes, pieceId: p.id })
-      }
-    }
-
-    for (const g of gaps) {
-      if (g.prev.endLocalityId === g.next.startLocalityId) continue
-      const travel   = input.matrixMinutes.get(`${g.prev.endLocalityId}:${g.next.startLocalityId}`)
-      const declared = acts.some(a => a.type === 'TRAVEL' && a.startMinutes >= g.prev.endMinutes && a.endMinutes <= g.next.startMinutes)
-      if (travel != null && g.minutes < travel) {
-        push({ code: 'TRAVEL_GAP', severity: 'error', value: g.minutes, limit: Math.ceil(travel), pieceId: g.next.id })
-      } else if (travel == null && !declared) {
-        push({ code: 'TRAVEL_GAP', severity: 'warning', value: g.minutes, pieceId: g.next.id })
-      }
-    }
-
-    if (settings.mealBreakIntervalTypeId) {
-      for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {
-        if (mealPlaceAllowed(b, live, blocks, input.mealStops) === false) push({ code: 'MEAL_LOCATION', severity: 'warning', value: 0, activityId: b.id })
-      }
-    }
-
-    if (duty.branchId) {
-      for (const p of live) {
-        const b = blocks.get(p.vehicleBlockId!)
-        if (b?.branchId && b.branchId !== duty.branchId) push({ code: 'BRANCH_MISMATCH', severity: 'error', value: 0, pieceId: p.id })
-      }
-    }
-
-    dutyOut.set(duty.id, { summary, issues, isStale: live.length !== duty.pieces.length })
+    const ev = evaluateDuty(duty, ctx)
+    for (const [id, st] of ev.pieceState) pieceState.set(id, st)
+    dutyOut.set(duty.id, { summary: ev.summary, issues: ev.issues, isStale: ev.isStale })
+    agg.add(duty, ev)
 
     // ── plan-level accumulation ──────────────────────────────────────────────
+    const { workMinutes, paidMinutes, overtimeMinutes: overtime, nightMinutes } = ev.summary
     totalWork += workMinutes; totalPaid += paidMinutes; totalOvertime += overtime; totalNight += nightMinutes
 
-    const tripTotal = [...lineMinutes.values()].reduce((s, m) => s + m, 0)
+    const tripTotal = [...ev.lineMinutes.values()].reduce((s, m) => s + m, 0)
     const shares: [string | null, number][] = tripTotal > 0
-      ? [...lineMinutes].map(([lineId, m]) => [lineId, m / tripTotal])
+      ? [...ev.lineMinutes].map(([lineId, m]) => [lineId, m / tripTotal])
       : [[null, 1]]
     for (const [lineId, share] of shares) {
       const key = `${lineId ?? ''}|${duty.role}|${duty.branchId ?? ''}`
@@ -330,68 +478,20 @@ export function computeCrewPlan(input: {
     branch.overtimeMinutes += overtime
     branch.nightMinutes    += nightMinutes
     byBranch.set(branchKey, branch)
-    if (duty.role === 'DRIVER') {
-      driverDuties++
-      driverPaid += paidMinutes
-      for (const p of live) {
-        if (!driverCoverage.has(p.vehicleBlockId!)) driverCoverage.set(p.vehicleBlockId!, [])
-        driverCoverage.get(p.vehicleBlockId!)!.push(p)
-      }
-    }
-
-    // per-duty criteria enter the plan score with the same applicability as the issues
-    if (hasWork) {
-      if (duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') addDuty('workTime', range.workTime, workMinutes)
-      if (duty.kind !== 'STANDBY') addDuty('spread', range.spread, summary.spreadMinutes)
-      if (duty.kind === 'STRAIGHT') addDuty('mealBreak', range.mealBreak, breakMinutes)
-      if (duty.kind === 'SPLIT') addDuty('splitInterval', range.splitInterval, gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0)
-      addDuty('vehicleChanges', range.vehicleChanges, vehicleChanges)
-      addDuty('lineChanges', range.lineChanges, lineChanges)
-    }
   }
 
   // ── coverage (DRIVER only) ─────────────────────────────────────────────────
-  // only the block's service spans need a driver — its own intervals and time parked at
-  // the depot don't (blockMinutes/coveredMinutes are measured on that same basis)
   const uncovered: CrewPlanSummary['uncovered'] = []
-  let blockMinutes = 0, coveredMinutes = 0
+  let coveredMinutes = 0
   const coveredByBranch = new Map<string | null, number>()
   for (const b of input.blocks) {
-    const coveredBefore = coveredMinutes
-    const coverage = mergeSpans(driverCoverage.get(b.id) ?? [])
-    for (const span of b.serviceSpans) {
-      blockMinutes += dur(span)
-      let cursor = span.startMinutes
-      for (const s of coverage) {
-        if (s.endMinutes <= cursor || s.startMinutes >= span.endMinutes) continue
-        if (s.startMinutes > cursor) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: s.startMinutes })
-        coveredMinutes += Math.min(s.endMinutes, span.endMinutes) - Math.max(s.startMinutes, cursor)
-        cursor = Math.min(span.endMinutes, Math.max(cursor, s.endMinutes))
-      }
-      if (cursor < span.endMinutes) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: span.endMinutes })
-    }
-    coveredByBranch.set(b.branchId, (coveredByBranch.get(b.branchId) ?? 0) + coveredMinutes - coveredBefore)
+    const cov = blockCoverage(b, agg.piecesOf(b.id))
+    for (const u of cov.uncovered) uncovered.push({ vehicleBlockId: b.id, ...u })
+    coveredMinutes += cov.covered
+    coveredByBranch.set(b.branchId, (coveredByBranch.get(b.branchId) ?? 0) + cov.covered)
   }
 
-  // ── plan-level criteria ────────────────────────────────────────────────────
-  for (const [key, c] of perDuty) if (c.n > 0) criteria.push({ key, weight: c.weight, value: c.sum / c.n })
-  const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage', value: number) => {
-    if (range[key].active) addPlan(key, range[key].modifier, rangeV(value, range[key]))
-  }
-  if (input.duties.length > 0) {
-    plan('overtimeRatio', totalWork > 0 ? (totalOvertime / totalWork) * 100 : 0)
-    plan('splitRatio',   ((byKind.SPLIT ?? 0) / input.duties.length) * 100)
-    plan('tripperRatio', ((byKind.TRIPPER ?? 0) / input.duties.length) * 100)
-    const anchored = settings.anchored
-    if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
-      addPlan('dutyCount', anchored.dutyCount.weight, anchoredV(driverDuties, Math.ceil(blockMinutes / range.workTime.idealMin), anchored.dutyCount))
-    }
-    if (anchored.efficiency.active) addPlan('efficiency', anchored.efficiency.weight, anchoredV(driverPaid, coveredMinutes, anchored.efficiency))
-    if (blockMinutes > 0) plan('coverage', (coveredMinutes / blockMinutes) * 100)
-  }
-  const weightTotal = criteria.reduce((s, c) => s + c.weight, 0)
-  const weightedSum = criteria.reduce((s, c) => s + c.weight * c.value, 0)
-
+  const criteria   = agg.criteria()
   const dutyValues = [...dutyOut.values()]
   return {
     pieces: pieceState,
@@ -407,7 +507,7 @@ export function computeCrewPlan(input: {
       uncovered,
       staleDutyCount:   dutyValues.filter(d => d.isStale).length,
       issueDutyCount:   dutyValues.filter(d => d.issues.length > 0).length,
-      score:            weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0,
+      score:            Math.round(agg.score(criteria)),
       criteria,
       coveredMinutes,
       coveredByBranch:  [...coveredByBranch].map(([branchId, minutes]) => ({ branchId, minutes })),
