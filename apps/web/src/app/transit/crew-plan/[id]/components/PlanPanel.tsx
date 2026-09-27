@@ -49,6 +49,10 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
             <Stat label="Jornadas"   value={String(s.dutyCount)} />
             <Stat label="Score"      value={String(s.score)} />
             <Stat label="Sem motorista" value={fmtDuration(s.uncoveredMinutes)} tone={s.uncoveredMinutes > 0 ? 'red' : undefined} />
+            {(['STRAIGHT', 'SPLIT', 'TRIPPER'] as const).map(k => {
+              const n = s.byKind[k] ?? 0
+              return <Stat key={k} label={KIND_LABEL[k]} value={String(n)} suffix={`${s.dutyCount ? Math.round((n / s.dutyCount) * 100) : 0}%`} />
+            })}
             <Stat label="Trabalhado" value={fmtDuration(s.workMinutes)} />
             <Stat label="Pago"       value={fmtDuration(s.paidMinutes)} />
             <Stat label="Extra"      value={fmtDuration(s.overtimeMinutes)} />
@@ -117,13 +121,15 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
   )
 }
 
-function Stat({ label, value, tone, active, onClick }: {
-  label: string; value: string; tone?: 'red' | 'amber'; active?: boolean; onClick?: () => void
+function Stat({ label, value, suffix, tone, active, onClick }: {
+  label: string; value: string; suffix?: string; tone?: 'red' | 'amber'; active?: boolean; onClick?: () => void
 }) {
   const content = (
     <>
       <p className="text-muted-foreground">{label}</p>
-      <p className={tone === 'red' ? 'font-medium text-red-600 dark:text-red-400' : tone === 'amber' ? 'font-medium text-amber-600 dark:text-amber-400' : 'font-medium text-foreground'}>{value}</p>
+      <p className={tone === 'red' ? 'font-medium text-red-600 dark:text-red-400' : tone === 'amber' ? 'font-medium text-amber-600 dark:text-amber-400' : 'font-medium text-foreground'}>
+        {value}{suffix && <span className="ms-1.5 font-normal text-muted-foreground">{suffix}</span>}
+      </p>
     </>
   )
   if (!onClick) return <div className="rounded bg-muted/40 px-2 py-1">{content}</div>
