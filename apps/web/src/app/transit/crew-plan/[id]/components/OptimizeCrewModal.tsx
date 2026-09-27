@@ -347,11 +347,11 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
               <div className="space-y-1.5">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" checked={params.base === 'complete'} onChange={() => setParams(p => ({ ...p, base: 'complete' }))} />
-                  Completar — mantém as jornadas travadas ({lockedCount}) e cobre o restante
+                  Respeita travadas ({lockedCount})
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" checked={params.base === 'scratch'} onChange={() => setParams(p => ({ ...p, base: 'scratch' }))} />
-                  Do zero — só os carros
+                  Completa
                 </label>
               </div>
               <div className="flex items-center gap-3">

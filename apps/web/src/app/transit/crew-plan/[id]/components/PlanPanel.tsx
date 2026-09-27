@@ -59,6 +59,7 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
             <Stat label="Desatualizadas" value={String(s.staleDutyCount)} tone={s.staleDutyCount > 0 ? 'red' : undefined} active={staleActive} onClick={onToggleStale} />
             <Stat label="Com pendências" value={String(s.issueDutyCount)} tone={s.issueDutyCount > 0 ? 'amber' : undefined} active={issuesActive} onClick={onToggleIssues} />
             <Stat label="Noturno"    value={fmtDuration(s.nightMinutes)} />
+            <Stat label="Condutores/carro" value={s.driversPerVehicle != null ? s.driversPerVehicle.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'} />
           </div>
         )}
 

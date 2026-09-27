@@ -430,6 +430,10 @@ export class CrewScoreAggregate {
   private readonly perDuty = new Map<string, { weight: number; sum: number; raw: number; n: number }>()
   // DRIVER pieces per block, and each block's covered minutes (recomputed only when touched)
   private readonly pieces  = new Map<string, CrewCalcPiece[]>()
+  // DRIVER duties per block (duty id → its pieces there) and the running totals of the mean
+  private readonly drivers = new Map<string, Map<string, number>>()
+  private driverSlots = 0
+  private drivenBlocks = 0
   private readonly covered = new Map<string, number>()
   private readonly dirty   = new Set<string>()
 
@@ -439,11 +443,11 @@ export class CrewScoreAggregate {
     this.blockMinutes = total
   }
 
-  add(duty: Pick<CrewCalcDuty, 'role' | 'kind'>, ev: DutyEvaluation): void { this.apply(duty, ev, 1) }
+  add(duty: Pick<CrewCalcDuty, 'id' | 'role' | 'kind'>, ev: DutyEvaluation): void { this.apply(duty, ev, 1) }
 
-  remove(duty: Pick<CrewCalcDuty, 'role' | 'kind'>, ev: DutyEvaluation): void { this.apply(duty, ev, -1) }
+  remove(duty: Pick<CrewCalcDuty, 'id' | 'role' | 'kind'>, ev: DutyEvaluation): void { this.apply(duty, ev, -1) }
 
-  private apply(duty: Pick<CrewCalcDuty, 'role' | 'kind'>, ev: DutyEvaluation, sign: 1 | -1): void {
+  private apply(duty: Pick<CrewCalcDuty, 'id' | 'role' | 'kind'>, ev: DutyEvaluation, sign: 1 | -1): void {
     this.dutyCount += sign
     this.byKind.set(duty.kind, (this.byKind.get(duty.kind) ?? 0) + sign)
     this.totalWork     += sign * ev.summary.workMinutes
@@ -460,7 +464,21 @@ export class CrewScoreAggregate {
       const list = this.pieces.get(p.vehicleBlockId!) ?? []
       this.pieces.set(p.vehicleBlockId!, sign > 0 ? [...list, p] : list.filter(x => x !== p))
       this.dirty.add(p.vehicleBlockId!)
+
+      const byDuty = this.drivers.get(p.vehicleBlockId!) ?? new Map<string, number>()
+      const before = byDuty.size
+      const n = (byDuty.get(duty.id) ?? 0) + sign
+      if (n > 0) byDuty.set(duty.id, n)
+      else byDuty.delete(duty.id)
+      this.drivers.set(p.vehicleBlockId!, byDuty)
+      this.driverSlots += byDuty.size - before
+      this.drivenBlocks += (byDuty.size > 0 ? 1 : 0) - (before > 0 ? 1 : 0)
     }
+  }
+
+  // distinct DRIVER duties per vehicle, mean over the vehicles with a driver
+  get driversPerVehicle(): number {
+    return this.drivenBlocks > 0 ? this.driverSlots / this.drivenBlocks : 0
   }
 
   piecesOf(blockId: string): CrewCalcPiece[] { return this.pieces.get(blockId) ?? [] }
@@ -483,7 +501,7 @@ export class CrewScoreAggregate {
     const out: CrewPlanSummary['criteria'] = []
     for (const [key, c] of this.perDuty) if (c.n > 0) out.push({ key, weight: c.weight, value: c.sum / c.n, raw: c.raw / c.n })
     if (this.dutyCount <= 0) return out
-    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage', value: number) => {
+    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage' | 'driversPerVehicle', value: number) => {
       if (range[key].active) out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]), raw: rangeRaw(value, range[key]) })
     }
     const covered = this.coveredMinutes
@@ -498,6 +516,7 @@ export class CrewScoreAggregate {
       out.push({ key: 'efficiency', weight: anchored.efficiency.weight, value: anchoredV(this.driverPaid, covered, anchored.efficiency), raw: anchoredRaw(this.driverPaid, covered, anchored.efficiency) })
     }
     if (this.blockMinutes > 0) plan('coverage', (covered / this.blockMinutes) * 100)
+    if (this.drivenBlocks > 0) plan('driversPerVehicle', this.driversPerVehicle)
     return out
   }
 
@@ -603,6 +622,7 @@ export function computeCrewPlan(input: {
       issueDutyCount:   dutyValues.filter(d => d.issues.length > 0).length,
       score:            Math.round(agg.score(criteria)),
       rawScore:         Math.round(agg.rawScore(criteria)),
+      driversPerVehicle: agg.driversPerVehicle,
       criteria,
       coveredMinutes,
       coveredByBranch:  [...coveredByBranch].map(([branchId, minutes]) => ({ branchId, minutes })),

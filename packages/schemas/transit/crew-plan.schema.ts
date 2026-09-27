@@ -29,6 +29,8 @@ export const crewPlanSummarySchema = z.object({
   // the score from the raw values — what the crew solver optimizes (a criterion already past its
   // ceiling still rewards getting closer to it); may go below 0
   rawScore: z.number().optional(),
+  // distinct DRIVER duties per vehicle, mean over the vehicles with a driver
+  driversPerVehicle: z.number().optional(),
   // DRIVER-covered minutes of the blocks' service spans (the efficiency criterion's base)
   coveredMinutes:   z.number(),
   // same, split by the block's branch

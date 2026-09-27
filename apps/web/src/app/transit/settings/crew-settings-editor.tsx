@@ -20,6 +20,7 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
   lineChanges:    { label: 'Trocas de Linha',         unit: 'trocas', hint: 'Trocas de linha dentro de uma mesma jornada — somam às trocas de carro.' },
   coverage:       { label: 'Cobertura',               unit: '%',      hint: 'Minutos em serviço dos carros com motorista.' },
+  driversPerVehicle: { label: 'Condutores por Carro', unit: 'cond.', hint: 'Média de condutores (motorista) que passam por cada carro — menos é jornada mais inteira.' },
   walkDistance:   { label: 'Deslocamento a Pé',       unit: 'm',      hint: 'Metros caminhados na jornada entre pegadas em locais diferentes.' },
 }
 

@@ -27,6 +27,9 @@ const rangeDefault = {
   lineChanges:    { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 2   },
   // meters a duty walks between pieces at different places — only worth it when it pays off
   walkDistance:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 3500 },
+  // distinct DRIVER duties per vehicle (mean over the vehicles with a driver) — fewer drivers
+  // sharing a vehicle keeps duties whole
+  driversPerVehicle: { active: true, modifier: 20, floor: 0, idealMin: 0, idealMax: 2, ceiling: 4 },
   // % of the blocks' service minutes with a DRIVER
   coverage:       { active: true, modifier: 30, floor: 90,  idealMin: 100, idealMax: 100, ceiling: 100 },
 }
@@ -85,6 +88,7 @@ export const crewSettingsSchema = withMeta(z.object({
     lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
     coverage:       rangeCriterionSchema.default(rangeDefault.coverage),
     walkDistance:   rangeCriterionSchema.default(rangeDefault.walkDistance),
+    driversPerVehicle: rangeCriterionSchema.default(rangeDefault.driversPerVehicle),
   }).default(rangeDefault),
 
   anchored: z.object({

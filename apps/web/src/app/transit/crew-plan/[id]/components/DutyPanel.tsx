@@ -287,11 +287,11 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function Badge({ tone, children }: { tone: 'red' | 'amber' | 'green'; children: React.ReactNode }) {
+export function Badge({ tone, children, className }: { tone: 'red' | 'amber' | 'green'; children: React.ReactNode; className?: string }) {
   const tones = {
     red:   'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
     amber: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
     green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   }
-  return <span className={cn('text-[10px] font-medium rounded px-1.5 py-0.5', tones[tone])}>{children}</span>
+  return <span className={cn('text-[10px] font-medium rounded px-1.5 py-0.5', tones[tone], className)}>{children}</span>
 }

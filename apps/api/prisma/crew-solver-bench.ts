@@ -11,6 +11,7 @@ import { CrewImprover } from '../src/modules/transit/timetabling/crew-solver/cre
 // moves can be compared. Nothing is written.
 // Usage: pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch]
 //        [--meal=continuous|fractioned|both|none] (overrides settings.mealRule's forms)
+//        [--settings='{"range":{"tripperRatio":{"modifier":30}}}'] (deep-merged over the settings)
 
 const KIND = { STRAIGHT: 'Corrida', SPLIT: 'Dupla pegada', TRIPPER: 'Meia jornada' } as const
 
@@ -52,9 +53,14 @@ async function main() {
   const { settings } = await new CrewPlanService(prisma, new TransitCrewConfigService(prisma)).resolveSettings(crewPlanId)
   const input = await loadCrewSolverInput(prisma, crewPlanId, settings)
   if (args.includes('--scratch')) input.locked = []
+  const merge = (a: any, b: any): any => (b && typeof b === 'object' && !Array.isArray(b)
+    ? Object.fromEntries([...new Set([...Object.keys(a ?? {}), ...Object.keys(b)])].map(k => [k, k in b ? merge(a?.[k], b[k]) : a[k]]))
+    : b)
+  const settingsArg = args.find(a => a.startsWith('--settings='))?.slice(11)
+  if (settingsArg) Object.assign(settings, merge(settings, JSON.parse(settingsArg)))
   const mealArg = args.find(a => a.startsWith('--meal='))?.slice(7)
-  if (mealArg) {
-    settings.mealRule = { ...settings.mealRule, continuous: mealArg === 'continuous' || mealArg === 'both', fractioned: mealArg === 'fractioned' || mealArg === 'both' }
+  if (mealArg || settingsArg) {
+    if (mealArg) settings.mealRule = { ...settings.mealRule, continuous: mealArg === 'continuous' || mealArg === 'both', fractioned: mealArg === 'fractioned' || mealArg === 'both' }
     Object.assign(input, await loadCrewSolverInput(prisma, crewPlanId, settings), { locked: input.locked })
   }
   await prisma.$disconnect()

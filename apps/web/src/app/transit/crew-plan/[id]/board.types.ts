@@ -124,6 +124,7 @@ export const CRITERION_LABEL: Record<string, string> = {
   tripperRatio:   'Meias jornadas (%)',
   coverage:       'Cobertura',
   walkDistance:   'Deslocamento a pé',
+  driversPerVehicle: 'Condutores por carro',
   dutyCount:      'Nº de jornadas',
   efficiency:     'Eficiência',
 }

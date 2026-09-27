@@ -14,7 +14,8 @@ import { fmtTime } from '../board.types'
 import { Badge } from './DutyPanel'
 
 // "Otimizar › Reduzir trocas de carro" — lists the tail swaps the API found (an independent
-// set: any combination can be applied) with recommended ones pre-checked.
+// set: any combination can be applied): direct junctions first, pre-checked like the
+// recommended ones.
 
 type Junction = 'DIRECT' | 'DEPOT' | 'DISPLACEMENT'
 
@@ -58,7 +59,10 @@ export function VehicleSwapModal({ crewPlanId, duties, onApplied, onClose }: Pro
       const res  = await apiFetch(base)
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(extractError(json))
-      return json as Candidate[]
+      // direct junctions on top, the API's order kept within each group
+      return (json as Candidate[]).map((c, i) => ({ c, i }))
+        .sort((a, b) => Number(b.c.junction === 'DIRECT') - Number(a.c.junction === 'DIRECT') || a.i - b.i)
+        .map(x => x.c)
     },
     staleTime: 0,
     gcTime:    0,
@@ -67,9 +71,9 @@ export function VehicleSwapModal({ crewPlanId, duties, onApplied, onClose }: Pro
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [saving, setSaving]   = useState(false)
 
-  // (re)seed the selection with the recommended swaps whenever the analysis changes
+  // (re)seed the selection with the recommended and every direct junction whenever the analysis changes
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (data) setChecked(new Set(data.filter(c => c.recommended).map(c => c.key))) }, [data])
+  useEffect(() => { if (data) setChecked(new Set(data.filter(c => c.recommended || c.junction === 'DIRECT').map(c => c.key))) }, [data])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -144,13 +148,10 @@ export function VehicleSwapModal({ crewPlanId, duties, onApplied, onClose }: Pro
                   )}>
                     <input type="checkbox" className="mt-1" checked={checked.has(c.key)} onChange={() => toggle(c.key)} />
                     <span className="flex-1 min-w-0 space-y-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">
-                          Carro {c.x.blockNumber} a partir de {fmtTime(c.x.cutMinutes)}
-                          <Icons.ArrowLeftRight className="inline w-3.5 h-3.5 mx-1.5 align-[-2px]" />
-                          Carro {c.y.blockNumber} a partir de {fmtTime(c.y.cutMinutes)}
-                        </span>
-                        <Badge tone={junction.tone}>{junction.label}</Badge>
+                      <span className="block font-medium">
+                        Carro {c.x.blockNumber} a partir de {fmtTime(c.x.cutMinutes)}
+                        <Icons.ArrowLeftRight className="inline w-3.5 h-3.5 mx-1.5 align-[-2px]" />
+                        Carro {c.y.blockNumber} a partir de {fmtTime(c.y.cutMinutes)}
                       </span>
                       <span className="block text-xs text-muted-foreground">
                         {c.duties.map(d => `${dutyLabel.get(d.dutyId) ?? '?'} ${signed(d.after - d.before, d.after - d.before === -1 ? 'troca' : 'trocas')}`).join(' · ')}
@@ -165,6 +166,7 @@ export function VehicleSwapModal({ crewPlanId, duties, onApplied, onClose }: Pro
                         </span>
                       )}
                     </span>
+                    <Badge tone={junction.tone} className="mt-0.5 w-28 shrink-0 text-center">{junction.label}</Badge>
                   </label>
                 </li>
               )
