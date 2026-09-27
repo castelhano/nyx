@@ -308,7 +308,7 @@ function pieceFits(p: SwapPiece, window: Span | null, points: ReliefPoint[]): bo
 function uncoveredMinutes(b: BlockShape, drivers: Span[]): number {
   const window = windowOf(b)
   if (!window) return 0
-  return computeServiceSpans(window, b.deadruns, b.intervals)
+  return computeServiceSpans(window, [...b.trips, ...b.deadruns], b.deadruns, b.intervals)
     .reduce((sum, span) => sum + subtractSpans(span, drivers).reduce((s, u) => s + u.endMinutes - u.startMinutes, 0), 0)
 }
 

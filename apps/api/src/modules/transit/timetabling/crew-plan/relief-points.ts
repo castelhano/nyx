@@ -13,8 +13,9 @@ type Span = { startMinutes: number; endMinutes: number }
 export interface BlockReliefData {
   window: Span | null
   // the parts of the window where the vehicle is in service and therefore needs a driver:
-  // the window minus the vehicle's own intervals (BlockInterval) and minus time parked at
-  // the depot between a RETURN deadrun and a later ACCESS one
+  // the window minus the vehicle's own intervals (BlockInterval, stretched over the standing
+  // time around them — a piece can only start/end at the trips/deadruns there) and minus
+  // time parked at the depot between a RETURN deadrun and a later ACCESS one
   serviceSpans: Span[]
   points: ReliefPoint[]
 }
@@ -59,16 +60,21 @@ export function computeBlockRelief(input: {
   const window = starts.length ? { startMinutes: Math.min(...starts), endMinutes: Math.max(...ends) } : null
 
   points.sort((a, b) => a.minutes - b.minutes)
-  return { window, serviceSpans: window ? computeServiceSpans(window, input.deadruns, input.intervals) : [], points }
+  return { window, serviceSpans: window ? computeServiceSpans(window, [...input.trips, ...input.deadruns], input.deadruns, input.intervals) : [], points }
 }
 
 // see BlockReliefData.serviceSpans
 export function computeServiceSpans(
   window:    Span,
+  moving:    { departureMinutes: number; arrivalMinutes: number }[], // trips + deadruns
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[],
   intervals: { departureMinutes: number; arrivalMinutes: number }[],
 ): Span[] {
-  const idle: Span[] = intervals.map(i => ({ startMinutes: i.departureMinutes, endMinutes: i.arrivalMinutes }))
+  // an interval runs from the vehicle's last arrival before it to its next departure after it
+  const idle: Span[] = intervals.map(i => ({
+    startMinutes: moving.reduce((m, e) => (e.arrivalMinutes <= i.departureMinutes && e.arrivalMinutes > m ? e.arrivalMinutes : m), window.startMinutes),
+    endMinutes:   moving.reduce((m, e) => (e.departureMinutes >= i.arrivalMinutes && e.departureMinutes < m ? e.departureMinutes : m), window.endMinutes),
+  }))
   const byTime = [...deadruns].sort((a, b) => a.departureMinutes - b.departureMinutes)
   for (const ret of byTime.filter(d => d.type === 'RETURN')) {
     const nextAccess = byTime.find(d => d.type === 'ACCESS' && d.departureMinutes >= ret.arrivalMinutes)
@@ -94,12 +100,15 @@ export function isReliefPoint(points: ReliefPoint[], localityId: string, minutes
 }
 
 export interface LoadedBlockRelief extends BlockReliefData {
-  branchId: string | null
-  trips:    { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
+  branchId:  string | null
+  trips:     { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
+  deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[]
+  intervals: { departureMinutes: number; arrivalMinutes: number }[]
 }
 
 // Loads everything computeBlockRelief needs for a set of blocks in a few queries — plus the
-// block's operator and trip lines, which crew-scoring.calc.ts needs alongside the points.
+// block's operator, trips, deadruns and intervals, which crew-scoring.calc.ts and the crew
+// solver need alongside the points.
 export async function loadBlockRelief(prisma: PrismaService, blockIds: string[]): Promise<Map<string, LoadedBlockRelief>> {
   const result = new Map<string, LoadedBlockRelief>()
   if (blockIds.length === 0) return result
@@ -170,6 +179,8 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
       trips:    b.blockTrips.map(({ trip }) => ({
         id: trip.id, departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes, lineId: trip.route.lineId, routeId: trip.routeId,
       })),
+      deadruns:  b.blockDeadruns,
+      intervals: b.blockIntervals,
     })
   }
   return result

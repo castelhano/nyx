@@ -64,31 +64,36 @@ type Span = { startMinutes: number; endMinutes: number }
 
 const dur = (s: Span) => s.endMinutes - s.startMinutes
 
-// whether a break's place is a meal stop of the arriving line (see the header) — null when
-// the break can't be placed (no piece before it)
-function mealPlaceAllowed(b: Span, live: CrewCalcPiece[], blocks: Map<string, CrewCalcBlock>, mealStops: Set<string>): boolean | null {
-  const tripById = (p: CrewCalcPiece, tripId: string | undefined) => blocks.get(p.vehicleBlockId!)?.trips.find(t => t.id === tripId)
-  const allowed  = (p: CrewCalcPiece, point: ReliefPoint | undefined) => {
-    const trip = point?.tripId ? tripById(p, point.tripId) : undefined
-    return !!point && !!trip && mealStops.has(`${trip.routeId}:${point.localityId}`)
+// Meal allowed where the vehicle stands at `minutes`: its last arrival there (trip end, crew
+// change stop or deadrun end, optionally at a given locality) must be a trip whose route marks
+// that stop allowsMealBreak — "the line that arrives" rules; a deadrun arrival has no line.
+// Shared with the crew solver, so both place/flag meals the same way.
+export function mealStopAt(
+  block: Pick<CrewCalcBlock, 'points' | 'trips'>, minutes: number, mealStops: Set<string>, localityId?: string,
+): boolean {
+  let arrival: ReliefPoint | undefined
+  for (const p of block.points) {
+    if (p.kind === 'TRIP_ORIGIN' || p.kind === 'DEADRUN_ORIGIN' || p.minutes > minutes) continue
+    if (localityId && p.localityId !== localityId) continue
+    if (!arrival || p.minutes >= arrival.minutes) arrival = p
   }
+  const trip = arrival?.tripId ? block.trips.find(t => t.id === arrival.tripId) : undefined
+  return !!arrival && !!trip && mealStops.has(`${trip.routeId}:${arrival.localityId}`)
+}
 
+// whether a break's place is a meal stop (see the header) — null when the break can't be
+// placed (no piece before it)
+function mealPlaceAllowed(b: Span, live: CrewCalcPiece[], blocks: Map<string, CrewCalcBlock>, mealStops: Set<string>): boolean | null {
   const inside = live.find(p => p.startMinutes <= b.startMinutes && p.endMinutes >= b.endMinutes)
   if (inside) {
-    const arrival = (blocks.get(inside.vehicleBlockId!)?.points ?? [])
-      .filter(pt => (pt.kind === 'TRIP_DESTINATION' || pt.kind === 'DEADRUN_DESTINATION') && pt.minutes <= b.startMinutes)
-      .reduce<ReliefPoint | undefined>((last, pt) => (!last || pt.minutes >= last.minutes ? pt : last), undefined)
-    return allowed(inside, arrival)
+    const block = blocks.get(inside.vehicleBlockId!)
+    return !!block && mealStopAt(block, b.startMinutes, mealStops)
   }
-
-  // the line that last arrived where the previous piece ends (a piece may end at the next
-  // trip's departure, after the layover)
+  // where the previous piece ends (it may end at the next trip's departure, after the layover)
   const prev = live.filter(p => p.endMinutes <= b.startMinutes).at(-1)
   if (!prev) return null
-  const arrived = (blocks.get(prev.vehicleBlockId!)?.points ?? [])
-    .filter(pt => pt.kind !== 'TRIP_ORIGIN' && pt.tripId && pt.localityId === prev.endLocalityId && pt.minutes <= prev.endMinutes)
-    .reduce<ReliefPoint | undefined>((last, pt) => (!last || pt.minutes >= last.minutes ? pt : last), undefined)
-  return allowed(prev, arrived)
+  const block = blocks.get(prev.vehicleBlockId!)
+  return !!block && mealStopAt(block, prev.endMinutes, mealStops, prev.endLocalityId)
 }
 
 function pieceStaleReason(p: CrewCalcPiece, block: CrewCalcBlock | undefined): DutyPieceStaleReason | null {
@@ -233,8 +238,10 @@ export function computeCrewPlan(input: {
     }
 
     // continuous driving: worked segments chained until a break sits between them (in the
-    // gap between pieces or inside a piece)
-    const restsBetween = (prev: Span, next: Span) => breaks.some(b => b.startMinutes < next.startMinutes && b.endMinutes > prev.endMinutes)
+    // gap between pieces or inside a piece) — or, in a split duty, the split interval itself
+    const splitRest = duty.kind === 'SPLIT' ? range.splitInterval.floor : Infinity
+    const restsBetween = (prev: Span, next: Span) => next.startMinutes - prev.endMinutes >= splitRest
+      || breaks.some(b => b.startMinutes < next.startMinutes && b.endMinutes > prev.endMinutes)
     let chain = 0
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i]

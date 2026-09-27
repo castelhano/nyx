@@ -130,6 +130,35 @@ bastar — exigiria uma biblioteca de otimização.
 
 ---
 
+## Núcleo — como ficou
+
+- **Cadeias**: por carro, os trechos em serviço ainda sem motorista (descontadas as jornadas
+  travadas), unidos através dos intervalos do próprio carro — nunca através de estadia na garagem.
+- **Jornada num carro só primeiro**: em cada cadeia, da esquerda para a direita, tenta-se uma jornada
+  inteira em volta de um tempo parado do carro — **corrida** com a refeição dentro da pegada quando o
+  tempo parado cabe na faixa do tipo de refeição (em parada de refeição da linha que chega), **dupla
+  pegada** no mesmo carro quando é maior e cabe em `range.splitInterval` (se ativo).
+- **Pegadas soltas** no restante: ~metade de uma jornada ideal (`(workTime.idealMax − apresentação −
+  encerramento) / 2`), dentro da direção contínua, sem atravessar intervalos do carro e sem deixar
+  sobra menor que a pegada mínima.
+- **Pareamento** das soltas (mesmo operador): corrida (refeição entre as pegadas, tempo de
+  deslocamento pela matriz) ou dupla pegada; o que sobra vira meia jornada. Reserva não é gerada.
+- **Limites duros**: tetos de trabalho e amplitude só dos critérios **ativos**.
+- **Completar**: jornadas travadas ficam intactas; o solver cobre o que resta em volta delas.
+- **Avaliação**: `computeCrewPlan` sobre travadas + geradas. No plano de dev (192 carros) roda em
+  ~30 ms e cobre 100%.
+
+Ajustes no cálculo da escala feitos junto (valem também para a montagem manual):
+
+- `serviceSpans`: o intervalo do carro se estende sobre o tempo parado colado nele (da última
+  chegada à próxima saída) — antes sobravam minutos "sem motorista" onde nenhuma pegada consegue
+  começar/terminar.
+- Direção contínua: na dupla pegada, o vão entre as pegadas (≥ `splitInterval.floor`) é descanso.
+- Regra da refeição ("linha que chega") numa função única, `mealStopAt`, usada pelo cálculo e pelo
+  solver.
+
+---
+
 ## Parâmetros ao gerar
 
 | Parâmetro | Default | Efeito |
@@ -161,7 +190,9 @@ o **Reduzir trocas de carro** que já existe.
 1. **Fase 0** — mudanças prévias: tipo de refeição por Scope, intervalo remunerado conta como
    jornada, `RouteLocality.allowsMealBreak` + `MEAL_LOCATION`, travar jornada.
 2. **Núcleo puro** — trechos, pegadas, intervalos, jornadas candidatas e construção, testável
-   isoladamente como `crew-scoring.calc.ts`.
+   isoladamente como `crew-scoring.calc.ts`. *Implementado (2026-09-27)*:
+   `timetabling/crew-solver/crew-solver.calc.ts` (`solveCrewPlan`) + `crew-solver.input.ts`
+   (`loadCrewSolverInput`). Ver "Núcleo — como ficou".
 3. **Worker + SSE + modal** — execução, progresso, propostas, criação da versão, Completar,
    replicação de papéis.
 4. **Melhoria contínua** (destruir e reconstruir).
