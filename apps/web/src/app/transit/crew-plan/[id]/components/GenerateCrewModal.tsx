@@ -37,8 +37,8 @@ interface Props {
 
 const DIRECTIONS: { value: Params['direction']; label: string }[] = [
   { value: 'balanced',     label: 'Equilibrado' },
-  { value: 'fewer_duties', label: 'Menos jornadas' },
-  { value: 'fewer_paid',   label: 'Menos horas pagas' },
+  { value: 'fewer_duties', label: 'Menor quadro' },
+  { value: 'fewer_paid',   label: 'Menor jornada' },
 ]
 
 export function GenerateCrewModal({ crewPlanId, current, lockedCount, onCreated, onClose }: Props) {
@@ -162,7 +162,7 @@ export function GenerateCrewModal({ crewPlanId, current, lockedCount, onCreated,
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              <Row label="Jornadas"        current={current?.dutyCount}        next={s?.dutyCount} />
+              <Row label="Quadro"          current={current?.dutyCount}        next={s?.dutyCount} />
               <Row label="Sem motorista"   current={current?.uncoveredMinutes} next={s?.uncoveredMinutes} fmt={fmtDuration} />
               <Row label="Trabalhado"      current={current?.workMinutes}      next={s?.workMinutes}      fmt={fmtDuration} />
               <Row label="Extra"           current={current?.overtimeMinutes}  next={s?.overtimeMinutes}  fmt={fmtDuration} />
