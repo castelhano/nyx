@@ -34,6 +34,11 @@ export const dutySummarySchema = z.object({
   // rough estimate assuming the same duty is worked the next day — null when the day
   // type doesn't run on consecutive days; the real rest comes from the roster
   interShiftRestMinutes: z.number().nullable(),
+  // time between pieces that is neither the meal nor the split interval — at the employer's
+  // disposal, so worked (includes walking between pieces)
+  idleMinutes:     z.number().default(0),
+  // meters walked between pieces at different places
+  walkMeters:      z.number().default(0),
 })
 export type DutySummary = z.infer<typeof dutySummarySchema>
 
@@ -42,7 +47,7 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 // `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix).
 export const dutyIssueSchema = z.object({
   code: z.enum([
-    'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL',
+    'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE',
     'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION',
   ]),
   severity: z.enum(['warning', 'error']),

@@ -249,6 +249,25 @@ A Fase A já é útil sozinha: a nota e as pendências da tela ficam coerentes c
 
 ---
 
+## Deslocamento a pé e tempo à disposição — implementado (2026-09-27)
+
+Valem para o cálculo da escala (tela) e para o solver:
+
+- **Deslocamento entre pegadas** em locais diferentes é **a pé** (`crew-walk.ts`), a 4 km/h fixos.
+  A distância é a da matriz (`TravelTimeMatrix.distanceKm`, pelas ruas); sem par na matriz, a
+  linha reta × 1,3. Antes usava o tempo **de carro** da matriz.
+  - acima de **Distância Máxima a Pé** (`maxWalkMeters`, padrão 3.500 m) → pendência `error`
+    `WALK_DISTANCE`; o solver nunca monta;
+  - vão menor que a caminhada → `TRAVEL_GAP` `error`;
+  - atividade TRAVEL lançada no vão dispensa a regra (outro meio declarado).
+- Critério por jornada **Deslocamento a Pé** (`range.walkDistance`, metros): o solver só caminha
+  quando compensa.
+- **Tempo à disposição** (`DutySummary.idleMinutes`): os vãos entre pegadas, fora a refeição e o
+  intervalo da dupla (o maior vão), contam como **trabalhado** — inclui a caminhada. Só a
+  refeição e o intervalo da dupla ficam fora da jornada.
+
+---
+
 ## Fora de escopo
 
 - Paralelizar por operador (várias threads) — só se o desempenho pedir.

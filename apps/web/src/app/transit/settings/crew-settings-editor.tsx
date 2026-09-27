@@ -19,6 +19,7 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
   lineChanges:    { label: 'Trocas de Linha',         unit: 'trocas', hint: 'Trocas de linha dentro de uma mesma jornada — somam às trocas de carro.' },
   coverage:       { label: 'Cobertura',               unit: '%',      hint: 'Minutos em serviço dos carros com motorista.' },
+  walkDistance:   { label: 'Deslocamento a Pé',       unit: 'm',      hint: 'Metros caminhados na jornada entre pegadas em locais diferentes.' },
 }
 
 const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
@@ -26,12 +27,13 @@ const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string
   efficiency: { label: 'Eficiência',     unit: '% sobre mínimo', hint: 'Minutos pagos sobre os minutos de bloco cobertos.' },
 }
 
-const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes' | 'minPieceMinutes' | 'maxContinuousDrivingMinutes' | 'nightStartHour' | 'nightEndHour' | 'stopMaxTotalMinutes' | 'stopNoImprovementMinutes'; label: string; hint: string; unit: string; max: number }[] = [
+const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes' | 'minPieceMinutes' | 'maxContinuousDrivingMinutes' | 'maxWalkMeters' | 'nightStartHour' | 'nightEndHour' | 'stopMaxTotalMinutes' | 'stopNoImprovementMinutes'; label: string; hint: string; unit: string; max: number }[] = [
   { key: 'signOnMinutes',               label: 'Apresentação',              unit: 'min', max: 120,  hint: 'Tempo antes da primeira pegada da jornada' },
   { key: 'signOffMinutes',              label: 'Encerramento',              unit: 'min', max: 120,  hint: 'Tempo após a última pegada da jornada' },
   { key: 'handoverMinutes',             label: 'Sobreposição na Rendição',  unit: 'min', max: 60,   hint: 'Sobreposição tolerada entre pegadas do mesmo papel no mesmo carro' },
   { key: 'minPieceMinutes',             label: 'Pegada Mínima',             unit: 'min', max: 1440, hint: 'Pegadas mais curtas são sinalizadas' },
   { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: 'min', max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
+  { key: 'maxWalkMeters',               label: 'Distância Máxima a Pé',     unit: 'm',   max: 20000, hint: 'Deslocamento a pé permitido entre pegadas em locais diferentes (4 km/h)' },
   { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
   { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
   { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: 'min', max: 1440, hint: 'Duração máxima da geração da escala' },

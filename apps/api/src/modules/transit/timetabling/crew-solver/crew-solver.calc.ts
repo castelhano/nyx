@@ -1,6 +1,7 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
 import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
 import { subtractSpans } from '../crew-plan/relief-points'
+import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
 import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 
 // Crew solver — construction stage (pure, no Prisma). See docs/proposal/plan_crew_solver_v1.md.
@@ -25,8 +26,8 @@ import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 //
 // Choices (which cut, which partner) are weighed in the plan score's own units: each criterion
 // costs what it would take off the score (modifier × (1 − rangeV)). A SPLIT also costs the
-// splitRatio modifier, so a STRAIGHT wins when everything else ties; crew travel is only a
-// tie-break (TRAVEL_COST per minute).
+// splitRatio modifier, so a STRAIGHT wins when everything else ties. Pieces at different
+// places pair only within walking distance (crew-walk.ts), the walk costing range.walkDistance.
 
 type Span = { startMinutes: number; endMinutes: number }
 
@@ -44,7 +45,7 @@ export interface CrewSolverInput {
   settings:      CrewSettings
   meal:          SolverMeal
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
-  matrixMinutes: Map<string, number> // crew travel between relief points
+  walk:          CrewWalk            // crew walking between relief points
 }
 
 export interface SolverPiece {
@@ -70,7 +71,6 @@ const len = (s: Span) => s.endMinutes - s.startMinutes
 const overlaps = (a: Span, b: Span) => Math.min(a.endMinutes, b.endMinutes) > Math.max(a.startMinutes, b.startMinutes)
 // what the criterion takes off the plan score for this value — 0 when inactive
 const penalty = (c: RangeCriterion, v: number) => (c.active ? c.modifier * (1 - rangeV(v, c)) : 0)
-const TRAVEL_COST = 0.1
 
 // lines driven in order (consecutive repeats merged) and the changes among them
 type LineSeq = { first: string | null; last: string | null; changes: number }
@@ -246,8 +246,9 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
     for (let j = i + 1; j < loose.length; j++) {
       const b = loose[j].piece
       if (used.has(j) || loose[j].branchId !== branchId || b.startMinutes < a.endMinutes) continue
-      const travel = a.endLocalityId === b.startLocalityId ? 0 : input.matrixMinutes.get(`${a.endLocalityId}:${b.startLocalityId}`)
-      if (travel == null) continue
+      const meters = walkMeters(input.walk, a.endLocalityId, b.startLocalityId)
+      if (meters == null || meters > settings.maxWalkMeters) continue
+      const travel = walkMinutes(meters)
       const gap = b.startMinutes - a.endMinutes
       const spread = b.endMinutes - a.startMinutes + signs
       if (spread > maxSpread) continue
@@ -264,9 +265,10 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       }
       if (!duty) continue
 
-      const w = work(len(a) + len(b), duty.breaks.reduce((s, x) => s + len(x), 0))
+      // in a STRAIGHT the walk is worked (at the employer's disposal); a split interval isn't
+      const w = work(len(a) + len(b), duty.breaks.reduce((s, x) => s + len(x), 0)) + (duty.kind === 'STRAIGHT' ? gap - rest : 0)
       if (w > maxWork) continue
-      const cost = penalty(range.workTime, w) + penalty(range.spread, spread) + kindCost + travel * TRAVEL_COST
+      const cost = penalty(range.workTime, w) + penalty(range.spread, spread) + kindCost + penalty(range.walkDistance, meters)
         + penalty(range.vehicleChanges, a.vehicleBlockId !== b.vehicleBlockId ? 1 : 0)
         + penalty(range.lineChanges, joinLines(linesA, loose[j].lines))
       if (!best || cost < best.cost) best = { j, duty, cost }
@@ -292,7 +294,7 @@ export function evaluateSolverDuties(input: CrewSolverInput, solverDuties: Solve
   const evaluation = computeCrewPlan({
     settings:      input.settings,
     blocks:        input.blocks,
-    matrixMinutes: input.matrixMinutes,
+    walk:          input.walk,
     mealStops:     input.mealStops,
     duties: [
       ...input.locked,

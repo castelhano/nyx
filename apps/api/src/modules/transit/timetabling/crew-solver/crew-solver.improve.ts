@@ -1,6 +1,7 @@
 import type { CrewCalcContext, CrewCalcDuty, DutyEvaluation } from '../crew-plan/crew-scoring.calc'
 import { CrewScoreAggregate, evaluateDuty } from '../crew-plan/crew-scoring.calc'
 import { BlockView, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
+import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 
 // Crew solver — continuous improvement (pure, no Prisma). See
 // docs/proposal/plan_crew_solver_improvement_v1.md.
@@ -85,7 +86,7 @@ export class CrewImprover {
     this.random = rng(seed)
     this.ctx = {
       settings: input.settings, blocks: new Map(input.blocks.map(b => [b.id, b])),
-      matrixMinutes: input.matrixMinutes, mealStops: input.mealStops,
+      walk: input.walk, mealStops: input.mealStops,
     }
     this.views = new Map(input.blocks.map(b => [b.id, new BlockView(b, input.mealStops)]))
     this.agg = new CrewScoreAggregate(this.ctx)
@@ -279,7 +280,8 @@ export class CrewImprover {
   // The duty those pieces make, or null when it breaks a hard rule:
   //  - pieces in time order, no overlap; consecutive pieces on the same vehicle merge;
   //    at most MAX_PIECES;
-  //  - between pieces at different places, the crew travel from the matrix (none → no duty);
+  //  - between pieces at different places, the driver walks — within settings.maxWalkMeters and a
+  //    gap that fits the walk (unknown distance → no duty);
   //  - at most one long interval: the meal (STRAIGHT — a rest within the meal type's range, at a
   //    meal stop of the line that arrives) or the split gap (SPLIT, within range.splitInterval);
   //    the other gaps are shorter than the meal (vehicle/line changes);
@@ -300,15 +302,17 @@ export class CrewImprover {
     }
     if (pieces.length > MAX_PIECES) return null
 
-    const { meal, settings, matrixMinutes } = this.input
+    const { meal, settings, walk } = this.input
     const split = settings.range.splitInterval
     let kind: SolverDuty['kind'] = 'TRIPPER'
     let breaks: Span[] = []
     for (let i = 1; i < pieces.length; i++) {
       const prev = pieces[i - 1], next = pieces[i]
       const gap    = next.startMinutes - prev.endMinutes
-      const travel = prev.endLocalityId === next.startLocalityId ? 0 : matrixMinutes.get(`${prev.endLocalityId}:${next.startLocalityId}`)
-      if (travel == null || gap < travel) return null
+      const meters = walkMeters(walk, prev.endLocalityId, next.startLocalityId)
+      if (meters == null || meters > settings.maxWalkMeters) return null
+      const travel = walkMinutes(meters)
+      if (gap < travel) return null
       const rest = gap - travel
       const long = rest >= meal.minMinutes
       if (long && kind !== 'TRIPPER') return null

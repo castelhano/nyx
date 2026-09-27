@@ -102,6 +102,7 @@ export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   SPREAD:             'Amplitude',
   MEAL_BREAK:         'Intervalo intrajornada',
   SPLIT_INTERVAL:     'Intervalo da dupla pegada',
+  WALK_DISTANCE:      'Deslocamento a pé acima do permitido',
   CONTINUOUS_DRIVING: 'Direção contínua',
   MIN_PIECE:          'Pegada curta',
   TRAVEL_GAP:         'Deslocamento entre pegadas',
@@ -121,9 +122,13 @@ export const CRITERION_LABEL: Record<string, string> = {
   splitRatio:     'Dupla pegada (%)',
   tripperRatio:   'Meias jornadas (%)',
   coverage:       'Cobertura',
+  walkDistance:   'Deslocamento a pé',
   dutyCount:      'Nº de jornadas',
   efficiency:     'Eficiência',
 }
+
+// issues whose value/limit are meters, not minutes
+export const METER_ISSUES = new Set<DutyIssue['code']>(['WALK_DISTANCE'])
 
 // issues with no meaningful value/limit — rendered as the label only
 export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION'])

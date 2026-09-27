@@ -9,6 +9,7 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { loadBlockRelief } from './relief-points'
+import { loadCrewWalk } from './crew-walk'
 import { computeCrewPlan } from './crew-scoring.calc'
 import {
   activationEffect, addDays, applyEffect, assertRetroactiveAllowed, dayOf, fmtDay, parseStartDate, toDbDate,
@@ -394,7 +395,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         : Promise.resolve([]),
     ])
 
-    // crew travel between the end of a piece and the start of the next, when they differ
+    // crew walking between the end of a piece and the start of the next, when they differ
     const pairs = new Map<string, { originId: string; destinationId: string }>()
     for (const d of duties) {
       const sorted = [...d.pieces].sort((a, b) => a.startMinutes - b.startMinutes)
@@ -403,9 +404,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         if (from !== to) pairs.set(`${from}:${to}`, { originId: from, destinationId: to })
       }
     }
-    const matrix = pairs.size
-      ? await this.prisma.travelTimeMatrix.findMany({ where: { OR: [...pairs.values()] }, select: { originId: true, destinationId: true, baseMinutes: true } })
-      : []
+    const walk = await loadCrewWalk(this.prisma, [...new Set([...pairs.values()].flatMap(p => [p.originId, p.destinationId]))], [...pairs.values()])
 
     const result = computeCrewPlan({
       settings,
@@ -418,7 +417,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           isPaidBreak: a.type === 'BREAK' && !!a.intervalType?.isPaid,
         })),
       })),
-      matrixMinutes: new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes])),
+      walk,
       mealStops: new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
       repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
     })

@@ -2,12 +2,13 @@ import { BadRequestException, NotFoundException } from '@nestjs/common'
 import type { CrewSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { loadBlockRelief } from '../crew-plan/relief-points'
+import { loadCrewWalk } from '../crew-plan/crew-walk'
 import type { CrewCalcDuty } from '../crew-plan/crew-scoring.calc'
 import type { CrewSolverInput, SolverBlock } from './crew-solver.calc'
 
 // Everything solveCrewPlan needs for one crew plan, in a few queries: its VehiclePlan's
 // blocks (relief points, trips, deadruns), its locked duties, the meal break type and meal
-// stops, and the crew travel matrix among the relief points' localities.
+// stops, and the crew walking distances among the relief points' localities.
 export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings): Promise<CrewSolverInput> {
   if (!settings.mealBreakIntervalTypeId) {
     throw new BadRequestException('Defina o tipo de intervalo de refeição nas configurações da escala')
@@ -38,10 +39,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   }))
 
   const localityIds = [...new Set(blocks.flatMap(b => b.points.map(p => p.localityId)))]
-  const matrix = await prisma.travelTimeMatrix.findMany({
-    where:  { originId: { in: localityIds }, destinationId: { in: localityIds } },
-    select: { originId: true, destinationId: true, baseMinutes: true },
-  })
+  const walk = await loadCrewWalk(prisma, localityIds)
 
   const locked: CrewCalcDuty[] = lockedRows.map(d => ({
     id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, pieces: d.pieces,
@@ -61,6 +59,6 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
       isPaid:     mealType.isPaid,
     },
     mealStops:     new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
-    matrixMinutes: new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes])),
+    walk,
   }
 }

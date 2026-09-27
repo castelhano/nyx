@@ -3,6 +3,7 @@ import type {
 } from '@nyx/schemas'
 import { rangeV, anchoredV, SCORE_SCALE } from '../vehicle-plan/scoring/plan-scoring.calc'
 import { isReliefPoint, subtractSpans } from './relief-points'
+import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
 
 // Pure crew-plan calculation (no Prisma) — the CrewPlan counterpart of plan-scoring.calc.ts.
 // Produces, from persisted state: each piece's staleness against its block, each duty's
@@ -18,9 +19,15 @@ import { isReliefPoint, subtractSpans } from './relief-points'
 //   crew breaks). A break may sit inside a piece (idle time only, enforced by
 //   duty-occupancy.utils.ts): that time is rest, but the vehicle stays covered.
 // - workMinutes = pieces minus the breaks inside them + non-break activities + paid breaks
-//   (IntervalType.isPaid) + implicit sign-on/off; paidMinutes = workMinutes; overtime =
-//   workMinutes above workTime.idealMin. A paid break still is a break: it splits continuous
-//   driving and counts in breakMinutes (MEAL_BREAK).
+//   (IntervalType.isPaid) + implicit sign-on/off + idle time; paidMinutes = workMinutes;
+//   overtime = workMinutes above workTime.idealMin. A paid break still is a break: it splits
+//   continuous driving and counts in breakMinutes (MEAL_BREAK).
+// - Idle time: the gaps between pieces minus their activities, except a split duty's split
+//   interval (its longest gap) — the driver is at the employer's disposal (walking included).
+//   Only the meal break and the split interval are off the clock.
+// - Between pieces at different places the driver walks (crew-walk.ts), unless a TRAVEL
+//   activity is declared there: beyond settings.maxWalkMeters → WALK_DISTANCE; a gap shorter
+//   than the walk → TRAVEL_GAP.
 // - A break of settings.mealBreakIntervalTypeId is a MEAL_LOCATION warning unless its place is
 //   an allowsMealBreak stop (RouteLocality — per route) of the line that arrives there.
 //   Inside a piece: where the vehicle stands, i.e. its last arrival (a deadrun arrival has no
@@ -158,7 +165,7 @@ function mergeSpans(spans: Span[]): Span[] {
 export interface CrewCalcContext {
   settings:      CrewSettings
   blocks:        Map<string, CrewCalcBlock>
-  matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes (crew travel between relief points)
+  walk:          CrewWalk            // crew walking between relief points
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
   // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
   repeatsNextDay?: boolean
@@ -210,11 +217,20 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   const segments     = live.flatMap(p => subtractSpans(p, breaks).map(s => ({ ...s, pieceId: p.id })))
   const pieceMinutes = segments.reduce((s, sg) => s + dur(sg), 0)
   const otherActs    = acts.filter(a => a.type !== 'BREAK')
-  const workMinutes  = pieceMinutes + [...otherActs, ...paidBreaks].reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff
+
+  // gaps between consecutive pieces; in a split duty the longest one is the split interval
+  const gaps = live.slice(1).map((p, i) => ({ prev: live[i], next: p, minutes: p.startMinutes - live[i].endMinutes }))
+  const splitGap  = gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0
+  const restGap   = duty.kind === 'SPLIT' ? gaps.find(g => g.minutes === splitGap) : undefined
+  const idleSpans = gaps.filter(g => g !== restGap && g.minutes > 0)
+    .flatMap(g => subtractSpans({ startMinutes: g.prev.endMinutes, endMinutes: g.next.startMinutes }, acts))
+  const idleMinutes = idleSpans.reduce((s, sp) => s + dur(sp), 0)
+
+  const workMinutes  = pieceMinutes + [...otherActs, ...paidBreaks].reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff + idleMinutes
   const paidMinutes  = workMinutes
   const overtime     = Math.max(0, workMinutes - range.workTime.idealMin)
 
-  const workSpans: Span[] = [...segments, ...otherActs, ...paidBreaks]
+  const workSpans: Span[] = [...segments, ...otherActs, ...paidBreaks, ...idleSpans]
   if (implicitOn)  workSpans.push({ startMinutes: live[0].startMinutes - implicitOn, endMinutes: live[0].startMinutes })
   if (implicitOff) workSpans.push({ startMinutes: live[live.length - 1].endMinutes, endMinutes: live[live.length - 1].endMinutes + implicitOff })
   const nightMinutes = workSpans.reduce((s, sp) => s + nightOverlap(sp, settings.nightStartHour, settings.nightEndHour), 0)
@@ -236,6 +252,23 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   }
   const lineChanges = Math.max(0, lineSeq.length - 1)
 
+  // walking between pieces at different places (a declared TRAVEL there stands for it)
+  let walked = 0
+  const walkIssues: DutyIssue[] = []
+  for (const g of gaps) {
+    if (g.prev.endLocalityId === g.next.startLocalityId) continue
+    if (acts.some(a => a.type === 'TRAVEL' && a.startMinutes >= g.prev.endMinutes && a.endMinutes <= g.next.startMinutes)) continue
+    const meters = walkMeters(ctx.walk, g.prev.endLocalityId, g.next.startLocalityId)
+    if (meters == null) {
+      walkIssues.push({ code: 'TRAVEL_GAP', severity: 'warning', value: g.minutes, pieceId: g.next.id })
+    } else if (meters > settings.maxWalkMeters) {
+      walkIssues.push({ code: 'WALK_DISTANCE', severity: 'error', value: Math.round(meters), limit: settings.maxWalkMeters, pieceId: g.next.id })
+    } else {
+      walked += meters
+      if (g.minutes < walkMinutes(meters)) walkIssues.push({ code: 'TRAVEL_GAP', severity: 'error', value: g.minutes, limit: walkMinutes(meters), pieceId: g.next.id })
+    }
+  }
+
   const summary: DutySummary = {
     spreadMinutes: events.length ? last - first : 0,
     workMinutes, paidMinutes, breakMinutes,
@@ -247,16 +280,14 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     startMinutes: events.length ? first : null,
     endMinutes:   events.length ? last : null,
     interShiftRestMinutes: ctx.repeatsNextDay && events.length ? first + 1440 - last : null,
+    idleMinutes,
+    walkMeters: Math.round(walked),
   }
 
   // ── issues ───────────────────────────────────────────────────────────────
   const issues: DutyIssue[] = []
   const push = (i: DutyIssue | null) => { if (i) issues.push(i) }
   const hasWork = live.length > 0
-
-  // gaps between consecutive pieces (for SPLIT interval and travel checks)
-  const gaps = live.slice(1).map((p, i) => ({ prev: live[i], next: p, minutes: p.startMinutes - live[i].endMinutes }))
-  const splitGap = gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0
 
   if (hasWork && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') push(rangeIssue('WORK_TIME', workMinutes, range.workTime))
   if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('SPREAD', summary.spreadMinutes, range.spread))
@@ -284,16 +315,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     }
   }
 
-  for (const g of gaps) {
-    if (g.prev.endLocalityId === g.next.startLocalityId) continue
-    const travel   = ctx.matrixMinutes.get(`${g.prev.endLocalityId}:${g.next.startLocalityId}`)
-    const declared = acts.some(a => a.type === 'TRAVEL' && a.startMinutes >= g.prev.endMinutes && a.endMinutes <= g.next.startMinutes)
-    if (travel != null && g.minutes < travel) {
-      push({ code: 'TRAVEL_GAP', severity: 'error', value: g.minutes, limit: Math.ceil(travel), pieceId: g.next.id })
-    } else if (travel == null && !declared) {
-      push({ code: 'TRAVEL_GAP', severity: 'warning', value: g.minutes, pieceId: g.next.id })
-    }
-  }
+  issues.push(...walkIssues)
 
   if (settings.mealBreakIntervalTypeId) {
     for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {
@@ -320,6 +342,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     if (duty.kind === 'SPLIT') crit('splitInterval', range.splitInterval, splitGap)
     crit('vehicleChanges', range.vehicleChanges, vehicleChanges)
     crit('lineChanges', range.lineChanges, lineChanges)
+    crit('walkDistance', range.walkDistance, walked)
   }
 
   return { summary, issues, isStale: live.length !== duty.pieces.length, pieceState, live, lineMinutes, criteria }
@@ -450,14 +473,14 @@ export function computeCrewPlan(input: {
   duties:        CrewCalcDuty[]
   blocks:        CrewCalcBlock[]
   settings:      CrewSettings
-  matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes (crew travel between relief points)
+  walk:          CrewWalk            // crew walking between relief points
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
   // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
   repeatsNextDay?: boolean
 }): CrewCalcResult {
   const ctx: CrewCalcContext = {
     settings: input.settings, blocks: new Map(input.blocks.map(b => [b.id, b])),
-    matrixMinutes: input.matrixMinutes, mealStops: input.mealStops, repeatsNextDay: input.repeatsNextDay,
+    walk: input.walk, mealStops: input.mealStops, repeatsNextDay: input.repeatsNextDay,
   }
   const agg = new CrewScoreAggregate(ctx)
 

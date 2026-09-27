@@ -46,7 +46,7 @@ async function main() {
       })),
     }))
     const repeats   = repeatsNextDay(plan.vehiclePlan.dayType.pattern)
-    const calcInput = { settings, blocks: input.blocks, duties, matrixMinutes: input.matrixMinutes, mealStops: input.mealStops, repeatsNextDay: repeats }
+    const calcInput = { settings, blocks: input.blocks, duties, walk: input.walk, mealStops: input.mealStops, repeatsNextDay: repeats }
 
     // 1. full calculation vs stored
     let t = performance.now()
@@ -70,7 +70,7 @@ async function main() {
     }
 
     // 2. incremental aggregate
-    const ctx: CrewCalcContext = { settings, blocks: new Map(input.blocks.map(b => [b.id, b])), matrixMinutes: input.matrixMinutes, mealStops: input.mealStops, repeatsNextDay: repeats }
+    const ctx: CrewCalcContext = { settings, blocks: new Map(input.blocks.map(b => [b.id, b])), walk: input.walk, mealStops: input.mealStops, repeatsNextDay: repeats }
     const evs = new Map(duties.map(d => [d.id, evaluateDuty(d, ctx)]))
     const agg = new CrewScoreAggregate(ctx)
     for (const d of duties) agg.add(d, evs.get(d.id)!)

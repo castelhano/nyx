@@ -10,7 +10,7 @@ import type { BoardDuty, BoardBlock, BoardActivity, CrewBoardData } from '../boa
 import { useIntervalTypes } from '../../../use-interval-types'
 import {
   fmtTime, fmtDuration, parseTime, dutyColorVars, pieceTrips, SWATCH_BG_CLASS,
-  ROLE_LABEL, KIND_LABEL, ACTIVITY_LABEL, ISSUE_LABEL, STALE_LABEL, VALUELESS_ISSUES,
+  ROLE_LABEL, KIND_LABEL, ACTIVITY_LABEL, ISSUE_LABEL, STALE_LABEL, VALUELESS_ISSUES, METER_ISSUES,
 } from '../board.types'
 
 export const DUTY_FORM_ID = 'crew-duty-form'
@@ -140,6 +140,8 @@ function DutyPanelInner({
               <Stat label="Pegadas"    value={String(s.pieceCount)} />
               <Stat label="Trocas carro" value={String(s.vehicleChanges)} />
               <Stat label="Trocas linha" value={String(s.lineChanges)} />
+              <Stat label="À disposição" value={fmtDuration(s.idleMinutes ?? 0)} />
+              <Stat label="A pé"         value={`${(s.walkMeters ?? 0).toLocaleString('pt-BR')} m`} />
             </div>
           </Section>
         )}
@@ -152,7 +154,9 @@ function DutyPanelInner({
                   <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'error' ? 'text-red-600 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')} />
                   <span>
                     {ISSUE_LABEL[i.code]}
-                    {!VALUELESS_ISSUES.has(i.code) && <> — {fmtTime(i.value)}{i.limit != null && <> (limite {fmtTime(i.limit)})</>}</>}
+                    {!VALUELESS_ISSUES.has(i.code) && (METER_ISSUES.has(i.code)
+                      ? <> — {i.value.toLocaleString('pt-BR')} m{i.limit != null && <> (limite {i.limit.toLocaleString('pt-BR')} m)</>}</>
+                      : <> — {fmtTime(i.value)}{i.limit != null && <> (limite {fmtTime(i.limit)})</>}</>)}
                   </span>
                 </li>
               ))}

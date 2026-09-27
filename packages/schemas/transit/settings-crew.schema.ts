@@ -25,6 +25,8 @@ const rangeDefault = {
   vehicleChanges: { active: true, modifier: 5,  floor: 0,   idealMin: 0,   idealMax: 1,   ceiling: 3   },
   // line changes per duty — counted apart from vehicle changes (a change of both scores twice)
   lineChanges:    { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 2   },
+  // meters a duty walks between pieces at different places — only worth it when it pays off
+  walkDistance:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 3500 },
   // % of the blocks' service minutes with a DRIVER
   coverage:       { active: true, modifier: 30, floor: 90,  idealMin: 100, idealMax: 100, ceiling: 100 },
 }
@@ -44,6 +46,9 @@ export const crewSettingsSchema = withMeta(z.object({
   handoverMinutes:             z.number().int().min(0).max(60).default(0),
   minPieceMinutes:             z.number().int().min(0).max(1440).default(60),
   maxContinuousDrivingMinutes: z.number().int().min(0).max(1440).default(300),
+  // farthest a driver walks between pieces at different places (meters) — beyond it the pieces
+  // can't follow each other (WALK_DISTANCE)
+  maxWalkMeters:               z.number().int().min(0).max(20000).default(3500),
   // night window (clock hours) — for now only yields informative nightMinutes
   nightStartHour:              z.number().int().min(0).max(23).default(22),
   nightEndHour:                z.number().int().min(0).max(23).default(5),
@@ -68,6 +73,7 @@ export const crewSettingsSchema = withMeta(z.object({
     vehicleChanges: rangeCriterionSchema,
     lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
     coverage:       rangeCriterionSchema.default(rangeDefault.coverage),
+    walkDistance:   rangeCriterionSchema.default(rangeDefault.walkDistance),
   }).default(rangeDefault),
 
   anchored: z.object({
