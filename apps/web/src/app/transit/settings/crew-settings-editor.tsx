@@ -26,7 +26,7 @@ const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string
   efficiency: { label: 'Eficiência',     unit: '% sobre mínimo', hint: 'Minutos pagos sobre os minutos de bloco cobertos.' },
 }
 
-const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes' | 'minPieceMinutes' | 'maxContinuousDrivingMinutes' | 'nightStartHour' | 'nightEndHour'; label: string; hint: string; unit: string; max: number }[] = [
+const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes' | 'minPieceMinutes' | 'maxContinuousDrivingMinutes' | 'nightStartHour' | 'nightEndHour' | 'stopMaxTotalMinutes' | 'stopNoImprovementMinutes'; label: string; hint: string; unit: string; max: number }[] = [
   { key: 'signOnMinutes',               label: 'Apresentação',              unit: 'min', max: 120,  hint: 'Tempo antes da primeira pegada da jornada' },
   { key: 'signOffMinutes',              label: 'Encerramento',              unit: 'min', max: 120,  hint: 'Tempo após a última pegada da jornada' },
   { key: 'handoverMinutes',             label: 'Sobreposição na Rendição',  unit: 'min', max: 60,   hint: 'Sobreposição tolerada entre pegadas do mesmo papel no mesmo carro' },
@@ -34,6 +34,8 @@ const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes'
   { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: 'min', max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
   { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
   { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
+  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: 'min', max: 1440, hint: 'Duração máxima da geração da escala' },
+  { key: 'stopNoImprovementMinutes',    label: 'Parar sem Melhora',         unit: 'min', max: 60,   hint: 'Encerra a geração após este tempo sem encontrar escala melhor' },
 ]
 
 interface Props {

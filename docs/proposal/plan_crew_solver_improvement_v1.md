@@ -228,7 +228,20 @@ Com a Fase A, a direção passa a ter efeito real: "Menor quadro" dobra o peso d
    trocar no agregado + nota) ~0,02–0,04 ms, ou seja, dezenas de milhares por segundo.
 3. **C1 — Laço e movimentos baratos**: mover rendição, trocar pontas, unir meias jornadas,
    absorver pegada; simulated annealing; parada (configuração + Parar); progresso e propostas;
-   script de bancada.
+   script de bancada. *Implementada (2026-09-27)*: `crew-solver.improve.ts` (`CrewImprover`),
+   worker em fatias de 50 ms, `stopMaxTotalMinutes`/`stopNoImprovementMinutes` na configuração da
+   escala, `pnpm crew:solver-bench <crewPlanId> [segundos] [semente] [--scratch]`. Como ficou:
+   - três movimentos: **mover rendição**, **trocar pontas** e **transferir** (uma pegada, ou a
+     cabeça/cauda dela cortada num ponto de troca, vai para outra jornada ou vira jornada
+     própria). Unir meias jornadas e absorver pegada são casos da transferência;
+   - **ciclos**: a temperatura esfria ao longo de um ciclo (metade do "parar sem melhora"); no
+     fim, volta para a melhor escala e recomeça 30% mais fria. Com um resfriamento único até o
+     tempo máximo, a fase quente passava de 1 min sem melhora e a geração parava cedo;
+   - **meia jornada** gerada pelos movimentos trabalha no máximo o piso da duração
+     (`workTime.floor`) — sem intervalo de refeição, não passa de uma jornada mínima;
+   - bancada no plano de dev (UTIL, do zero, 5 min, ~95 mil tentativas/s): nota 8237 → 9187,
+     meias jornadas 27% → 10%, trocas de linha 36% → 22%, extra 10,5% → 5,0%, pendências
+     `error` 18 → 0, cobertura total.
 4. **C2 — Destruir e reconstruir**: construção com ruído, vizinhanças.
 5. **C3 — Tela**: andamento e comparativo novos na aba Cenários.
 

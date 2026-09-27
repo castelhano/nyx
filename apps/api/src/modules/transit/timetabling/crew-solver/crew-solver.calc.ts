@@ -78,7 +78,7 @@ const joinLines = (a: LineSeq, b: LineSeq): number =>
   a.changes + b.changes + (a.last && b.first && a.last !== b.first ? 1 : 0)
 
 // per-block lookups the construction needs
-class BlockView {
+export class BlockView {
   readonly cuts: number[]                 // relief point minutes, ascending, unique
   private readonly pointAt = new Map<number, ReliefPoint>()
   readonly parks: Span[]                  // depot stays (RETURN → next ACCESS)
@@ -282,9 +282,15 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   }
 
   // 4. evaluate with the crew plan's own calculation
-  duties.sort((a, b) => a.pieces[0].startMinutes - b.pieces[0].startMinutes)
+  return evaluateSolverDuties(input, duties)
+}
+
+// Locked + solver duties through computeCrewPlan — the summary/score a proposal shows.
+export function evaluateSolverDuties(input: CrewSolverInput, solverDuties: SolverDuty[]): CrewSolverResult {
+  const { meal } = input
+  const duties = [...solverDuties].sort((a, b) => a.pieces[0].startMinutes - b.pieces[0].startMinutes)
   const evaluation = computeCrewPlan({
-    settings,
+    settings:      input.settings,
     blocks:        input.blocks,
     matrixMinutes: input.matrixMinutes,
     mealStops:     input.mealStops,

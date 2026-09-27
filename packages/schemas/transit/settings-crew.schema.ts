@@ -51,6 +51,10 @@ export const crewSettingsSchema = withMeta(z.object({
   // becomes a meal; BREAKs of this type are checked against TransitLocality.allowsMealBreak.
   // range.mealBreak below only scores/flags the duty
   mealBreakIntervalTypeId:     z.uuid().nullable().default(null),
+  // crew solver's continuous improvement: stops after this long, or this long without a better
+  // proposal (same fields as the planning settings)
+  stopMaxTotalMinutes:         z.number().int().min(1).max(1440).default(5),
+  stopNoImprovementMinutes:    z.number().int().min(1).max(60).default(1),
 
   range: z.object({
     workTime:       rangeCriterionSchema,

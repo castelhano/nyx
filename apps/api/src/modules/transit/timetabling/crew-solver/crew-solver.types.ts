@@ -22,10 +22,14 @@ export interface CrewSolverProposal {
 }
 
 // worker → host; the host forwards everything but the proposal's duties over SSE
+// elapsed / sinceImprovement in ms; bestScore unrounded
 export type CrewSolverMessage =
-  | { type: 'progress'; elapsed: number; attempts: number; bestScore: number }
+  | { type: 'progress'; elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
   | { type: 'proposal'; proposal: CrewSolverProposal }
-  | { type: 'done'; stopReason: 'finished' | 'user_stopped'; elapsed: number }
+  | { type: 'done'; stopReason: 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'; elapsed: number; attempts: number }
   | { type: 'error'; message: string }
+
+// host → worker
+export type CrewSolverCommand = { type: 'stop' }
 
 export type CrewSolverWorkerData = CrewSolverInput
