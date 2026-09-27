@@ -6,6 +6,7 @@ import { TransitGeneralConfigService }  from './transit-general-config.service'
 import { TransitPlanningConfigService } from './transit-planning-config.service'
 import { TransitCrewConfigService }     from './transit-crew-config.service'
 import { TransitRosterConfigService }   from './transit-roster-config.service'
+import { TransitCrewCostConfigService } from './transit-crew-cost-config.service'
 import { TransitSettingsController }    from './transit-settings.controller'
 
 const transitSettingsEntrySchema = withMeta(
@@ -20,12 +21,14 @@ const transitSettingsEntrySchema = withMeta(
     TransitPlanningConfigService,
     TransitCrewConfigService,
     TransitRosterConfigService,
+    TransitCrewCostConfigService,
   ],
   exports: [
     TransitGeneralConfigService,
     TransitPlanningConfigService,
     TransitCrewConfigService,
     TransitRosterConfigService,
+    TransitCrewCostConfigService,
   ],
 })
 export class TransitSettingsModule implements OnModuleInit {

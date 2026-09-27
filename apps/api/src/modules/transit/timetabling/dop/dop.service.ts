@@ -4,6 +4,7 @@ import { dopSchema } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { resourceRegistry } from '../../../../core/resource-registry'
 import { DayTypeService } from '../day-type/day-type.service'
+import { periodDates, findActivePlan } from './dop-resolution'
 
 // DOP has no Prisma model and no CRUD (docs/proposal/plan_dop_v1.md, decisão 2/3) —
 // computed on-the-fly from whatever VehiclePlan is ACTIVE and in vigência for each
@@ -19,7 +20,8 @@ export class DopService {
     resourceRegistry.push({ domain: 'transit', resource: 'dop', schema: dopSchema })
   }
 
-  async getPeriodSummary(scopeId: string, from: Date, to: Date): Promise<DopPeriodSummary> {
+  // branchId: only that operator's share — its blocks' km, trips and vehicles on each line
+  async getPeriodSummary(scopeId: string, from: Date, to: Date, branchId?: string): Promise<DopPeriodSummary> {
     const db = this.prisma as any
 
     const [lines, activePlans, calendar, scopeOperators] = await Promise.all([
@@ -47,16 +49,7 @@ export class DopService {
     const lineIds        = lines.map((l: any) => l.id)
     const resolveDayType = await this.dayTypeService.buildDayTypeResolver(from, to, lineIds)
 
-    const dates: Date[] = []
-    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) dates.push(new Date(d))
-
-    const findActivePlan = (dayTypeId: string, lineId: string, date: Date) =>
-      activePlans.find((p: any) =>
-        p.dayTypeId === dayTypeId
-        && (!p.validFrom || p.validFrom <= date)
-        && (!p.validTo || p.validTo >= date)
-        && p.lines.some((l: any) => l.lineId === lineId),
-      ) ?? null
+    const dates = periodDates(from, to)
 
     const branchAcc = new Map<string, { branchId: string | null; kmProdutiva: number; kmOciosa: number }>()
 
@@ -67,7 +60,7 @@ export class DopService {
 
       for (const date of dates) {
         const dayType = resolveDayType(date, line.id)
-        const plan    = findActivePlan(dayType.id, line.id, date)
+        const plan    = findActivePlan<any>(activePlans, dayType.id, line.id, date)
         const summary = (plan?.lines.find((l: any) => l.lineId === line.id)?.summary as VehiclePlanLineSummary | undefined) ?? null
 
         let entry = byDayType.get(dayType.id)
@@ -77,23 +70,29 @@ export class DopService {
         }
         entry.days++
 
-        if (summary) {
+        // with a branch filter, the line only counts where that branch runs it
+        const share = branchId ? (summary?.byBranch ?? []).find(b => b.branchId === branchId) : undefined
+        if (summary && (!branchId || share)) {
           // idleKm is new (this same change) — a plan generated before it exists
           // still has a JSON summary without the field, so it needs a fallback;
           // the other fields here have always been part of the shape.
-          const idleKm = summary.idleKm ?? 0
-          entry.fleet     = summary.fleetSize
-          entry.trips     += summary.dailyTrips
-          entry.kmProdutiva += summary.dailyKm
+          // byBranch trips/fleet are newer still — missing until the plan is recalculated.
+          const fleet  = share ? share.fleet ?? 0 : summary.fleetSize
+          const trips  = share ? share.trips ?? 0 : summary.dailyTrips
+          const km     = share ? share.kmProdutiva : summary.dailyKm
+          const idleKm = share ? share.kmOciosa : summary.idleKm ?? 0
+          entry.fleet     = fleet
+          entry.trips     += trips
+          entry.kmProdutiva += km
           entry.kmOciosa    += idleKm
-          tripsMes          += summary.dailyTrips
-          kmProdutivaMes    += summary.dailyKm
+          tripsMes          += trips
+          kmProdutivaMes    += km
           kmOciosaMes       += idleKm
           latest = summary
 
           // byBranch is new (same change as idleKm) — a plan summary generated
           // before it exists just contributes nothing to the empresa breakdown.
-          for (const b of summary.byBranch ?? []) {
+          for (const b of (summary.byBranch ?? []).filter(b => !branchId || b.branchId === branchId)) {
             const key = b.branchId ?? 'unassigned'
             const cur = branchAcc.get(key) ?? { branchId: b.branchId, kmProdutiva: 0, kmOciosa: 0 }
             cur.kmProdutiva += b.kmProdutiva

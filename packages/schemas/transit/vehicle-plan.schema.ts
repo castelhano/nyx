@@ -58,6 +58,9 @@ export const vehiclePlanLineSummarySchema = z.object({
     branchId:    z.string().nullable(),
     kmProdutiva: z.number(),
     kmOciosa:    z.number(),
+    // this branch's trips on the line and its blocks (vehicles) that run the line
+    trips:       z.number(),
+    fleet:       z.number(),
   })),
   score:                 z.number(),
 })

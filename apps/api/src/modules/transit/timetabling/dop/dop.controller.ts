@@ -1,10 +1,11 @@
 import { BadRequestException, Controller, ForbiddenException, Get, Query, Req, UseGuards } from '@nestjs/common'
-import { dopSchema, type DopPeriodSummary } from '@nyx/schemas'
+import { dopSchema, type DopPeriodSummary, type DopCrewPeriodSummary } from '@nyx/schemas'
 import type { AuthUser } from '@nyx/types'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { buildMetadata } from '../../../../core/metadata.builder'
 import { DopService } from './dop.service'
+import { DopCrewService } from './dop-crew.service'
 
 // No BaseController here — DOP is a single computed GET, not CRUD (docs/proposal/
 // plan_dop_v1.md, decisão 3). The metadata endpoint is still needed even though
@@ -15,6 +16,7 @@ import { DopService } from './dop.service'
 export class DopController {
   constructor(
     private readonly dopService:  DopService,
+    private readonly dopCrew:     DopCrewService,
     private readonly caslFactory: CaslAbilityFactory,
   ) {}
 
@@ -41,17 +43,34 @@ export class DopController {
     @Query('scopeId') scopeId: string,
     @Query('from') from: string,
     @Query('to') to: string,
+    @Query('branchId') branchId?: string,
   ): Promise<DopPeriodSummary> {
-    const ability = await this.caslFactory.createForUser(req.user)
-    if (!ability.can('read', 'Dop')) throw new ForbiddenException()
+    const { fromDate, toDate } = await this.checkRequest(req.user, scopeId, from, to)
+    return this.dopService.getPeriodSummary(scopeId, fromDate, toDate, branchId || undefined)
+  }
 
+  // visão Escala — same params as the vehicle view (docs/proposal/plan_dop_crew_v1.md)
+  @Get('crew')
+  async getCrew(
+    @Req() req: { user: AuthUser },
+    @Query('scopeId') scopeId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('branchId') branchId?: string,
+  ): Promise<DopCrewPeriodSummary> {
+    const { fromDate, toDate } = await this.checkRequest(req.user, scopeId, from, to)
+    return this.dopCrew.getPeriodSummary(scopeId, fromDate, toDate, branchId || undefined)
+  }
+
+  private async checkRequest(user: AuthUser, scopeId: string, from: string, to: string) {
+    const ability = await this.caslFactory.createForUser(user)
+    if (!ability.can('read', 'Dop')) throw new ForbiddenException()
     if (!scopeId || !from || !to) throw new BadRequestException('scopeId, from e to são obrigatórios')
     const fromDate = new Date(from)
     const toDate   = new Date(to)
     if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate > toDate) {
       throw new BadRequestException('Período inválido')
     }
-
-    return this.dopService.getPeriodSummary(scopeId, fromDate, toDate)
+    return { fromDate, toDate }
   }
 }

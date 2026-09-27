@@ -22,6 +22,30 @@ export const crewPlanSummarySchema = z.object({
   staleDutyCount:   z.number(),
   issueDutyCount:   z.number(),
   score:            z.number(),
+  // DRIVER-covered minutes of the blocks' service spans (the efficiency criterion's base)
+  coveredMinutes:   z.number(),
+  // same, split by the block's branch
+  coveredByBranch:  z.array(z.object({ branchId: z.string().nullable(), minutes: z.number() })),
+  // each duty split across the lines it operates, in proportion to its trip minutes on each;
+  // lineId null = duties with no trip (docs/proposal/plan_dop_crew_v1.md, decisão 4)
+  byLine: z.array(z.object({
+    lineId:          z.string().nullable(),
+    role:            z.string(),
+    branchId:        z.string().nullable(),
+    dutyShare:       z.number(),
+    workMinutes:     z.number(),
+    paidMinutes:     z.number(),
+    overtimeMinutes: z.number(),
+    nightMinutes:    z.number(),
+  })),
+  byBranch: z.array(z.object({
+    branchId:        z.string().nullable(),
+    role:            z.string(),
+    dutyCount:       z.number(),
+    paidMinutes:     z.number(),
+    overtimeMinutes: z.number(),
+    nightMinutes:    z.number(),
+  })),
 })
 export type CrewPlanSummary = z.infer<typeof crewPlanSummarySchema>
 

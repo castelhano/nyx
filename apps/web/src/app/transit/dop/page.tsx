@@ -20,6 +20,11 @@ import { apiFetch } from '@/lib/auth'
 import { httpError, httpRetry } from '@/lib/query'
 import { useToast } from '@/lib/toast-context'
 import { cn } from '@/lib/utils'
+import {
+  fmtKm, fmtPct, fmtSpeed, fmtDateBr, STATUS_CLS, occupancyStatus, CHART_GREEN_CLS, CHART_AMBER_CLS,
+  HEADER_GROUP_BG, HEADER_SUBGROUP_BG, GROUP_DIVIDER, StatTile,
+} from './components/dop-ui'
+import { CrewView } from './components/CrewView'
 
 // ── data hooks ───────────────────────────────────────────────────────────────
 
@@ -38,15 +43,31 @@ function useScopes() {
   })
 }
 
-function useDopPeriod(scopeId: string, from: string, to: string) {
-  return useQuery<DopPeriodSummary>({
-    queryKey: ['transit', 'dop', scopeId, from, to],
+interface OperatorOption { branchId: string; abbr: string; branch?: { name: string } }
+
+function useScopeOperators(scopeId: string) {
+  return useQuery<OperatorOption[]>({
+    queryKey: ['transit', 'scope-operator', 'dop-lookup', scopeId],
     queryFn: async () => {
-      const res = await apiFetch(`/transit/dop?scopeId=${scopeId}&from=${from}&to=${to}`)
+      const res = await apiFetch(`/transit/scope-operator?scopeId=${scopeId}&pageSize=200`)
+      if (!res.ok) throw httpError(res.status)
+      const json = await res.json()
+      return json.data
+    },
+    enabled: !!scopeId,
+    retry:   httpRetry,
+  })
+}
+
+function useDopPeriod(scopeId: string, branchId: string, from: string, to: string, enabled: boolean) {
+  return useQuery<DopPeriodSummary>({
+    queryKey: ['transit', 'dop', scopeId, branchId, from, to],
+    queryFn: async () => {
+      const res = await apiFetch(`/transit/dop?scopeId=${scopeId}&branchId=${branchId}&from=${from}&to=${to}`)
       if (!res.ok) throw httpError(res.status)
       return res.json()
     },
-    enabled: !!scopeId && !!from && !!to,
+    enabled: enabled && !!scopeId && !!from && !!to,
     retry:   httpRetry,
   })
 }
@@ -61,62 +82,6 @@ function firstDayOfMonth(month: string): string { return `${month}-01` }
 function lastDayOfMonth(month: string): string {
   const [y, m] = month.split('-').map(Number)
   return `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
-}
-
-// ── formatting ────────────────────────────────────────────────────────────
-
-function fmtKm(v: number): string { return Math.round(v).toLocaleString('pt-BR') }
-function fmtPct(v: number, decimals = 0): string { return `${(v * 100).toFixed(decimals)}%` }
-function fmtSpeed(v: number | null): string {
-  return v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-}
-function fmtDateBr(iso: string): string {
-  const [y, m, d] = iso.split('-')
-  return `${d}-${m}-${y}`
-}
-
-// ── status tokens (mesma convenção de AutoList.tsx Badge / LineSummaryView) ──
-
-const STATUS_CLS = {
-  success:     'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  warning:     'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400',
-  destructive: 'bg-destructive/15 text-destructive',
-} as const
-
-function occupancyStatus(v: number | null): keyof typeof STATUS_CLS {
-  if (v == null) return 'success'
-  if (v >= 0.90) return 'destructive'
-  if (v >= 0.75) return 'warning'
-  return 'success'
-}
-
-const CHART_GREEN_CLS = 'bg-emerald-500 dark:bg-emerald-600' // produtiva (status "good")
-const CHART_AMBER_CLS = 'bg-amber-500 dark:bg-amber-600'     // ociosa (status "warning")
-
-const HEADER_GROUP_BG    = 'bg-muted/40'
-const HEADER_SUBGROUP_BG = 'bg-muted/60'
-const GROUP_DIVIDER      = 'border-l-2 border-border'
-
-// ── UI pieces ────────────────────────────────────────────────────────────────
-
-function StatTile({ icon: Icon, label, value, sub }: {
-  icon:  (typeof Icons)['Bus']
-  label: string
-  value: string
-  sub?:  string
-}) {
-  return (
-    <div className="rounded-md border border-border bg-card px-4 py-3 flex items-start gap-3">
-      <div className="mt-0.5 shrink-0 w-8 h-8 rounded-sm bg-accent/60 flex items-center justify-center">
-        <Icon className="w-4 h-4 text-muted-foreground" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-[11px] text-muted-foreground leading-tight">{label}</div>
-        <div className="text-xl font-semibold leading-tight mt-0.5">{value}</div>
-        {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
-      </div>
-    </div>
-  )
 }
 
 function SplitBar({ produtiva, ociosa }: { produtiva: number; ociosa: number }) {
@@ -262,6 +227,9 @@ export default function DopPage() {
   const [toInput, setToInput]     = useState(lastDayOfMonth(initialMonth))
   const [query, setQuery]         = useState({ from: fromInput, to: toInput })
   const [tab, setTab]             = useState<Tab>('frota')
+  const [view, setView]           = useState<'vehicles' | 'crew'>('vehicles')
+  // '' = todas as empresas do escopo
+  const [branchId, setBranchId]   = useState('')
 
   function handleMonthChange(value: string) {
     setMonth(value)
@@ -285,7 +253,8 @@ export default function DopPage() {
     desc: 'Voltar', icon: Icons.ArrowLeft, origin: 'app/transit/dop/page',
   })
 
-  const { data, isLoading, isError } = useDopPeriod(scopeId, query.from, query.to)
+  const { data: operators } = useScopeOperators(scopeId)
+  const { data, isLoading, isError } = useDopPeriod(scopeId, branchId, query.from, query.to, view === 'vehicles')
 
   const dayTypes = data?.calendar ?? []
 
@@ -324,9 +293,33 @@ export default function DopPage() {
         </div>
         <div className="flex items-end gap-2">
           <div>
+            <label className="block text-[10px] text-muted-foreground mb-1">Visão</label>
+            <div className="inline-flex h-[30px] rounded-sm border border-border p-0.5 bg-background/50">
+              {([['vehicles', 'Carros'], ['crew', 'Escala']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setView(key)}
+                  className={cn(
+                    'px-3 text-xs rounded-sm transition-colors',
+                    view === key ? 'bg-accent text-accent-foreground font-medium' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
             <label className="block text-[10px] text-muted-foreground mb-1">Escopo</label>
-            <Select size="sm" className="h-[30px] w-44" value={scopeId} onChange={e => setScopeId(e.target.value)}>
+            <Select size="sm" className="h-[30px] w-44" value={scopeId} onChange={e => { setScopeId(e.target.value); setBranchId('') }}>
               {(scopes ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="block text-[10px] text-muted-foreground mb-1">Empresa</label>
+            <Select size="sm" className="h-[30px] w-44" value={branchId} onChange={e => setBranchId(e.target.value)}>
+              <option value="">Todas</option>
+              {(operators ?? []).map(o => <option key={o.branchId} value={o.branchId}>{o.branch?.name ?? o.abbr}</option>)}
             </Select>
           </div>
           <div>
@@ -350,10 +343,12 @@ export default function DopPage() {
         </div>
       </div>
 
-      {isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
-      {isError   && <div className="text-sm text-destructive">Erro ao carregar os dados do período.</div>}
+      {view === 'crew' && <CrewView scopeId={scopeId} branchId={branchId} from={query.from} to={query.to} />}
 
-      {data && (
+      {view === 'vehicles' && isLoading && <div className="text-sm text-muted-foreground">Carregando…</div>}
+      {view === 'vehicles' && isError   && <div className="text-sm text-destructive">Erro ao carregar os dados do período.</div>}
+
+      {view === 'vehicles' && data && (
         <>
           {/* ── composição do período ── */}
           <div className="rounded-md border border-border bg-card px-4 py-2.5 flex flex-wrap items-center gap-5 text-xs">

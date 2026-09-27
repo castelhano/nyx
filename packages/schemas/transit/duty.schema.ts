@@ -26,6 +26,8 @@ export const dutySummarySchema = z.object({
   pieceCount:      z.number(),
   vehicleChanges:  z.number(),
   lineChanges:     z.number(),
+  // distinct lines operated in the day (A→B→A = 2)
+  lineCount:       z.number(),
   // effective sign-on / sign-off (explicit activities or the implicit settings minutes)
   startMinutes:    z.number().nullable(),
   endMinutes:      z.number().nullable(),

@@ -439,9 +439,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     // between empresas, just tagging each block's per-line km with its branchId (or
     // 'unassigned' when the block has none — docs/proposal/plan_dop_v1.md).
     const idleKmByLine = new Map<string, number>()
-    const kmByLineBranch = new Map<string, Map<string, { kmProdutiva: number; kmOciosa: number }>>()
+    const kmByLineBranch = new Map<string, Map<string, { kmProdutiva: number; kmOciosa: number; trips: number; fleet: number }>>()
     for (const block of blocksWithTrips as any[]) {
       const productiveKmByLine = new Map<string, number>()
+      const tripsByLine        = new Map<string, number>()
       const trips: IdleTripInput[] = []
       for (const bt of block.blockTrips as any[]) {
         const route  = bt.trip.route
@@ -450,6 +451,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           ?? matrixKm[`${route.originLocalityId}:${route.destinationLocalityId}`]
           ?? 0
         productiveKmByLine.set(route.lineId, (productiveKmByLine.get(route.lineId) ?? 0) + tripKm)
+        tripsByLine.set(route.lineId, (tripsByLine.get(route.lineId) ?? 0) + 1)
         trips.push({ lineId: route.lineId, departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes })
       }
       const deadruns: IdleDeadrunInput[] = (block.blockDeadruns as any[]).map(dr => ({
@@ -465,9 +467,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       for (const lineId of lineIds) {
         let byBranch = kmByLineBranch.get(lineId)
         if (!byBranch) { byBranch = new Map(); kmByLineBranch.set(lineId, byBranch) }
-        const entry = byBranch.get(branchKey) ?? { kmProdutiva: 0, kmOciosa: 0 }
+        const entry = byBranch.get(branchKey) ?? { kmProdutiva: 0, kmOciosa: 0, trips: 0, fleet: 0 }
         entry.kmProdutiva += productiveKmByLine.get(lineId) ?? 0
         entry.kmOciosa    += idleForBlock.get(lineId) ?? 0
+        entry.trips       += tripsByLine.get(lineId) ?? 0
+        if (tripsByLine.has(lineId)) entry.fleet++
         byBranch.set(branchKey, entry)
       }
     }

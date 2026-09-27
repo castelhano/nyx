@@ -161,6 +161,8 @@ export function computeCrewPlan(input: {
   const driverCoverage = new Map<string, Span[]>()
   let totalWork = 0, totalPaid = 0, totalOvertime = 0, totalNight = 0
   let driverDuties = 0, driverPaid = 0
+  const byLine   = new Map<string, CrewPlanSummary['byLine'][number]>()
+  const byBranch = new Map<string, CrewPlanSummary['byBranch'][number]>()
   const byRole: Record<string, number> = {}
   const byKind: Record<string, number> = {}
 
@@ -205,13 +207,19 @@ export function computeCrewPlan(input: {
 
     let vehicleChanges = 0
     const lineSeq: string[] = []
+    // trip minutes per line inside the pieces — the duty's split across lines (byLine)
+    const lineMinutes = new Map<string, number>()
     for (let i = 0; i < live.length; i++) {
       if (i > 0 && live[i].vehicleBlockId !== live[i - 1].vehicleBlockId) vehicleChanges++
       const block = blocks.get(live[i].vehicleBlockId!)
       const trips = (block?.trips ?? [])
         .filter(t => t.arrivalMinutes > live[i].startMinutes && t.departureMinutes < live[i].endMinutes)
         .sort((a, b) => a.departureMinutes - b.departureMinutes)
-      for (const t of trips) if (lineSeq[lineSeq.length - 1] !== t.lineId) lineSeq.push(t.lineId)
+      for (const t of trips) {
+        if (lineSeq[lineSeq.length - 1] !== t.lineId) lineSeq.push(t.lineId)
+        const overlap = Math.min(t.arrivalMinutes, live[i].endMinutes) - Math.max(t.departureMinutes, live[i].startMinutes)
+        lineMinutes.set(t.lineId, (lineMinutes.get(t.lineId) ?? 0) + overlap)
+      }
     }
     const lineChanges = Math.max(0, lineSeq.length - 1)
 
@@ -222,6 +230,7 @@ export function computeCrewPlan(input: {
       nightMinutes,
       pieceCount: live.length,
       vehicleChanges, lineChanges,
+      lineCount: lineMinutes.size,
       startMinutes: events.length ? first : null,
       endMinutes:   events.length ? last : null,
       interShiftRestMinutes: input.repeatsNextDay && events.length ? first + 1440 - last : null,
@@ -291,6 +300,28 @@ export function computeCrewPlan(input: {
 
     // ── plan-level accumulation ──────────────────────────────────────────────
     totalWork += workMinutes; totalPaid += paidMinutes; totalOvertime += overtime; totalNight += nightMinutes
+
+    const tripTotal = [...lineMinutes.values()].reduce((s, m) => s + m, 0)
+    const shares: [string | null, number][] = tripTotal > 0
+      ? [...lineMinutes].map(([lineId, m]) => [lineId, m / tripTotal])
+      : [[null, 1]]
+    for (const [lineId, share] of shares) {
+      const key = `${lineId ?? ''}|${duty.role}|${duty.branchId ?? ''}`
+      const cur = byLine.get(key) ?? { lineId, role: duty.role, branchId: duty.branchId, dutyShare: 0, workMinutes: 0, paidMinutes: 0, overtimeMinutes: 0, nightMinutes: 0 }
+      cur.dutyShare       += share
+      cur.workMinutes     += workMinutes * share
+      cur.paidMinutes     += paidMinutes * share
+      cur.overtimeMinutes += overtime * share
+      cur.nightMinutes    += nightMinutes * share
+      byLine.set(key, cur)
+    }
+    const branchKey = `${duty.branchId ?? ''}|${duty.role}`
+    const branch = byBranch.get(branchKey) ?? { branchId: duty.branchId, role: duty.role, dutyCount: 0, paidMinutes: 0, overtimeMinutes: 0, nightMinutes: 0 }
+    branch.dutyCount++
+    branch.paidMinutes     += paidMinutes
+    branch.overtimeMinutes += overtime
+    branch.nightMinutes    += nightMinutes
+    byBranch.set(branchKey, branch)
     if (duty.role === 'DRIVER') {
       driverDuties++
       driverPaid += paidMinutes
@@ -317,7 +348,9 @@ export function computeCrewPlan(input: {
   // the depot don't (blockMinutes/coveredMinutes are measured on that same basis)
   const uncovered: CrewPlanSummary['uncovered'] = []
   let blockMinutes = 0, coveredMinutes = 0
+  const coveredByBranch = new Map<string | null, number>()
   for (const b of input.blocks) {
+    const coveredBefore = coveredMinutes
     const coverage = mergeSpans(driverCoverage.get(b.id) ?? [])
     for (const span of b.serviceSpans) {
       blockMinutes += dur(span)
@@ -330,6 +363,7 @@ export function computeCrewPlan(input: {
       }
       if (cursor < span.endMinutes) uncovered.push({ vehicleBlockId: b.id, startMinutes: cursor, endMinutes: span.endMinutes })
     }
+    coveredByBranch.set(b.branchId, (coveredByBranch.get(b.branchId) ?? 0) + coveredMinutes - coveredBefore)
   }
 
   // ── plan-level criteria ────────────────────────────────────────────────────
@@ -359,6 +393,10 @@ export function computeCrewPlan(input: {
       staleDutyCount:   dutyValues.filter(d => d.isStale).length,
       issueDutyCount:   dutyValues.filter(d => d.issues.length > 0).length,
       score:            weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0,
+      coveredMinutes,
+      coveredByBranch:  [...coveredByBranch].map(([branchId, minutes]) => ({ branchId, minutes })),
+      byLine:           [...byLine.values()],
+      byBranch:         [...byBranch.values()],
     },
   }
 }

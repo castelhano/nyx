@@ -4,6 +4,7 @@ import { TransitGeneralConfigService }   from './transit-general-config.service'
 import { TransitPlanningConfigService }  from './transit-planning-config.service'
 import { TransitCrewConfigService }      from './transit-crew-config.service'
 import { TransitRosterConfigService }    from './transit-roster-config.service'
+import { TransitCrewCostConfigService }  from './transit-crew-cost-config.service'
 
 @Controller('transit/settings')
 @UseGuards(JwtAuthGuard)
@@ -13,6 +14,7 @@ export class TransitSettingsController {
     private readonly planning: TransitPlanningConfigService,
     private readonly crew:     TransitCrewConfigService,
     private readonly roster:   TransitRosterConfigService,
+    private readonly crewCost: TransitCrewCostConfigService,
   ) {}
 
   @Get('general')
@@ -48,6 +50,19 @@ export class TransitSettingsController {
   putCrew(@Body() dto: unknown, @Query('scope') scope?: string) {
     const scopeId = scope && scope !== 'global' ? scope : undefined
     return this.crew.put(dto, scopeId)
+  }
+
+  // ?scope=<transit Scope.id> | global
+  @Get('crew-cost')
+  getCrewCost(@Query('scope') scope?: string) {
+    const scopeId = scope && scope !== 'global' ? scope : undefined
+    return this.crewCost.get(scopeId)
+  }
+
+  @Put('crew-cost')
+  putCrewCost(@Body() dto: unknown, @Query('scope') scope?: string) {
+    const scopeId = scope && scope !== 'global' ? scope : undefined
+    return this.crewCost.put(dto, scopeId)
   }
 
   @Get('roster')

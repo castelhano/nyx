@@ -13,9 +13,10 @@ import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
-import type { GeneralSettings, PlanningSettings, CrewSettings, RosterSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
+import type { GeneralSettings, PlanningSettings, CrewSettings, CrewCostSettings, RosterSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 import { SectionHeader, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
 import { CrewSettingsEditor } from './crew-settings-editor'
+import { CrewCostEditor } from './crew-cost-editor'
 
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
@@ -73,6 +74,7 @@ export default function TransitSettingsPage() {
   const [planning, setPlanning] = useState<PlanningSettings | null>(null)
   const [crew,     setCrew]     = useState<CrewSettings     | null>(null)
   const [roster,   setRoster]   = useState<RosterSettings   | null>(null)
+  const [crewCost, setCrewCost] = useState<CrewCostSettings | null>(null)
   // crew rules are keyed by transit Scope (CCT), independent from the branch selector above
   const [crewScope, setCrewScope] = useState<string>('global')
 
@@ -153,6 +155,24 @@ export default function TransitSettingsPage() {
     },
   })
 
+  const { data: globalCrewCost } = useQuery<CrewCostSettings>({
+    queryKey: ['transit', 'settings', 'crew-cost', 'global'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/crew-cost?scope=global')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: serverCrewCost } = useQuery<CrewCostSettings>({
+    queryKey: ['transit', 'settings', 'crew-cost', crewScope],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/settings/crew-cost?scope=${crewScope}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
   const { data: serverRoster } = useQuery<RosterSettings>({
     queryKey: ['transit', 'settings', 'roster'],
     queryFn:  async () => {
@@ -171,12 +191,13 @@ export default function TransitSettingsPage() {
   useEffect(() => { if (serverPlanning) setPlanning(serverPlanning) }, [serverPlanning, resetSignal])
   useEffect(() => { if (serverCrew)     setCrew(serverCrew)         }, [serverCrew,     resetSignal])
   useEffect(() => { if (serverRoster)   setRoster(serverRoster)     }, [serverRoster,   resetSignal])
+  useEffect(() => { if (serverCrewCost) setCrewCost(serverCrewCost) }, [serverCrewCost, resetSignal])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── save ───────────────────────────────────────────────────────────────────
 
   async function handleSave() {
-    if (!general || !planning || !crew || !roster) return
+    if (!general || !planning || !crew || !roster || !crewCost) return
     setSaving(true)
     try {
       const responses = await Promise.all([
@@ -184,6 +205,7 @@ export default function TransitSettingsPage() {
         apiFetch(`/transit/settings/planning?scope=${scope}`, { method: 'PUT', body: JSON.stringify(planning) }),
         apiFetch(`/transit/settings/crew?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crew) }),
         apiFetch('/transit/settings/roster', { method: 'PUT', body: JSON.stringify(roster) }),
+        apiFetch(`/transit/settings/crew-cost?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crewCost) }),
       ])
       if (responses.some((r) => !r.ok)) throw new Error()
       queryClient.invalidateQueries({ queryKey: ['transit', 'settings'] })
@@ -199,7 +221,7 @@ export default function TransitSettingsPage() {
 
   useTopbarActions([
     { label: 'Salvar', icon: Icons.Save, onClick: handleSave, primary: true, disabled: saving, keybind: 'ALT+G' },
-  ], [general, planning, crew, roster, saving, scope, crewScope])
+  ], [general, planning, crew, roster, crewCost, saving, scope, crewScope])
 
   useShortcut('alt+g', handleSave, { desc: 'Salvar configurações', icon: Icons.Save, origin: 'TransitSettingsPage' })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: 'TransitSettingsPage' })
@@ -576,6 +598,16 @@ export default function TransitSettingsPage() {
             reference={isCrewScoped ? gCrew : null}
             onChange={setCrew}
           />
+        )}
+
+        {crewCost && (
+          <div className="mt-4">
+            <CrewCostEditor
+              value={crewCost}
+              reference={isCrewScoped ? (globalCrewCost ?? null) : null}
+              onChange={setCrewCost}
+            />
+          </div>
         )}
 
         {roster && (

@@ -14,6 +14,7 @@ const iconNames = [
   'ArrowRightFromLine',
   'ArrowRightLeft',
   'Ban',
+  'Banknote',
   'BarChart2',
   'Bell',
   'BetweenVerticalStart',

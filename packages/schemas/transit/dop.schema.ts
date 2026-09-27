@@ -84,3 +84,95 @@ export interface DopPeriodSummary {
     tripsMes:         number
   }
 }
+
+// ── visão Escala (docs/proposal/plan_dop_crew_v1.md) ─────────────────────────
+// Every *ByRole map is keyed by CrewRole (DRIVER, FARE_COLLECTOR, ASSISTANT) — the page
+// filters/sums roles itself.
+
+export interface DopCrewMetrics {
+  // snapshot rows (byDayType): duty-equivalents on one day of that type;
+  // period rows: duty-days (Σ over the days)
+  dutyShare:       number
+  workMinutes:     number
+  paidMinutes:     number
+  overtimeMinutes: number
+  nightMinutes:    number
+  // period rows only — the role's total cost allocated by paid minutes
+  cost:            number
+}
+
+export interface DopCrewLine {
+  // null = Sem linha (duties with no trip)
+  lineId:   string | null
+  lineCode: string
+  lineName: string
+  byDayType: { dayTypeId: string; byRole: Record<string, DopCrewMetrics> }[]
+  byRole:    Record<string, DopCrewMetrics>
+}
+
+export interface DopCrewBranch {
+  branchId:   string | null
+  branchName: string
+  byRole:     Record<string, DopCrewMetrics>
+}
+
+export interface DopCrewRoleQuality {
+  dutyCount:            number
+  byKind:               Record<string, number>
+  issueDutyCount:       number
+  staleDutyCount:       number
+  interShiftBelowFloor: number
+  interShiftBelowIdeal: number
+  avgSpreadMinutes:     number
+  avgWorkMinutes:       number
+  avgBreakMinutes:      number
+  avgVehicleChanges:    number
+  avgLineChanges:       number
+  multiLineCount:       number
+}
+
+// snapshot of the crew plan in force on the most recent day of that type
+export interface DopCrewDayTypeQuality {
+  dayTypeId: string
+  score:     number | null
+  byRole:    Record<string, DopCrewRoleQuality>
+}
+
+export interface DopCrewStaffing {
+  // max over the period of max(biggest Mon–Fri; Sat + Sun), and the typical week behind it
+  estimate: number
+  weekday:  number
+  saturday: number
+  sunday:   number
+}
+
+export interface DopCrewCost {
+  fixed:    number
+  overtime: number
+  night:    number
+  charges:  number
+  benefits: number
+  total:    number
+}
+
+export interface DopCrewPeriodSummary {
+  scopeId: string
+  from:    string
+  to:      string
+  days:    number
+
+  calendar: DopDayTypeCount[]
+  // DayType covering Mon–Fri (weekdays pattern) — base of "Jornadas/dia útil" and the fleet
+  referenceDayTypeId: string | null
+  referenceFleet:     number
+  // days where a line had an active VehiclePlan but no active CrewPlan
+  noCrewDays: { dayTypeId: string; days: number }[]
+
+  lines:    DopCrewLine[]
+  byBranch: DopCrewBranch[]
+  quality:  DopCrewDayTypeQuality[]
+  staffing: Record<string, DopCrewStaffing>
+  costs:    Record<string, DopCrewCost>
+  // DRIVER-covered service minutes in the period (efficiency denominator)
+  coveredMinutes: number
+}
