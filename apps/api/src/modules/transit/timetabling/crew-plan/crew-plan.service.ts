@@ -247,7 +247,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         orderBy: [{ role: 'asc' }, { dutyNumber: 'asc' }],
         include: {
           pieces:     { orderBy: { sequence: 'asc' } },
-          activities: { orderBy: { startMinutes: 'asc' }, include: { intervalType: { select: { name: true } } } },
+          activities: { orderBy: { startMinutes: 'asc' }, include: { intervalType: { select: { name: true, isPaid: true } } } },
         },
       }),
       this.prisma.scopeOperator.findMany({
@@ -317,6 +317,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         })),
         activities: d.activities.map(a => ({
           id: a.id, type: a.type, intervalTypeId: a.intervalTypeId, intervalTypeName: a.intervalType?.name ?? null,
+          isPaidBreak: a.type === 'BREAK' && !!a.intervalType?.isPaid,
           startMinutes: a.startMinutes, endMinutes: a.endMinutes,
         })),
       })),

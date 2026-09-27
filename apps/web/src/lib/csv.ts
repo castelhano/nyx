@@ -28,8 +28,14 @@ export function downloadCsv(
     }
     return escapeCell(row[f.name])
   }).join(';'))
-  const csv     = [headers, ...lines].join('\n')
+  save([headers, ...lines].join('\n'), filename)
+}
 
+export function downloadCsvRows(headers: string[], rows: unknown[][], filename: string) {
+  save([headers.map(escapeCell).join(';'), ...rows.map(r => r.map(escapeCell).join(';'))].join('\n'), filename)
+}
+
+function save(csv: string, filename: string) {
   // BOM UTF-8 (U+FEFF) garante que o Excel abra acentos e cedilha corretamente
   const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' })
   const url  = URL.createObjectURL(blob)

@@ -27,6 +27,7 @@ import { useTimeRange, LABEL_W } from './components/Timeline'
 import { CrewFilterBar } from './components/CrewFilterBar'
 import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, type CrewFilter } from './filters'
 import { lineColorMap, dutyLineCodes } from './board.types'
+import { exportDutiesCsv, exportBlocksCsv } from './export'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 import { Badge } from '@/components/ui/badge'
 
@@ -485,6 +486,14 @@ export default function CrewPlanPage() {
       keybind:  'Alt+G',
     }] : []),
     ...(data ? [{
+      label:    'CSV',
+      icon:     Icons.FileSpreadsheet,
+      onClick:  () => view === 'duties'
+        ? exportDutiesCsv(data, visibleDuties, blockById)
+        : exportBlocksCsv(data, visibleBlocks),
+      overflow: true,
+    }] : []),
+    ...(data ? [{
       label:    'Configurações',
       icon:     Icons.Settings2,
       onClick:  () => setSettingsOpen(true),
@@ -505,7 +514,7 @@ export default function CrewPlanPage() {
       variant:  'destructive' as const,
       overflow: true,
     }] : []),
-  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors])
+  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors, visibleDuties, visibleBlocks, blockById])
 
   useShortcut('alt+g', () => {
     (document.getElementById(DUTY_FORM_ID) as HTMLFormElement | null)?.requestSubmit()

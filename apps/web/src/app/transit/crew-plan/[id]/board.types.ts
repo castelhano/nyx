@@ -21,6 +21,7 @@ export interface BoardActivity {
   type:             'SIGN_ON' | 'SIGN_OFF' | 'BREAK' | 'TRAVEL' | 'STANDBY'
   intervalTypeId:   string | null
   intervalTypeName: string | null
+  isPaidBreak:      boolean
   startMinutes:     number
   endMinutes:       number
 }
@@ -187,7 +188,7 @@ export function dutyLineCodes(duty: BoardDuty, blockById: Map<string, BoardBlock
 
 type Span = { startMinutes: number; endMinutes: number }
 
-function subtract(from: Span, cut: Span[]): Span[] {
+export function subtract(from: Span, cut: Span[]): Span[] {
   const out: Span[] = []
   let cursor = from.startMinutes
   for (const c of [...cut].sort((a, b) => a.startMinutes - b.startMinutes)) {
