@@ -17,6 +17,7 @@ import type { CrewBoardData, BoardBlock, BoardDuty } from './board.types'
 import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
 import { BreakModal, type BreakDraft } from './components/BreakModal'
+import { VehicleSwapModal } from './components/VehicleSwapModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
 import { CrewSettingsModal } from './components/CrewSettingsModal'
@@ -87,6 +88,7 @@ export default function CrewPlanPage() {
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
   const [settingsOpen, setSettingsOpen]     = useState(false)
+  const [swapOpen, setSwapOpen]             = useState(false)
   const [filterOpen, setFilterOpen]         = useState(false)
   const [filter, setFilter]                 = useState<CrewFilter>(EMPTY_FILTER)
   const [pinnedBlockIds, setPinnedBlockIds] = useState<Set<string>>(new Set())
@@ -427,6 +429,23 @@ export default function CrewPlanPage() {
     // current level — clicking it resets to the initial level
     { label: `${Math.round((ZOOMS[zoomIdx] / ZOOMS[ZOOM_100]) * 100)}%`, size: 'sm' as const, variant: 'ghost' as const, onClick: () => setZoomIdx(ZOOM_DEFAULT) },
     { label: 'Mais zoom', icon: Icons.ZoomIn, size: 'icon' as const, variant: 'ghost' as const, disabled: zoomIdx === ZOOMS.length - 1, onClick: () => setZoomIdx(i => Math.min(ZOOMS.length - 1, i + 1)) },
+    // future solver options join this menu; tail swaps edit the VehiclePlan, so they are
+    // limited to the approved (ACTIVE) crew plan
+    ...(canEdit && data ? [{
+      label:    'Otimizar',
+      icon:     Icons.Sparkles,
+      size:     'sm' as const,
+      variant:  'ghost' as const,
+      menuOnly: true,
+      menu: [
+        {
+          label:    isActive ? 'Reduzir trocas de carro' : 'Reduzir trocas de carro',
+          icon:     Icons.ArrowLeftRight,
+          onClick:  () => setSwapOpen(true),
+          disabled: !isActive || saving,
+        },
+      ],
+    }] : []),
     ...(selectedDuty && canEdit ? [{
       label:    saving ? 'Salvando…' : 'Salvar',
       icon:     Icons.Save,
@@ -468,7 +487,7 @@ export default function CrewPlanPage() {
   useShortcut('esc', () => {
     if (draftStart) setDraftStart(null)
     else if (selectedDutyId) setSelectedDutyId(null)
-  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !breakDraft && !settingsOpen })
+  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !breakDraft && !settingsOpen && !swapOpen })
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -498,6 +517,15 @@ export default function CrewPlanPage() {
           saving={saving}
           onConfirm={(t) => void handleAssign(t)}
           onClose={() => setAssignDraft(null)}
+        />
+      )}
+
+      {swapOpen && data && (
+        <VehicleSwapModal
+          crewPlanId={id}
+          duties={data.duties}
+          onApplied={() => void refetch()}
+          onClose={() => setSwapOpen(false)}
         />
       )}
 

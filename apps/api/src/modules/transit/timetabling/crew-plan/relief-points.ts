@@ -58,15 +58,23 @@ export function computeBlockRelief(input: {
   const ends   = [...input.trips, ...input.deadruns, ...input.intervals].map(e => e.arrivalMinutes)
   const window = starts.length ? { startMinutes: Math.min(...starts), endMinutes: Math.max(...ends) } : null
 
-  const idle: Span[] = input.intervals.map(i => ({ startMinutes: i.departureMinutes, endMinutes: i.arrivalMinutes }))
-  const byTime = [...input.deadruns].sort((a, b) => a.departureMinutes - b.departureMinutes)
+  points.sort((a, b) => a.minutes - b.minutes)
+  return { window, serviceSpans: window ? computeServiceSpans(window, input.deadruns, input.intervals) : [], points }
+}
+
+// see BlockReliefData.serviceSpans
+export function computeServiceSpans(
+  window:    Span,
+  deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[],
+  intervals: { departureMinutes: number; arrivalMinutes: number }[],
+): Span[] {
+  const idle: Span[] = intervals.map(i => ({ startMinutes: i.departureMinutes, endMinutes: i.arrivalMinutes }))
+  const byTime = [...deadruns].sort((a, b) => a.departureMinutes - b.departureMinutes)
   for (const ret of byTime.filter(d => d.type === 'RETURN')) {
     const nextAccess = byTime.find(d => d.type === 'ACCESS' && d.departureMinutes >= ret.arrivalMinutes)
     if (nextAccess) idle.push({ startMinutes: ret.arrivalMinutes, endMinutes: nextAccess.departureMinutes })
   }
-
-  points.sort((a, b) => a.minutes - b.minutes)
-  return { window, serviceSpans: window ? subtractSpans(window, idle) : [], points }
+  return subtractSpans(window, idle)
 }
 
 export function subtractSpans(from: Span, cut: Span[]): Span[] {

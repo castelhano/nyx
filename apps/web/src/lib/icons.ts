@@ -8,6 +8,7 @@ const iconNames = [
   'ArrowDown',
   'ArrowLeft',
   'ArrowLeftFromLine',
+  'ArrowLeftRight',
   'ArrowRight',
   'ArrowUp',
   'ArrowRightFromLine',

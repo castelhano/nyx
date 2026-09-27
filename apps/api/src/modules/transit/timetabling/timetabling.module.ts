@@ -8,9 +8,10 @@ import { CalendarExceptionModule } from './calendar-exception/calendar-exception
 import { IntervalTypeModule } from './interval-type/interval-type.module'
 import { DopModule } from './dop/dop.module'
 import { CrewPlanModule } from './crew-plan/crew-plan.module'
+import { VehicleSwapModule } from './vehicle-swap/vehicle-swap.module'
 
 @Module({
-  imports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule],
+  imports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule, VehicleSwapModule],
   exports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule],
 })
 export class TimetablingModule {}
