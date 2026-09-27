@@ -118,13 +118,11 @@ function nightOverlap(span: Span, startHour: number, endHour: number): number {
   return total
 }
 
-// value outside [floor, ceiling] → error; outside [idealMin, idealMax] → warning
+// value outside [floor, ceiling] → error; between the ideal and floor/ceiling it only costs score
 function rangeIssue(code: DutyIssue['code'], value: number, c: RangeCriterion): DutyIssue | null {
   if (!c.active) return null
-  if (value < c.floor)    return { code, severity: 'error',   value, limit: c.floor }
-  if (value > c.ceiling)  return { code, severity: 'error',   value, limit: c.ceiling }
-  if (value < c.idealMin) return { code, severity: 'warning', value, limit: c.idealMin }
-  if (value > c.idealMax) return { code, severity: 'warning', value, limit: c.idealMax }
+  if (value < c.floor)   return { code, severity: 'error', value, limit: c.floor }
+  if (value > c.ceiling) return { code, severity: 'error', value, limit: c.ceiling }
   return null
 }
 
@@ -155,8 +153,18 @@ export function computeCrewPlan(input: {
   const pieceState = new Map<string, { isStale: boolean; staleReason: DutyPieceStaleReason | null }>()
   const dutyOut    = new Map<string, { summary: DutySummary; issues: DutyIssue[]; isStale: boolean }>()
 
-  let weightedSum = 0, weightTotal = 0
-  const add = (weight: number, value: number) => { weightedSum += weight * value; weightTotal += weight }
+  // Score: every active criterion enters once with its weight — a per-duty one with the mean of
+  // its value over the duties it applies to, a plan one with its value. Values are 0–1, so the
+  // score is 0–9999 and a criterion costs at most its share (weight ÷ Σ weights).
+  const perDuty = new Map<string, { weight: number; sum: number; n: number }>()
+  const addDuty = (key: string, c: RangeCriterion, value: number) => {
+    if (!c.active) return
+    const cur = perDuty.get(key) ?? { weight: c.modifier, sum: 0, n: 0 }
+    cur.sum += rangeV(value, c); cur.n++
+    perDuty.set(key, cur)
+  }
+  const criteria: CrewPlanSummary['criteria'] = []
+  const addPlan = (key: string, weight: number, value: number) => { criteria.push({ key, weight, value }) }
 
   const driverCoverage = new Map<string, Span[]>()
   let totalWork = 0, totalPaid = 0, totalOvertime = 0, totalNight = 0
@@ -333,14 +341,12 @@ export function computeCrewPlan(input: {
 
     // per-duty criteria enter the plan score with the same applicability as the issues
     if (hasWork) {
-      if (range.workTime.active && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') add(range.workTime.modifier, rangeV(workMinutes, range.workTime))
-      if (range.spread.active && duty.kind !== 'STANDBY') add(range.spread.modifier, rangeV(summary.spreadMinutes, range.spread))
-      if (range.mealBreak.active && duty.kind === 'STRAIGHT') add(range.mealBreak.modifier, rangeV(breakMinutes, range.mealBreak))
-      if (range.splitInterval.active && duty.kind === 'SPLIT') {
-        add(range.splitInterval.modifier, rangeV(gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0, range.splitInterval))
-      }
-      if (range.vehicleChanges.active) add(range.vehicleChanges.modifier, rangeV(vehicleChanges, range.vehicleChanges))
-      if (range.lineChanges.active)    add(range.lineChanges.modifier, rangeV(lineChanges, range.lineChanges))
+      if (duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') addDuty('workTime', range.workTime, workMinutes)
+      if (duty.kind !== 'STANDBY') addDuty('spread', range.spread, summary.spreadMinutes)
+      if (duty.kind === 'STRAIGHT') addDuty('mealBreak', range.mealBreak, breakMinutes)
+      if (duty.kind === 'SPLIT') addDuty('splitInterval', range.splitInterval, gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0)
+      addDuty('vehicleChanges', range.vehicleChanges, vehicleChanges)
+      addDuty('lineChanges', range.lineChanges, lineChanges)
     }
   }
 
@@ -368,16 +374,23 @@ export function computeCrewPlan(input: {
   }
 
   // ── plan-level criteria ────────────────────────────────────────────────────
+  for (const [key, c] of perDuty) if (c.n > 0) criteria.push({ key, weight: c.weight, value: c.sum / c.n })
+  const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage', value: number) => {
+    if (range[key].active) addPlan(key, range[key].modifier, rangeV(value, range[key]))
+  }
   if (input.duties.length > 0) {
-    if (range.overtimeRatio.active) add(range.overtimeRatio.modifier, rangeV(totalWork > 0 ? (totalOvertime / totalWork) * 100 : 0, range.overtimeRatio))
-    if (range.splitRatio.active)    add(range.splitRatio.modifier, rangeV(((byKind.SPLIT ?? 0) / input.duties.length) * 100, range.splitRatio))
-    if (range.tripperRatio.active)  add(range.tripperRatio.modifier, rangeV(((byKind.TRIPPER ?? 0) / input.duties.length) * 100, range.tripperRatio))
+    plan('overtimeRatio', totalWork > 0 ? (totalOvertime / totalWork) * 100 : 0)
+    plan('splitRatio',   ((byKind.SPLIT ?? 0) / input.duties.length) * 100)
+    plan('tripperRatio', ((byKind.TRIPPER ?? 0) / input.duties.length) * 100)
     const anchored = settings.anchored
     if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
-      add(anchored.dutyCount.weight, anchoredV(driverDuties, Math.ceil(blockMinutes / range.workTime.idealMin), anchored.dutyCount))
+      addPlan('dutyCount', anchored.dutyCount.weight, anchoredV(driverDuties, Math.ceil(blockMinutes / range.workTime.idealMin), anchored.dutyCount))
     }
-    if (anchored.efficiency.active) add(anchored.efficiency.weight, anchoredV(driverPaid, coveredMinutes, anchored.efficiency))
+    if (anchored.efficiency.active) addPlan('efficiency', anchored.efficiency.weight, anchoredV(driverPaid, coveredMinutes, anchored.efficiency))
+    if (blockMinutes > 0) plan('coverage', (coveredMinutes / blockMinutes) * 100)
   }
+  const weightTotal = criteria.reduce((s, c) => s + c.weight, 0)
+  const weightedSum = criteria.reduce((s, c) => s + c.weight * c.value, 0)
 
   const dutyValues = [...dutyOut.values()]
   return {
@@ -395,6 +408,7 @@ export function computeCrewPlan(input: {
       staleDutyCount:   dutyValues.filter(d => d.isStale).length,
       issueDutyCount:   dutyValues.filter(d => d.issues.length > 0).length,
       score:            weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0,
+      criteria,
       coveredMinutes,
       coveredByBranch:  [...coveredByBranch].map(([branchId, minutes]) => ({ branchId, minutes })),
       byLine:           [...byLine.values()],

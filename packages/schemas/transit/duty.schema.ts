@@ -37,8 +37,9 @@ export const dutySummarySchema = z.object({
 })
 export type DutySummary = z.infer<typeof dutySummarySchema>
 
-// A rule not met — flagged, never blocks a save. severity: `error` = outside
-// [floor, ceiling]; `warning` = outside [idealMin, idealMax] (see settings-crew.schema.ts)
+// A rule not met — flagged, never blocks a save. Range criteria flag only outside
+// [floor, ceiling] (`error`); outside the ideal they only cost score (see settings-crew.schema.ts).
+// `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix).
 export const dutyIssueSchema = z.object({
   code: z.enum([
     'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL',

@@ -109,6 +109,22 @@ export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   MEAL_LOCATION:      'Refeição fora de local permitido',
 }
 
+// score criteria (CrewPlanSummary.criteria keys)
+export const CRITERION_LABEL: Record<string, string> = {
+  workTime:       'Duração da jornada',
+  spread:         'Amplitude',
+  mealBreak:      'Intervalo intrajornada',
+  splitInterval:  'Intervalo da dupla pegada',
+  vehicleChanges: 'Trocas de carro',
+  lineChanges:    'Trocas de linha',
+  overtimeRatio:  'Horas extras',
+  splitRatio:     'Dupla pegada (%)',
+  tripperRatio:   'Meias jornadas (%)',
+  coverage:       'Cobertura',
+  dutyCount:      'Nº de jornadas',
+  efficiency:     'Eficiência',
+}
+
 // issues with no meaningful value/limit — rendered as the label only
 export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION'])
 

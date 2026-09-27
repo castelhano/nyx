@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Icons } from '@/lib/icons'
 import type { CrewBoardData, BoardDuty } from '../board.types'
-import { fmtDuration, dutyColorVars, SWATCH_BG_CLASS, ROLE_LABEL, KIND_LABEL } from '../board.types'
+import { fmtDuration, dutyColorVars, SWATCH_BG_CLASS, ROLE_LABEL, KIND_LABEL, CRITERION_LABEL } from '../board.types'
 import { cn } from '@/lib/utils'
 import { Badge } from './DutyPanel'
 
@@ -61,6 +61,8 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
             <Stat label="Noturno"    value={fmtDuration(s.nightMinutes)} />
           </div>
         )}
+
+        {s && (s.criteria ?? []).length > 0 && <ScoreLosses criteria={s.criteria} />}
 
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Jornadas</p>
@@ -117,6 +119,30 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// points each criterion took off the score (9999 × weight × (1 − value) ÷ Σ weights), largest first
+function ScoreLosses({ criteria }: { criteria: { key: string; weight: number; value: number }[] }) {
+  const total = criteria.reduce((sum, c) => sum + c.weight, 0)
+  const rows  = criteria
+    .map(c => ({ ...c, loss: Math.round((9999 * c.weight * (1 - c.value)) / total) }))
+    .sort((a, b) => b.loss - a.loss)
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Perdas na nota</p>
+      <ul className="text-xs divide-y divide-border/50">
+        {rows.map(c => (
+          <li key={c.key} className={cn('flex items-center justify-between gap-2 py-1', c.loss === 0 && 'text-muted-foreground')}>
+            <span>{CRITERION_LABEL[c.key] ?? c.key}</span>
+            <span className="flex gap-3 font-mono tabular-nums">
+              <span className="text-muted-foreground" title="Valor do critério (100% = ideal)">{Math.round(c.value * 100)}%</span>
+              <span className="w-12 text-right">{c.loss > 0 ? `−${c.loss.toLocaleString('pt-BR')}` : '0'}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

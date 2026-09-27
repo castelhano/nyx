@@ -18,6 +18,7 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   tripperRatio:   { label: 'Meias Jornadas',          unit: '%',      hint: 'Proporção de meias jornadas no plano. Ideal e teto 0 = não permitidas.' },
   vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
   lineChanges:    { label: 'Trocas de Linha',         unit: 'trocas', hint: 'Trocas de linha dentro de uma mesma jornada — somam às trocas de carro.' },
+  coverage:       { label: 'Cobertura',               unit: '%',      hint: 'Minutos em serviço dos carros com motorista.' },
 }
 
 const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
@@ -121,7 +122,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
       <div className="flex flex-col gap-3">
         <SectionHeader
           label="Critérios por Jornada"
-          sub="Fora do ideal → alerta; fora de Floor/Ceiling → erro. Nenhum bloqueia o save da jornada."
+          sub="Fora do ideal → perde pontuação; fora de Floor/Ceiling → pendência. Nenhum bloqueia o save da jornada."
         />
         <RangeTable
           data={value.range}

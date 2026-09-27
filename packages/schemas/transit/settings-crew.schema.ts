@@ -5,7 +5,7 @@ import { rangeCriterionSchema, anchoredCriterionSchema } from './settings-planni
 // Duty rules (CCT) for the logical crew schedule — per transit Scope: every operator of
 // the Scope follows the same CCT. For now they only validate/flag hand-built duties
 // (Duty.issues) and feed the CrewPlan score.
-// Ranges: outside [idealMin, idealMax] → `warning` issue; outside [floor, ceiling] → `error`.
+// Ranges: outside [idealMin, idealMax] only costs score; outside [floor, ceiling] → `error` issue.
 const rangeDefault = {
   // duty length (minutes worked)
   workTime:       { active: true, modifier: 25, floor: 360, idealMin: 440, idealMax: 550, ceiling: 560 },
@@ -25,6 +25,8 @@ const rangeDefault = {
   vehicleChanges: { active: true, modifier: 5,  floor: 0,   idealMin: 0,   idealMax: 1,   ceiling: 3   },
   // line changes per duty — counted apart from vehicle changes (a change of both scores twice)
   lineChanges:    { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 2   },
+  // % of the blocks' service minutes with a DRIVER
+  coverage:       { active: true, modifier: 30, floor: 90,  idealMin: 100, idealMax: 100, ceiling: 100 },
 }
 
 const anchoredDefault = {
@@ -61,6 +63,7 @@ export const crewSettingsSchema = withMeta(z.object({
     tripperRatio:   rangeCriterionSchema.default(rangeDefault.tripperRatio),
     vehicleChanges: rangeCriterionSchema,
     lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
+    coverage:       rangeCriterionSchema.default(rangeDefault.coverage),
   }).default(rangeDefault),
 
   anchored: z.object({

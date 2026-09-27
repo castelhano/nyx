@@ -15,7 +15,8 @@
     "db:import-transit": "tsx prisma/transit-import.ts",
     "db:reset": "prisma migrate reset --force && pnpm db:seed && pnpm db:seed-core && pnpm db:import-transit",
     "oso:debug": "tsx prisma/oso-debug.ts",
-    "oso:render": "tsx prisma/oso-render-debug.ts"
+    "oso:render": "tsx prisma/oso-render-debug.ts",
+    "crew:recalculate": "tsx prisma/crew-recalculate.ts"
   },
   "prisma": {
     "seed": "pnpm db:seed"

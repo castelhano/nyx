@@ -207,7 +207,7 @@ o **Reduzir trocas de carro** que já existe.
    - topbar: **Otimizar** é split button — clique principal abre "Gerar escala"; no menu, "Gerar
      escala" e "Reduzir trocas de carro".
    - Sem tipo de refeição configurado a geração é recusada (mensagem no modal).
-4. **Melhoria contínua** (destruir e reconstruir).
+4. **Melhoria contínua** (destruir e reconstruir) — ver `plan_crew_solver_improvement_v1.md`.
 
 ---
 

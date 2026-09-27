@@ -22,6 +22,9 @@ export const crewPlanSummarySchema = z.object({
   staleDutyCount:   z.number(),
   issueDutyCount:   z.number(),
   score:            z.number(),
+  // each active criterion that entered the score: its weight and value (0–1) — the points it
+  // cost are 9999 × weight × (1 − value) ÷ Σ weights
+  criteria: z.array(z.object({ key: z.string(), weight: z.number(), value: z.number() })).default([]),
   // DRIVER-covered minutes of the blocks' service spans (the efficiency criterion's base)
   coveredMinutes:   z.number(),
   // same, split by the block's branch
