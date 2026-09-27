@@ -28,6 +28,7 @@ import { CrewFilterBar } from './components/CrewFilterBar'
 import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, type CrewFilter } from './filters'
 import { lineColorMap, dutyLineCodes } from './board.types'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
+import { Badge } from '@/components/ui/badge'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
 // is written immediately (no pending queue) — the server recalculates staleness, issues
@@ -187,6 +188,18 @@ export default function CrewPlanPage() {
     const ids = new Set(matched.map(d => d.id))
     return { visibleBlocks: blocks, visibleDuties: duties.filter(d => ids.has(d.id) || pinnedDutyIds.has(d.id)), matchCount: matched.length }
   }, [data, dutyLines, filter, filterOpen, view, pinnedBlockIds, pinnedDutyIds])
+
+  // side panel list: duty criteria apply on either view
+  const panelDuties = useMemo(() => {
+    const duties = data?.duties ?? []
+    if (!filterOpen || !isFilterActive(filter, 'duties')) return duties
+    return duties.filter(d => dutyMatches(filter, d, dutyLines.get(d.id) ?? []) || pinnedDutyIds.has(d.id))
+  }, [data, dutyLines, filter, filterOpen, pinnedDutyIds])
+
+  function toggleDutyFlag(key: 'withIssues' | 'staleOnly') {
+    setFilter(f => ({ ...f, [key]: !(filterOpen && f[key]) }))
+    setFilterOpen(true)
+  }
 
   const localityName = useMemo(() => {
     const map = new Map((data?.localities ?? []).map(l => [l.id, l.abbr || l.name]))
@@ -580,7 +593,7 @@ export default function CrewPlanPage() {
                 await refetch()
               }}
             />
-            <span>{isActive ? 'Ativa' : 'Rascunho'}</span>
+            <Badge label={isActive ? 'Ativo' : 'Rascunho'} color={isActive ? 'success' : 'muted'} />
             <span>Planejamento: {data.vehiclePlan.description || data.vehiclePlan.dayTypeName}{data.vehiclePlan.status === 'ACTIVE' ? ' (ativo)' : ''}</span>
             {summary && summary.uncoveredMinutes > 0 && (
               <span className="text-red-600 dark:text-red-400">{summary.uncovered.length} trecho(s) sem motorista</span>
@@ -681,6 +694,11 @@ export default function CrewPlanPage() {
         ) : (
           <PlanPanel
             data={data}
+            duties={panelDuties}
+            issuesActive={filterOpen && filter.withIssues}
+            staleActive={filterOpen && filter.staleOnly}
+            onToggleIssues={() => toggleDutyFlag('withIssues')}
+            onToggleStale={() => toggleDutyFlag('staleOnly')}
             canEdit={canEdit}
             onSelect={focusDuty}
             onCreate={(role) => void handleCreateDuty(role)}

@@ -11,16 +11,27 @@ import { cn } from '@/lib/utils'
 import { Badge } from './DutyPanel'
 
 interface Props {
-  data:        CrewBoardData
-  canEdit:     boolean
-  onSelect:    (duty: BoardDuty) => void
-  onCreate:    (role: CrewRole) => void
+  data:           CrewBoardData
+  // duties left after the filter bar's criteria
+  duties:         BoardDuty[]
+  issuesActive:   boolean
+  staleActive:    boolean
+  onToggleIssues: () => void
+  onToggleStale:  () => void
+  canEdit:        boolean
+  onSelect:       (duty: BoardDuty) => void
+  onCreate:       (role: CrewRole) => void
 }
 
 // Shown when no duty is selected — plan-level summary and the full duty list.
-export function PlanPanel({ data, canEdit, onSelect, onCreate }: Props) {
+export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIssues, onToggleStale, canEdit, onSelect, onCreate }: Props) {
   const [role, setRole] = useState<CrewRole>('DRIVER')
+  const [dutySearch, setDutySearch] = useState('')
   const s = data.plan.summary
+
+  const filteredDuties = dutySearch.trim()
+    ? duties.filter(d => formatDutyNumber(d.role, d.dutyNumber).toLowerCase().includes(dutySearch.trim().toLowerCase()))
+    : duties
 
   return (
     <div className="w-96 shrink-0 border-l border-border flex flex-col min-h-0 bg-background">
@@ -41,8 +52,8 @@ export function PlanPanel({ data, canEdit, onSelect, onCreate }: Props) {
             <Stat label="Trabalhado" value={fmtDuration(s.workMinutes)} />
             <Stat label="Pago"       value={fmtDuration(s.paidMinutes)} />
             <Stat label="Extra"      value={fmtDuration(s.overtimeMinutes)} />
-            <Stat label="Desatualizadas" value={String(s.staleDutyCount)} tone={s.staleDutyCount > 0 ? 'red' : undefined} />
-            <Stat label="Com pendências" value={String(s.issueDutyCount)} tone={s.issueDutyCount > 0 ? 'amber' : undefined} />
+            <Stat label="Desatualizadas" value={String(s.staleDutyCount)} tone={s.staleDutyCount > 0 ? 'red' : undefined} active={staleActive} onClick={onToggleStale} />
+            <Stat label="Com pendências" value={String(s.issueDutyCount)} tone={s.issueDutyCount > 0 ? 'amber' : undefined} active={issuesActive} onClick={onToggleIssues} />
             <Stat label="Noturno"    value={fmtDuration(s.nightMinutes)} />
           </div>
         )}
@@ -52,8 +63,23 @@ export function PlanPanel({ data, canEdit, onSelect, onCreate }: Props) {
           {data.duties.length === 0 && (
             <p className="text-xs text-muted-foreground">Nenhuma jornada. Clique num ponto de troca de um carro para criar a primeira pegada.</p>
           )}
-          <ul className="space-y-1">
-            {data.duties.map(d => (
+          {data.duties.length > 0 && (
+            <div className="relative">
+              <Icons.Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={dutySearch}
+                onChange={e => setDutySearch(e.target.value)}
+                placeholder="Buscar jornada…"
+                className="w-full h-8 border border-input rounded-sm text-xs bg-input-bg pl-8 pr-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          )}
+          {data.duties.length > 0 && filteredDuties.length === 0 && (
+            <p className="text-xs text-muted-foreground">Nenhuma jornada encontrada.</p>
+          )}
+          <ul className="space-y-1 max-h-[19.75rem] overflow-y-auto">
+            {filteredDuties.map(d => (
               <li key={d.id}>
                 <button
                   type="button"
@@ -91,11 +117,24 @@ export function PlanPanel({ data, canEdit, onSelect, onCreate }: Props) {
   )
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: 'red' | 'amber' }) {
-  return (
-    <div className="rounded bg-muted/40 px-2 py-1">
+function Stat({ label, value, tone, active, onClick }: {
+  label: string; value: string; tone?: 'red' | 'amber'; active?: boolean; onClick?: () => void
+}) {
+  const content = (
+    <>
       <p className="text-muted-foreground">{label}</p>
       <p className={tone === 'red' ? 'font-medium text-red-600 dark:text-red-400' : tone === 'amber' ? 'font-medium text-amber-600 dark:text-amber-400' : 'font-medium text-foreground'}>{value}</p>
-    </div>
+    </>
+  )
+  if (!onClick) return <div className="rounded bg-muted/40 px-2 py-1">{content}</div>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn('rounded px-2 py-1 text-left ring-1 ring-inset', active ? 'bg-muted ring-ring' : 'bg-muted/40 ring-transparent hover:bg-muted')}
+    >
+      {content}
+    </button>
   )
 }
