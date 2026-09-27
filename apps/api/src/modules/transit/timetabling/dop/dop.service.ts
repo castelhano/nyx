@@ -4,7 +4,7 @@ import { dopSchema } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { resourceRegistry } from '../../../../core/resource-registry'
 import { DayTypeService } from '../day-type/day-type.service'
-import { periodDates, findActivePlan } from './dop-resolution'
+import { periodDates, findActivePlan, formatDay } from './dop-resolution'
 
 // DOP has no Prisma model and no CRUD (docs/proposal/plan_dop_v1.md, decisão 2/3) —
 // computed on-the-fly from whatever VehiclePlan is ACTIVE and in vigência for each
@@ -140,8 +140,8 @@ export class DopService {
 
     return {
       scopeId,
-      from: from.toISOString().slice(0, 10),
-      to:   to.toISOString().slice(0, 10),
+      from: formatDay(from),
+      to:   formatDay(to),
       calendar: calendar.map(c => ({ dayTypeId: c.dayTypeId, dayTypeCode: c.code, dayTypeName: c.name, days: c.days })),
       lines: lineSummaries,
       byBranch,

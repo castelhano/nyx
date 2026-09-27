@@ -101,7 +101,7 @@ function useDopCrew(scopeId: string, branchId: string, from: string, to: string)
 
 type Tab = 'jornadas' | 'horas' | 'custos'
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'jornadas', label: 'Jornadas' },
+  { key: 'jornadas', label: 'Quadro' },
   { key: 'horas',    label: 'Horas' },
   { key: 'custos',   label: 'Custos' },
 ]
@@ -222,23 +222,26 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
         />
         <StatTile icon={Icons.Clock} label="Horas operacionais" value={fmtHours(total.paidMinutes)} />
         <StatTile
-          icon={Icons.Timer} label="Horas extras" value={fmtHours(total.overtimeMinutes)}
-          sub={`${fmtPct(total.paidMinutes > 0 ? total.overtimeMinutes / total.paidMinutes : 0, 1)} das operacionais`}
+          icon={Icons.Timer} label="Horas extras" value={`${fmtHours(total.overtimeMinutes)} · ${fmtMoney(cost.overtime)}`}
+          sub={`${fmtPct(total.paidMinutes > 0 ? total.overtimeMinutes / total.paidMinutes : 0, 1)} das operacionais · custo sem encargos`}
         />
-        <StatTile icon={Icons.Moon} label="Horas noturnas" value={fmtHours(total.nightMinutes)} />
+        <StatTile
+          icon={Icons.Moon} label="Horas noturnas" value={`${fmtHours(total.nightMinutes)} · ${fmtMoney(cost.night)}`}
+          sub="adicional noturno (20%), sem encargos"
+        />
         <StatTile
           icon={Icons.Bus} label="Relação condutor/veículo"
           value={data.referenceFleet > 0 ? fmtNum(driverStaff / data.referenceFleet, 2) : '—'}
           sub={`quadro motorista (${driverStaff}) ÷ frota dia útil (${data.referenceFleet})`}
         />
         <StatTile
-          icon={Icons.Gauge} label="Eficiência"
-          value={data.coveredMinutes > 0 ? fmtPct(driverPaid / data.coveredMinutes) : '—'}
-          sub="horas operacionais (motorista) ÷ horas de veículo em serviço"
+          icon={Icons.Gauge} label="Aproveitamento"
+          value={driverPaid > 0 ? fmtPct(data.coveredMinutes / driverPaid, 1) : '—'}
+          sub="horas de veículo em serviço ÷ horas operacionais (motorista)"
         />
         <StatTile
-          icon={Icons.Banknote} label="Custo estimado" value={fmtMoney(cost.total)}
-          sub={total.paidMinutes > 0 ? `${fmtMoney(cost.total / (total.paidMinutes / 60))} por hora operacional` : undefined}
+          icon={Icons.Banknote} label="Custo total estimado" value={fmtMoney(cost.total)}
+          sub="custos fixos, horas extras, encargos e benefícios"
         />
       </div>
 
@@ -427,7 +430,7 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
                 <tr className="border-b border-border text-[11px] text-muted-foreground">
                   <th className="text-left font-medium px-3 py-1.5">Linha</th>
                   {dayTypes.map(dt => <th key={dt.dayTypeId} className={th}>{dt.dayTypeName}</th>)}
-                  <th className={cn(th, GROUP_DIVIDER)}>Jornadas-dia (mês)</th>
+                  <th className={cn(th, GROUP_DIVIDER)}>Quadro-dia (mês)</th>
                 </tr>
               )}
               {tab === 'horas' && (
@@ -464,8 +467,8 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
                       <div className="text-[11px] text-muted-foreground">{l.lineName}</div>
                     </td>
                     {tab === 'jornadas' && (<>
-                      {dayTypes.map(dt => <td key={dt.dayTypeId} className={td}>{bd.get(dt.dayTypeId) ? fmtNum(bd.get(dt.dayTypeId)!.dutyShare) : '—'}</td>)}
-                      <td className={cn(td, GROUP_DIVIDER, 'font-medium')}>{fmtNum(m.dutyShare)}</td>
+                      {dayTypes.map(dt => <td key={dt.dayTypeId} className={td}>{bd.get(dt.dayTypeId) ? fmtNum(bd.get(dt.dayTypeId)!.dutyShare, 0) : '—'}</td>)}
+                      <td className={cn(td, GROUP_DIVIDER, 'font-medium')}>{fmtNum(m.dutyShare, 0)}</td>
                     </>)}
                     {tab === 'horas' && (<>
                       {dayTypes.map((dt, di) => <HoursCells key={dt.dayTypeId} m={bd.get(dt.dayTypeId)} divider={di > 0} />)}
@@ -485,8 +488,8 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
               <tr className="border-t border-border font-medium">
                 <td className="px-3 py-2">Total</td>
                 {tab === 'jornadas' && (<>
-                  {byDayType.map(dt => <td key={dt.dayTypeId} className={td}>{fmtNum(dt.dutyShare)}</td>)}
-                  <td className={cn(td, GROUP_DIVIDER)}>{fmtNum(total.dutyShare)}</td>
+                  {byDayType.map(dt => <td key={dt.dayTypeId} className={td}>{fmtNum(dt.dutyShare, 0)}</td>)}
+                  <td className={cn(td, GROUP_DIVIDER)}>{fmtNum(total.dutyShare, 0)}</td>
                 </>)}
                 {tab === 'horas' && (<>
                   {byDayType.map((dt, di) => <HoursCells key={dt.dayTypeId} m={dt} divider={di > 0} />)}

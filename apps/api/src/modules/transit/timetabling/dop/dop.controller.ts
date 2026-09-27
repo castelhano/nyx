@@ -6,6 +6,7 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { buildMetadata } from '../../../../core/metadata.builder'
 import { DopService } from './dop.service'
 import { DopCrewService } from './dop-crew.service'
+import { parseDay } from './dop-resolution'
 
 // No BaseController here — DOP is a single computed GET, not CRUD (docs/proposal/
 // plan_dop_v1.md, decisão 3). The metadata endpoint is still needed even though
@@ -66,11 +67,9 @@ export class DopController {
     const ability = await this.caslFactory.createForUser(user)
     if (!ability.can('read', 'Dop')) throw new ForbiddenException()
     if (!scopeId || !from || !to) throw new BadRequestException('scopeId, from e to são obrigatórios')
-    const fromDate = new Date(from)
-    const toDate   = new Date(to)
-    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate > toDate) {
-      throw new BadRequestException('Período inválido')
-    }
+    const fromDate = parseDay(from)
+    const toDate   = parseDay(to)
+    if (!fromDate || !toDate || fromDate > toDate) throw new BadRequestException('Período inválido')
     return { fromDate, toDate }
   }
 }

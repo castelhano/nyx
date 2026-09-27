@@ -119,7 +119,7 @@ dias" é o valor diário do dayType multiplicado pelos dias daquele tipo no per�
 | Horas extras (+ % das operacionais) | Escala → linha | `byLine[].overtimeMinutes` | Dia × dias | ✅ |
 | Horas noturnas | Escala → linha | `byLine[].nightMinutes` | Dia × dias | ✅ |
 | Relação condutor/veículo | Escopo | quadro estimado de motorista ÷ frota do dia útil de referência (decisão 8) | Snapshot | ✅ |
-| Eficiência (horas operacionais ÷ horas de veículo em serviço) | Escala | `paidMinutes` ÷ `coveredMinutes` (mesmo par do critério `anchored.efficiency`) | Dia × dias | ✅ — persiste `coveredMinutes` |
+| Aproveitamento (horas de veículo em serviço ÷ horas operacionais) | Escala | `coveredMinutes` ÷ `paidMinutes` de motorista (mesmo par do critério `anchored.efficiency`, invertido: quanto maior, melhor) | Dia × dias | ✅ — persiste `coveredMinutes` |
 | Custo total da escala | Escopo, por papel | seção Custos | Período | ✅ |
 
 > RESPOSTA: "Relação condutor/veículo": Quadro consolidado maximo(util ou sab+dom) / frota dos dias uteis, o quadro usa mesmo mostrado, e a frotas de referencia eh dos dias uteis

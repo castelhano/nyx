@@ -10,7 +10,7 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import { DayTypeService } from '../day-type/day-type.service'
 import { TransitCrewCostConfigService } from '../../settings/transit-crew-cost-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
-import { periodDates, findActivePlan, inForce } from './dop-resolution'
+import { periodDates, findActivePlan, inForce, formatDay } from './dop-resolution'
 
 // DOP, visão Escala (docs/proposal/plan_dop_crew_v1.md). Same (day, line) resolution as the
 // vehicle view, plus the VehiclePlan's ACTIVE CrewPlan in force on the day. Per-line numbers
@@ -259,8 +259,8 @@ export class DopCrewService {
 
     return {
       scopeId,
-      from: from.toISOString().slice(0, 10),
-      to:   to.toISOString().slice(0, 10),
+      from: formatDay(from),
+      to:   formatDay(to),
       days: dates.length,
       calendar: calendar.map(c => ({ dayTypeId: c.dayTypeId, dayTypeCode: c.code, dayTypeName: c.name, days: c.days })),
       referenceDayTypeId,
