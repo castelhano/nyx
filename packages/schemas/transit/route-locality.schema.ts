@@ -68,6 +68,15 @@ export const routeLocalitySchema = withMeta(
       keybind:        't',
     }),
 
+    // the crew may take the meal break here on this route — a meal BREAK elsewhere is
+    // flagged (DutyIssue MEAL_LOCATION) and the crew solver only places meals here
+    allowsMealBreak: z.boolean().default(false).meta({
+      label:          'Permite Refeição',
+      widget:         'switch',
+      listVisibility: 'hidden',
+      filter:         true,
+    }),
+
     // marks this stop as a reference point that gets its own column in the OSO export
     // (docs/proposal/plan_oso_export_v1.md). The unconditional baseline is one departure
     // column per direction the carro runs (two for a round trip, one for CIRCULAR) — every

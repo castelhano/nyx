@@ -20,6 +20,7 @@ export interface RouteLocalityWithLocality {
   deltaSource: string
   geometry: unknown
   allowsCrewChange: boolean
+  allowsMealBreak: boolean
   createdAt: Date
   updatedAt: Date
   locality: { id: string; name: string; code: string; lat: number | null; lng: number | null } | null

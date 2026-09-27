@@ -95,7 +95,7 @@ export function isReliefPoint(points: ReliefPoint[], localityId: string, minutes
 
 export interface LoadedBlockRelief extends BlockReliefData {
   branchId: string | null
-  trips:    { departureMinutes: number; arrivalMinutes: number; lineId: string }[]
+  trips:    { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
 }
 
 // Loads everything computeBlockRelief needs for a set of blocks in a few queries — plus the
@@ -113,7 +113,7 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
         select: {
           trip: {
             select: {
-              id: true, departureMinutes: true, arrivalMinutes: true,
+              id: true, departureMinutes: true, arrivalMinutes: true, routeId: true,
               route: {
                 select: {
                   lineId: true, originLocalityId: true, destinationLocalityId: true,
@@ -167,7 +167,9 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
     result.set(b.id, {
       ...relief,
       branchId: b.branchId,
-      trips:    b.blockTrips.map(({ trip }) => ({ departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes, lineId: trip.route.lineId })),
+      trips:    b.blockTrips.map(({ trip }) => ({
+        id: trip.id, departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes, lineId: trip.route.lineId, routeId: trip.routeId,
+      })),
     })
   }
   return result

@@ -24,13 +24,13 @@ function writeLogo(logo: { path: string; data: string } | null): string | null {
 }
 
 interface Fixture {
-  localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; allowsMealBreak?: boolean; notes: string | null; snapInfo: unknown }>
+  localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown }>
   dayTypes: Array<{ code: string; name: string; pattern: unknown; priority: number; sortOrder: number }>
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
   scopes: Array<{ name: string; description: string | null; osoConfig: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
   lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown }>
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
-  routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean }>
+  routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean; allowsMealBreak?: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
   // scopeName: transit.crew rows (keyed by transit Scope); absent in fixtures exported before it
   settings: Array<{ key: string; branchTaxId: string | null; scopeName?: string | null; value: Record<string, unknown> }>
@@ -46,8 +46,8 @@ async function main() {
   for (const l of fixture.localities) {
     await prisma.transitLocality.upsert({
       where:  { code: l.code },
-      update: { abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, allowsMealBreak: l.allowsMealBreak ?? false, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
-      create: { code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, allowsMealBreak: l.allowsMealBreak ?? false, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
+      update: { abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
+      create: { code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
     })
   }
   const localityMap = new Map((await prisma.transitLocality.findMany({ select: { id: true, code: true } })).map(l => [l.code, l.id]))
@@ -155,7 +155,7 @@ async function main() {
       data: {
         routeId, localityId, sequence: rl.sequence, lat: rl.lat, lng: rl.lng,
         deltaMinutes: rl.deltaMinutes, deltaKm: rl.deltaKm, deltaSource: rl.deltaSource as any,
-        geometry: rl.geometry as Prisma.InputJsonValue, allowsCrewChange: rl.allowsCrewChange,
+        geometry: rl.geometry as Prisma.InputJsonValue, allowsCrewChange: rl.allowsCrewChange, allowsMealBreak: rl.allowsMealBreak ?? false,
       },
     })
   }

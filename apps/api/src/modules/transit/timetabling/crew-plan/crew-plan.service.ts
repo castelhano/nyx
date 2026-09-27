@@ -344,10 +344,10 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         },
       }),
     ])
-    const [relief, mealLocalities] = await Promise.all([
+    const [relief, mealStops] = await Promise.all([
       loadBlockRelief(this.prisma, blockRows.map(b => b.id)),
       settings.mealBreakIntervalTypeId
-        ? this.prisma.transitLocality.findMany({ where: { allowsMealBreak: true }, select: { id: true } })
+        ? this.prisma.routeLocality.findMany({ where: { allowsMealBreak: true, localityId: { not: null } }, select: { routeId: true, localityId: true } })
         : Promise.resolve([]),
     ])
 
@@ -376,7 +376,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         })),
       })),
       matrixMinutes: new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes])),
-      mealLocalityIds: new Set(mealLocalities.map(l => l.id)),
+      mealStops: new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
     })
 
     // only rows whose derived state actually changed are written — a single piece edit

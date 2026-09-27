@@ -21,18 +21,20 @@ interface Props {
 export function PointEditFields({ rl, isOrigin, isDestination }: Props) {
   const queryClient = useQueryClient()
   const [allowsCrewChange, setAllowsCrewChange] = useState(rl.allowsCrewChange)
+  const [allowsMealBreak,  setAllowsMealBreak]  = useState(rl.allowsMealBreak)
   const [includeInOso,     setIncludeInOso]     = useState(rl.includeInOso)
   const [saving, setSaving] = useState(false)
 
   if (rl.localityId == null) return null
 
   const showControlPoint = !isOrigin && !isDestination
-  const dirty = allowsCrewChange !== rl.allowsCrewChange || (showControlPoint && includeInOso !== rl.includeInOso)
+  const dirty = allowsCrewChange !== rl.allowsCrewChange || allowsMealBreak !== rl.allowsMealBreak
+    || (showControlPoint && includeInOso !== rl.includeInOso)
 
   async function handleSave() {
     setSaving(true)
     try {
-      const body: Record<string, unknown> = { allowsCrewChange }
+      const body: Record<string, unknown> = { allowsCrewChange, allowsMealBreak }
       if (showControlPoint) body.includeInOso = includeInOso
       await apiPatch(`/transit/route-locality/${rl.id}`, body)
       await queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', rl.routeId] })
@@ -51,6 +53,15 @@ export function PointEditFields({ rl, isOrigin, isDestination }: Props) {
           onChange={(e) => setAllowsCrewChange(e.target.checked)}
         />
         Troca de motorista
+      </label>
+      <label className="flex items-center gap-2 text-xs cursor-pointer">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 rounded-sm border-input"
+          checked={allowsMealBreak}
+          onChange={(e) => setAllowsMealBreak(e.target.checked)}
+        />
+        Permite refeição
       </label>
       {showControlPoint && (
         <label className="flex items-center gap-2 text-xs cursor-pointer">

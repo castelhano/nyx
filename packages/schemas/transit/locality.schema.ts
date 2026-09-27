@@ -63,15 +63,6 @@ export const localitySchema = withMeta(
       filter:         true,
     }),
 
-    // terminal with facilities for the crew's meal break — a meal BREAK elsewhere is
-    // flagged (DutyIssue MEAL_LOCATION) and the crew solver only places meals here
-    allowsMealBreak: z.boolean().default(false).meta({
-      label:          'Permite Refeição',
-      widget:         'switch',
-      listVisibility: 'hidden',
-      filter:         true,
-    }),
-
     notes: z.string().optional().meta({
       label:          'Observações',
       widget:         'textarea',

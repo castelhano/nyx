@@ -452,9 +452,10 @@ Decisões tomadas na implementação (fases 4–6):
   não-intervalo + intervalos remunerados (`IntervalType.isPaid`) + apresentação/encerramento; pago =
   trabalhado. Intervalo remunerado continua sendo descanso (corta direção contínua, conta como
   refeição). *(Antes: pago = trabalhado + intervalos pagos — ver `plan_crew_solver_v1.md`, fase 0.)*
-- **Local de refeição**: intervalo do tipo `crew.mealBreakIntervalTypeId` fora de local com
-  `TransitLocality.allowsMealBreak` → `MEAL_LOCATION` (`warning`, com `activityId`); a tela avisa ao
-  lançar. Local derivado: dentro da pegada, onde o carro está parado; entre pegadas, fim da anterior.
+- **Local de refeição**: intervalo do tipo `crew.mealBreakIntervalTypeId` fora de parada
+  `RouteLocality.allowsMealBreak` na rota da linha que chega ao local →
+  `MEAL_LOCATION` (`warning`, com `activityId`); a tela avisa ao lançar. Local derivado: dentro da
+  pegada, onde o carro está parado; entre pegadas, fim da anterior.
 - **Travar jornada**: `Duty.constraints.locked` (`POST /transit/duty/:id/lock`) — o gerador de
   escala não altera; a edição manual continua livre.
 - **Extra** = trabalhado acima de `workTime.idealMin`.

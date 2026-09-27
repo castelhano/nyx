@@ -56,15 +56,19 @@ Hoje intervalo nunca conta como trabalhado; `IntervalType.isPaid` só soma no pa
 
 ### Local de refeição
 
-Nova flag em `TransitLocality`: **`allowsMealBreak`** (default `false`) — terminal com estrutura
-para refeição. É do local, não da rota (diferente de `RouteLocality.allowsCrewChange`).
+Nova flag em `RouteLocality`: **`allowsMealBreak`** (default `false`), ao lado de
+`allowsCrewChange` — por rota, porque o mesmo local pode permitir refeição numa linha e não em
+outra. Editada no ponto da rota e no modal de editar sentido (origem e destino).
 
 Intervalo do tipo refeição fora de local marcado vira pendência, na mesma arquitetura das demais
 (`DutyIssue`, jornada com `hasIssues`, confirmação ao ativar): código novo **`MEAL_LOCATION`**,
 severidade `warning`. O intervalo não guarda local, então o cálculo deriva onde ele acontece:
 
-- dentro de uma pegada → onde o carro está parado (destino do último evento antes do intervalo);
+- dentro de uma pegada → onde o carro está parado (sua última chegada);
 - entre pegadas → fim da pegada anterior.
+
+Quem manda é a **linha que chega**: vale se o local for `allowsMealBreak` na rota da última viagem
+que chegou ali (chegada por deslocamento, sem linha → pendência).
 
 Na tela, ao lançar o intervalo, um toast de aviso quando o local não é marcado (o intervalo é
 gravado mesmo assim). `DutyIssue` ganha `activityId?` para apontar o intervalo.
@@ -95,7 +99,7 @@ Para cada tempo parado candidato (entre pegadas, ou dentro de uma pegada no temp
 
 | Duração | Resultado |
 |---|---|
-| Dentro da faixa do tipo de refeição e em local `allowsMealBreak` | `BREAK` do tipo de refeição |
+| Dentro da faixa do tipo de refeição e em parada `allowsMealBreak` da rota | `BREAK` do tipo de refeição |
 | Acima do máximo da refeição | intervalo de **dupla pegada**: jornada `SPLIT`, respeitando `range.splitInterval` (vão entre pegadas, sem `BREAK`) |
 | `range.splitInterval.active = false` | dupla pegada não é gerada |
 
@@ -155,7 +159,7 @@ o **Reduzir trocas de carro** que já existe.
 ## Fases
 
 1. **Fase 0** — mudanças prévias: tipo de refeição por Scope, intervalo remunerado conta como
-   jornada, `allowsMealBreak` + `MEAL_LOCATION`, travar jornada.
+   jornada, `RouteLocality.allowsMealBreak` + `MEAL_LOCATION`, travar jornada.
 2. **Núcleo puro** — trechos, pegadas, intervalos, jornadas candidatas e construção, testável
    isoladamente como `crew-scoring.calc.ts`.
 3. **Worker + SSE + modal** — execução, progresso, propostas, criação da versão, Completar,

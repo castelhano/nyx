@@ -84,7 +84,7 @@ async function main() {
     exportedAt: new Date().toISOString(),
     localities: localities.map(l => ({
       code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng,
-      isDepot: l.isDepot, allowsMealBreak: l.allowsMealBreak, notes: l.notes, snapInfo: l.snapInfo,
+      isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo,
     })),
     dayTypes: dayTypes.map(d => ({
       code: d.code, name: d.name, pattern: d.pattern, priority: d.priority, sortOrder: d.sortOrder,
@@ -113,7 +113,7 @@ async function main() {
       lineCode: rl.route.line.code, direction: rl.route.direction, routeOrdinal: rl.route.ordinal, routeName: rl.route.name, sequence: rl.sequence,
       localityCode: rl.locality?.code ?? null, lat: rl.lat, lng: rl.lng,
       deltaMinutes: rl.deltaMinutes, deltaKm: rl.deltaKm, deltaSource: rl.deltaSource,
-      geometry: rl.geometry, allowsCrewChange: rl.allowsCrewChange,
+      geometry: rl.geometry, allowsCrewChange: rl.allowsCrewChange, allowsMealBreak: rl.allowsMealBreak,
     })),
     lineGroups: lineGroups.map(g => ({
       name: g.name, branchTaxId: g.branch?.taxId ?? null, notes: g.notes,

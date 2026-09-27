@@ -85,8 +85,6 @@ model TransitLocality {
   lat       Float?
   lng       Float?
   isDepot   Boolean  @default(false)
-  // terminal with facilities for the crew's meal break (see DutyIssue MEAL_LOCATION)
-  allowsMealBreak Boolean @default(false)
   notes     String?
   // SnapInfo (packages/schemas/transit/locality.schema.ts) — set by OsrmService when
   // snapping this locality's coordinates onto the OSRM road network:
@@ -227,6 +225,9 @@ model RouteLocality {
   // Stored opaquely — z.unknown() in RouteLocality's schema, never introspected server-side.
   geometry         Json?
   allowsCrewChange Boolean          @default(false)
+  // the crew may take the meal break here on this route (the same locality may allow it on
+  // one line and not on another) — see DutyIssue MEAL_LOCATION
+  allowsMealBreak  Boolean          @default(false)
   // marks this stop as a reference point that gets its own column in the OSO export. The
   // unconditional baseline is one departure column per direction the carro runs (two for a
   // round trip, one for CIRCULAR) — every other column, arrival endpoints included (e.g.

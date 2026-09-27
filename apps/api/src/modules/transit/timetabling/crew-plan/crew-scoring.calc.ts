@@ -21,9 +21,10 @@ import { isReliefPoint, subtractSpans } from './relief-points'
 //   (IntervalType.isPaid) + implicit sign-on/off; paidMinutes = workMinutes; overtime =
 //   workMinutes above workTime.idealMin. A paid break still is a break: it splits continuous
 //   driving and counts in breakMinutes (MEAL_BREAK).
-// - A break of settings.mealBreakIntervalTypeId away from an allowsMealBreak locality is a
-//   MEAL_LOCATION warning. Where a break happens is derived: inside a piece, where the
-//   vehicle stands (destination of its last arrival); between pieces, the previous piece's end.
+// - A break of settings.mealBreakIntervalTypeId is a MEAL_LOCATION warning unless its place is
+//   an allowsMealBreak stop (RouteLocality — per route) of the line that arrives there.
+//   Inside a piece: where the vehicle stands, i.e. its last arrival (a deadrun arrival has no
+//   line → flagged); between pieces: the previous piece's end, on the trip it ends on.
 
 export interface CrewCalcBlock {
   id:       string
@@ -32,7 +33,7 @@ export interface CrewCalcBlock {
   // where the vehicle needs a driver — see BlockReliefData.serviceSpans
   serviceSpans: { startMinutes: number; endMinutes: number }[]
   points:   ReliefPoint[]
-  trips:    { departureMinutes: number; arrivalMinutes: number; lineId: string }[]
+  trips:    { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
 }
 
 export interface CrewCalcPiece {
@@ -63,17 +64,31 @@ type Span = { startMinutes: number; endMinutes: number }
 
 const dur = (s: Span) => s.endMinutes - s.startMinutes
 
-// where a break happens (see the header) — null when the duty has no live piece
-function breakLocality(b: Span, live: CrewCalcPiece[], blocks: Map<string, CrewCalcBlock>): string | null {
+// whether a break's place is a meal stop of the arriving line (see the header) — null when
+// the break can't be placed (no piece before it)
+function mealPlaceAllowed(b: Span, live: CrewCalcPiece[], blocks: Map<string, CrewCalcBlock>, mealStops: Set<string>): boolean | null {
+  const tripById = (p: CrewCalcPiece, tripId: string | undefined) => blocks.get(p.vehicleBlockId!)?.trips.find(t => t.id === tripId)
+  const allowed  = (p: CrewCalcPiece, point: ReliefPoint | undefined) => {
+    const trip = point?.tripId ? tripById(p, point.tripId) : undefined
+    return !!point && !!trip && mealStops.has(`${trip.routeId}:${point.localityId}`)
+  }
+
   const inside = live.find(p => p.startMinutes <= b.startMinutes && p.endMinutes >= b.endMinutes)
   if (inside) {
     const arrival = (blocks.get(inside.vehicleBlockId!)?.points ?? [])
       .filter(pt => (pt.kind === 'TRIP_DESTINATION' || pt.kind === 'DEADRUN_DESTINATION') && pt.minutes <= b.startMinutes)
-      .reduce<ReliefPoint | null>((last, pt) => (!last || pt.minutes >= last.minutes ? pt : last), null)
-    return arrival?.localityId ?? inside.startLocalityId
+      .reduce<ReliefPoint | undefined>((last, pt) => (!last || pt.minutes >= last.minutes ? pt : last), undefined)
+    return allowed(inside, arrival)
   }
+
+  // the line that last arrived where the previous piece ends (a piece may end at the next
+  // trip's departure, after the layover)
   const prev = live.filter(p => p.endMinutes <= b.startMinutes).at(-1)
-  return prev?.endLocalityId ?? live.find(p => p.startMinutes >= b.endMinutes)?.startLocalityId ?? null
+  if (!prev) return null
+  const arrived = (blocks.get(prev.vehicleBlockId!)?.points ?? [])
+    .filter(pt => pt.kind !== 'TRIP_ORIGIN' && pt.tripId && pt.localityId === prev.endLocalityId && pt.minutes <= prev.endMinutes)
+    .reduce<ReliefPoint | undefined>((last, pt) => (!last || pt.minutes >= last.minutes ? pt : last), undefined)
+  return allowed(prev, arrived)
 }
 
 function pieceStaleReason(p: CrewCalcPiece, block: CrewCalcBlock | undefined): DutyPieceStaleReason | null {
@@ -124,7 +139,7 @@ export function computeCrewPlan(input: {
   blocks:        CrewCalcBlock[]
   settings:      CrewSettings
   matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes (crew travel between relief points)
-  mealLocalityIds: Set<string>       // TransitLocality.allowsMealBreak
+  mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
 }): CrewCalcResult {
   const { settings } = input
   const range  = settings.range
@@ -249,8 +264,7 @@ export function computeCrewPlan(input: {
 
     if (settings.mealBreakIntervalTypeId) {
       for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {
-        const localityId = breakLocality(b, live, blocks)
-        if (localityId && !input.mealLocalityIds.has(localityId)) push({ code: 'MEAL_LOCATION', severity: 'warning', value: 0, activityId: b.id })
+        if (mealPlaceAllowed(b, live, blocks, input.mealStops) === false) push({ code: 'MEAL_LOCATION', severity: 'warning', value: 0, activityId: b.id })
       }
     }
 
