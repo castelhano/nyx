@@ -30,6 +30,7 @@ import { lineColorMap, dutyLineCodes } from './board.types'
 import { exportDutiesCsv, exportBlocksCsv } from './export'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 import { Badge } from '@/components/ui/badge'
+import { BusyOverlay } from '@/components/ui/busy-overlay'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
 // is written immediately (no pending queue) — the server recalculates staleness, issues
@@ -89,6 +90,7 @@ export default function CrewPlanPage() {
   const [assignDraft, setAssignDraft]       = useState<{ block: BoardBlock; start: ReliefPoint; end: ReliefPoint } | null>(null)
   const [breakDraft, setBreakDraft]         = useState<BreakDraft | null>(null)
   const [saving, setSaving]                 = useState(false)
+  const [busyMessage, setBusyMessage]       = useState<string | null>(null)
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
   const [settingsOpen, setSettingsOpen]     = useState(false)
@@ -376,8 +378,11 @@ export default function CrewPlanPage() {
   async function handleDeletePlan() {
     const ok = await confirm({ title: 'Excluir escala', description: 'A escala e todas as suas jornadas serão removidas.', confirmLabel: 'Excluir', variant: 'destructive' })
     if (!ok || !data) return
+    setBusyMessage('Excluindo escala…')
     const done = await run(() => api(`/transit/crew-plan/${id}`, { method: 'DELETE' }).then(() => true))
+    // on success the overlay stays up until the navigation unmounts the page
     if (done) router.push(`/transit/vehicle-plan/${data.vehiclePlan.id}`)
+    else setBusyMessage(null)
   }
 
   async function handleNewVersion() {
@@ -535,6 +540,7 @@ export default function CrewPlanPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {busyMessage && <BusyOverlay message={busyMessage} />}
       {settingsOpen && (
         <CrewSettingsModal
           crewPlanId={id}

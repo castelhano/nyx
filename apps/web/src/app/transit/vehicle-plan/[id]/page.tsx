@@ -40,6 +40,7 @@ import { OsoCoverageModal }           from './components/OsoCoverageModal'
 import { LineSummaryView }            from './components/LineSummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
+import { BusyOverlay } from '@/components/ui/busy-overlay'
 import type { ViewportSnapshot } from './engine/gantt.types'
 
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
@@ -455,14 +456,7 @@ export default function VehiclePlanPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {isSaving && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="flex items-center gap-3 bg-card border border-border rounded-lg shadow-xl px-6 py-4">
-            <Icons.Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            <span className="text-sm font-medium">Salvando alterações…</span>
-          </div>
-        </div>
-      )}
+      {isSaving && <BusyOverlay message="Salvando alterações…" />}
 
       {optimizeModalOpen && (
         <OptimizeModal
