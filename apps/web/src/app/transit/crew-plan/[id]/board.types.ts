@@ -195,6 +195,24 @@ export function pieceTrips(piece: BoardPiece, block: BoardBlock | undefined): Bo
   return block.trips.filter(t => t.departureMinutes < piece.endMinutes && t.arrivalMinutes > piece.startMinutes)
 }
 
+// deadruns (trajetos ociosos) a piece overlaps — the driver works them like trips
+export function pieceDeadruns(piece: BoardPiece, block: BoardBlock | undefined): BoardBlock['deadruns'] {
+  if (!block || piece.isStale) return []
+  // a zero-length one (instant displacement) counts when it falls inside the piece
+  return block.deadruns.filter(d => d.arrivalMinutes === d.departureMinutes
+    ? d.departureMinutes >= piece.startMinutes && d.departureMinutes < piece.endMinutes
+    : d.departureMinutes < piece.endMinutes && d.arrivalMinutes > piece.startMinutes)
+}
+
+export const DEADRUN_LABEL: Record<string, string> = {
+  ACCESS:       'Acesso',
+  RETURN:       'Recolhe',
+  DISPLACEMENT: 'Deslocamento',
+}
+
+// a deadrun in the trips lane: neutral, dashed — reads as "moving, no line"
+export const DEADRUN_CLASS = 'bg-slate-100 dark:bg-slate-800 border border-dashed border-slate-400 dark:border-slate-500 text-slate-600 dark:text-slate-300'
+
 // distinct line codes a duty operates, in the Scope's line order (board lineCodes)
 export function dutyLineCodes(duty: BoardDuty, blockById: Map<string, BoardBlock>, lineCodes: string[]): string[] {
   const codes = new Set(duty.pieces.flatMap(p =>

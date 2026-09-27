@@ -23,8 +23,12 @@ export const crewPlanSummarySchema = z.object({
   issueDutyCount:   z.number(),
   score:            z.number(),
   // each active criterion that entered the score: its weight and value (0–1) — the points it
-  // cost are 9999 × weight × (1 − value) ÷ Σ weights
-  criteria: z.array(z.object({ key: z.string(), weight: z.number(), value: z.number() })).default([]),
+  // cost are 9999 × weight × (1 − value) ÷ Σ weights. `raw` is the same value without the
+  // floor at 0: past floor/ceiling it keeps falling (negative) — see rawScore
+  criteria: z.array(z.object({ key: z.string(), weight: z.number(), value: z.number(), raw: z.number().optional() })).default([]),
+  // the score from the raw values — what the crew solver optimizes (a criterion already past its
+  // ceiling still rewards getting closer to it); may go below 0
+  rawScore: z.number().optional(),
   // DRIVER-covered minutes of the blocks' service spans (the efficiency criterion's base)
   coveredMinutes:   z.number(),
   // same, split by the block's branch

@@ -126,6 +126,23 @@ function rangeIssue(code: DutyIssue['code'], value: number, c: RangeCriterion): 
   return null
 }
 
+// rangeV without the floor at 0: inside the bands the same, past floor/ceiling it keeps falling
+// with the band's slope (a band of zero width counts 1 per unit)
+function rangeRaw(value: number, c: RangeCriterion): number {
+  if (value < c.floor && c.idealMin > c.floor) return (value - c.floor) / (c.idealMin - c.floor)
+  if (value > c.ceiling) return (c.ceiling - value) / Math.max(c.ceiling - c.idealMax, 1)
+  return rangeV(value, c)
+}
+
+function anchoredRaw(realized: number, theoreticalMin: number, c: CrewSettings['anchored']['dutyCount']): number {
+  if (theoreticalMin <= 0) return 1
+  return rangeRaw(realized / theoreticalMin, {
+    active: c.active, modifier: 0, floor: 1, idealMin: 1,
+    idealMax: 1 + c.idealMaxOverPercent / 100,
+    ceiling:  1 + c.ceilingOverPercent  / 100,
+  })
+}
+
 function mergeSpans(spans: Span[]): Span[] {
   const sorted = [...spans].sort((a, b) => a.startMinutes - b.startMinutes)
   const out: Span[] = []
@@ -156,8 +173,8 @@ export interface DutyEvaluation {
   live:       CrewCalcPiece[]
   // trip minutes per line inside the pieces — the duty's split across lines (byLine)
   lineMinutes: Map<string, number>
-  // the per-duty score criteria that apply to this duty (active only), value 0–1
-  criteria:   { key: string; weight: number; value: number }[]
+  // the per-duty score criteria that apply to this duty (active only), value 0–1 (raw: unfloored)
+  criteria:   { key: string; weight: number; value: number; raw: number }[]
 }
 
 // One duty on its own: summary, issues and its per-duty score criteria. No plan state — the
@@ -294,7 +311,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   // per-duty criteria enter the plan score with the same applicability as the issues
   const criteria: DutyEvaluation['criteria'] = []
   const crit = (key: string, c: RangeCriterion, value: number) => {
-    if (c.active) criteria.push({ key, weight: c.modifier, value: rangeV(value, c) })
+    if (c.active) criteria.push({ key, weight: c.modifier, value: rangeV(value, c), raw: rangeRaw(value, c) })
   }
   if (hasWork) {
     if (duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') crit('workTime', range.workTime, workMinutes)
@@ -342,7 +359,7 @@ export class CrewScoreAggregate {
   private totalWork = 0
   private totalOvertime = 0
   private readonly byKind  = new Map<string, number>()
-  private readonly perDuty = new Map<string, { weight: number; sum: number; n: number }>()
+  private readonly perDuty = new Map<string, { weight: number; sum: number; raw: number; n: number }>()
   // DRIVER pieces per block, and each block's covered minutes (recomputed only when touched)
   private readonly pieces  = new Map<string, CrewCalcPiece[]>()
   private readonly covered = new Map<string, number>()
@@ -364,8 +381,8 @@ export class CrewScoreAggregate {
     this.totalWork     += sign * ev.summary.workMinutes
     this.totalOvertime += sign * ev.summary.overtimeMinutes
     for (const c of ev.criteria) {
-      const cur = this.perDuty.get(c.key) ?? { weight: c.weight, sum: 0, n: 0 }
-      cur.sum += sign * c.value; cur.n += sign
+      const cur = this.perDuty.get(c.key) ?? { weight: c.weight, sum: 0, raw: 0, n: 0 }
+      cur.sum += sign * c.value; cur.raw += sign * c.raw; cur.n += sign
       this.perDuty.set(c.key, cur)
     }
     if (duty.role !== 'DRIVER') return
@@ -396,19 +413,22 @@ export class CrewScoreAggregate {
   criteria(): CrewPlanSummary['criteria'] {
     const { range, anchored } = this.ctx.settings
     const out: CrewPlanSummary['criteria'] = []
-    for (const [key, c] of this.perDuty) if (c.n > 0) out.push({ key, weight: c.weight, value: c.sum / c.n })
+    for (const [key, c] of this.perDuty) if (c.n > 0) out.push({ key, weight: c.weight, value: c.sum / c.n, raw: c.raw / c.n })
     if (this.dutyCount <= 0) return out
     const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage', value: number) => {
-      if (range[key].active) out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]) })
+      if (range[key].active) out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]), raw: rangeRaw(value, range[key]) })
     }
     const covered = this.coveredMinutes
     plan('overtimeRatio', this.totalWork > 0 ? (this.totalOvertime / this.totalWork) * 100 : 0)
     plan('splitRatio',   (this.kindCount('SPLIT') / this.dutyCount) * 100)
     plan('tripperRatio', (this.kindCount('TRIPPER') / this.dutyCount) * 100)
     if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
-      out.push({ key: 'dutyCount', weight: anchored.dutyCount.weight, value: anchoredV(this.driverDuties, Math.ceil(this.blockMinutes / range.workTime.idealMin), anchored.dutyCount) })
+      const min = Math.ceil(this.blockMinutes / range.workTime.idealMin)
+      out.push({ key: 'dutyCount', weight: anchored.dutyCount.weight, value: anchoredV(this.driverDuties, min, anchored.dutyCount), raw: anchoredRaw(this.driverDuties, min, anchored.dutyCount) })
     }
-    if (anchored.efficiency.active) out.push({ key: 'efficiency', weight: anchored.efficiency.weight, value: anchoredV(this.driverPaid, covered, anchored.efficiency) })
+    if (anchored.efficiency.active) {
+      out.push({ key: 'efficiency', weight: anchored.efficiency.weight, value: anchoredV(this.driverPaid, covered, anchored.efficiency), raw: anchoredRaw(this.driverPaid, covered, anchored.efficiency) })
+    }
     if (this.blockMinutes > 0) plan('coverage', (covered / this.blockMinutes) * 100)
     return out
   }
@@ -417,6 +437,12 @@ export class CrewScoreAggregate {
   score(criteria = this.criteria()): number {
     const weightTotal = criteria.reduce((s, c) => s + c.weight, 0)
     return weightTotal > 0 ? (criteria.reduce((s, c) => s + c.weight * c.value, 0) / weightTotal) * SCORE_SCALE : 0
+  }
+
+  // same from the unfloored values — what the solver optimizes
+  rawScore(criteria = this.criteria()): number {
+    const weightTotal = criteria.reduce((s, c) => s + c.weight, 0)
+    return weightTotal > 0 ? (criteria.reduce((s, c) => s + c.weight * (c.raw ?? c.value), 0) / weightTotal) * SCORE_SCALE : 0
   }
 }
 
@@ -508,6 +534,7 @@ export function computeCrewPlan(input: {
       staleDutyCount:   dutyValues.filter(d => d.isStale).length,
       issueDutyCount:   dutyValues.filter(d => d.issues.length > 0).length,
       score:            Math.round(agg.score(criteria)),
+      rawScore:         Math.round(agg.rawScore(criteria)),
       criteria,
       coveredMinutes,
       coveredByBranch:  [...coveredByBranch].map(([branchId, minutes]) => ({ branchId, minutes })),

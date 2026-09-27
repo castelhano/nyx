@@ -5,13 +5,13 @@ import { formatDutyNumber } from '@nyx/schemas'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece, BoardActivity, BreakSlot } from '../board.types'
-import { fmtTime, fmtDuration, blockColorVars, pieceTrips, breakSlots, SWATCH_BG_CLASS, LINE_BG_CLASS, ACTIVITY_LABEL, DIRECTION_LABEL, STALE_LABEL } from '../board.types'
+import { fmtTime, fmtDuration, blockColorVars, pieceTrips, pieceDeadruns, breakSlots, SWATCH_BG_CLASS, LINE_BG_CLASS, ACTIVITY_LABEL, DIRECTION_LABEL, STALE_LABEL, DEADRUN_LABEL, DEADRUN_CLASS } from '../board.types'
 import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
 import { PinToggle } from './CrewFilterBar'
 
 // One row per duty, whatever vehicles it runs on: its pieces colored per vehicle (so a
 // vehicle change stands out) with the trips they operate in a thin lane below (so a line
-// change stands out), its off-vehicle activities in neutral styles, and — when the
+// change stands out) — deadruns too, dashed — its off-vehicle activities in neutral styles, and — when the
 // duty has no explicit SIGN_ON/SIGN_OFF — a thin line for the sign-on/off time the
 // calculation assumes. Breaks (BREAK activities, always manual) show hatched in the trips
 // lane. Clicking a free slot — the vehicle's idle time in the trips lane, or
@@ -200,6 +200,20 @@ const DutyRow = memo(function DutyRow({
               title={`${t.lineCode} ${DIRECTION_LABEL[t.direction] ?? t.direction} ${fmtTime(t.departureMinutes)}–${fmtTime(t.arrivalMinutes)}`}
             >
               {t.lineCode}
+            </div>
+          )
+        }))}
+        {duty.pieces.flatMap(p => pieceDeadruns(p, p.vehicleBlockId ? blockById.get(p.vehicleBlockId) : undefined).map(d => {
+          const from = Math.max(d.departureMinutes, p.startMinutes)
+          const to   = Math.min(d.arrivalMinutes, p.endMinutes)
+          return (
+            <div
+              key={`${p.id}:${d.id}`}
+              className={cn('absolute top-[22px] h-3.5 rounded-sm text-[9px] leading-[12px] overflow-hidden whitespace-nowrap px-0.5', DEADRUN_CLASS)}
+              style={{ left: x(from), width: Math.max(2, (to - from) * pxPerMinute) }}
+              title={`Trajeto ocioso · ${DEADRUN_LABEL[d.type] ?? d.type} ${fmtTime(d.departureMinutes)}–${fmtTime(d.arrivalMinutes)}`}
+            >
+              {DEADRUN_LABEL[d.type] ?? d.type}
             </div>
           )
         }))}

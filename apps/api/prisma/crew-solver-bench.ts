@@ -21,6 +21,7 @@ function metrics(r: CrewSolverResult) {
   return {
     rows: {
       'Nota':                     String(s.score),
+      'Nota sem teto':            String(s.rawScore),
       'Jornadas':                 String(s.dutyCount),
       ...Object.fromEntries(Object.entries(KIND).map(([k, label]) => [label, pct(s.byKind[k] ?? 0)])),
       'Com troca de carro':       pct(duties.filter(d => d.summary.vehicleChanges > 0).length),

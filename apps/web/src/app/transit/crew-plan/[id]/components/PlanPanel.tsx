@@ -123,16 +123,28 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
   )
 }
 
-// points each criterion took off the score (9999 × weight × (1 − value) ÷ Σ weights), largest first
+// points each criterion took off the score (9999 × weight × (1 − value) ÷ Σ weights), largest
+// first — collapsed until asked for
 function ScoreLosses({ criteria }: { criteria: { key: string; weight: number; value: number }[] }) {
+  const [open, setOpen] = useState(false)
   const total = criteria.reduce((sum, c) => sum + c.weight, 0)
   const rows  = criteria
     .map(c => ({ ...c, loss: Math.round((9999 * c.weight * (1 - c.value)) / total) }))
     .sort((a, b) => b.loss - a.loss)
+  const lost  = rows.reduce((sum, c) => sum + c.loss, 0)
+  const Chevron = open ? Icons.ChevronDown : Icons.ChevronRight
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Perdas na nota</p>
-      <ul className="text-xs divide-y divide-border/50">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      >
+        <span className="flex items-center gap-1"><Chevron className="w-3.5 h-3.5" /> Penalizações</span>
+        <span className="font-mono tabular-nums normal-case font-normal">{lost > 0 ? `−${lost.toLocaleString('pt-BR')}` : '0'}</span>
+      </button>
+      {open && <ul className="text-xs divide-y divide-border/50">
         {rows.map(c => (
           <li key={c.key} className={cn('flex items-center justify-between gap-2 py-1', c.loss === 0 && 'text-muted-foreground')}>
             <span>{CRITERION_LABEL[c.key] ?? c.key}</span>
@@ -142,7 +154,7 @@ function ScoreLosses({ criteria }: { criteria: { key: string; weight: number; va
             </span>
           </li>
         ))}
-      </ul>
+      </ul>}
     </div>
   )
 }

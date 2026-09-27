@@ -7,7 +7,7 @@ import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
 import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
 import { PinToggle } from './CrewFilterBar'
-import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, LINE_BG_CLASS, STALE_LABEL } from '../board.types'
+import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, LINE_BG_CLASS, STALE_LABEL, DEADRUN_LABEL, DEADRUN_CLASS } from '../board.types'
 import type { CSSProperties, Ref } from 'react'
 
 // One row per vehicle block: the vehicle lane on top (trips, deadruns, intervals and the
@@ -176,10 +176,12 @@ const BlockRow = memo(function BlockRow({
         {block.deadruns.map(d => (
           <div
             key={d.id}
-            className="absolute top-2.5 h-1 bg-slate-400/70 dark:bg-slate-500/70"
-            style={{ left: x(d.departureMinutes), width: Math.max(1, (d.arrivalMinutes - d.departureMinutes) * pxPerMinute) }}
-            title={`Deslocamento ${fmtTime(d.departureMinutes)}–${fmtTime(d.arrivalMinutes)}`}
-          />
+            className={cn('absolute top-1 h-4 rounded-sm text-[9px] leading-[14px] overflow-hidden whitespace-nowrap px-0.5', DEADRUN_CLASS)}
+            style={{ left: x(d.departureMinutes), width: Math.max(2, (d.arrivalMinutes - d.departureMinutes) * pxPerMinute) }}
+            title={`Trajeto ocioso · ${DEADRUN_LABEL[d.type] ?? d.type} ${fmtTime(d.departureMinutes)}–${fmtTime(d.arrivalMinutes)}`}
+          >
+            {DEADRUN_LABEL[d.type] ?? d.type}
+          </div>
         ))}
         {block.intervals.map(i => (
           <div

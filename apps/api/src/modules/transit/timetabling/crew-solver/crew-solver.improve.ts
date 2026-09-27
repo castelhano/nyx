@@ -14,7 +14,8 @@ import { BlockView, type CrewSolverInput, type SolverDuty, type SolverPiece } fr
 //  - transfer: a piece — or part of it, cut at a relief point — goes to another duty or becomes
 //              a duty of its own; a duty left empty disappears.
 // Every duty a move builds follows the hard rules (buildDuty); a move that breaks one is
-// dropped. Acceptance is simulated annealing: better always, worse with probability exp(Δ/T),
+// dropped. The score optimized is the raw one (CrewScoreAggregate.rawScore): a criterion already
+// past its ceiling still rewards getting closer to it. Acceptance is simulated annealing: better always, worse with probability exp(Δ/T),
 // T calibrated on the first worsening moves. The search runs in cycles: T cools down over a
 // cycle, then the search goes back to the best duties found and starts a cooler cycle — so a
 // cycle always ends improving, and "no improvement" means the cycles stopped paying off.
@@ -96,7 +97,7 @@ export class CrewImprover {
       this.insert(w)
       this.agg.add(w.calc, w.ev)
     }
-    this.current = this.bestScore = this.agg.score()
+    this.current = this.bestScore = this.agg.rawScore()
     this.best = [...this.duties]
   }
 
@@ -125,7 +126,7 @@ export class CrewImprover {
 
     for (const w of move.removed) this.agg.remove(w.calc, w.ev)
     for (const w of move.added)   this.agg.add(w.calc, w.ev)
-    const score = this.agg.score()
+    const score = this.agg.rawScore()
     const delta = score - this.current
 
     if (!this.accept(delta)) {
@@ -176,7 +177,7 @@ export class CrewImprover {
     for (const l of this.locked) agg.add(l.calc, l.ev)
     for (const w of this.duties) agg.add(w.calc, w.ev)
     this.agg = agg
-    this.current = agg.score()
+    this.current = agg.rawScore()
   }
 
   // ── moves ────────────────────────────────────────────────────────────────

@@ -42,11 +42,28 @@ interface Params {
   assistant:     boolean
 }
 
+type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'
+
+// elapsed / sinceImprovement in ms
+type Progress = { elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
+
 type Message =
-  | { type: 'progress'; elapsed: number; attempts: number; bestScore: number }
+  | ({ type: 'progress' } & Progress)
   | { type: 'proposal'; proposal: { index: number; summary: CrewPlanSummary } }
-  | { type: 'done'; stopReason: string; elapsed: number }
+  | { type: 'done'; stopReason: StopReason; elapsed: number; attempts: number }
   | { type: 'error'; message: string }
+
+const STOP_LABEL: Record<StopReason, string> = {
+  finished:       'Concluído',
+  user_stopped:   'Interrompido',
+  max_time:       'Tempo máximo atingido',
+  no_improvement: 'Sem melhora',
+}
+
+const fmtClock = (ms: number) => {
+  const s = Math.floor(ms / 1000)
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
 
 const DIRECTIONS: { value: Params['direction']; label: string }[] = [
   { value: 'balanced',     label: 'Equilibrado' },
@@ -104,6 +121,8 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
   const [error, setError]             = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [accepting, setAccepting]     = useState(false)
+  const [progress, setProgress]       = useState<Progress | null>(null)
+  const [stopReason, setStopReason]   = useState<StopReason | null>(null)
   const esRef = useRef<EventSource | null>(null)
   useEffect(() => () => esRef.current?.close(), [])
 
@@ -174,7 +193,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
   // a new run replaces the previous scenario
   async function handleStart() {
     esRef.current?.close()
-    setError(null); setProposal(null); setDescription(''); setJobId(null)
+    setError(null); setProposal(null); setDescription(''); setJobId(null); setProgress(null); setStopReason(null)
     setTab('scenarios')
     const id  = crypto.randomUUID()
     const res = await apiFetch(`${solverBase}/start`, { method: 'POST', body: JSON.stringify({ jobId: id, params }) })
@@ -186,6 +205,8 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
     es.onmessage = (ev) => {
       const msg = JSON.parse(ev.data) as Message
       if (msg.type === 'proposal') setProposal(msg.proposal)
+      if (msg.type === 'progress') setProgress(msg)
+      if (msg.type === 'done') setStopReason(msg.stopReason)
       if (msg.type === 'error') setError(msg.message)
       if (msg.type === 'done' || msg.type === 'error') { es.close(); setRunning(false) }
     }
@@ -234,7 +255,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
           <div className="flex items-center gap-3 pb-3">
             {jobId && (
               <span className={cn('text-xs', running ? 'text-muted-foreground' : 'text-emerald-600 dark:text-emerald-400')}>
-                {running ? 'Gerando…' : proposal ? 'Concluído' : ''}
+                {running ? 'Gerando…' : stopReason ? STOP_LABEL[stopReason] : proposal ? 'Concluído' : ''}
               </span>
             )}
             <button type="button" onClick={() => void handleClose()} className="text-muted-foreground hover:text-foreground" title="Fechar">
@@ -312,6 +333,14 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
                 <p className="text-sm text-muted-foreground">Nenhum cenário gerado. Use o Painel para gerar uma proposta.</p>
               )}
               {jobId && (
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  <RunStat label="Cenários analisados" value={progress ? progress.attempts.toLocaleString('pt-BR') : '—'} />
+                  <RunStat label="Melhorias"           value={progress ? progress.improvements.toLocaleString('pt-BR') : '—'} />
+                  <RunStat label="Tempo total"         value={progress ? fmtClock(progress.elapsed) : '—'} />
+                  <RunStat label="Desde a última melhora" value={progress ? fmtClock(progress.sinceImprovement) : '—'} />
+                </div>
+              )}
+              {jobId && (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-muted-foreground border-b border-border">
@@ -327,6 +356,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
                     <Row label="Extra"           current={current?.overtimeMinutes}  next={s?.overtimeMinutes}  fmt={fmtDuration} />
                     <Row label="Com pendências"  current={current?.issueDutyCount}   next={s?.issueDutyCount} />
                     <Row label="Score"           current={current?.score}            next={s?.score} />
+                    <Row label="Score sem teto"  current={current?.rawScore}         next={s?.rawScore} />
                   </tbody>
                 </table>
               )}
@@ -391,6 +421,15 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, current, lockedCount
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function RunStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded bg-muted/40 px-2 py-1">
+      <p className="text-muted-foreground">{label}</p>
+      <p className="font-medium font-mono tabular-nums">{value}</p>
     </div>
   )
 }
