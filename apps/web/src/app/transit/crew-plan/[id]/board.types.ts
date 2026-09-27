@@ -65,7 +65,11 @@ export interface CrewBoardData {
     signOnMinutes:    number
     signOffMinutes:   number
   }
-  vehiclePlan: { id: string; description: string | null; status: string; scopeName: string; dayTypeName: string }
+  vehiclePlan: {
+    id: string; description: string | null; status: string; scopeName: string; dayTypeName: string
+    // the day type runs on consecutive days — a duty can be assumed to repeat the next day
+    repeatsNextDay: boolean
+  }
   versions:    { id: string; description: string | null; status: 'DRAFT' | 'ACTIVE'; createdAt: string }[]
   operators:   { branchId: string; abbr: string; name: string }[]
   lineCodes:   string[]

@@ -91,7 +91,7 @@ export function exportDutiesCsv(data: CrewBoardData, duties: BoardDuty[], blockB
   })
 
   const segCols = segmentColumns(rows.map(r => r.segments))
-  const headers = ['jornada', 'status', 'papel', 'tipo', 'operador', 'trabalhado', 'pago', 'extra', 'noturno', 'pendencias', 'apresentacao', 'encerramento', ...segCols]
+  const headers = ['jornada', 'status', 'papel', 'tipo', 'operador', 'trabalhado', 'pago', 'extra', 'noturno', 'pendencias', 'apresentacao', 'encerramento', 'interjornada', ...segCols]
 
   downloadCsvRows(headers, rows.map(({ duty: d, segments, signOn, signOff }) => [
     formatDutyNumber(d.role, d.dutyNumber),
@@ -106,6 +106,8 @@ export function exportDutiesCsv(data: CrewBoardData, duties: BoardDuty[], blockB
     [...new Set(d.issues.map(i => ISSUE_LABEL[i.code]))].join(` ${SEP} `),
     signOn != null ? fmtTime(signOn) : '',
     signOff != null ? fmtTime(signOff) : '',
+    // rough estimate: the same duty worked again the next day
+    data.vehiclePlan.repeatsNextDay && signOn != null && signOff != null ? fmtTime(signOn + 1440 - signOff) : '',
     ...segmentCells(segments, segCols.length),
   ]), filename(data, 'jornadas'))
 }

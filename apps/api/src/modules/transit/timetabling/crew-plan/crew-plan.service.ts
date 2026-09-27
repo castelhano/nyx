@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
-  crewPlanSchema, crewSettingsSchema,
+  crewPlanSchema, crewSettingsSchema, dayTypePatternSchema,
   CrewPlan, CreateCrewPlanDto, UpdateCrewPlanDto, CrewSettings, CrewPlanSummary,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
@@ -210,7 +210,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         vehiclePlan: {
           select: {
             id: true, description: true, status: true, scopeId: true,
-            scope: { select: { name: true, lines: { select: { code: true } } } }, dayType: { select: { name: true } },
+            scope: { select: { name: true, lines: { select: { code: true } } } }, dayType: { select: { name: true, pattern: true } },
           },
         },
       },
@@ -278,6 +278,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       vehiclePlan: {
         id: plan.vehiclePlan.id, description: plan.vehiclePlan.description, status: plan.vehiclePlan.status,
         scopeName: plan.vehiclePlan.scope.name, dayTypeName: plan.vehiclePlan.dayType.name,
+        repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
       },
       versions,
       operators: operators.map(o => ({ branchId: o.branchId, abbr: o.abbr, name: o.branch.name })),
@@ -413,4 +414,13 @@ function canonicalJson(value: unknown): string {
       ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
       : v,
   )
+}
+
+// whether the day type runs on two consecutive days, so a duty can be assumed to repeat the next day
+function repeatsNextDay(pattern: unknown): boolean {
+  const p = dayTypePatternSchema.safeParse(pattern)
+  if (!p.success) return false
+  if (p.data.type === 'month_window' && !p.data.baseWeekdays) return p.data.days > 1
+  const days = p.data.type === 'weekdays' ? p.data.days : p.data.baseWeekdays ?? []
+  return days.some(d => days.includes(d % 7 + 1))
 }
