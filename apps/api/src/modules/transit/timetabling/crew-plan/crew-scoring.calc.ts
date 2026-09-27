@@ -145,6 +145,8 @@ export function computeCrewPlan(input: {
   settings:      CrewSettings
   matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes (crew travel between relief points)
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
+  // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
+  repeatsNextDay?: boolean
 }): CrewCalcResult {
   const { settings } = input
   const range  = settings.range
@@ -220,6 +222,9 @@ export function computeCrewPlan(input: {
       nightMinutes,
       pieceCount: live.length,
       vehicleChanges, lineChanges,
+      startMinutes: events.length ? first : null,
+      endMinutes:   events.length ? last : null,
+      interShiftRestMinutes: input.repeatsNextDay && events.length ? first + 1440 - last : null,
     }
 
     // ── issues ───────────────────────────────────────────────────────────────

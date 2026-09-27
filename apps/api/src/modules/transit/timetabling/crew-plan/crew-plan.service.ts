@@ -210,7 +210,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         vehiclePlan: {
           select: {
             id: true, description: true, status: true, scopeId: true,
-            scope: { select: { name: true, lines: { select: { code: true } } } }, dayType: { select: { name: true, pattern: true } },
+            scope: { select: { name: true, lines: { select: { code: true } } } }, dayType: { select: { name: true } },
           },
         },
       },
@@ -278,7 +278,6 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       vehiclePlan: {
         id: plan.vehiclePlan.id, description: plan.vehiclePlan.description, status: plan.vehiclePlan.status,
         scopeName: plan.vehiclePlan.scope.name, dayTypeName: plan.vehiclePlan.dayType.name,
-        repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
       },
       versions,
       operators: operators.map(o => ({ branchId: o.branchId, abbr: o.abbr, name: o.branch.name })),
@@ -330,7 +329,10 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
   // Runs after every duty/piece/activity write, when the plan is opened (settings may have
   // changed upstream) and after its VehiclePlan is edited.
   async recalculate(id: string): Promise<void> {
-    const plan = await this.prisma.crewPlan.findUnique({ where: { id }, select: { vehiclePlanId: true, summary: true } })
+    const plan = await this.prisma.crewPlan.findUnique({
+      where:  { id },
+      select: { vehiclePlanId: true, summary: true, vehiclePlan: { select: { dayType: { select: { pattern: true } } } } },
+    })
     if (!plan) throw new NotFoundException('crewPlan not found')
 
     const [{ settings }, blockRows, duties] = await Promise.all([
@@ -379,6 +381,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       })),
       matrixMinutes: new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, m.baseMinutes])),
       mealStops: new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
+      repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
     })
 
     // only rows whose derived state actually changed are written — a single piece edit

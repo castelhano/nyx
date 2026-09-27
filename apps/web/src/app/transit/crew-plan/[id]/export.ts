@@ -76,14 +76,11 @@ function filename(data: CrewBoardData, suffix: string) {
 
 export function exportDutiesCsv(data: CrewBoardData, duties: BoardDuty[], blockById: Map<string, BoardBlock>) {
   const branchAbbr = new Map(data.operators.map(o => [o.branchId, o.abbr]))
-  const { signOnMinutes, signOffMinutes } = data.plan
 
   const rows = duties.map(duty => {
     const segments = dutySegments(duty, blockById)
-    const signOn   = duty.activities.find(a => a.type === 'SIGN_ON')?.startMinutes
-      ?? (segments.length ? segments[0].startMinutes - signOnMinutes : null)
-    const signOff  = duty.activities.filter(a => a.type === 'SIGN_OFF').at(-1)?.endMinutes
-      ?? (segments.length ? segments.at(-1)!.endMinutes + signOffMinutes : null)
+    const signOn   = duty.summary?.startMinutes ?? null
+    const signOff  = duty.summary?.endMinutes ?? null
     // the first segment opens at sign-on, the last closes at sign-off
     if (segments.length && signOn != null)  segments[0].startMinutes = Math.min(segments[0].startMinutes, signOn)
     if (segments.length && signOff != null) segments.at(-1)!.endMinutes = Math.max(segments.at(-1)!.endMinutes, signOff)
@@ -106,8 +103,7 @@ export function exportDutiesCsv(data: CrewBoardData, duties: BoardDuty[], blockB
     [...new Set(d.issues.map(i => ISSUE_LABEL[i.code]))].join(` ${SEP} `),
     signOn != null ? fmtTime(signOn) : '',
     signOff != null ? fmtTime(signOff) : '',
-    // rough estimate: the same duty worked again the next day
-    data.vehiclePlan.repeatsNextDay && signOn != null && signOff != null ? fmtTime(signOn + 1440 - signOff) : '',
+    d.summary?.interShiftRestMinutes != null ? fmtTime(d.summary.interShiftRestMinutes) : '',
     ...segmentCells(segments, segCols.length),
   ]), filename(data, 'jornadas'))
 }

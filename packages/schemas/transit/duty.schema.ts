@@ -26,6 +26,12 @@ export const dutySummarySchema = z.object({
   pieceCount:      z.number(),
   vehicleChanges:  z.number(),
   lineChanges:     z.number(),
+  // effective sign-on / sign-off (explicit activities or the implicit settings minutes)
+  startMinutes:    z.number().nullable(),
+  endMinutes:      z.number().nullable(),
+  // rough estimate assuming the same duty is worked the next day — null when the day
+  // type doesn't run on consecutive days; the real rest comes from the roster
+  interShiftRestMinutes: z.number().nullable(),
 })
 export type DutySummary = z.infer<typeof dutySummarySchema>
 
