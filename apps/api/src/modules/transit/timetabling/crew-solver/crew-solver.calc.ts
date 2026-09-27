@@ -161,7 +161,8 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       const gaps = v.idleGaps(start, end).flatMap(g => {
         const l = len(g)
         if (l >= meal.minMinutes && l <= meal.maxMinutes && v.mealAllowed(g.startMinutes)) return [{ ...g, split: false }]
-        if (range.splitInterval.active && l >= range.splitInterval.floor && l <= range.splitInterval.ceiling && v.isCut(g.endMinutes)) return [{ ...g, split: true }]
+        // only gaps longer than the meal become a split (a meal-sized gap where meals aren't allowed doesn't)
+        if (range.splitInterval.active && l > meal.maxMinutes && l >= range.splitInterval.floor && l <= range.splitInterval.ceiling && v.isCut(g.endMinutes)) return [{ ...g, split: true }]
         return []
       })
 
@@ -232,7 +233,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       if (rest >= meal.minMinutes && rest <= meal.maxMinutes && va.mealAllowed(a.endMinutes, a.endLocalityId)) {
         const brk = { startMinutes: a.endMinutes, endMinutes: a.endMinutes + rest }
         duty = { kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [brk] }
-      } else if (range.splitInterval.active && gap >= range.splitInterval.floor && gap <= range.splitInterval.ceiling) {
+      } else if (range.splitInterval.active && gap > meal.maxMinutes && gap >= range.splitInterval.floor && gap <= range.splitInterval.ceiling) {
         duty = { kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }
         penalty = 60 + rangeDistance(gap, range.splitInterval)
       }
