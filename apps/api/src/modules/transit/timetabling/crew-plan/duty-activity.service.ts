@@ -20,6 +20,7 @@ export class DutyActivityService extends BaseService<DutyActivity, CreateDutyAct
   override async create(dto: CreateDutyActivityDto): Promise<DutyActivity> {
     const parsed = createDutyActivitySchema.safeParse(dto)
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`))
+    await this.crewPlans.assertDutyEditable(parsed.data.dutyId)
     await this.validate(parsed.data)
     const created = await super.create(parsed.data)
     await this.recalculatePlanOf(parsed.data.dutyId)
@@ -29,6 +30,7 @@ export class DutyActivityService extends BaseService<DutyActivity, CreateDutyAct
   override async update(id: string, dto: UpdateDutyActivityDto): Promise<DutyActivity> {
     const current = await this.prisma.dutyActivity.findUnique({ where: { id } })
     if (!current) throw new NotFoundException('dutyActivity not found')
+    await this.crewPlans.assertDutyEditable(current.dutyId)
     const { dutyId: _d, ...patch } = dto as Record<string, unknown>
     const parsed = createDutyActivitySchema.safeParse({ ...current, ...patch, dutyId: current.dutyId })
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`))
@@ -41,6 +43,7 @@ export class DutyActivityService extends BaseService<DutyActivity, CreateDutyAct
 
   override async remove(id: string): Promise<void> {
     const current = await this.prisma.dutyActivity.findUnique({ where: { id }, select: { dutyId: true } })
+    if (current) await this.crewPlans.assertDutyEditable(current.dutyId)
     await super.remove(id)
     if (current) await this.recalculatePlanOf(current.dutyId)
   }

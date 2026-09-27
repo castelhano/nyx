@@ -53,11 +53,11 @@ export class DopCrewService {
     const [lines, vehiclePlans, calendar, scopeOperators, dayTypes, costSettings, rosterSettings] = await Promise.all([
       this.prisma.transitLine.findMany({ where: { scopeId, isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
       this.prisma.vehiclePlan.findMany({
-        where:  { scopeId, status: 'ACTIVE' },
+        where:  { scopeId, status: { in: ['ACTIVE', 'SUPERSEDED'] } },
         select: {
           id: true, dayTypeId: true, validFrom: true, validTo: true, summary: true,
           lines:     { select: { lineId: true } },
-          crewPlans: { where: { status: 'ACTIVE' }, select: { id: true, validFrom: true, validTo: true, summary: true } },
+          crewPlans: { where: { status: { in: ['ACTIVE', 'SUPERSEDED'] } }, select: { id: true, validFrom: true, validTo: true, summary: true } },
         },
       }),
       this.dayTypeService.getCalendarComposition(from, to),

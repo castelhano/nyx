@@ -67,15 +67,16 @@ export const crewPlanSchema = withMeta(
     }),
 
     // only changes through activation/closing — never via PATCH (see CrewPlanService.update)
-    status: z.enum(['DRAFT', 'ACTIVE']).default('DRAFT').meta({
+    status: z.enum(['DRAFT', 'ACTIVE', 'SUPERSEDED']).default('DRAFT').meta({
       label:          'Status',
       listVisibility: 'visible',
       filter:         true,
       showInForm:     false,
       widget:         'badge',
       optionLabels: {
-        DRAFT:  'Rascunho',
-        ACTIVE: 'Ativo',
+        DRAFT:      'Rascunho',
+        ACTIVE:     'Ativo',
+        SUPERSEDED: 'Substituído',
       },
       optionColors: {
         ACTIVE: 'success',

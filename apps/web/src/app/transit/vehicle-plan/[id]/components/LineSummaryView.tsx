@@ -54,7 +54,7 @@ interface LineComparisonResponse {
   // sibling of `operation`, not nested in it — kept out of RowValues (operation &
   // Partial<LineComparisonSummary>), which METRICS/goodnessFor treat as all-numeric
   peakBands: PeakBands
-  draft:     LineComparisonSide & { planStatus: 'DRAFT' | 'ACTIVE' }
+  draft:     LineComparisonSide & { planStatus: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED' }
   active:    LineComparisonSide | null
 }
 
@@ -305,6 +305,9 @@ interface MarkingGroup {
   styleVariants: number
 }
 
+
+const PLAN_STATUS_LABEL = { DRAFT: 'Rascunho', ACTIVE: 'Ativo', SUPERSEDED: 'Substituído' } as const
+
 export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlottedData, hasPendingChanges }: Props) {
   useShortcutContext('summary')
 
@@ -477,7 +480,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                 : 'bg-muted/60 text-muted-foreground border-border',
             )}>
               <span className={cn('w-1.5 h-1.5 rounded-full', data.draft.planStatus === 'ACTIVE' ? 'bg-emerald-500' : 'bg-muted-foreground')} />
-              {data.draft.planStatus === 'ACTIVE' ? 'ATIVO' : 'RASCUNHO'}
+              {PLAN_STATUS_LABEL[data.draft.planStatus].toUpperCase()}
             </span>
           )}
           <button
@@ -555,7 +558,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
               <div className={cn('bg-primary/5 border border-primary/30 rounded-xl p-5 space-y-3', hasReference && 'shadow-[0_0_32px_hsl(var(--primary)/0.08)]')}>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold uppercase tracking-widest text-primary">
-                    {data.draft.planStatus === 'ACTIVE' ? 'Ativo' : 'Rascunho'}
+                    {PLAN_STATUS_LABEL[data.draft.planStatus]}
                   </span>
                   <span className="flex items-center gap-2">
                     {scoreDelta && !scoreDelta.neutral && (
@@ -596,7 +599,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
                     <tr className="border-b border-border">
                       <th className="text-left px-5 py-2.5 text-xs text-muted-foreground font-medium w-[40%]">Indicador</th>
                       {hasReference && <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Atual</th>}
-                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">{data.draft.planStatus === 'ACTIVE' ? 'Ativo' : 'Rascunho'}</th>
+                      <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">{PLAN_STATUS_LABEL[data.draft.planStatus]}</th>
                       {hasReference && <th className="text-right px-5 py-2.5 text-xs text-muted-foreground font-medium">Variação</th>}
                     </tr>
                   </thead>

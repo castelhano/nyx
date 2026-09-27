@@ -14,7 +14,7 @@ import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
 import type { VehiclePlanDiff } from '@nyx/schemas'
-import type { PreviewLineScoreDto } from '@nyx/schemas'
+import type { PreviewLineScoreDto, PlanActivationPreview } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
@@ -24,6 +24,7 @@ import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
+import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, parseStartDate, toDbDate } from '../plan-validity'
 
 interface Job {
   worker:    Worker | null
@@ -113,7 +114,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if ((plan.constraints as any)?.locked) throw new BadRequestException('Plan is locked')
-    if (plan.status === 'ACTIVE') throw new BadRequestException('Active plan cannot be regenerated')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Active plan cannot be regenerated')
 
     const lineIds = plan.lines.map(l => l.lineId)
     if (lineIds.length === 0) throw new BadRequestException('Plan has no lines defined')
@@ -1419,32 +1420,47 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return { plan: planWithLines, blocks }
   }
 
-  async activate(planId: string, force = false): Promise<{ conflict: { id: string; description: string | null } } | null> {
-    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
+  // docs/proposal/plan_activation_date_v1.md — the plan starts on `startDate` and becomes the
+  // ACTIVE (latest) one of its scope + dayType; the others reaching that day are cut to the day
+  // before (SUPERSEDED) or reverted, and their crew plans follow. Without `confirm` nothing is
+  // written: the result is the preview.
+  async activate(planId: string, startDate: unknown, confirm: boolean): Promise<PlanActivationPreview> {
+    const start = parseStartDate(startDate)
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { status: true, scopeId: true, dayTypeId: true } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if (plan.status === 'ACTIVE') throw new BadRequestException('Plan is already active')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Só é possível ativar um planejamento em rascunho')
 
-    const conflict = await this.prisma.vehiclePlan.findFirst({
-      where:  { id: { not: planId }, scopeId: plan.scopeId, dayTypeId: plan.dayTypeId, status: 'ACTIVE' },
-      select: { id: true, description: true },
-    })
+    const others = (await this.prisma.vehiclePlan.findMany({
+      where:  { id: { not: planId }, scopeId: plan.scopeId, dayTypeId: plan.dayTypeId, status: { not: 'DRAFT' } },
+      select: { id: true, description: true, validFrom: true, validTo: true },
+    })).map(o => ({ ...o, label: o.description || 'Sem descrição' }))
+    assertRetroactiveAllowed(others, start)
+    const effect = activationEffect(others, start)
 
-    if (conflict && !force) {
-      return { conflict: { id: conflict.id, description: conflict.description } }
+    const touched = [...effect.superseded, ...effect.reverted].map(e => e.id)
+    const crewPlans = touched.length
+      ? (await this.prisma.crewPlan.findMany({
+          where:  { vehiclePlanId: { in: touched }, status: { not: 'DRAFT' } },
+          select: { id: true, vehiclePlanId: true, description: true, validFrom: true, validTo: true },
+        })).map(c => ({ ...c, label: c.description || 'Sem descrição' }))
+      : []
+    const crewEffect = CrewPlanService.cascade(crewPlans, effect)
+
+    if (confirm) {
+      await this.prisma.$transaction(async (tx) => {
+        await applyEffect(tx.vehiclePlan, effect)
+        await applyEffect(tx.crewPlan, crewEffect)
+        await tx.vehiclePlan.update({ where: { id: planId }, data: { status: 'ACTIVE', validFrom: toDbDate(start), validTo: null } })
+      })
     }
-
-    const now = new Date()
-
-    await this.prisma.$transaction(async (tx) => {
-      if (conflict) {
-        await tx.vehiclePlan.update({ where: { id: conflict.id }, data: { status: 'DRAFT', validTo: now } })
-        // the superseded plan's ACTIVE crew plan is closed along with it
-        await CrewPlanService.closeActive(tx, conflict.id, now)
-      }
-      await tx.vehiclePlan.update({ where: { id: planId }, data: { status: 'ACTIVE', validFrom: now, validTo: null } })
-    })
-
-    return null
+    return {
+      startDate: start,
+      ...effect,
+      crewSuperseded: crewEffect.superseded,
+      crewReverted:   crewEffect.reverted,
+      warnings: [`Lembre de ativar uma escala a partir de ${fmtDay(start)}`],
+      applied: confirm,
+    }
   }
 
   // Consolidates TransitLine.metrics into the "Operação" figures shown by the line

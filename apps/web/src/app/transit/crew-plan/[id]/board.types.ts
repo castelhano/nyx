@@ -58,7 +58,7 @@ export interface BoardBlock {
 
 export interface CrewBoardData {
   plan: {
-    id: string; description: string | null; status: 'DRAFT' | 'ACTIVE'
+    id: string; description: string | null; status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED'
     validFrom: string | null; validTo: string | null; notes: string | null
     summary: CrewPlanSummary | null
     isCustomSettings: boolean
@@ -66,7 +66,7 @@ export interface CrewBoardData {
     signOffMinutes:   number
   }
   vehiclePlan: { id: string; description: string | null; status: string; scopeName: string; dayTypeName: string }
-  versions:    { id: string; description: string | null; status: 'DRAFT' | 'ACTIVE'; createdAt: string }[]
+  versions:    { id: string; description: string | null; status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED'; createdAt: string }[]
   operators:   { branchId: string; abbr: string; name: string }[]
   lineCodes:   string[]
   localities:  { id: string; name: string; abbr: string | null }[]

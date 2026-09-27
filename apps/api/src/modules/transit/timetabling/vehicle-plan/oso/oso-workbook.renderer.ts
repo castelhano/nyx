@@ -474,7 +474,8 @@ function renderOsoSheet(
   // own B4:Q4 span), not just the one cell the text sits in
   for (let c = 1; c <= 17; c++) ws.getCell(addr(c, 2)).border = { ...ws.getCell(addr(c, 2)).border, bottom: MEDIUM }
 
-  setCell(ws, 'A3', validFrom ? validFrom.getFullYear() : '', {
+  // @db.Date — a UTC midnight, so read in UTC
+  setCell(ws, 'A3', validFrom ? validFrom.getUTCFullYear() : '', {
     font: baseFont({ bold: true }), align: { horizontal: 'center', vertical: 'middle', textRotation: 90 },
     border: BOX, merge: 'A3:A6',
   })

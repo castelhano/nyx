@@ -41,6 +41,9 @@ import { LineSummaryView }            from './components/LineSummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
 import { BusyOverlay } from '@/components/ui/busy-overlay'
+import { Badge } from '@/components/ui/badge'
+import { vigenceBadge } from '@/lib/plan-vigence'
+import { ActivationModal } from '../../activation-modal'
 import type { ViewportSnapshot } from './engine/gantt.types'
 
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
@@ -189,8 +192,9 @@ export default function VehiclePlanPage() {
     activeJobId,
     isSolverDone,
     optimizeModalOpen, setOptimizeModalOpen,
-    handleOptimize, handleClearSettings, handleStop, handleDelete, handleActivate,
+    handleOptimize, handleClearSettings, handleStop, handleDelete,
   } = solver
+  const [activationOpen, setActivationOpen] = useState(false)
 
   // ── Vehicles ⇄ Crew switch ──────────────────────────────────────────────────
   // Opens the plan's ACTIVE crew plan (else the latest); with none yet, offers to create
@@ -377,7 +381,7 @@ export default function VehiclePlanPage() {
       ...(!activeJobId && canEdit ? [{
         label:    isPending ? 'Ativando…' : 'Ativar',
         icon:     Icons.CheckCircle,
-        onClick:  handleActivate,
+        onClick:  () => setActivationOpen(true),
         disabled: isPending,
         overflow: true,
       }] : []),
@@ -457,6 +461,20 @@ export default function VehiclePlanPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {isSaving && <BusyOverlay message="Salvando alterações…" />}
+
+      {activationOpen && (
+        <ActivationModal
+          title="Ativar planejamento"
+          endpoint={`/transit/vehicle-plan/${id}/activate`}
+          confirmLabel="Ativar"
+          onClose={() => setActivationOpen(false)}
+          onDone={() => {
+            setActivationOpen(false)
+            toast.success('Planejamento ativado')
+            void queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+          }}
+        />
+      )}
 
       {optimizeModalOpen && (
         <OptimizeModal
@@ -575,6 +593,7 @@ export default function VehiclePlanPage() {
                   await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
                 }}
               />
+              <Badge {...vigenceBadge(status, record.validFrom as string | null, record.validTo as string | null)} />
             </div>
           )}
         </div>

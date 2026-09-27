@@ -180,47 +180,6 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
     }
   }
 
-  async function handleActivate(force: boolean = false) {
-    // Passed directly as a topbar button's onClick (page.tsx), which may invoke it
-    // with a click event as the first arg instead of a boolean — guard against that.
-    if (typeof force !== 'boolean') force = false
-    if (!canUpdate) return
-    setIsPending(true)
-    try {
-      const res  = await apiFetch(`/transit/vehicle-plan/${id}/activate`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ force }),
-      })
-
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(extractError(json))
-      }
-
-      const json = await res.json().catch(() => null)
-
-      if (json?.conflict) {
-        const label = json.conflict.description || json.conflict.id || 'outro planejamento'
-        const ok = await confirm({
-          title:        'Substituir planejamento ativo',
-          description:  `"${label}" está ativo e será desativado. Deseja continuar?`,
-          confirmLabel: 'Continuar',
-          variant:      'safeConfirm',
-        })
-        if (ok) await handleActivate(true)
-        return
-      }
-
-      toast.success('Planejamento ativado')
-      await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao ativar')
-    } finally {
-      setIsPending(false)
-    }
-  }
-
   return {
     activeJobId,
     isSolverDone,
@@ -228,6 +187,6 @@ export function useSolverController({ id, canUpdate, record, ganttData, refetchG
     detailsOpen, setDetailsOpen,
     baselineSnapshot,
     solverProgress,
-    handleOptimize, handleClearSettings, handleStop, handleAssumeBest, handleDiscard, handleDelete, handleActivate,
+    handleOptimize, handleClearSettings, handleStop, handleAssumeBest, handleDiscard, handleDelete,
   }
 }

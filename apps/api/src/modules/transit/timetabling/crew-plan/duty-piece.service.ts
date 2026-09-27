@@ -36,6 +36,7 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     const parsed = createDutyPieceSchema.safeParse(dto)
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`))
     const input: PieceInput = parsed.data
+    await this.crewPlans.assertDutyEditable(input.dutyId)
     await this.validate(input)
 
     const created = await this.prisma.$transaction(async (tx) => {
@@ -52,6 +53,7 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
   override async update(id: string, dto: UpdateDutyPieceDto): Promise<DutyPiece> {
     const current = await this.prisma.dutyPiece.findUnique({ where: { id } })
     if (!current) throw new NotFoundException('dutyPiece not found')
+    await this.crewPlans.assertDutyEditable(current.dutyId)
     const patch = updateFields(dto)
     // dutyId is immutable — moving a piece to another duty = delete + create
     const input: PieceInput = { ...current, ...patch, dutyId: current.dutyId }
@@ -69,6 +71,7 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
   override async remove(id: string): Promise<void> {
     const current = await this.prisma.dutyPiece.findUnique({ where: { id }, select: { dutyId: true } })
     if (!current) throw new NotFoundException('dutyPiece not found')
+    await this.crewPlans.assertDutyEditable(current.dutyId)
     await this.prisma.$transaction(async (tx) => {
       await tx.dutyPiece.delete({ where: { id } })
       await this.renumber(tx, current.dutyId)

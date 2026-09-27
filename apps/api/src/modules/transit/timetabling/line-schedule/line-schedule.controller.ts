@@ -24,8 +24,8 @@ export class LineScheduleController extends BaseController<LineSchedule, CreateL
 
   @Post(':id/approve')
   @HttpCode(200)
-  approve(@Param('id') id: string, @Body('force') force: boolean) {
-    return this.lineScheduleService.approve(id, force ?? false)
+  approve(@Param('id') id: string, @Body('startDate') startDate: unknown, @Body('confirm') confirm?: boolean) {
+    return this.lineScheduleService.approve(id, startDate, confirm === true)
   }
 
   // Schedule editor — single commit for header + departures

@@ -3,6 +3,7 @@ import { Injectable, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { JobService } from '../../../core/job/job.service'
 import { VehiclePlanService } from './vehicle-plan.service'
+import { activationEffect, applyEffect, localToday, toDbDate } from '../plan-validity'
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
@@ -570,23 +571,21 @@ export class VehiclePlanImportService {
     })
     if (existing) return { id: existing.id, reused: true }
 
-    const previous = await db.lineSchedule.findFirst({
-      where:  { lineId, dayTypeId, status: 'APPROVED' },
-      select: { id: true },
-    })
-    const now     = new Date()
+    // auto-approved from today; the versions reaching today follow the activation rule
+    const today  = localToday()
+    const others = (await db.lineSchedule.findMany({
+      where:  { lineId, dayTypeId, status: { in: ['APPROVED', 'SUPERSEDED'] } },
+      select: { id: true, approvalRef: true, validFrom: true, validTo: true },
+    })).map((o: any) => ({ ...o, label: o.approvalRef }))
+    await applyEffect(db.lineSchedule, activationEffect(others, today))
     const created = await db.lineSchedule.create({
       data: {
         lineId, dayTypeId, approvalRef,
         status:     'APPROVED',
-        validFrom:  now,
-        approvedAt: now,
+        validFrom:  toDbDate(today),
+        approvedAt: new Date(),
       },
     })
-
-    if (previous) {
-      await db.lineSchedule.update({ where: { id: previous.id }, data: { status: 'SUPERSEDED', validTo: now } })
-    }
 
     return { id: created.id, reused: false }
   }

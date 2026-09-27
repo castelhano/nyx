@@ -1,3 +1,5 @@
+import { inForceOn, type Window } from '../plan-validity'
+
 // Shared by both DOP views: the days of the period and "which plan is in force on this day".
 // Days are local midnights — DayType resolution reads local date parts, so a 'YYYY-MM-DD'
 // parsed as UTC would shift every day back by one west of Greenwich.
@@ -17,13 +19,12 @@ export function periodDates(from: Date, to: Date): Date[] {
   return dates
 }
 
-// by day: a plan activated at any time of the day is in force on that day
-export function inForce(p: { validFrom: Date | null; validTo: Date | null }, date: Date): boolean {
-  const nextDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
-  return (!p.validFrom || p.validFrom < nextDay) && (!p.validTo || p.validTo >= date)
+// `date` is a local midnight of the period; validity columns are @db.Date
+export function inForce(p: Window, date: Date): boolean {
+  return inForceOn(p, formatDay(date))
 }
 
-// VehiclePlan ACTIVE for (dayType, line) in force on the date
+// non-DRAFT VehiclePlan for (dayType, line) in force on the date
 export function findActivePlan<P extends { dayTypeId: string; validFrom: Date | null; validTo: Date | null; lines: { lineId: string }[] }>(
   plans: P[], dayTypeId: string, lineId: string, date: Date,
 ): P | null {

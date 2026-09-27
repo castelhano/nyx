@@ -6,6 +6,8 @@ import {
   LineDeparture, CreateLineDepartureDto, UpdateLineDepartureDto,
 } from '@nyx/schemas'
 import { generateDraftRef } from './line-schedule.util'
+import type { PlanActivationPreview } from '@nyx/schemas'
+import { activationEffect, applyEffect, assertRetroactiveAllowed, parseStartDate, toDbDate } from '../plan-validity'
 
 export interface SaveDeparturesBatchDto {
   header?:     UpdateLineScheduleDto
@@ -86,30 +88,29 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     })
   }
 
-  async approve(id: string, force = false): Promise<{ conflict: { id: string; approvalRef: string } | null }> {
+  // docs/proposal/plan_activation_date_v1.md — approved from `startDate`; the other versions
+  // of the line + dayType reaching that day are cut to the day before (SUPERSEDED) or reverted.
+  // Without `confirm` nothing is written: the result is the preview.
+  async approve(id: string, startDate: unknown, confirm: boolean): Promise<PlanActivationPreview> {
+    const start = parseStartDate(startDate)
     const schedule = await this.prisma.lineSchedule.findUnique({ where: { id } })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
     if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be approved')
 
-    const conflict = await this.prisma.lineSchedule.findFirst({
-      where:  { id: { not: id }, lineId: schedule.lineId, dayTypeId: schedule.dayTypeId, status: 'APPROVED' },
-      select: { id: true, approvalRef: true },
-    })
+    const others = (await this.prisma.lineSchedule.findMany({
+      where:  { id: { not: id }, lineId: schedule.lineId, dayTypeId: schedule.dayTypeId, status: { in: ['APPROVED', 'SUPERSEDED'] } },
+      select: { id: true, approvalRef: true, validFrom: true, validTo: true },
+    })).map(o => ({ ...o, label: o.approvalRef }))
+    assertRetroactiveAllowed(others, start)
+    const effect = activationEffect(others, start)
 
-    if (conflict && !force) {
-      return { conflict }
+    if (confirm) {
+      await this.prisma.$transaction(async tx => {
+        await applyEffect(tx.lineSchedule, effect)
+        await tx.lineSchedule.update({ where: { id }, data: { status: 'APPROVED', validFrom: toDbDate(start), validTo: null, approvedAt: new Date() } })
+      })
     }
-
-    const now = new Date()
-
-    await this.prisma.$transaction(async tx => {
-      if (conflict) {
-        await tx.lineSchedule.update({ where: { id: conflict.id }, data: { status: 'SUPERSEDED', validTo: now } })
-      }
-      await tx.lineSchedule.update({ where: { id }, data: { status: 'APPROVED', validFrom: now, approvedAt: now } })
-    })
-
-    return { conflict: null }
+    return { startDate: start, ...effect, crewSuperseded: [], crewReverted: [], warnings: [], applied: confirm }
   }
 
   // Single commit for the schedule editor (header + departures). No status guard: editing an

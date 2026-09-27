@@ -32,9 +32,9 @@ export class CrewPlanController extends BaseController<CrewPlan, CreateCrewPlanD
 
   @Post(':id/activate')
   @HttpCode(200)
-  async activate(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
+  async activate(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body('startDate') startDate: unknown, @Body('confirm') confirm?: boolean) {
     await this.assertAbility(req.user, 'update')
-    return this.crewPlanService.activate(id)
+    return this.crewPlanService.activate(id, startDate, confirm === true)
   }
 
   @Post(':id/duplicate')

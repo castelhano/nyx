@@ -4,11 +4,16 @@ import {
   crewPlanSchema, crewSettingsSchema, dayTypePatternSchema,
   CrewPlan, CreateCrewPlanDto, UpdateCrewPlanDto, CrewSettings, CrewPlanSummary,
 } from '@nyx/schemas'
+import type { PlanActivationPreview } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { loadBlockRelief } from './relief-points'
 import { computeCrewPlan } from './crew-scoring.calc'
+import {
+  activationEffect, addDays, applyEffect, assertRetroactiveAllowed, dayOf, fmtDay, parseStartDate, toDbDate,
+  type ActivationEffect, type VersionRow,
+} from '../plan-validity'
 
 @Injectable()
 export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, UpdateCrewPlanDto> {
@@ -45,7 +50,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
 
   override async remove(id: string): Promise<void> {
     const plan = await this.prisma.crewPlan.findUnique({ where: { id }, select: { status: true } })
-    if (plan?.status === 'ACTIVE') throw new BadRequestException('Escala ativa não pode ser excluída')
+    if (plan && plan.status !== 'DRAFT') throw new BadRequestException('Escala ativa ou substituída não pode ser excluída')
     return super.remove(id)
   }
 
@@ -100,18 +105,33 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
   }
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
-
-  // Only while the VehiclePlan is ACTIVE. Stale duties or uncovered block spans block the
-  // activation (the schedule doesn't fit the vehicle plan); issues don't — the UI asks for
-  // confirmation using the returned summary.issueDutyCount.
-  async activate(id: string): Promise<CrewPlan> {
+  // docs/proposal/plan_activation_date_v1.md — the crew plan starts on `startDate`, inside its
+  // VehiclePlan's vigência (which may itself start in the future). Without `confirm` nothing is
+  // written: the result is the preview. Stale duties or uncovered block spans block the
+  // activation (the schedule doesn't fit the vehicle plan); issues don't — the UI asks.
+  async activate(id: string, startDate: unknown, confirm: boolean): Promise<PlanActivationPreview> {
+    const start = parseStartDate(startDate)
     const plan = await this.prisma.crewPlan.findUnique({
       where:  { id },
-      select: { status: true, vehiclePlanId: true, vehiclePlan: { select: { status: true } } },
+      select: { status: true, vehiclePlanId: true, vehiclePlan: { select: { status: true, validFrom: true, validTo: true } } },
     })
     if (!plan) throw new NotFoundException('crewPlan not found')
-    if (plan.status === 'ACTIVE') throw new BadRequestException('Escala já está ativa')
-    if (plan.vehiclePlan.status !== 'ACTIVE') throw new BadRequestException('Só é possível ativar a escala de um planejamento ativo')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Só é possível ativar uma escala em rascunho')
+    const vp = plan.vehiclePlan
+    if (vp.status === 'DRAFT') throw new BadRequestException('Só é possível ativar a escala de um planejamento ativo')
+    const vpFrom = vp.validFrom ? dayOf(vp.validFrom) : null
+    const vpTo   = vp.validTo ? dayOf(vp.validTo) : null
+    if ((vpFrom && start < vpFrom) || (vpTo && start > vpTo)) {
+      const window = vpTo ? `${fmtDay(vpFrom ?? start)} a ${fmtDay(vpTo)}` : `a partir de ${fmtDay(vpFrom ?? start)}`
+      throw new BadRequestException(`A escala precisa começar dentro da vigência do planejamento (${window})`)
+    }
+
+    const others = (await this.prisma.crewPlan.findMany({
+      where:  { vehiclePlanId: plan.vehiclePlanId, id: { not: id }, status: { not: 'DRAFT' } },
+      select: { id: true, description: true, validFrom: true, validTo: true },
+    })).map(o => ({ ...o, label: o.description || 'Sem descrição' }))
+    assertRetroactiveAllowed(others, start)
+    const effect = activationEffect(others, start)
 
     await this.recalculate(id)
     const { summary } = (await this.prisma.crewPlan.findUnique({ where: { id }, select: { summary: true } }))!
@@ -119,22 +139,41 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     if (s.staleDutyCount > 0) throw new BadRequestException(`${s.staleDutyCount} jornada(s) desatualizada(s) em relação ao planejamento`)
     if (s.uncoveredMinutes > 0) throw new BadRequestException(`${s.uncovered.length} trecho(s) de bloco sem motorista`)
 
-    const now = new Date()
-    await this.prisma.$transaction(async (tx) => {
-      await CrewPlanService.closeActive(tx, plan.vehiclePlanId, now)
-      await tx.crewPlan.update({ where: { id }, data: { status: 'ACTIVE', validFrom: now, validTo: null } })
-    })
-    return this.findOne(id)
+    if (confirm) {
+      await this.prisma.$transaction(async (tx) => {
+        await applyEffect(tx.crewPlan, effect)
+        await tx.crewPlan.update({ where: { id }, data: { status: 'ACTIVE', validFrom: toDbDate(start), validTo: null } })
+      })
+    }
+    return { startDate: start, ...effect, crewSuperseded: [], crewReverted: [], warnings: [], applied: confirm }
   }
 
-  // Closes the VehiclePlan's ACTIVE crew plan — on activating another one, and when the
-  // VehiclePlan itself is superseded (VehiclePlanService.activate). Same shape as the
-  // VehiclePlan supersession: back to DRAFT, validTo stamped.
-  static async closeActive(tx: Prisma.TransactionClient, vehiclePlanId: string, now: Date): Promise<void> {
-    await tx.crewPlan.updateMany({
-      where: { vehiclePlanId, status: 'ACTIVE' },
-      data:  { status: 'DRAFT', validTo: now },
-    })
+  // A VehiclePlan's crew plans follow its cut: the ones reaching past its new end are cut to it
+  // (or reverted when they'd only start after it); a reverted VehiclePlan takes all of them back.
+  static cascade(
+    crewPlans: (VersionRow & { vehiclePlanId: string })[],
+    vehicleEffect: ActivationEffect,
+  ): ActivationEffect {
+    const out: ActivationEffect = { superseded: [], reverted: [] }
+    for (const vp of vehicleEffect.superseded) {
+      const e = activationEffect(crewPlans.filter(c => c.vehiclePlanId === vp.id), addDays(vp.validTo, 1))
+      out.superseded.push(...e.superseded)
+      out.reverted.push(...e.reverted)
+    }
+    const reverted = new Set(vehicleEffect.reverted.map(r => r.id))
+    for (const c of crewPlans) if (reverted.has(c.vehiclePlanId)) out.reverted.push({ id: c.id, label: c.label })
+    return out
+  }
+
+  // a substituted crew plan is history — its duties can't change anymore
+  async assertEditable(crewPlanId: string): Promise<void> {
+    const plan = await this.prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { status: true } })
+    if (plan?.status === 'SUPERSEDED') throw new BadRequestException('Escala substituída não pode ser alterada — duplique para editar')
+  }
+
+  async assertDutyEditable(dutyId: string): Promise<void> {
+    const duty = await this.prisma.duty.findUnique({ where: { id: dutyId }, select: { crewPlanId: true } })
+    if (duty) await this.assertEditable(duty.crewPlanId)
   }
 
   // Copy within the same VehiclePlan — duties, pieces and activities (blocks are shared, so

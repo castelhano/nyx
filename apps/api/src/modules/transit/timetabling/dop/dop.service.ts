@@ -31,7 +31,7 @@ export class DopService {
         orderBy: { code: 'asc' },
       }),
       db.vehiclePlan.findMany({
-        where:  { scopeId, status: 'ACTIVE' },
+        where:  { scopeId, status: { in: ['ACTIVE', 'SUPERSEDED'] } },
         select: {
           id:        true,
           dayTypeId: true,

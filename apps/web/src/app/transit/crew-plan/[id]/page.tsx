@@ -31,6 +31,8 @@ import { exportDutiesCsv, exportBlocksCsv } from './export'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 import { Badge } from '@/components/ui/badge'
 import { BusyOverlay } from '@/components/ui/busy-overlay'
+import { vigenceBadge } from '@/lib/plan-vigence'
+import { ActivationModal } from '../../activation-modal'
 
 // Logical crew schedule of a VehiclePlan (docs/proposal/plan_crew_plan_v1.md). Every edit
 // is written immediately (no pending queue) — the server recalculates staleness, issues
@@ -83,7 +85,8 @@ export default function CrewPlanPage() {
   })
 
   const { guardNode, canUpdate, canDelete } = usePageGuard('transit', 'crew-plan', false, error ?? undefined)
-  const canEdit = canUpdate
+  // a substituted crew plan is history — read only (the API refuses writes too)
+  const canEdit = canUpdate && data?.plan.status !== 'SUPERSEDED'
 
   const [selectedDutyId, setSelectedDutyId] = useState<string | null>(null)
   const [draftStart, setDraftStart]         = useState<PieceDraftStart | null>(null)
@@ -94,6 +97,7 @@ export default function CrewPlanPage() {
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
   const [settingsOpen, setSettingsOpen]     = useState(false)
+  const [activationOpen, setActivationOpen] = useState(false)
   const [swapOpen, setSwapOpen]             = useState(false)
   const [generateOpen, setGenerateOpen]     = useState(false)
   const [filterOpen, setFilterOpen]         = useState(false)
@@ -372,7 +376,7 @@ export default function CrewPlanPage() {
       })
       if (!ok) return
     }
-    await run(() => api(`/transit/crew-plan/${id}/activate`, { method: 'POST' }), 'Escala ativada')
+    setActivationOpen(true)
   }
 
   async function handleDeletePlan() {
@@ -402,6 +406,7 @@ export default function CrewPlanPage() {
   // ── topbar & shortcuts ─────────────────────────────────────────────────────
 
   const isActive = data?.plan.status === 'ACTIVE'
+  const isDraft  = data?.plan.status === 'DRAFT'
   const versions = data?.versions ?? []
 
   useTopbarActions([
@@ -504,14 +509,14 @@ export default function CrewPlanPage() {
       onClick:  () => setSettingsOpen(true),
       overflow: true,
     }] : []),
-    ...(canEdit && data && !isActive ? [{
+    ...(canEdit && data && isDraft ? [{
       label:    'Ativar',
       icon:     Icons.CheckCircle,
       onClick:  () => void handleActivate(),
-      disabled: saving || data.vehiclePlan.status !== 'ACTIVE',
+      disabled: saving || data.vehiclePlan.status === 'DRAFT',
       overflow: true,
     }] : []),
-    ...(canDelete && data && !isActive ? [{
+    ...(canDelete && data && isDraft ? [{
       label:    'Excluir',
       icon:     Icons.Trash2,
       onClick:  () => void handleDeletePlan(),
@@ -541,6 +546,16 @@ export default function CrewPlanPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {busyMessage && <BusyOverlay message={busyMessage} />}
+      {activationOpen && (
+        <ActivationModal
+          title="Ativar escala"
+          endpoint={`/transit/crew-plan/${id}/activate`}
+          confirmLabel="Ativar"
+          onClose={() => setActivationOpen(false)}
+          onDone={() => { setActivationOpen(false); toast.success('Escala ativada'); void refetch() }}
+        />
+      )}
+
       {settingsOpen && (
         <CrewSettingsModal
           crewPlanId={id}
@@ -608,7 +623,7 @@ export default function CrewPlanPage() {
                 await refetch()
               }}
             />
-            <Badge label={isActive ? 'Ativo' : 'Rascunho'} color={isActive ? 'success' : 'muted'} />
+            <Badge {...vigenceBadge(data.plan.status, data.plan.validFrom, data.plan.validTo)} />
             <span>Planejamento: {data.vehiclePlan.description || data.vehiclePlan.dayTypeName}{data.vehiclePlan.status === 'ACTIVE' ? ' (ativo)' : ''}</span>
             {summary && summary.uncoveredMinutes > 0 && (
               <span className="text-red-600 dark:text-red-400">{summary.uncovered.length} trecho(s) sem motorista</span>

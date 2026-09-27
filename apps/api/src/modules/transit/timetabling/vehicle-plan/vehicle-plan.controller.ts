@@ -94,8 +94,8 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
 
   @Post(':id/activate')
   @HttpCode(200)
-  activate(@Param('id') id: string, @Body('force') force: boolean) {
-    return this.vehiclePlanService.activate(id, force ?? false)
+  activate(@Param('id') id: string, @Body('startDate') startDate: unknown, @Body('confirm') confirm?: boolean) {
+    return this.vehiclePlanService.activate(id, startDate, confirm === true)
   }
 
   // Manual trigger for the full recalculation (VehiclePlanLine/VehicleBlock/VehiclePlan

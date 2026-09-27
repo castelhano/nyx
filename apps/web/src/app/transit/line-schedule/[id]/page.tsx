@@ -30,6 +30,9 @@ import { useToast } from '@/lib/toast-context'
 import { apiFetch } from '@/lib/auth'
 import { msgs } from '@/lib/messages'
 import { cn, extractError } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { vigenceBadge } from '@/lib/plan-vigence'
+import { ActivationModal } from '../../activation-modal'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'line-schedule'
@@ -224,6 +227,7 @@ export default function LineScheduleDetailPage() {
   const [newNotes,       setNewNotes]       = useState('')
   const [creating,       setCreating]       = useState(false)
   const [deleting,       setDeleting]       = useState(false)
+  const [approveOpen,    setApproveOpen]    = useState(false)
 
   // ── data ──────────────────────────────────────────────────────────────
   const { data: schedule, error: scheduleError } = useRecordQuery<LineSchedule>(
@@ -697,32 +701,6 @@ export default function LineScheduleDetailPage() {
     }
   }
 
-  async function handleApprove(force = false) {
-    try {
-      const res = await apiFetch(`/${DOMAIN}/${RESOURCE}/${id}/approve`, {
-        method: 'POST',
-        body:   JSON.stringify({ force }),
-      })
-      if (!res.ok) { const json = await res.json().catch(() => ({})); throw json }
-      const json = await res.json()
-      if (json?.conflict) {
-        const ok = await confirm({
-          title:        'Já existe uma OSO aprovada para esta linha e tipo de dia',
-          description:  `A OSO ${json.conflict.approvalRef} será marcada como substituída. Confirma a aprovação desta?`,
-          confirmLabel: 'Aprovar mesmo assim',
-          cancelLabel:  'Cancelar',
-          variant:      'default',
-        })
-        if (ok) return handleApprove(true)
-        return
-      }
-      toast.success('OSO aprovada')
-      await queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE, id] })
-    } catch (err) {
-      toast.error(extractError(err as Record<string, unknown>, msgs.error.save()))
-    }
-  }
-
   // ── topbar ─────────────────────────────────────────────────────────────
 
   useTopbarActions(
@@ -732,7 +710,7 @@ export default function LineScheduleDetailPage() {
         ]
       : [
           ...(canCreate ? [{ label: 'Duplicar', icon: Icons.Copy, overflow: true, onClick: () => { void handleDuplicate() }, variant: 'outline' as const }] : []),
-          ...(schedule?.status === 'DRAFT' && canUpdate ? [{ label: 'Aprovar', icon: Icons.Check, onClick: () => { void handleApprove(false) } }] : []),
+          ...(schedule?.status === 'DRAFT' && canUpdate ? [{ label: 'Aprovar', icon: Icons.Check, onClick: () => setApproveOpen(true) }] : []),
           ...(canDelete ? [{ label: deleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, overflow: true, onClick: () => { void handleDelete() }, variant: 'destructive' as const, disabled: deleting }] : []),
           { label: 'Limpar', icon: Icons.Undo2, onClick: () => { void handleDiscard() }, variant: 'outline', disabled: !hasUnsavedWork },
           { label: 'Salvar', icon: Icons.Save, onClick: () => { void handleSave() }, primary: true, disabled: !isDirty || !canUpdate },
@@ -898,6 +876,19 @@ export default function LineScheduleDetailPage() {
 
   return (
     <div className="min-h-full bg-background text-foreground flex flex-col">
+      {approveOpen && (
+        <ActivationModal
+          title="Aprovar OSO"
+          endpoint={`/${DOMAIN}/${RESOURCE}/${id}/approve`}
+          confirmLabel="Aprovar"
+          onClose={() => setApproveOpen(false)}
+          onDone={() => {
+            setApproveOpen(false)
+            toast.success('OSO aprovada')
+            void queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE, id] })
+          }}
+        />
+      )}
       <div className="px-6 pt-4">
         <AutoBreadcrumb domain={DOMAIN} resource={RESOURCE} id={id} recordName={schedule?.approvalRef} contextParams={contextParams} />
       </div>
@@ -914,14 +905,13 @@ export default function LineScheduleDetailPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className={cn(
-                  'text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full border',
-                  schedule!.status === 'APPROVED'
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-                    : 'bg-muted text-muted-foreground border-border',
-                )}>
-                  {STATUS_LABELS[schedule!.status]}
-                </span>
+                {(schedule!.status === 'APPROVED' || schedule!.status === 'SUPERSEDED') ? (
+                  <Badge {...vigenceBadge(schedule!.status, schedule!.validFrom as string | null, schedule!.validTo as string | null, 'APROVADA')} />
+                ) : (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full border bg-muted text-muted-foreground border-border">
+                    {STATUS_LABELS[schedule!.status]}
+                  </span>
+                )}
                 {schedule!.status === 'APPROVED' && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
                     <Icons.AlertTriangle className="w-3 h-3" /></span>
