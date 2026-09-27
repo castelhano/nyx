@@ -340,6 +340,7 @@ export function computeCrewPlan(input: {
         add(range.splitInterval.modifier, rangeV(gaps.length ? Math.max(...gaps.map(g => g.minutes)) : 0, range.splitInterval))
       }
       if (range.vehicleChanges.active) add(range.vehicleChanges.modifier, rangeV(vehicleChanges, range.vehicleChanges))
+      if (range.lineChanges.active)    add(range.lineChanges.modifier, rangeV(lineChanges, range.lineChanges))
     }
   }
 
@@ -370,6 +371,7 @@ export function computeCrewPlan(input: {
   if (input.duties.length > 0) {
     if (range.overtimeRatio.active) add(range.overtimeRatio.modifier, rangeV(totalWork > 0 ? (totalOvertime / totalWork) * 100 : 0, range.overtimeRatio))
     if (range.splitRatio.active)    add(range.splitRatio.modifier, rangeV(((byKind.SPLIT ?? 0) / input.duties.length) * 100, range.splitRatio))
+    if (range.tripperRatio.active)  add(range.tripperRatio.modifier, rangeV(((byKind.TRIPPER ?? 0) / input.duties.length) * 100, range.tripperRatio))
     const anchored = settings.anchored
     if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
       add(anchored.dutyCount.weight, anchoredV(driverDuties, Math.ceil(blockMinutes / range.workTime.idealMin), anchored.dutyCount))

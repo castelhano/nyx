@@ -1,6 +1,7 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
 import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
 import { subtractSpans } from '../crew-plan/relief-points'
+import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 
 // Crew solver — construction stage (pure, no Prisma). See docs/proposal/plan_crew_solver_v1.md.
 //
@@ -21,6 +22,11 @@ import { subtractSpans } from '../crew-plan/relief-points'
 //    type's range) or SPLIT duties (gap within range.splitInterval, when active); what's left
 //    becomes a TRIPPER.
 // 4. The result is evaluated by computeCrewPlan — the same score/issues the screen shows.
+//
+// Choices (which cut, which partner) are weighed in the plan score's own units: each criterion
+// costs what it would take off the score (modifier × (1 − rangeV)). A SPLIT also costs the
+// splitRatio modifier, so a STRAIGHT wins when everything else ties; crew travel is only a
+// tie-break (TRAVEL_COST per minute).
 
 type Span = { startMinutes: number; endMinutes: number }
 
@@ -62,8 +68,14 @@ export interface CrewSolverResult {
 
 const len = (s: Span) => s.endMinutes - s.startMinutes
 const overlaps = (a: Span, b: Span) => Math.min(a.endMinutes, b.endMinutes) > Math.max(a.startMinutes, b.startMinutes)
-// 0 inside [idealMin, idealMax], growing linearly outside
-const rangeDistance = (v: number, c: RangeCriterion) => (v < c.idealMin ? c.idealMin - v : v > c.idealMax ? v - c.idealMax : 0)
+// what the criterion takes off the plan score for this value — 0 when inactive
+const penalty = (c: RangeCriterion, v: number) => (c.active ? c.modifier * (1 - rangeV(v, c)) : 0)
+const TRAVEL_COST = 0.1
+
+// lines driven in order (consecutive repeats merged) and the changes among them
+type LineSeq = { first: string | null; last: string | null; changes: number }
+const joinLines = (a: LineSeq, b: LineSeq): number =>
+  a.changes + b.changes + (a.last && b.first && a.last !== b.first ? 1 : 0)
 
 // per-block lookups the construction needs
 class BlockView {
@@ -96,6 +108,15 @@ class BlockView {
     return mealStopAt(this.block, minutes, this.mealStops, localityId)
   }
 
+  // same sequence computeCrewPlan counts lineChanges on: the trips overlapping [from, to]
+  lines(from: number, to: number): LineSeq {
+    const seq: string[] = []
+    for (const t of this.block.trips) {
+      if (t.arrivalMinutes > from && t.departureMinutes < to && seq[seq.length - 1] !== t.lineId) seq.push(t.lineId)
+    }
+    return { first: seq[0] ?? null, last: seq[seq.length - 1] ?? null, changes: Math.max(0, seq.length - 1) }
+  }
+
   // idle stretches (no trip/deadrun) inside [from, to] that start at a relief point
   idleGaps(from: number, to: number): Span[] {
     return subtractSpans({ startMinutes: from, endMinutes: to }, this.moving).filter(g => this.pointAt.has(g.startMinutes))
@@ -109,6 +130,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   const maxDrive = settings.maxContinuousDrivingMinutes
   const minPiece = settings.minPieceMinutes
   const work     = (spans: number, breakMinutes: number) => spans - (meal.isPaid ? 0 : breakMinutes) + signs
+  const splitCost = range.splitRatio.active ? range.splitRatio.modifier : 0
   // hard limits: ceilings of the active criteria only
   const maxWork   = range.workTime.active ? range.workTime.ceiling : Infinity
   const maxSpread = range.spread.active ? range.spread.ceiling : Infinity
@@ -123,7 +145,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   }
 
   const duties: SolverDuty[] = []
-  const loose: { piece: SolverPiece; branchId: string | null }[] = []
+  const loose: { piece: SolverPiece; branchId: string | null; lines: LineSeq }[] = []
   const piece = (v: BlockView, from: number, to: number): SolverPiece => ({
     vehicleBlockId: v.block.id, startMinutes: from, endMinutes: to,
     startLocalityId: v.locality(from), endLocalityId: v.locality(to),
@@ -181,7 +203,9 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
             const w = g.split ? before + after + signs : work(cut - pos, len(g))
             if (w > maxWork || cut - pos + signs > maxSpread) break
             if (w < range.workTime.floor || !leavesValidRest(cut, end)) continue
-            const cost = rangeDistance(w, range.workTime) + (g.split ? 60 + rangeDistance(len(g), range.splitInterval) : 0)
+            const cost = penalty(range.workTime, w) + penalty(range.spread, cut - pos + signs)
+              + (g.split ? splitCost + penalty(range.splitInterval, len(g)) : penalty(range.mealBreak, len(g)))
+              + penalty(range.lineChanges, v.lines(pos, cut).changes)
             if (!best || cost < best.cost) best = { cut, gap: g, cost }
           }
         }
@@ -204,7 +228,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         const cut = segEnd - pos <= maxDrive && segEnd - pos <= pieceTarget * 1.5 ? segEnd
           : (fit.length ? fit : reachable).reduce<number | undefined>((b, c) => (b == null || Math.abs(c - pos - pieceTarget) < Math.abs(b - pos - pieceTarget) ? c : b), undefined)
             ?? cuts.find(c => c > pos)!
-        loose.push({ piece: piece(v, pos, cut), branchId: v.block.branchId })
+        loose.push({ piece: piece(v, pos, cut), branchId: v.block.branchId, lines: v.lines(pos, cut) })
         pos = cut
       }
     }
@@ -215,7 +239,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   const used = new Set<number>()
   for (let i = 0; i < loose.length; i++) {
     if (used.has(i)) continue
-    const { piece: a, branchId } = loose[i]
+    const { piece: a, branchId, lines: linesA } = loose[i]
     const va = views.get(a.vehicleBlockId)!
     let best: { j: number; duty: SolverDuty; cost: number } | null = null
 
@@ -229,20 +253,22 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       if (spread > maxSpread) continue
 
       const rest = gap - travel
-      let duty: SolverDuty | null = null, penalty = 0
+      let duty: SolverDuty | null = null, kindCost = 0
       if (rest >= meal.minMinutes && rest <= meal.maxMinutes && va.mealAllowed(a.endMinutes, a.endLocalityId)) {
         const brk = { startMinutes: a.endMinutes, endMinutes: a.endMinutes + rest }
         duty = { kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [brk] }
+        kindCost = penalty(range.mealBreak, rest)
       } else if (range.splitInterval.active && gap > meal.maxMinutes && gap >= range.splitInterval.floor && gap <= range.splitInterval.ceiling) {
         duty = { kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }
-        penalty = 60 + rangeDistance(gap, range.splitInterval)
+        kindCost = splitCost + penalty(range.splitInterval, gap)
       }
       if (!duty) continue
 
       const w = work(len(a) + len(b), duty.breaks.reduce((s, x) => s + len(x), 0))
       if (w > maxWork) continue
-      const cost = rangeDistance(w, range.workTime) + penalty + travel
-        + (a.vehicleBlockId !== b.vehicleBlockId ? 30 : 0) + (w < range.workTime.floor ? 200 : 0)
+      const cost = penalty(range.workTime, w) + penalty(range.spread, spread) + kindCost + travel * TRAVEL_COST
+        + penalty(range.vehicleChanges, a.vehicleBlockId !== b.vehicleBlockId ? 1 : 0)
+        + penalty(range.lineChanges, joinLines(linesA, loose[j].lines))
       if (!best || cost < best.cost) best = { j, duty, cost }
     }
 

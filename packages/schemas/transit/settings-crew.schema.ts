@@ -19,8 +19,12 @@ const rangeDefault = {
   overtimeRatio:  { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 5,   ceiling: 20  },
   // % of SPLIT duties in the plan
   splitRatio:     { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 20,  ceiling: 40  },
+  // % of TRIPPER duties (meia jornada) in the plan
+  tripperRatio:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 10,  ceiling: 30  },
   // vehicle changes per duty
   vehicleChanges: { active: true, modifier: 5,  floor: 0,   idealMin: 0,   idealMax: 1,   ceiling: 3   },
+  // line changes per duty — counted apart from vehicle changes (a change of both scores twice)
+  lineChanges:    { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 2   },
 }
 
 const anchoredDefault = {
@@ -53,7 +57,10 @@ export const crewSettingsSchema = withMeta(z.object({
     splitInterval:  rangeCriterionSchema,
     overtimeRatio:  rangeCriterionSchema,
     splitRatio:     rangeCriterionSchema,
+    // own defaults: settings stored before these criteria existed still parse
+    tripperRatio:   rangeCriterionSchema.default(rangeDefault.tripperRatio),
     vehicleChanges: rangeCriterionSchema,
+    lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
   }).default(rangeDefault),
 
   anchored: z.object({
