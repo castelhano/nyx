@@ -18,10 +18,9 @@ import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
 import { BreakModal, type BreakDraft } from './components/BreakModal'
 import { VehicleSwapModal } from './components/VehicleSwapModal'
-import { GenerateCrewModal } from './components/GenerateCrewModal'
+import { OptimizeCrewModal, type OptimizeTab } from './components/OptimizeCrewModal'
 import { DutyPanel, DUTY_FORM_ID, type DutyPatch, type ActivityInput } from './components/DutyPanel'
 import { PlanPanel } from './components/PlanPanel'
-import { CrewSettingsModal } from './components/CrewSettingsModal'
 import { DutyBoard } from './components/DutyBoard'
 import { useTimeRange, LABEL_W } from './components/Timeline'
 import { CrewFilterBar } from './components/CrewFilterBar'
@@ -96,10 +95,9 @@ export default function CrewPlanPage() {
   const [busyMessage, setBusyMessage]       = useState<string | null>(null)
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
-  const [settingsOpen, setSettingsOpen]     = useState(false)
   const [activationOpen, setActivationOpen] = useState(false)
   const [swapOpen, setSwapOpen]             = useState(false)
-  const [generateOpen, setGenerateOpen]     = useState(false)
+  const [optimizeTab, setOptimizeTab]       = useState<OptimizeTab | null>(null)
   const [filterOpen, setFilterOpen]         = useState(false)
   const [filter, setFilter]                 = useState<CrewFilter>(EMPTY_FILTER)
   const [pinnedBlockIds, setPinnedBlockIds] = useState<Set<string>>(new Set())
@@ -475,9 +473,10 @@ export default function CrewPlanPage() {
       icon:     Icons.Sparkles,
       size:     'sm' as const,
       variant:  'ghost' as const,
-      onClick:  () => setGenerateOpen(true),
+      onClick:  () => setOptimizeTab('panel'),
       menu: [
-        { label: 'Gerar escala', icon: Icons.Play, onClick: () => setGenerateOpen(true) },
+        { label: 'Gerar escala',  icon: Icons.Play,      onClick: () => setOptimizeTab('panel') },
+        { label: 'Configurações', icon: Icons.Settings2, onClick: () => setOptimizeTab('config') },
         {
           label:    isActive ? 'Reduzir trocas de carro' : 'Reduzir trocas de carro',
           icon:     Icons.ArrowLeftRight,
@@ -495,20 +494,6 @@ export default function CrewPlanPage() {
       disabled: saving,
       keybind:  'Alt+G',
     }] : []),
-    ...(data ? [{
-      label:    'CSV',
-      icon:     Icons.FileSpreadsheet,
-      onClick:  () => view === 'duties'
-        ? exportDutiesCsv(data, visibleDuties, blockById)
-        : exportBlocksCsv(data, visibleBlocks),
-      overflow: true,
-    }] : []),
-    ...(data ? [{
-      label:    'Configurações',
-      icon:     Icons.Settings2,
-      onClick:  () => setSettingsOpen(true),
-      overflow: true,
-    }] : []),
     ...(canEdit && data && isDraft ? [{
       label:    'Ativar',
       icon:     Icons.CheckCircle,
@@ -516,7 +501,15 @@ export default function CrewPlanPage() {
       disabled: saving || data.vehiclePlan.status === 'DRAFT',
       overflow: true,
     }] : []),
-    ...(canDelete && data && isDraft ? [{
+    ...(data ? [{
+      label:    'Baixar CSV',
+      icon:     Icons.FileSpreadsheet,
+      onClick:  () => view === 'duties'
+        ? exportDutiesCsv(data, visibleDuties, blockById)
+        : exportBlocksCsv(data, visibleBlocks),
+      overflow: true,
+    }] : []),
+    ...(canDelete && data && isDraft ? [{ label: '', separator: true, overflow: true }, {
       label:    'Excluir',
       icon:     Icons.Trash2,
       onClick:  () => void handleDeletePlan(),
@@ -535,7 +528,7 @@ export default function CrewPlanPage() {
   useShortcut('esc', () => {
     if (draftStart) setDraftStart(null)
     else if (selectedDutyId) setSelectedDutyId(null)
-  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !breakDraft && !settingsOpen && !swapOpen && !generateOpen })
+  }, { display: false, origin: ORIGIN, enabled: !assignDraft && !breakDraft && !optimizeTab && !swapOpen })
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -556,15 +549,6 @@ export default function CrewPlanPage() {
         />
       )}
 
-      {settingsOpen && (
-        <CrewSettingsModal
-          crewPlanId={id}
-          canEdit={canEdit}
-          onChanged={() => void refetch()}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
-
       {assignDraft && data && (
         <AssignPieceModal
           block={assignDraft.block}
@@ -579,13 +563,15 @@ export default function CrewPlanPage() {
         />
       )}
 
-      {generateOpen && data && (
-        <GenerateCrewModal
+      {optimizeTab && data && (
+        <OptimizeCrewModal
           crewPlanId={id}
+          initialTab={optimizeTab}
           current={data.plan.summary}
           lockedCount={data.duties.filter(d => d.locked).length}
-          onCreated={(newId) => { setGenerateOpen(false); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
-          onClose={() => setGenerateOpen(false)}
+          onSettingsSaved={() => void refetch()}
+          onCreated={(newId) => { setOptimizeTab(null); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
+          onClose={() => setOptimizeTab(null)}
         />
       )}
 

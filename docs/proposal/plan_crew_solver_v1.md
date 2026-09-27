@@ -196,7 +196,7 @@ o **Reduzir trocas de carro** que já existe.
 3. **Worker + SSE + modal** — execução, progresso, propostas, criação da versão, Completar,
    replicação de papéis. *Implementado (2026-09-27)*: `crew-solver.worker.ts`,
    `CrewSolverService`/`CrewSolverController` (`POST /transit/crew-plan/:id/solver/start |
-   stop | accept`, SSE `…/solver/stream?jobId=`), `GenerateCrewModal.tsx`. Detalhes:
+   stop | accept`, SSE `…/solver/stream?jobId=`), `OptimizeCrewModal.tsx`. Detalhes:
    - o job guarda as mensagens (replay) — a construção leva milissegundos e o SSE do cliente
      pode conectar depois do fim; o SSE não leva as jornadas da proposta, só o resumo;
    - "Criar versão" grava a nova escala em 3 inserts em lote (ids gerados no servidor) e
