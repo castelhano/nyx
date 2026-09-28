@@ -1,6 +1,7 @@
 'use client'
 
 import { Icons } from '@/lib/icons'
+import { vehicleBlockIssueText } from '@nyx/schemas'
 import type { LayoutRow } from '../engine/layout/layout.types'
 import type { GanttBlock } from '../views/vehicles.view'
 
@@ -35,6 +36,7 @@ export function RowList({ rows, scrollY, height, onInfoClick, showPinToggle, pin
           const summary = block?.summary ?? null
           const trips   = block?.blockTrips?.length ?? 0
           const locked  = block?.constraints?.locked === true
+          const issues  = block?.issues ?? []
 
           return (
             <div
@@ -73,6 +75,14 @@ export function RowList({ rows, scrollY, height, onInfoClick, showPinToggle, pin
                   >
                     <Icons.Info className="w-3.5 h-3.5" />
                   </button>
+                )}
+                {issues.length > 0 && (
+                  <span
+                    className="p-1 text-amber-600 dark:text-amber-400"
+                    title={`Lançamento a revisar:\n${issues.map(vehicleBlockIssueText).join('\n')}`}
+                  >
+                    <Icons.AlertTriangle className="w-3.5 h-3.5" />
+                  </span>
                 )}
                 {locked && (
                   <span className="p-1 text-amber-500">

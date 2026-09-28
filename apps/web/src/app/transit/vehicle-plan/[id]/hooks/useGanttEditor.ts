@@ -105,9 +105,12 @@ export function findAnchoredDeadrunIds(block: GanttBlock, tripIds: string[]): st
 // its last productive trip's arrival (deadruns/breaks never enter it). Not
 // "does any trip match" — a block runs trips all day, so that reading matched
 // almost every block and never actually narrowed anything down.
-export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number }
+// minutes null = no time criterion; issuesOnly = only blocks with VehicleBlock.issues
+export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean }
 
 function blockMatchesFilter(block: GanttBlock, filter: BlockFilter): boolean {
+  if (filter.issuesOnly && !block.hasIssues) return false
+  if (filter.minutes == null) return true
   const trips = block.blockTrips
   if (trips.length === 0) return false
   const value = filter.field === 'start'
@@ -793,6 +796,9 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     const alreadyPendingAccess = new Set(
       pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.type === 'ACCESS').map(a => a.blockId),
     )
+    const pendingAccessTrips = new Set(
+      pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.type === 'ACCESS').map(a => a.blockTripId),
+    )
     const alreadyPendingReturn = new Set(
       pendingAdds.filter((a): a is PendingAddDeadrun => a._kind === 'deadrun' && a.type === 'RETURN').map(a => a.blockId),
     )
@@ -806,6 +812,16 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       const last   = sorted[sorted.length - 1]
       if (canAddAccess(first, block) && !alreadyPendingAccess.has(block.id)) savedCandidates.push({ block, bt: first, kind: 'ACCESS' })
       if (canAddReturn(last, block)  && !alreadyPendingReturn.has(block.id)) savedCandidates.push({ block, bt: last,  kind: 'RETURN' })
+      // back in service after a RETURN with no ACCESS (MISSING_ACCESS, block-validation.ts):
+      // the vehicle has to leave the depot again
+      for (const bt of sorted.slice(1)) {
+        const dep  = bt.trip.departureMinutes
+        const prev = [
+          ...block.blockTrips.filter(t => t.id !== bt.id).map(t => ({ type: 'TRIP', arrivalMinutes: t.trip.arrivalMinutes })),
+          ...block.blockDeadruns,
+        ].filter(e => e.arrivalMinutes <= dep).sort((a, b) => b.arrivalMinutes - a.arrivalMinutes)[0]
+        if (prev?.type === 'RETURN' && !pendingAccessTrips.has(bt.id)) savedCandidates.push({ block, bt, kind: 'ACCESS' })
+      }
     }
 
     const savedResults = await Promise.all(savedCandidates.map(async c => {
@@ -926,9 +942,15 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       }
     }
 
+    // modeling errors as of the last save (VehicleBlock.issues) — the ones this run stages a
+    // fix for (MISSING_ACCESS...) clear on Salvar, the rest are for review
+    const flagged = ganttData.blocks.filter(b => b.hasIssues).length
+    const flaggedNote = flagged > 0 ? ` · ${flagged} ${flagged === 1 ? 'carro' : 'carros'} com pendências de lançamento (filtro "Com pendências")` : ''
+
     if (newDeadrunEntries.length === 0 && pendingUsable.length === 0 && intervalEntries.length === 0) {
-      if (totalFailed > 0) toast.error(`Nenhuma lacuna pôde ser preparada — ${totalFailed} sem garagem ou mapeamento de viagem compatível`)
-      else toast.success('Nenhuma lacuna de acesso/recolhida/intervalo encontrada — plano já está completo')
+      if (totalFailed > 0) toast.error(`Revisão do plano concluída — nenhuma lacuna pôde ser preparada — ${totalFailed} sem garagem ou mapeamento de viagem compatível${flaggedNote}`)
+      else if (flagged > 0) toast.warning(`Revisão do plano concluída — nenhuma lacuna de acesso/recolhida/intervalo encontrada${flaggedNote}`)
+      else toast.success('Revisão do plano concluída — nenhuma lacuna de acesso/recolhida/intervalo, plano completo')
       return
     }
 
@@ -961,8 +983,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       returnCount > 0   ? `${returnCount} ${returnCount === 1 ? 'recolhida' : 'recolhidas'}` : null,
       intervalCount > 0 ? `${intervalCount} ${intervalCount === 1 ? 'intervalo' : 'intervalos'}` : null,
     ].filter(Boolean).join(' e ')
-    toast.success(`${parts} preparados` + (fallbackDepotName && pendingUsable.length > 0 ? ` (novos blocos usando garagem ${fallbackDepotName})` : '') + ' — use Salvar para persistir'
-      + (totalFailed > 0 ? ` (${totalFailed} sem garagem ou mapeamento compatível)` : ''))
+    toast.success(`Revisão do plano concluída — ${parts} preparados` + (fallbackDepotName && pendingUsable.length > 0 ? ` (novos blocos usando garagem ${fallbackDepotName})` : '') + ' — use Salvar para persistir'
+      + (totalFailed > 0 ? ` (${totalFailed} sem garagem ou mapeamento compatível)` : '') + flaggedNote)
   }
 
   function handleAdjustCycle() {

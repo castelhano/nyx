@@ -88,6 +88,19 @@ export const vehicleBlockSchema = withMeta(
       showInForm:     false,
     }),
 
+    // VehicleBlockIssue[] (block-validation.ts) — written by VehiclePlanService.recalculate
+    issues: z.array(z.record(z.string(), z.unknown())).optional().nullable().meta({
+      label:          'Pendências',
+      listVisibility: 'never',
+      showInForm:     false,
+    }),
+
+    hasIssues: z.boolean().default(false).meta({
+      label:          'Com pendências',
+      listVisibility: 'hidden',
+      showInForm:     false,
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CrewRole, ReliefPoint } from '@nyx/schemas'
 import { Icons }            from '@/lib/icons'
@@ -571,6 +572,7 @@ export default function CrewPlanPage() {
   if (guardNode) return guardNode
 
   const summary = data?.plan.summary
+  const flaggedBlocks = data?.blocks.filter(b => b.issues.length > 0).length ?? 0
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -609,6 +611,8 @@ export default function CrewPlanPage() {
           onApplied={() => { closeOptimize(); setSelectedDutyId(null); void refetchSolverJob(); void refetch(); toast.success('Proposta aplicada na escala') }}
           current={data.plan.summary}
           lockedCount={data.duties.filter(d => d.locked).length}
+          flaggedBlocks={flaggedBlocks}
+          vehiclePlanId={data.vehiclePlan.id}
           onSettingsSaved={() => void refetch()}
           onCreated={(newId) => { closeOptimize(); void refetchSolverJob(); toast.success('Nova versão da escala criada'); router.push(`/transit/crew-plan/${newId}`) }}
           onClose={() => { closeOptimize(); void refetchSolverJob() }}
@@ -653,6 +657,11 @@ export default function CrewPlanPage() {
             <span>Planejamento: {data.vehiclePlan.description || data.vehiclePlan.dayTypeName}{data.vehiclePlan.status === 'ACTIVE' ? ' (ativo)' : ''}</span>
             {summary && summary.uncoveredMinutes > 0 && (
               <span className="text-red-600 dark:text-red-400">{summary.uncovered.length} trecho(s) sem motorista</span>
+            )}
+            {flaggedBlocks > 0 && (
+              <Link href={`/transit/vehicle-plan/${data.vehiclePlan.id}`} className="text-amber-600 dark:text-amber-400 hover:underline" title="Erros de lançamento no planejamento de veículos — veja o ícone na linha do carro">
+                {flaggedBlocks} carro(s) com lançamento a revisar
+              </Link>
             )}
             {summary && summary.staleDutyCount > 0 && (
               <span className="text-red-600 dark:text-red-400">{summary.staleDutyCount} jornada(s) desatualizada(s)</span>

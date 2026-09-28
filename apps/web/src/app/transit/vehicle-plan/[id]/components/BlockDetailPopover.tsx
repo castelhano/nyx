@@ -6,6 +6,7 @@ import { Icons }    from '@/lib/icons'
 import { cn }       from '@/lib/utils'
 import { apiFetch } from '@/lib/auth'
 import type { GanttBlock } from '../views/vehicles.view'
+import { vehicleBlockIssueText } from '@nyx/schemas'
 
 interface Props {
   block:    GanttBlock
@@ -142,7 +143,7 @@ export function BlockDetailPopover({ block, label, screenY, screenX, onClose, on
   return (
     <div
       ref={ref}
-      className="absolute z-50 bg-popover border border-border rounded-lg shadow-lg w-56 text-sm"
+      className="absolute z-50 bg-popover border border-border rounded-lg shadow-lg w-64 text-sm"
       style={{ top: screenY, left: screenX }}
     >
       {/* header */}
@@ -214,6 +215,17 @@ export function BlockDetailPopover({ block, label, screenY, screenX, onClose, on
           <span className="font-medium">{block.blockTrips.length}</span>
         </div>
       </div>
+
+      {/* modeling errors (VehicleBlock.issues) */}
+      {block.issues && block.issues.length > 0 && (
+        <div className="px-3 py-2 border-t border-border/60 text-xs space-y-1">
+          <div className="flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400">
+            <Icons.AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            Lançamento a revisar
+          </div>
+          {block.issues.map(vehicleBlockIssueText).map((line, i) => <div key={i} className="text-muted-foreground">{line}</div>)}
+        </div>
+      )}
 
       {/* lock */}
       <div className="px-3 py-1.5 border-t border-border/60">

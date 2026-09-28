@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { swatchColor, lineIndexByCode } from '@/lib/palette'
-import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole } from '@nyx/schemas'
+import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole, VehicleBlockIssue } from '@nyx/schemas'
 
 // Shape of GET /transit/crew-plan/:id/board (CrewPlanService.getBoard)
 
@@ -54,6 +54,8 @@ export interface BoardBlock {
   trips:       { id: string; departureMinutes: number; arrivalMinutes: number; lineCode: string; direction: string }[]
   deadruns:    { id: string; type: string; departureMinutes: number; arrivalMinutes: number }[]
   intervals:   { id: string; departureMinutes: number; arrivalMinutes: number; intervalTypeId: string; intervalTypeName: string }[]
+  // modeling errors on the vehicle plan (VehicleBlock.issues) — fixed there, not here
+  issues:      VehicleBlockIssue[]
 }
 
 export interface CrewBoardData {

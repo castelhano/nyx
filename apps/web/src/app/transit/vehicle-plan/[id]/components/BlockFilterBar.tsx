@@ -17,13 +17,17 @@ interface Props {
 export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props) {
   const [field,     setField]     = useState<BlockFilter['field']>(filter?.field ?? 'start')
   const [relation,  setRelation]  = useState<BlockFilter['relation']>(filter?.relation ?? 'after')
-  const [timeLabel, setTimeLabel] = useState(filter ? minutesToLabel(filter.minutes) : '')
+  const [timeLabel, setTimeLabel] = useState(filter?.minutes != null ? minutesToLabel(filter.minutes) : '')
+  const [issuesOnly, setIssuesOnly] = useState(filter?.issuesOnly ?? false)
 
-  // The filter only kicks in once all three fields have a value — field/relation
-  // always do (defaults above), so the time input is the actual gate.
-  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string) {
-    setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel)
-    onChange(nextTimeLabel ? { field: nextField, relation: nextRelation, minutes: labelToMinutes(nextTimeLabel) } : null)
+  // The time criterion only kicks in once all three fields have a value — field/relation
+  // always do (defaults above), so the time input is the actual gate. "Com pendências"
+  // works alone or combined with it.
+  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly) {
+    setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel); setIssuesOnly(nextIssuesOnly)
+    onChange(nextTimeLabel || nextIssuesOnly
+      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly }
+      : null)
   }
 
   // "Limpar" — resets the criteria only. Bar stays open (unlike "X"), pins
@@ -31,7 +35,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
   // keep. The local field/relation/time selections need an explicit reset
   // back to defaults since the component doesn't unmount here.
   function handleClear() {
-    setField('start'); setRelation('after'); setTimeLabel('')
+    setField('start'); setRelation('after'); setTimeLabel(''); setIssuesOnly(false)
     onChange(null)
   }
 
@@ -68,6 +72,18 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
         onChange={e => commit(field, relation, e.target.value)}
         className="h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
       />
+
+      <button
+        onClick={() => commit(field, relation, timeLabel, !issuesOnly)}
+        title="Carros com erros de lançamento (sem acesso, parado sem intervalo, local diferente...)"
+        className={[
+          'flex items-center gap-1 h-6 rounded px-2 font-medium transition-colors',
+          issuesOnly ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/40' : 'bg-muted hover:bg-muted/70 text-foreground',
+        ].join(' ')}
+      >
+        <Icons.AlertTriangle className="w-3.5 h-3.5" />
+        Com pendências
+      </button>
 
       <div className="w-px h-4 bg-border shrink-0" />
 

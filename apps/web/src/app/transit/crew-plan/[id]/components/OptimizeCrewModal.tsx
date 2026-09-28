@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { CrewPlanSummary, CrewSettings } from '@nyx/schemas'
@@ -100,6 +101,9 @@ interface Props {
   onApplied:       () => void
   current:         CrewPlanSummary | null
   lockedCount:     number
+  // vehicles with modeling errors (VehicleBlock.issues) — the generation inherits them
+  flaggedBlocks:   number
+  vehiclePlanId:   string
   // after a settings change — the server already recalculated the plan
   onSettingsSaved: () => void
   onCreated:       (newPlanId: string) => void
@@ -113,7 +117,7 @@ async function callSettings(path: string, init?: RequestInit): Promise<SettingsV
   return json as SettingsView
 }
 
-export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJobChanged, onApplied, current, lockedCount, onSettingsSaved, onCreated, onClose }: Props) {
+export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJobChanged, onApplied, current, lockedCount, flaggedBlocks, vehiclePlanId, onSettingsSaved, onCreated, onClose }: Props) {
   useShortcutContext('optimize_crew_md')
   const { toast } = useToast()
   const confirm   = useConfirm()
@@ -344,6 +348,16 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
 
           {tab === 'panel' && (
             <div className="max-w-xl space-y-4 text-sm">
+              {flaggedBlocks > 0 && (
+                <div className="flex items-start gap-2 rounded-sm p-3 text-amber-800 bg-amber-500/10 dark:text-amber-300">
+                  <Icons.AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    {flaggedBlocks} {flaggedBlocks === 1 ? 'carro tem' : 'carros têm'} lançamento a revisar no{' '}
+                    <Link href={`/transit/vehicle-plan/${vehiclePlanId}`} className="underline">planejamento de veículos</Link>
+                    {' '}(sem acesso, parado sem intervalo, local diferente…). A geração herda esses erros.
+                  </span>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" checked={params.base === 'complete'} onChange={() => setParams(p => ({ ...p, base: 'complete' }))} />

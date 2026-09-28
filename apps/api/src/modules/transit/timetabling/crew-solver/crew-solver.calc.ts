@@ -1,6 +1,6 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
 import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
-import { subtractSpans } from '../crew-plan/relief-points'
+import { depotStays, subtractSpans } from '../crew-plan/relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
 import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 
@@ -85,17 +85,13 @@ const joinLines = (a: LineSeq, b: LineSeq): number =>
 export class BlockView {
   readonly cuts: number[]                 // relief point minutes, ascending, unique
   private readonly pointAt = new Map<number, ReliefPoint>()
-  readonly parks: Span[]                  // depot stays (RETURN → next ACCESS)
+  readonly parks: Span[]                  // depot stays (see depotStays)
   readonly moving: Span[]                 // trips + deadruns
 
   constructor(readonly block: SolverBlock, private readonly mealStops: Set<string>) {
     for (const p of block.points) if (!this.pointAt.has(p.minutes)) this.pointAt.set(p.minutes, p)
     this.cuts = [...this.pointAt.keys()].sort((a, b) => a - b)
-    const deadruns = [...block.deadruns].sort((a, b) => a.departureMinutes - b.departureMinutes)
-    this.parks = deadruns.filter(d => d.type === 'RETURN').flatMap(ret => {
-      const access = deadruns.find(d => d.type === 'ACCESS' && d.departureMinutes >= ret.arrivalMinutes)
-      return access ? [{ startMinutes: ret.arrivalMinutes, endMinutes: access.departureMinutes }] : []
-    })
+    this.parks = depotStays([...block.trips, ...block.deadruns], block.deadruns)
     this.moving = [...block.trips, ...block.deadruns]
       .map(e => ({ startMinutes: e.departureMinutes, endMinutes: e.arrivalMinutes }))
       .sort((a, b) => a.startMinutes - b.startMinutes)

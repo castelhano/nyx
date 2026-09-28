@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { formatDutyNumber, type ReliefPoint } from '@nyx/schemas'
+import { formatDutyNumber, vehicleBlockIssueText, type ReliefPoint } from '@nyx/schemas'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
@@ -148,7 +148,14 @@ const BlockRow = memo(function BlockRow({
           </span>
           Carro {block.blockNumber}
         </span>
-        {blockUncovered.length > 0 && <Icons.AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" aria-label="Trechos sem motorista" />}
+        <span className="flex items-center gap-1">
+          {block.issues.length > 0 && (
+            <span title={`Lançamento a revisar no planejamento de veículos:\n${block.issues.map(vehicleBlockIssueText).join('\n')}`}>
+              <Icons.FileWarning className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" aria-label="Lançamento a revisar" />
+            </span>
+          )}
+          {blockUncovered.length > 0 && <Icons.AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" aria-label="Trechos sem motorista" />}
+        </span>
       </div>
 
       <div className="relative" style={{ width }}>

@@ -319,7 +319,7 @@ export default function VehiclePlanPage() {
               disabled: isPending || selectedLineIds.size !== 1,
             },
             {
-              label:    'Finalizar Plano',
+              label:    'Validar e consolidar plano',
               icon:     Icons.CheckCircle,
               onClick:  handleFinalizePlan,
               disabled: isPending,

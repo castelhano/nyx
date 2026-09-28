@@ -4,7 +4,7 @@ import {
   crewPlanSchema, crewSettingsSchema, dayTypePatternSchema,
   CrewPlan, CreateCrewPlanDto, UpdateCrewPlanDto, CrewSettings, CrewPlanSummary,
 } from '@nyx/schemas'
-import type { PlanActivationPreview } from '@nyx/schemas'
+import type { PlanActivationPreview, VehicleBlockIssue } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
@@ -267,7 +267,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         where:   { vehiclePlanId: plan.vehiclePlanId },
         orderBy: { blockNumber: 'asc' },
         select: {
-          id: true, blockNumber: true, branchId: true,
+          id: true, blockNumber: true, branchId: true, issues: true,
           blockTrips: {
             select: {
               trip: {
@@ -329,6 +329,8 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         const r = relief.get(b.id)
         return {
           id: b.id, blockNumber: b.blockNumber, branchId: b.branchId,
+          // modeling errors on the vehicle plan (block-validation.ts) — its duties inherit them
+          issues:       (b.issues as VehicleBlockIssue[] | null) ?? [],
           window:       r?.window ?? null,
           serviceSpans: r?.serviceSpans ?? [],
           points:       r?.points ?? [],

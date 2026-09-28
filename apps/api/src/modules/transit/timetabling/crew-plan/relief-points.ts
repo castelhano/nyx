@@ -15,7 +15,7 @@ export interface BlockReliefData {
   // the parts of the window where the vehicle is in service and therefore needs a driver:
   // the window minus the vehicle's own intervals (BlockInterval, stretched over the standing
   // time around them — a piece can only start/end at the trips/deadruns there) and minus
-  // time parked at the depot between a RETURN deadrun and a later ACCESS one
+  // time parked at the depot (see depotStays)
   serviceSpans: Span[]
   points: ReliefPoint[]
 }
@@ -75,12 +75,19 @@ export function computeServiceSpans(
     startMinutes: moving.reduce((m, e) => (e.arrivalMinutes <= i.departureMinutes && e.arrivalMinutes > m ? e.arrivalMinutes : m), window.startMinutes),
     endMinutes:   moving.reduce((m, e) => (e.departureMinutes >= i.arrivalMinutes && e.departureMinutes < m ? e.departureMinutes : m), window.endMinutes),
   }))
-  const byTime = [...deadruns].sort((a, b) => a.departureMinutes - b.departureMinutes)
-  for (const ret of byTime.filter(d => d.type === 'RETURN')) {
-    const nextAccess = byTime.find(d => d.type === 'ACCESS' && d.departureMinutes >= ret.arrivalMinutes)
-    if (nextAccess) idle.push({ startMinutes: ret.arrivalMinutes, endMinutes: nextAccess.departureMinutes })
-  }
-  return subtractSpans(window, idle)
+  return subtractSpans(window, [...idle, ...depotStays(moving, deadruns)])
+}
+
+// time parked at the depot: from a RETURN's arrival to the vehicle's next departure — normally an
+// ACCESS, but some imported blocks leave the depot straight into a trip (no ACCESS deadrun)
+export function depotStays(
+  moving:   { departureMinutes: number; arrivalMinutes: number }[], // trips + deadruns
+  deadruns: { type: string; departureMinutes: number; arrivalMinutes: number }[],
+): Span[] {
+  return deadruns.filter(d => d.type === 'RETURN').flatMap(ret => {
+    const next = moving.reduce((m, e) => (e.departureMinutes >= ret.arrivalMinutes && e.departureMinutes < m ? e.departureMinutes : m), Infinity)
+    return Number.isFinite(next) && next > ret.arrivalMinutes ? [{ startMinutes: ret.arrivalMinutes, endMinutes: next }] : []
+  })
 }
 
 export function subtractSpans(from: Span, cut: Span[]): Span[] {

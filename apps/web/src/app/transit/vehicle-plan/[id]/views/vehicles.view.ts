@@ -1,5 +1,5 @@
 import type { GanttView, GanttRow, GanttSegment } from '../engine/gantt.types'
-import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking } from '@nyx/schemas'
+import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking, VehicleBlockIssue } from '@nyx/schemas'
 import { swatchColor, lineIndexByCode } from '@/lib/palette'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
@@ -133,6 +133,9 @@ export interface GanttBlock {
   depot:          { id: string; name: string }
   constraints:    { locked?: true } | null
   summary:        VehicleBlockSummary | null
+  // modeling errors (block-validation.ts) as of the last save — absent on unsaved blocks
+  issues?:        VehicleBlockIssue[] | null
+  hasIssues?:     boolean
   blockTrips:     GanttBlockTrip[]
   blockDeadruns:  GanttBlockDeadrun[]
   blockIntervals: GanttBlockInterval[]

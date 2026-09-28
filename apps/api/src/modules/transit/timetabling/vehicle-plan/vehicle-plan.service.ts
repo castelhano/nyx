@@ -20,6 +20,7 @@ import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
+import { blockIssues, defaultIntervalMaxMinutes } from './block-issues.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
@@ -373,7 +374,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // Accepts an optional transaction client so applyDiff can run this as the closing
   // step of its own atomic batch instead of opening a second transaction.
   async recalculate(planId: string, db: any = this.prisma): Promise<void> {
-    const [plan, blocks, matrix, planLines, planningCfg] = await Promise.all([
+    const [plan, blocks, matrix, planLines, planningCfg, maxStandMinutes] = await Promise.all([
       db.vehiclePlan.findUnique({
         where:  { id: planId },
         select: { dayType: { select: { code: true } }, settings: true },
@@ -422,6 +423,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         select: { lineId: true },
       }),
       this.planningConfig.get(),
+      defaultIntervalMaxMinutes(db, this.generalConfig),
     ])
 
     if (!plan) return
@@ -522,11 +524,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           productiveKm:      a.productiveKm,
           deadrunKm:         a.deadrunKm,
         }
-        return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false } })
+        const issues = blockIssues(block, maxStandMinutes)
+        return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false, issues, hasIssues: issues.length > 0 } })
       }),
       ...blocks
-        .filter((b: any) => b.blockTrips.length === 0 && b.isStale)
-        .map((b: any) => db.vehicleBlock.update({ where: { id: b.id }, data: { isStale: false } })),
+        .filter((b: any) => b.blockTrips.length === 0 && (b.isStale || b.hasIssues))
+        .map((b: any) => db.vehicleBlock.update({ where: { id: b.id }, data: { isStale: false, issues: [], hasIssues: false } })),
     ])
 
     // crew plans built on this plan re-check their pieces against the edited blocks —
@@ -667,6 +670,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             vehicleType:   block.vehicleType,
             summary:       block.summary ?? undefined,
             constraints:   block.constraints ?? undefined,
+            issues:        block.issues ?? undefined,
+            hasIssues:     block.hasIssues,
           },
         })
 

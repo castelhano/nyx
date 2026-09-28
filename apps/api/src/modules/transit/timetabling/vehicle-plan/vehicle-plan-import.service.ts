@@ -432,15 +432,17 @@ export class VehiclePlanImportService {
       if (perBlockEntries.length === 0) continue
 
       // Reclassify deadruns by position relative to productive trips:
-      // before first trip → ACCESS, after last trip → RETURN
+      // before first trip → ACCESS, after last trip → RETURN. The file only gives a
+      // non-productive row a line + direction, so its endpoints came from that route —
+      // the depot end is the tab's garage, same as the synthetic ACCESS above
       {
         const firstTripIdx = perBlockEntries.findIndex(e => e.kind === 'trip')
         const lastTripIdx  = perBlockEntries.reduce((last, e, i) => e.kind === 'trip' ? i : last, -1)
         for (let i = 0; i < perBlockEntries.length; i++) {
           const e = perBlockEntries[i]
           if (e.kind !== 'deadrun' || e.type !== 'DISPLACEMENT') continue
-          if (firstTripIdx >= 0 && i < firstTripIdx) e.type = 'ACCESS'
-          else if (lastTripIdx >= 0 && i > lastTripIdx) e.type = 'RETURN'
+          if (firstTripIdx >= 0 && i < firstTripIdx) { e.type = 'ACCESS'; e.originLocalityId = depotId }
+          else if (lastTripIdx >= 0 && i > lastTripIdx) { e.type = 'RETURN'; e.destinationLocalityId = depotId }
         }
       }
 

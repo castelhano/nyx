@@ -418,7 +418,7 @@ export default function TransitSettingsPage() {
             <div>
               <p className="text-sm font-medium">Tipo de Intervalo Padrão</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Usado para inserir automaticamente um BlockInterval em paradas longas entre viagens de um bloco (na importação e ao Finalizar Plano)
+                Usado para inserir automaticamente um BlockInterval em paradas longas entre viagens de um bloco (na importação e ao Validar e consolidar plano)
               </p>
             </div>
             <div className="flex items-center gap-2">

@@ -588,6 +588,12 @@ model VehicleBlock {
   summary     Json?
   // VehicleBlockConstraints (packages/schemas/transit/vehicle-block.schema.ts) — { locked?: true }
   constraints Json?
+  // VehicleBlockIssue[] — modeling errors in the block's sequence (packages/schemas/transit/
+  // block-validation.ts): [{ code, minutes, value? }]. Written by VehiclePlanService.recalculate;
+  // never blocks anything — flagged for review on the vehicle and crew plans
+  issues      Json?
+  // denormalized from issues (length > 0) for filtering
+  hasIssues   Boolean     @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
