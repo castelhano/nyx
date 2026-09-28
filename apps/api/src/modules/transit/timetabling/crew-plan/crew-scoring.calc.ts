@@ -33,6 +33,9 @@ import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
 //   settings.mealRule accepts — continuous (a meal BREAK) or fractioned (the stops add up to
 //   fractionedMinTotal, one of at least fractionedMinLongest) — else MEAL_REQUIRED. A SPLIT's
 //   own split interval is its rest; none accepted = no requirement.
+// - A piece covering time the vehicle is out of service (its own interval, a depot stay —
+//   outside block.serviceSpans) must have a break there; otherwise PIECE_OFF_SERVICE: the
+//   driver would be "working" a parked vehicle.
 // - A break of settings.mealBreakIntervalTypeId is a MEAL_LOCATION warning unless its place is
 //   an allowsMealBreak stop (RouteLocality — per route) of the line that arrives there.
 //   Inside a piece: where the vehicle stands, i.e. its last arrival (a deadrun arrival has no
@@ -361,6 +364,13 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   }
 
   issues.push(...walkIssues)
+
+  for (const p of live) {
+    const block = blocks.get(p.vehicleBlockId!)
+    if (!block) continue
+    const off = subtractSpans(p, [...block.serviceSpans, ...breaks]).reduce((s, sp) => s + dur(sp), 0)
+    if (off > 0) push({ code: 'PIECE_OFF_SERVICE', severity: 'error', value: off, pieceId: p.id })
+  }
 
   if (settings.mealBreakIntervalTypeId) {
     for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {

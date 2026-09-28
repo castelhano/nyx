@@ -18,7 +18,7 @@ import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 //    type's range at a meal stop of the arriving line; SPLIT when it's longer and fits
 //    range.splitInterval, the driver leaves, two pieces on the same vehicle) or, when
 //    settings.mealRule takes a STRAIGHT without a meal break (fractioned, or no requirement),
-//    a single piece whose stops meet the rule. Otherwise a loose piece of about half an ideal duty (so two of them pair up),
+//    a single piece whose stops meet the rule (within one segment). Otherwise a loose piece of about half an ideal duty (so two of them pair up),
 //    within continuous driving, never leaving a remainder shorter than the minimum piece and
 //    never crossing the vehicle's own intervals (that idle time would count as driving).
 // 3. Loose pieces are paired into STRAIGHT duties (meal between them, gap within the meal
@@ -130,6 +130,13 @@ export class BlockView {
     return { total, longest }
   }
 
+  // minutes of [from, to] the vehicle is out of service (its intervals, depot stays) that
+  // `rest` doesn't cover — a piece there would have the driver "working" a parked vehicle
+  offService(from: number, to: number, rest?: Span): number {
+    return subtractSpans({ startMinutes: from, endMinutes: to }, [...this.block.serviceSpans, ...(rest ? [rest] : [])])
+      .reduce((s, sp) => s + len(sp), 0)
+  }
+
   // idle stretches (no trip/deadrun) inside [from, to] that start at a relief point
   idleGaps(from: number, to: number): Span[] {
     return subtractSpans({ startMinutes: from, endMinutes: to }, this.moving).filter(g => this.pointAt.has(g.startMinutes))
@@ -218,10 +225,18 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         for (const g of gaps) {
           const before = g.startMinutes - pos
           if (before < minPiece || before > maxDrive) continue
+          // a split: the driver leaves and comes back to the vehicle — on foot if it moved
+          // (no deadrun recorded); the pieces themselves stay in service
+          if (g.split) {
+            const meters = walkMeters(input.walk, v.locality(g.startMinutes), v.locality(g.endMinutes))
+            if (meters == null || meters > settings.maxWalkMeters || len(g) < walkMinutes(meters)) continue
+            if (v.offService(pos, g.startMinutes)) continue
+          }
           for (const cut of cuts) {
             const after = cut - g.endMinutes
             if (after < minPiece) continue
             if (after > maxDrive) break
+            if (g.split ? v.offService(g.endMinutes, cut) : v.offService(pos, cut, g)) continue
             // a split's gap is not worked; a meal break inside the piece counts only if paid
             const w = g.split ? before + after + signs : work(cut - pos, len(g))
             if (w > maxWork || cut - pos + signs > maxSpread) break
@@ -232,14 +247,16 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
             if (!best || cost < best.cost) best = { cut, gap: g, cost }
           }
         }
-        // a single piece as a STRAIGHT without a meal break (its stops meet the rule)
-        if (plainPossible) {
+        // a single piece as a STRAIGHT without a meal break (its stops meet the rule) — inside
+        // the segment it starts in: the vehicle's own intervals aren't work
+        const inSeg = segments.find(sg => sg.startMinutes <= pos && pos < sg.endMinutes)
+        if (plainPossible && inSeg) {
           for (const cut of cuts) {
             if (cut <= pos) continue
-            if (cut - pos > maxDrive) break
+            if (cut - pos > maxDrive || cut > inSeg.endMinutes) break
             const w = cut - pos + signs
             if (w > maxWork || w > maxSpread) break
-            if (w < range.workTime.floor || !leavesValidRest(cut, end)) continue
+            if (w < range.workTime.floor || !leavesValidRest(cut, inSeg.endMinutes)) continue
             const st = v.stops(pos, cut)
             if (!plainOk(st)) continue
             const cost = penalty(range.workTime, w) + penalty(range.spread, w) + mealScore(st)
@@ -295,6 +312,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       if (spread > maxSpread) continue
 
       const rest = gap - travel
+      if (rest < 0) continue
       const shared = penalty(range.spread, spread) + penalty(range.walkDistance, meters)
         + penalty(range.vehicleChanges, a.vehicleBlockId !== b.vehicleBlockId ? 1 : 0)
         + penalty(range.lineChanges, joinLines(linesA, loose[j].lines))
