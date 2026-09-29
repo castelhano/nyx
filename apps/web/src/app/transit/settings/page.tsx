@@ -327,7 +327,7 @@ export default function TransitSettingsPage() {
             <div>
               <p className="text-sm font-medium">Modificador de Demanda</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Fator aplicado pelo solver em viagens produtivas com tempos provenientes do OSRM. Tempos cadastrados manualmente na linha não são afetados.
+                Fator aplicado em viagens <b>produtivas</b> com tempos da matriz. Tempos cadastrados manualmente não são afetados.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -346,7 +346,7 @@ export default function TransitSettingsPage() {
             <div>
               <p className="text-sm font-medium">Fator de Velocidade Base</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Multiplicador aplicado aos tempos retornados pelo OSRM ao gerar a matriz de tempos. Não afeta pares já gerados.
+                Multiplicador aplicado ao gerar a matriz de tempos. Não afeta pares já gerados.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -384,20 +384,23 @@ export default function TransitSettingsPage() {
             <div>
               <p className="text-sm font-medium">Propagar Extensão para o Sentido Principal</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Ao reprocessar ou promover uma rota a principal, atualiza automaticamente a extensão oficial da linha (metrics.extensionKm) no sentido correspondente
+                Ao editar rota a principal, atualiza automaticamente a extensão oficial da linha
               </p>
             </div>
-            <Switch
+            <div className="flex items-center gap-2">
+              <Switch
               checked={general?.propagateExtensionToOfficialKm ?? true}
               onToggle={() => setGeneral((prev) => prev ? { ...prev, propagateExtensionToOfficialKm: !prev.propagateExtensionToOfficialKm } : null)}
               disabled={!general}
             />
+              <span className="text-sm text-muted-foreground w-6"></span>
+            </div>
           </div>
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div>
               <p className="text-sm font-medium">Comportamento do gerador em intervalos longos</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Comportamento do gerador de planejamento em paradas intermediárias (intervalos longos), quando não especificado na rota: aguardar no ponto ou recolher à garagem
+                Comportamento padrão em paradas intermediárias (intervalos longos): aguardar no ponto ou recolher à garagem
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -418,7 +421,7 @@ export default function TransitSettingsPage() {
             <div>
               <p className="text-sm font-medium">Tipo de Intervalo Padrão</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Usado para inserir automaticamente um BlockInterval em paradas longas entre viagens de um bloco (na importação e ao Validar e consolidar plano)
+                Parada planejada de veículo (intervalo)
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -434,6 +437,7 @@ export default function TransitSettingsPage() {
                   <option key={it.id} value={it.id}>{it.name}</option>
                 ))}
               </Select>
+              <span className="text-sm text-muted-foreground w-6"></span>
             </div>
           </div>
         </div>
