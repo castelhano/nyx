@@ -103,6 +103,16 @@ export class VehiclePlanImportController {
         showInForm:     true,
         sortable:       false,
       },
+      {
+        name:           'normalizeDeadruns',
+        label:          'Normalizar ocioso',
+        type:           'boolean',
+        widget:         'switch',
+        required:       false,
+        listVisibility: 'never',
+        showInForm:     true,
+        sortable:       false,
+      },
     ]
     return { fields }
   }
@@ -120,6 +130,7 @@ export class VehiclePlanImportController {
     @Body('depotId')       depotId:         string,
     @Body('setupMinutes')  setupMinutesRaw: string | undefined,
     @Body('normalize')     normalizeRaw:    string | undefined,
+    @Body('normalizeDeadruns') normalizeDeadrunsRaw: string | undefined,
     @Body('planId')        planId:          string | undefined,
     @Request() req: any,
   ) {
@@ -131,7 +142,8 @@ export class VehiclePlanImportController {
 
     const setupMinutes = parseInt(setupMinutesRaw ?? '0', 10) || 0
     const normalize    = normalizeRaw === 'true'
+    const normalizeDeadruns = normalizeDeadrunsRaw === 'true'
 
-    return this.importService.import(file, branchId, scopeId, dayTypeId, depotId, req.user.id, setupMinutes, normalize, planId || undefined)
+    return this.importService.import(file, branchId, scopeId, dayTypeId, depotId, req.user.id, setupMinutes, normalize, normalizeDeadruns, planId || undefined)
   }
 }

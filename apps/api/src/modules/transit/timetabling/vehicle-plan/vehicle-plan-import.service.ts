@@ -33,9 +33,20 @@ type DeadrunEntry = {
   departureMinutes:      number
   arrivalMinutes:        number
   km:                    number
+  lineNum:               number
+  lineCode:              string
+  setupMinutes?:         number  // setup time embedded in the synthetic depot ACCESS
 }
 
 type BlockEntry = ProductiveEntry | DeadrunEntry
+
+// Gap kept between a deadrun and the productive trip it touches
+const DEADRUN_GAP_MIN = 1
+
+function toHHMM(minutes: number): string {
+  const m = ((minutes % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
 
 @Injectable()
 export class VehiclePlanImportService {
@@ -56,6 +67,7 @@ export class VehiclePlanImportService {
     userId:       string,
     setupMinutes: number = 0,
     normalize:    boolean = false,
+    normalizeDeadruns: boolean = false,
     planId?:      string,
   ): Promise<{ jobId: string }> {
     if (!file.buffer?.length) throw new BadRequestException('Arquivo vazio')
@@ -65,10 +77,10 @@ export class VehiclePlanImportService {
       domain:      'transit',
       resource:    'vehicle-plan',
       createdById: userId,
-      input:       { filename: file.originalname, branchId, scopeId, dayTypeId, depotId, setupMinutes, normalize, planId },
+      input:       { filename: file.originalname, branchId, scopeId, dayTypeId, depotId, setupMinutes, normalize, normalizeDeadruns, planId },
     })
 
-    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, scopeId, dayTypeId, depotId, setupMinutes, normalize, planId))
+    this.jobService.run(job.id, () => this.execute(file.buffer, branchId, scopeId, dayTypeId, depotId, setupMinutes, normalize, normalizeDeadruns, planId))
 
     return { jobId: job.id }
   }
@@ -81,6 +93,7 @@ export class VehiclePlanImportService {
     depotId:      string,
     setupMinutes: number = 0,
     normalize:    boolean = false,
+    normalizeDeadruns: boolean = false,
     planId?:      string,
   ): Promise<ImportOutput> {
     if (planId) {
@@ -192,6 +205,9 @@ export class VehiclePlanImportService {
     const routeByKey = new Map<string, { id: string; originLocalityId: string; destinationLocalityId: string }>(
       routes.map((r: any) => [`${r.lineId}:${r.direction}`, r]),
     )
+    const routeById = new Map<string, { id: string; originLocalityId: string; destinationLocalityId: string }>(
+      routes.map((r: any) => [r.id, r]),
+    )
 
     const reusedScheduleIds = [...lineScheduleByLineId.values()].filter(s => s.reused).map(s => s.id)
     const existingDeparturesByKey = new Map<string, { id: string; markings: unknown }>()
@@ -208,14 +224,14 @@ export class VehiclePlanImportService {
     const matrixMap: Record<string, { minutes: number; km: number }> = {}
     let idealIntervalMin = 5
 
-    if (normalize) {
-      const [matrix, planningCfg] = await Promise.all([
-        (this.prisma as any).travelTimeMatrix.findMany(),
-        this.planningConfig.get(),
-      ])
+    if (normalize || normalizeDeadruns) {
+      const matrix = await (this.prisma as any).travelTimeMatrix.findMany()
       for (const m of matrix) {
-        matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
+        matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: Math.ceil(m.baseMinutes * m.speedRatio), km: m.distanceKm }
       }
+    }
+    if (normalize) {
+      const planningCfg = await this.planningConfig.get()
       idealIntervalMin = planningCfg.range.tripInterval.idealMin
     }
 
@@ -271,7 +287,7 @@ export class VehiclePlanImportService {
     const blockTripRows:     Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
     const blockIntervalRows: Array<{ id: string; vehicleBlockId: string; intervalTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
 
-    for (const [, rawTabRows] of blockMap.entries()) {
+    for (const [blockKey, rawTabRows] of blockMap.entries()) {
       // depDay is not a trustworthy calendar-day counter: in practice it can flip
       // 1->2->1 mid-tab with no midnight crossing at all (e.g. a mid-shift interval
       // marker), so it can't be used as a sort key. Row order *within* a single
@@ -309,38 +325,6 @@ export class VehiclePlanImportService {
 
       const blockId = randomUUID()
       const perBlockEntries: BlockEntry[] = []
-
-      // Synthetic depot-departure deadhead (saída de garagem)
-      const depotRow = tabRows.find(r => r.depotDepartureHHMM !== '')
-      if (depotRow) {
-        let firstRoute: { id: string; originLocalityId: string } | null = null
-        for (const row of tabRows) {
-          const line = lineByCode.get(row.lineCode)
-          if (!line) continue
-          const dir   = row.direction === 'I' ? 'OUTBOUND' : row.direction === 'C' ? 'CIRCULAR' : 'INBOUND'
-          const route = routeByKey.get(`${line.id}:${dir}`)
-          if (route) { firstRoute = route; break }
-        }
-
-        if (firstRoute) {
-          const firstTripDep    = parseHHMM(tabRows[0].departureHHMM)
-          const depotDepMinutes = parseHHMM(depotRow.depotDepartureHHMM)
-          const startMinutes    = depotDepMinutes - setupMinutes
-
-          if (startMinutes < firstTripDep) {
-            perBlockEntries.push({
-              kind:                  'deadrun',
-              id:                    randomUUID(),
-              type:                  'ACCESS',
-              originLocalityId:      depotId,
-              destinationLocalityId: firstRoute.originLocalityId,
-              departureMinutes:      startMinutes,
-              arrivalMinutes:        firstTripDep,
-              km:                    0,
-            })
-          }
-        }
-      }
 
       let dayOffset          = 0
       let prevArrivalMinutes = -Infinity
@@ -381,6 +365,29 @@ export class VehiclePlanImportService {
 
         const km = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 
+        // Synthetic depot-departure deadhead (saída de garagem) — any row carrying a
+        // depot departure time, not only the tab's first: a vehicle that returns to the
+        // depot mid-day leaves it again on a later tab
+        if (row.depotDepartureHHMM !== '') {
+          let startMinutes = parseHHMM(row.depotDepartureHHMM) + dayOffset - setupMinutes
+          if (startMinutes > departureMinutes) startMinutes -= 1440
+          if (startMinutes < departureMinutes) {
+            perBlockEntries.push({
+              kind:                  'deadrun',
+              id:                    randomUUID(),
+              type:                  'ACCESS',
+              originLocalityId:      depotId,
+              destinationLocalityId: route.originLocalityId,
+              departureMinutes:      startMinutes,
+              arrivalMinutes:        departureMinutes,
+              km:                    0,
+              lineNum:               row._lineNum,
+              lineCode:              row.lineCode,
+              setupMinutes,
+            })
+          }
+        }
+
         if (row.isProductive) {
           const scheduleInfo = lineScheduleByLineId.get(line.id)!
           let markings: unknown
@@ -416,15 +423,19 @@ export class VehiclePlanImportService {
             markings,
           })
         } else {
+          // entryType '3' is a recolhida — always a return to the depot, even mid-block
+          const isReturn = row.entryType === '3'
           perBlockEntries.push({
             kind:                  'deadrun',
             id:                    randomUUID(),
-            type:                  'DISPLACEMENT',
+            type:                  isReturn ? 'RETURN' : 'DISPLACEMENT',
             originLocalityId:      route.originLocalityId,
-            destinationLocalityId: route.destinationLocalityId,
+            destinationLocalityId: isReturn ? depotId : route.destinationLocalityId,
             departureMinutes,
             arrivalMinutes,
             km,
+            lineNum:               row._lineNum,
+            lineCode:              row.lineCode,
           })
         }
       }
@@ -444,17 +455,38 @@ export class VehiclePlanImportService {
           if (firstTripIdx >= 0 && i < firstTripIdx) { e.type = 'ACCESS'; e.originLocalityId = depotId }
           else if (lastTripIdx >= 0 && i > lastTripIdx) { e.type = 'RETURN'; e.destinationLocalityId = depotId }
         }
+
+        // A mid-block RETURN must be followed by an ACCESS (vehicle leaves the depot
+        // again) and vice versa — kept as imported, but flagged
+        for (let i = 0; i < perBlockEntries.length; i++) {
+          const e = perBlockEntries[i]
+          if (e.kind !== 'deadrun') continue
+          const prev = perBlockEntries[i - 1]
+          const next = perBlockEntries[i + 1]
+          if (e.type === 'RETURN' && next && !(next.kind === 'deadrun' && next.type === 'ACCESS')) {
+            errors.push({ line: e.lineNum, record: `Bloco ${blockKey}`, message: `Linha ${e.lineCode} — recolhimento ${toHHMM(e.departureMinutes)} no meio do bloco sem saída de garagem em seguida` })
+          }
+          if (e.type === 'ACCESS' && prev && !(prev.kind === 'deadrun' && prev.type === 'RETURN')) {
+            errors.push({ line: e.lineNum, record: `Bloco ${blockKey}`, message: `Linha ${e.lineCode} — saída de garagem ${toHHMM(e.departureMinutes)} no meio do bloco sem recolhimento anterior` })
+          }
+        }
+      }
+
+      if (normalizeDeadruns) {
+        errors.push(...this.normalizeDeadrunEntries(perBlockEntries, blockKey, depotId, routeById, matrixMap))
       }
 
       if (normalize) {
-        // 1. Interval: shorten productive trips where gap to next trip < idealIntervalMin
+        // 1. Interval: shorten productive trips where gap to next event is below the
+        // minimum — idealIntervalMin before another trip, 1min before a deadrun
         for (let i = 0; i < perBlockEntries.length - 1; i++) {
           const curr = perBlockEntries[i]
           const next = perBlockEntries[i + 1]
           if (curr.kind === 'trip') {
+            const minGap = next.kind === 'trip' ? idealIntervalMin : DEADRUN_GAP_MIN
             const gap = next.departureMinutes - curr.arrivalMinutes
-            if (gap < idealIntervalMin) {
-              const newArr = next.departureMinutes - idealIntervalMin
+            if (gap < minGap) {
+              const newArr = next.departureMinutes - minGap
               if (newArr > curr.departureMinutes) curr.arrivalMinutes = newArr
             }
           }
@@ -476,6 +508,8 @@ export class VehiclePlanImportService {
                 departureMinutes:      first.departureMinutes - edge.minutes,
                 arrivalMinutes:        first.departureMinutes,
                 km:                    edge.km,
+                lineNum:               0,
+                lineCode:              '',
               })
             }
           }
@@ -497,6 +531,8 @@ export class VehiclePlanImportService {
                 departureMinutes:      last.arrivalMinutes,
                 arrivalMinutes:        last.arrivalMinutes + edge.minutes,
                 km:                    edge.km,
+                lineNum:               0,
+                lineCode:              '',
               })
             }
           }
@@ -560,6 +596,91 @@ export class VehiclePlanImportService {
     await this.vehiclePlanSvc.recalculate(plan.id)
 
     return { created: blockRows.length, trips: tripRows.length, errors }
+  }
+
+  // Re-times each deadrun from the travel time matrix (file duration when the pair
+  // is missing), anchored to its productive neighbor with a DEADRUN_GAP_MIN gap:
+  // ACCESS ends before the first trip, RETURN and DISPLACEMENT start after the
+  // previous trip. Endpoints are inferred from the neighboring trips' official
+  // routes. Any case that can't be resolved keeps the file data and is flagged.
+  private normalizeDeadrunEntries(
+    entries:   BlockEntry[],
+    blockKey:  string,
+    depotId:   string,
+    routeById: Map<string, { originLocalityId: string; destinationLocalityId: string }>,
+    matrixMap: Record<string, { minutes: number; km: number }>,
+  ): ImportOutput['errors'] {
+    const errors: ImportOutput['errors'] = []
+    const record = `Bloco ${blockKey}`
+
+    for (let i = 0; i < entries.length - 1; i++) {
+      const a = entries[i]
+      const b = entries[i + 1]
+      if (a.kind === 'deadrun' && b.kind === 'deadrun' && !(a.type === 'RETURN' && b.type === 'ACCESS')) {
+        errors.push({ line: b.lineNum, record, message: `Linha ${b.lineCode} — ociosos consecutivos no arquivo, ociosos do bloco mantidos como informados` })
+        return errors
+      }
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i]
+      if (e.kind !== 'deadrun') continue
+
+      const prev = entries[i - 1]
+      const next = entries[i + 1]
+      const prevRoute = prev?.kind === 'trip' ? routeById.get(prev.routeId) : undefined
+      const nextRoute = next?.kind === 'trip' ? routeById.get(next.routeId) : undefined
+
+      let origin: string | undefined
+      let destination: string | undefined
+      if (e.type === 'ACCESS')      { origin = depotId;                           destination = nextRoute?.originLocalityId }
+      else if (e.type === 'RETURN') { origin = prevRoute?.destinationLocalityId;  destination = depotId }
+      else                          { origin = prevRoute?.destinationLocalityId;  destination = nextRoute?.originLocalityId }
+      if (!origin || !destination) continue
+
+      const setup    = e.setupMinutes ?? 0
+      const edge     = matrixMap[`${origin}:${destination}`]
+      const duration = edge ? edge.minutes + setup : e.arrivalMinutes - e.departureMinutes
+      const label    = `Linha ${e.lineCode} — ${e.type === 'ACCESS' ? 'Acesso' : e.type === 'RETURN' ? 'Recolhimento' : 'Deslocamento'} ${toHHMM(e.departureMinutes)}`
+
+      let departureMinutes: number
+      let arrivalMinutes:   number
+      if (e.type === 'ACCESS') {
+        arrivalMinutes   = next!.departureMinutes - DEADRUN_GAP_MIN
+        departureMinutes = arrivalMinutes - duration
+        if (departureMinutes < 0) {
+          errors.push({ line: e.lineNum, record, message: `${label}: normalização resultaria em horário antes de 00:00 — mantido como no arquivo` })
+          continue
+        }
+        // mid-block ACCESS follows a RETURN — must not start before the vehicle reaches the depot
+        if (prev && departureMinutes < prev.arrivalMinutes) {
+          errors.push({ line: e.lineNum, record, message: `${label}: normalização sobreporia o recolhimento anterior — mantido como no arquivo` })
+          continue
+        }
+      } else {
+        departureMinutes = prev!.arrivalMinutes + DEADRUN_GAP_MIN
+        arrivalMinutes   = departureMinutes + duration
+        if (next?.kind === 'trip') {
+          const maxArrival = next.departureMinutes - DEADRUN_GAP_MIN
+          if (maxArrival <= departureMinutes) {
+            errors.push({ line: e.lineNum, record, message: `${label}: sem espaço entre as viagens para o ocioso — mantido como no arquivo` })
+            continue
+          }
+          if (arrivalMinutes > maxArrival) {
+            errors.push({ line: e.lineNum, record, message: `${label}: tempo previsto de ${duration}min não cabe no intervalo — encurtado para ${maxArrival - departureMinutes}min` })
+            arrivalMinutes = maxArrival
+          }
+        }
+      }
+
+      e.originLocalityId      = origin
+      e.destinationLocalityId = destination
+      e.departureMinutes      = departureMinutes
+      e.arrivalMinutes        = arrivalMinutes
+      if (edge) e.km = edge.km
+    }
+
+    return errors
   }
 
   private async resolveApprovedLineSchedule(
