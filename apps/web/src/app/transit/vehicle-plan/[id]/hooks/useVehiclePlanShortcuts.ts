@@ -671,6 +671,7 @@ export function useVehiclePlanShortcuts({
   // ── trip timing shortcuts (edit bar, single-trip focus) ──────────────────
   const isTripFocused  = editBarOpen && !!focusedSegId && !focusedSegId.endsWith(':dr')
   const isBreakFocused = editBarOpen && !!focusedSegId && focusedSegId.endsWith(':bk')
+  const isDeadrunFocused = editBarOpen && !!focusedSegId && focusedSegId.endsWith(':dr')
   // Deadruns and breaks can now be nudged the same way trips are (grow/shrink/
   // push/pull, see handleTripTimingOp) — so the timing shortcuts just need
   // something focused at all, not specifically a trip. Kept separate from
@@ -694,7 +695,7 @@ export function useVehiclePlanShortcuts({
 
   // Direct shortcuts for context-bar actions on the focused trip — resolves and
   // filters through the exact same vehiclesActionSpec the bar itself uses, so
-  // eligibility (canAddAccess/canAddReturn/canAddInterval) always matches what
+  // eligibility (canAddAccess/canAddReturn/canAddInterval/canAddDisplacement) always matches what
   // would actually be shown; outside that eligibility it's a silent no-op.
   //
   // If a multi-trip interval selection is already active and covers the focused
@@ -726,7 +727,8 @@ export function useVehiclePlanShortcuts({
   useShortcut('q+j', () => triggerFocusedTripAction('trip-details'), { desc: 'Detalhes da viagem',          icon: Icons.Tag,    origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
   useShortcut('q+e', () => triggerFocusedTripAction('access'),       { desc: 'Adicionar acesso',            icon: Icons.MapPin, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
   useShortcut('q+r', () => triggerFocusedTripAction('return'),       { desc: 'Adicionar recolhida',         icon: Icons.Truck,  origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
-  useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { desc: 'Adicionar intervalo',         icon: Icons.Coffee, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
+  useShortcut('q+i', () => triggerFocusedTripAction('add-interval'), { desc: 'Adicionar intervalo',         icon: Icons.Coffee, origin: editOrigin, enabled: isTripFocused || isDeadrunFocused, section: SEC_ACOES })
+  useShortcut('q+d', () => triggerFocusedTripAction('add-displacement'), { desc: 'Adicionar deslocamento até a próxima viagem', icon: Icons.Route, origin: editOrigin, enabled: isTripFocused, section: SEC_ACOES })
 
   useShortcut('delete', () => {
     if (!canEditGantt || !mergedPlottedData) return

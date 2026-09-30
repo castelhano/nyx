@@ -15,7 +15,9 @@ export interface VehiclesActionDeps {
   onDeleteInterval:    (tripIds: string[], deadrunIds: string[], breakIds: string[], blockId: string) => void
   onAddAccess:         (blockTripId: string, blockId: string) => void
   onAddReturn:         (blockTripId: string, blockId: string) => void
-  onAddInterval:       (blockTripId: string, blockId: string) => void
+  // afterMinutes = arrival of the item the interval follows (trip or deadrun)
+  onAddInterval:       (afterMinutes: number, blockId: string) => void
+  onAddDisplacement:   (blockTripId: string, blockId: string) => void
   // docs/proposal/plan_trip_deadrun_conversion_v1.md — trip <-> DISPLACEMENT deadrun
   onConvertToDeadrun:  (tripId: string, blockId: string) => void
   onConvertToTrip:     (deadrunId: string, blockId: string) => void
@@ -61,6 +63,9 @@ export function createVehiclesActionSpec(
           if (!block) return []
           return [
             ...(d.type === 'DISPLACEMENT' ? [makeConvertToTripAction(d.id, block.id, deps)] : []),
+            // e.g. [viagem][recolhe][INTERVALO][acesso] — allowed after any deadrun,
+            // unusual placements are left for the user to judge
+            ...(canAddInterval(d.arrivalMinutes, block) ? [makeAddIntervalAction(d.arrivalMinutes, block.id, deps)] : []),
             makeDeleteDeadrunsAction([d.id], block.id, deps),
           ]
         }
@@ -81,7 +86,8 @@ export function createVehiclesActionSpec(
           makeTripDetailsAction([bt.trip.id], deps),
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
-          ...(block && canAddInterval(bt, block) ? [makeAddIntervalAction(bt.id, block.id, deps)] : []),
+          ...(block && canAddInterval(bt.trip.arrivalMinutes, block) ? [makeAddIntervalAction(bt.trip.arrivalMinutes, block.id, deps)] : []),
+          ...(block && canAddDisplacement(bt, block) ? [makeAddDisplacementAction(bt.id, block.id, deps)] : []),
           ...(block ? [makeConvertToDeadrunAction(bt.trip.id, block.id, deps)] : []),
           makeDeleteAction([bt.trip.id], deps),
         ]
@@ -233,10 +239,10 @@ function makeReturnAction(blockTripId: string, blockId: string, deps: VehiclesAc
   }
 }
 
-// Same slot/occasion as "Recolhida" (right after the trip) — own-type check swapped
-// for blockIntervals instead of RETURN deadruns, same next-trip back-to-back gate.
-function canAddInterval(bt: GanttBlockTrip, block: GanttBlock): boolean {
-  const btArr = bt.trip.arrivalMinutes
+// Right after the focused item (trip or deadrun), same slot as "Recolhida" for a
+// trip — own-type check swapped for blockIntervals instead of RETURN deadruns, same
+// next-trip back-to-back gate.
+function canAddInterval(btArr: number, block: GanttBlock): boolean {
 
   // already has a break departing right after this trip
   if (block.blockIntervals.some(
@@ -245,20 +251,45 @@ function canAddInterval(bt: GanttBlockTrip, block: GanttBlock): boolean {
 
   // next productive trip is back-to-back
   const nextTrip = block.blockTrips
-    .filter(t => t.id !== bt.id && t.trip.departureMinutes >= btArr)
+    .filter(t => t.trip.departureMinutes >= btArr)
     .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)[0]
   if (nextTrip && nextTrip.trip.departureMinutes - btArr <= BACK_TO_BACK_THRESHOLD) return false
 
   return true
 }
 
-function makeAddIntervalAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+function makeAddIntervalAction(afterMinutes: number, blockId: string, deps: VehiclesActionDeps): ActionItem {
   return {
     id:      'add-interval',
     label:   'Intervalo',
     icon:    'Coffee',
     variant: 'both',
-    onClick: () => deps.onAddInterval(blockTripId, blockId),
+    onClick: () => deps.onAddInterval(afterMinutes, blockId),
+  }
+}
+
+// Next productive trip in the block starts somewhere other than where this one
+// ends — the vehicle needs a DISPLACEMENT to get there. Whether something else
+// (deadrun/break) already sits between the two is checked by the handler, which
+// explains the refusal instead of silently hiding the button.
+export function nextTripOf(bt: GanttBlockTrip, block: GanttBlock): GanttBlockTrip | undefined {
+  return block.blockTrips
+    .filter(t => t.id !== bt.id && t.trip.departureMinutes >= bt.trip.arrivalMinutes)
+    .sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)[0]
+}
+
+function canAddDisplacement(bt: GanttBlockTrip, block: GanttBlock): boolean {
+  const next = nextTripOf(bt, block)
+  return !!next && next.trip.route.originLocality.id !== bt.trip.route.destinationLocality.id
+}
+
+function makeAddDisplacementAction(blockTripId: string, blockId: string, deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'add-displacement',
+    label:   'Deslocamento',
+    icon:    'Route',
+    variant: 'both',
+    onClick: () => deps.onAddDisplacement(blockTripId, blockId),
   }
 }
 

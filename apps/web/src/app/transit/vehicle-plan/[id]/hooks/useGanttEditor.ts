@@ -13,7 +13,7 @@ import type { IntervalType } from '../components/AddIntervalModal'
 import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
 import type { TripMarking, Trip } from '@nyx/schemas'
 import { resolveCycleWindow } from '../views/vehicles.view'
-import { createVehiclesActionSpec, canAddAccess, canAddReturn } from '../views/vehicles.actions'
+import { createVehiclesActionSpec, canAddAccess, canAddReturn, nextTripOf } from '../views/vehicles.actions'
 import type { Selection, RowHintEntry } from '../engine/gantt.types'
 import { getTravelTime } from '../travel-time'
 
@@ -132,7 +132,7 @@ function findBlockForSegId(blocks: GanttBlock[], segId: string): GanttBlock | un
 }
 
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
-export type AddIntervalModalState = { blockTripId: string; blockId: string }
+export type AddIntervalModalState = { afterMinutes: number; blockId: string }
 export type StopPattern = Trip['stopPattern']
 export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern }
 export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
@@ -1716,9 +1716,63 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setDepotModal({ kind: 'return', blockTripId, blockId })
   }
 
-  function handleAddInterval(blockTripId: string, blockId: string) {
+  function handleAddInterval(afterMinutes: number, blockId: string) {
     if (!canEditGantt) return
-    setAddIntervalModal({ blockTripId, blockId })
+    setAddIntervalModal({ afterMinutes, blockId })
+  }
+
+  // DISPLACEMENT bridging the trip to the next productive one: origin = this trip's
+  // destination, destination = next trip's origin, leaving 1min after the trip and
+  // sized from the matrix. Only between two back-to-back productive trips — anything
+  // else in between (deadrun/break) cancels; forcing it goes through AddTripModal.
+  async function handleAddDisplacement(blockTripId: string, blockId: string) {
+    if (!canEditGantt || !mergedPlottedData) return
+    const block = mergedPlottedData.blocks.find(b => b.id === blockId)
+    const bt    = block?.blockTrips.find(bt => bt.id === blockTripId)
+    const next  = block && bt ? nextTripOf(bt, block) : undefined
+    if (!block || !bt || !next) return
+
+    const btArr = bt.trip.arrivalMinutes
+    const nextDep = next.trip.departureMinutes
+    const inBetween = (dep: number) => dep >= btArr && dep < nextDep
+    if (block.blockDeadruns.some(dr => inBetween(dr.departureMinutes))) {
+      toast.warning('Já existe um ocioso entre as viagens — para forçar, inclua o deslocamento pelo modal de inclusão')
+      return
+    }
+    if (block.blockIntervals.some(bi => inBetween(bi.departureMinutes))) {
+      toast.warning('Existe um intervalo entre as viagens — para forçar, inclua o deslocamento pelo modal de inclusão')
+      return
+    }
+
+    const originLocality      = bt.trip.route.destinationLocality
+    const destinationLocality = next.trip.route.originLocality
+    const travelMinutes = await getTravelTime(originLocality.id, destinationLocality.id)
+    if (travelMinutes === null) {
+      toast.warning('Mapeamento não localizado na matriz entre os pontos informados')
+      return
+    }
+
+    // 1min gap on both sides
+    const departureMinutes = btArr + 1
+    const maxDuration      = nextDep - 1 - departureMinutes
+    if (maxDuration <= 0) {
+      toast.warning('Sem espaço entre as viagens para o deslocamento')
+      return
+    }
+    const duration = Math.min(travelMinutes, maxDuration)
+    if (duration < travelMinutes) {
+      toast.warning(`Deslocamento previsto de ${travelMinutes} min não cabe entre as viagens — criado com ${duration} min`)
+    }
+
+    handlePendingAdd({
+      _kind:   'deadrun',
+      _tempId: crypto.randomUUID(),
+      originLocality, destinationLocality,
+      departureMinutes,
+      arrivalMinutes: departureMinutes + duration,
+      blockId,
+    })
+    setSelection(null)
   }
 
   // Always queued as a pending add — unlike access/return, an interval has no
@@ -1726,14 +1780,13 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // API call even for trips that already exist server-side.
   function handleConfirmAddInterval(intervalType: IntervalType) {
     if (!canEditGantt || !addIntervalModal || !mergedPlottedData) return
-    const { blockTripId, blockId } = addIntervalModal
+    const { afterMinutes, blockId } = addIntervalModal
     setAddIntervalModal(null)
 
     const block = mergedPlottedData.blocks.find(b => b.id === blockId)
-    const bt    = block?.blockTrips.find(bt => bt.id === blockTripId)
-    if (!bt) return
+    if (!block) return
 
-    const departureMinutes = bt.trip.arrivalMinutes + 1
+    const departureMinutes = afterMinutes + 1
 
     // Occupies the full gap up to whatever comes next in the block (trip, deadrun
     // or existing break), capped at the interval type's max — if the gap is smaller
@@ -1741,10 +1794,10 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     // irregular by computeIntervalIrregularity, never blocked, see docs/proposal
     // /vehicle-plan-block-intervals.md §5.3).
     const nextStarts = [
-      ...block!.blockTrips.filter(o => o.id !== bt.id).map(o => o.trip.departureMinutes),
-      ...block!.blockDeadruns.map(dr => dr.departureMinutes),
-      ...block!.blockIntervals.map(bi => bi.departureMinutes),
-    ].filter(dep => dep > bt.trip.arrivalMinutes)
+      ...block.blockTrips.map(o => o.trip.departureMinutes),
+      ...block.blockDeadruns.map(dr => dr.departureMinutes),
+      ...block.blockIntervals.map(bi => bi.departureMinutes),
+    ].filter(dep => dep > afterMinutes)
     const nextStart = nextStarts.length > 0 ? Math.min(...nextStarts) : null
     // leaves the same 1min gap before the next item as the 1min gap right after the trip
     const availableGap = nextStart != null ? nextStart - departureMinutes - 1 : null
@@ -2244,11 +2297,12 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     onAddAccess:         handleAddAccess,
     onAddReturn:         handleAddReturn,
     onAddInterval:       handleAddInterval,
+    onAddDisplacement:   handleAddDisplacement,
     onConvertToDeadrun:  handleConvertToDeadrun,
     onConvertToTrip:     handleOpenConvertToTrip,
   }, canEditGantt)
 
-  // onAddAccess/onAddReturn/onAddInterval/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
+  // onAddAccess/onAddReturn/onAddInterval/onAddDisplacement/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
   // onDeleteInterval/onUpdateConstraints and the raw handleSavePending aren't returned —
   // they're only ever reached through vehiclesActionSpec or the *WithConfirm wrappers,
   // both already exposed below (queueTripDeletes is the exception — SwitchLineScheduleModal
