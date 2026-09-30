@@ -287,7 +287,7 @@ export class VehiclePlanImportService {
     const blockTripRows:     Array<{ vehicleBlockId: string; tripId: string; sequence: number }> = []
     const blockIntervalRows: Array<{ id: string; vehicleBlockId: string; intervalTypeId: string; departureMinutes: number; arrivalMinutes: number }> = []
 
-    for (const [blockKey, rawTabRows] of blockMap.entries()) {
+    for (const rawTabRows of blockMap.values()) {
       // depDay is not a trustworthy calendar-day counter: in practice it can flip
       // 1->2->1 mid-tab with no midnight crossing at all (e.g. a mid-shift interval
       // marker), so it can't be used as a sort key. Row order *within* a single
@@ -442,6 +442,10 @@ export class VehiclePlanImportService {
 
       if (perBlockEntries.length === 0) continue
 
+      // Errors reference the blockNumber shown on the Gantt, not the file's vehicle key
+      const thisBlockNumber = blockNumber++
+      const record = `Bloco ${thisBlockNumber}`
+
       // Reclassify deadruns by position relative to productive trips:
       // before first trip → ACCESS, after last trip → RETURN. The file only gives a
       // non-productive row a line + direction, so its endpoints came from that route —
@@ -464,16 +468,16 @@ export class VehiclePlanImportService {
           const prev = perBlockEntries[i - 1]
           const next = perBlockEntries[i + 1]
           if (e.type === 'RETURN' && next && !(next.kind === 'deadrun' && next.type === 'ACCESS')) {
-            errors.push({ line: e.lineNum, record: `Bloco ${blockKey}`, message: `Linha ${e.lineCode} — recolhimento ${toHHMM(e.departureMinutes)} no meio do bloco sem saída de garagem em seguida` })
+            errors.push({ line: e.lineNum, record, message: `Linha ${e.lineCode} — recolhimento ${toHHMM(e.departureMinutes)} no meio do bloco sem saída de garagem em seguida` })
           }
           if (e.type === 'ACCESS' && prev && !(prev.kind === 'deadrun' && prev.type === 'RETURN')) {
-            errors.push({ line: e.lineNum, record: `Bloco ${blockKey}`, message: `Linha ${e.lineCode} — saída de garagem ${toHHMM(e.departureMinutes)} no meio do bloco sem recolhimento anterior` })
+            errors.push({ line: e.lineNum, record, message: `Linha ${e.lineCode} — saída de garagem ${toHHMM(e.departureMinutes)} no meio do bloco sem recolhimento anterior` })
           }
         }
       }
 
       if (normalizeDeadruns) {
-        errors.push(...this.normalizeDeadrunEntries(perBlockEntries, blockKey, depotId, routeById, matrixMap))
+        errors.push(...this.normalizeDeadrunEntries(perBlockEntries, record, depotId, routeById, matrixMap))
       }
 
       if (normalize) {
@@ -543,7 +547,7 @@ export class VehiclePlanImportService {
         id:            blockId,
         vehiclePlanId: plan.id,
         branchId,
-        blockNumber:   blockNumber++,
+        blockNumber:   thisBlockNumber,
         depotId,
         vehicleType:   'STANDARD',
         isStale:       true,
@@ -605,14 +609,12 @@ export class VehiclePlanImportService {
   // routes. Any case that can't be resolved keeps the file data and is flagged.
   private normalizeDeadrunEntries(
     entries:   BlockEntry[],
-    blockKey:  string,
+    record:    string,
     depotId:   string,
     routeById: Map<string, { originLocalityId: string; destinationLocalityId: string }>,
     matrixMap: Record<string, { minutes: number; km: number }>,
   ): ImportOutput['errors'] {
     const errors: ImportOutput['errors'] = []
-    const record = `Bloco ${blockKey}`
-
     for (let i = 0; i < entries.length - 1; i++) {
       const a = entries[i]
       const b = entries[i + 1]
