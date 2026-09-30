@@ -10,11 +10,6 @@ import { vehicleBlockIssueText } from '@nyx/schemas'
 
 interface Props {
   block:    GanttBlock
-  // Row label as shown in the Gantt ("Carro N") — see vehicles.view.ts's
-  // getRows. Passed in rather than recomputed here since it depends on the
-  // block's position in the currently filtered/visible set, not on the block
-  // itself.
-  label:    string
   screenY:  number
   screenX:  number
   onClose:  () => void
@@ -45,7 +40,7 @@ function fmtKm(km: number): string {
   return km.toFixed(1) + ' km'
 }
 
-export function BlockDetailPopover({ block, label, screenY, screenX, onClose, onUpdate }: Props) {
+export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [isPending, setIsPending] = useState(false)
 
@@ -148,12 +143,7 @@ export function BlockDetailPopover({ block, label, screenY, screenX, onClose, on
     >
       {/* header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="flex items-center gap-1.5 min-w-0">
-          <span className="font-semibold text-sm truncate">{label}</span>
-          <span className="shrink-0 text-[10px] font-medium text-muted-foreground bg-muted rounded px-1.5 py-0.5">
-            Bloco {block.blockNumber}
-          </span>
-        </span>
+        <span className="font-semibold text-sm">Bloco {block.blockNumber}</span>
         <button
           onClick={onClose}
           className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
