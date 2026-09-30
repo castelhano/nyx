@@ -1,16 +1,11 @@
 ### TODO
-```
-# Lista processos em execucao
-ss -tlnp | grep -E ':(3000|3001)\b'
-
-# Mata processo
-fuser -k 3001/tcp 3000/tcp
-```
-
 
 ---
 # Outros
 ## Alto
+[ ] Como adicionar displacement entre viagens (301 C10 -> C01)
+[ ] Deadrun pode receber um intervalo.. [reco][interv][acess]
+[ ] Separar conceito de preparo e conclusao de servico
 ## Medio
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações)
 [ ] Adição de ponto / waypoint no cadastro da rota, permitir remover um ponto ainda nao persistido (pending), e alt+l deve descartar pendencias
