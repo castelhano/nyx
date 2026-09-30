@@ -57,7 +57,7 @@ export const localitySchema = withMeta(
     }),
 
     isDepot: z.boolean().default(false).meta({
-      label:          'É Garagem',
+      label:          'É Depósito',
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,

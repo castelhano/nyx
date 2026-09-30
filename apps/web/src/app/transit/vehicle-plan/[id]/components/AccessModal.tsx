@@ -14,12 +14,13 @@ interface Depot {
 }
 
 interface Props {
-  title:     string
+  title:         string
+  confirmLabel?: string
   onConfirm: (depot: { id: string; name: string }) => void
   onClose:   () => void
 }
 
-export function AccessModal({ title, onConfirm, onClose }: Props) {
+export function AccessModal({ title, confirmLabel = 'Adicionar', onConfirm, onClose }: Props) {
   const [depotId, setDepotId] = useState('')
   const selectRef = useRef<HTMLSelectElement>(null)
   useShortcutContext('access_md')
@@ -36,7 +37,7 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
     queryKey: ['transit', 'transit-locality', 'depots'],
     queryFn:  async () => {
       const res = await apiFetch('/transit/transit-locality?f_isDepot=true&pageSize=100')
-      if (!res.ok) throw new Error('Erro ao carregar garagens')
+      if (!res.ok) throw new Error('Erro ao carregar depósitos')
       const json = await res.json()
       return (json.data ?? json) as Depot[]
     },
@@ -66,7 +67,7 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
 
         <div>
           <label htmlFor="depotId" className="text-sm font-medium">
-            Garagem <span className="ps-0.5">*</span>
+            Depósito <span className="ps-0.5">*</span>
           </label>
           <div className="relative mt-2">
             <select
@@ -79,7 +80,7 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
               className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
             >
               <option value="">
-                {isLoading ? 'Carregando…' : depots.length === 0 ? 'Nenhuma garagem cadastrada' : 'Selecione…'}
+                {isLoading ? 'Carregando…' : depots.length === 0 ? 'Nenhum depósito cadastrado' : 'Selecione…'}
               </option>
               {depots.map(d => (
                 <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
@@ -94,7 +95,7 @@ export function AccessModal({ title, onConfirm, onClose }: Props) {
             Cancelar
           </Button>
           <Button type="submit" size="sm" disabled={!depotId || isLoading}>
-            Adicionar
+            {confirmLabel}
           </Button>
         </div>
       </form>

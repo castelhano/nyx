@@ -106,7 +106,7 @@ export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   SPLIT_INTERVAL:     'Intervalo da dupla pegada',
   WALK_DISTANCE:      'Deslocamento a pé acima do permitido',
   MEAL_REQUIRED:      'Intrajornada não cumprida',
-  PIECE_OFF_SERVICE:  'Pegada cobre o carro fora de serviço (intervalo/garagem)',
+  PIECE_OFF_SERVICE:  'Pegada cobre o carro fora de serviço (intervalo/depósito)',
   CONTINUOUS_DRIVING: 'Direção contínua',
   MIN_PIECE:          'Pegada curta',
   TRAVEL_GAP:         'Deslocamento entre pegadas',

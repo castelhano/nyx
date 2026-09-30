@@ -1203,7 +1203,7 @@ export function LineScheduleGeneratorModal({
               if (t != null) entry.access = { localityId: blockDepotId, travelMinutes: t }
               else if (!noDepotWarned) {
                 noDepotWarned = true
-                generalWarnings.add('Tempo de viagem até a garagem não mapeado na matriz — acesso/recolhida não inseridos em alguns blocos')
+                generalWarnings.add('Tempo de viagem até o depósito não mapeado na matriz — acesso/recolhida não inseridos em alguns blocos')
               }
             }
             if (i === allLegs.length - 1 && blockDepotId) {
@@ -1242,7 +1242,7 @@ export function LineScheduleGeneratorModal({
               if (!resolved) {
                 if (!noDepotWarned) {
                   noDepotWarned = true
-                  generalWarnings.add('Sem garagem disponível para recolhida em parada intermediária — mantido aguardando no ponto')
+                  generalWarnings.add('Sem depósito disponível para recolhida em parada intermediária — mantido aguardando no ponto')
                 }
                 maybeInsertBreak(gapStart, gapEnd, anchorTempId)
                 continue
@@ -1921,14 +1921,14 @@ export function LineScheduleGeneratorModal({
                     </div>
                   </section>
 
-                  {/* right: frota por garagem */}
+                  {/* right: frota por depósito */}
                   <section className="space-y-2">
                     <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Frota por Garagem
+                      Frota por Depósito
                     </h4>
 
                     {depots.length === 0 && !depotsLoading ? (
-                      <p className="text-xs text-muted-foreground">Nenhuma garagem cadastrada</p>
+                      <p className="text-xs text-muted-foreground">Nenhum depósito cadastrado</p>
                     ) : (
                       <div className="space-y-1.5">
                         {activeState.depotAllocations.map(d => (
@@ -1978,7 +1978,7 @@ export function LineScheduleGeneratorModal({
                     </div>
                     {attemptedGenerate && depotMismatch && (
                       <p className="text-xs text-destructive">
-                        Distribua toda a frota do pico entre as garagens antes de gerar
+                        Distribua toda a frota do pico entre os depósitos antes de gerar
                       </p>
                     )}
                   </section>

@@ -7,6 +7,7 @@ import { z } from 'zod'
 // unmodeled stand counts as work, etc.).
 
 export const VEHICLE_BLOCK_ISSUE_CODES = [
+  'NO_COMPANY',            // no empresa (VehicleBlock.branchId) assigned
   'NO_START_ACCESS',       // the first movement isn't an ACCESS
   'NO_END_RETURN',         // the last movement isn't a RETURN
   'MISSING_ACCESS',        // after a RETURN, the vehicle moves again without an ACCESS
@@ -20,11 +21,12 @@ export const VEHICLE_BLOCK_ISSUE_CODES = [
 export type VehicleBlockIssueCode = typeof VEHICLE_BLOCK_ISSUE_CODES[number]
 
 export const VEHICLE_BLOCK_ISSUE_LABEL: Record<VehicleBlockIssueCode, string> = {
+  NO_COMPANY:            'Bloco sem empresa',
   NO_START_ACCESS:       'Começa sem acesso',
   NO_END_RETURN:         'Termina sem recolhida',
   MISSING_ACCESS:        'Recolhe e volta a operar sem acesso',
   ACCESS_WITHOUT_RETURN: 'Acesso no meio do dia sem recolhida antes',
-  DEPOT_MISMATCH:        'Acesso/recolhida em garagem diferente da do carro',
+  DEPOT_MISMATCH:        'Acesso/recolhida em depósito diferente do do carro',
   CHAINED_DEADRUNS:      'Deslocamentos seguidos, sem viagem entre eles',
   LOCATION_JUMP:         'Parte de local diferente de onde o carro estava',
   LONG_STAND:            'Parado além do intervalo máximo, sem intervalo lançado',
@@ -50,6 +52,7 @@ export function vehicleBlockIssueText(issue: VehicleBlockIssue): string {
 
 export interface BlockValidationInput {
   depotId:   string
+  branchId:  string | null
   trips:     { departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
@@ -68,6 +71,7 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
   if (!moves.length) return issues
 
   const first = moves[0], last = moves[moves.length - 1]
+  if (!input.branchId) issues.push({ code: 'NO_COMPANY', minutes: first.departureMinutes })
   if (first.kind !== 'ACCESS') issues.push({ code: 'NO_START_ACCESS', minutes: first.departureMinutes })
   if (last.kind !== 'RETURN')  issues.push({ code: 'NO_END_RETURN',   minutes: last.arrivalMinutes })
 

@@ -400,7 +400,7 @@ export default function TransitSettingsPage() {
             <div>
               <p className="text-sm font-medium">Comportamento do gerador em intervalos longos</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Comportamento padrão em paradas intermediárias (intervalos longos): aguardar no ponto ou recolher à garagem
+                Comportamento padrão em paradas intermediárias (intervalos longos): aguardar no ponto ou recolher ao depósito
               </p>
             </div>
             <div className="flex items-center gap-2">

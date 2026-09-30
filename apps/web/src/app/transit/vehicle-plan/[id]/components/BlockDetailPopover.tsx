@@ -168,9 +168,9 @@ export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate 
           </select>
         </div>
 
-        {/* Garagem */}
+        {/* Depósito */}
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">Garagem</span>
+          <span className="text-muted-foreground w-16 shrink-0">Depósito</span>
           <select
             value={depotId}
             onChange={e => handleDepot(e.target.value)}
@@ -183,9 +183,9 @@ export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate 
           </select>
         </div>
 
-        {/* Operador */}
+        {/* Empresa */}
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground w-16 shrink-0">Operador</span>
+          <span className="text-muted-foreground w-16 shrink-0">Empresa</span>
           <select
             value={branchId}
             onChange={e => handleBranch(e.target.value)}
@@ -260,7 +260,7 @@ export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate 
               <span className="font-medium">{fmtKm(s.productiveKm)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">KM garagem</span>
+              <span className="text-muted-foreground">KM depósito</span>
               <span className="font-medium">{fmtKm(s.deadrunKm)}</span>
             </div>
           </div>

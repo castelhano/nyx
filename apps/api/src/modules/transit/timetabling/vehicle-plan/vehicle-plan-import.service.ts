@@ -365,7 +365,7 @@ export class VehiclePlanImportService {
 
         const km = (line.metrics?.extensionKm?.[direction] as number | undefined) ?? 0
 
-        // Synthetic depot-departure deadhead (saída de garagem) — any row carrying a
+        // Synthetic depot-departure deadhead (saída do depósito) — any row carrying a
         // depot departure time, not only the tab's first: a vehicle that returns to the
         // depot mid-day leaves it again on a later tab
         if (row.depotDepartureHHMM !== '') {
@@ -468,10 +468,10 @@ export class VehiclePlanImportService {
           const prev = perBlockEntries[i - 1]
           const next = perBlockEntries[i + 1]
           if (e.type === 'RETURN' && next && !(next.kind === 'deadrun' && next.type === 'ACCESS')) {
-            errors.push({ line: e.lineNum, record, message: `Linha ${e.lineCode} — recolhimento ${toHHMM(e.departureMinutes)} no meio do bloco sem saída de garagem em seguida` })
+            errors.push({ line: e.lineNum, record, message: `Linha ${e.lineCode} — recolhimento ${toHHMM(e.departureMinutes)} no meio do bloco sem saída do depósito em seguida` })
           }
           if (e.type === 'ACCESS' && prev && !(prev.kind === 'deadrun' && prev.type === 'RETURN')) {
-            errors.push({ line: e.lineNum, record, message: `Linha ${e.lineCode} — saída de garagem ${toHHMM(e.departureMinutes)} no meio do bloco sem recolhimento anterior` })
+            errors.push({ line: e.lineNum, record, message: `Linha ${e.lineCode} — saída do depósito ${toHHMM(e.departureMinutes)} no meio do bloco sem recolhimento anterior` })
           }
         }
       }

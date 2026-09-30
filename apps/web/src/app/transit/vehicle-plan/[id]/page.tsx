@@ -109,7 +109,7 @@ export default function VehiclePlanPage() {
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
-    handleCreateEmptyBlock,
+    handleCreateEmptyBlock, handleChangeDepot,
     setPendingLineSchedulePin,
     editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
@@ -143,6 +143,7 @@ export default function VehiclePlanPage() {
   const [generateLineModal, setGenerateLineModal] = useState<{ lineIds: string[] } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
+  const [changeDepotOpen,   setChangeDepotOpen]   = useState(false)
   const [osoCoverageModal,  setOsoCoverageModal]   = useState<{ lineId: string } | null>(null)
 
   // ── side frequency panel — read-only mirror of the focused trip in the
@@ -323,6 +324,12 @@ export default function VehiclePlanPage() {
               icon:     Icons.CheckCircle,
               onClick:  handleFinalizePlan,
               disabled: isPending,
+            },
+            {
+              label:    'Modificar depósito',
+              icon:     Icons.Warehouse,
+              onClick:  () => setChangeDepotOpen(true),
+              disabled: isPending || selectedLineIds.size === 0,
             },
           ],
         },
@@ -518,6 +525,15 @@ export default function VehiclePlanPage() {
           title={depotModal.kind === 'access' ? 'Adicionar Acesso' : 'Adicionar Recolhida'}
           onConfirm={handleConfirmDepotModal}
           onClose={() => setDepotModal(null)}
+        />
+      )}
+
+      {changeDepotOpen && (
+        <AccessModal
+          title="Modificar depósito"
+          confirmLabel="Aplicar"
+          onConfirm={depot => { setChangeDepotOpen(false); handleChangeDepot(depot) }}
+          onClose={() => setChangeDepotOpen(false)}
         />
       )}
 

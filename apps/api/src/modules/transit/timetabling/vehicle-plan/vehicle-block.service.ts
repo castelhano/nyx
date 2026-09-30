@@ -26,8 +26,8 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
   override async update(id: string, dto: UpdateVehicleBlockDto): Promise<VehicleBlock> {
     const { summary: _summary, constraints: _constraints, issues: _issues, hasIssues: _hasIssues, ...rest } = dto as any
     const updated = await super.update(id, rest)
-    // DEPOT_MISMATCH depends on it
-    if (rest.depotId) await refreshBlockIssues(this.prisma, id, this.generalConfig)
+    // DEPOT_MISMATCH / NO_COMPANY depend on them — `in`, since clearing the empresa sends null
+    if ('depotId' in rest || 'branchId' in rest) await refreshBlockIssues(this.prisma, id, this.generalConfig)
     return updated
   }
 

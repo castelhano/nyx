@@ -72,7 +72,7 @@ export class VehiclePlanImportController {
       },
       {
         name:           'depotId',
-        label:          'Garagem',
+        label:          'Depósito',
         type:           'relation',
         required:       true,
         listVisibility: 'never',
@@ -138,7 +138,7 @@ export class VehiclePlanImportController {
     if (!branchId)               throw new BadRequestException('Filial obrigatória')
     if (!planId && !scopeId)     throw new BadRequestException('Escopo obrigatório')
     if (!planId && !dayTypeId)   throw new BadRequestException('Tipo de dia obrigatório')
-    if (!depotId)                throw new BadRequestException('Garagem obrigatória')
+    if (!depotId)                throw new BadRequestException('Depósito obrigatório')
 
     const setupMinutes = parseInt(setupMinutesRaw ?? '0', 10) || 0
     const normalize    = normalizeRaw === 'true'

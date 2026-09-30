@@ -35,7 +35,7 @@ interface Candidate {
 
 const JUNCTION: Record<Junction, { label: string; tone: 'green' | 'amber' | 'red' }> = {
   DIRECT:       { label: 'Emenda direta',     tone: 'green' },
-  DEPOT:        { label: 'Via garagem',       tone: 'amber' },
+  DEPOT:        { label: 'Via depósito',      tone: 'amber' },
   DISPLACEMENT: { label: 'Deslocamento novo', tone: 'red' },
 }
 

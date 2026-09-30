@@ -87,12 +87,12 @@ export const routeSchema = withMeta(
       optionLabels: {
         DEFAULT: 'Padrão (config. geral)',
         HOLD:    'Aguardar no ponto',
-        DEPOT:   'Recolher à garagem',
+        DEPOT:   'Recolher ao depósito',
       },
     }),
 
     homeDepotId: z.uuid().nullable().optional().meta({
-      label:          'Garagem Preferencial',
+      label:          'Depósito Preferencial',
       widget:         'select',
       resource:       'transit-locality',
       domain:         'transit',

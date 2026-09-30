@@ -3,7 +3,7 @@ import type { TransitGeneralConfigService } from '../../settings/transit-general
 
 // VehicleBlock.issues (packages/schemas/transit/block-validation.ts) — computed by
 // VehiclePlanService.recalculate for the whole plan, and here for one block when a PATCH
-// changes something they depend on (the depot) without going through recalculate.
+// changes something they depend on (depot, empresa) without going through recalculate.
 
 // LONG_STAND threshold: the default IntervalType's max — the same one Finalizar Plano/import use
 // to turn gaps into intervals; longer gaps are left for review
@@ -16,6 +16,7 @@ export async function defaultIntervalMaxMinutes(db: any, generalConfig: TransitG
 
 export interface IssueBlockRow {
   depotId:        string
+  branchId:       string | null
   blockTrips:     { trip: { departureMinutes: number; arrivalMinutes: number; route: { originLocalityId: string; destinationLocalityId: string } } }[]
   blockDeadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
   blockIntervals: { departureMinutes: number; arrivalMinutes: number }[]
@@ -23,7 +24,8 @@ export interface IssueBlockRow {
 
 export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null): VehicleBlockIssue[] {
   return validateBlock({
-    depotId: block.depotId,
+    depotId:  block.depotId,
+    branchId: block.branchId,
     trips:   block.blockTrips.map(({ trip }) => ({
       departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
       originLocalityId: trip.route.originLocalityId, destinationLocalityId: trip.route.destinationLocalityId,
@@ -40,6 +42,7 @@ export async function refreshBlockIssues(db: any, blockId: string, generalConfig
       where:  { id: blockId },
       select: {
         depotId:        true,
+        branchId:       true,
         blockTrips:     { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, route: { select: { originLocalityId: true, destinationLocalityId: true } } } } } },
         blockDeadruns:  { select: { type: true, departureMinutes: true, arrivalMinutes: true, originLocalityId: true, destinationLocalityId: true } },
         blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true } },

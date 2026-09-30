@@ -12,7 +12,7 @@ export interface ImportRow {
   arrivalHHMM:         string
   depDay:              number  // col[13]: 1 = same day, 2 = past midnight
   arrDay:              number  // col[14]
-  depotDepartureHHMM:  string  // col[17] — depot departure time (saída de garagem), empty on most rows
+  depotDepartureHHMM:  string  // col[17] — depot departure time (saída do depósito), empty on most rows
   driverCode:          string  // col[23]
   _lineNum:            number
 }

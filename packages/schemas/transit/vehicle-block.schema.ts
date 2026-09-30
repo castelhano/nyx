@@ -35,7 +35,7 @@ export const vehicleBlockSchema = withMeta(
     }),
 
     branchId: z.uuid().optional().meta({
-      label:          'Operador',
+      label:          'Empresa',
       widget:         'select',
       resource:       'branch',
       domain:         'core',
@@ -45,7 +45,7 @@ export const vehicleBlockSchema = withMeta(
     }),
 
     depotId: z.uuid().meta({
-      label:          'Garagem',
+      label:          'Depósito',
       widget:         'select',
       resource:       'transit-locality',
       domain:         'transit',

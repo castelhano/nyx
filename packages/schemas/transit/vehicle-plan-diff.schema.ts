@@ -62,7 +62,11 @@ export const vehiclePlanDiffSchema = z.object({
     notes:            z.string().nullable().optional(),
     stopPattern:      z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
   })).default([]),
-  deadrunUpdates:  z.array(timeUpdateSchema).default([]),
+  // origin/destination only change via "Modificar depósito" (ACCESS origin / RETURN destination)
+  deadrunUpdates:  z.array(timeUpdateSchema.extend({
+    originLocalityId:      z.string().optional(),
+    destinationLocalityId: z.string().optional(),
+  })).default([]),
   intervalUpdates: z.array(timeUpdateSchema).default([]),
   tripDeletes:     z.array(z.string()).default([]),
   deadrunDeletes:  z.array(z.string()).default([]),
@@ -74,6 +78,13 @@ export const vehiclePlanDiffSchema = z.object({
   // effect atomically with the pin, never leaving the line pointed at a schedule
   // whose departures don't match what's actually persisted.
   lineSchedulePins: z.array(z.object({ lineId: z.string(), lineScheduleId: z.string() })).default([]),
+  // Block-level patches, applied after adds/moves — id may be 'pending:<tempId>'.
+  // branchId is reserved for a future bulk "Modificar empresa"; unused for now.
+  blockUpdates: z.array(z.object({
+    id:       z.string(),
+    depotId:  z.string().optional(),
+    branchId: z.string().optional(),
+  })).default([]),
   moves: z.array(z.object({
     blockTripIds: z.array(z.string()),
     breakIds:     z.array(z.string()).default([]),

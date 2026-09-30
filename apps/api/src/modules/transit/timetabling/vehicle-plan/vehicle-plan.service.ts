@@ -319,6 +319,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       for (const t of tripRoutes) tripLineMap.set(t.id, t.route.lineId)
     }
 
+    // the solver doesn't know each vehicle's empresa — only a single-empresa scope fills it
+    const branchId = await this.singleScopeBranchId(this.prisma, planId)
+
     await this.prisma.$transaction(async tx => {
       // delete all non-locked blocks for this plan
       const existingBlocks = await tx.vehicleBlock.findMany({
@@ -346,6 +349,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             vehiclePlanId: planId,
             blockNumber:   block.blockNumber,
             depotId:       block.depotId,
+            branchId,
             vehicleType:   block.vehicleType as any,
             isStale:       hasCrossLineTrip,
           },
@@ -752,10 +756,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     job.worker?.postMessage({ type: 'stop' })
   }
 
-  // Shared by applyDiff's 'adds' processing — resolves an existing block by id
-  // (scoped to this plan) or spawns a new one off the last block's depot, mirroring
-  // what used to be duplicated three times across addTrip/addDeadrun/addInterval.
-  private async resolveOrCreateBlock(tx: any, planId: string, blockId?: string): Promise<string> {
+  // Shared by applyDiff's 'adds'/'moves' processing — resolves an existing block by id
+  // (scoped to this plan) or spawns a new one. The new block inherits empresa and depot
+  // from refBlockId (the block a move pulled its trips from), else from the plan's last
+  // block, else falls back to the scope's single empresa (if any) and the first depot.
+  private async resolveOrCreateBlock(tx: any, planId: string, blockId?: string, refBlockId?: string): Promise<string> {
     if (blockId) {
       const block = await tx.vehicleBlock.findFirst({ where: { id: blockId, vehiclePlanId: planId }, select: { id: true } })
       if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
@@ -765,22 +770,37 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const lastBlock = await tx.vehicleBlock.findFirst({
       where:   { vehiclePlanId: planId },
       orderBy: { blockNumber: 'desc' },
-      select:  { blockNumber: true, depotId: true },
+      select:  { blockNumber: true, depotId: true, branchId: true },
     })
+    const refBlock = refBlockId
+      ? await tx.vehicleBlock.findFirst({ where: { id: refBlockId, vehiclePlanId: planId }, select: { depotId: true, branchId: true } })
+      : lastBlock
 
     let depotId: string
-    if (lastBlock?.depotId) {
-      depotId = lastBlock.depotId
+    if (refBlock?.depotId) {
+      depotId = refBlock.depotId
     } else {
       const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
       if (!depot) throw new BadRequestException('No depot locality configured')
       depotId = depot.id
     }
+    const branchId = refBlock ? refBlock.branchId : await this.singleScopeBranchId(tx, planId)
 
     const newBlock = await tx.vehicleBlock.create({
-      data: { vehiclePlanId: planId, blockNumber: (lastBlock?.blockNumber ?? 0) + 1, depotId, vehicleType: 'STANDARD' },
+      data: { vehiclePlanId: planId, blockNumber: (lastBlock?.blockNumber ?? 0) + 1, depotId, branchId, vehicleType: 'STANDARD' },
     })
     return newBlock.id
+  }
+
+  // The plan scope's empresa when it has exactly one ScopeOperator — null otherwise,
+  // since with several there's no line→empresa link to pick one (NO_COMPANY flags it).
+  private async singleScopeBranchId(db: any, planId: string): Promise<string | null> {
+    const operators = await db.scopeOperator.findMany({
+      where:  { scope: { vehiclePlans: { some: { id: planId } } } },
+      select: { branchId: true },
+      take:   2,
+    })
+    return operators.length === 1 ? operators[0].branchId : null
   }
 
   // The single write path for every Gantt edit (trip/deadrun/interval patches and
@@ -809,12 +829,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // in newBlockIds by the time step 8 runs) and a block that was never backed by
       // any add (e.g. an empty block created client-side and only ever targeted by a
       // move — see useGanttEditor's handleCreateEmptyBlock).
-      const resolveBlockRef = async (ref: string): Promise<string> => {
+      const resolveBlockRef = async (ref: string, refBlockId?: string): Promise<string> => {
         if (!ref.startsWith('pending:')) return ref
         const tempId   = ref.slice('pending:'.length)
         const existing = newBlockIds.get(tempId)
         if (existing) return existing
-        const created = await this.resolveOrCreateBlock(tx, planId, undefined)
+        const created = await this.resolveOrCreateBlock(tx, planId, undefined, refBlockId)
         newBlockIds.set(tempId, created)
         return created
       }
@@ -874,7 +894,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       for (const u of diff.deadrunUpdates) {
         const dr = await tx.blockDeadrun.findUnique({ where: { id: u.id }, select: { vehicleBlockId: true } })
         if (!dr) throw new NotFoundException('Vazio não encontrado')
-        await tx.blockDeadrun.update({ where: { id: u.id }, data: { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes } })
+        await tx.blockDeadrun.update({
+          where: { id: u.id },
+          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes, originLocalityId: u.originLocalityId, destinationLocalityId: u.destinationLocalityId },
+        })
         await tx.vehicleBlock.update({ where: { id: dr.vehicleBlockId }, data: { isStale: true } })
       }
 
@@ -1021,8 +1044,21 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
         const deadrunIds  = move.deadrunIds.filter(id => !diff.deadrunDeletes.includes(id))
         const fromBlockId = await resolveBlockRef(move.fromBlockId)
-        const toBlockId    = await resolveBlockRef(move.toBlockId)
+        const toBlockId    = await resolveBlockRef(move.toBlockId, fromBlockId)
         await applyMoveTrip(tx, fromBlockId, blockTripIds, toBlockId, move.breakIds, deadrunIds)
+      }
+
+      // 8b. block-level patches ("Modificar depósito") — after adds/moves, so a
+      // `pending:<id>` ref already points at the block created above, and a new block
+      // that inherited the old depot from its move source gets the new one explicitly.
+      // updateMany tolerates a block the moves above left empty and deleted.
+      for (const u of diff.blockUpdates) {
+        const blockId = u.id.startsWith('pending:') ? newBlockIds.get(u.id.slice('pending:'.length)) : u.id
+        if (!blockId) continue
+        await tx.vehicleBlock.updateMany({
+          where: { id: blockId, vehiclePlanId: planId },
+          data:  { depotId: u.depotId, branchId: u.branchId, isStale: true },
+        })
       }
 
       // 9. recompute isDrifted for every line whose trip coverage this diff could

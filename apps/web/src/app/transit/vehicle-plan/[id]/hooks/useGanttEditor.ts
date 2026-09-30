@@ -135,7 +135,22 @@ export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; bloc
 export type AddIntervalModalState = { afterMinutes: number; blockId: string }
 export type StopPattern = Trip['stopPattern']
 export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern }
-export type DeadrunPatch = { departureMinutes?: number; arrivalMinutes?: number }
+// origin/destination only via "Modificar depósito" — both the id (sent to apply-diff) and the
+// {id, name} ref (rendered) are set together, so spreading the patch onto the deadrun keeps them in sync
+export type DeadrunPatch = {
+  departureMinutes?: number; arrivalMinutes?: number
+  originLocalityId?: string; originLocality?: { id: string; name: string }
+  destinationLocalityId?: string; destinationLocality?: { id: string; name: string }
+}
+type BlockPatch = { depotId: string; depot: { id: string; name: string } }
+
+// Replaces a deadrun patch's timing while keeping any locality change already staged —
+// null when nothing is left to patch.
+function withDeadrunTiming(prev: DeadrunPatch | undefined, timing: DeadrunPatch): DeadrunPatch | null {
+  const { departureMinutes: _dep, arrivalMinutes: _arr, ...localities } = prev ?? {}
+  const patch = { ...localities, ...timing }
+  return Object.keys(patch).length ? patch : null
+}
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
 export type PendingLineSchedulePin = { lineId: string; lineScheduleId: string }
@@ -175,6 +190,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   const [pendingDeletes,        setPendingDeletes]        = useState<Set<string>>(new Set())
   const [pendingDeadrunDeletes, setPendingDeadrunDeletes] = useState<Set<string>>(new Set())
   const [pendingIntervalDeletes,setPendingIntervalDeletes]= useState<Set<string>>(new Set())
+  // Block-level changes ("Modificar depósito"), keyed by real or 'pending:<tempId>' block id
+  const [pendingBlockChanges,   setPendingBlockChanges]   = useState<Map<string, BlockPatch>>(new Map())
   // Empty blocks created via "Novo bloco" (q+w+n) — pure UI placeholders, keyed by
   // their own tempId rather than a trip's, so they render as an empty row before
   // anything is added into them. Never sent to apply-diff: a still-empty one on
@@ -260,7 +277,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // Merges pending local overrides and additions into the plotted data before rendering
   const mergedPlottedData = useMemo<VehiclePlanGanttData | null>(() => {
     if (!plottedData) return null
-    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0 && pendingNewBlockIds.length === 0) return plottedData
+    if (pendingChanges.size === 0 && pendingDeadrunChanges.size === 0 && pendingIntervalChanges.size === 0 && pendingAdds.length === 0 && pendingDeletes.size === 0 && pendingDeadrunDeletes.size === 0 && pendingIntervalDeletes.size === 0 && pendingMoves.length === 0 && pendingNewBlockIds.length === 0 && pendingBlockChanges.size === 0) return plottedData
 
     const maxBlockNumber = plottedData.blocks.reduce((max, b) => Math.max(max, b.blockNumber), 0)
     let extraBlockCount  = 0
@@ -485,10 +502,15 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     // Exception: blocks freshly created via handleCreateEmptyBlock are *meant* to
     // start empty — they haven't lost trips, they never had any yet.
     const freshEmptyBlockIds = new Set(pendingNewBlockIds.map(bid => `pending:${bid}`))
-    const visibleBlocks = allBlocks.filter(b => b.blockTrips.length > 0 || freshEmptyBlockIds.has(b.id))
+    const visibleBlocks = allBlocks
+      .filter(b => b.blockTrips.length > 0 || freshEmptyBlockIds.has(b.id))
+      .map(b => {
+        const patch = pendingBlockChanges.get(b.id)
+        return patch ? { ...b, ...patch } : b
+      })
 
     return { ...plottedData, blocks: visibleBlocks }
-  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves, pendingNewBlockIds])
+  }, [plottedData, pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves, pendingNewBlockIds, pendingBlockChanges])
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
   const allTrips = useMemo(() => {
@@ -723,7 +745,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     moveTargetBlockId ? [{ keys: ['Q', 'M'], label: 'Mover' }] : []
   ), [moveTargetBlockId])
 
-  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + pendingNewBlockIds.length + (pendingLineSchedulePin ? 1 : 0)
+  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + pendingNewBlockIds.length + pendingBlockChanges.size + (pendingLineSchedulePin ? 1 : 0)
 
   // Queued into pendingChanges like a time patch — mergedPlottedData already spreads
   // TripPatch onto trip, so a staged constraints value renders immediately without a
@@ -948,7 +970,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     const flaggedNote = flagged > 0 ? ` · ${flagged} ${flagged === 1 ? 'carro' : 'carros'} com pendências de lançamento (filtro "Com pendências")` : ''
 
     if (newDeadrunEntries.length === 0 && pendingUsable.length === 0 && intervalEntries.length === 0) {
-      if (totalFailed > 0) toast.error(`Revisão do plano concluída — nenhuma lacuna pôde ser preparada — ${totalFailed} sem garagem ou mapeamento de viagem compatível${flaggedNote}`)
+      if (totalFailed > 0) toast.error(`Revisão do plano concluída — nenhuma lacuna pôde ser preparada — ${totalFailed} sem depósito ou mapeamento de viagem compatível${flaggedNote}`)
       else if (flagged > 0) toast.warning(`Revisão do plano concluída — nenhuma lacuna de acesso/recolhida/intervalo encontrada${flaggedNote}`)
       else toast.success('Revisão do plano concluída — nenhuma lacuna de acesso/recolhida/intervalo, plano completo')
       return
@@ -983,15 +1005,20 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       returnCount > 0   ? `${returnCount} ${returnCount === 1 ? 'recolhida' : 'recolhidas'}` : null,
       intervalCount > 0 ? `${intervalCount} ${intervalCount === 1 ? 'intervalo' : 'intervalos'}` : null,
     ].filter(Boolean).join(' e ')
-    toast.success(`Revisão do plano concluída — ${parts} preparados` + (fallbackDepotName && pendingUsable.length > 0 ? ` (novos blocos usando garagem ${fallbackDepotName})` : '') + ' — use Salvar para persistir'
-      + (totalFailed > 0 ? ` (${totalFailed} sem garagem ou mapeamento compatível)` : '') + flaggedNote)
+    toast.success(`Revisão do plano concluída — ${parts} preparados` + (fallbackDepotName && pendingUsable.length > 0 ? ` (novos blocos usando depósito ${fallbackDepotName})` : '') + ' — use Salvar para persistir'
+      + (totalFailed > 0 ? ` (${totalFailed} sem depósito ou mapeamento compatível)` : '') + flaggedNote)
   }
 
   function handleAdjustCycle() {
     if (!plottedData || !canEditStructural) return
 
     const overrides   = new Map<string, TripPatch>()
+    // timing is recomputed from scratch, but a staged "Modificar depósito" locality change is kept
     const drOverrides = new Map<string, DeadrunPatch>()
+    for (const [drId, patch] of pendingDeadrunChanges) {
+      const localities = withDeadrunTiming(patch, {})
+      if (localities) drOverrides.set(drId, localities)
+    }
     const bkOverrides = new Map<string, IntervalPatch>()
     let tripsWithWindow = 0
 
@@ -1053,7 +1080,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
           const dpatch: DeadrunPatch = {}
           if (newDep !== dr.departureMinutes) dpatch.departureMinutes = newDep
           if (newArr !== dr.arrivalMinutes)   dpatch.arrivalMinutes   = newArr
-          if (Object.keys(dpatch).length > 0) drOverrides.set(dr.id, dpatch)
+          const merged = withDeadrunTiming(drOverrides.get(dr.id), dpatch)
+          if (merged) drOverrides.set(dr.id, merged)
 
           prevArrival     = newArr
           pendingInterval = 0  // next trip starts right after deadrun, no extra interval
@@ -1161,7 +1189,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       const patch: DeadrunPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
       if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
-      if (Object.keys(patch).length) drOverrides.set(drId, patch)
+      const merged = withDeadrunTiming(drOverrides.get(drId), patch)
+      if (merged) drOverrides.set(drId, merged)
       else drOverrides.delete(drId)
     }
 
@@ -1345,7 +1374,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       const patch: DeadrunPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
       if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
-      if (Object.keys(patch).length) newDrs.set(drId, patch)
+      const merged = withDeadrunTiming(newDrs.get(drId), patch)
+      if (merged) newDrs.set(drId, merged)
       else newDrs.delete(drId)
     }
 
@@ -1557,6 +1587,98 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setPendingNewBlockIds(prev => [...prev, crypto.randomUUID()])
   }
 
+  // "Modificar depósito" (docs/proposal/plan_block_depot_company_v1.md, Fase 2) — every block
+  // with a trip of a selected line moves to `depot`, along with all of its ACCESS origins and
+  // RETURN destinations: ACCESS keeps its arrival, RETURN its departure, the other end follows
+  // the matrix. Only stages pending changes; never creates deadruns nor touches the empresa.
+  async function handleChangeDepot(depot: { id: string; name: string }) {
+    if (!canEditStructural || !mergedPlottedData || selectedLineIds.size === 0) return
+    const blocks = mergedPlottedData.blocks.filter(b => b.blockTrips.some(bt => selectedLineIds.has(bt.trip.route.line.id)))
+
+    const targets = blocks.flatMap(block => block.blockDeadruns
+      .filter(dr => (dr.type === 'ACCESS' && dr.originLocalityId !== depot.id) || (dr.type === 'RETURN' && dr.destinationLocalityId !== depot.id))
+      .map(dr => ({ block, dr })))
+    const times = await Promise.all(targets.map(({ dr }) => dr.type === 'ACCESS'
+      ? getTravelTime(depot.id, dr.destinationLocalityId)
+      : getTravelTime(dr.originLocalityId, depot.id)))
+
+    const serverDepotIds = new Map(ganttData?.blocks.map(b => [b.id, b.depotId]) ?? [])
+    const tempDeadrunIds = new Set(pendingAdds.filter(a => a._kind === 'deadrun').map(a => a._tempId))
+    const nextBlocks     = new Map(pendingBlockChanges)
+    const nextDrs        = new Map(pendingDeadrunChanges)
+    // pending (unsaved) entries are rewritten in place, keyed by _tempId — the server
+    // re-derives their timing from the matrix, so there's no current duration to keep
+    const tripEdits      = new Map<string, Pick<PendingAddTrip, 'access' | 'return'>>()
+    const deadrunEdits   = new Map<string, Partial<PendingAddDeadrun>>()
+    const noMatrixBlocks = new Set<number>()
+    const overlapBlocks  = new Set<number>()
+    let keptDuration = 0, skipped = 0, changedBlocks = 0, changedDeadruns = 0
+
+    for (const block of blocks) {
+      if (block.depotId === depot.id) continue
+      changedBlocks++
+      if (serverDepotIds.get(block.id) === depot.id) nextBlocks.delete(block.id)
+      else nextBlocks.set(block.id, { depotId: depot.id, depot })
+    }
+
+    targets.forEach(({ block, dr }, i) => {
+      const isAccess = dr.type === 'ACCESS'
+      // access/return synthesized from a pending trip's own access/return (buildFakeAccessReturn)
+      const embedded = dr.id.endsWith(':access') || dr.id.endsWith(':return')
+      const pending  = embedded || tempDeadrunIds.has(dr.id)
+      const travel   = times[i]
+      if (travel == null) {
+        noMatrixBlocks.add(block.blockNumber)
+        if (pending) { skipped++; return }
+        keptDuration++
+      }
+      const minutes = travel ?? dr.arrivalMinutes - dr.departureMinutes
+      const dep     = isAccess ? dr.arrivalMinutes - minutes : dr.departureMinutes
+      const arr     = isAccess ? dr.arrivalMinutes : dr.departureMinutes + minutes
+      const others  = [...block.blockTrips.map(bt => bt.trip), ...block.blockDeadruns.filter(o => o.id !== dr.id), ...block.blockIntervals]
+      if (others.some(o => o.departureMinutes < arr && o.arrivalMinutes > dep)) overlapBlocks.add(block.blockNumber)
+      changedDeadruns++
+
+      if (embedded) {
+        const tempId = dr.id.slice(0, dr.id.lastIndexOf(':'))
+        tripEdits.set(tempId, { ...tripEdits.get(tempId), [isAccess ? 'access' : 'return']: { localityId: depot.id, travelMinutes: minutes } })
+      } else if (pending) {
+        deadrunEdits.set(dr.id, isAccess ? { originLocality: depot, departureMinutes: dep } : { destinationLocality: depot, arrivalMinutes: arr })
+      } else {
+        const localities = isAccess ? { originLocalityId: depot.id, originLocality: depot } : { destinationLocalityId: depot.id, destinationLocality: depot }
+        nextDrs.set(dr.id, { ...nextDrs.get(dr.id), ...localities, departureMinutes: dep, arrivalMinutes: arr })
+      }
+    })
+
+    if (changedBlocks === 0 && changedDeadruns === 0) {
+      toast.info(skipped > 0
+        ? `Nada alterado — sem tempo na matriz até ${depot.name} para os acessos/recolhidas pendentes`
+        : `Nada alterado — os blocos das linhas selecionadas já usam o depósito ${depot.name}`)
+      return
+    }
+
+    setPendingBlockChanges(nextBlocks)
+    setPendingDeadrunChanges(nextDrs)
+    if (tripEdits.size > 0 || deadrunEdits.size > 0) {
+      setPendingAdds(prev => prev.map(a => {
+        if (a._kind === 'trip'    && tripEdits.has(a._tempId))    return { ...a, ...tripEdits.get(a._tempId) }
+        if (a._kind === 'deadrun' && deadrunEdits.has(a._tempId)) return { ...a, ...deadrunEdits.get(a._tempId) }
+        return a
+      }))
+    }
+
+    const list = (nums: Set<number>) => [...nums].sort((x, y) => x - y).join(', ')
+    toast.success(`Depósito ${depot.name} aplicado em ${changedBlocks} bloco(s) e ${changedDeadruns} acesso(s)/recolhida(s) — use Salvar para persistir`)
+    if (noMatrixBlocks.size > 0) {
+      const parts = [
+        keptDuration > 0 ? `${keptDuration} com duração mantida` : null,
+        skipped      > 0 ? `${skipped} pendente(s) não alterado(s)` : null,
+      ].filter(Boolean).join(', ')
+      toast.warning(`Sem tempo na matriz até ${depot.name}: ${parts} — blocos ${list(noMatrixBlocks)}`)
+    }
+    if (overlapBlocks.size > 0) toast.warning(`Acesso/recolhida sobrepõe o item vizinho — blocos ${list(overlapBlocks)}`)
+  }
+
   function clearAllPending() {
     setPendingChanges(new Map())
     setPendingDeadrunChanges(new Map())
@@ -1568,6 +1690,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setPendingMoves([])
     setPendingLineSchedulePin(null)
     setPendingNewBlockIds([])
+    setPendingBlockChanges(new Map())
   }
 
   async function handleToggleEditBar() {
@@ -1632,9 +1755,11 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
               .map(dr => {
                 const patch = pendingDeadrunChanges.get(dr.id)!
                 return {
-                  id:               dr.id,
-                  departureMinutes: patch.departureMinutes ?? dr.departureMinutes,
-                  arrivalMinutes:   patch.arrivalMinutes   ?? dr.arrivalMinutes,
+                  id:                    dr.id,
+                  departureMinutes:      patch.departureMinutes ?? dr.departureMinutes,
+                  arrivalMinutes:        patch.arrivalMinutes   ?? dr.arrivalMinutes,
+                  originLocalityId:      patch.originLocalityId,
+                  destinationLocalityId: patch.destinationLocalityId,
                 }
               }),
           )
@@ -1671,6 +1796,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
           intervalDeletes: Array.from(pendingIntervalDeletes),
           adds:            pendingAdds,
           moves:           pendingMoves,
+          blockUpdates:    Array.from(pendingBlockChanges.entries()).map(([blockId, patch]) => ({ id: blockId, depotId: patch.depotId })),
           lineSchedulePins: pendingLineSchedulePin ? [pendingLineSchedulePin] : [],
         }),
       })
@@ -1688,6 +1814,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       setPendingDeadrunDeletes(new Set())
       setPendingIntervalDeletes(new Set())
       setPendingMoves([])
+      setPendingBlockChanges(new Map())
       setPendingLineSchedulePin(null)
       // Empty blocks never made it into `adds`, so the backend never created them —
       // drop them here too. Any that got a trip added into it already round-trips
@@ -2317,7 +2444,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     moveTargetBlockId, setMoveTargetBlockId,
     pendingAdds, pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes,
     setPendingAdds, setPendingDeletes, setPendingDeadrunDeletes, setPendingChanges, setPendingDeadrunChanges,
-    pendingNewBlockIds, handleCreateEmptyBlock,
+    pendingNewBlockIds, handleCreateEmptyBlock, handleChangeDepot,
     pendingLineSchedulePin, setPendingLineSchedulePin,
     editBarOpen, setEditBarOpen,
     focusedSegId, setFocusedSegId,
