@@ -74,6 +74,8 @@ export function computeHeadway(bt: GanttBlockTrip, blocks: GanttBlock[]): number
   return dep - departures[idx - 1]
 }
 
+export type VehicleType = 'STANDARD' | 'MICRO_BUS' | 'MINIBUS' | 'VAN'
+
 export interface GanttBlockTrip {
   id:       string
   sequence: number
@@ -86,6 +88,8 @@ export interface GanttBlockTrip {
     markings:         TripMarking[] | null
     notes:            string | null
     stopPattern:      'LOCAL' | 'LIMITED' | 'EXPRESS'
+    // absent on pending-add trips (set from the OSO, only ever read for the sync)
+    requiredVehicleType?: VehicleType | null
     route: {
       direction:           string
       line:                { id: string; code: string; name: string; metrics: LineMetrics | null }
@@ -168,6 +172,9 @@ export interface VehiclePlanGanttData {
       inPlan:         boolean
       lineScheduleId: string | null
       isDrifted:      boolean
+      hasAttributeDrift: boolean
+      // other plans pinning the same lineSchedule
+      sharedPlanCount:   number
       summary:      VehiclePlanLineSummary | null
       line:         { id: string; code: string; name: string; metrics: LineMetrics | null }
       lineSchedule: { id: string; status: string; approvalRef: string | null } | null

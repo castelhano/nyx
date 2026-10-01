@@ -14,6 +14,7 @@ interface PlanLine {
   inPlan?:         boolean
   lineScheduleId?: string | null
   isDrifted?:      boolean
+  hasAttributeDrift?: boolean
 }
 
 interface LineGroup {
@@ -243,20 +244,26 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
             Nenhum resultado
           </p>
         )}
-        {visibleLines.map(({ lineId, line, inPlan, lineScheduleId, isDrifted }) => {
+        {visibleLines.map(({ lineId, line, inPlan, lineScheduleId, isDrifted, hasAttributeDrift }) => {
           const checked = selectedLineIds.has(lineId)
           // apagado: linha nunca tocada neste plano · laranja: no plano mas sem
           // LineSchedule pinada (viagem avulsa) ou com viagens divergentes (isDrifted)
-          // · verde: no plano e corretamente associada a uma LineSchedule
-          const dotStatus: 'off' | 'orange' | 'green' = !inPlan
+          // · azul: partidas conferem, mas veículo/embarque/marcações divergem da OSO
+          // (hasAttributeDrift) · verde: no plano e corretamente associada a uma LineSchedule
+          const dotStatus: 'off' | 'orange' | 'blue' | 'green' = !inPlan
             ? 'off'
-            : (lineScheduleId != null && !isDrifted) ? 'green' : 'orange'
-          const dotClass = dotStatus === 'green' ? 'bg-emerald-500' : dotStatus === 'orange' ? 'bg-amber-500' : 'bg-muted-foreground/30'
+            : (lineScheduleId == null || isDrifted) ? 'orange' : hasAttributeDrift ? 'blue' : 'green'
+          const dotClass = dotStatus === 'green' ? 'bg-emerald-500'
+            : dotStatus === 'orange' ? 'bg-amber-500'
+            : dotStatus === 'blue'   ? 'bg-sky-500'
+            : 'bg-muted-foreground/30'
           const dotTitle = dotStatus === 'green'
             ? 'No plano — associada a um quadro de horários aprovado'
             : dotStatus === 'orange'
               ? 'No plano — sem quadro de horários associado (ou viagens divergentes)'
-              : 'Ainda não carregada neste plano'
+              : dotStatus === 'blue'
+                ? 'No plano — partidas conferem com a OSO, mas veículo, embarque ou marcações divergem'
+                : 'Ainda não carregada neste plano'
           return (
             <div
               key={lineId}

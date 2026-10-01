@@ -6,6 +6,7 @@ import {
   LineDeparture, CreateLineDepartureDto, UpdateLineDepartureDto,
 } from '@nyx/schemas'
 import { generateDraftRef } from './line-schedule.util'
+import { recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import type { PlanActivationPreview } from '@nyx/schemas'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, parseStartDate, toDbDate } from '../plan-validity'
 
@@ -80,6 +81,7 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
             requiredVehicleType: d.requiredVehicleType ?? undefined,
             stopPattern:         d.stopPattern,
             notes:               d.notes ?? undefined,
+            markings:            d.markings ?? undefined,
           })),
         })
       }
@@ -149,6 +151,10 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
           data: dto.create.map(d => ({ ...d, lineScheduleId: id })),
         })
       }
+
+      // plans pinning this schedule may now match it (or stop matching) — their drift
+      // flags are derived from the departures, so they're recomputed with them
+      await recomputeDriftForSchedules(tx, [id])
     })
 
     const [finalSchedule, finalDepartures] = await Promise.all([

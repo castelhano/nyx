@@ -156,6 +156,12 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.getGanttData(id)
   }
 
+  // ?lineIds=a,b — omitted means every line of the plan with a pinned schedule
+  @Get(':id/oso-departures')
+  getOsoDepartures(@Param('id') id: string, @Query('lineIds') lineIds?: string) {
+    return this.vehiclePlanService.getOsoDepartures(id, lineIds ? lineIds.split(',') : undefined)
+  }
+
   @Get(':id/lines/:lineId/comparison')
   getLineComparison(@Param('id') id: string, @Param('lineId') lineId: string) {
     return this.vehiclePlanService.getLineComparison(id, lineId)

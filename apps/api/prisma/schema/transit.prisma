@@ -359,10 +359,12 @@ model LineSchedule {
   @@map("transit_line_schedules")
 }
 
-// A single approved departure — direction + time (+ vehicle type when the 
+// A single approved departure — direction + time (+ vehicle type when the
 // managing body already specifies it in the service order).
-// This is the actual "departure" that gets approved; frozen once its 
-// LineSchedule leaves DRAFT.
+// This is the actual "departure" that gets approved. Once its LineSchedule leaves
+// DRAFT, the set of departures and their times are frozen; stopPattern and markings
+// stay editable while APPROVED, propagated from a plan's trips on save
+// (docs/proposal/plan_oso_attribute_sync_v1.md).
 model LineDeparture {
   id               String       @id @default(uuid())
   lineScheduleId   String
@@ -372,8 +374,8 @@ model LineDeparture {
   stopPattern      TripStopPattern @default(LOCAL)
   notes            String?
   // TripMarking[] (packages/schemas/transit/trip-marking.schema.ts) — molde copiado
-  // (cópia unidirecional, uma vez) para o TransitTrip materializado a partir desta
-  // partida. Sem sync de volta (docs/proposal/plan_trip_markings_v1.md, regra 7).
+  // para o TransitTrip materializado a partir desta partida; sincronizado nas duas vias
+  // depois disso (docs/proposal/plan_oso_attribute_sync_v1.md).
   markings         Json?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -555,6 +557,12 @@ model VehiclePlanLine {
   // LineSchedule version (with all of this line's current trips) may be warranted.
   // Cleared when the line's schedule is switched/rematerialized.
   isDrifted      Boolean       @default(false)
+  // set when a trip matching a departure of the pinned LineSchedule (same routeId +
+  // departureMinutes) differs from it in requiredVehicleType, stopPattern or markings —
+  // a milder divergence than isDrifted (the departures themselves still match). Cleared
+  // by "Atualizar da OSO" (OSO → plano) or by propagating the plan's values on save
+  // (docs/proposal/plan_oso_attribute_sync_v1.md).
+  hasAttributeDrift Boolean    @default(false)
   // VehiclePlanLineSummary (packages/schemas/transit/vehicle-plan.schema.ts) — populated
   // by VehiclePlanService.scorePlan() (grouped by line):
   // {"fleetSize":5,"dailyTrips":98,"operatingHours":18,"dailyKm":1813.2,"avgSpeed":21.2,

@@ -1,3 +1,4 @@
+import { sameMarkings, type TripMarking } from '@nyx/schemas'
 import { findIntervalIdsAnchoredToTrips } from '../vehicle-plan/block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from '../vehicle-plan/block-deadrun.utils'
 
@@ -9,11 +10,13 @@ import { findDeadrunIdsAnchoredToTrips } from '../vehicle-plan/block-deadrun.uti
 // depends on VehiclePlanService — importing it here would cycle). See docs/proposal/
 // vehicle-plan-summary-score-consolidation.md §2.4.
 
-// Recomputes VehiclePlanLine.isDrifted for one line in one plan from scratch: not
-// drifted iff the plan's current trips for this line, by {routeId, departureMinutes},
-// exactly match its pinned LineSchedule's departures — no LineSchedule pinned means
-// nothing to diverge from. Value-based (no reliance on any per-trip identity link to
-// the LineDeparture it may have originated from) — safe to call redundantly, since it
+// Recomputes VehiclePlanLine.isDrifted and hasAttributeDrift for one line in one plan
+// from scratch. isDrifted: the plan's current trips for this line, by {routeId,
+// departureMinutes}, don't exactly match its pinned LineSchedule's departures.
+// hasAttributeDrift: some trip matching a departure by that same key differs from it in
+// requiredVehicleType, stopPattern or markings. No LineSchedule pinned means nothing to
+// diverge from. Value-based (no reliance on any per-trip identity link to the
+// LineDeparture it may have originated from) — safe to call redundantly, since it
 // always derives the correct value fresh instead of accumulating state. Same match
 // VehiclePlanService's reviseLineSchedule/activateNewLineSchedule already use.
 export async function recomputeLineDrift(db: any, planId: string, lineId: string): Promise<void> {
@@ -29,27 +32,55 @@ export async function recomputeLineDrift(db: any, planId: string, lineId: string
   if (!line.lineScheduleId) {
     await db.vehiclePlanLine.update({
       where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-      data:  { isDrifted: false },
+      data:  { isDrifted: false, hasAttributeDrift: false },
     })
     return
   }
 
+  const attrs = { routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true, markings: true }
   const [departures, currentTrips] = await Promise.all([
-    db.lineDeparture.findMany({ where: { lineScheduleId: line.lineScheduleId }, select: { routeId: true, departureMinutes: true } }),
+    db.lineDeparture.findMany({ where: { lineScheduleId: line.lineScheduleId }, select: attrs }),
     db.transitTrip.findMany({
       where:  { vehiclePlanId: planId, dayTypeId: plan.dayTypeId, route: { lineId } },
-      select: { routeId: true, departureMinutes: true },
+      select: attrs,
     }),
   ])
 
-  const departureKeys = new Set(departures.map((d: any) => `${d.routeId}:${d.departureMinutes}`))
+  const departureByKey = new Map<string, any>(departures.map((d: any) => [`${d.routeId}:${d.departureMinutes}`, d]))
   const tripKeys       = new Set(currentTrips.map((t: any) => `${t.routeId}:${t.departureMinutes}`))
-  const covered = departureKeys.size === tripKeys.size && [...departureKeys].every(k => tripKeys.has(k))
+  const covered = departureByKey.size === tripKeys.size && [...departureByKey.keys()].every(k => tripKeys.has(k))
+  const hasAttributeDrift = currentTrips.some((t: any) => {
+    const d = departureByKey.get(`${t.routeId}:${t.departureMinutes}`)
+    return d != null && !sameTripAttributes(t, d)
+  })
 
   await db.vehiclePlanLine.update({
     where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-    data:  { isDrifted: !covered },
+    data:  { isDrifted: !covered, hasAttributeDrift },
   })
+}
+
+// Recomputes drift on every line, in every plan (but `exceptPlanId`, when given), pinned to
+// one of `lineScheduleIds` — after those schedules' departures changed underneath them.
+// Their trips are left alone (docs/proposal/plan_oso_attribute_sync_v1.md).
+export async function recomputeDriftForSchedules(db: any, lineScheduleIds: string[], exceptPlanId?: string): Promise<void> {
+  if (lineScheduleIds.length === 0) return
+  const pinned = await db.vehiclePlanLine.findMany({
+    where:  { lineScheduleId: { in: lineScheduleIds }, ...(exceptPlanId ? { vehiclePlanId: { not: exceptPlanId } } : {}) },
+    select: { vehiclePlanId: true, lineId: true },
+  })
+  for (const p of pinned) await recomputeLineDrift(db, p.vehiclePlanId, p.lineId)
+}
+
+// The attributes kept in sync between a TransitTrip and the LineDeparture it matches
+// (docs/proposal/plan_oso_attribute_sync_v1.md).
+export function sameTripAttributes(
+  a: { requiredVehicleType?: string | null; stopPattern?: string | null; markings?: unknown },
+  b: { requiredVehicleType?: string | null; stopPattern?: string | null; markings?: unknown },
+): boolean {
+  return (a.requiredVehicleType ?? null) === (b.requiredVehicleType ?? null)
+    && (a.stopPattern ?? 'LOCAL') === (b.stopPattern ?? 'LOCAL')
+    && sameMarkings(a.markings as TripMarking[] | null, b.markings as TripMarking[] | null)
 }
 
 // Trigger point after a single trip's own update: recomputes drift (see above) for

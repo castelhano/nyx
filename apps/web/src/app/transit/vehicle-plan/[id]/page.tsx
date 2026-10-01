@@ -37,6 +37,8 @@ import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
 import { RedistributeModal }          from './components/RedistributeModal'
 import { OsoCoverageModal }           from './components/OsoCoverageModal'
+import { SyncFromOsoModal }           from './components/SyncFromOsoModal'
+import { OsoSavePromptModal }         from './components/OsoSavePromptModal'
 import { LineSummaryView }            from './components/LineSummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
@@ -123,6 +125,7 @@ export default function VehiclePlanPage() {
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
+    osoSavePrompt, handleResolveOsoSavePrompt, handleApplyOsoAttributes,
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
     vehiclesActionSpec,
@@ -140,6 +143,7 @@ export default function VehiclePlanPage() {
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [exportOsoModalOpen, setExportOsoModalOpen] = useState(false)
+  const [syncFromOsoOpen,    setSyncFromOsoOpen]    = useState(false)
   const [generateLineModal, setGenerateLineModal] = useState<{ lineIds: string[] } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
@@ -173,6 +177,10 @@ export default function VehiclePlanPage() {
   // (see useOsoCoverage) ─────────────────────────────────────────────────────────
 
   const { offScheduleTripIds, coverageByLine, isLoading: osoCoverageLoading } = useOsoCoverage(mergedPlottedData)
+  // mergedPlottedData only holds the lines selected in "Linhas" — inspecting the drift of
+  // any other line compares against the persisted data instead (it can't have pending
+  // edits: those only exist for plotted lines). Same departure queries, deduped.
+  const persistedCoverage = useOsoCoverage(ganttData ?? null)
   // Memoized so panning/zooming the Gantt (onViewportChange fires on every
   // scroll tick) doesn't hand GanttBoard a new `data` reference every render —
   // that would defeat its memo() and retrigger a full engine.setView layout
@@ -369,6 +377,10 @@ export default function VehiclePlanPage() {
             setVersionsModalOpen(true)
           } },
           { label: 'OSO', icon: Icons.FileSpreadsheet, onClick: () => setExportOsoModalOpen(true) },
+          ...(canEditGantt ? [{ label: 'Atualizar da OSO', icon: Icons.RefreshCw, onClick: () => {
+            if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
+            setSyncFromOsoOpen(true)
+          } }] : []),
         ],
       }] : []),
       // stop: only while stream is open
@@ -518,6 +530,26 @@ export default function VehiclePlanPage() {
         <ExportOsoModal
           planId={id}
           onClose={() => setExportOsoModalOpen(false)}
+        />
+      )}
+
+      {syncFromOsoOpen && mergedPlottedData && (
+        <SyncFromOsoModal
+          planId={id}
+          lineIds={[...selectedLineIds]}
+          lineCodeById={new Map(mergedPlottedData.plan.lines.map(l => [l.lineId, l.line.code]))}
+          blocks={mergedPlottedData.blocks}
+          skipTripIds={new Set(pendingAdds.flatMap(a => a._kind === 'trip' ? [a._tempId] : []))}
+          onApply={handleApplyOsoAttributes}
+          onClose={() => setSyncFromOsoOpen(false)}
+        />
+      )}
+
+      {osoSavePrompt && (
+        <OsoSavePromptModal
+          lines={osoSavePrompt.lines}
+          badge={status === 'ACTIVE' ? 'Plano Ativo' : undefined}
+          onResolve={handleResolveOsoSavePrompt}
         />
       )}
 
@@ -735,15 +767,16 @@ export default function VehiclePlanPage() {
         )}
 
         {osoCoverageModal && (() => {
-          const line = ganttData?.plan?.lines?.find(l => l.lineId === osoCoverageModal.lineId)
+          const line    = ganttData?.plan?.lines?.find(l => l.lineId === osoCoverageModal.lineId)
+          const plotted = selectedLineIds.has(osoCoverageModal.lineId)
           return (
             <OsoCoverageModal
               lineId={osoCoverageModal.lineId}
               lineCode={line?.line.code ?? ''}
               lineName={line?.line.name ?? ''}
-              coverage={coverageByLine.get(osoCoverageModal.lineId)}
-              isLoading={osoCoverageLoading}
-              blocks={mergedPlottedData?.blocks ?? []}
+              coverage={(plotted ? coverageByLine : persistedCoverage.coverageByLine).get(osoCoverageModal.lineId)}
+              isLoading={plotted ? osoCoverageLoading : persistedCoverage.isLoading}
+              blocks={(plotted ? mergedPlottedData?.blocks : ganttData?.blocks) ?? []}
               onClose={() => setOsoCoverageModal(null)}
             />
           )

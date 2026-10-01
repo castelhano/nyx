@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { Observable, Subject } from 'rxjs'
 import { Worker } from 'worker_threads'
 import path from 'path'
@@ -7,7 +8,7 @@ import { TransitGeneralConfigService }  from '../../settings/transit-general-con
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
-import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto } from '@nyx/schemas'
+import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings } from '@nyx/schemas'
 import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
 import type { VehiclePlanSummary } from '@nyx/schemas'
@@ -21,7 +22,7 @@ import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type Line
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
 import { blockIssues, defaultIntervalMaxMinutes } from './block-issues.utils'
-import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift } from '../trip/trip-mutation.utils'
+import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift, recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
@@ -32,6 +33,12 @@ interface Job {
   best:      SolverResult | null
   planId:    string
   messages$: Subject<SolverMessage>
+}
+
+// A trip patch touching any attribute kept in sync with the OSO's LineDeparture
+// (docs/proposal/plan_oso_attribute_sync_v1.md).
+function touchesSyncedAttributes(u: VehiclePlanDiff['tripUpdates'][number]): boolean {
+  return u.stopPattern !== undefined || u.markings !== undefined || u.requiredVehicleType !== undefined
 }
 
 @Injectable()
@@ -859,10 +866,15 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // the delete alone flags drift and nothing downstream ever clears it).
       // Resolved up front, before any deletes run, since a deleted trip's route
       // can't be looked up afterward.
-      const linesToRecheck = new Set<string>()
+      // A re-pinned line is always rechecked (the pin above only resets isDrifted).
+      const linesToRecheck = new Set<string>(diff.lineSchedulePins.map(p => p.lineId))
+      // Attribute patches (stopPattern/markings/requiredVehicleType) don't change
+      // coverage, but may change hasAttributeDrift — same recomputation.
       const tripIdsNeedingLineLookup = [
         ...diff.tripDeletes,
-        ...diff.tripUpdates.filter(u => u.departureMinutes !== undefined).map(u => u.id),
+        ...diff.tripUpdates
+          .filter(u => u.departureMinutes !== undefined || touchesSyncedAttributes(u))
+          .map(u => u.id),
       ]
       if (tripIdsNeedingLineLookup.length > 0) {
         const rows = await tx.transitTrip.findMany({
@@ -880,14 +892,56 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const patch: { departureMinutes?: number; arrivalMinutes?: number } = {}
         if (u.departureMinutes !== undefined) patch.departureMinutes = u.departureMinutes
         if (u.arrivalMinutes   !== undefined) patch.arrivalMinutes   = u.arrivalMinutes
-        const data: typeof patch & { constraints?: unknown; markings?: unknown; notes?: unknown; stopPattern?: unknown } = { ...patch }
+        const data: typeof patch & { constraints?: unknown; markings?: unknown; notes?: unknown; stopPattern?: unknown; requiredVehicleType?: unknown } = { ...patch }
         if (u.constraints !== undefined) data.constraints = u.constraints
-        if (u.markings    !== undefined) data.markings    = u.markings
+        if (u.markings    !== undefined) data.markings    = u.markings ?? Prisma.DbNull
         if (u.notes       !== undefined) data.notes       = u.notes
         if (u.stopPattern !== undefined) data.stopPattern = u.stopPattern
+        if (u.requiredVehicleType !== undefined) data.requiredVehicleType = u.requiredVehicleType
         const existing = await beforeTripUpdate(tx, u.id)
         const result   = await tx.transitTrip.update({ where: { id: u.id }, data })
         await afterTripUpdate(tx, u.id, existing, patch, result)
+      }
+
+      // 1b. plan → OSO: copies stopPattern/markings of the updated trips onto the
+      // matching departure of the line's pinned LineSchedule — DRAFT or APPROVED only
+      // (an APPROVED OSO's departures and times stay frozen, these two attributes don't;
+      // SUPERSEDED/ARCHIVED are history). requiredVehicleType never goes this way: it's
+      // the OSO's requirement, only ever pulled from it (docs/proposal/
+      // plan_oso_attribute_sync_v1.md). Other plans pinning the same schedule keep
+      // their trips; only their drift flags are recomputed (step 9b).
+      const propagatedScheduleIds = new Set<string>()
+      {
+        // a trip whose time also changed no longer matches the departure it came from
+        const propagate = new Set(diff.propagateTripIds)
+        const ids = diff.tripUpdates
+          .filter(u => propagate.has(u.id) && u.departureMinutes === undefined)
+          .filter(u => u.stopPattern !== undefined || u.markings !== undefined)
+          .map(u => u.id)
+        if (ids.length > 0) {
+          const trips = await tx.transitTrip.findMany({
+            where:  { id: { in: ids }, vehiclePlanId: planId },
+            select: { routeId: true, departureMinutes: true, stopPattern: true, markings: true, route: { select: { lineId: true } } },
+          })
+          const pins = await tx.vehiclePlanLine.findMany({
+            where:  {
+              vehiclePlanId: planId,
+              lineId:        { in: [...new Set(trips.map((t: any) => t.route.lineId))] },
+              lineSchedule:  { status: { in: ['DRAFT', 'APPROVED'] } },
+            },
+            select: { lineId: true, lineScheduleId: true },
+          })
+          const scheduleIdByLineId = new Map<string, string>(pins.map((p: any) => [p.lineId, p.lineScheduleId]))
+          for (const t of trips) {
+            const lineScheduleId = scheduleIdByLineId.get(t.route.lineId)
+            if (!lineScheduleId) continue
+            await tx.lineDeparture.updateMany({
+              where: { lineScheduleId, routeId: t.routeId, departureMinutes: t.departureMinutes },
+              data:  { stopPattern: t.stopPattern, markings: t.markings ?? Prisma.DbNull },
+            })
+            propagatedScheduleIds.add(lineScheduleId)
+          }
+        }
       }
 
       // 2. deadrun time patches
@@ -1069,6 +1123,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         await recomputeLineDrift(tx, planId, lineId)
       }
 
+      // 9b. other plans pinning a schedule step 1b just changed now diverge from it
+      await recomputeDriftForSchedules(tx, [...propagatedScheduleIds], planId)
+
       // 10. the only write path for summary/score — closes this same transaction so
       // nothing above ever commits without an up-to-date summary.
       await this.recalculate(planId, tx)
@@ -1196,10 +1253,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayTypeId:     plan.dayTypeId,
         route:         { lineId },
       },
-      select: { routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true },
+      select: { routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true, markings: true },
     })
 
-    const departureByKey = new Map<string, { routeId: string; departureMinutes: number; requiredVehicleType: string | null; stopPattern: string }>()
+    const departureByKey = new Map<string, { routeId: string; departureMinutes: number; requiredVehicleType: string | null; stopPattern: string; markings: unknown }>()
     for (const t of existingTrips as any[]) {
       const key = `${t.routeId}:${t.departureMinutes}`
       if (!departureByKey.has(key)) departureByKey.set(key, t)
@@ -1223,6 +1280,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             departureMinutes:    d.departureMinutes,
             requiredVehicleType: d.requiredVehicleType ?? undefined,
             stopPattern:         d.stopPattern,
+            markings:            d.markings ?? undefined,
           })),
         })
       }
@@ -1237,7 +1295,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // schedule is DRAFT; once approved, the only way to reflect changes is a new
   // version (activateNewLineSchedule). Duration/vehicle type don't factor into
   // the comparison — only the departure time decides whether a trip "matches" a
-  // schedule departure.
+  // schedule departure. Matching departures get the trip's stopPattern/markings
+  // (never requiredVehicleType — that one only flows OSO → plano, see docs/proposal/
+  // plan_oso_attribute_sync_v1.md).
   async syncLineSchedule(planId: string, lineId: string): Promise<{ id: string; approvalRef: string }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
@@ -1267,7 +1327,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayTypeId:     plan.dayTypeId,
         route:         { lineId },
       },
-      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true },
+      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true, markings: true },
     })
 
     const tripByKey = new Map<string, any>()
@@ -1278,7 +1338,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const departures = await db.lineDeparture.findMany({
       where:  { lineScheduleId: schedule.id },
-      select: { id: true, routeId: true, departureMinutes: true },
+      select: { id: true, routeId: true, departureMinutes: true, stopPattern: true, markings: true },
     })
     const departureKeys = new Set(departures.map((d: any) => `${d.routeId}:${d.departureMinutes}`))
 
@@ -1288,6 +1348,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const toCreate = [...tripByKey.entries()]
       .filter(([key]) => !departureKeys.has(key))
       .map(([, t]) => t)
+    const toUpdate = departures.flatMap((d: any) => {
+      const t = tripByKey.get(`${d.routeId}:${d.departureMinutes}`)
+      if (!t || (t.stopPattern === d.stopPattern && sameMarkings(t.markings, d.markings))) return []
+      return [{ id: d.id, stopPattern: t.stopPattern, markings: t.markings ?? Prisma.DbNull }]
+    })
 
     await this.prisma.$transaction(async (tx0) => {
       const tx = tx0 as any
@@ -1304,14 +1369,18 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             departureMinutes:    t.departureMinutes,
             requiredVehicleType: t.requiredVehicleType ?? undefined,
             stopPattern:         t.stopPattern,
+            markings:            t.markings ?? undefined,
           },
         })
       }
 
-      await tx.vehiclePlanLine.update({
-        where: { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-        data:  { isDrifted: false },
-      })
+      for (const { id, ...data } of toUpdate) {
+        await tx.lineDeparture.update({ where: { id }, data })
+      }
+
+      // not a plain reset — requiredVehicleType isn't copied, so attribute drift may remain
+      await recomputeLineDrift(tx, planId, lineId)
+      await recomputeDriftForSchedules(tx, [schedule.id], planId)
     })
 
     return { id: schedule.id, approvalRef: schedule.approvalRef }
@@ -1344,7 +1413,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         dayTypeId:     plan.dayTypeId,
         route:         { lineId },
       },
-      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true },
+      select: { id: true, routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true, markings: true },
     })
 
     const departureByKey = new Map<string, any>()
@@ -1370,18 +1439,48 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             departureMinutes:    d.departureMinutes,
             requiredVehicleType: d.requiredVehicleType ?? undefined,
             stopPattern:         d.stopPattern,
+            markings:            d.markings ?? undefined,
           },
         })
       }
 
       await tx.vehiclePlanLine.upsert({
         where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
-        create: { vehiclePlanId: planId, lineId, lineScheduleId: schedule.id, isDrifted: false },
-        update: { lineScheduleId: schedule.id, isDrifted: false },
+        create: { vehiclePlanId: planId, lineId, lineScheduleId: schedule.id, isDrifted: false, hasAttributeDrift: false },
+        update: { lineScheduleId: schedule.id, isDrifted: false, hasAttributeDrift: false },
       })
 
       return { id: schedule.id, approvalRef: ref }
     })
+  }
+
+  // Departures of the schedule pinned to each of the plan's lines (or just `lineIds`),
+  // with the attributes "Atualizar da OSO" copies onto the matching trips — one query
+  // instead of one generic line-departure list per line.
+  async getOsoDepartures(planId: string, lineIds?: string[]) {
+    const pins = await this.prisma.vehiclePlanLine.findMany({
+      where:  {
+        vehiclePlanId:  planId,
+        lineScheduleId: { not: null },
+        ...(lineIds?.length ? { lineId: { in: lineIds } } : {}),
+      },
+      select: {
+        lineId:       true,
+        lineSchedule: {
+          select: {
+            id: true, approvalRef: true, status: true,
+            departures: { select: { routeId: true, departureMinutes: true, requiredVehicleType: true, stopPattern: true, markings: true } },
+          },
+        },
+      },
+    })
+    return pins.map(p => ({
+      lineId:         p.lineId,
+      lineScheduleId: p.lineSchedule!.id,
+      approvalRef:    p.lineSchedule!.approvalRef,
+      status:         p.lineSchedule!.status,
+      departures:     p.lineSchedule!.departures,
+    }))
   }
 
   async getGanttData(planId: string) {
@@ -1406,16 +1505,27 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     // Universo de linhas vem do Scope; VehiclePlanLine só existe pras já materializadas
     // neste plano (lineScheduleId/isDrifted) — mesmo shape que o frontend já consome.
     const materializedByLineId = new Map(plan.lines.map(l => [l.lineId, l]))
+    // how many other plans pin each of this plan's schedules — shown when saving would
+    // propagate attributes to one of them (docs/proposal/plan_oso_attribute_sync_v1.md)
+    const scheduleIds = plan.lines.flatMap(l => l.lineScheduleId ? [l.lineScheduleId] : [])
+    const sharedCounts = scheduleIds.length === 0 ? [] : await this.prisma.vehiclePlanLine.groupBy({
+      by:     ['lineScheduleId'],
+      where:  { lineScheduleId: { in: scheduleIds }, vehiclePlanId: { not: planId } },
+      _count: { _all: true },
+    })
+    const sharedCountByScheduleId = new Map(sharedCounts.map(c => [c.lineScheduleId, c._count._all]))
     const lines = plan.scope.lines.map(line => {
       const materialized = materializedByLineId.get(line.id)
       return {
-        lineId:         line.id,
+        lineId:            line.id,
         line,
-        inPlan:         materialized != null,
-        lineScheduleId: materialized?.lineScheduleId ?? null,
-        lineSchedule:   materialized?.lineSchedule ?? null,
-        isDrifted:      materialized?.isDrifted ?? false,
-        summary:        materialized?.summary ?? null,
+        inPlan:            materialized != null,
+        lineScheduleId:    materialized?.lineScheduleId ?? null,
+        lineSchedule:      materialized?.lineSchedule ?? null,
+        isDrifted:         materialized?.isDrifted ?? false,
+        hasAttributeDrift: materialized?.hasAttributeDrift ?? false,
+        sharedPlanCount:   materialized?.lineScheduleId ? (sharedCountByScheduleId.get(materialized.lineScheduleId) ?? 0) : 0,
+        summary:           materialized?.summary ?? null,
       }
     })
     const planWithLines = { ...plan, lines }

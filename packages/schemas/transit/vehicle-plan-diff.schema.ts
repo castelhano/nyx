@@ -61,6 +61,8 @@ export const vehiclePlanDiffSchema = z.object({
     markings:         z.array(tripMarkingSchema).nullable().optional(),
     notes:            z.string().nullable().optional(),
     stopPattern:      z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
+    // only ever set by "Atualizar da OSO" (OSO → plano) — the Gantt has no editor for it
+    requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).nullable().optional(),
   })).default([]),
   // origin/destination only change via "Modificar depósito" (ACCESS origin / RETURN destination)
   deadrunUpdates:  z.array(timeUpdateSchema.extend({
@@ -85,6 +87,11 @@ export const vehiclePlanDiffSchema = z.object({
     depotId:  z.string().optional(),
     branchId: z.string().optional(),
   })).default([]),
+  // Trips (persisted, among tripUpdates) whose stopPattern/markings get copied onto the
+  // matching departure (routeId + departureMinutes) of the line's pinned LineSchedule,
+  // when it's DRAFT or APPROVED — the ones the user confirmed on Salvar
+  // (docs/proposal/plan_oso_attribute_sync_v1.md).
+  propagateTripIds: z.array(z.string()).default([]),
   moves: z.array(z.object({
     blockTripIds: z.array(z.string()),
     breakIds:     z.array(z.string()).default([]),

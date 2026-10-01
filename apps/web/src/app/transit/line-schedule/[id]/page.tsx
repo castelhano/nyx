@@ -621,6 +621,9 @@ export default function LineScheduleDetailPage() {
 
       queryClient.setQueryData([DOMAIN, RESOURCE, id], result.schedule)
       queryClient.setQueryData(['transit', 'line-departure', id], { data: result.departures })
+      // the save recomputed the drift flags of every plan pinning this schedule
+      queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan'] })
+      queryClient.invalidateQueries({ queryKey: ['transit', 'line-departure', 'by-schedule', id] })
 
       setHeader(seedHeader); setBaselineHeader(seedHeader)
       setDraft(seedDraft); setBaseline(seedDraft)

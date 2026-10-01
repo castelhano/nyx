@@ -10,7 +10,8 @@ import { buildLineFreqIndex } from '../views/line-freq.view'
 import { useDeltaGroups } from './useDeltaGroups'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from '../components/AddTripModal'
 import type { IntervalType } from '../components/AddIntervalModal'
-import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval } from '../views/vehicles.view'
+import type { VehiclePlanGanttData, TripConstraints, GanttBlock, GanttBlockDeadrun, GanttBlockInterval, VehicleType } from '../views/vehicles.view'
+import { findOsoPropagation, type OsoAttributePatch, type OsoPropagationLine } from '../oso-attribute-sync-logic'
 import type { TripMarking, Trip } from '@nyx/schemas'
 import { resolveCycleWindow } from '../views/vehicles.view'
 import { createVehiclesActionSpec, canAddAccess, canAddReturn, nextTripOf } from '../views/vehicles.actions'
@@ -134,7 +135,8 @@ function findBlockForSegId(blocks: GanttBlock[], segId: string): GanttBlock | un
 export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; blockId: string }
 export type AddIntervalModalState = { afterMinutes: number; blockId: string }
 export type StopPattern = Trip['stopPattern']
-export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern }
+// requiredVehicleType is only ever staged by "Atualizar da OSO" — the Gantt has no editor for it
+export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern; requiredVehicleType?: VehicleType | null }
 // origin/destination only via "Modificar depósito" — both the id (sent to apply-diff) and the
 // {id, name} ref (rendered) are set together, so spreading the patch onto the deadrun keeps them in sync
 export type DeadrunPatch = {
@@ -203,6 +205,12 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // of writing VehiclePlanLine immediately, so a Descartar never leaves the line
   // pinned to a schedule whose departures don't match what's actually persisted.
   const [pendingLineSchedulePin, setPendingLineSchedulePin] = useState<PendingLineSchedulePin | null>(null)
+  // Values "Atualizar da OSO" staged into pendingChanges, per trip — so Salvar doesn't
+  // offer to copy them back onto the OSO they came from (docs/proposal/
+  // plan_oso_attribute_sync_v1.md). Bookkeeping only, not counted in pendingCount.
+  const [osoSyncedValues,       setOsoSyncedValues]       = useState<Map<string, OsoAttributePatch>>(new Map())
+  // Open while Salvar asks whether to copy stopPattern/markings edits onto the OSO
+  const [osoSavePrompt,         setOsoSavePrompt]         = useState<{ lines: OsoPropagationLine[]; tripIds: string[] } | null>(null)
   const [editBarOpen,       setEditBarOpen]       = useState(false)
   const [focusedSegId,      setFocusedSegId]      = useState<string | null>(null)
   // Dedicated to Save (separate from the generic isPending, shared with the
@@ -792,6 +800,23 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       tripIds.forEach(tripId => next.set(tripId, { ...next.get(tripId), notes: value }))
       return next
     })
+  }
+
+  // "Atualizar da OSO" — stages the OSO's attributes onto the matching trips and opens the
+  // edit mode, where they're reviewed and saved (or discarded) like any other edit.
+  function handleApplyOsoAttributes(patches: Map<string, OsoAttributePatch>) {
+    if (!canEditGantt || patches.size === 0) return
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      patches.forEach((patch, tripId) => next.set(tripId, { ...next.get(tripId), ...patch }))
+      return next
+    })
+    setOsoSyncedValues(prev => {
+      const next = new Map(prev)
+      patches.forEach((patch, tripId) => next.set(tripId, { ...next.get(tripId), ...patch }))
+      return next
+    })
+    setEditBarOpen(true)
   }
 
   function handleUpdateStopPattern(tripIds: string[], value: StopPattern) {
@@ -1691,6 +1716,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setPendingLineSchedulePin(null)
     setPendingNewBlockIds([])
     setPendingBlockChanges(new Map())
+    setOsoSyncedValues(new Map())
   }
 
   async function handleToggleEditBar() {
@@ -1716,6 +1742,12 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   async function handleSavePendingWithConfirm() {
     if (!canEditGantt) return
     if (pendingCount === 0) return
+    // edits that could be copied onto the OSO get their own prompt (which also confirms the save)
+    const propagation = ganttData ? findOsoPropagation(pendingChanges, osoSyncedValues, ganttData) : null
+    if (propagation && propagation.tripIds.length > 0) {
+      setOsoSavePrompt(propagation)
+      return
+    }
     const total = pendingCount
     const ok = await confirm({
       title:        'Salvar alterações',
@@ -1740,7 +1772,16 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     clearAllPending()
   }
 
-  async function handleSavePending() {
+  // From the OSO prompt: 'replicate' saves and copies the edits onto the OSO, 'plan' saves
+  // only to the plan, null cancels.
+  async function handleResolveOsoSavePrompt(choice: 'replicate' | 'plan' | null) {
+    const prompt = osoSavePrompt
+    setOsoSavePrompt(null)
+    if (!prompt || choice === null) return
+    await handleSavePending(choice === 'replicate' ? prompt.tripIds : [])
+  }
+
+  async function handleSavePending(propagateTripIds: string[] = []) {
     if (!canEditGantt) return
     if (pendingCount === 0) return
     setIsPending(true)
@@ -1798,6 +1839,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
           moves:           pendingMoves,
           blockUpdates:    Array.from(pendingBlockChanges.entries()).map(([blockId, patch]) => ({ id: blockId, depotId: patch.depotId })),
           lineSchedulePins: pendingLineSchedulePin ? [pendingLineSchedulePin] : [],
+          propagateTripIds,
         }),
       })
       if (!res.ok) {
@@ -1816,6 +1858,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       setPendingMoves([])
       setPendingBlockChanges(new Map())
       setPendingLineSchedulePin(null)
+      setOsoSyncedValues(new Map())
       // Empty blocks never made it into `adds`, so the backend never created them —
       // drop them here too. Any that got a trip added into it already round-trips
       // as a real block through the refetch above.
@@ -2458,6 +2501,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
     handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
+    osoSavePrompt, handleResolveOsoSavePrompt, handleApplyOsoAttributes,
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
     vehiclesActionSpec,
