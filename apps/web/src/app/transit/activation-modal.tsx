@@ -4,14 +4,14 @@
 // CrewPlan and LineSchedule: every date change asks the endpoint for the preview (no `confirm`,
 // nothing written), confirming sends the same date with `confirm: true`.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { PlanActivationPreview } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { extractError } from '@/lib/utils'
-import { useShortcutContext } from '@/lib/keywatch'
+import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import { localToday } from '@/lib/plan-vigence'
 
 interface Props {
@@ -30,6 +30,14 @@ export function ActivationModal({ title, endpoint, confirmLabel, onDone, onClose
   const [startDate, setStartDate] = useState(localToday())
   const [saving, setSaving]       = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  useShortcut('alt+g', () => formRef.current?.requestSubmit(), {
+    desc:    confirmLabel,
+    icon:    Icons.Save,
+    context: 'activation_md',
+    origin:  'apps/web/src/app/transit/activation-modal.tsx',
+  })
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -55,8 +63,12 @@ export function ActivationModal({ title, endpoint, confirmLabel, onDone, onClose
   const loading = previewQuery.isFetching
   const error   = confirmError ?? (previewQuery.error instanceof Error ? previewQuery.error.message : null)
 
+  const canConfirm = !saving && !loading && !!preview && !error
+
   async function handleConfirm(e: React.FormEvent) {
     e.preventDefault()
+    // alt+g submits via requestSubmit, which ignores the submit button's disabled state
+    if (!canConfirm) return
     setSaving(true)
     try {
       onDone(await call(true))
@@ -72,7 +84,7 @@ export function ActivationModal({ title, endpoint, confirmLabel, onDone, onClose
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <form onSubmit={handleConfirm} className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+      <form ref={formRef} onSubmit={handleConfirm} className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
         <h2 className="text-base font-semibold">{title}</h2>
 
         <label className="block space-y-1">
@@ -106,8 +118,8 @@ export function ActivationModal({ title, endpoint, confirmLabel, onDone, onClose
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="cancel" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" size="sm" disabled={saving || loading || !preview || !!error}>
+          <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>Cancelar</Button>
+          <Button type="submit" size="sm" disabled={!canConfirm}>
             {saving ? 'Ativando…' : confirmLabel}
           </Button>
         </div>
