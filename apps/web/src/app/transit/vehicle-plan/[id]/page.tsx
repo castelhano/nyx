@@ -308,18 +308,6 @@ export default function VehiclePlanPage() {
           disabled: selectedLineIds.size === 0,
           menu: [
             {
-              label:    'Ajustar Ciclo',
-              icon:     Icons.Timer,
-              onClick:  handleAdjustCycle,
-              disabled: isPending,
-            },
-            {
-              label:    'Redistribuir',
-              icon:     Icons.Shuffle,
-              onClick:  () => setRedistributeModal({ lineId: [...selectedLineIds][0] }),
-              disabled: isPending || selectedLineIds.size !== 1,
-            },
-            {
               label:    'Validar e consolidar plano',
               icon:     Icons.CheckCircle,
               onClick:  handleFinalizePlan,
@@ -330,6 +318,19 @@ export default function VehiclePlanPage() {
               icon:     Icons.Warehouse,
               onClick:  () => setChangeDepotOpen(true),
               disabled: isPending || selectedLineIds.size === 0,
+            },
+            { separator: true as const },
+            {
+              label:    'Ajustar Ciclo',
+              icon:     Icons.Timer,
+              onClick:  handleAdjustCycle,
+              disabled: isPending,
+            },
+            {
+              label:    'Redistribuir',
+              icon:     Icons.Shuffle,
+              onClick:  () => setRedistributeModal({ lineId: [...selectedLineIds][0] }),
+              disabled: isPending || selectedLineIds.size !== 1,
             },
           ],
         },

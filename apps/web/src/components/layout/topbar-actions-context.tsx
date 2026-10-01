@@ -2,6 +2,11 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode, type DependencyList } from 'react'
 
+// { separator: true } draws a horizontal divider between groups of menu items
+export type TopbarMenuItem =
+  | { separator: true }
+  | { separator?: never; label: string; icon?: React.ElementType; onClick: () => void; disabled?: boolean; checked?: boolean }
+
 export interface TopbarAction {
   // opcional só para { separator: true } — todo botão real precisa de label
   label?:    string
@@ -26,7 +31,7 @@ export interface TopbarAction {
   // onClick normal, e um chevron ao lado abre um dropdown com estes itens
   // checked: when defined, the item is a toggle — rendered with a check circle and the
   // menu stays open on click
-  menu?: { label: string; icon?: React.ElementType; onClick: () => void; disabled?: boolean; checked?: boolean }[]
+  menu?: TopbarMenuItem[]
   // menuOnly: the whole button opens the menu (no main action; onClick is ignored)
   menuOnly?: boolean
   // className: extra classes on the button itself (e.g. a fixed width for a toggle whose

@@ -61,6 +61,7 @@ function MenuItems({ action }: { action: TopbarAction }) {
   return (
     <>
       {action.menu!.map((item, i) => {
+        if (item.separator) return <DropdownSeparator key={i} />
         const ItemIcon  = item.icon
         const checkable = item.checked !== undefined
         return (
@@ -129,7 +130,7 @@ function SplitActionButton({ action }: { action: TopbarAction }) {
             type="button"
             variant={action.variant ?? 'default'}
             size={action.size ?? 'sm'}
-            disabled={action.menu!.every((item) => item.disabled)}
+            disabled={action.menu!.every((item) => item.separator || item.disabled)}
             className="rounded-l-none border-l border-background/20 px-1.5 focus:ring-1 focus:ring-offset-0"
             aria-label="Mais opções"
           >
