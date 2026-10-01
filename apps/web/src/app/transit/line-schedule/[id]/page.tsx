@@ -982,10 +982,6 @@ export default function LineScheduleDetailPage() {
                     {STATUS_LABELS[schedule!.status]}
                   </span>
                 )}
-                {schedule!.status === 'APPROVED' && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                    <Icons.AlertTriangle className="w-3 h-3" /></span>
-                )}
               </div>
             </div>
 
