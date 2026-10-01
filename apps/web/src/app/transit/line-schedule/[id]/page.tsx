@@ -282,6 +282,9 @@ export default function LineScheduleDetailPage() {
   const [focusedId,      setFocusedId]      = useState<string | null>(null)
   const [selectedIds,    setSelectedIds]    = useState<Set<string>>(new Set())
   const [markingDraft,   setMarkingDraft]   = useState('')
+  // legendText of the focused departure's marking being renamed, captured on focus — the
+  // rename is replicated on blur (see replicateMarking), never mid-typing
+  const [renameOrigin,   setRenameOrigin]   = useState<{ idx: number; text: string } | null>(null)
   const [bulkShiftMin,   setBulkShiftMin]   = useState('')
   const [viewRouteId,    setViewRouteId]    = useState<string | null>(null)
   const [pendingNew,     setPendingNew]     = useState<PendingNew | null>(null)
@@ -531,6 +534,38 @@ export default function LineScheduleDetailPage() {
     return true
   }
 
+  // A marking is identified by its legendText (the OSO export merges legends by it, and the
+  // Gantt's TripDetailsModal sweeps by it too) — so a style change or a rename applies to
+  // every departure of the draft carrying `fromText`, whatever its route. Removing one
+  // stays local to the focused departure.
+  function replicateMarking(fromText: string, next: TripMarking) {
+    setDraft(prev => prev ? withMarkingReplaced(prev, fromText, next) : prev)
+  }
+
+  // The rename still being typed (focus never left the field, e.g. alt+g straight from
+  // it) — replicated here so a save doesn't miss it. Returns `departures` itself when
+  // there's nothing pending.
+  function withPendingRename(departures: DraftDeparture[]): DraftDeparture[] {
+    const m = renameOrigin && focused?.markings?.[renameOrigin.idx]
+    const text = m?.legendText.trim()
+    if (!renameOrigin || !m || !renameOrigin.text || !text || text === renameOrigin.text) return departures
+    setRenameOrigin({ idx: renameOrigin.idx, text })
+    return withMarkingReplaced(departures, renameOrigin.text, { ...m, legendText: text })
+  }
+
+  function withMarkingReplaced(departures: DraftDeparture[], fromText: string, next: TripMarking): DraftDeparture[] {
+    return departures.map(d => {
+      if (!(d.markings ?? []).some(m => m.legendText === fromText)) return d
+      const replaced = d.markings!.map(m => m.legendText === fromText ? next : m)
+      // a departure already carrying the new text keeps a single entry for it
+      return { ...d, markings: replaced.filter((m, i) => replaced.findIndex(o => o.legendText === m.legendText) === i) }
+    })
+  }
+
+  function countOtherDeparturesWith(legendText: string): number {
+    return (draft ?? []).filter(d => d.id !== focusedId && (d.markings ?? []).some(m => m.legendText === legendText)).length
+  }
+
   // Same shape as addMarkingToFocused, but for the bulk-add panel — markings
   // typed here apply uniformly to every departure created from the batch.
   function addMarkingToPendingNew(marking: TripMarking): boolean {
@@ -582,11 +617,14 @@ export default function LineScheduleDetailPage() {
       if (!ok) return
     }
 
+    const departures = withPendingRename(draft)
+    if (departures !== draft) setDraft(departures)
+
     const create: Omit<CreateLineDepartureDto, 'lineScheduleId'>[] = []
     const update: { id: string; data: UpdateLineDepartureDto }[]  = []
     const deleteIds = [...deletedIds].filter(depId => !depId.startsWith('new-'))
 
-    for (const d of draft) {
+    for (const d of departures) {
       if (deletedIds.has(d.id)) continue
       if (d.id.startsWith('new-')) {
         create.push(toPayload(d))
@@ -1311,12 +1349,22 @@ export default function LineScheduleDetailPage() {
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Marcações</label>
                     <div className="space-y-1.5">
-                      {(focused.markings ?? []).map((m, idx) => (
+                      {(focused.markings ?? []).map((m, idx) => {
+                        const others = countOtherDeparturesWith(renameOrigin?.idx === idx ? renameOrigin.text : m.legendText)
+                        return (
                         <div key={idx} className="border border-border rounded-md p-1.5 space-y-1.5">
                           <div className="flex items-start gap-1.5">
                             <textarea
                               rows={2}
                               value={m.legendText}
+                              onFocus={() => setRenameOrigin({ idx, text: m.legendText })}
+                              onBlur={() => {
+                                const text = m.legendText.trim()
+                                if (renameOrigin?.idx === idx && renameOrigin.text && text && text !== renameOrigin.text) {
+                                  replicateMarking(renameOrigin.text, { ...m, legendText: text })
+                                }
+                                setRenameOrigin(null)
+                              }}
                               onChange={e => patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, legendText: e.target.value } : mm) })}
                               className="flex-1 text-xs rounded px-1.5 py-1 resize-none border border-input bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring"
                             />
@@ -1335,7 +1383,7 @@ export default function LineScheduleDetailPage() {
                               value={m.fontStyle ?? ''}
                               onChange={e => {
                                 const style = (e.target.value || undefined) as TripMarkingFontStyle | undefined
-                                patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, fontStyle: style } : mm) })
+                                replicateMarking(m.legendText, { ...m, fontStyle: style })
                               }}
                             >
                               <option value="">Estilo</option>
@@ -1345,15 +1393,21 @@ export default function LineScheduleDetailPage() {
                               value={m.bgColor ? BG_COLOR_OPTIONS.find(o => o.value === m.bgColor)!.hex : null}
                               onChange={hex => {
                                 const bgColor = hex ? BG_COLOR_OPTIONS.find(o => o.hex === hex)!.value : undefined
-                                patchDeparture(focused.id, { markings: (focused.markings ?? []).map((mm, i) => i === idx ? { ...mm, bgColor } : mm) })
+                                replicateMarking(m.legendText, { ...m, bgColor })
                               }}
                               palette={BG_COLOR_OPTIONS.map(o => o.hex)}
                               autoColor="#e5e7eb"
                               autoLabel="Sem cor"
                             />
                           </div>
+                          {others > 0 && (
+                            <p className="text-[10px] text-muted-foreground" title="Estilo e texto são replicados em todas as partidas com esta marcação">
+                              também em {others} partida{others === 1 ? '' : 's'}
+                            </p>
+                          )}
                         </div>
-                      ))}
+                        )
+                      })}
                       <div className="flex gap-1.5">
                         <div className="relative flex-1">
                           <Input
