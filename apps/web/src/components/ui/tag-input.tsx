@@ -30,6 +30,10 @@ export interface TagInputProps<T = unknown> {
   containerClassName?: string
   maxItems?:           number
   allowDuplicates?:    boolean
+  // Optional control of the typed-but-not-yet-committed text, for callers that must not
+  // lose it when they act without an Enter/separator first (e.g. a save shortcut)
+  text?:               string
+  onTextChange?:       (text: string) => void
 }
 
 function isParseError(result: unknown): result is { error: string } {
@@ -39,8 +43,11 @@ function isParseError(result: unknown): result is { error: string } {
 export function TagInput<T = unknown>({
   id, value, onChange, parse, normalize, separators = DEFAULT_SEPARATORS, placeholder, disabled,
   size = 'default', className, containerClassName, maxItems, allowDuplicates = true,
+  text: controlledText, onTextChange,
 }: TagInputProps<T>) {
-  const [text, setText] = useState('')
+  const [innerText, setInnerText] = useState('')
+  const text    = controlledText ?? innerText
+  const setText = onTextChange ?? setInnerText
   const inputRef = useRef<HTMLInputElement>(null)
 
   const atMax = maxItems != null && value.length >= maxItems

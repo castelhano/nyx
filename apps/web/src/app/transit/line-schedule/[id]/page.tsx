@@ -64,6 +64,9 @@ interface PendingNew {
   notes?:               string
   markings?:            TripMarking[]
   times:                string[]
+  // typed in the times field but not committed as a chip yet (no Enter/separator) —
+  // still counts, so alt+g or a tab switch doesn't drop it
+  text?:                string
 }
 
 const DIRECTION_LABELS: Record<Route['direction'], string>       = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
@@ -140,6 +143,11 @@ function splitValidTimes(times: string[]): { valid: string[]; invalid: string[] 
     ;(!duplicate && hhmmToMinutes(t) != null ? valid : invalid).push(t)
   }
   return { valid, invalid }
+}
+
+function pendingTimes(p: PendingNew): string[] {
+  const text = p.text?.trim()
+  return text ? [...p.times, normalizeTime(text)] : p.times
 }
 
 function toDraft(d: LineDeparture): DraftDeparture {
@@ -322,12 +330,13 @@ export default function LineScheduleDetailPage() {
   }, [schedule, header])
 
   useEffect(() => {
-    if (departuresPage && !draft) {
+    if (departuresPage && !baseline) {
       const seeded = departuresPage.data.map(toDraft)
-      setDraft(seeded)
+      // departures added before the query resolved (right after creating the OSO) are kept
+      setDraft(prev => [...seeded, ...(prev ?? []).filter(d => d.id.startsWith('new-'))])
       setBaseline(seeded)
     }
-  }, [departuresPage, draft])
+  }, [departuresPage, baseline])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -361,13 +370,14 @@ export default function LineScheduleDetailPage() {
   // so alt+l/"Limpar" and the exit-without-saving guard must also react to it.
   const pendingNewDirty = !!pendingNew && (
     pendingNew.times.length > 0 ||
+    !!pendingNew.text?.trim() ||
     !!pendingNew.requiredVehicleType ||
     !!pendingNew.notes?.trim() ||
     pendingNew.stopPattern !== 'LOCAL' ||
     (pendingNew.markings?.length ?? 0) > 0
   )
   const hasUnsavedWork  = isDirty || pendingNewDirty
-  const pendingValidCount = pendingNew ? splitValidTimes(pendingNew.times).valid.length : 0
+  const pendingValidCount = pendingNew ? splitValidTimes(pendingTimes(pendingNew)).valid.length : 0
 
   function departuresFor(routeId: string | null): DraftDeparture[] {
     if (!draft || !routeId) return []
@@ -398,7 +408,7 @@ export default function LineScheduleDetailPage() {
       setSelectedIds(new Set())
       shiftAnchorRef.current = null
     }
-    if (pendingNew && pendingNew.routeId !== routeId) setPendingNew(null)
+    if (pendingNew && pendingNew.routeId !== routeId) flushPendingNew()
   }
 
   function cycleTab(delta: number) {
@@ -480,6 +490,7 @@ export default function LineScheduleDetailPage() {
 
   function openPendingNew(routeId: string) {
     if (pendingNew?.routeId === routeId) return // already open for this route — don't wipe typed-but-unconfirmed times
+    if (pendingNew) flushPendingNew()
     setPendingNew({ routeId, stopPattern: 'LOCAL', times: [] })
     setFocusedId(null)
     setSelectedIds(new Set())
@@ -494,10 +505,31 @@ export default function LineScheduleDetailPage() {
     setPendingNew(null)
   }
 
+  // Leaving the bulk-add panel for another direction (tab switch, alt+n there) adds what's
+  // valid in it instead of silently dropping it — times typed for one direction would
+  // otherwise vanish unnoticed. Invalid leftovers are dropped, with a warning.
+  function flushPendingNew() {
+    if (!pendingNew) return
+    const { invalid } = splitValidTimes(pendingTimes(pendingNew))
+    addPendingNewToDraft(pendingNew)
+    setPendingNew(null)
+    if (invalid.length > 0) toast.error(`Horário(s) inválido(s) descartado(s): ${invalid.join(', ')}`)
+  }
+
   function confirmPendingNew() {
     if (!pendingNew) return
-    const { valid, invalid } = splitValidTimes(pendingNew.times)
-    if (valid.length === 0) return
+    const { invalid } = splitValidTimes(pendingTimes(pendingNew))
+    if (!addPendingNewToDraft(pendingNew)) return
+    // leftover invalid tokens stay in the panel so the user can fix/remove them
+    setPendingNew(invalid.length > 0 ? { ...pendingNew, times: invalid, text: '' } : null)
+    setFocusedId(null)
+    setSelectedIds(new Set())
+  }
+
+  // Returns whether anything was added.
+  function addPendingNewToDraft(pendingNew: PendingNew): boolean {
+    const { valid } = splitValidTimes(pendingTimes(pendingNew))
+    if (valid.length === 0) return false
     const items: DraftDeparture[] = valid.map(t => ({
       id:                   newId(),
       routeId:              pendingNew.routeId,
@@ -508,10 +540,7 @@ export default function LineScheduleDetailPage() {
       markings:             pendingNew.markings,
     }))
     setDraft(prev => (prev ? [...prev, ...items] : items))
-    // leftover invalid tokens stay in the panel so the user can fix/remove them
-    setPendingNew(invalid.length > 0 ? { ...pendingNew, times: invalid } : null)
-    setFocusedId(null)
-    setSelectedIds(new Set())
+    return true
   }
 
   function applyVehicleTypeToSelected(type: VehicleType | undefined) {
@@ -1105,6 +1134,8 @@ export default function LineScheduleDetailPage() {
                           placeholder="HH:MM | cole uma lista ou digite"
                           value={pendingNew.times}
                           onChange={times => patchPendingNew({ times })}
+                          text={pendingNew.text ?? ''}
+                          onTextChange={text => patchPendingNew({ text })}
                           parse={parseTime}
                           normalize={normalizeTime}
                           allowDuplicates={false}
