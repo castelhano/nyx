@@ -196,11 +196,6 @@ export default function CrewPlanPage() {
     el.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: 'smooth' })
   }
 
-  const lineColors = useMemo(
-    () => showLineColors && data ? lineColorMap(data.lineCodes) : null,
-    [showLineColors, data],
-  )
-
   const blockById = useMemo(() => new Map((data?.blocks ?? []).map(b => [b.id, b])), [data?.blocks])
 
   // lines each duty operates (panel, filter) and the lines the plan runs (filter options)
@@ -212,6 +207,12 @@ export default function CrewPlanPage() {
     const used = new Set((data?.blocks ?? []).flatMap(b => b.trips.map(t => t.lineCode)))
     return (data?.lineCodes ?? []).filter(c => used.has(c))
   }, [data])
+
+  // indexed over the lines the plan runs — same as the vehicle plan Gantt
+  const lineColors = useMemo(
+    () => showLineColors ? lineColorMap(planLineCodes) : null,
+    [showLineColors, planLineCodes],
+  )
 
   // rows left after the filter (pinned rows always stay); count excludes pins
   const { visibleBlocks, visibleDuties, matchCount } = useMemo(() => {

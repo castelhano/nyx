@@ -186,15 +186,19 @@ const DEADHEAD_COLOR = '#d1d5db'
 const BREAK_COLOR    = '#64748b'
 
 // Line colors come from the shared muted palette (lib/palette.ts), indexed by the line's
-// code order among all of the Scope's lines — stable across line selection/filters and the
-// same color the crew plan screen uses. Outbound = strong tone, inbound = lighter (mid).
+// code order among the lines the plan's blocks run — stable across line selection/filters
+// and the same color the crew plan screen uses. Indexing over the whole Scope would wrap
+// the 12-hue palette and give unrelated lines the same color. Outbound = strong tone,
+// inbound = lighter (mid).
 interface LineColor { out: string; outDark: string; in: string; inDark: string }
 
-function lineColorMap(plan: VehiclePlanGanttData['plan']): Map<string, LineColor> {
-  const indexByCode = lineIndexByCode(plan.lines.map(l => l.line.code))
-  return new Map(plan.lines.map(l => {
-    const i = indexByCode.get(l.line.code) ?? 0
-    return [l.lineId, {
+function lineColorMap(blocks: GanttBlock[]): Map<string, LineColor> {
+  const lines = new Map<string, string>()
+  for (const b of blocks) for (const bt of b.blockTrips) lines.set(bt.trip.route.line.id, bt.trip.route.line.code)
+  const indexByCode = lineIndexByCode([...lines.values()])
+  return new Map([...lines].map(([lineId, code]) => {
+    const i = indexByCode.get(code) ?? 0
+    return [lineId, {
       out: swatchColor(i, 'strong', 'light'), outDark: swatchColor(i, 'strong', 'dark'),
       in:  swatchColor(i, 'mid',    'light'), inDark:  swatchColor(i, 'mid',    'dark'),
     }]
@@ -203,7 +207,7 @@ function lineColorMap(plan: VehiclePlanGanttData['plan']): Map<string, LineColor
 
 // ── view definition ───────────────────────────────────────────────────────────
 
-let _colorCachePlan: VehiclePlanGanttData['plan'] | null = null
+let _colorCacheBlocks: GanttBlock[] | null = null
 let _colorCacheMap:  Map<string, LineColor> | null = null
 
 export const vehiclesView: GanttView<VehiclePlanGanttData> = {
@@ -217,9 +221,9 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
 
   getSegments(row, data): GanttSegment[] {
     const block = row.data as GanttBlock
-    if (_colorCachePlan !== data.plan) {
-      _colorCachePlan = data.plan
-      _colorCacheMap  = lineColorMap(data.plan)
+    if (_colorCacheBlocks !== data.blocks) {
+      _colorCacheBlocks = data.blocks
+      _colorCacheMap    = lineColorMap(data.blocks)
     }
     const colors = _colorCacheMap!
     const segs: GanttSegment[] = []

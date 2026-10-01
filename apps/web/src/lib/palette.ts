@@ -25,8 +25,8 @@ export function swatchColor(index: number, tone: SwatchTone, theme: 'light' | 'd
 }
 
 // Line code → palette index by code order, so a line keeps its color regardless of which
-// lines are selected/filtered — pass every line of the plan's Scope for the same color in
-// the vehicle and crew screens.
+// lines are selected/filtered — pass the lines the plan runs (not the whole Scope, which
+// wraps the 12-hue palette sooner) for the same color in the vehicle and crew screens.
 export function lineIndexByCode(codes: string[]): Map<string, number> {
   const sorted = [...new Set(codes)].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
   return new Map(sorted.map((code, i) => [code, i]))

@@ -189,8 +189,8 @@ export function blockColorVars(blockNumber: number): CSSProperties {
 // dark text (light theme) / light text (dark theme).
 export const LINE_BG_CLASS = 'bg-(--line-bg) dark:bg-(--line-bg-dark)'
 
-// line code → color vars; pass every line of the Scope (board lineCodes) so the index —
-// and the color — matches the vehicle plan Gantt
+// line code → color vars; pass the lines the plan's blocks run so the index — and the
+// color — matches the vehicle plan Gantt
 export function lineColorMap(lineCodes: string[]): Map<string, CSSProperties> {
   return new Map([...lineIndexByCode(lineCodes)].map(([code, i]) => [code, {
     '--line-bg':      swatchColor(i, 'soft', 'light'),
