@@ -13,7 +13,7 @@ export const VEHICLE_BLOCK_ISSUE_CODES = [
   'MISSING_ACCESS',        // after a RETURN, the vehicle moves again without an ACCESS
   'ACCESS_WITHOUT_RETURN', // an ACCESS mid-day whose previous movement isn't a RETURN
   'DEPOT_MISMATCH',        // ACCESS from / RETURN to a place other than the block's depot
-  'CHAINED_DEADRUNS',      // two deadruns in a row (other than RETURN → ACCESS)
+  'CHAINED_DEADRUNS',      // two deadruns in a row (other than RETURN → ACCESS or a round trip A → B → A)
   'LOCATION_JUMP',         // a movement starts somewhere other than where the previous one ended
   'LONG_STAND',            // stands still longer than the default interval type's max, no interval
   'OVERLAP',               // two events at the same time
@@ -90,7 +90,9 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
       continue
     }
     if (cur.kind === 'ACCESS') { issues.push({ code: 'ACCESS_WITHOUT_RETURN', minutes: cur.departureMinutes }); continue }
-    if (prev.kind !== 'TRIP' && cur.kind !== 'TRIP') issues.push({ code: 'CHAINED_DEADRUNS', minutes: cur.departureMinutes })
+    // a round trip (A → B, then B → A) is a legit trip out to a point — relief, meal, fueling
+    const roundTrip = cur.originLocalityId === prev.destinationLocalityId && cur.destinationLocalityId === prev.originLocalityId
+    if (prev.kind !== 'TRIP' && cur.kind !== 'TRIP' && !roundTrip) issues.push({ code: 'CHAINED_DEADRUNS', minutes: cur.departureMinutes })
     if (cur.originLocalityId !== prev.destinationLocalityId) issues.push({ code: 'LOCATION_JUMP', minutes: cur.departureMinutes })
     const stand = cur.departureMinutes - prev.arrivalMinutes
     if (input.maxStandMinutes != null && stand > input.maxStandMinutes
