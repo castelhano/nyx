@@ -32,11 +32,13 @@ interface Fixture {
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
   routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
-  // scopeName: transit.crew rows (keyed by transit Scope); absent in fixtures exported before it
+  // scopeName: SCOPE_KEYED_SETTINGS rows (keyed by transit Scope); absent in fixtures exported before it
   settings: Array<{ key: string; branchTaxId: string | null; scopeName?: string | null; value: Record<string, unknown> }>
 }
 
-const IMPORTABLE_SETTINGS_KEYS = new Set(['transit.general', 'transit.planning', 'transit.crew', 'transit.roster'])
+const IMPORTABLE_SETTINGS_KEYS = new Set(['transit.general', 'transit.planning', 'transit.crew', 'transit.crewCost', 'transit.roster'])
+// keys whose Settings.scope is a transit Scope.id (not a branchId) — see BaseSettingsService
+const SCOPE_KEYED_SETTINGS = new Set(['transit.planning', 'transit.crew', 'transit.crewCost'])
 
 async function main() {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as Fixture
@@ -193,6 +195,11 @@ async function main() {
       }
       scope = scopeId
     } else if (s.branchTaxId) {
+      // older fixtures carry transit.planning keyed by branch — a row nothing reads anymore
+      if (SCOPE_KEYED_SETTINGS.has(s.key)) {
+        console.warn(`  ! ${s.key} por filial (${s.branchTaxId}) ignorado — agora é por Scope`)
+        continue
+      }
       const branch = await prisma.branch.findUnique({ where: { taxId: s.branchTaxId } })
       if (!branch) {
         console.warn(`  ! filial ${s.branchTaxId} não encontrada — rode prisma/seed-core.ts antes`)

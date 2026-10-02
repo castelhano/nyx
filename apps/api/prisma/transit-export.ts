@@ -14,9 +14,9 @@ import { PrismaPg } from '@prisma/adapter-pg'
 //
 // Settings is shared across domains (e.g. core's password-policy lives in the same
 // table), so only the transit.* keys are exported — never the whole table.
-const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.crew', 'transit.roster']
+const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.crew', 'transit.crewCost', 'transit.roster']
 // keys whose Settings.scope is a transit Scope.id (not a branchId) — see BaseSettingsService
-const SCOPE_KEYED_SETTINGS = new Set(['transit.crew'])
+const SCOPE_KEYED_SETTINGS = new Set(['transit.planning', 'transit.crew', 'transit.crewCost'])
 
 const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter })
@@ -69,9 +69,9 @@ async function main() {
     prisma.settings.findMany({ where: { key: { in: TRANSIT_SETTINGS_KEYS } } }),
   ])
 
-  // branch-scoped settings (transit.planning) store `scope` as a branchId — resolve to
-  // taxId for portability, same as ScopeOperator/LineGroup above. transit.crew stores a
-  // transit Scope.id instead — resolved to the (unique) Scope name.
+  // branch-scoped settings store `scope` as a branchId — resolve to taxId for portability,
+  // same as ScopeOperator/LineGroup above. SCOPE_KEYED_SETTINGS store a transit Scope.id
+  // instead — resolved to the (unique) Scope name.
   const branchIds  = settings.filter(s => !SCOPE_KEYED_SETTINGS.has(s.key)).map(s => s.scope).filter(s => s !== 'global')
   const branches   = branchIds.length
     ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, taxId: true } })
