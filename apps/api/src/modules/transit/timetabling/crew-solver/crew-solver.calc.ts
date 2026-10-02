@@ -155,7 +155,6 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   const plainOk = (st: { total: number; longest: number }) => (!rule.continuous && !rule.fractioned)
     || (rule.fractioned && st.total >= rule.fractionedMinTotal && st.longest >= rule.fractionedMinLongest)
   const plainPossible = rule.fractioned || !rule.continuous
-  const mealScore = (st: { total: number }) => penalty(range.mealBreak, rule.fractioned ? st.total : 0)
   const splitCost = range.splitRatio.active ? range.splitRatio.modifier : 0
   // hard limits: ceilings of the active criteria only
   const maxWork   = range.workTime.active ? range.workTime.ceiling : Infinity
@@ -255,7 +254,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
             if (w < range.workTime.floor || !leavesValidRest(cut, inSeg.endMinutes)) continue
             const st = v.stops(pos, cut)
             if (!plainOk(st)) continue
-            const cost = penalty(range.workTime, w) + penalty(range.spread, w) + mealScore(st)
+            const cost = penalty(range.workTime, w) + penalty(range.spread, w)
               + penalty(range.lineChanges, v.lines(pos, cut).changes)
             if (!best || cost < best.cost) best = { cut, gap: null, cost }
           }
@@ -322,9 +321,11 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         const brk = { startMinutes: a.endMinutes, endMinutes: a.endMinutes + rest }
         consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [brk] }, work(len(a) + len(b), rest) + travel, penalty(range.mealBreak, rest))
       }
-      // split: the gap is off the clock
+      // split: the gap is off the clock — a gap that fits the split interval is always one, never
+      // worked (same as the improvement's classification)
       if (splitFits(gap)) {
         consider({ kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }, work(len(a) + len(b), 0), splitCost + penalty(range.splitInterval, gap))
+        continue
       }
       // no meal break: the gap is worked — a TRIPPER when short, else a STRAIGHT when the rule
       // takes one without a meal break and the stops meet it
@@ -335,7 +336,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         const sa = views.get(a.vehicleBlockId)!.stops(a.startMinutes, a.endMinutes)
         const sb = views.get(b.vehicleBlockId)!.stops(b.startMinutes, b.endMinutes)
         const st = { total: sa.total + sb.total + gap, longest: Math.max(sa.longest, sb.longest, gap) }
-        if (plainOk(st)) consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [] }, w, mealScore(st))
+        if (plainOk(st)) consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [] }, w, 0)
       }
     }
 

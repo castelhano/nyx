@@ -47,6 +47,8 @@ interface WorkDuty {
 
 interface Move { removed: WorkDuty[]; added: WorkDuty[] }
 
+const hasError = (ev: DutyEvaluation) => ev.issues.some(i => i.severity === 'error')
+
 // small seedable PRNG (mulberry32) — a fixed seed repeats a run
 function rng(seed: number): () => number {
   let a = seed >>> 0
@@ -290,7 +292,8 @@ export class CrewImprover {
   //    (STRAIGHT); else, working at least range.workTime.floor, a STRAIGHT without a meal break
   //    when the rule takes one (its stops checked by the evaluation); else a TRIPPER — which
   //    can't work beyond range.workTime.floor;
-  //  - no issue at all from the crew plan's own evaluation (ceilings, travel, branch, …).
+  //  - no error from the crew plan's own evaluation (ceilings, travel, branch, …) — a warning
+  //    (e.g. a short piece) is allowed, its cost is the score's issueRatio.
   private build(raw: SolverPiece[], branchId: string | null): WorkDuty | null {
     const sorted = [...raw].sort((x, y) => x.startMinutes - y.startMinutes)
     const pieces: SolverPiece[] = []
@@ -353,12 +356,12 @@ export class CrewImprover {
     if (kind === 'TRIPPER' && plainPossible) {
       const straight = this.make('STRAIGHT', branchId, pieces, [])
       if (straight.ev.summary.workMinutes >= settings.range.workTime.floor) {
-        return straight.ev.issues.length || straight.ev.isStale ? null : straight
+        return hasError(straight.ev) || straight.ev.isStale ? null : straight
       }
     }
 
     const w = this.make(kind, branchId, pieces, breaks)
-    if (w.ev.issues.length || w.ev.isStale) return null
+    if (hasError(w.ev) || w.ev.isStale) return null
     if (kind === 'TRIPPER' && settings.range.workTime.active && w.ev.summary.workMinutes > settings.range.workTime.floor) return null
     return w
   }

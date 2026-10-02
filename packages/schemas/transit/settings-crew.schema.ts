@@ -21,6 +21,9 @@ const rangeDefault = {
   splitRatio:     { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 20,  ceiling: 40  },
   // % of TRIPPER duties (meia jornada) in the plan
   tripperRatio:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 10,  ceiling: 30  },
+  // % of duties with any issue (error or warning) — an unmet rule, the heaviest criterion. The
+  // solver never builds a duty with an error; this is what makes it get rid of the rest
+  issueRatio:     { active: true, modifier: 60, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 5   },
   // vehicle changes per duty
   vehicleChanges: { active: true, modifier: 5,  floor: 0,   idealMin: 0,   idealMax: 1,   ceiling: 3   },
   // line changes per duty — counted apart from vehicle changes (a change of both scores twice)
@@ -84,6 +87,7 @@ export const crewSettingsSchema = withMeta(z.object({
     splitRatio:     rangeCriterionSchema,
     // own defaults: settings stored before these criteria existed still parse
     tripperRatio:   rangeCriterionSchema.default(rangeDefault.tripperRatio),
+    issueRatio:     rangeCriterionSchema.default(rangeDefault.issueRatio),
     vehicleChanges: rangeCriterionSchema,
     lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
     coverage:       rangeCriterionSchema.default(rangeDefault.coverage),

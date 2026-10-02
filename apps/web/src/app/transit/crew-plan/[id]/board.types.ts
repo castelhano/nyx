@@ -125,6 +125,7 @@ export const CRITERION_LABEL: Record<string, string> = {
   overtimeRatio:  'Horas extras',
   splitRatio:     'Dupla pegada (%)',
   tripperRatio:   'Meias jornadas (%)',
+  issueRatio:     'Jornadas com pendência (%)',
   coverage:       'Cobertura',
   walkDistance:   'Deslocamento a pé',
   driversPerVehicle: 'Condutores por carro',

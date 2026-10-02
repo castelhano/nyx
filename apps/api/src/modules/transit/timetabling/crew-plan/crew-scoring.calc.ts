@@ -307,8 +307,11 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     if (rule.continuous && hasMeal) mealForm = 'CONTINUOUS'
     else if (rule.fractioned && stopMinutes >= rule.fractionedMinTotal && longestStop >= rule.fractionedMinLongest) mealForm = 'FRACTIONED'
   }
-  // what the meal criterion measures: the break, or the stops when fractioned
-  const mealMinutes = mealForm === 'FRACTIONED' ? stopMinutes : breakMinutes
+  // with no meal rule a STRAIGHT needs no meal
+  const mealApplies = hasWork && duty.kind === 'STRAIGHT' && (rule.continuous || rule.fractioned)
+  // range.mealBreak measures the continuous break only — the fractioned form is met by its
+  // own rule (fractionedMinTotal / fractionedMinLongest), however long the stops add up to
+  const breakApplies = mealApplies && rule.continuous && mealForm !== 'FRACTIONED'
 
   const summary: DutySummary = {
     spreadMinutes: events.length ? last - first : 0,
@@ -334,8 +337,8 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
 
   if (hasWork && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') push(rangeIssue('WORK_TIME', workMinutes, range.workTime))
   if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('SPREAD', summary.spreadMinutes, range.spread))
-  if (hasWork && duty.kind === 'STRAIGHT') push(rangeIssue('MEAL_BREAK', mealMinutes, range.mealBreak))
-  if (hasWork && duty.kind === 'STRAIGHT' && (rule.continuous || rule.fractioned) && !mealForm) {
+  if (breakApplies) push(rangeIssue('MEAL_BREAK', breakMinutes, range.mealBreak))
+  if (mealApplies && !mealForm) {
     push(rule.fractioned
       ? { code: 'MEAL_REQUIRED', severity: 'error', value: stopMinutes, limit: rule.fractionedMinTotal }
       : { code: 'MEAL_REQUIRED', severity: 'error', value: breakMinutes })
@@ -393,7 +396,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   if (hasWork) {
     if (duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') crit('workTime', range.workTime, workMinutes)
     if (duty.kind !== 'STANDBY') crit('spread', range.spread, summary.spreadMinutes)
-    if (duty.kind === 'STRAIGHT') crit('mealBreak', range.mealBreak, mealMinutes)
+    if (breakApplies) crit('mealBreak', range.mealBreak, breakMinutes)
     if (duty.kind === 'SPLIT') crit('splitInterval', range.splitInterval, splitGap)
     crit('vehicleChanges', range.vehicleChanges, vehicleChanges)
     crit('lineChanges', range.lineChanges, lineChanges)
@@ -436,6 +439,7 @@ export class CrewScoreAggregate {
   private driverPaid = 0
   private totalWork = 0
   private totalOvertime = 0
+  private issueDuties = 0
   private readonly byKind  = new Map<string, number>()
   private readonly perDuty = new Map<string, { weight: number; sum: number; raw: number; n: number }>()
   // DRIVER pieces per block, and each block's covered minutes (recomputed only when touched)
@@ -462,6 +466,7 @@ export class CrewScoreAggregate {
     this.byKind.set(duty.kind, (this.byKind.get(duty.kind) ?? 0) + sign)
     this.totalWork     += sign * ev.summary.workMinutes
     this.totalOvertime += sign * ev.summary.overtimeMinutes
+    if (ev.issues.length) this.issueDuties += sign
     for (const c of ev.criteria) {
       const cur = this.perDuty.get(c.key) ?? { weight: c.weight, sum: 0, raw: 0, n: 0 }
       cur.sum += sign * c.value; cur.raw += sign * c.raw; cur.n += sign
@@ -511,13 +516,14 @@ export class CrewScoreAggregate {
     const out: CrewPlanSummary['criteria'] = []
     for (const [key, c] of this.perDuty) if (c.n > 0) out.push({ key, weight: c.weight, value: c.sum / c.n, raw: c.raw / c.n })
     if (this.dutyCount <= 0) return out
-    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'coverage' | 'driversPerVehicle', value: number) => {
+    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'issueRatio' | 'coverage' | 'driversPerVehicle', value: number) => {
       if (range[key].active) out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]), raw: rangeRaw(value, range[key]) })
     }
     const covered = this.coveredMinutes
     plan('overtimeRatio', this.totalWork > 0 ? (this.totalOvertime / this.totalWork) * 100 : 0)
     plan('splitRatio',   (this.kindCount('SPLIT') / this.dutyCount) * 100)
     plan('tripperRatio', (this.kindCount('TRIPPER') / this.dutyCount) * 100)
+    plan('issueRatio',   (this.issueDuties / this.dutyCount) * 100)
     if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
       const min = Math.ceil(this.blockMinutes / range.workTime.idealMin)
       out.push({ key: 'dutyCount', weight: anchored.dutyCount.weight, value: anchoredV(this.driverDuties, min, anchored.dutyCount), raw: anchoredRaw(this.driverDuties, min, anchored.dutyCount) })
