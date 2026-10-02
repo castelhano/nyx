@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-10-02T01:49:10.678Z",
+  "exportedAt": "2026-10-02T12:51:45.617Z",
   "localities": [
     {
       "code": "A0025-001",
@@ -12,7 +12,7 @@
       "snapInfo": {
         "lat": -15.510653,
         "lng": -55.990049,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.64371
       }
     },
@@ -27,7 +27,7 @@
       "snapInfo": {
         "lat": -15.521686,
         "lng": -56.051296,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.64371
       }
     },
@@ -42,7 +42,7 @@
       "snapInfo": {
         "lat": -15.523324,
         "lng": -56.002884,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.525442
       }
     },
@@ -58,7 +58,7 @@
         "lat": -15.536248,
         "lng": -56.073243,
         "roadName": "Rua Vinte e Cinco",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 12.741946
       }
     },
@@ -74,7 +74,7 @@
         "lat": -15.541344,
         "lng": -56.075813,
         "roadName": "Rua Quinze",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.110648
       }
     },
@@ -89,7 +89,7 @@
       "snapInfo": {
         "lat": -15.541082,
         "lng": -56.064006,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 18.751876
       }
     },
@@ -105,7 +105,7 @@
         "lat": -15.540777,
         "lng": -56.042153,
         "roadName": "Rua Três",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.390592
       }
     },
@@ -121,7 +121,7 @@
         "lat": -15.537414,
         "lng": -56.032564,
         "roadName": "Rua B",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 5.391649
       }
     },
@@ -137,7 +137,7 @@
         "lat": -15.538108,
         "lng": -56.029636,
         "roadName": "Rua H",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.848785
       }
     },
@@ -153,7 +153,7 @@
         "lat": -15.538099,
         "lng": -56.029645,
         "roadName": "Rua H",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.848785
       }
     },
@@ -169,7 +169,7 @@
         "lat": -15.544121,
         "lng": -56.022052,
         "roadName": "Rua Vinte",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.491861
       }
     },
@@ -185,7 +185,7 @@
         "lat": -15.547521,
         "lng": -56.046175,
         "roadName": "Rua Dálias",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 5.483266
       }
     },
@@ -201,7 +201,7 @@
         "lat": -15.546529,
         "lng": -56.021244,
         "roadName": "Avenida C",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.983721
       }
     },
@@ -216,7 +216,7 @@
       "snapInfo": {
         "lat": -15.561789,
         "lng": -56.072018,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.771456
       }
     },
@@ -246,7 +246,7 @@
       "snapInfo": {
         "lat": -15.557161,
         "lng": -56.050923,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.308205
       }
     },
@@ -261,7 +261,7 @@
       "snapInfo": {
         "lat": -15.5571,
         "lng": -56.051092,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.474992
       }
     },
@@ -277,7 +277,7 @@
         "lat": -15.565103,
         "lng": -56.012225,
         "roadName": "Rua Tiradentes",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.83632
       }
     },
@@ -309,7 +309,7 @@
         "lat": -15.575014,
         "lng": -56.073032,
         "roadName": "Avenida Historiador Rubens de Mendonça",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0
       }
     },
@@ -325,7 +325,7 @@
         "lat": -15.574368,
         "lng": -56.034417,
         "roadName": "Avenida Ulisses Guimarães",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.308205
       }
     },
@@ -341,7 +341,7 @@
         "lat": -15.579345,
         "lng": -56.022209,
         "roadName": "Avenida Guanabara",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.49184
       }
     },
@@ -357,7 +357,7 @@
         "lat": -15.589031,
         "lng": -56.059937,
         "roadName": "Avenida Governador Dante Martins de Oliveira",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.18675
       }
     },
@@ -373,7 +373,7 @@
         "lat": -15.585184,
         "lng": -56.036006,
         "roadName": "Rua Alfredo Antônio Juvenal",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 7.858444
       }
     },
@@ -389,7 +389,7 @@
         "lat": -15.509923,
         "lng": -56.174527,
         "roadName": "Avenida Beira Rio",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.773687
       }
     },
@@ -405,7 +405,7 @@
         "lat": -15.526534,
         "lng": -56.11301,
         "roadName": "Rodovia Arquiteto Helder Cândia",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 11.72192
       }
     },
@@ -437,7 +437,7 @@
         "lat": -15.542127,
         "lng": -56.078304,
         "roadName": "Rua Dezoito",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.354055
       }
     },
@@ -453,7 +453,7 @@
         "lat": -15.547574,
         "lng": -56.157046,
         "roadName": "Rua das Flores",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.821085
       }
     },
@@ -468,7 +468,7 @@
       "snapInfo": {
         "lat": -15.546293,
         "lng": -56.083959,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.414432
       }
     },
@@ -484,7 +484,7 @@
         "lat": -15.562813,
         "lng": -56.10735,
         "roadName": "Rua Orivaldo M. de Souza",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.420134
       }
     },
@@ -500,7 +500,7 @@
         "lat": -15.558132,
         "lng": -56.0914,
         "roadName": "Rua Alberto Martins",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.617514
       }
     },
@@ -515,7 +515,7 @@
       "snapInfo": {
         "lat": -15.566397,
         "lng": -56.128141,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 9.187294
       }
     },
@@ -531,7 +531,7 @@
         "lat": -15.579578,
         "lng": -56.091569,
         "roadName": "Rua Oslo",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 18.555123
       }
     },
@@ -547,7 +547,7 @@
         "lat": -15.575121,
         "lng": -56.091059,
         "roadName": "Rua Estolcolmo",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 5.213108
       }
     },
@@ -563,7 +563,7 @@
         "lat": -15.591172,
         "lng": -56.130876,
         "roadName": "Rua Professora Neuza Lula Rodrigues",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 7.871282
       }
     },
@@ -579,7 +579,7 @@
         "lat": -15.590806,
         "lng": -56.119422,
         "roadName": "Avenida Miguel Sutil",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 6.482477
       }
     },
@@ -595,7 +595,7 @@
         "lat": -15.597385,
         "lng": -56.096119,
         "roadName": "Avenida Getúlio Vargas",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 8.569954
       }
     },
@@ -611,7 +611,7 @@
         "lat": -15.59737,
         "lng": -56.096345,
         "roadName": "Rua Joaquim Murtinho",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.002233
       }
     },
@@ -627,7 +627,7 @@
         "lat": -15.598477,
         "lng": -56.095578,
         "roadName": "Rua Treze de Junho",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.158145
       }
     },
@@ -643,7 +643,7 @@
         "lat": -15.599891,
         "lng": -56.095684,
         "roadName": "Avenida Tenente-Coronel Duarte",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 11.027931
       }
     },
@@ -659,7 +659,7 @@
         "lat": -15.601196,
         "lng": -56.097137,
         "roadName": "Avenida Tenente-Coronel Duarte",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.542376
       }
     },
@@ -674,7 +674,7 @@
       "snapInfo": {
         "lat": -15.609908,
         "lng": -56.016173,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.857866
       }
     },
@@ -689,7 +689,7 @@
       "snapInfo": {
         "lat": -15.611755,
         "lng": -56.070349,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.083982
       }
     },
@@ -705,7 +705,7 @@
         "lat": -15.630047,
         "lng": -56.074416,
         "roadName": "Avenida General Melo",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 7.358789
       }
     },
@@ -720,7 +720,7 @@
       "snapInfo": {
         "lat": -15.633479,
         "lng": -55.942218,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.061747
       }
     },
@@ -736,7 +736,7 @@
         "lat": -15.606723,
         "lng": -56.105067,
         "roadName": "Rua Joaquim Murtinho",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.154085
       }
     },
@@ -752,7 +752,7 @@
         "lat": -15.607363,
         "lng": -56.099995,
         "roadName": "Avenida XV de Novembro",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 9.474651
       }
     },
@@ -768,7 +768,7 @@
         "lat": -15.615527,
         "lng": -56.125846,
         "roadName": "Rua São Benedito",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0
       }
     },
@@ -784,7 +784,7 @@
         "lat": -15.614506,
         "lng": -56.105358,
         "roadName": "Rua Comandante Suídio",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.677384
       }
     },
@@ -800,7 +800,7 @@
         "lat": -15.626188,
         "lng": -56.082965,
         "roadName": "Avenida Beira Rio",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 9.037373
       }
     },
@@ -815,7 +815,7 @@
       "snapInfo": {
         "lat": -15.63392,
         "lng": -56.092542,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.442975
       }
     },
@@ -831,7 +831,7 @@
         "lat": -15.34418,
         "lng": -56.23302,
         "roadName": "Rua Everaldo Rondon",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.562618
       }
     },
@@ -847,7 +847,7 @@
         "lat": -15.458258,
         "lng": -55.978946,
         "roadName": "Rua Benedito Dimensiano Pedroso",
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 11.870034
       }
     },
@@ -862,7 +862,7 @@
       "snapInfo": {
         "lat": -15.281531,
         "lng": -56.130389,
-        "checkedAt": "2026-10-01T23:07:33.178Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.696283
       }
     }
@@ -931,14 +931,6 @@
       "minMinutes": 60,
       "maxMinutes": 600,
       "notes": "Intervalo de carro parados nos terminais, nao presupoe jornada de condutor"
-    },
-    {
-      "code": "REFEI",
-      "name": "Refeicao",
-      "isPaid": false,
-      "minMinutes": 60,
-      "maxMinutes": 120,
-      "notes": "Intrajornada CLT"
     }
   ],
   "scopes": [
@@ -958,17 +950,20 @@
           }
         ]
       },
-      "logo": null,
+      "logo": {
+        "path": "transit/scopes/8b611617-df9e-423c-afd4-8cdd3cbb0357.png",
+        "data": "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"
+      },
       "operators": [
-        {
-          "branchTaxId": "33.813.869/0001-04",
-          "abbr": "RAPIDO",
-          "share": 45
-        },
         {
           "branchTaxId": "35.835.010/0001-21",
           "abbr": "VPAR",
-          "share": 55
+          "share": 29.5
+        },
+        {
+          "branchTaxId": "33.813.869/0001-04",
+          "abbr": "RAPIDO",
+          "share": 24.5
         }
       ]
     }
@@ -1045,7 +1040,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "032",
@@ -1085,7 +1086,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "033",
@@ -1125,7 +1132,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "034",
@@ -1166,7 +1179,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "105",
@@ -1413,7 +1432,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "107",
@@ -1656,7 +1681,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "203",
@@ -1927,7 +1958,13 @@
           "overall": 10
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "204",
@@ -2182,7 +2219,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "205",
@@ -2414,7 +2457,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "206",
@@ -2689,7 +2738,13 @@
           "overall": 20
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "206B",
@@ -2742,7 +2797,13 @@
           "OUTBOUND": 9.63
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "213",
@@ -2995,7 +3056,13 @@
           "overall": 10
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "225",
@@ -3204,7 +3271,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "250",
@@ -3462,7 +3535,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "251",
@@ -3703,7 +3782,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "301",
@@ -3972,7 +4057,13 @@
           "overall": 10
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "302",
@@ -4249,7 +4340,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "306",
@@ -4495,7 +4592,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "308",
@@ -4780,7 +4883,13 @@
           "overall": 60
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "308B",
@@ -4897,7 +5006,13 @@
           "OUTBOUND": 12.03
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "309",
@@ -5153,7 +5268,13 @@
           "overall": 20
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "310",
@@ -5347,7 +5468,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "311",
@@ -5610,7 +5737,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "311B",
@@ -5646,7 +5779,13 @@
           "OUTBOUND": 13.11
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "313",
@@ -5917,7 +6056,13 @@
           "overall": 55
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "319",
@@ -6170,7 +6315,13 @@
           "overall": 45
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "323",
@@ -6298,7 +6449,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": "MICRO_BUS"
+      }
     },
     {
       "code": "330",
@@ -6550,7 +6709,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "340",
@@ -6834,7 +6999,13 @@
           "overall": 30
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "380",
@@ -7021,7 +7192,13 @@
           "overall": 10
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "390",
@@ -7240,7 +7417,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "409",
@@ -7484,7 +7667,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "410",
@@ -7742,7 +7931,13 @@
           "overall": 60
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "721",
@@ -8118,7 +8313,13 @@
           "overall": 45
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "800",
@@ -8363,7 +8564,13 @@
           "overall": 45
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A02",
@@ -8623,7 +8830,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A06",
@@ -8815,7 +9030,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A06B",
@@ -8879,7 +9100,13 @@
           "OUTBOUND": 8.52
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A06C",
@@ -8895,7 +9122,13 @@
           "OUTBOUND": 17.45
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A07",
@@ -9133,7 +9366,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A08",
@@ -9333,7 +9574,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A10",
@@ -9559,7 +9806,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A14",
@@ -9769,7 +10022,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A15",
@@ -9976,7 +10235,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A16",
@@ -10194,7 +10459,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A17",
@@ -10422,7 +10693,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A20",
@@ -10569,7 +10848,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A22",
@@ -10690,7 +10975,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": "MICRO_BUS"
+      }
     },
     {
       "code": "A22B",
@@ -10845,7 +11138,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "A22C",
@@ -10969,7 +11268,13 @@
           "OUTBOUND": 5.56
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "C01",
@@ -11198,7 +11503,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "C02",
@@ -11393,7 +11704,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": "MICRO_BUS"
+      }
     },
     {
       "code": "F01",
@@ -11409,7 +11728,13 @@
           "OUTBOUND": 16.09
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     },
     {
       "code": "R01",
@@ -11568,7 +11893,15 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MICRO_BUS",
+          "MINIBUS",
+          "VAN"
+        ],
+        "preferred": "MICRO_BUS"
+      }
     },
     {
       "code": "R03",
@@ -11669,7 +12002,13 @@
           "overall": 0
         }
       },
-      "vehicleTypes": null
+      "vehicleTypes": {
+        "allowed": [
+          "STANDARD",
+          "MINIBUS"
+        ],
+        "preferred": null
+      }
     }
   ],
   "routes": [
@@ -12266,16 +12605,6 @@
     {
       "lineCode": "A02",
       "direction": "OUTBOUND",
-      "ordinal": 1,
-      "name": "CPA 1 - B BRANCO",
-      "originCode": "A0519-001",
-      "destinationCode": "A0119-001",
-      "isActive": true,
-      "isPrimary": false
-    },
-    {
-      "lineCode": "A02",
-      "direction": "OUTBOUND",
       "ordinal": 0,
       "name": "CPA 1 - PQ NAC",
       "originCode": "A0519-001",
@@ -12290,6 +12619,16 @@
       "name": "CPA 1 - F FORMOSA",
       "originCode": "A0519-001",
       "destinationCode": "B0415-001",
+      "isActive": true,
+      "isPrimary": false
+    },
+    {
+      "lineCode": "A02",
+      "direction": "OUTBOUND",
+      "ordinal": 1,
+      "name": "CPA 1 - B BRANCO",
+      "originCode": "A0519-001",
+      "destinationCode": "A0119-001",
       "isActive": true,
       "isPrimary": false
     },
@@ -12828,8 +13167,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -13899,7 +14238,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -13916,7 +14255,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -15283,7 +15622,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -17466,7 +17805,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -18529,8 +18868,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -18547,7 +18886,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": true,
-      "allowsMealBreak": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -19375,7 +19714,7 @@
         ]
       },
       "allowsCrewChange": true,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -19391,7 +19730,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -20008,7 +20347,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -20025,8 +20364,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -21983,7 +22322,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -22000,8 +22339,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -24670,7 +25009,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -24687,7 +25026,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -25200,7 +25539,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -25217,7 +25556,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -25974,8 +26313,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -25991,8 +26330,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -28309,7 +28648,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -28326,7 +28665,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -30080,8 +30419,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -30097,7 +30436,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -31725,7 +32064,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -31742,7 +32081,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -32698,8 +33037,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -32715,7 +33054,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -34307,7 +34646,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -34324,7 +34663,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -36761,7 +37100,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -36778,7 +37117,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -38329,7 +38668,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -38346,7 +38685,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -40478,7 +40817,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -40495,7 +40834,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -42753,7 +43092,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -42770,7 +43109,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -44558,7 +44897,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -44575,7 +44914,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -46930,7 +47269,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -46947,7 +47286,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -49516,7 +49855,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -49533,7 +49872,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -51590,8 +51929,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -51607,7 +51946,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -53275,7 +53614,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -53292,7 +53631,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -54641,7 +54980,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -54658,7 +54997,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -56035,7 +56374,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -56052,7 +56391,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -56629,7 +56968,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -56646,7 +56985,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -58729,8 +59068,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -58746,7 +59085,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -60152,7 +60491,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -60169,7 +60508,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -62439,8 +62778,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -62456,7 +62795,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -65366,8 +65705,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsCrewChange": true,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -65383,7 +65722,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -67897,8 +68236,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -67914,8 +68253,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -69598,7 +69937,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -69615,8 +69954,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -71401,7 +71740,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -71418,7 +71757,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -73194,7 +73533,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -73211,7 +73550,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -74656,8 +74995,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -74673,7 +75012,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -76203,7 +76542,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -76220,7 +76559,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -76602,7 +76941,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -76619,7 +76958,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -78185,7 +78524,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -78202,8 +78541,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -79428,7 +79767,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -79445,7 +79784,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -80218,7 +80557,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -80235,7 +80574,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -81204,7 +81543,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -81221,7 +81560,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -81893,7 +82232,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -81910,8 +82249,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -82919,7 +83258,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -82936,7 +83275,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -83396,7 +83735,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -83413,8 +83752,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsCrewChange": true,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -86711,7 +87050,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -86728,7 +87067,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -89708,8 +90047,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -89725,7 +90064,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -92130,8 +92469,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -92147,8 +92486,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -93997,7 +94336,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -94014,7 +94353,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -94688,7 +95027,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -94705,7 +95044,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -95968,7 +96307,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -95985,8 +96324,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -99110,7 +99449,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -99127,7 +99466,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -101533,7 +101872,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -101550,7 +101889,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -102768,8 +103107,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -102785,7 +103124,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -104522,7 +104861,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -104539,7 +104878,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -106973,8 +107312,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -106990,7 +107329,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -108537,7 +108876,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -108554,7 +108893,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -109774,8 +110113,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -109791,7 +110130,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -111241,7 +111580,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -111258,7 +111597,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -113420,7 +113759,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -113437,7 +113776,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -115764,7 +116103,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -115781,7 +116120,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -118207,7 +118546,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -118224,8 +118563,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -120415,7 +120754,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -120432,7 +120771,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -123191,7 +123530,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -123208,8 +123547,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -125019,7 +125358,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -125036,7 +125375,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -126462,7 +126801,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -126479,8 +126818,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -128890,7 +129229,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -128907,7 +129246,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -131971,7 +132310,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -131988,7 +132327,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -133673,8 +134012,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -133690,7 +134029,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -134835,7 +135174,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -134852,7 +135191,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -136275,7 +136614,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -136292,7 +136631,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -137785,7 +138124,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -137802,7 +138141,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -139321,7 +139660,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -139338,8 +139677,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -141571,7 +141910,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -141588,7 +141927,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -143711,7 +144050,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -143728,7 +144067,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -144870,7 +145209,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -144887,7 +145226,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -146978,7 +147317,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -146995,7 +147334,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -149354,8 +149693,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -149371,8 +149710,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -150624,7 +150963,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -150641,7 +150980,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -152761,7 +153100,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -152778,7 +153117,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -153257,7 +153596,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -153274,8 +153613,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -155379,7 +155718,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -155396,7 +155735,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -157503,7 +157842,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -157520,7 +157859,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -159149,7 +159488,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -159166,8 +159505,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -160935,7 +161274,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -160952,8 +161291,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -163231,7 +163570,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -163248,7 +163587,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -165483,7 +165822,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -165500,7 +165839,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -166460,7 +166799,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -166477,8 +166816,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -168611,7 +168950,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -168628,7 +168967,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -169883,7 +170222,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -169900,7 +170239,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -170722,7 +171061,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -170739,7 +171078,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -173984,8 +174323,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -174001,8 +174340,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -177099,7 +177438,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -177117,7 +177456,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": true,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -178399,7 +178738,7 @@
         ]
       },
       "allowsCrewChange": true,
-      "allowsMealBreak": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -178415,7 +178754,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -179796,8 +180135,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -179813,7 +180152,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -180743,7 +181082,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -180760,8 +181099,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -184586,7 +184925,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -184603,7 +184942,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -186551,8 +186890,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -186568,8 +186907,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -189386,7 +189725,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -189403,7 +189742,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -189935,7 +190274,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -189952,7 +190291,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -190780,7 +191119,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -190797,7 +191136,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -192485,8 +192824,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -192502,7 +192841,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -193048,7 +193387,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -193065,7 +193404,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -194622,8 +194961,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -195941,8 +196280,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -197921,7 +198260,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -197938,8 +198277,8 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -198988,7 +199327,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -199005,7 +199344,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -200287,7 +200626,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -200304,7 +200643,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -202164,7 +202503,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -202181,7 +202520,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -204127,7 +204466,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -204144,7 +204483,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -205315,7 +205654,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -205332,7 +205671,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -207488,8 +207827,8 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
-      "allowsMealBreak": true,
+      "allowsCrewChange": true,
+      "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
     {
@@ -207505,7 +207844,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -208113,7 +208452,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     },
@@ -208130,7 +208469,7 @@
       "deltaKm": null,
       "deltaSource": "OSRM",
       "geometry": null,
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
@@ -208813,7 +209152,7 @@
           ]
         ]
       },
-      "allowsCrewChange": false,
+      "allowsCrewChange": true,
       "allowsMealBreak": false,
       "allowsVehicleStand": false
     }
@@ -208890,6 +209229,19 @@
   ],
   "settings": [
     {
+      "key": "transit.general",
+      "branchTaxId": null,
+      "scopeName": null,
+      "value": {
+        "baseSpeedRatio": 1.3,
+        "demandModifier": 1,
+        "suggestThresholdM": 300,
+        "defaultIntervalTypeId": "PAUSA",
+        "operationalDayStartHour": 3,
+        "propagateExtensionToOfficialKm": true
+      }
+    },
+    {
       "key": "transit.crew",
       "branchTaxId": null,
       "scopeName": null,
@@ -208933,7 +209285,7 @@
             "ceiling": 40,
             "idealMax": 20,
             "idealMin": 0,
-            "modifier": 40
+            "modifier": 20
           },
           "lineChanges": {
             "floor": 0,
@@ -209007,7 +209359,7 @@
           }
         },
         "mealRule": {
-          "continuous": true,
+          "continuous": false,
           "fractioned": false,
           "fractionedMinTotal": 30,
           "fractionedMinLongest": 15
@@ -209020,7 +209372,7 @@
         "handoverMinutes": 5,
         "minPieceMinutes": 90,
         "stopMaxTotalMinutes": 10,
-        "mealBreakIntervalTypeId": "76463418-f34f-46a7-a59e-894aa848127f",
+        "mealBreakIntervalTypeId": "59bf54d1-f69c-443c-826a-65e06b4f569a",
         "stopNoImprovementMinutes": 3,
         "maxContinuousDrivingMinutes": 540
       }
@@ -209056,19 +209408,6 @@
             "modifier": 1
           }
         }
-      }
-    },
-    {
-      "key": "transit.general",
-      "branchTaxId": null,
-      "scopeName": null,
-      "value": {
-        "baseSpeedRatio": 1.3,
-        "demandModifier": 1,
-        "suggestThresholdM": 300,
-        "defaultIntervalTypeId": "PAUSA",
-        "operationalDayStartHour": 3,
-        "propagateExtensionToOfficialKm": true
       }
     },
     {
@@ -209144,13 +209483,13 @@
           "operatorShareKm": {
             "floor": 0,
             "active": true,
-            "ceiling": 15,
-            "idealMax": 3,
+            "ceiling": 5,
+            "idealMax": 1,
             "idealMin": 0,
-            "modifier": 10
+            "modifier": 40
           },
           "minBlockDuration": {
-            "floor": 180,
+            "floor": 90,
             "active": true,
             "ceiling": 1080,
             "idealMax": 900,
@@ -209160,10 +209499,10 @@
           "operatorShareFleet": {
             "floor": 0,
             "active": true,
-            "ceiling": 10,
-            "idealMax": 2,
+            "ceiling": 5,
+            "idealMax": 1,
             "idealMin": 0,
-            "modifier": 20
+            "modifier": 40
           },
           "distributionVariance": {
             "floor": 0,
@@ -209196,9 +209535,36 @@
             "idealMaxOverPercent": 5
           }
         },
-        "minLayoverMinutes": 5,
+        "minLayoverMinutes": 3,
         "stopMaxTotalMinutes": 10,
         "stopNoImprovementMinutes": 3
+      }
+    },
+    {
+      "key": "transit.crewCost",
+      "branchTaxId": null,
+      "scopeName": null,
+      "value": {
+        "byRole": {
+          "DRIVER": {
+            "baseSalary": 0,
+            "monthlyHours": 220,
+            "chargesPercent": 0,
+            "benefitsPerEmployee": 0
+          },
+          "ASSISTANT": {
+            "baseSalary": 0,
+            "monthlyHours": 220,
+            "chargesPercent": 0,
+            "benefitsPerEmployee": 0
+          },
+          "FARE_COLLECTOR": {
+            "baseSalary": 0,
+            "monthlyHours": 220,
+            "chargesPercent": 0,
+            "benefitsPerEmployee": 0
+          }
+        }
       }
     }
   ]
