@@ -32,4 +32,5 @@ export type CrewSolverMessage =
 // host → worker
 export type CrewSolverCommand = { type: 'stop' }
 
-export type CrewSolverWorkerData = CrewSolverInput
+// each worker of a generation searches from its own seed (see CrewSolverService.start)
+export interface CrewSolverWorkerData { input: CrewSolverInput; seed: number }

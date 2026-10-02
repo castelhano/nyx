@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Worker } from 'worker_threads'
 import * as path from 'path'
+import { availableParallelism } from 'os'
 import { Observable, Subject } from 'rxjs'
 import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
@@ -10,7 +11,7 @@ import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { loadCrewSolverInput } from './crew-solver.input'
 import {
   DEFAULT_CREW_SOLVER_PARAMS,
-  type CrewSolverMessage, type CrewSolverParams, type CrewSolverProposal,
+  type CrewSolverMessage, type CrewSolverParams, type CrewSolverProposal, type CrewSolverWorkerData,
 } from './crew-solver.types'
 
 // "Otimizar › Gerar escala" — runs the crew solver in a worker thread, streams progress
@@ -22,19 +23,32 @@ import {
 // job's state first (best proposal, last progress, how it ended) and then what comes next.
 // Jobs live in memory (a restart loses them), until accepted, discarded or 30 min after the
 // run ends.
+//
+// The improvement is a random search and two seeds can end ~30 duties apart, so a generation
+// runs SEARCHES workers from different seeds side by side: the job keeps the best proposal of
+// them all, its progress sums them up and it ends when the last one does.
 
 const KEEP_MS = 30 * 60 * 1000
+const SEARCHES = Math.max(1, Math.min(4, availableParallelism() - 1))
 
 type Done = Extract<CrewSolverMessage, { type: 'done' | 'error' }>
+type Progress = Extract<CrewSolverMessage, { type: 'progress' }>
+type StopReason = Extract<CrewSolverMessage, { type: 'done' }>['stopReason']
+
+// how the generation ended when its searches ended differently — the first one listed wins
+const STOP_PRIORITY: StopReason[] = ['user_stopped', 'max_time', 'no_improvement', 'finished']
 
 interface Job {
   id:         string
   crewPlanId: string
   params:     CrewSolverParams
-  worker:     Worker
+  workers:    Worker[]
+  // per worker: its last progress and how it ended
+  runs:       { progress: Progress | null; end: Done | null }[]
+  proposals:  number
   startedAt:  number
   best:       CrewSolverProposal | null
-  progress:   Extract<CrewSolverMessage, { type: 'progress' }> | null
+  progress:   Progress | null
   // how it ended — null while running
   end:        Done | null
   endedAt:    number | null
@@ -86,16 +100,20 @@ export class CrewSolverService {
     const input = await loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction))
     if (params.base === 'scratch') input.locked = []
 
-    const isTs     = __filename.endsWith('.ts')
-    const worker   = new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
-      workerData: input,
+    const isTs    = __filename.endsWith('.ts')
+    const seed    = Date.now()
+    const workers = Array.from({ length: SEARCHES }, (_, i) => new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
+      workerData: { input, seed: seed + i * 7919 } satisfies CrewSolverWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
-    })
+    }))
     // one generation per crew plan: a new one replaces the previous
     const previous = this.current.get(crewPlanId)
     if (previous) this.drop(previous)
 
-    const job: Job = { id: jobId, crewPlanId, params, worker, startedAt: Date.now(), best: null, progress: null, end: null, endedAt: null, live$: new Subject() }
+    const job: Job = {
+      id: jobId, crewPlanId, params, workers, runs: workers.map(() => ({ progress: null, end: null })), proposals: 0,
+      startedAt: Date.now(), best: null, progress: null, end: null, endedAt: null, live$: new Subject(),
+    }
     this.jobs.set(jobId, job)
     this.current.set(crewPlanId, jobId)
 
@@ -105,18 +123,45 @@ export class CrewSolverService {
       job.endedAt = Date.now()
       job.live$.next(end)
       job.live$.complete()
-      void worker.terminate()
+      for (const w of workers) void w.terminate()
       setTimeout(() => { if (this.jobs.get(jobId) === job) this.drop(jobId) }, KEEP_MS)
     }
-    worker.on('message', (msg: CrewSolverMessage) => {
-      if (msg.type === 'proposal') job.best = msg.proposal
-      if (msg.type === 'progress') job.progress = msg
-      if (msg.type === 'done' || msg.type === 'error') finish(msg)
-      else job.live$.next(msg)
-    })
-    worker.on('error', err => {
-      this.logger.error(`Crew solver worker error for job ${jobId}`, err)
-      finish({ type: 'error', message: err.message })
+    // a search ended: the generation ends with the last one — an error only when they all failed
+    const ended = (i: number, end: Done) => {
+      if (job.runs[i].end) return
+      job.runs[i].end = end
+      if (end.type === 'error') this.logger.warn(`Crew solver search ${i} of job ${jobId} failed: ${end.message}`)
+      const ends = job.runs.map(r => r.end)
+      if (ends.some(e => !e)) return
+      const done = ends.filter((e): e is Extract<Done, { type: 'done' }> => e!.type === 'done')
+      finish(done.length
+        ? {
+            type: 'done',
+            stopReason: STOP_PRIORITY.find(r => done.some(d => d.stopReason === r))!,
+            elapsed: Date.now() - job.startedAt,
+            attempts: done.reduce((n, d) => n + d.attempts, 0),
+          }
+        : ends[0]!)
+    }
+    workers.forEach((worker, i) => {
+      worker.on('message', (msg: CrewSolverMessage) => {
+        if (msg.type === 'done' || msg.type === 'error') return ended(i, msg)
+        if (msg.type === 'proposal') {
+          // only a better proposal than every search's so far goes out (the construction is the
+          // same in all of them)
+          if (job.best && rankOf(msg.proposal) <= rankOf(job.best)) return
+          job.best = { ...msg.proposal, index: ++job.proposals }
+          job.live$.next({ type: 'proposal', proposal: job.best })
+        } else {
+          job.runs[i].progress = msg
+          job.progress = combineProgress(job.runs.flatMap(r => r.progress ?? []))
+          job.live$.next(job.progress)
+        }
+      })
+      worker.on('error', err => {
+        this.logger.error(`Crew solver worker error for job ${jobId}`, err)
+        ended(i, { type: 'error', message: err.message })
+      })
     })
   }
 
@@ -167,7 +212,7 @@ export class CrewSolverService {
     if (!job) return
     if (!job.end) {
       job.live$.complete()
-      void job.worker.terminate()
+      for (const w of job.workers) void w.terminate()
     }
     this.jobs.delete(jobId)
     if (this.current.get(job.crewPlanId) === jobId) this.current.delete(job.crewPlanId)
@@ -199,7 +244,9 @@ export class CrewSolverService {
   }
 
   stop(jobId: string): void {
-    try { this.jobs.get(jobId)?.worker.postMessage({ type: 'stop' }) } catch { /* already done */ }
+    for (const w of this.jobs.get(jobId)?.workers ?? []) {
+      try { w.postMessage({ type: 'stop' }) } catch { /* already done */ }
+    }
   }
 
   // The proposal becomes duties: its locked duties (Completar) + the proposal's, replicated to
@@ -306,6 +353,22 @@ export class CrewSolverService {
 
     await this.crewPlans.recalculate(planId)
     return { id: planId, inPlace }
+  }
+}
+
+// what the searches optimize — the unfloored score (the floored one ties past the ceilings)
+const rankOf = (p: CrewSolverProposal) => p.summary.rawScore ?? p.summary.score
+
+// the searches' progress as one: attempts and improvements add up, the best score is the best
+// one, the time since an improvement is the most recent search's
+function combineProgress(list: Progress[]): Progress {
+  return {
+    type: 'progress',
+    elapsed:          Math.max(...list.map(p => p.elapsed)),
+    attempts:         list.reduce((n, p) => n + p.attempts, 0),
+    improvements:     list.reduce((n, p) => n + p.improvements, 0),
+    bestScore:        Math.max(...list.map(p => p.bestScore)),
+    sinceImprovement: Math.min(...list.map(p => p.sinceImprovement)),
   }
 }
 

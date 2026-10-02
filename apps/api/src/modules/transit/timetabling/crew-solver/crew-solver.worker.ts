@@ -16,7 +16,7 @@ const EMIT_MS     = 1000
 const PROGRESS_MS = 500
 
 const post  = (msg: CrewSolverMessage) => parentPort!.postMessage(msg)
-const input = workerData as CrewSolverWorkerData
+const { input, seed } = workerData as CrewSolverWorkerData
 const started = Date.now()
 let stopped = false
 parentPort!.on('message', (cmd: CrewSolverCommand) => { if (cmd?.type === 'stop') stopped = true })
@@ -29,7 +29,7 @@ try {
   const maxMs  = input.settings.stopMaxTotalMinutes * 60_000
   const idleMs = input.settings.stopNoImprovementMinutes * 60_000
   // one cooling cycle per half of the no-improvement window (see CrewImprover)
-  const improver = new CrewImprover(input, construction.duties, Math.min(maxMs, idleMs / 2))
+  const improver = new CrewImprover(input, construction.duties, Math.min(maxMs, idleMs / 2), seed)
   let emitted = 0, lastEmit = 0, lastProgress = 0
 
   const emitBest = () => {
