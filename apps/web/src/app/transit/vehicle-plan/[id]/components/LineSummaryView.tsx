@@ -922,7 +922,7 @@ function SummaryCardBody({ v, primary, reference, bands }: { v: RowValues; prima
         <p className={cn('font-bold text-4xl leading-none tracking-tight tabular-nums', primary ? 'text-primary' : 'text-foreground')}>
           {(v.score ?? 0).toLocaleString('pt-BR')}
         </p>
-        <p className="text-sm text-muted-foreground mt-1.5">score</p>
+        <p className="text-sm text-muted-foreground mt-1.5">score da linha</p>
       </div>
       <div className="grid grid-cols-2 gap-2 pt-1">
         <Stat label="Frota" value={`${v.fleetSize ?? 0} veíc.`} goodness={g('fleetSize')} />

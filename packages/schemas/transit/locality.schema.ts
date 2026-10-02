@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
+import { vehicleTypeSchema } from './vehicle-type'
 
 export const snapInfoSchema = z.object({
   lat:       z.number(),
@@ -9,6 +10,21 @@ export const snapInfoSchema = z.object({
   roadName:  z.string().optional(),
   checkedAt: z.string().datetime(),
 })
+
+// A depot's operation (TransitLocality.depot, only meaningful while isDepot) — read by the
+// vehicle solver, docs/proposal/plan_vehicle_solver_v2.md:
+//  operators  branchIds whose vehicles may be based here; empty = any operator
+//  capacity   physical limits, all enforced together: vehicleType null = the whole depot;
+//             none = no limit
+export const depotConfigSchema = z.object({
+  operators: z.array(z.uuid()).default([]),
+  capacity:  z.array(z.object({
+    vehicleType: vehicleTypeSchema.nullable(),
+    max:         z.number().int().min(0),
+  })).default([]),
+})
+
+export type DepotConfig = z.infer<typeof depotConfigSchema>
 
 export const localitySchema = withMeta(
   z.object({
@@ -66,6 +82,12 @@ export const localitySchema = withMeta(
     notes: z.string().optional().meta({
       label:          'Observações',
       widget:         'textarea',
+      listVisibility: 'never',
+    }),
+
+    // edited by the locality page's own field component (shown while isDepot)
+    depot: depotConfigSchema.optional().meta({
+      label:          'Garagem',
       listVisibility: 'never',
     }),
 

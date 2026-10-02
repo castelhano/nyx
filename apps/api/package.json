@@ -19,7 +19,8 @@
     "vehicle:recalculate": "tsx prisma/vehicle-recalculate.ts",
     "crew:recalculate": "tsx prisma/crew-recalculate.ts",
     "crew:score-check": "tsx prisma/crew-score-check.ts",
-    "crew:solver-bench": "tsx prisma/crew-solver-bench.ts"
+    "crew:solver-bench": "tsx prisma/crew-solver-bench.ts",
+    "vehicle:solver-bench": "tsx prisma/vehicle-solver-bench.ts"
   },
   "prisma": {
     "seed": "pnpm db:seed"

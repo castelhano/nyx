@@ -15,6 +15,7 @@ import { useConfirm }         from '@/lib/confirm-context'
 import { msgs }               from '@/lib/messages'
 import { extractError }       from '@/lib/utils'
 import { resolveIcon, Icons } from '@/lib/icons'
+import { DepotConfigField } from './DepotConfigField'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'transit-locality'
@@ -241,6 +242,7 @@ export default function TransitLocalityDetailPage() {
         onSubmit={handleSubmit}
         formId={FORM_ID}
         resetSignal={resetSignal}
+        customFields={{ depot: DepotConfigField }}
       />
     </div>
   )

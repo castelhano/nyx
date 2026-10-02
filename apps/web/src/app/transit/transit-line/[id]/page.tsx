@@ -18,6 +18,7 @@ import { msgs }               from '@/lib/messages'
 import { extractError }       from '@/lib/utils'
 import { Button }             from '@/components/ui/button'
 import { DemandChartModal, type DemandData } from '../DemandChartModal'
+import { VehicleTypesField } from './VehicleTypesField'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'transit-line'
@@ -243,6 +244,7 @@ export default function TransitLineDetailPage() {
         onSubmit={handleSubmit}
         formId={FORM_ID}
         resetSignal={resetSignal}
+        customFields={{ vehicleTypes: VehicleTypesField }}
         groupSlots={{
           Metricas: (hasDemand || hasWindows) ? (
             <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">

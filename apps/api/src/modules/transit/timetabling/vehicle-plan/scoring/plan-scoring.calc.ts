@@ -1,11 +1,9 @@
-import type { SolverPlanningConfig, RangeCriterionConfig, AnchoredCriterionConfig } from '../solver/solver.types'
 import type { BlockAggregate } from './block-aggregate'
-import type { VehiclePlanLineSummary } from '@nyx/schemas'
+import type { VehiclePlanLineSummary, PlanningSettings, RangeCriterion, AnchoredCriterion } from '@nyx/schemas'
 
-// The single score formula in the system — extracted from the solver's scoreBlocks
-// (solver.scoring.ts). Consumed today only by VehiclePlanService.recalculate (via
-// BlockAggregate[] built from persisted state); a future solver revision is expected
-// to converge onto this same function instead of keeping its own copy.
+// The single score formula in the system — VehiclePlanService.recalculate (BlockAggregate[]
+// built from persisted state) and the vehicle solver (the same aggregate, from the rows it
+// would persist) both go through PlanScoreState.
 //
 // Reform (docs/proposal/vehicle_plan_score_formula_v1.md): every criterion — plan and
 // line level — maps to a bounded [0,1] reward, combined as a WEIGHTED AVERAGE (not
@@ -13,7 +11,7 @@ import type { VehiclePlanLineSummary } from '@nyx/schemas'
 // regardless of how many criteria are active or how weights are tuned.
 export const SCORE_SCALE = 9999
 
-export function rangeV(value: number, c: RangeCriterionConfig): number {
+export function rangeV(value: number, c: RangeCriterion): number {
   if (value > c.ceiling) return 0
   if (value >= c.idealMin && value <= c.idealMax) return 1
   if (value < c.idealMin) {
@@ -28,7 +26,7 @@ export function rangeV(value: number, c: RangeCriterionConfig): number {
 // km, peak vehicle requirement) instead of a config constant — idealMax/ceiling are
 // expressed as % over that floor. Ratio 1.0 = at the theoretical minimum (best
 // achievable). See proposal doc §6.2.
-export function anchoredV(realized: number, theoreticalMin: number, c: AnchoredCriterionConfig): number {
+export function anchoredV(realized: number, theoreticalMin: number, c: AnchoredCriterion): number {
   if (theoreticalMin <= 0) return 1
   const ratio = realized / theoreticalMin
   return rangeV(ratio, {
@@ -143,80 +141,201 @@ export interface AggregateScoreResult {
   totalMinutes:      number
 }
 
+export type PlanScoreConfig = Pick<PlanningSettings, 'range' | 'anchored'>
+
+// ScopeOperator.share by branchId (only the operators with a share > 0)
+export type OperatorShares = Record<string, number>
+
+// ScopeOperator rows → OperatorShares
+export function operatorShares(operators: { branchId: string; share: number | null }[]): OperatorShares {
+  return Object.fromEntries(operators.filter(o => (o.share ?? 0) > 0).map(o => [o.branchId, o.share!]))
+}
+
+// Plan score as a running sum over its blocks: add/remove a block's aggregate and read the
+// score — what recalculate() computes in one pass and the vehicle solver updates move by move
+// (only the touched blocks change). Every term is a sum over blocks (or derived from sums:
+// the duration CV from Σd and Σd², the operator shares from per-branch fleet/km), so removing
+// a block undoes its addition exactly up to float drift — the solver resyncs from scratch
+// now and then.
+const BLOCK_CRITERIA = ['lineTransfer', 'deadrunRatio', 'minBlockDuration'] as const
+type BlockCriterion = typeof BLOCK_CRITERIA[number]
+
+// rangeV without the floor at 0: inside the bands the same, past floor/ceiling it keeps falling
+// with the band's slope (a band of zero width counts 1 per unit) down to -1 — a search still
+// sees getting closer to the ceiling as better, but a criterion out of reach (e.g. a range that
+// no solution meets) can't outweigh the others
+export function rangeRaw(value: number, c: RangeCriterion): number {
+  if (value < c.floor && c.idealMin > c.floor) return Math.max(-1, (value - c.floor) / (c.idealMin - c.floor))
+  if (value > c.ceiling) return Math.max(-1, (c.ceiling - value) / (c.ceiling > c.idealMax ? c.ceiling - c.idealMax : 1))
+  return rangeV(value, c)
+}
+
+function anchoredRaw(realized: number, theoreticalMin: number, c: AnchoredCriterion): number {
+  if (theoreticalMin <= 0) return 1
+  return rangeRaw(realized / theoreticalMin, {
+    active: c.active, modifier: 0, floor: 1, idealMin: 1,
+    idealMax: 1 + c.idealMaxOverPercent / 100,
+    ceiling:  1 + c.ceilingOverPercent  / 100,
+  })
+}
+
+export interface PlanCriterion { key: string; weight: number; value: number; raw: number }
+
+// Plan score as a running sum over its blocks: add/remove a block's aggregate and read the
+// score — what recalculate() computes in one pass and the vehicle solver updates move by move
+// (only the touched blocks change). Every term comes from sums over the blocks (the duration CV
+// from Σd and Σd², the operator shares from per-branch fleet/km), so removing a block undoes
+// its addition up to float drift — the solver resyncs from scratch now and then.
+//
+// Score: every active criterion enters once with its weight — a per-block one (modifier) with
+// the mean of its value over the blocks it applies to, a plan one with its value. Values are
+// 0–1, so the score is 0–9999 and a criterion costs at most its share (weight ÷ Σ weights) —
+// the same rule as the crew score.
+export class PlanScoreState {
+  private readonly peak: number
+  private readonly shareTarget: Map<string, number>
+
+  // per-block criteria: Σ value, Σ raw value, blocks counted
+  private readonly perBlock = Object.fromEntries(BLOCK_CRITERIA.map(k => [k, { sum: 0, raw: 0, n: 0 }])) as Record<BlockCriterion, { sum: number; raw: number; n: number }>
+  private fleet             = 0
+  private sumDuration       = 0
+  private sumDurationSq     = 0
+  private deadrunKm         = 0
+  private deadrunMinutes    = 0
+  private productiveKm      = 0
+  private productiveMinutes = 0
+  private preferredTrips    = 0
+  private preferredMisses   = 0
+  // fleet / total km of the operators with a share
+  private readonly branchFleet = new Map<string, number>()
+  private readonly branchKm    = new Map<string, number>()
+
+  constructor(
+    private readonly config: PlanScoreConfig,
+    planTrips: { departureMinutes: number; arrivalMinutes: number }[],
+    shares:    OperatorShares = {},
+  ) {
+    this.peak = peakVehicleRequirement(planTrips)
+    // targets normalized over the operators with a share — "among them, split like this"
+    const entries = Object.entries(shares).filter(([, v]) => v > 0)
+    const total   = entries.reduce((sum, [, v]) => sum + v, 0)
+    this.shareTarget = new Map(entries.map(([id, v]) => [id, (v / total) * 100]))
+  }
+
+  add(agg: BlockAggregate):    void { this.apply(agg, 1) }
+  remove(agg: BlockAggregate): void { this.apply(agg, -1) }
+
+  private apply(agg: BlockAggregate, sign: 1 | -1): void {
+    const range   = this.config.range
+    const totalKm = agg.deadrunKm + agg.productiveKm
+    const drRatio = totalKm > 0 ? (agg.deadrunKm / totalKm) * 100 : 0
+    const block = (key: BlockCriterion, value: number) => {
+      const c = this.perBlock[key]
+      c.sum += sign * rangeV(value, range[key])
+      c.raw += sign * rangeRaw(value, range[key])
+      c.n   += sign
+    }
+    block('lineTransfer', agg.lineTransfers)
+    block('deadrunRatio', drRatio)
+    block('minBlockDuration', agg.totalMinutes)
+
+    this.fleet             += sign
+    this.sumDuration       += sign * agg.totalMinutes
+    this.sumDurationSq     += sign * agg.totalMinutes ** 2
+    this.deadrunKm         += sign * agg.deadrunKm
+    this.deadrunMinutes    += sign * agg.deadrunMinutes
+    this.productiveKm      += sign * agg.productiveKm
+    this.productiveMinutes += sign * agg.productiveMinutes
+    this.preferredTrips    += sign * agg.preferredTripCount
+    this.preferredMisses   += sign * agg.preferredMissCount
+
+    if (agg.branchId && this.shareTarget.has(agg.branchId)) {
+      this.branchFleet.set(agg.branchId, (this.branchFleet.get(agg.branchId) ?? 0) + sign)
+      this.branchKm.set(agg.branchId, (this.branchKm.get(agg.branchId) ?? 0) + sign * totalKm)
+    }
+  }
+
+  // largest gap (p.p.) between each operator's part of `by` and its target share
+  private shareDeviation(by: Map<string, number>): number {
+    let total = 0
+    for (const id of this.shareTarget.keys()) total += Math.max(0, by.get(id) ?? 0)
+    if (total <= 0) return 0
+    let worst = 0
+    for (const [id, target] of this.shareTarget) {
+      worst = Math.max(worst, Math.abs((Math.max(0, by.get(id) ?? 0) / total) * 100 - target))
+    }
+    return worst
+  }
+
+  // every active criterion: its weight, its value in [0,1] and its raw value (no floor at 0)
+  criteria(): PlanCriterion[] {
+    const { range, anchored } = this.config
+    const out: PlanCriterion[] = []
+    const plan = (key: keyof typeof range, value: number) =>
+      out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]), raw: rangeRaw(value, range[key]) })
+
+    for (const key of BLOCK_CRITERIA) {
+      const c = this.perBlock[key]
+      if (range[key].active && c.n > 0) out.push({ key, weight: range[key].modifier, value: c.sum / c.n, raw: c.raw / c.n })
+    }
+    if (range.distributionVariance.active && this.fleet > 0) {
+      const mean     = this.sumDuration / this.fleet
+      const variance = Math.max(0, this.sumDurationSq / this.fleet - mean ** 2)
+      plan('distributionVariance', mean > 0 ? (Math.sqrt(variance) / mean) * 100 : 0)
+    }
+    if (range.preferredVehicleType.active && this.preferredTrips > 0)
+      plan('preferredVehicleType', (this.preferredMisses / this.preferredTrips) * 100)
+    // shares only mean something with at least two operators to split between
+    if (this.shareTarget.size > 1) {
+      if (range.operatorShareFleet.active) plan('operatorShareFleet', this.shareDeviation(this.branchFleet))
+      if (range.operatorShareKm.active)    plan('operatorShareKm',    this.shareDeviation(this.branchKm))
+    }
+    if (anchored.totalKm.active) {
+      const km = this.deadrunKm + this.productiveKm
+      out.push({ key: 'totalKm', weight: anchored.totalKm.weight, value: anchoredV(km, this.productiveKm, anchored.totalKm), raw: anchoredRaw(km, this.productiveKm, anchored.totalKm) })
+    }
+    if (anchored.fleetUsage.active) {
+      out.push({ key: 'fleetUsage', weight: anchored.fleetUsage.weight, value: anchoredV(this.fleet, this.peak, anchored.fleetUsage), raw: anchoredRaw(this.fleet, this.peak, anchored.fleetUsage) })
+    }
+    return out
+  }
+
+  // the weighted average in [0,1] — the score ÷ SCORE_SCALE
+  value(criteria = this.criteria()): number {
+    const weight = criteria.reduce((s, c) => s + c.weight, 0)
+    return weight > 0 ? criteria.reduce((s, c) => s + c.weight * c.value, 0) / weight : 0
+  }
+
+  // the same average over the raw values — what the solver optimizes: a criterion already past
+  // its ceiling still rewards getting closer to it
+  rawScore(criteria = this.criteria()): number {
+    const weight = criteria.reduce((s, c) => s + c.weight, 0)
+    return weight > 0 ? criteria.reduce((s, c) => s + c.weight * c.raw, 0) / weight : 0
+  }
+
+  result(): AggregateScoreResult {
+    return {
+      score:             Math.round(this.value() * SCORE_SCALE),
+      fleetCount:        this.fleet,
+      deadrunKm:         this.deadrunKm,
+      productiveKm:      this.productiveKm,
+      totalKm:           this.deadrunKm + this.productiveKm,
+      deadrunMinutes:    this.deadrunMinutes,
+      productiveMinutes: this.productiveMinutes,
+      totalMinutes:      this.sumDuration,
+    }
+  }
+}
+
 export function scoreFromAggregates(
   aggregates: BlockAggregate[],
   planTrips:  { departureMinutes: number; arrivalMinutes: number }[],
-  config:     Pick<SolverPlanningConfig, 'range' | 'anchored'>,
+  config:     PlanScoreConfig,
+  shares:     OperatorShares = {},
 ): AggregateScoreResult {
-  let totalDeadrunKm         = 0
-  let totalDeadrunMinutes    = 0
-  let totalProductiveKm      = 0
-  let totalProductiveMinutes = 0
-  let totalBlockMinutes      = 0
-  let totalTripCount         = 0
-  let totalSpecialCount      = 0
-  const durations: number[]  = []
-
-  let weightedSum = 0
-  let weightTotal = 0
-  const add = (weight: number, value: number) => { weightedSum += weight * value; weightTotal += weight }
-
-  const range = config.range
-
-  for (const agg of aggregates) {
-    const totalKm = agg.deadrunKm + agg.productiveKm
-    const drRatio = totalKm > 0 ? (agg.deadrunKm / totalKm) * 100 : 0
-
-    durations.push(agg.totalMinutes)
-    totalDeadrunKm         += agg.deadrunKm
-    totalDeadrunMinutes    += agg.deadrunMinutes
-    totalProductiveKm      += agg.productiveKm
-    totalProductiveMinutes += agg.productiveMinutes
-    totalBlockMinutes      += agg.totalMinutes
-    totalTripCount         += agg.tripCount
-    totalSpecialCount      += agg.specialTripCount
-
-    if (range.lineTransfer.active)
-      add(range.lineTransfer.modifier, rangeV(agg.lineTransfers, range.lineTransfer))
-    if (range.tripInterval.active && agg.intervalCount > 0)
-      add(range.tripInterval.modifier, rangeV(agg.avgLayover, range.tripInterval))
-    if (range.deadrunRatio.active)
-      add(range.deadrunRatio.modifier, rangeV(drRatio, range.deadrunRatio))
-    if (range.minBlockDuration.active)
-      add(range.minBlockDuration.modifier, rangeV(agg.totalMinutes, range.minBlockDuration))
-  }
-
-  const mean   = durations.length > 0 ? totalBlockMinutes / durations.length : 0
-  const stdDev = durations.length > 0
-    ? Math.sqrt(durations.reduce((acc, d) => acc + (d - mean) ** 2, 0) / durations.length)
-    : 0
-  const durationCV = mean > 0 ? (stdDev / mean) * 100 : 0
-
-  if (range.distributionVariance.active)
-    add(range.distributionVariance.modifier, rangeV(durationCV, range.distributionVariance))
-
-  const specialPercent = totalTripCount > 0 ? (totalSpecialCount / totalTripCount) * 100 : 0
-  if (range.specialFleetUsage.active)
-    add(range.specialFleetUsage.modifier, rangeV(specialPercent, range.specialFleetUsage))
-
-  const anchored = config.anchored
-  if (anchored.totalKm.active)
-    add(anchored.totalKm.weight, anchoredV(totalDeadrunKm + totalProductiveKm, totalProductiveKm, anchored.totalKm))
-  if (anchored.fleetUsage.active)
-    add(anchored.fleetUsage.weight, anchoredV(aggregates.length, peakVehicleRequirement(planTrips), anchored.fleetUsage))
-
-  const score = weightTotal > 0 ? Math.round((weightedSum / weightTotal) * SCORE_SCALE) : 0
-
-  return {
-    score,
-    fleetCount:        aggregates.length,
-    deadrunKm:         totalDeadrunKm,
-    productiveKm:      totalProductiveKm,
-    totalKm:           totalDeadrunKm + totalProductiveKm,
-    deadrunMinutes:    totalDeadrunMinutes,
-    productiveMinutes: totalProductiveMinutes,
-    totalMinutes:      totalBlockMinutes,
-  }
+  const state = new PlanScoreState(config, planTrips, shares)
+  for (const agg of aggregates) state.add(agg)
+  return state.result()
 }
 
 // ── per-line aggregation (VehiclePlanLine.summary) ──────────────────────────────
@@ -312,7 +431,7 @@ export function buildLineAggregates(
 
 const r2 = (n: number) => Math.round(n * 100) / 100
 
-function computeLineScore(agg: LineAggregate, cfg: SolverPlanningConfig['line']): number {
+function computeLineScore(agg: LineAggregate, cfg: PlanningSettings['line']): number {
   let weightedSum = 0
   let weightTotal = 0
   const add = (weight: number, value: number) => { weightedSum += weight * value; weightTotal += weight }
@@ -398,7 +517,7 @@ function computeLineScore(agg: LineAggregate, cfg: SolverPlanningConfig['line'])
 
 export function computeLineSummary(
   agg:      LineAggregate | undefined,
-  cfg:      SolverPlanningConfig['line'],
+  cfg:      PlanningSettings['line'],
   idleKm:   number = 0,
   byBranch: VehiclePlanLineSummary['byBranch'] = [],
 ): VehiclePlanLineSummary {

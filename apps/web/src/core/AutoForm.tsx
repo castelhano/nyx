@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
-import { useForm, FormProvider, useWatch } from 'react-hook-form'
+import { useEffect, useMemo, useRef, type ComponentType, type ReactNode } from 'react'
+import { useForm, FormProvider, useWatch, type Control } from 'react-hook-form'
 import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
@@ -20,9 +20,12 @@ interface Props {
   formId?:         string
   resetSignal?:    number
   groupSlots?:     Record<string, ReactNode>
+  // a page's own editor for a field (by name) — for JSON shapes the generic widgets can't edit;
+  // spans the whole form row
+  customFields?:   Record<string, ComponentType<{ control: Control<any>; readonly: boolean }>>
 }
 
-export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, isNew, onSubmit, formId, resetSignal, groupSlots }: Props) {
+export function AutoForm({ domain, resource, defaultValues, readonlyFields, readOnly, isNew, onSubmit, formId, resetSignal, groupSlots, customFields }: Props) {
   const { data: meta, isLoading } = useMetadata(domain, resource)
   const { coreRef }  = useKeywatch()
   const keybindGroup = useRef(`autoform-${resource}`)
@@ -187,6 +190,8 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
           const willBeLocked = field.lazyEdit && !!mergedValues[field.name]
           const giveFocus   = autoFocusFirst && !focusGiven && !isReadonly && !willBeLocked
           if (giveFocus) focusGiven = true
+          const Custom = customFields?.[field.name]
+          if (Custom) return <div key={field.name} className="md:col-span-2"><Custom control={control} readonly={!!isReadonly} /></div>
           return (
             <FieldRenderer
               // remount lazyEdit fields on reset so isEditing state reverts to locked

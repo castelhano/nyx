@@ -27,16 +27,17 @@ export class TransitSettingsController {
     return this.general.put(dto)
   }
 
+  // ?scope=<transit Scope.id> | global
   @Get('planning')
   getPlanning(@Query('scope') scope?: string) {
-    const branchId = scope && scope !== 'global' ? scope : undefined
-    return this.planning.get(branchId)
+    const scopeId = scope && scope !== 'global' ? scope : undefined
+    return this.planning.get(scopeId)
   }
 
   @Put('planning')
   putPlanning(@Body() dto: unknown, @Query('scope') scope?: string) {
-    const branchId = scope && scope !== 'global' ? scope : undefined
-    return this.planning.put(dto, branchId)
+    const scopeId = scope && scope !== 'global' ? scope : undefined
+    return this.planning.put(dto, scopeId)
   }
 
   // ?scope=<transit Scope.id> | global

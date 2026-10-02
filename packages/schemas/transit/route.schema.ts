@@ -78,19 +78,6 @@ export const routeSchema = withMeta(
       listVisibility: 'hidden',
     }),
 
-    // schedule generator: behavior when closing a trip at an intermediate stop —
-    // DEFAULT inherits the general config (defaultLayoverPolicy), HOLD/DEPOT overrides per route
-    layoverPolicy: z.enum(['DEFAULT', 'HOLD', 'DEPOT']).default('DEFAULT').meta({
-      label:          'Política de Recolhida',
-      widget:         'select',
-      listVisibility: 'hidden',
-      optionLabels: {
-        DEFAULT: 'Padrão (config. geral)',
-        HOLD:    'Aguardar no ponto',
-        DEPOT:   'Recolher ao depósito',
-      },
-    }),
-
     homeDepotId: z.uuid().nullable().optional().meta({
       label:          'Depósito Preferencial',
       widget:         'select',

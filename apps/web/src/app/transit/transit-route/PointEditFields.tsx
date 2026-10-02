@@ -22,6 +22,7 @@ export function PointEditFields({ rl, isOrigin, isDestination }: Props) {
   const queryClient = useQueryClient()
   const [allowsCrewChange, setAllowsCrewChange] = useState(rl.allowsCrewChange)
   const [allowsMealBreak,  setAllowsMealBreak]  = useState(rl.allowsMealBreak)
+  const [allowsVehicleStand, setAllowsVehicleStand] = useState(rl.allowsVehicleStand)
   const [includeInOso,     setIncludeInOso]     = useState(rl.includeInOso)
   const [saving, setSaving] = useState(false)
 
@@ -29,12 +30,13 @@ export function PointEditFields({ rl, isOrigin, isDestination }: Props) {
 
   const showControlPoint = !isOrigin && !isDestination
   const dirty = allowsCrewChange !== rl.allowsCrewChange || allowsMealBreak !== rl.allowsMealBreak
+    || allowsVehicleStand !== rl.allowsVehicleStand
     || (showControlPoint && includeInOso !== rl.includeInOso)
 
   async function handleSave() {
     setSaving(true)
     try {
-      const body: Record<string, unknown> = { allowsCrewChange, allowsMealBreak }
+      const body: Record<string, unknown> = { allowsCrewChange, allowsMealBreak, allowsVehicleStand }
       if (showControlPoint) body.includeInOso = includeInOso
       await apiPatch(`/transit/route-locality/${rl.id}`, body)
       await queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', rl.routeId] })
@@ -62,6 +64,15 @@ export function PointEditFields({ rl, isOrigin, isDestination }: Props) {
           onChange={(e) => setAllowsMealBreak(e.target.checked)}
         />
         Permite refeição
+      </label>
+      <label className="flex items-center gap-2 text-xs cursor-pointer" title="O carro pode ficar parado em intervalo aqui ao chegar por este sentido — sem isso, paradas longas recolhem à garagem">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 rounded-sm border-input"
+          checked={allowsVehicleStand}
+          onChange={(e) => setAllowsVehicleStand(e.target.checked)}
+        />
+        Permite parada (carro)
       </label>
       {showControlPoint && (
         <label className="flex items-center gap-2 text-xs cursor-pointer">

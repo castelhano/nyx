@@ -42,8 +42,8 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const [originRl, setOriginRl] = useState<RouteLocality | null>(null)
   const [destRl,   setDestRl]   = useState<RouteLocality | null>(null)
   const [destIncludeInOso, setDestIncludeInOso] = useState(false)
-  const [originFlags, setOriginFlags] = useState<StopFlags>({ allowsCrewChange: !route, allowsMealBreak: false })
-  const [destFlags,   setDestFlags]   = useState<StopFlags>({ allowsCrewChange: !route, allowsMealBreak: false })
+  const [originFlags, setOriginFlags] = useState<StopFlags>({ allowsCrewChange: !route, allowsMealBreak: false, allowsVehicleStand: false })
+  const [destFlags,   setDestFlags]   = useState<StopFlags>({ allowsCrewChange: !route, allowsMealBreak: false, allowsVehicleStand: false })
   const [destLoaded,  setDestLoaded]  = useState(false)
   const flagsReady = !route || destLoaded
 
@@ -51,8 +51,8 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
     if (!route) return
     apiFetch(`/transit/transit-route/${route.id}/trajectory`).then((r) => r.json()).then((rows: RouteLocality[]) => {
       const first = rows[0], last = rows[rows.length - 1]
-      if (first) { setOriginRl(first); setOriginFlags({ allowsCrewChange: first.allowsCrewChange, allowsMealBreak: first.allowsMealBreak }) }
-      if (last)  { setDestRl(last); setDestIncludeInOso(last.includeInOso); setDestFlags({ allowsCrewChange: last.allowsCrewChange, allowsMealBreak: last.allowsMealBreak }) }
+      if (first) { setOriginRl(first); setOriginFlags({ allowsCrewChange: first.allowsCrewChange, allowsMealBreak: first.allowsMealBreak, allowsVehicleStand: first.allowsVehicleStand }) }
+      if (last)  { setDestRl(last); setDestIncludeInOso(last.includeInOso); setDestFlags({ allowsCrewChange: last.allowsCrewChange, allowsMealBreak: last.allowsMealBreak, allowsVehicleStand: last.allowsVehicleStand }) }
       setDestLoaded(true)
     }).catch(() => setDestLoaded(true))
   }, [route])
@@ -251,7 +251,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   )
 }
 
-type StopFlags = Pick<RouteLocality, 'allowsCrewChange' | 'allowsMealBreak'>
+type StopFlags = Pick<RouteLocality, 'allowsCrewChange' | 'allowsMealBreak' | 'allowsVehicleStand'>
 
 function SwitchRow({ label, checked, onToggle, disabled }: { label: string; checked: boolean; onToggle: () => void; disabled: boolean }) {
   return (
@@ -266,8 +266,9 @@ function SwitchRow({ label, checked, onToggle, disabled }: { label: string; chec
 function StopFlagsRow({ flags, onChange, disabled }: { flags: StopFlags; onChange: (next: StopFlags) => void; disabled: boolean }) {
   return (
     <div className="flex items-center gap-6">
-      <SwitchRow label="Troca turno" checked={flags.allowsCrewChange} onToggle={() => onChange({ ...flags, allowsCrewChange: !flags.allowsCrewChange })} disabled={disabled} />
+      <SwitchRow label="T turno" checked={flags.allowsCrewChange} onToggle={() => onChange({ ...flags, allowsCrewChange: !flags.allowsCrewChange })} disabled={disabled} />
       <SwitchRow label="Refeição"    checked={flags.allowsMealBreak}  onToggle={() => onChange({ ...flags, allowsMealBreak: !flags.allowsMealBreak })}   disabled={disabled} />
+      <SwitchRow label="Intervalo" checked={flags.allowsVehicleStand} onToggle={() => onChange({ ...flags, allowsVehicleStand: !flags.allowsVehicleStand })} disabled={disabled} />
     </div>
   )
 }

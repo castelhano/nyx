@@ -1,16 +1,12 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { Observable, Subject } from 'rxjs'
-import { Worker } from 'worker_threads'
-import path from 'path'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitGeneralConfigService }  from '../../settings/transit-general-config.service'
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
-import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings } from '@nyx/schemas'
+import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings } from '@nyx/schemas'
 import { generateDraftRef } from '../line-schedule/line-schedule.util'
-import type { SolverConfig, SolverMessage, SolverResult, SolverParams, SolverPlanningConfig } from './solver/solver.types'
 import type { VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
@@ -18,7 +14,7 @@ import type { VehiclePlanDiff } from '@nyx/schemas'
 import type { PreviewLineScoreDto, PlanActivationPreview } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
-import { scoreFromAggregates, buildLineAggregates, computeLineSummary, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
+import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
 import { blockIssues, defaultIntervalMaxMinutes } from './block-issues.utils'
@@ -27,13 +23,6 @@ import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, parseStartDate, toDbDate } from '../plan-validity'
-
-interface Job {
-  worker:    Worker | null
-  best:      SolverResult | null
-  planId:    string
-  messages$: Subject<SolverMessage>
-}
 
 // A trip patch touching any attribute kept in sync with the OSO's LineDeparture
 // (docs/proposal/plan_oso_attribute_sync_v1.md).
@@ -44,7 +33,6 @@ function touchesSyncedAttributes(u: VehiclePlanDiff['tripUpdates'][number]): boo
 @Injectable()
 export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
   private readonly logger = new Logger(VehiclePlanService.name)
-  private readonly jobs = new Map<string, Job>()
 
   // Approximate peak bands used to consolidate cycle windows and bucket hourly
   // demand/supply for the line comparativo — see docs/proposal/linha-comparativo-simulacao-indicadores.md
@@ -102,279 +90,51 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return { id: job.id }
   }
 
-  async optimize(
-    planId:        string,
-    jobId:         string,
-    rawParams:     SolverParams | undefined,
-    userBranchIds: string[],
-    userRole:      string,
-  ): Promise<void> {
-    const params: SolverParams = rawParams ?? {
-      mode:                       'expanded',
-      redistributeTrips:          true,
-      allowSharedOperation:       false,
-      includeAccessAndCollection: true,
-      direction:                  'automatic',
-    }
-    const plan = await this.prisma.vehiclePlan.findUnique({
-      where:   { id: planId },
-      include: { lines: { select: { lineId: true } } },
-    })
+  // ── settings ───────────────────────────────────────────────────────────────
+  // VehiclePlan.settings (full snapshot) ?? Settings(transit.planning, Scope) ?? global
+
+  async resolveSettings(planId: string, db: any = this.prisma): Promise<{ settings: PlanningSettings; isCustom: boolean }> {
+    const plan = await db.vehiclePlan.findUnique({ where: { id: planId }, select: { settings: true, scopeId: true } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
-    if ((plan.constraints as any)?.locked) throw new BadRequestException('Plan is locked')
-    if (plan.status !== 'DRAFT') throw new BadRequestException('Active plan cannot be regenerated')
+    if (plan.settings) return { settings: planningSettingsSchema.parse(plan.settings), isCustom: true }
+    return { settings: await this.planningConfig.get(plan.scopeId), isCustom: false }
+  }
 
-    const lineIds = plan.lines.map(l => l.lineId)
-    if (lineIds.length === 0) throw new BadRequestException('Plan has no lines defined')
-
-    const [trips, matrix, depotLocalities, generalCfg, globalPlanningCfg, existingBlocks] = await Promise.all([
-      this.prisma.transitTrip.findMany({
-        where:   { dayTypeId: plan.dayTypeId, route: { lineId: { in: lineIds } } },
-        include: { route: { select: { originLocalityId: true, destinationLocalityId: true, lineId: true, direction: true, line: { select: { metrics: true } } } } },
-      }),
-      this.prisma.travelTimeMatrix.findMany(),
-      this.prisma.transitLocality.findMany({ where: { isDepot: true }, select: { id: true } }),
-      this.generalConfig.get(),
-      this.planningConfig.get(),
-      this.prisma.vehicleBlock.findMany({
-        where:   { vehiclePlanId: planId },
-        orderBy: { blockNumber: 'asc' },
-        include: { blockTrips: { orderBy: { sequence: 'asc' }, select: { tripId: true } } },
-      }),
+  // For the plan's settings modal: the effective settings plus what the plan would inherit
+  // (Scope/global) without its own copy — the modal diffs against it.
+  async getSettingsView(id: string): Promise<{ settings: PlanningSettings; isCustom: boolean; inherited: PlanningSettings }> {
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id }, select: { scopeId: true } })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    const [{ settings, isCustom }, inherited] = await Promise.all([
+      this.resolveSettings(id),
+      this.planningConfig.get(plan.scopeId),
     ])
-
-    if (trips.length === 0) throw new BadRequestException('No trips found for this plan')
-
-    const matrixMap: Record<string, { minutes: number; km: number }> = {}
-    for (const m of matrix) {
-      matrixMap[`${m.originId}:${m.destinationId}`] = { minutes: m.baseMinutes * m.speedRatio, km: m.distanceKm }
-    }
-
-    const tripSet = new Set(trips.map(t => t.id))
-    const isAdmin = userRole === 'ADMIN'
-
-    const initialBlocks = existingBlocks
-      .filter(b => isAdmin || !b.branchId || userBranchIds.includes(b.branchId))
-      .map(b => ({
-        depotId:     b.depotId,
-        vehicleType: b.vehicleType,
-        tripIds:     b.blockTrips.map(bt => bt.tripId).filter(id => tripSet.has(id)),
-        locked:      !!(b.constraints as any)?.locked,
-      }))
-      .filter(b => b.tripIds.length > 0)
-
-    // plan-level settings override the global planning config
-    const planSettings = plan.settings as Partial<SolverPlanningConfig> | null
-    const resolvedCfg  = planSettings
-      ? { ...globalPlanningCfg, ...planSettings }
-      : globalPlanningCfg
-
-    // apply direction weight adjustments
-    const adjustedCfg  = this.applyDirectionWeights(resolvedCfg as SolverPlanningConfig, params.direction)
-
-    const planSummary = plan.summary as VehiclePlanSummary | null
-
-    const solverConfig: SolverConfig = {
-      planId,
-      initialBlocks,
-      currentPlanScore:      planSummary?.score,
-      currentPlanFleetCount: planSummary?.fleetCount,
-      config: {
-        operationalDayStartHour:  generalCfg.operationalDayStartHour,
-        demandModifier:           generalCfg.demandModifier,
-        stopNoImprovementMinutes: adjustedCfg.stopNoImprovementMinutes,
-        stopMaxTotalMinutes:      adjustedCfg.stopMaxTotalMinutes,
-        range:                    adjustedCfg.range,
-        anchored:                 adjustedCfg.anchored,
-        line:                     adjustedCfg.line,
-      },
-      trips: trips.map(t => {
-        const metrics = t.route.line.metrics as { extensionKm?: Record<string, number> } | null
-        const tripKm  = metrics?.extensionKm?.[t.route.direction]
-          ?? matrixMap[`${t.route.originLocalityId}:${t.route.destinationLocalityId}`]?.km
-          ?? 0
-        return {
-          id:                    t.id,
-          lineId:                t.route.lineId,
-          originLocalityId:      t.route.originLocalityId,
-          destinationLocalityId: t.route.destinationLocalityId,
-          departureMinutes:      t.departureMinutes,
-          arrivalMinutes:        t.arrivalMinutes,
-          tripKm,
-          requiredVehicleType:   t.requiredVehicleType ?? null,
-          constraints:           t.constraints as any ?? null,
-        }
-      }),
-      matrix: matrixMap,
-      depots: depotLocalities.map(d => d.id),
-    }
-
-    const messages$ = new Subject<SolverMessage>()
-    const job: Job  = { worker: null, best: null, planId, messages$ }
-    this.jobs.set(jobId, job)
-
-    // when redistributeTrips is false, skip construction — score current plan only
-    if (!params.redistributeTrips) {
-      setImmediate(() => {
-        void (async () => {
-          try {
-            await this.recalculate(planId)
-            const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId } })
-            if (!plan?.summary) { messages$.complete(); return }
-
-            const summary = plan.summary as VehiclePlanSummary
-            const syntheticResult: SolverResult = {
-              blocks:            [],
-              score:             summary.score,
-              fleetCount:        summary.fleetCount,
-              deadrunKm:         summary.deadrunKm,
-              productiveKm:      summary.productiveKm,
-              totalKm:           summary.totalKm,
-              deadrunMinutes:    summary.deadrunMinutes,
-              productiveMinutes: summary.productiveMinutes,
-              totalMinutes:      summary.totalMinutes,
-            }
-            job.best = syntheticResult
-            messages$.next({ type: 'proposal', stage: 0, stageLabel: 'Plano atual', scenario: syntheticResult, proposalIndex: 1 })
-            messages$.next({ type: 'done', stopReason: 'max_time', totalAttempts: 0 })
-            messages$.complete()
-            setTimeout(() => this.jobs.delete(jobId), 30 * 60 * 1000)
-          } catch (err) {
-            messages$.error(err)
-            this.jobs.delete(jobId)
-          }
-        })()
-      })
-      return
-    }
-
-    const isTs       = __filename.endsWith('.ts')
-    const workerName = params.mode === 'quick' ? 'solver.deterministic.worker' : 'solver.stochastic.worker'
-    const workerFile = path.join(__dirname, 'solver', `${workerName}${isTs ? '.ts' : '.js'}`)
-    const execArgv   = isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : []
-
-    const worker = new Worker(workerFile, { workerData: solverConfig, execArgv })
-    job.worker   = worker
-
-    worker.on('message', (msg: SolverMessage) => {
-      if (msg.type === 'proposal' || msg.type === 'improvement') job.best = msg.scenario
-      messages$.next(msg)
-      if (msg.type === 'done') {
-        messages$.complete()
-        setTimeout(() => this.jobs.delete(jobId), 30 * 60 * 1000)
-      }
-    })
-
-    worker.on('error', err => {
-      this.logger.error(`Solver worker error for job ${jobId}`, err)
-      messages$.error(err)
-      this.jobs.delete(jobId)
-    })
+    return { settings, isCustom, inherited }
   }
 
-  // 'optimize_drivers'/'optimize_overtime' are currently no-ops — the criteria they
-  // used to boost (driverUsage/overtime) were removed from SolverPlanningConfig along
-  // with `flat` (see docs/proposal/vehicle_plan_score_formula_v1.md §4.4); they belong
-  // to the future CrewPlan, not VehiclePlan. Left as valid SolverParams.direction
-  // values pending that implementation.
-  private applyDirectionWeights(config: SolverPlanningConfig, direction: SolverParams['direction']): SolverPlanningConfig {
-    if (direction !== 'optimize_fleet') return config
-    const result = JSON.parse(JSON.stringify(config)) as SolverPlanningConfig
-    result.anchored.fleetUsage.active = true
-    result.anchored.fleetUsage.weight = Math.round(result.anchored.fleetUsage.weight * 2)
-    return result
+  // "Customize": stores a full copy of the effective settings (Scope/global) in the plan
+  async customizeSettings(id: string): Promise<{ settings: PlanningSettings; isCustom: boolean }> {
+    const { settings } = await this.resolveSettings(id)
+    await this.prisma.vehiclePlan.update({ where: { id }, data: { settings } })
+    await this.recalculate(id)
+    return { settings, isCustom: true }
   }
 
-  streamProgress(jobId: string): Observable<{ data: string }> {
-    const job = this.jobs.get(jobId)
-    if (!job) return new Observable(s => s.complete())
-
-    return new Observable(subscriber => {
-      const sub = job.messages$.subscribe({
-        next:     msg => subscriber.next({ data: JSON.stringify(msg) }),
-        error:    err => subscriber.error(err),
-        complete: () => subscriber.complete(),
-      })
-      return () => sub.unsubscribe()
-    })
+  async putSettings(id: string, dto: unknown): Promise<{ settings: PlanningSettings; isCustom: boolean }> {
+    await this.findOne(id)
+    const parsed = planningSettingsSchema.safeParse(dto)
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`))
+    await this.prisma.vehiclePlan.update({ where: { id }, data: { settings: parsed.data } })
+    await this.recalculate(id)
+    return { settings: parsed.data, isCustom: true }
   }
 
-  async assumeBest(planId: string, jobId: string): Promise<void> {
-    const job = this.jobs.get(jobId)
-    if (!job?.best) throw new NotFoundException('No result available yet')
-
-    try { job.worker?.postMessage({ type: 'stop' }) } catch { /* already terminated */ }
-    this.jobs.delete(jobId)
-
-    const best = job.best
-
-    // build a lineId lookup from planId scope to detect cross-line blocks after the solve
-    const plan = await this.prisma.vehiclePlan.findUnique({
-      where:   { id: planId },
-      include: { lines: { select: { lineId: true } } },
-    })
-    const scopeLineIds = new Set(plan?.lines.map(l => l.lineId) ?? [])
-
-    // build tripId → lineId map from the solver result trips
-    const tripLineMap = new Map<string, string>()
-    if (best.blocks.length > 0) {
-      const tripIds    = best.blocks.flatMap(b => b.trips.map(t => t.tripId))
-      const tripRoutes = await this.prisma.transitTrip.findMany({
-        where:   { id: { in: tripIds } },
-        select:  { id: true, route: { select: { lineId: true } } },
-      })
-      for (const t of tripRoutes) tripLineMap.set(t.id, t.route.lineId)
-    }
-
-    // the solver doesn't know each vehicle's empresa — only a single-empresa scope fills it
-    const branchId = await this.singleScopeBranchId(this.prisma, planId)
-
-    await this.prisma.$transaction(async tx => {
-      // delete all non-locked blocks for this plan
-      const existingBlocks = await tx.vehicleBlock.findMany({
-        where:  { vehiclePlanId: planId },
-        select: { id: true, constraints: true },
-      })
-      const nonLockedIds = existingBlocks
-        .filter(b => !(b.constraints as any)?.locked)
-        .map(b => b.id)
-
-      if (nonLockedIds.length > 0) {
-        await tx.blockTrip.deleteMany({ where: { vehicleBlockId: { in: nonLockedIds } } })
-        await tx.vehicleBlock.deleteMany({ where: { id: { in: nonLockedIds } } })
-      }
-
-      for (const block of best.blocks) {
-        // a block is stale when it contains trips from lines outside the solver scope
-        const hasCrossLineTrip = block.trips.some(bt => {
-          const lineId = tripLineMap.get(bt.tripId)
-          return lineId && !scopeLineIds.has(lineId)
-        })
-
-        const created = await tx.vehicleBlock.create({
-          data: {
-            vehiclePlanId: planId,
-            blockNumber:   block.blockNumber,
-            depotId:       block.depotId,
-            branchId,
-            vehicleType:   block.vehicleType as any,
-            isStale:       hasCrossLineTrip,
-          },
-        })
-
-        await tx.blockTrip.createMany({
-          data: block.trips.map(bt => ({
-            vehicleBlockId: created.id,
-            tripId:         bt.tripId,
-            sequence:       bt.sequence,
-          })),
-        })
-      }
-    })
-
-    // summary/score are never written from the SolverResult directly — recalculate()
-    // is the single place that derives them, from the blocks just committed above.
-    await this.recalculate(planId)
+  // "Restore default": goes back to inheriting Scope/global live
+  async resetSettings(id: string): Promise<{ settings: PlanningSettings; isCustom: boolean }> {
+    await this.findOne(id)
+    await this.prisma.vehiclePlan.update({ where: { id }, data: { settings: Prisma.DbNull } })
+    await this.recalculate(id)
+    return this.resolveSettings(id)
   }
 
   // The single write path for VehiclePlan.summary, VehiclePlanLine.summary and
@@ -385,10 +145,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // Accepts an optional transaction client so applyDiff can run this as the closing
   // step of its own atomic batch instead of opening a second transaction.
   async recalculate(planId: string, db: any = this.prisma): Promise<void> {
-    const [plan, blocks, matrix, planLines, planningCfg, maxStandMinutes] = await Promise.all([
+    const [plan, blocks, matrix, planLines, { settings: planningCfg }, maxStandMinutes] = await Promise.all([
       db.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { dayType: { select: { code: true } }, settings: true },
+        select: { dayType: { select: { code: true } }, scope: { select: { operators: { select: { branchId: true, share: true } } } } },
       }),
       db.vehicleBlock.findMany({
         where:   { vehiclePlanId: planId },
@@ -400,14 +160,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 select: {
                   departureMinutes:    true,
                   arrivalMinutes:      true,
-                  requiredVehicleType: true,
                   route: {
                     select: {
                       lineId:                true,
                       originLocalityId:      true,
                       destinationLocalityId: true,
                       direction:             true,
-                      line: { select: { metrics: true } },
+                      line: { select: { metrics: true, vehicleTypes: true } },
                     },
                   },
                 },
@@ -433,7 +192,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         where:  { vehiclePlanId: planId },
         select: { lineId: true },
       }),
-      this.planningConfig.get(),
+      this.resolveSettings(planId, db),
       defaultIntervalMaxMinutes(db, this.generalConfig),
     ])
 
@@ -491,8 +250,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     }
 
     // ── VehicleBlock.summary + VehiclePlan.summary — from BlockAggregate ────────
-    const planSettings = plan.settings as Partial<SolverPlanningConfig> | null
-    const resolvedCfg = (planSettings ? { ...planningCfg, ...planSettings } : planningCfg) as SolverPlanningConfig
+    const resolvedCfg = planningCfg
 
     const lineSummaries = new Map<string, VehiclePlanLineSummary>()
     for (const { lineId } of planLines) {
@@ -510,7 +268,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       })),
     )
     const aggregates = blocksWithTrips.map((b: any) => buildAggregateFromPersisted(b, matrixKm))
-    const scored      = scoreFromAggregates(aggregates, planTrips, resolvedCfg)
+    const scored      = scoreFromAggregates(aggregates, planTrips, resolvedCfg, operatorShares(plan.scope.operators))
 
     const planSummary: VehiclePlanSummary = { ...scored, fleetCount: blocksWithTrips.length }
 
@@ -553,7 +311,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const [plan, line] = await Promise.all([
       this.prisma.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { dayType: { select: { code: true } }, settings: true },
+        select: { dayType: { select: { code: true } } },
       }),
       this.prisma.transitLine.findUnique({
         where:  { id: lineId },
@@ -612,12 +370,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       })),
     }))
 
-    const planningCfg = await this.planningConfig.get()
-    const planSettings = plan.settings as Partial<SolverPlanningConfig> | null
-    const resolvedCfg = (planSettings ? { ...planningCfg, ...planSettings } : planningCfg) as SolverPlanningConfig
+    const { settings: planningCfg } = await this.resolveSettings(planId)
 
     const lineAgg = buildLineAggregates(blockInputs, matrixKm, plan.dayType?.code, VEHICLE_TYPE_CAPACITY)
-    return computeLineSummary(lineAgg.get(lineId), resolvedCfg.line)
+    return computeLineSummary(lineAgg.get(lineId), planningCfg.line)
   }
 
   async duplicate(planId: string): Promise<VehiclePlan> {
@@ -652,7 +408,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         data: {
           scopeId:     plan.scopeId,
           dayTypeId:   plan.dayTypeId,
-          description: plan.description ?? undefined,
+          // a copy is told apart from its source (same rule as the crew plan's duplicate)
+          description: plan.description ? `${plan.description} (cópia)` : 'Cópia',
           status:      'DRAFT',
           settings:    plan.settings    ?? undefined,
           summary:     plan.summary     ?? undefined,
@@ -755,12 +512,6 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       await tx.vehiclePlanLine.deleteMany({ where: { vehiclePlanId: id } })
       await tx.vehiclePlan.delete({ where: { id } })
     })
-  }
-
-  stop(jobId: string): void {
-    const job = this.jobs.get(jobId)
-    if (!job) return
-    job.worker?.postMessage({ type: 'stop' })
   }
 
   // Shared by applyDiff's 'adds'/'moves' processing — resolves an existing block by id

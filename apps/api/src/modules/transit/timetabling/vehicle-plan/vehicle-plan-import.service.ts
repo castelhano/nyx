@@ -231,8 +231,8 @@ export class VehiclePlanImportService {
       }
     }
     if (normalize) {
-      const planningCfg = await this.planningConfig.get()
-      idealIntervalMin = planningCfg.range.tripInterval.idealMin
+      const planningCfg = await this.planningConfig.get(scopeId)
+      idealIntervalMin = planningCfg.minLayoverMinutes
     }
 
     // Gate for auto-inserting a BlockInterval into long internal gaps — see

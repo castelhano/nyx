@@ -12,10 +12,6 @@ export const generalSettingsSchema = withMeta(z.object({
   // multiplier applied to OSRM-reported durations when (re)generating the travel-time
   // matrix — compensates for OSRM's free-flow estimate running faster than real traffic
   baseSpeedRatio:                 z.number().min(0.5).max(3.0).default(1.1),
-  // default schedule generator behavior when closing a trip at an intermediate stop,
-  // when the route doesn't define its own layoverPolicy (DEFAULT) — hold in place
-  // (HOLD) or return to the depot (DEPOT)
-  defaultLayoverPolicy:           z.enum(['HOLD', 'DEPOT']).default('HOLD'),
   // IntervalType used when auto-detecting long gaps between block events (import,
   // Finalizar Plano) and converting them into a BlockInterval — see
   // docs/proposal/plan_block_interval_autodetect_v1.md

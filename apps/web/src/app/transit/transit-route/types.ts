@@ -22,6 +22,7 @@ export interface RouteLocality {
   geometry: GeoJSONLineString | null
   allowsCrewChange: boolean
   allowsMealBreak: boolean
+  allowsVehicleStand: boolean
   includeInOso: boolean
   updatedAt: string
   locality: RouteLocalityLocality | null

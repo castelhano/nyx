@@ -37,12 +37,6 @@ enum DeadrunType {
   @@map("transit_deadrun_type")
 }
 
-enum LayoverPolicy {
-  DEFAULT
-  HOLD
-  DEPOT
-}
-
 enum CrewPlanStatus {
   DRAFT
   ACTIVE
@@ -88,6 +82,10 @@ model TransitLocality {
   lng       Float?
   isDepot   Boolean  @default(false)
   notes     String?
+  // depot operation, only meaningful while isDepot — DepotConfig
+  // (packages/schemas/transit/locality.schema.ts): { operators: branchId[], capacity:
+  // [{ vehicleType | null, max }] }. Read by the vehicle solver.
+  depot     Json?
   // SnapInfo (packages/schemas/transit/locality.schema.ts) — set by OsrmService when
   // snapping this locality's coordinates onto the OSRM road network:
   // { lat, lng, distanceM, roadName?, checkedAt: ISO datetime }
@@ -148,6 +146,9 @@ model TransitLine {
   //   "renewalIndex": {"overall":30.25,"OUTBOUND"?:21.12,"INBOUND"?:number,"CIRCULAR"?:number}
   // }
   metrics   Json?
+  // LineVehicleTypes (packages/schemas/transit/line.schema.ts): { allowed: VehicleType[]
+  // (empty = any), preferred: VehicleType | null } — read by the vehicle solver
+  vehicleTypes Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -185,11 +186,9 @@ model TransitRoute {
   // manual override for the trajectory color on Régua/Mapa — null falls back to the
   // direction's default color (see DIR_COLOR in the frontend)
   color                 String?
-  // schedule generator: behavior when closing a trip at an intermediate stop —
-  // DEFAULT inherits TransitSettings.defaultLayoverPolicy, HOLD/DEPOT overrides per route
-  layoverPolicy         LayoverPolicy  @default(DEFAULT)
-  // preferred depot for the return leg when layoverPolicy resolves to DEPOT — optional,
-  // falls back to the nearest available depot (see the schedule generator)
+  // schedule generator: preferred depot for the return leg when the vehicle can't stand at
+  // the stop (RouteLocality.allowsVehicleStand) — optional, falls back to the nearest
+  // available depot. Not used by the vehicle solver (the block's depot)
   homeDepotId           String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
@@ -230,6 +229,10 @@ model RouteLocality {
   // the crew may take the meal break here on this route (the same locality may allow it on
   // one line and not on another) — see DutyIssue MEAL_LOCATION
   allowsMealBreak  Boolean          @default(false)
+  // a vehicle may stand here (interval) after arriving on this route — elsewhere a stop
+  // longer than a turnaround (the default interval type's min) goes back to the depot.
+  // Read by the vehicle solver and the schedule generator (docs/proposal/plan_vehicle_solver_v2.md)
+  allowsVehicleStand Boolean        @default(false)
   // marks this stop as a reference point that gets its own column in the OSO export. The
   // unconditional baseline is one departure column per direction the carro runs (two for a
   // round trip, one for CIRCULAR) — every other column, arrival endpoints included (e.g.

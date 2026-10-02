@@ -100,7 +100,7 @@ async function main() {
     lines: lines.map(l => ({
       code: l.code, name: l.name, type: l.type, isActive: l.isActive,
       scopeName: l.scope?.name ?? null, parentLineCode: l.parentLine?.code ?? null,
-      notes: l.notes, metrics: l.metrics,
+      notes: l.notes, metrics: l.metrics, vehicleTypes: l.vehicleTypes,
     })),
     routes: routes.map(r => ({
       lineCode: r.line.code, direction: r.direction, ordinal: r.ordinal, name: r.name,
@@ -113,7 +113,7 @@ async function main() {
       lineCode: rl.route.line.code, direction: rl.route.direction, routeOrdinal: rl.route.ordinal, routeName: rl.route.name, sequence: rl.sequence,
       localityCode: rl.locality?.code ?? null, lat: rl.lat, lng: rl.lng,
       deltaMinutes: rl.deltaMinutes, deltaKm: rl.deltaKm, deltaSource: rl.deltaSource,
-      geometry: rl.geometry, allowsCrewChange: rl.allowsCrewChange, allowsMealBreak: rl.allowsMealBreak,
+      geometry: rl.geometry, allowsCrewChange: rl.allowsCrewChange, allowsMealBreak: rl.allowsMealBreak, allowsVehicleStand: rl.allowsVehicleStand,
     })),
     lineGroups: lineGroups.map(g => ({
       name: g.name, branchTaxId: g.branch?.taxId ?? null, notes: g.notes,

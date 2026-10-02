@@ -21,12 +21,13 @@ export interface RouteLocalityWithLocality {
   geometry: unknown
   allowsCrewChange: boolean
   allowsMealBreak: boolean
+  allowsVehicleStand: boolean
   createdAt: Date
   updatedAt: Date
   locality: { id: string; name: string; code: string; lat: number | null; lng: number | null } | null
 }
 
-interface StopFlags { allowsCrewChange?: boolean; allowsMealBreak?: boolean }
+interface StopFlags { allowsCrewChange?: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean }
 export interface RouteEndpointFlags { origin?: StopFlags; destination?: StopFlags }
 
 export interface SuggestedLocality {
@@ -377,5 +378,5 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
 
 // only real booleans reach the database — anything else falls back to false
 function stopFlags(flags: StopFlags | undefined) {
-  return { allowsCrewChange: flags?.allowsCrewChange === true, allowsMealBreak: flags?.allowsMealBreak === true }
+  return { allowsCrewChange: flags?.allowsCrewChange === true, allowsMealBreak: flags?.allowsMealBreak === true, allowsVehicleStand: flags?.allowsVehicleStand === true }
 }

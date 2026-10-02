@@ -49,6 +49,7 @@ export function PointDetails({ rl, position }: Props) {
     ...(rl.localityId != null ? [
       ['Troca de motorista', rl.allowsCrewChange ? 'Sim' : 'Não'] as [string, string],
       ['Permite refeição',   rl.allowsMealBreak ? 'Sim' : 'Não'] as [string, string],
+      ['Permite parada (carro)', rl.allowsVehicleStand ? 'Sim' : 'Não'] as [string, string],
     ] : []),
     ['Coordenadas',        lat != null && lng != null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : '—'],
   ]

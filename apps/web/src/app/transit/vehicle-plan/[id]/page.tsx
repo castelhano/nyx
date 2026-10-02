@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Icons }             from '@/lib/icons'
 import { AutoBreadcrumb }    from '@/core/AutoBreadcrumb'
@@ -15,7 +15,6 @@ import { extractError }      from '@/lib/utils'
 import { NewPlanForm }       from './components/NewPlanForm'
 import { InlineDescription } from './components/InlineDescription'
 import { useGanttEditor } from './hooks/useGanttEditor'
-import { useSolverController } from './hooks/useSolverController'
 import { useVehiclePlanShortcuts } from './hooks/useVehiclePlanShortcuts'
 import { useOsoCoverage } from './hooks/useOsoCoverage'
 import { GanttBoard }        from './components/GanttBoard'
@@ -29,7 +28,8 @@ import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { ExportOsoModal } from './components/ExportOsoModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
 import { TripSummaryPanel }  from './components/TripSummaryPanel'
-import { OptimizeModal }         from './components/OptimizeModal'
+import { OptimizeModal, type OptimizeTab, type SolverJob } from './components/OptimizeModal'
+import { BACKGROUND_JOBS_KEY } from '@/components/layout/background-jobs'
 import { AccessModal }           from './components/AccessModal'
 import { AddIntervalModal }      from './components/AddIntervalModal'
 import { TripDetailsModal }      from './components/TripDetailsModal'
@@ -48,6 +48,11 @@ import { vigenceBadge } from '@/lib/plan-vigence'
 import { ActivationModal } from '../../activation-modal'
 import type { ViewportSnapshot } from './engine/gantt.types'
 
+const fmtClock = (ms: number) => {
+  const s = Math.floor(ms / 1000)
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
 const INITIAL_VP: ViewportSnapshot = { scrollX: 0, scrollY: 0, pixelsPerMinute: 1.2, width: 0, dayStartMinute: 0 }
 
 // ── page ──────────────────────────────────────────────────────────────────────
@@ -58,6 +63,8 @@ export default function VehiclePlanPage() {
   const { toast }   = useToast()
   const router      = useRouter()
   const confirm     = useConfirm()
+  // ?optimize=1 (from the topbar's background generations) opens the optimize modal on Cenários
+  const optimizeFromUrl = useSearchParams().get('optimize') === '1'
 
   const isNew = id === 'new'
 
@@ -196,13 +203,53 @@ export default function VehiclePlanPage() {
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
-  const solver = useSolverController({ id, canUpdate, record, ganttData, refetchGantt, setIsPending })
-  const {
-    activeJobId,
-    isSolverDone,
-    optimizeModalOpen, setOptimizeModalOpen,
-    handleOptimize, handleClearSettings, handleStop, handleDelete,
-  } = solver
+  // the plan's vehicle solver generation — it runs on the server whether or not the modal is
+  // open; polled while running so the Otimizar button shows it
+  const { data: solverJob = null, refetch: refetchSolverJobQuery, isFetched: solverJobFetched } = useQuery<SolverJob | null>({
+    queryKey: ['transit', 'vehicle-plan', id, 'solver-current'],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/vehicle-plan/${id}/solver/current`)
+      if (!res.ok) return null
+      return ((await res.json()) as { job: SolverJob | null }).job
+    },
+    enabled:         canEdit,
+    refetchInterval: q => (q.state.data?.running ? 3000 : false),
+  })
+  // the plan's generation changed — the topbar's list follows
+  const refetchSolverJob = () => {
+    void queryClient.invalidateQueries({ queryKey: BACKGROUND_JOBS_KEY })
+    return refetchSolverJobQuery()
+  }
+  const [optimizeTabState, setOptimizeTab] = useState<OptimizeTab | null>(null)
+  const optimizeTab: OptimizeTab | null = optimizeTabState ?? (optimizeFromUrl && canEdit ? 'scenarios' : null)
+  const closeOptimize = () => {
+    setOptimizeTab(null)
+    if (optimizeFromUrl) router.replace('?', { scroll: false })
+  }
+  const lockedCount = ganttData?.blocks.filter(b => b.constraints?.locked).length ?? 0
+
+  async function handleDelete() {
+    if (!canUpdate) return
+    const ok = await confirm({
+      title:       'Excluir planejamento',
+      description: 'Esta ação não pode ser desfeita. Todos os blocos gerados serão removidos.',
+      confirmLabel: 'Excluir',
+      variant:     'destructive',
+    })
+    if (!ok) return
+    setIsPending(true)
+    try {
+      const res = await apiFetch(`/transit/vehicle-plan/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      router.push('/transit/vehicle-plan')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir')
+      setIsPending(false)
+    }
+  }
   const [activationOpen, setActivationOpen] = useState(false)
 
   // ── Vehicles ⇄ Crew switch ──────────────────────────────────────────────────
@@ -238,7 +285,6 @@ export default function VehiclePlanPage() {
   // ── topbar ───────────────────────────────────────────────────────────────────
 
   const planLines        = ganttData?.plan?.lines ?? []
-  const hasCustomSettings = !!( (record as Record<string, unknown> | undefined)?.settings )
 
   useTopbarActions([
     ...(!isNew ? [{
@@ -383,22 +429,17 @@ export default function VehiclePlanPage() {
           } }] : []),
         ],
       }] : []),
-      // stop: only while stream is open
-      ...(activeJobId && !isSolverDone ? [{
-        label:    'Parar',
-        icon:     Icons.Square,
-        onClick:  handleStop,
-        disabled: isPending,
-      }] : []),
-      // optimize
-      ...((!activeJobId || isSolverDone) && canEdit ? [{
-        label:    isPending ? 'Otimizando…' : 'Otimizar',
-        icon:     Icons.Play,
-        onClick:  () => setOptimizeModalOpen(true),
-        disabled: isPending,
+      // optimize — the solver reads the saved blocks, so not with pending Gantt edits
+      ...(canEdit ? [{
+        label:    solverJob?.running
+          ? `Gerando… ${fmtClock(solverJob.progress?.elapsed ?? 0)}`
+          : solverJob?.hasProposal ? 'Otimizar • proposta pronta' : 'Otimizar',
+        icon:     solverJob?.running ? Icons.Loader2 : Icons.Sparkles,
+        onClick:  () => setOptimizeTab(solverJob ? 'scenarios' : 'panel'),
+        disabled: isPending || pendingCount > 0,
       }] : []),
       // activate
-      ...(!activeJobId && canEdit ? [{
+      ...(!solverJob?.running && canEdit ? [{
         label:    isPending ? 'Ativando…' : 'Ativar',
         icon:     Icons.CheckCircle,
         onClick:  () => setActivationOpen(true),
@@ -406,7 +447,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
       // delete
-      ...(!activeJobId && canEdit ? [{
+      ...(!solverJob?.running && canEdit ? [{
         label:    'Excluir',
         icon:     Icons.Trash2,
         onClick:  handleDelete,
@@ -415,7 +456,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, activeJobId, isSolverDone, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen])
+  ], [isPending, isSaving, solverJob, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -496,12 +537,25 @@ export default function VehiclePlanPage() {
         />
       )}
 
-      {optimizeModalOpen && (
+      {optimizeTab && solverJobFetched && (
         <OptimizeModal
-          hasCustomSettings={hasCustomSettings}
-          onConfirm={handleOptimize}
-          onClearSettings={handleClearSettings}
-          onClose={() => setOptimizeModalOpen(false)}
+          planId={id}
+          initialTab={optimizeTab}
+          job={solverJob}
+          lockedCount={lockedCount}
+          onJobChanged={() => void refetchSolverJob()}
+          onApplied={() => {
+            closeOptimize()
+            void refetchSolverJob()
+            void queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+            void refetchGantt()
+            toast.success('Proposta aplicada no planejamento')
+          }}
+          onSettingsSaved={() => {
+            void queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+            void refetchGantt()
+          }}
+          onClose={() => { closeOptimize(); void refetchSolverJob() }}
         />
       )}
 

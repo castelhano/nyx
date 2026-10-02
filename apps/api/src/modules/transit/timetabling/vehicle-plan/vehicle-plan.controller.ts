@@ -1,14 +1,12 @@
-import { Controller, Post, Get, Delete, Patch, Param, Body, Query, Req, Sse, UseGuards, HttpCode } from '@nestjs/common'
-import { Observable } from 'rxjs'
+import { Controller, Post, Get, Put, Delete, Patch, Param, Body, Query, Req, UseGuards, HttpCode } from '@nestjs/common'
 import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, vehiclePlanDiffSchema, previewLineScoreSchema } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtOrQueryGuard } from '../../../../auth/policies.guard'
 import { VehiclePlanService } from './vehicle-plan.service'
-import type { SolverParams } from './solver/solver.types'
 
-// JwtOrQueryGuard at class level covers both normal Bearer-header auth and the SSE
-// stream endpoint, which passes the JWT as ?token= because EventSource cannot set headers.
+// JwtOrQueryGuard at class level covers both normal Bearer-header auth and the JWT passed
+// as ?token= (links/EventSource that can't set headers).
 @Controller('transit/vehicle-plan')
 @UseGuards(JwtOrQueryGuard)
 export class VehiclePlanController extends BaseController<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
@@ -19,16 +17,32 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     super(vehiclePlanService, caslFactory)
   }
 
-  @Post(':id/optimize')
+  // the plan's effective planning settings: { settings, isCustom, inherited }
+  @Get(':id/settings')
+  async getSettings(@Req() req: any, @Param('id') id: string) {
+    await this.assertAbility(req.user, 'read')
+    return this.vehiclePlanService.getSettingsView(id)
+  }
+
+  // "Customize" — copies the effective settings (Scope/global) into the plan
+  @Post(':id/settings/customize')
   @HttpCode(200)
-  optimize(
-    @Param('id') id: string,
-    @Body('jobId') jobId: string,
-    @Body('params') params: SolverParams,
-    @Req() req: any,
-  ) {
-    const user: { role: string; branchIds: string[] } = req.user ?? { role: 'USER', branchIds: [] }
-    return this.vehiclePlanService.optimize(id, jobId, params, user.branchIds, user.role)
+  async customizeSettings(@Req() req: any, @Param('id') id: string) {
+    await this.assertAbility(req.user, 'update')
+    return this.vehiclePlanService.customizeSettings(id)
+  }
+
+  @Put(':id/settings')
+  async putSettings(@Req() req: any, @Param('id') id: string, @Body() dto: unknown) {
+    await this.assertAbility(req.user, 'update')
+    return this.vehiclePlanService.putSettings(id, dto)
+  }
+
+  // "Restore default" — goes back to inheriting Scope/global
+  @Delete(':id/settings')
+  async resetSettings(@Req() req: any, @Param('id') id: string) {
+    await this.assertAbility(req.user, 'update')
+    return this.vehiclePlanService.resetSettings(id)
   }
 
   @Post(':id/lines/:lineId/log-generation')
@@ -66,25 +80,8 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.previewLineHourly(id, lineId, dto)
   }
 
-  @Sse(':id/stream')
-  stream(
-    @Param('id') _id: string,
-    @Query('jobId') jobId: string,
-  ): Observable<{ data: string }> {
-    return this.vehiclePlanService.streamProgress(jobId)
-  }
 
-  @Post(':id/assume')
-  @HttpCode(200)
-  assume(@Param('id') id: string, @Body('jobId') jobId: string) {
-    return this.vehiclePlanService.assumeBest(id, jobId)
-  }
 
-  @Post(':id/stop')
-  @HttpCode(200)
-  stop(@Param('id') _id: string, @Body('jobId') jobId: string) {
-    return this.vehiclePlanService.stop(jobId)
-  }
 
   @Post(':id/duplicate')
   @HttpCode(201)

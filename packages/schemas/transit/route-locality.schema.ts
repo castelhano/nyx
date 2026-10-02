@@ -77,6 +77,15 @@ export const routeLocalitySchema = withMeta(
       filter:         true,
     }),
 
+    // a vehicle may stand here (interval) after arriving on this route — elsewhere a stop
+    // longer than a turnaround goes back to the depot (vehicle solver, schedule generator)
+    allowsVehicleStand: z.boolean().default(false).meta({
+      label:          'Permite Parada (carro)',
+      widget:         'switch',
+      listVisibility: 'hidden',
+      filter:         true,
+    }),
+
     // marks this stop as a reference point that gets its own column in the OSO export
     // (docs/proposal/plan_oso_export_v1.md). The unconditional baseline is one departure
     // column per direction the carro runs (two for a round trip, one for CIRCULAR) — every

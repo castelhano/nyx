@@ -6,14 +6,15 @@ import { apiFetch } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { Dropdown, DropdownItem, DropdownLabel } from '@/components/ui/dropdown'
 
-// Background generations (crew solver) of every crew plan — running, or ended and waiting to be
-// used — next to the notifications bell, on any page. Polled: every 3 s while one runs, else
-// every 15 s (a generation may start in another tab). Hidden when there's none or the user
-// can't see crew plans. A line opens its crew plan straight in the optimize modal.
+// Background generations (crew solver, vehicle solver) of every plan — running, or ended and
+// waiting to be used — next to the notifications bell, on any page. Polled: every 3 s while one
+// runs, else every 15 s (a generation may start in another tab). Hidden when there's none or the
+// user can't see those plans. A line opens its plan straight in the optimize modal.
 
-export interface BackgroundJob {
+interface ApiJob {
   jobId:       string
-  crewPlanId:  string
+  crewPlanId?: string
+  planId?:     string
   planLabel:   string
   running:     boolean
   startedAt:   number
@@ -23,6 +24,16 @@ export interface BackgroundJob {
   error:       string | null
   hasProposal: boolean
 }
+
+export interface BackgroundJob extends ApiJob {
+  kind: 'crew' | 'vehicle'
+  href: string
+}
+
+const SOURCES = [
+  { kind: 'vehicle' as const, endpoint: '/transit/vehicle-solver/jobs', label: 'Gerações de planejamento', href: (j: ApiJob) => `/transit/vehicle-plan/${j.planId}?optimize=1` },
+  { kind: 'crew'    as const, endpoint: '/transit/crew-solver/jobs',    label: 'Gerações de escala',       href: (j: ApiJob) => `/transit/crew-plan/${j.crewPlanId}?optimize=1` },
+]
 
 export const BACKGROUND_JOBS_KEY = ['background-jobs'] as const
 
@@ -47,9 +58,12 @@ export function BackgroundJobs() {
   const { data: jobs = [] } = useQuery<BackgroundJob[]>({
     queryKey: BACKGROUND_JOBS_KEY,
     queryFn:  async () => {
-      const res = await apiFetch('/transit/crew-solver/jobs')
-      if (!res.ok) return []
-      return ((await res.json()) as { jobs: BackgroundJob[] }).jobs
+      const lists = await Promise.all(SOURCES.map(async src => {
+        const res = await apiFetch(src.endpoint).catch(() => null)
+        if (!res?.ok) return []
+        return ((await res.json()) as { jobs: ApiJob[] }).jobs.map(j => ({ ...j, kind: src.kind, href: src.href(j) }))
+      }))
+      return lists.flat()
     },
     refetchInterval: q => (q.state.data?.some(j => j.running) ? 3000 : 15_000),
   })
@@ -79,9 +93,10 @@ export function BackgroundJobs() {
         </button>
       }
     >
-      <DropdownLabel>Gerações de escala</DropdownLabel>
-      {jobs.map(j => (
-        <DropdownItem key={j.jobId} href={`/transit/crew-plan/${j.crewPlanId}?optimize=1`}>
+      {SOURCES.filter(src => jobs.some(j => j.kind === src.kind)).map(src => [
+        <DropdownLabel key={src.kind}>{src.label}</DropdownLabel>,
+        ...jobs.filter(j => j.kind === src.kind).map(j => (
+        <DropdownItem key={j.jobId} href={j.href}>
           {j.running
             ? <Icons.Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
             : j.error
@@ -92,7 +107,8 @@ export function BackgroundJobs() {
             <span className="text-xs text-muted-foreground">{status(j)}</span>
           </span>
         </DropdownItem>
-      ))}
+        )),
+      ])}
     </Dropdown>
   )
 }

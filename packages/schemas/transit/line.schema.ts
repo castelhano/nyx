@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
+import { vehicleTypeSchema } from './vehicle-type'
 
 const windowEntrySchema = z.object({
   from:            z.number().min(0).max(23.5).default(0).meta({ label: 'De',             min: 0, max: 23.5 }),
@@ -9,6 +10,13 @@ const windowEntrySchema = z.object({
   intervalMinutes: z.number().min(0).default(0).meta({ label: 'Intervalo (min)', min: 0 }),
   isDerived:       z.boolean().optional().meta({ label: 'Inferida' }),
 })
+
+export const lineVehicleTypesSchema = z.object({
+  allowed:   z.array(vehicleTypeSchema).default([]),
+  preferred: vehicleTypeSchema.nullable().default(null),
+})
+
+export type LineVehicleTypes = z.infer<typeof lineVehicleTypesSchema>
 
 export const lineSchema = withMeta(
   z.object({
@@ -101,6 +109,14 @@ export const lineSchema = withMeta(
       label:          'Métricas',
       widget:         'object-editor',
       showInForm:     true,
+      listVisibility: 'never',
+    }),
+
+    // vehicle types the line runs with — read by the vehicle solver
+    // (docs/proposal/plan_vehicle_solver_v2.md): `allowed` is a hard rule (empty = any type),
+    // `preferred` only scores. A trip's requiredVehicleType overrides both.
+    vehicleTypes: lineVehicleTypesSchema.optional().meta({
+      label:          'Tipos de Veículo',
       listVisibility: 'never',
     }),
 

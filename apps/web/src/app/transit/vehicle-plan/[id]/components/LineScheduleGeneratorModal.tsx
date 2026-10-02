@@ -70,7 +70,6 @@ interface RouteRecord {
   originLocalityId:       string
   destinationLocalityId:  string
   isPrimary:              boolean
-  layoverPolicy:          'DEFAULT' | 'HOLD' | 'DEPOT'
   homeDepotId:            string | null
 }
 
@@ -79,6 +78,9 @@ interface RouteLocalityRecord {
   localityId:   string | null
   sequence:     number
   deltaMinutes: number | null
+  // the vehicle may stand here (interval) — elsewhere a stop of the interval type's min or more
+  // goes back to the depot
+  allowsVehicleStand: boolean
 }
 
 interface LocalityRecord {
@@ -108,20 +110,19 @@ interface LineRoute {
   routeId:                string
   originLocalityId:       string
   destinationLocalityId:  string
-  layoverPolicy:          'DEFAULT' | 'HOLD' | 'DEPOT'
   homeDepotId:            string | null
 }
 
 interface DepotAllocation { id: string; depotId: string; count: number }
 
-interface GeneralSettingsRecord {
-  defaultLayoverPolicy: 'HOLD' | 'DEPOT'
-}
+// a stop this long is an interval (only where the vehicle may stand) when the interval type
+// has no min — same as the vehicle solver
+const DEFAULT_STAND_THRESHOLD = 120
 
 interface NearestDepotResult { depotId: string; toDepotMinutes: number; fromDepotMinutes: number }
 
-// Fase 3.4 — resolves which depot to use for a return leg at an intermediate stop
-// (a gap within a block). With homeDepot set on the route, uses only that one (no
+// Fase 3.4 — resolves which depot to use for a return leg at a stop where the vehicle may
+// not stand (a gap within a block). With homeDepot set on the route, uses only that one (no
 // alternative search — if it doesn't fit the gap, implicit HOLD, see the caller).
 // Without homeDepot, searches the loaded depots for the one minimizing there+back,
 // requiring the round trip to fit the gap and both legs to have an OSRM matrix entry.
@@ -311,15 +312,7 @@ export function LineScheduleGeneratorModal({
     staleTime: 60_000,
   })
 
-  const { data: generalSettings } = useQuery<GeneralSettingsRecord>({
-    queryKey: ['transit', 'settings', 'general'],
-    queryFn:  async () => {
-      const res = await apiFetch('/transit/settings/general')
-      if (!res.ok) return { defaultLayoverPolicy: 'HOLD' as const }
-      return res.json()
-    },
-    staleTime: 300_000,
-  })
+
 
   // One route per direction per line (1 to 3) — prefers the isPrimary route when a
   // direction has more than one, same convention the line's extensionKm relies on.
@@ -341,7 +334,6 @@ export function LineScheduleGeneratorModal({
           routeId:               r.id,
           originLocalityId:      r.originLocalityId,
           destinationLocalityId: r.destinationLocalityId,
-          layoverPolicy:         r.layoverPolicy,
           homeDepotId:           r.homeDepotId,
         }
       }))
@@ -382,6 +374,31 @@ export function LineScheduleGeneratorModal({
     })
     return m
   }, [routeLocalityQueries, allRouteIds])
+
+  // the route points where a vehicle may stand (interval) — every route of the selected lines
+  // (same cache entries as the delta queries above)
+  const standRouteIds = useMemo(
+    () => [...new Set([...lineRoutesByLineId.values()].flat().map(r => r.routeId))],
+    [lineRoutesByLineId],
+  )
+  const standQueries = useQueries({
+    queries: standRouteIds.map(routeId => ({
+      queryKey: ['transit', 'route-locality', 'by-route', routeId],
+      queryFn:  async (): Promise<RouteLocalityRecord[]> => {
+        const res = await apiFetch(`/transit/route-locality?routeId=${routeId}&pageSize=999`)
+        if (!res.ok) return []
+        const json = await res.json()
+        return json.data ?? []
+      },
+    })),
+  })
+  const standPoints = useMemo(() => {
+    const set = new Set<string>()
+    standQueries.forEach((q, i) => {
+      for (const rl of q.data ?? []) if (rl.allowsVehicleStand && rl.localityId) set.add(`${standRouteIds[i]}:${rl.localityId}`)
+    })
+    return set
+  }, [standQueries, standRouteIds])
 
   // per line, per direction — the ordered leg list used by 4.1/4.2
   const legsByLineDirection = useMemo(() => {
@@ -1082,9 +1099,9 @@ export function LineScheduleGeneratorModal({
         // Physical origin/destination for any leg, real or deadrun. A deadrun leg has
         // no route of its own — it reverses whichever route IS registered for the
         // direction actually operated in that window, so its endpoints (and the
-        // layover policy/home depot governing its arrival point) come from that real
+        // stand permission/home depot of its arrival point) come from that real
         // route, swapped. `route` is always the real, registered route — never null —
-        // so callers can safely read layoverPolicy/homeDepotId off it either way.
+        // so callers can safely read routeId/homeDepotId off it either way.
         const legEndpoints = (leg: GeneratedLeg) => {
           if (!leg.isDeadrun) {
             const route = routeFor(leg.direction)
@@ -1216,7 +1233,9 @@ export function LineScheduleGeneratorModal({
             if (i === 0) anchorTempId = tempId
           }
 
-          // Fase 3.4 — HOLD/DEPOT for gaps within the block.
+          // Fase 3.4 — gaps within the block: a turnaround (shorter than the interval type's
+          // min) stays; a longer stop stays only where the vehicle may stand (the arrival
+          // point or the next departure's), else it goes back to the depot.
           if (anchorTempId) {
             for (let r = 0; r < block.rounds.length - 1; r++) {
               const prevRound = block.rounds[r]
@@ -1227,22 +1246,23 @@ export function LineScheduleGeneratorModal({
 
               const lastLeg   = prevRound.legs[prevRound.legs.length - 1]
               const { destinationLocalityId: fromLocalityId, route: fromRoute } = legEndpoints(lastLeg)
-              const effectivePolicy = fromRoute.layoverPolicy === 'DEFAULT'
-                ? (generalSettings?.defaultLayoverPolicy ?? 'HOLD')
-                : fromRoute.layoverPolicy
+              const { originLocalityId: toLocalityId, route: toRoute } = legEndpoints(nextRound.legs[0])
+              const standThreshold = selectedIntervalType?.minMinutes ?? DEFAULT_STAND_THRESHOLD
+              const canStand = gapEnd - gapStart < standThreshold
+                || standPoints.has(`${fromRoute.routeId}:${fromLocalityId}`)
+                || standPoints.has(`${toRoute.routeId}:${toLocalityId}`)
 
-              if (effectivePolicy !== 'DEPOT') {
+              if (canStand) {
                 maybeInsertBreak(gapStart, gapEnd, anchorTempId)
                 continue
               }
 
-              const toLocalityId = legEndpoints(nextRound.legs[0]).originLocalityId
               const resolved = await resolveNearestDepot(fromRoute.homeDepotId, fromLocalityId, toLocalityId, gapEnd - gapStart, depots)
 
               if (!resolved) {
                 if (!noDepotWarned) {
                   noDepotWarned = true
-                  generalWarnings.add('Sem depósito disponível para recolhida em parada intermediária — mantido aguardando no ponto')
+                  generalWarnings.add('Parada em ponto sem permissão de parada e sem depósito que caiba no intervalo — mantido aguardando no ponto')
                 }
                 maybeInsertBreak(gapStart, gapEnd, anchorTempId)
                 continue
