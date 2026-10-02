@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-10-02T00:39:45.535Z",
+  "exportedAt": "2026-10-02T01:49:10.678Z",
   "localities": [
     {
       "code": "A0025-001",
@@ -931,6 +931,14 @@
       "minMinutes": 60,
       "maxMinutes": 600,
       "notes": "Intervalo de carro parados nos terminais, nao presupoe jornada de condutor"
+    },
+    {
+      "code": "REFEI",
+      "name": "Refeicao",
+      "isPaid": false,
+      "minMinutes": 60,
+      "maxMinutes": 120,
+      "notes": "Intrajornada CLT"
     }
   ],
   "scopes": [
@@ -955,12 +963,12 @@
         {
           "branchTaxId": "33.813.869/0001-04",
           "abbr": "RAPIDO",
-          "share": 24.5
+          "share": 45
         },
         {
           "branchTaxId": "35.835.010/0001-21",
           "abbr": "VPAR",
-          "share": 29.5
+          "share": 55
         }
       ]
     }
@@ -12821,7 +12829,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -15276,7 +15284,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -18522,7 +18530,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -20001,7 +20009,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -20018,7 +20026,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -21993,7 +22001,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -25193,7 +25201,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -25967,7 +25975,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -25984,7 +25992,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -30073,7 +30081,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -30090,7 +30098,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -32691,7 +32699,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -34300,7 +34308,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -34317,7 +34325,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -38322,7 +38330,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -38339,7 +38347,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -40488,7 +40496,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -42763,7 +42771,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -46923,7 +46931,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -49509,7 +49517,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -51583,7 +51591,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -53268,7 +53276,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -53285,7 +53293,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -56028,7 +56036,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -56045,7 +56053,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -58722,7 +58730,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -60145,7 +60153,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -62432,7 +62440,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -62449,7 +62457,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -67890,7 +67898,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -67907,7 +67915,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -69608,7 +69616,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -71411,7 +71419,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -74649,7 +74657,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -76196,7 +76204,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -76213,7 +76221,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -76612,7 +76620,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -78195,7 +78203,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -79438,7 +79446,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -81197,7 +81205,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -81886,7 +81894,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -81903,7 +81911,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -82929,7 +82937,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -86704,7 +86712,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -89701,7 +89709,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -92123,7 +92131,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -92140,7 +92148,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -94007,7 +94015,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -95961,7 +95969,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -95978,7 +95986,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -101526,7 +101534,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -102761,7 +102769,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -102778,7 +102786,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -106966,7 +106974,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -108530,7 +108538,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -109767,7 +109775,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -111234,7 +111242,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -113413,7 +113421,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -115757,7 +115765,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -115774,7 +115782,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -118217,7 +118225,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -123184,7 +123192,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -123201,7 +123209,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -125029,7 +125037,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -126472,7 +126480,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -131964,7 +131972,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -133666,7 +133674,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -134828,7 +134836,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -136268,7 +136276,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -136285,7 +136293,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -139314,7 +139322,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -139331,7 +139339,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -141581,7 +141589,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -144863,7 +144871,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -144880,7 +144888,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -149347,7 +149355,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -149364,7 +149372,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -150634,7 +150642,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -152771,7 +152779,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -153267,7 +153275,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -155389,7 +155397,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -159142,7 +159150,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -159159,7 +159167,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -160945,7 +160953,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -165476,7 +165484,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -165493,7 +165501,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -166470,7 +166478,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -168621,7 +168629,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -169893,7 +169901,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -173977,7 +173985,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -173994,7 +174002,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -179789,7 +179797,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -179806,7 +179814,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -180753,7 +180761,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -186544,7 +186552,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -186561,7 +186569,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -189928,7 +189936,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -190773,7 +190781,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -192478,7 +192486,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -193041,7 +193049,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -194615,7 +194623,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -195934,7 +195942,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -197931,7 +197939,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -198998,7 +199006,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -202157,7 +202165,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -202174,7 +202182,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -204137,7 +204145,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -207481,7 +207489,7 @@
         ]
       },
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": false
     },
     {
@@ -207498,7 +207506,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -208123,7 +208131,7 @@
       "deltaSource": "OSRM",
       "geometry": null,
       "allowsCrewChange": false,
-      "allowsMealBreak": false,
+      "allowsMealBreak": true,
       "allowsVehicleStand": true
     },
     {
@@ -208882,141 +208890,6 @@
   ],
   "settings": [
     {
-      "key": "transit.planning",
-      "branchTaxId": null,
-      "scopeName": null,
-      "value": {
-        "line": {
-          "maxGap": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 180,
-            "idealMax": 60,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "fleetUsage": {
-            "active": true,
-            "weight": 25,
-            "ceilingOverPercent": 50,
-            "idealMaxOverPercent": 10
-          },
-          "demandMatch": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 130,
-            "idealMax": 90,
-            "idealMin": 50,
-            "modifier": 25
-          },
-          "headwayRegularity": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 70,
-            "idealMax": 25,
-            "idealMin": 0,
-            "modifier": 20
-          },
-          "peakConcentration": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 200,
-            "idealMax": 120,
-            "idealMin": 80,
-            "modifier": 15
-          },
-          "distributionVariance": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 60,
-            "idealMax": 20,
-            "idealMin": 0,
-            "modifier": 15
-          }
-        },
-        "range": {
-          "deadrunRatio": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 25,
-            "idealMax": 10,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "lineTransfer": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 4,
-            "idealMax": 0,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "tripInterval": {
-            "floor": 3,
-            "active": true,
-            "ceiling": 15,
-            "idealMax": 10,
-            "idealMin": 5,
-            "modifier": 8
-          },
-          "minBlockDuration": {
-            "floor": 180,
-            "active": true,
-            "ceiling": 1080,
-            "idealMax": 900,
-            "idealMin": 420,
-            "modifier": 8
-          },
-          "specialFleetUsage": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 10,
-            "idealMax": 0,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "distributionVariance": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 60,
-            "idealMax": 20,
-            "idealMin": 0,
-            "modifier": 20
-          }
-        },
-        "anchored": {
-          "totalKm": {
-            "active": true,
-            "weight": 15,
-            "ceilingOverPercent": 40,
-            "idealMaxOverPercent": 10
-          },
-          "fleetUsage": {
-            "active": true,
-            "weight": 30,
-            "ceilingOverPercent": 30,
-            "idealMaxOverPercent": 5
-          }
-        },
-        "stopMaxTotalMinutes": 10,
-        "stopNoImprovementMinutes": 3
-      }
-    },
-    {
-      "key": "transit.general",
-      "branchTaxId": null,
-      "scopeName": null,
-      "value": {
-        "baseSpeedRatio": 1.3,
-        "demandModifier": 1,
-        "suggestThresholdM": 300,
-        "defaultLayoverPolicy": "HOLD",
-        "defaultIntervalTypeId": "PAUSA",
-        "operationalDayStartHour": 3,
-        "propagateExtensionToOfficialKm": true
-      }
-    },
-    {
       "key": "transit.crew",
       "branchTaxId": null,
       "scopeName": null,
@@ -209060,7 +208933,7 @@
             "ceiling": 40,
             "idealMax": 20,
             "idealMin": 0,
-            "modifier": 20
+            "modifier": 40
           },
           "lineChanges": {
             "floor": 0,
@@ -209134,7 +209007,7 @@
           }
         },
         "mealRule": {
-          "continuous": false,
+          "continuous": true,
           "fractioned": false,
           "fractionedMinTotal": 30,
           "fractionedMinLongest": 15
@@ -209147,7 +209020,7 @@
         "handoverMinutes": 5,
         "minPieceMinutes": 90,
         "stopMaxTotalMinutes": 10,
-        "mealBreakIntervalTypeId": "59bf54d1-f69c-443c-826a-65e06b4f569a",
+        "mealBreakIntervalTypeId": "76463418-f34f-46a7-a59e-894aa848127f",
         "stopNoImprovementMinutes": 3,
         "maxContinuousDrivingMinutes": 540
       }
@@ -209183,6 +209056,149 @@
             "modifier": 1
           }
         }
+      }
+    },
+    {
+      "key": "transit.general",
+      "branchTaxId": null,
+      "scopeName": null,
+      "value": {
+        "baseSpeedRatio": 1.3,
+        "demandModifier": 1,
+        "suggestThresholdM": 300,
+        "defaultIntervalTypeId": "PAUSA",
+        "operationalDayStartHour": 3,
+        "propagateExtensionToOfficialKm": true
+      }
+    },
+    {
+      "key": "transit.planning",
+      "branchTaxId": null,
+      "scopeName": null,
+      "value": {
+        "line": {
+          "maxGap": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 180,
+            "idealMax": 60,
+            "idealMin": 0,
+            "modifier": 15
+          },
+          "fleetUsage": {
+            "active": true,
+            "weight": 25,
+            "ceilingOverPercent": 50,
+            "idealMaxOverPercent": 10
+          },
+          "demandMatch": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 130,
+            "idealMax": 90,
+            "idealMin": 50,
+            "modifier": 25
+          },
+          "headwayRegularity": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 70,
+            "idealMax": 25,
+            "idealMin": 0,
+            "modifier": 20
+          },
+          "peakConcentration": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 200,
+            "idealMax": 120,
+            "idealMin": 80,
+            "modifier": 15
+          },
+          "distributionVariance": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 60,
+            "idealMax": 20,
+            "idealMin": 0,
+            "modifier": 15
+          }
+        },
+        "range": {
+          "deadrunRatio": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 25,
+            "idealMax": 10,
+            "idealMin": 0,
+            "modifier": 15
+          },
+          "lineTransfer": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 4,
+            "idealMax": 0,
+            "idealMin": 0,
+            "modifier": 15
+          },
+          "operatorShareKm": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 15,
+            "idealMax": 3,
+            "idealMin": 0,
+            "modifier": 10
+          },
+          "minBlockDuration": {
+            "floor": 180,
+            "active": true,
+            "ceiling": 1080,
+            "idealMax": 900,
+            "idealMin": 420,
+            "modifier": 8
+          },
+          "operatorShareFleet": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 10,
+            "idealMax": 2,
+            "idealMin": 0,
+            "modifier": 20
+          },
+          "distributionVariance": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 60,
+            "idealMax": 20,
+            "idealMin": 0,
+            "modifier": 20
+          },
+          "preferredVehicleType": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 30,
+            "idealMax": 0,
+            "idealMin": 0,
+            "modifier": 10
+          }
+        },
+        "anchored": {
+          "totalKm": {
+            "active": true,
+            "weight": 15,
+            "ceilingOverPercent": 40,
+            "idealMaxOverPercent": 10
+          },
+          "fleetUsage": {
+            "active": true,
+            "weight": 30,
+            "ceilingOverPercent": 30,
+            "idealMaxOverPercent": 5
+          }
+        },
+        "minLayoverMinutes": 5,
+        "stopMaxTotalMinutes": 10,
+        "stopNoImprovementMinutes": 3
       }
     }
   ]
