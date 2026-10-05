@@ -406,15 +406,22 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     // Fake blocks for pending adds targeting a new block. blockId is either 'new'
     // (spawn a fresh block, keyed by its own tempId) or `pending:<key>` (join a
     // fake block created by an earlier 'new' add, or an empty block created via
-    // handleCreateEmptyBlock — picked from the Bloco select).
+    // handleCreateEmptyBlock — picked from the Bloco select). A `pending:<key>` group
+    // is created on demand: the 'new' add that originally keyed it may have been moved
+    // to another block, and its siblings must keep rendering (the server's
+    // resolveBlockRef creates the block lazily from the key just the same).
     const firstBlock = plottedData.blocks[0]
     const fakeGroups = new Map<string, PendingAddEntry[]>()
-    for (const blockId of pendingNewBlockIds) fakeGroups.set(blockId, [])
+    const fakeGroup  = (key: string) => {
+      if (!fakeGroups.has(key)) fakeGroups.set(key, [])
+      return fakeGroups.get(key)!
+    }
+    for (const blockId of pendingNewBlockIds) fakeGroup(blockId)
     for (const a of pendingAdds) {
       if (a.blockId === 'new') {
-        fakeGroups.set(a._tempId, [a])
+        fakeGroup(a._tempId).push(a)
       } else if (a.blockId.startsWith('pending:')) {
-        fakeGroups.get(a.blockId.slice('pending:'.length))?.push(a)
+        fakeGroup(a.blockId.slice('pending:'.length)).push(a)
       }
     }
 
