@@ -1,7 +1,7 @@
 import type { CrewPlanSummary } from '@nyx/schemas'
 import type { CrewSolverInput, SolverDuty } from './crew-solver.calc'
 
-// Shared by CrewSolverService and the worker — see docs/proposal/plan_crew_solver_v1.md.
+// Shared by CrewSolverService and the worker — see docs/architecture/transit/crew-solver.md.
 
 export interface CrewSolverParams {
   // complete: keep the locked duties and cover the rest; scratch: vehicles only

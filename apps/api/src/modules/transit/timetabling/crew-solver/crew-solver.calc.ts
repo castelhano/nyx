@@ -5,7 +5,7 @@ import { depotStays, subtractSpans } from '../crew-plan/relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
 import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 
-// Crew solver — construction stage (pure, no Prisma). See docs/proposal/plan_crew_solver_v1.md.
+// Crew solver — construction stage (pure, no Prisma). See docs/architecture/transit/crew-solver.md.
 //
 // Vehicles are fixed: the solver only decides who drives what. It covers every stretch the
 // vehicles need a DRIVER for (serviceSpans) that the locked duties don't already cover, with

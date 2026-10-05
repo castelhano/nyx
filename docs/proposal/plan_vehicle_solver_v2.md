@@ -1,7 +1,7 @@
 # Proposta — Otimizar › Solver de veículos (v2)
 
 Objetivo: reescrever o solver do `VehiclePlan` seguindo a mesma abordagem do solver de escala
-(`docs/proposal/plan_crew_solver_v1.md`): modal com configurações do plano (herdadas ou
+(`docs/architecture/transit/crew-solver.md`): modal com configurações do plano (herdadas ou
 customizadas), geração que pertence ao plano e sobrevive à tela, um único modo (construção +
 melhoria contínua) e score idêntico ao que a tela mostra.
 

@@ -25,7 +25,7 @@ import { Badge } from './DutyPanel'
 //  Painel    solver parameters; "Gerar" starts a run (SSE) and jumps to Cenários.
 //  Cenários  the run's best proposal next to the current plan, then "Criar versão" (a new
 //            DRAFT crew plan) — or, on a DRAFT plan, "Aplicar nesta escala" (its duties are
-//            replaced, locked ones kept). A new run replaces it. See docs/proposal/plan_crew_solver_v1.md.
+//            replaced, locked ones kept). A new run replaces it. See docs/architecture/transit/crew-solver.md.
 // The generation belongs to the crew plan: closing the modal (or leaving the page) leaves it
 // running on the server; reopening picks it up (`job`, from GET …/solver/current) and the stream
 // replays its state. "Parar" ends it keeping the best proposal, "Descartar" throws it away.
