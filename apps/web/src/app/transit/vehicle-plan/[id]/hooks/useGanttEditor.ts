@@ -279,7 +279,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   })
 
   // ── trip-sequence selection (shift+pagedown/pageup) — anchor + current focus
-  // form a range over allTrips filtered by direction (same traversal as plain
+  // form a range over allTrips filtered by line + direction (same traversal as plain
   // pagedown), crossing blocks freely. Independent of `selection`, which only
   // forms a range within the same row/block — see discussion in docs/TODO.md.
   const [tripSeqAnchor, setTripSeqAnchor] = useState<string | null>(null)
@@ -568,12 +568,13 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
   // Sorted productive trips across all blocks — used by PageDown/PageUp same-direction nav
   const allTrips = useMemo(() => {
-    if (!mergedPlottedData) return [] as Array<{ segId: string; dep: number; direction: string }>
+    if (!mergedPlottedData) return [] as Array<{ segId: string; dep: number; direction: string; lineId: string }>
     return mergedPlottedData.blocks.flatMap(block =>
       block.blockTrips.map(bt => ({
         segId:     bt.id,
         dep:       bt.trip.departureMinutes,
         direction: bt.trip.route.direction,
+        lineId:    bt.trip.route.line.id,
       }))
     ).sort((a, b) => a.dep - b.dep)
   }, [mergedPlottedData])
@@ -629,6 +630,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         segId:     bt.id,
         dep:       bt.trip.departureMinutes,
         direction: bt.trip.route.direction,
+        lineId:    bt.trip.route.line.id,
       })))
       .sort((a, b) => a.dep - b.dep)
   }, [mergedPlottedData, visibleBlockIds, allTrips])
@@ -654,19 +656,19 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   }, [blockFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // shift+pagedown/pageup range: window [anchor, focus] over allTrips,
-  // restricted to the anchor's direction — same traversal (all lines) plain
+  // restricted to the anchor's line + direction — same traversal plain
   // pagedown already does, just materialized as a set for highlighting.
   const tripSeqRangeIds = useMemo(() => {
     if (!tripSeqAnchor || !focusedSegId) return null
     const anchorIdx = allTrips.findIndex(t => t.segId === tripSeqAnchor)
     const focusIdx   = allTrips.findIndex(t => t.segId === focusedSegId)
     if (anchorIdx === -1 || focusIdx === -1) return null
-    const dir = allTrips[anchorIdx].direction
+    const { direction, lineId } = allTrips[anchorIdx]
     const lo = Math.min(anchorIdx, focusIdx)
     const hi = Math.max(anchorIdx, focusIdx)
     const ids = new Set<string>()
     for (let i = lo; i <= hi; i++) {
-      if (allTrips[i].direction === dir) ids.add(allTrips[i].segId)
+      if (allTrips[i].direction === direction && allTrips[i].lineId === lineId) ids.add(allTrips[i].segId)
     }
     return ids
   }, [tripSeqAnchor, focusedSegId, allTrips])

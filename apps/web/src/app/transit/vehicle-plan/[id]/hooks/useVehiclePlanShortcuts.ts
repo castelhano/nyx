@@ -27,7 +27,7 @@ const SEC_EDICAO:  ShortcutSection = {
 const SEC_ACOES: ShortcutSection = { label: 'Ações rápidas', hint: 'Atalhos de contexto pra viagem focada' }
 
 type NavItem  = { segId: string; dep: number }
-type TripItem = { segId: string; dep: number; direction: string }
+type TripItem = { segId: string; dep: number; direction: string; lineId: string }
 
 interface UseVehiclePlanShortcutsParams {
   // canEdit gates structural/bulk flows (Redistribuir, Finalizar Plano) — DRAFT-only.
@@ -537,12 +537,13 @@ export function useVehiclePlanShortcuts({
     setTripSeqAnchor(null)
     const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = visibleAllTrips[curIdx].direction
+    const { direction, lineId } = visibleAllTrips[curIdx]
     for (let i = curIdx + 1; i < visibleAllTrips.length; i++) {
-      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
+      const t = visibleAllTrips[i]
+      if (t.direction === direction && t.lineId === lineId) { setFocusedSegId(t.segId); break }
     }
   }, {
-    desc:    'Próxima viagem sentido',
+    desc:    'Próxima viagem mesma linha/sentido',
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -554,12 +555,13 @@ export function useVehiclePlanShortcuts({
     if (tripSeqAnchor == null) setTripSeqAnchor(focusedSegId)
     const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = visibleAllTrips[curIdx].direction
+    const { direction, lineId } = visibleAllTrips[curIdx]
     for (let i = curIdx + 1; i < visibleAllTrips.length; i++) {
-      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
+      const t = visibleAllTrips[i]
+      if (t.direction === direction && t.lineId === lineId) { setFocusedSegId(t.segId); break }
     }
   }, {
-    desc:    'Estende seleção até próxima viagem mesmo sentido',
+    desc:    'Estende seleção até próxima viagem mesma linha/sentido',
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -571,12 +573,13 @@ export function useVehiclePlanShortcuts({
     setTripSeqAnchor(null)
     const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = visibleAllTrips[curIdx].direction
+    const { direction, lineId } = visibleAllTrips[curIdx]
     for (let i = curIdx - 1; i >= 0; i--) {
-      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
+      const t = visibleAllTrips[i]
+      if (t.direction === direction && t.lineId === lineId) { setFocusedSegId(t.segId); break }
     }
   }, {
-    desc:    'Viagem anterior mesmo sentido',
+    desc:    'Viagem anterior mesma linha/sentido',
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -588,12 +591,13 @@ export function useVehiclePlanShortcuts({
     if (tripSeqAnchor == null) setTripSeqAnchor(focusedSegId)
     const curIdx = visibleAllTrips.findIndex(t => t.segId === focusedSegId)
     if (curIdx === -1) return
-    const dir = visibleAllTrips[curIdx].direction
+    const { direction, lineId } = visibleAllTrips[curIdx]
     for (let i = curIdx - 1; i >= 0; i--) {
-      if (visibleAllTrips[i].direction === dir) { setFocusedSegId(visibleAllTrips[i].segId); break }
+      const t = visibleAllTrips[i]
+      if (t.direction === direction && t.lineId === lineId) { setFocusedSegId(t.segId); break }
     }
   }, {
-    desc:    'Estende seleção até viagem anterior mesmo sentido',
+    desc:    'Estende seleção até viagem anterior mesma linha/sentido',
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
