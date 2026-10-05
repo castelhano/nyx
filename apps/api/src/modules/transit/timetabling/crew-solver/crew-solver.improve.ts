@@ -4,8 +4,7 @@ import { BlockView, type CrewSolverInput, type SolverDuty, type SolverPiece } fr
 import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 import { mealPolicy } from '@nyx/schemas'
 
-// Crew solver — continuous improvement (pure, no Prisma). See
-// docs/proposal/plan_crew_solver_improvement_v1.md.
+// Crew solver — continuous improvement (pure, no Prisma).
 //
 // Starts from the construction's duties and keeps changing who drives what, scoring every
 // change on the incremental aggregate (the same score the screen shows). The pieces are only
