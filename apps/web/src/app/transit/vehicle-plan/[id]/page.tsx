@@ -124,8 +124,8 @@ export default function VehiclePlanPage() {
     focusedSegId, setFocusedSegId,
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
-    plottedData, mergedPlottedData,
-    navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
+    mergedPlottedData,
+    navBlocks, tripSeqRangeIds, headwayRangeInfo, freqData, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
     blockFilter, setBlockFilter, pinnedBlockIds, togglePinnedBlock, clearPinnedBlocks, visibleBlockIds, visibleNavBlocks, visibleAllTrips, filterMatchCount,
     pendingCount, isSaving,
@@ -793,9 +793,9 @@ export default function VehiclePlanPage() {
             )}
           </div>
 
-          {freqPanelOpen && plottedData && (
+          {freqPanelOpen && freqData && (
             <FrequencyPanel
-              data={mergedPlottedData ?? plottedData} vp={ganttVp} focusedTripId={focusedSegId}
+              data={freqData} vp={ganttVp} focusedTripId={focusedSegId}
               deltaGroups={deltaGroups} deltaView={freqDeltaView}
             />
           )}

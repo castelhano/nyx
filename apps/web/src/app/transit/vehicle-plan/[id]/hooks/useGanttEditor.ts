@@ -708,9 +708,23 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // gets a combined "Multilinha" entry alongside the regular per-line ones.
   const { groups: deltaGroups } = useDeltaGroups([...selectedLineIds])
 
+  // Frequency views (FrequencyPanel, LineFreqPanel) only count trips of the
+  // selected lines — a shared block also carries trips of unselected lines, but
+  // only the ones in those shared blocks, so their spacing would read as gaps.
+  const freqData = useMemo<VehiclePlanGanttData | null>(() => {
+    if (!mergedPlottedData) return null
+    return {
+      ...mergedPlottedData,
+      blocks: mergedPlottedData.blocks.map(b => ({
+        ...b,
+        blockTrips: b.blockTrips.filter(bt => selectedLineIds.has(bt.trip.route.line.id)),
+      })),
+    }
+  }, [mergedPlottedData, selectedLineIds])
+
   const freqIndex = useMemo(
-    () => mergedPlottedData ? buildLineFreqIndex(mergedPlottedData, deltaGroups) : null,
-    [mergedPlottedData, deltaGroups],
+    () => freqData ? buildLineFreqIndex(freqData, deltaGroups) : null,
+    [freqData, deltaGroups],
   )
 
   // Focus/selection can go stale when the data underneath changes (e.g. a pending
@@ -2539,7 +2553,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     tripSeqAnchor, setTripSeqAnchor,
     selectedLineIds, setSelectedLineIds,
     plottedData, mergedPlottedData,
-    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqIndex, deltaGroups,
+    allTrips, navBlocks, tripSeqRangeIds, headwayRangeInfo, freqData, freqIndex, deltaGroups,
     addTripReference, moveTargetBlocks, moveTargetHints,
     blockFilter, setBlockFilter, pinnedBlockIds, togglePinnedBlock, clearPinnedBlocks, visibleBlockIds, visibleNavBlocks, visibleAllTrips, filterMatchCount,
     pendingCount, isSaving,
