@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { mealPolicy } from '@nyx/schemas'
 import { PrismaService } from '../src/prisma/prisma.service'
 import { TransitCrewConfigService } from '../src/modules/transit/settings/transit-crew-config.service'
 import { CrewPlanService, canonicalJson, repeatsNextDay } from '../src/modules/transit/timetabling/crew-plan/crew-plan.service'
@@ -28,7 +29,7 @@ async function main() {
   for (const plan of plans) {
     console.log(`${plan.description ?? plan.id}`)
     const { settings } = await crewPlans.resolveSettings(plan.id)
-    if (settings.mealRule.continuous && !settings.mealBreakIntervalTypeId) { console.log('  (sem tipo de refeição — ignorada)'); continue }
+    if (mealPolicy(settings.mealRule).breaks && !settings.mealBreakIntervalTypeId) { console.log('  (sem tipo de refeição — ignorada)'); continue }
     const input = await loadCrewSolverInput(prisma, plan.id, settings)
     const rows  = await prisma.duty.findMany({
       where:  { crewPlanId: plan.id },

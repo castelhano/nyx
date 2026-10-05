@@ -40,6 +40,13 @@ const anchoredDefault = {
   efficiency: { active: true, idealMaxOverPercent: 10, ceilingOverPercent: 30, weight: 20 },
 }
 
+// mealRule stored before mode/form: two switches, any form on = required (both on → continuous)
+function legacyMealRule(v: unknown): unknown {
+  if (!v || typeof v !== 'object' || 'mode' in v || !('continuous' in v)) return v
+  const { continuous, fractioned, ...rest } = v as { continuous: boolean; fractioned: boolean }
+  return { ...rest, mode: continuous || fractioned ? 'required' : 'none', form: !continuous && fractioned ? 'fractioned' : 'continuous' }
+}
+
 export const crewSettingsSchema = withMeta(z.object({
   // sign-on before the first piece / sign-off after the last one
   signOnMinutes:               z.number().int().min(0).max(120).default(10),
@@ -58,17 +65,21 @@ export const crewSettingsSchema = withMeta(z.object({
   // becomes a meal; BREAKs of this type are checked against TransitLocality.allowsMealBreak.
   // range.mealBreak below only scores/flags the duty
   mealBreakIntervalTypeId:     z.uuid().nullable().default(null),
-  // How a STRAIGHT duty meets the in-duty rest (intrajornada) — any accepted form will do; none
-  // accepted = no requirement. A SPLIT's own split interval is its rest.
-  //  continuous: a BREAK of mealBreakIntervalTypeId (the type's range, at a meal stop) — unpaid
-  //  fractioned: the duty's stops (vehicle idle within pieces + gaps between them, any length)
-  //              add up to minTotal with one of at least minLongest — paid
-  mealRule: z.object({
-    continuous:           z.boolean(),
-    fractioned:           z.boolean(),
+  // The in-duty rest (intrajornada) of a STRAIGHT duty — a SPLIT's own split interval is its rest.
+  //  mode  none:     no meal; the gaps between pieces are worked (paid)
+  //        allowed:  the solver places a meal where one fits, a STRAIGHT without one is fine
+  //        required: every STRAIGHT meets it
+  //  form  continuous: a BREAK of mealBreakIntervalTypeId (the type's range, at a meal stop) — unpaid
+  //        fractioned: the duty's stops (vehicle idle within pieces + gaps between them, any
+  //                    length) add up to minTotal with one of at least minLongest — paid, so only
+  //                    `required` makes sense with it
+  mealRule: z.preprocess(legacyMealRule, z.object({
+    mode:                 z.enum(['none', 'allowed', 'required']),
+    form:                 z.enum(['continuous', 'fractioned']),
     fractionedMinTotal:   z.number().int().min(0).max(600),
     fractionedMinLongest: z.number().int().min(0).max(600),
-  }).default({ continuous: true, fractioned: false, fractionedMinTotal: 30, fractionedMinLongest: 15 }),
+  }).refine(r => !(r.mode === 'allowed' && r.form === 'fractioned'), 'A refeição fracionada só pode ser obrigatória'))
+    .default({ mode: 'required', form: 'continuous', fractionedMinTotal: 30, fractionedMinLongest: 15 }),
   // crew solver's continuous improvement: stops after this long, or this long without a better
   // proposal (same fields as the planning settings)
   stopMaxTotalMinutes:         z.number().int().min(1).max(1440).default(5),
@@ -100,3 +111,16 @@ export const crewSettingsSchema = withMeta(z.object({
 })
 
 export type CrewSettings = z.infer<typeof crewSettingsSchema>
+
+// settings.mealRule as the rules read it
+export function mealPolicy(rule: CrewSettings['mealRule']) {
+  const on = rule.mode !== 'none'
+  return {
+    // a meal BREAK may be placed (the solver loads the meal type)
+    breaks:     on && rule.form === 'continuous',
+    // every STRAIGHT must meet the meal
+    required:   rule.mode === 'required',
+    // the stops meet it (only ever required)
+    fractioned: on && rule.form === 'fractioned',
+  }
+}

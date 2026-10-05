@@ -2,7 +2,6 @@
 
 import type { CrewSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 import { Select } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
 import { useIntervalTypes } from '../use-interval-types'
 
@@ -40,6 +39,8 @@ const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes'
   { key: 'stopNoImprovementMinutes',    label: 'Parar sem Melhora',         unit: 'min', max: 60,   hint: 'Encerra a geração após este tempo sem encontrar escala melhor' },
 ]
 
+type MealRule = CrewSettings['mealRule']
+
 interface Props {
   value:     CrewSettings
   // values to diff against (DiffDot) — null shows no diff markers
@@ -53,6 +54,11 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
 
   function updateRange(key: keyof CrewSettings['range'], field: keyof RangeCriterion, v: unknown) {
     onChange({ ...value, range: { ...value.range, [key]: { ...value.range[key], [field]: v } } })
+  }
+
+  const rule = value.mealRule
+  function setRule(patch: Partial<MealRule>) {
+    onChange({ ...value, mealRule: { ...rule, ...patch } })
   }
 
   function updateAnchored(key: keyof CrewSettings['anchored'], field: keyof AnchoredCriterion, v: unknown) {
@@ -85,69 +91,98 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
               </div>
             </div>
           ))}
-          {/* intrajornada — forms a STRAIGHT duty may meet it in (none = no requirement) */}
+          {/* intrajornada of a STRAIGHT duty — mode (none / allowed / required) and form */}
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div className="flex items-center gap-2">
-              <DiffDot show={!!reference && (value.mealRule.continuous !== reference.mealRule.continuous || value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId)} />
+              <DiffDot show={!!reference && (rule.mode !== reference.mealRule.mode || rule.form !== reference.mealRule.form)} />
               <div>
-                <p className="text-sm font-medium">Intrajornada Contínua</p>
+                <p className="text-sm font-medium">Intervalo de Refeição</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Intervalo não pago do tipo escolhido (faixa do cadastro do tipo), em local que permite refeição
+                  Nas corridas — a dupla pegada usa o próprio intervalo. Permitir: o gerador coloca a refeição onde couber, sem exigir
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
               <Select
+                value={rule.mode}
+                onChange={(e) => {
+                  const mode = e.target.value as MealRule['mode']
+                  // fractioned is paid: only a required one changes anything
+                  setRule({ mode, form: mode === 'allowed' ? 'continuous' : rule.form })
+                }}
+                size="sm"
+                wrapperClassName="w-36"
+                disabled={disabled}
+              >
+                <option value="none">Não usar</option>
+                <option value="allowed">Permitir</option>
+                <option value="required">Obrigatório</option>
+              </Select>
+              <Select
+                value={rule.form}
+                onChange={(e) => setRule({ form: e.target.value as MealRule['form'] })}
+                size="sm"
+                wrapperClassName="w-36"
+                disabled={disabled || rule.mode === 'none'}
+              >
+                <option value="continuous">Contínuo</option>
+                <option value="fractioned" disabled={rule.mode === 'allowed'}>Fracionado</option>
+              </Select>
+            </div>
+          </div>
+          {rule.mode !== 'none' && rule.form === 'continuous' && (
+            <div className="flex items-center justify-between gap-6 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <DiffDot show={!!reference && value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId} />
+                <div>
+                  <p className="text-sm font-medium">Tipo de Intervalo da Refeição</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Intervalo não pago, na faixa do cadastro do tipo, em local que permite refeição
+                  </p>
+                </div>
+              </div>
+              <Select
                 value={value.mealBreakIntervalTypeId ?? ''}
                 onChange={(e) => onChange({ ...value, mealBreakIntervalTypeId: e.target.value || null })}
                 size="sm"
                 wrapperClassName="w-56"
-                disabled={disabled || !value.mealRule.continuous}
+                disabled={disabled}
               >
                 <option value="">Não definido</option>
                 {intervalTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
-              <Switch
-                checked={value.mealRule.continuous}
-                onToggle={() => onChange({ ...value, mealRule: { ...value.mealRule, continuous: !value.mealRule.continuous } })}
-                disabled={disabled}
-              />
             </div>
-          </div>
-          <div className="flex items-center justify-between gap-6 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <DiffDot show={!!reference && JSON.stringify({ ...value.mealRule, continuous: 0 }) !== JSON.stringify({ ...reference.mealRule, continuous: 0 })} />
-              <div>
-                <p className="text-sm font-medium">Intrajornada Fracionada</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Paradas da jornada (qualquer duração, pagas) somam o mínimo, com uma de pelo menos o tamanho indicado.
-                  Sem nenhuma forma ativa não há exigência; vale só para corrida — a dupla pegada usa o próprio intervalo
-                </p>
+          )}
+          {rule.mode !== 'none' && rule.form === 'fractioned' && (
+            <div className="flex items-center justify-between gap-6 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <DiffDot show={!!reference && (rule.fractionedMinTotal !== reference.mealRule.fractionedMinTotal || rule.fractionedMinLongest !== reference.mealRule.fractionedMinLongest)} />
+                <div>
+                  <p className="text-sm font-medium">Refeição Fracionada</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Paradas da jornada (qualquer duração, pagas) somam o mínimo, com uma de pelo menos o tamanho indicado
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-xs text-muted-foreground">soma</span>
+                <NumberInput
+                  value={rule.fractionedMinTotal}
+                  onChange={(v) => setRule({ fractionedMinTotal: Math.round(v) })}
+                  min={0} max={600}
+                  disabled={disabled}
+                />
+                <span className="text-xs text-muted-foreground">maior</span>
+                <NumberInput
+                  value={rule.fractionedMinLongest}
+                  onChange={(v) => setRule({ fractionedMinLongest: Math.round(v) })}
+                  min={0} max={600}
+                  disabled={disabled}
+                />
+                <span className="text-sm text-muted-foreground">min</span>
               </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-xs text-muted-foreground">soma</span>
-              <NumberInput
-                value={value.mealRule.fractionedMinTotal}
-                onChange={(v) => onChange({ ...value, mealRule: { ...value.mealRule, fractionedMinTotal: Math.round(v) } })}
-                min={0} max={600}
-                disabled={disabled || !value.mealRule.fractioned}
-              />
-              <span className="text-xs text-muted-foreground">maior</span>
-              <NumberInput
-                value={value.mealRule.fractionedMinLongest}
-                onChange={(v) => onChange({ ...value, mealRule: { ...value.mealRule, fractionedMinLongest: Math.round(v) } })}
-                min={0} max={600}
-                disabled={disabled || !value.mealRule.fractioned}
-              />
-              <span className="text-sm text-muted-foreground">min</span>
-              <Switch
-                checked={value.mealRule.fractioned}
-                onToggle={() => onChange({ ...value, mealRule: { ...value.mealRule, fractioned: !value.mealRule.fractioned } })}
-                disabled={disabled}
-              />
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

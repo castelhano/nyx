@@ -1,6 +1,7 @@
 import type {
   CrewSettings, CrewPlanSummary, DutySummary, DutyIssue, DutyPieceStaleReason, RangeCriterion, ReliefPoint,
 } from '@nyx/schemas'
+import { mealPolicy } from '@nyx/schemas'
 import { rangeV, anchoredV, SCORE_SCALE } from '../vehicle-plan/scoring/plan-scoring.calc'
 import { isReliefPoint, subtractSpans } from './relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
@@ -29,10 +30,10 @@ import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
 //   activity is declared there: beyond settings.maxWalkMeters → WALK_DISTANCE; a gap shorter
 //   than the walk → TRAVEL_GAP.
 // - Stops: the vehicle's idle time within the duty's pieces + the idle gaps between them
-//   (breaks and the split interval aside). A STRAIGHT meets the intrajornada in any form
-//   settings.mealRule accepts — continuous (a meal BREAK) or fractioned (the stops add up to
-//   fractionedMinTotal, one of at least fractionedMinLongest) — else MEAL_REQUIRED. A SPLIT's
-//   own split interval is its rest; none accepted = no requirement.
+//   (breaks and the split interval aside). A STRAIGHT meets the intrajornada in the form
+//   settings.mealRule takes — continuous (a meal BREAK) or fractioned (the stops add up to
+//   fractionedMinTotal, one of at least fractionedMinLongest); when the rule requires it, a
+//   STRAIGHT without one is MEAL_REQUIRED. A SPLIT's own split interval is its rest.
 // - A piece covering time the vehicle is out of service (its own interval, a depot stay —
 //   outside block.serviceSpans) must have a break there; otherwise PIECE_OFF_SERVICE: the
 //   driver would be "working" a parked vehicle.
@@ -301,17 +302,19 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
 
   const hasWork = live.length > 0
   const rule    = settings.mealRule
+  const meal    = mealPolicy(rule)
   let mealForm: DutySummary['mealForm'] = null
   if (hasWork && duty.kind === 'STRAIGHT') {
     const hasMeal = !!settings.mealBreakIntervalTypeId && breaks.some(b => b.intervalTypeId === settings.mealBreakIntervalTypeId)
-    if (rule.continuous && hasMeal) mealForm = 'CONTINUOUS'
-    else if (rule.fractioned && stopMinutes >= rule.fractionedMinTotal && longestStop >= rule.fractionedMinLongest) mealForm = 'FRACTIONED'
+    if (meal.breaks && hasMeal) mealForm = 'CONTINUOUS'
+    else if (meal.fractioned && stopMinutes >= rule.fractionedMinTotal && longestStop >= rule.fractionedMinLongest) mealForm = 'FRACTIONED'
   }
-  // with no meal rule a STRAIGHT needs no meal
-  const mealApplies = hasWork && duty.kind === 'STRAIGHT' && (rule.continuous || rule.fractioned)
-  // range.mealBreak measures the continuous break only — the fractioned form is met by its
-  // own rule (fractionedMinTotal / fractionedMinLongest), however long the stops add up to
-  const breakApplies = mealApplies && rule.continuous && mealForm !== 'FRACTIONED'
+  // only a required meal makes a STRAIGHT without one fall short
+  const mealRequired = hasWork && duty.kind === 'STRAIGHT' && meal.required
+  // range.mealBreak measures the continuous break: the one a STRAIGHT must have, or the one it
+  // took when merely allowed — the fractioned form is met by its own rule, however long the
+  // stops add up to
+  const breakApplies = hasWork && duty.kind === 'STRAIGHT' && meal.breaks && (meal.required || mealForm === 'CONTINUOUS')
 
   const summary: DutySummary = {
     spreadMinutes: events.length ? last - first : 0,
@@ -338,8 +341,8 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   if (hasWork && duty.kind !== 'TRIPPER' && duty.kind !== 'STANDBY') push(rangeIssue('WORK_TIME', workMinutes, range.workTime))
   if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('SPREAD', summary.spreadMinutes, range.spread))
   if (breakApplies) push(rangeIssue('MEAL_BREAK', breakMinutes, range.mealBreak))
-  if (mealApplies && !mealForm) {
-    push(rule.fractioned
+  if (mealRequired && !mealForm) {
+    push(meal.fractioned
       ? { code: 'MEAL_REQUIRED', severity: 'error', value: stopMinutes, limit: rule.fractionedMinTotal }
       : { code: 'MEAL_REQUIRED', severity: 'error', value: breakMinutes })
   }

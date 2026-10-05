@@ -1,4 +1,5 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
+import { mealPolicy } from '@nyx/schemas'
 import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
 import { depotStays, subtractSpans } from '../crew-plan/relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
@@ -17,7 +18,7 @@ import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 //    one of its idle gaps (STRAIGHT with the meal inside the piece when the gap fits the meal
 //    type's range at a meal stop of the arriving line; SPLIT when it's longer and fits
 //    range.splitInterval, the driver leaves, two pieces on the same vehicle) or, when
-//    settings.mealRule takes a STRAIGHT without a meal break (fractioned, or no requirement),
+//    settings.mealRule takes a STRAIGHT without a meal break (fractioned, or not required),
 //    a single piece whose stops meet the rule (within one segment). Otherwise a loose piece of about half an ideal duty (so two of them pair up),
 //    within continuous driving, never leaving a remainder shorter than the minimum piece and
 //    never crossing the vehicle's own intervals (that idle time would count as driving).
@@ -39,7 +40,7 @@ export interface SolverBlock extends CrewCalcBlock {
 }
 
 // the IntervalType placed as meal break (settings.mealBreakIntervalTypeId) and its range —
-// null when settings.mealRule doesn't take the continuous form
+// null when settings.mealRule places no meal break (mealPolicy.breaks)
 export interface SolverMeal { intervalTypeId: string; minMinutes: number; maxMinutes: number; isPaid: boolean }
 
 export interface CrewSolverInput {
@@ -152,9 +153,10 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   // a STRAIGHT without a meal break: when the rule takes the fractioned form (stops meet it) or
   // takes none at all
   const rule = settings.mealRule
-  const plainOk = (st: { total: number; longest: number }) => (!rule.continuous && !rule.fractioned)
-    || (rule.fractioned && st.total >= rule.fractionedMinTotal && st.longest >= rule.fractionedMinLongest)
-  const plainPossible = rule.fractioned || !rule.continuous
+  const policy = mealPolicy(rule)
+  const plainOk = (st: { total: number; longest: number }) => !policy.required
+    || (policy.fractioned && st.total >= rule.fractionedMinTotal && st.longest >= rule.fractionedMinLongest)
+  const plainPossible = !policy.required || policy.fractioned
   const splitCost = range.splitRatio.active ? range.splitRatio.modifier : 0
   // hard limits: ceilings of the active criteria only
   const maxWork   = range.workTime.active ? range.workTime.ceiling : Infinity

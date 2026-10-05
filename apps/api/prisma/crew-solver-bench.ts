@@ -10,7 +10,8 @@ import { CrewImprover } from '../src/modules/transit/timetabling/crew-solver/cre
 // prints construction vs improved side by side. A fixed seed repeats a run, so weights and
 // moves can be compared. Nothing is written.
 // Usage: pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch]
-//        [--meal=continuous|fractioned|both|none] (overrides settings.mealRule's forms)
+//        [--meal=none|allowed|continuous|fractioned] (overrides settings.mealRule: allowed =
+//        continuous allowed, continuous/fractioned = that form required)
 //        [--settings='{"range":{"tripperRatio":{"modifier":30}}}'] (deep-merged over the settings)
 
 const KIND = { STRAIGHT: 'Corrida', SPLIT: 'Dupla pegada', TRIPPER: 'Meia jornada' } as const
@@ -61,7 +62,13 @@ async function main() {
   if (settingsArg) Object.assign(settings, merge(settings, JSON.parse(settingsArg)))
   const mealArg = args.find(a => a.startsWith('--meal='))?.slice(7)
   if (mealArg || settingsArg) {
-    if (mealArg) settings.mealRule = { ...settings.mealRule, continuous: mealArg === 'continuous' || mealArg === 'both', fractioned: mealArg === 'fractioned' || mealArg === 'both' }
+    if (mealArg) {
+      settings.mealRule = {
+        ...settings.mealRule,
+        mode: mealArg === 'none' ? 'none' : mealArg === 'allowed' ? 'allowed' : 'required',
+        form: mealArg === 'fractioned' ? 'fractioned' : 'continuous',
+      }
+    }
     Object.assign(input, await loadCrewSolverInput(prisma, crewPlanId, settings), { locked: input.locked })
   }
   await prisma.$disconnect()

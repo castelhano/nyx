@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
-import type { CrewSettings } from '@nyx/schemas'
+import { mealPolicy, type CrewSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { loadBlockRelief } from '../crew-plan/relief-points'
 import { loadCrewWalk } from '../crew-plan/crew-walk'
@@ -10,9 +10,10 @@ import type { CrewSolverInput, SolverBlock } from './crew-solver.calc'
 // blocks (relief points, trips, deadruns), its locked duties, the meal break type and meal
 // stops, and the crew walking distances among the relief points' localities.
 export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings): Promise<CrewSolverInput> {
-  // the meal type only matters when the continuous form of the intrajornada is accepted
-  const mealTypeId = settings.mealRule.continuous ? settings.mealBreakIntervalTypeId : null
-  if (settings.mealRule.continuous && !mealTypeId) {
+  // the meal type only matters when meal breaks are placed (continuous form, allowed or required)
+  const breaks = mealPolicy(settings.mealRule).breaks
+  const mealTypeId = breaks ? settings.mealBreakIntervalTypeId : null
+  if (breaks && !mealTypeId) {
     throw new BadRequestException('Defina o tipo de intervalo de refeição nas configurações da escala')
   }
   const [plan, mealType] = await Promise.all([

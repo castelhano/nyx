@@ -2,6 +2,7 @@ import type { CrewCalcContext, CrewCalcDuty, DutyEvaluation } from '../crew-plan
 import { CrewScoreAggregate, evaluateDuty, solverRank } from '../crew-plan/crew-scoring.calc'
 import { BlockView, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
 import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
+import { mealPolicy } from '@nyx/schemas'
 
 // Crew solver — continuous improvement (pure, no Prisma). See
 // docs/proposal/plan_crew_solver_improvement_v1.md.
@@ -384,7 +385,7 @@ export class CrewImprover {
   //  - between pieces at different places, the driver walks — within settings.maxWalkMeters and a
   //    gap that fits the walk (unknown distance → no duty);
   //  - at most one long interval: the meal (STRAIGHT — a rest within the meal type's range, at a
-  //    meal stop of the line that arrives; only when settings.mealRule takes the continuous
+  //    meal stop of the line that arrives; only when settings.mealRule places meal breaks
   //    form) or the split gap (SPLIT, within range.splitInterval); the other gaps are worked —
   //    shorter than the meal, or any length when the rule takes a STRAIGHT without a meal break;
   //  - no long interval between pieces: a meal inside a piece, where the vehicle stands idle
@@ -409,8 +410,8 @@ export class CrewImprover {
 
     const { meal, settings, walk } = this.input
     const split = settings.range.splitInterval
-    const rule  = settings.mealRule
-    const plainPossible = rule.fractioned || !rule.continuous
+    const policy = mealPolicy(settings.mealRule)
+    const plainPossible = !policy.required || policy.fractioned
     let kind: SolverDuty['kind'] = 'TRIPPER'
     let breaks: Span[] = []
     for (let i = 1; i < pieces.length; i++) {
