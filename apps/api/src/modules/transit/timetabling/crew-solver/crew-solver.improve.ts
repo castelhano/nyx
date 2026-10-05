@@ -13,7 +13,12 @@ import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 //              nearby relief point (one duty gets longer, the other shorter);
 //  - swap:     two duties exchange their tails (A1+B2, B1+A2);
 //  - transfer: a piece — or part of it, cut at a relief point — goes to another duty or becomes
-//              a duty of its own; a duty left empty disappears.
+//              a duty of its own; a duty left empty disappears;
+//  - eliminate: a duty is dissolved in one go — each of its pieces (whole, or cut at a relief
+//              point into a head and a tail) joins the duty next to it in time that takes it.
+//              Doing it piece by piece would pass through a short duty (a TRIPPER, or an error
+//              below the work floor) the search almost never accepts. Accepted only when it
+//              improves the score (no annealing).
 // Every duty a move builds follows the hard rules (buildDuty); a move that breaks one is
 // dropped. The score optimized is the raw one (CrewScoreAggregate.rawScore): a criterion already
 // past its ceiling still rewards getting closer to it. Acceptance is simulated annealing: better always, worse with probability exp(Δ/T),
@@ -24,6 +29,12 @@ import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 type Span = { startMinutes: number; endMinutes: number }
 
 const MAX_PIECES = 3
+// share of the attempts that try to eliminate a duty (the costliest move)
+const ELIMINATE_SHARE = 0.1
+// duties drawn to pick the one to eliminate (the least worked wins)
+const ELIMINATE_DRAW = 3
+// receivers tried per piece, nearest in time first
+const ELIMINATE_CANDIDATES = 6
 // share of worsening moves accepted at the start (calibrates the temperature)
 const START_ACCEPT = 0.3
 const CALIBRATION_MOVES = 300
@@ -124,7 +135,11 @@ export class CrewImprover {
     // a new cycle swaps the duties — only between moves, never while one is being applied
     if (this.temperature != null && Date.now() - this.cycleStart >= this.cycleMs) this.nextCycle(Date.now())
     const r = this.random()
-    const move = r < 0.35 ? this.shift() : r < 0.65 ? this.swap() : this.transfer()
+    const eliminating = r < ELIMINATE_SHARE
+    const move = eliminating ? this.eliminate()
+      : r < ELIMINATE_SHARE + 0.3 ? this.shift()
+      : r < ELIMINATE_SHARE + 0.6 ? this.swap()
+      : this.transfer()
     if (!move) return
 
     for (const w of move.removed) this.agg.remove(w.calc, w.ev)
@@ -132,7 +147,9 @@ export class CrewImprover {
     const score = this.agg.rawScore()
     const delta = score - this.current
 
-    if (!this.accept(delta)) {
+    // an elimination goes through only when it pays off: its worsenings are much larger than the
+    // other moves' and would heat the annealing up into a random walk
+    if (eliminating ? delta < 0 : !this.accept(delta)) {
       for (const w of move.added)   this.agg.remove(w.calc, w.ev)
       for (const w of move.removed) this.agg.add(w.calc, w.ev)
       return
@@ -275,6 +292,76 @@ export class CrewImprover {
     if (!b || b.pieces.length >= MAX_PIECES) return null
     const b2 = this.build([...b.pieces, part], b.branchId)
     return b2 ? { removed: [a, b], added: [...(a2 ? [a2] : []), b2] } : null
+  }
+
+  // a duty dissolves: every piece finds a receiver, or nothing changes
+  private eliminate(): Move | null {
+    let a = this.pick()
+    for (let k = 1; k < ELIMINATE_DRAW; k++) {
+      const b = this.pick()
+      if (b.ev.summary.workMinutes < a.ev.summary.workMinutes) a = b
+    }
+    if (this.duties.length < 2) return null
+    const minPiece = this.input.settings.minPieceMinutes
+    // receiver → its pieces so far (a receiver may take more than one part)
+    const taken = new Map<WorkDuty, SolverPiece[]>()
+
+    for (const p of a.pieces) {
+      if (this.place(p, a, taken)) continue
+      // whole it fits nowhere: a head and a tail, to different receivers
+      const view = this.views.get(p.vehicleBlockId)!
+      const cuts = view.cutsIn(p.startMinutes + minPiece, p.endMinutes - minPiece)
+      let placed = false
+      for (let k = 0; k < 3 && cuts.length && !placed; k++) {
+        const cut  = this.randomOf(cuts)
+        const head = { ...p, endMinutes: cut, endLocalityId: view.locality(cut) }
+        const tail = { ...p, startMinutes: cut, startLocalityId: view.locality(cut) }
+        const before = new Map(taken)
+        placed = this.place(head, a, taken) && this.place(tail, a, taken)
+        if (!placed) { taken.clear(); for (const [w, ps] of before) taken.set(w, ps) }
+      }
+      if (!placed) return null
+    }
+
+    const added: WorkDuty[] = []
+    for (const [b, pieces] of taken) {
+      const b2 = this.build(pieces, b.branchId)
+      if (!b2) return null
+      added.push(b2)
+    }
+    return { removed: [a, ...taken.keys()], added }
+  }
+
+  // `part` joins the nearest duty in time (same operator, no overlap, room left) whose pieces
+  // still make a valid duty with it — recorded in `taken`
+  private place(part: SolverPiece, from: WorkDuty, taken: Map<WorkDuty, SolverPiece[]>): boolean {
+    const len  = part.endMinutes - part.startMinutes
+    const work = this.input.settings.range.workTime
+    const maxWork = work.active ? work.ceiling : Infinity
+    const candidates: { w: WorkDuty; pieces: SolverPiece[]; gap: number }[] = []
+    for (const w of this.duties) {
+      if (w === from || w.branchId !== from.branchId) continue
+      const pieces = taken.get(w) ?? w.pieces
+      if (pieces.length >= MAX_PIECES) continue
+      if (!taken.has(w) && w.ev.summary.workMinutes + len > maxWork) continue
+      let gap = Infinity
+      for (const q of pieces) {
+        if (q.startMinutes < part.endMinutes && part.startMinutes < q.endMinutes) { gap = -1; break }
+        gap = Math.min(gap, q.endMinutes <= part.startMinutes ? part.startMinutes - q.endMinutes : q.startMinutes - part.endMinutes)
+      }
+      if (gap >= 0) candidates.push({ w, pieces, gap })
+    }
+    candidates.sort((x, y) => x.gap - y.gap)
+    for (const c of candidates.slice(0, ELIMINATE_CANDIDATES)) {
+      const next = [...c.pieces, part]
+      // a receiver never becomes a TRIPPER — that would trade one duty for a worse one
+      const built = this.build(next, c.w.branchId)
+      if (built && built.kind !== 'TRIPPER') {
+        taken.set(c.w, next)
+        return true
+      }
+    }
+    return false
   }
 
   // ── duty building (hard rules) ───────────────────────────────────────────
