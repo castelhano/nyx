@@ -360,8 +360,16 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     }
   }
 
+  // a piece shorter than the minimum, unless it's all there is: no relief point left in its
+  // service span beyond it (the vehicle only runs that long there — no cut makes it longer)
+  const wholeSpan = (p: CrewCalcPiece) => {
+    const block = blocks.get(p.vehicleBlockId!)
+    const span  = block?.serviceSpans.find(s => s.startMinutes <= p.startMinutes && p.endMinutes <= s.endMinutes)
+    return !!span && !block!.points.some(pt => pt.minutes >= span.startMinutes && pt.minutes <= span.endMinutes
+      && (pt.minutes < p.startMinutes || pt.minutes > p.endMinutes))
+  }
   for (const p of live) {
-    if (dur(p) < settings.minPieceMinutes) {
+    if (dur(p) < settings.minPieceMinutes && !wholeSpan(p)) {
       push({ code: 'MIN_PIECE', severity: 'warning', value: dur(p), limit: settings.minPieceMinutes, pieceId: p.id })
     }
   }
@@ -511,28 +519,27 @@ export class CrewScoreAggregate {
 
   kindCount(kind: string): number { return this.byKind.get(kind) ?? 0 }
 
+  get issueDutyCount(): number { return this.issueDuties }
+
   criteria(): CrewPlanSummary['criteria'] {
     const { range, anchored } = this.ctx.settings
     const out: CrewPlanSummary['criteria'] = []
     for (const [key, c] of this.perDuty) if (c.n > 0) out.push({ key, weight: c.weight, value: c.sum / c.n, raw: c.raw / c.n })
     if (this.dutyCount <= 0) return out
-    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio' | 'issueRatio' | 'coverage' | 'driversPerVehicle', value: number) => {
+    const plan = (key: 'overtimeRatio' | 'splitRatio' | 'tripperRatio', value: number) => {
       if (range[key].active) out.push({ key, weight: range[key].modifier, value: rangeV(value, range[key]), raw: rangeRaw(value, range[key]) })
     }
     const covered = this.coveredMinutes
     plan('overtimeRatio', this.totalWork > 0 ? (this.totalOvertime / this.totalWork) * 100 : 0)
     plan('splitRatio',   (this.kindCount('SPLIT') / this.dutyCount) * 100)
     plan('tripperRatio', (this.kindCount('TRIPPER') / this.dutyCount) * 100)
-    plan('issueRatio',   (this.issueDuties / this.dutyCount) * 100)
-    if (anchored.dutyCount.active && range.workTime.idealMin > 0) {
-      const min = Math.ceil(this.blockMinutes / range.workTime.idealMin)
+    if (anchored.dutyCount.active && range.workTime.idealMax > 0) {
+      const min = Math.ceil(this.blockMinutes / range.workTime.idealMax)
       out.push({ key: 'dutyCount', weight: anchored.dutyCount.weight, value: anchoredV(this.driverDuties, min, anchored.dutyCount), raw: anchoredRaw(this.driverDuties, min, anchored.dutyCount) })
     }
     if (anchored.efficiency.active) {
       out.push({ key: 'efficiency', weight: anchored.efficiency.weight, value: anchoredV(this.driverPaid, covered, anchored.efficiency), raw: anchoredRaw(this.driverPaid, covered, anchored.efficiency) })
     }
-    if (this.blockMinutes > 0) plan('coverage', (covered / this.blockMinutes) * 100)
-    if (this.drivenBlocks > 0) plan('driversPerVehicle', this.driversPerVehicle)
     return out
   }
 
@@ -548,6 +555,10 @@ export class CrewScoreAggregate {
     return weightTotal > 0 ? (criteria.reduce((s, c) => s + c.weight * (c.raw ?? c.value), 0) / weightTotal) * SCORE_SCALE : 0
   }
 }
+
+// What the crew solver ranks plans by: fewer duties with an issue first, the raw score among
+// equals — an unmet rule is never traded for score.
+export const solverRank = (rawScore: number, issueDuties: number) => rawScore - issueDuties * 1e6
 
 export function computeCrewPlan(input: {
   duties:        CrewCalcDuty[]

@@ -17,16 +17,13 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   overtimeRatio:  { label: 'Horas Extras',            unit: '%',      hint: 'Minutos extras sobre o total trabalhado no plano.' },
   splitRatio:     { label: 'Jornadas em Dupla Pegada', unit: '%',     hint: 'Proporção de jornadas em dupla pegada no plano.' },
   tripperRatio:   { label: 'Meias Jornadas',          unit: '%',      hint: 'Proporção de meias jornadas no plano. Ideal e teto 0 = não permitidas.' },
-  issueRatio:     { label: 'Jornadas com Pendência',  unit: '%',      hint: 'Proporção de jornadas com alguma pendência (erro ou aviso). O solver nunca monta jornada com erro; este critério o faz eliminar as demais.' },
   vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
   lineChanges:    { label: 'Trocas de Linha',         unit: 'trocas', hint: 'Trocas de linha dentro de uma mesma jornada — somam às trocas de carro.' },
-  coverage:       { label: 'Cobertura',               unit: '%',      hint: 'Minutos em serviço dos carros com motorista.' },
-  driversPerVehicle: { label: 'Condutores por Carro', unit: 'cond.', hint: 'Média de condutores (motorista) que passam por cada carro — menos é jornada mais inteira.' },
   walkDistance:   { label: 'Deslocamento a Pé',       unit: 'm',      hint: 'Metros caminhados na jornada entre pegadas em locais diferentes.' },
 }
 
 const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
-  dutyCount:  { label: 'Nº de Jornadas', unit: '% sobre mínimo', hint: 'Jornadas do plano sobre o mínimo teórico (minutos de bloco ÷ duração ideal mínima da jornada).' },
+  dutyCount:  { label: 'Nº de Jornadas', unit: '% sobre mínimo', hint: 'Jornadas do plano sobre o mínimo teórico (minutos de bloco ÷ duração ideal máxima da jornada).' },
   efficiency: { label: 'Eficiência',     unit: '% sobre mínimo', hint: 'Minutos pagos sobre os minutos de bloco cobertos.' },
 }
 

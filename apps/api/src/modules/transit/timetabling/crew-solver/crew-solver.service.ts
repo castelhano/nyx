@@ -9,6 +9,7 @@ import { CREW_ROLES, type CrewRole, type CrewSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { loadCrewSolverInput } from './crew-solver.input'
+import { solverRank } from '../crew-plan/crew-scoring.calc'
 import {
   DEFAULT_CREW_SOLVER_PARAMS,
   type CrewSolverMessage, type CrewSolverParams, type CrewSolverProposal, type CrewSolverWorkerData,
@@ -356,8 +357,8 @@ export class CrewSolverService {
   }
 }
 
-// what the searches optimize — the unfloored score (the floored one ties past the ceilings)
-const rankOf = (p: CrewSolverProposal) => p.summary.rawScore ?? p.summary.score
+// what the searches optimize — fewer duties with an issue, then the unfloored score
+const rankOf = (p: CrewSolverProposal) => solverRank(p.summary.rawScore ?? p.summary.score, p.summary.issueDutyCount)
 
 // the searches' progress as one: attempts and improvements add up, the best score is the best
 // one, the time since an improvement is the most recent search's

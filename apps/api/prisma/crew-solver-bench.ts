@@ -36,6 +36,7 @@ function metrics(r: CrewSolverResult) {
       'Carros com ≤ 2 condutores': `${drivers.filter(n => n <= 2).length} de ${drivers.length}`,
       'Intrajornada fracionada':  String(duties.filter(d => d.summary.mealForm === 'FRACTIONED').length),
       'Extra (% do trabalhado)':  `${s.workMinutes ? ((s.overtimeMinutes / s.workMinutes) * 100).toFixed(1) : 0}%`,
+      'Com pendência':            String(duties.filter(d => d.issues.length).length),
       'Com pendência error':      String(duties.filter(d => d.issues.some(i => i.severity === 'error')).length),
       'Sem motorista (min)':      String(s.uncoveredMinutes),
     } as Record<string, string>,

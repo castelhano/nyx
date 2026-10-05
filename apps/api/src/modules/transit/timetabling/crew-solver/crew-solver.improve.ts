@@ -1,5 +1,5 @@
 import type { CrewCalcContext, CrewCalcDuty, DutyEvaluation } from '../crew-plan/crew-scoring.calc'
-import { CrewScoreAggregate, evaluateDuty } from '../crew-plan/crew-scoring.calc'
+import { CrewScoreAggregate, evaluateDuty, solverRank } from '../crew-plan/crew-scoring.calc'
 import { BlockView, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
 import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 
@@ -20,8 +20,9 @@ import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 //              below the work floor) the search almost never accepts. Accepted only when it
 //              improves the score (no annealing).
 // Every duty a move builds follows the hard rules (buildDuty); a move that breaks one is
-// dropped. The score optimized is the raw one (CrewScoreAggregate.rawScore): a criterion already
-// past its ceiling still rewards getting closer to it. Acceptance is simulated annealing: better always, worse with probability exp(Δ/T),
+// dropped. Duties with an issue come first: a move never adds one and always goes through when it
+// removes one; among equals, the score optimized is the raw one (CrewScoreAggregate.rawScore): a
+// criterion already past its ceiling still rewards getting closer to it. Acceptance is simulated annealing: better always, worse with probability exp(Δ/T),
 // T calibrated on the first worsening moves. The search runs in cycles: T cools down over a
 // cycle, then the search goes back to the best duties found and starts a cooler cycle — so a
 // cycle always ends improving, and "no improvement" means the cycles stopped paying off.
@@ -77,9 +78,12 @@ export class CrewImprover {
   attempts     = 0
   improvements = 0
   lastImprovementAt = this.startedAt
+  // solverRank of the best duties
   bestScore:   number
   private best: WorkDuty[]
   private current: number
+  // duties with an issue in the current duties
+  private issues = 0
   private temperature: number | null = null
   private cycleStart = this.startedAt
   private readonly worsening: number[] = []
@@ -111,7 +115,9 @@ export class CrewImprover {
       this.insert(w)
       this.agg.add(w.calc, w.ev)
     }
-    this.current = this.bestScore = this.agg.rawScore()
+    this.current = this.agg.rawScore()
+    this.issues  = this.agg.issueDutyCount
+    this.bestScore = solverRank(this.current, this.issues)
     this.best = [...this.duties]
   }
 
@@ -144,12 +150,15 @@ export class CrewImprover {
 
     for (const w of move.removed) this.agg.remove(w.calc, w.ev)
     for (const w of move.added)   this.agg.add(w.calc, w.ev)
-    const score = this.agg.rawScore()
-    const delta = score - this.current
+    const score  = this.agg.rawScore()
+    const issues = this.agg.issueDutyCount
+    const delta  = score - this.current
 
-    // an elimination goes through only when it pays off: its worsenings are much larger than the
-    // other moves' and would heat the annealing up into a random walk
-    if (eliminating ? delta < 0 : !this.accept(delta)) {
+    // fewer duties with an issue always goes through, more never does; among equals an
+    // elimination goes through only when it pays off (its worsenings are much larger than the
+    // other moves' and would heat the annealing up into a random walk), the rest anneal
+    const ok = issues !== this.issues ? issues < this.issues : eliminating ? delta >= 0 : this.accept(delta)
+    if (!ok) {
       for (const w of move.added)   this.agg.remove(w.calc, w.ev)
       for (const w of move.removed) this.agg.add(w.calc, w.ev)
       return
@@ -157,9 +166,11 @@ export class CrewImprover {
     for (const w of move.removed) this.drop(w)
     for (const w of move.added)   this.insert(w)
     this.current = score
+    this.issues  = issues
     if (++this.accepted % RESYNC_EVERY === 0) this.resync()
-    if (this.current > this.bestScore + 1e-9) {
-      this.bestScore = this.current
+    const rank = solverRank(this.current, this.issues)
+    if (rank > this.bestScore + 1e-9) {
+      this.bestScore = rank
       this.best = [...this.duties]
       this.improvements++
       this.lastImprovementAt = Date.now()
@@ -198,6 +209,7 @@ export class CrewImprover {
     for (const w of this.duties) agg.add(w.calc, w.ev)
     this.agg = agg
     this.current = agg.rawScore()
+    this.issues  = agg.issueDutyCount
   }
 
   // ── moves ────────────────────────────────────────────────────────────────
@@ -380,7 +392,7 @@ export class CrewImprover {
   //    when the rule takes one (its stops checked by the evaluation); else a TRIPPER — which
   //    can't work beyond range.workTime.floor;
   //  - no error from the crew plan's own evaluation (ceilings, travel, branch, …) — a warning
-  //    (e.g. a short piece) is allowed, its cost is the score's issueRatio.
+  //    (e.g. a short piece) is allowed, the search then weighs it ahead of the score.
   private build(raw: SolverPiece[], branchId: string | null): WorkDuty | null {
     const sorted = [...raw].sort((x, y) => x.startMinutes - y.startMinutes)
     const pieces: SolverPiece[] = []

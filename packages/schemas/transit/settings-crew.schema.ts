@@ -21,24 +21,20 @@ const rangeDefault = {
   splitRatio:     { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 20,  ceiling: 40  },
   // % of TRIPPER duties (meia jornada) in the plan
   tripperRatio:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 10,  ceiling: 30  },
-  // % of duties with any issue (error or warning) — an unmet rule, the heaviest criterion. The
-  // solver never builds a duty with an error; this is what makes it get rid of the rest
-  issueRatio:     { active: true, modifier: 60, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 5   },
   // vehicle changes per duty
   vehicleChanges: { active: true, modifier: 5,  floor: 0,   idealMin: 0,   idealMax: 1,   ceiling: 3   },
   // line changes per duty — counted apart from vehicle changes (a change of both scores twice)
   lineChanges:    { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 2   },
   // meters a duty walks between pieces at different places — only worth it when it pays off
   walkDistance:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 3500 },
-  // distinct DRIVER duties per vehicle (mean over the vehicles with a driver) — fewer drivers
-  // sharing a vehicle keeps duties whole
-  driversPerVehicle: { active: true, modifier: 20, floor: 0, idealMin: 0, idealMax: 2, ceiling: 4 },
-  // % of the blocks' service minutes with a DRIVER
-  coverage:       { active: true, modifier: 30, floor: 90,  idealMin: 100, idealMax: 100, ceiling: 100 },
 }
+// Not criteria: a duty with an issue and an uncovered vehicle are unmet rules, not a matter of
+// weight — the crew solver puts fewer pending duties ahead of any score (solverRank) and never
+// leaves a vehicle without a driver; the plan summary shows both apart from the score.
 
 const anchoredDefault = {
-  // realized duties / theoretical minimum (block minutes ÷ workTime.idealMin)
+  // realized duties / theoretical minimum (block minutes ÷ workTime.idealMax — the fewest duties
+  // the plan could take, so fewer duties always pay off)
   dutyCount:  { active: true, idealMaxOverPercent: 5,  ceilingOverPercent: 25, weight: 30 },
   // paid minutes / covered block minutes
   efficiency: { active: true, idealMaxOverPercent: 10, ceilingOverPercent: 30, weight: 20 },
@@ -87,12 +83,9 @@ export const crewSettingsSchema = withMeta(z.object({
     splitRatio:     rangeCriterionSchema,
     // own defaults: settings stored before these criteria existed still parse
     tripperRatio:   rangeCriterionSchema.default(rangeDefault.tripperRatio),
-    issueRatio:     rangeCriterionSchema.default(rangeDefault.issueRatio),
     vehicleChanges: rangeCriterionSchema,
     lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
-    coverage:       rangeCriterionSchema.default(rangeDefault.coverage),
     walkDistance:   rangeCriterionSchema.default(rangeDefault.walkDistance),
-    driversPerVehicle: rangeCriterionSchema.default(rangeDefault.driversPerVehicle),
   }).default(rangeDefault),
 
   anchored: z.object({
