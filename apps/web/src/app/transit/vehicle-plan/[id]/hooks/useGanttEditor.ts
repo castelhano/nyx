@@ -155,6 +155,44 @@ function withDeadrunTiming(prev: DeadrunPatch | undefined, timing: DeadrunPatch)
 }
 type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
+
+// Moves are applied against the server snapshot (both in mergedPlottedData and in
+// applyDiff), so fromBlockId must be the block each item lives in *on the server*,
+// not the block it's currently displayed in. Re-moving items an earlier pending move
+// already relocated keeps their original origin and pulls only those items out of
+// that move (the rest of it stays). Items returning to their origin need no move.
+function rebasePendingMoves(
+  prev: PendingMove[], sourceBlockId: string, toBlockId: string,
+  tripIds: string[], breakIds: string[], deadrunIds: string[],
+): PendingMove[] {
+  const originOf = (id: string, key: 'blockTripIds' | 'breakIds' | 'deadrunIds') =>
+    prev.find(m => m[key].includes(id))?.fromBlockId ?? sourceBlockId
+
+  const tripSet = new Set(tripIds), breakSet = new Set(breakIds), deadrunSet = new Set(deadrunIds)
+  const next = prev
+    .map(m => ({
+      ...m,
+      blockTripIds: m.blockTripIds.filter(id => !tripSet.has(id)),
+      breakIds:     m.breakIds.filter(id => !breakSet.has(id)),
+      deadrunIds:   m.deadrunIds.filter(id => !deadrunSet.has(id)),
+    }))
+    .filter(m => m.blockTripIds.length > 0)
+
+  const groups = new Map<string, { trips: string[]; breaks: string[]; deadruns: string[] }>()
+  const group  = (from: string) => {
+    if (!groups.has(from)) groups.set(from, { trips: [], breaks: [], deadruns: [] })
+    return groups.get(from)!
+  }
+  for (const id of tripIds)    group(originOf(id, 'blockTripIds')).trips.push(id)
+  for (const id of breakIds)   group(originOf(id, 'breakIds')).breaks.push(id)
+  for (const id of deadrunIds) group(originOf(id, 'deadrunIds')).deadruns.push(id)
+
+  for (const [fromBlockId, g] of groups) {
+    if (fromBlockId === toBlockId || g.trips.length === 0) continue
+    next.push({ blockTripIds: g.trips, breakIds: g.breaks, deadrunIds: g.deadruns, fromBlockId, toBlockId })
+  }
+  return next
+}
 export type PendingLineSchedulePin = { lineId: string; lineScheduleId: string }
 
 interface UseGanttEditorParams {
@@ -446,9 +484,10 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     })
 
     // Apply pending block moves. Runs over blocks + fakeBlocks together — a move's
-    // toBlockId (or, after a chained re-move, fromBlockId) can point at a still-
-    // pending 'pending:<tempId>' fake block, so fakeBlocks must be reachable here
-    // too or a move into/out of an unsaved new block silently loses the trip.
+    // toBlockId can point at a still-pending 'pending:<tempId>' fake block, so
+    // fakeBlocks must be reachable here too or a move into an unsaved new block
+    // silently loses the trip. fromBlockId is always the item's server-side origin
+    // (see rebasePendingMoves).
     let allBlocks = [...blocks, ...fakeBlocks]
 
     if (pendingMoves.length > 0) {
@@ -2107,10 +2146,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     const movedTempDeadrunIds = selectedDeadrunIds.filter(id => tempDeadrunIds.has(id))
 
     if (movedRealTripIds.length > 0) {
-      setPendingMoves(prev => {
-        const filtered = prev.filter(m => !m.blockTripIds.some(id => blockTripIds.includes(id)))
-        return [...filtered, { blockTripIds: movedRealTripIds, breakIds: movedRealBreakIds, deadrunIds: movedRealDeadrunIds, fromBlockId: sourceBlockId, toBlockId: moveTargetBlockId }]
-      })
+      setPendingMoves(prev => rebasePendingMoves(prev, sourceBlockId, moveTargetBlockId, movedRealTripIds, movedRealBreakIds, movedRealDeadrunIds))
     }
 
     if (movedTempTripIds.length > 0 || movedTempBreakIds.length > 0 || movedTempDeadrunIds.length > 0) {
