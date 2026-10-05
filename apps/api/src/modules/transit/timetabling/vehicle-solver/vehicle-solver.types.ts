@@ -1,6 +1,6 @@
 import type { VehicleTypeValue } from '@nyx/schemas'
 
-// Shared by VehicleSolverService and the worker — see docs/proposal/plan_vehicle_solver_v2.md.
+// Shared by VehicleSolverService and the worker — see docs/architecture/transit/solver.md.
 
 export interface VehicleSolverParams {
   // complete: keep the locked blocks and rebuild the rest; scratch: rebuild every block

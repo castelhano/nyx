@@ -2,7 +2,7 @@ import type { PlanScoreState } from '../vehicle-plan/scoring/plan-scoring.calc'
 import type { Capacity, SolverTrip, VehicleModel, WorkBlock } from './vehicle-solver.calc'
 
 // Vehicle solver — continuous improvement (pure, no Prisma). See
-// docs/proposal/plan_vehicle_solver_v2.md.
+// docs/architecture/transit/solver.md.
 //
 // Starts from the construction's blocks and keeps changing them, scoring every change on the
 // incremental PlanScoreState (the score the plan gets once applied). Moves:

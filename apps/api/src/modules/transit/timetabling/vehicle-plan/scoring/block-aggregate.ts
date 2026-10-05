@@ -3,7 +3,7 @@
 // BlockTrip/BlockDeadrun/BlockInterval rows, so it respects manual edits to vazio/intervalo
 // timing. The vehicle solver materializes its candidate blocks into this same input shape
 // (the rows it would persist) — one builder, one score, whether persisted or proposed
-// (docs/proposal/plan_vehicle_solver_v2.md, "O solver otimiza o que a tela mostra").
+// (docs/architecture/transit/solver.md, Overview: "the solver optimizes what the screen shows").
 export interface BlockAggregate {
   vehicleType:       string
   branchId:          string | null

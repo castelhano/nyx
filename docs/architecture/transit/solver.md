@@ -2,7 +2,6 @@
 
 > Architecture reference for the vehicle scheduling optimizer.
 > Source: `apps/api/src/modules/transit/timetabling/vehicle-solver/`
-> Proposal and decisions: `docs/proposal/plan_vehicle_solver_v2.md`
 
 ---
 
@@ -172,3 +171,9 @@ Checks the plan still has the trips the generation read, then in one transaction
 ## Frontend
 
 `vehicle-plan/[id]/components/OptimizeModal.tsx` — tabs **Config** (`PlanningSettingsEditor`, customize/save/restore), **Painel** (base, direction) and **Cenários** (run stats; plan × proposal: score, fleet, km, issues, fleet per operator and per depot/type, each criterion; crew plans affected; Parar / Descartar / Aplicar). The plan page polls `solver/current` while running (topbar button "Gerando… mm:ss"), `?optimize=1` opens Cenários (from the topbar's background generations).
+
+---
+
+## Out of scope / future
+
+- **Line tied to an operator** (`VehiclePlanLine.branchId`): the engine already decides each block's operator; when it comes, it is the field plus a hard rule (the line's trips only in blocks of that operator).

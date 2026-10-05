@@ -5,7 +5,7 @@ import { VEHICLE_TYPES, VEHICLE_TYPE_LABELS, type LineVehicleTypes, type Vehicle
 import { Select } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-// TransitLine.vehicleTypes — read by the vehicle solver (docs/proposal/plan_vehicle_solver_v2.md):
+// TransitLine.vehicleTypes — read by the vehicle solver (docs/architecture/transit/solver.md):
 // allowed types are a hard rule (none marked = any type), the preferred one only scores.
 
 const EMPTY: LineVehicleTypes = { allowed: [], preferred: null }

@@ -12,7 +12,7 @@ export const snapInfoSchema = z.object({
 })
 
 // A depot's operation (TransitLocality.depot, only meaningful while isDepot) — read by the
-// vehicle solver, docs/proposal/plan_vehicle_solver_v2.md:
+// vehicle solver, docs/architecture/transit/solver.md:
 //  operators  branchIds whose vehicles may be based here; empty = any operator
 //  capacity   physical limits, all enforced together: vehicleType null = the whole depot;
 //             none = no limit

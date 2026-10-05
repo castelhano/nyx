@@ -113,7 +113,7 @@ export const lineSchema = withMeta(
     }),
 
     // vehicle types the line runs with — read by the vehicle solver
-    // (docs/proposal/plan_vehicle_solver_v2.md): `allowed` is a hard rule (empty = any type),
+    // (docs/architecture/transit/solver.md): `allowed` is a hard rule (empty = any type),
     // `preferred` only scores. A trip's requiredVehicleType overrides both.
     vehicleTypes: lineVehicleTypesSchema.optional().meta({
       label:          'Tipos de Veículo',

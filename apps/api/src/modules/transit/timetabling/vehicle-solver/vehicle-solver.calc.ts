@@ -4,7 +4,7 @@ import { PlanScoreState, type OperatorShares } from '../vehicle-plan/scoring/pla
 import type { DeadrunKind, ProposalBlock, VehicleSolverSummary } from './vehicle-solver.types'
 
 // Vehicle solver — the model and the construction (pure, no Prisma). See
-// docs/proposal/plan_vehicle_solver_v2.md.
+// docs/architecture/transit/solver.md.
 //
 // A block is decided by its trips, operator (branchId), depot and vehicle type. It is only
 // ever held in its *materialized* form: the deadruns (ACCESS / RETURN / DISPLACEMENT) and

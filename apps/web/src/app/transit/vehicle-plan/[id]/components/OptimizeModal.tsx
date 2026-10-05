@@ -22,7 +22,7 @@ import { PlanningSettingsEditor, PLANNING_CRITERIA_LABEL } from '../../../settin
 //  Painel    solver parameters; "Gerar" starts a run (SSE) and jumps to Cenários.
 //  Cenários  the run's best proposal next to the plan as it was, then "Aplicar" — the plan's
 //            blocks are replaced in place (locked ones kept). A new run replaces it.
-//            See docs/proposal/plan_vehicle_solver_v2.md.
+//            See docs/architecture/transit/solver.md.
 // The generation belongs to the plan: closing the modal (or leaving the page) leaves it
 // running on the server; reopening picks it up (`job`, from GET …/solver/current) and the stream
 // replays its state. "Parar" ends it keeping the best proposal, "Descartar" throws it away.

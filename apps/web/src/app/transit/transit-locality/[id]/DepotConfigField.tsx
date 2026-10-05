@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 
 // TransitLocality.depot — which operators may base vehicles here and the depot's physical
 // capacity (total and/or per vehicle type). Only shown while isDepot; read by the vehicle
-// solver (docs/proposal/plan_vehicle_solver_v2.md).
+// solver (docs/architecture/transit/solver.md).
 
 interface Branch { id: string; name: string }
 
