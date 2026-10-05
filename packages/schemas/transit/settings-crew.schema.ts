@@ -15,6 +15,9 @@ const rangeDefault = {
   mealBreak:      { active: true, modifier: 20, floor: 60,  idealMin: 70,  idealMax: 110, ceiling: 120 },
   // gap between the pieces of a split duty (minutes)
   splitInterval:  { active: true, modifier: 10, floor: 60,  idealMin: 60,  idealMax: 240, ceiling: 250 },
+  // paid idle time of a duty: the gaps between its pieces that are neither the meal nor the
+  // split interval (minutes) — the driver waits on the clock
+  idleTime:       { active: true, modifier: 20, floor: 0,   idealMin: 0,   idealMax: 30,  ceiling: 180 },
   // overtime minutes as % of total minutes worked in the plan
   overtimeRatio:  { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 5,   ceiling: 20  },
   // % of SPLIT duties in the plan
@@ -90,6 +93,8 @@ export const crewSettingsSchema = withMeta(z.object({
     spread:         rangeCriterionSchema,
     mealBreak:      rangeCriterionSchema,
     splitInterval:  rangeCriterionSchema,
+    // own defaults: settings stored before these criteria existed still parse
+    idleTime:       rangeCriterionSchema.default(rangeDefault.idleTime),
     overtimeRatio:  rangeCriterionSchema,
     splitRatio:     rangeCriterionSchema,
     // own defaults: settings stored before these criteria existed still parse

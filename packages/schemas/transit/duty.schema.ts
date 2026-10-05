@@ -54,7 +54,7 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 export const dutyIssueSchema = z.object({
   code: z.enum([
     'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE', 'MEAL_REQUIRED', 'PIECE_OFF_SERVICE',
-    'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION',
+    'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION', 'IDLE_TIME',
   ]),
   severity: z.enum(['warning', 'error']),
   value:    z.number(),

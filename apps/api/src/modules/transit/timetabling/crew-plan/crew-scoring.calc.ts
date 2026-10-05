@@ -347,6 +347,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
       : { code: 'MEAL_REQUIRED', severity: 'error', value: breakMinutes })
   }
   if (hasWork && duty.kind === 'SPLIT') push(rangeIssue('SPLIT_INTERVAL', splitGap, range.splitInterval))
+  if (hasWork && duty.kind !== 'STANDBY') push(rangeIssue('IDLE_TIME', idleMinutes, range.idleTime))
 
   // continuous driving: worked segments chained until a break sits between them (in the
   // gap between pieces or inside a piece) — or, in a split duty, the split interval itself
@@ -409,6 +410,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     if (duty.kind !== 'STANDBY') crit('spread', range.spread, summary.spreadMinutes)
     if (breakApplies) crit('mealBreak', range.mealBreak, breakMinutes)
     if (duty.kind === 'SPLIT') crit('splitInterval', range.splitInterval, splitGap)
+    if (duty.kind !== 'STANDBY') crit('idleTime', range.idleTime, idleMinutes)
     crit('vehicleChanges', range.vehicleChanges, vehicleChanges)
     crit('lineChanges', range.lineChanges, lineChanges)
     crit('walkDistance', range.walkDistance, walked)

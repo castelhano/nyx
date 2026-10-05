@@ -13,6 +13,7 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   spread:         { label: 'Amplitude',               unit: 'min',    hint: 'Da apresentação ao encerramento da jornada, incluindo intervalos.' },
   mealBreak:      { label: 'Intervalo Intrajornada',  unit: 'min',    hint: 'Duração do intervalo de refeição dentro da jornada.' },
   splitInterval:  { label: 'Intervalo Dupla Pegada',  unit: 'min',    hint: 'Intervalo entre as pegadas de uma jornada em dupla pegada.' },
+  idleTime:       { label: 'Tempo Ocioso Remunerado', unit: 'min',    hint: 'Tempo parado e pago entre as pegadas (fora refeição e dupla pegada). Acima do teto a jornada fica pendente.' },
   overtimeRatio:  { label: 'Horas Extras',            unit: '%',      hint: 'Minutos extras sobre o total trabalhado no plano.' },
   splitRatio:     { label: 'Jornadas em Dupla Pegada', unit: '%',     hint: 'Proporção de jornadas em dupla pegada no plano.' },
   tripperRatio:   { label: 'Meias Jornadas',          unit: '%',      hint: 'Proporção de meias jornadas no plano. Ideal e teto 0 = não permitidas.' },

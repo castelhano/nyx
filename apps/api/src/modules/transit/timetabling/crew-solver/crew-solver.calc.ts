@@ -161,6 +161,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
   // hard limits: ceilings of the active criteria only
   const maxWork   = range.workTime.active ? range.workTime.ceiling : Infinity
   const maxSpread = range.spread.active ? range.spread.ceiling : Infinity
+  const maxIdle   = range.idleTime.active ? range.idleTime.ceiling : Infinity
   // loose pieces aim at half an ideal duty, so two of them make one
   const pieceTarget = Math.min(maxDrive, Math.max(minPiece, Math.round((range.workTime.idealMax - signs) / 2)))
 
@@ -321,7 +322,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       // meal between the pieces (the walk after it is worked)
       if (mealFits(rest) && va.mealAllowed(a.endMinutes, a.endLocalityId)) {
         const brk = { startMinutes: a.endMinutes, endMinutes: a.endMinutes + rest }
-        consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [brk] }, work(len(a) + len(b), rest) + travel, penalty(range.mealBreak, rest))
+        consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [brk] }, work(len(a) + len(b), rest) + travel, penalty(range.mealBreak, rest) + penalty(range.idleTime, travel))
       }
       // split: the gap is off the clock — a gap that fits the split interval is always one, never
       // worked (same as the improvement's classification)
@@ -329,16 +330,18 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         consider({ kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }, work(len(a) + len(b), 0), splitCost + penalty(range.splitInterval, gap))
         continue
       }
-      // no meal break: the gap is worked — a TRIPPER when short, else a STRAIGHT when the rule
-      // takes one without a meal break and the stops meet it
+      // no meal break: the gap is worked (paid idle, never beyond its ceiling) — a TRIPPER when
+      // short, else a STRAIGHT when the rule takes one without a meal break and the stops meet it
+      if (gap > maxIdle) continue
+      const idleCost = penalty(range.idleTime, gap)
       const w = work(len(a) + len(b) + gap, 0)
       if (w < range.workTime.floor) {
-        consider({ kind: 'TRIPPER', branchId, pieces: [a, b], breaks: [] }, w, 0)
+        consider({ kind: 'TRIPPER', branchId, pieces: [a, b], breaks: [] }, w, idleCost)
       } else if (plainPossible) {
         const sa = views.get(a.vehicleBlockId)!.stops(a.startMinutes, a.endMinutes)
         const sb = views.get(b.vehicleBlockId)!.stops(b.startMinutes, b.endMinutes)
         const st = { total: sa.total + sb.total + gap, longest: Math.max(sa.longest, sb.longest, gap) }
-        if (plainOk(st)) consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [] }, w, 0)
+        if (plainOk(st)) consider({ kind: 'STRAIGHT', branchId, pieces: [a, b], breaks: [] }, w, idleCost)
       }
     }
 
