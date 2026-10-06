@@ -1,6 +1,6 @@
 'use client'
 
-// Dados Operacionais Previstos — Fase 3 (docs/proposal/plan_dop_v1.md). Reaproveita a
+// Dados Operacionais Previstos. Reaproveita a
 // composição visual validada no protótipo (/playground), agora com dado real do
 // endpoint `GET /transit/dop`. "Km por empresa" (gráfico) usa VehicleBlock.branchId
 // — cada bloco pertence a uma única empresa, sem rateio entre elas (ao contrário do
@@ -150,6 +150,11 @@ function csvCell(value: string | number): string {
   return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
+// a band's fleet as % of the morning peak's (the doc's "variação de frota") — null without a morning peak
+function fleetVariation(fleet: number | null, morning: number | null): number | null {
+  return fleet == null || !morning ? null : Math.round((fleet / morning) * 100)
+}
+
 function exportDopCsv(data: DopPeriodSummary, dayTypes: DopPeriodSummary['calendar']) {
   const headwayCell = (v: number | null) => (v == null ? '' : String(v))
 
@@ -158,6 +163,7 @@ function exportDopCsv(data: DopPeriodSummary, dayTypes: DopPeriodSummary['calend
     ...dayTypes.map(dt => `Frota ${dt.dayTypeCode}`),
     ...dayTypes.map(dt => `Viagens ${dt.dayTypeCode}`),
     'Viagens Mês',
+    'Frota Pico Manhã', 'Frota Entrepico', 'Frota Pico Tarde', 'Var. Entrepico %', 'Var. Pico Tarde %', 'Frota Operacional',
     ...dayTypes.flatMap(dt => [`Km Produtiva ${dt.dayTypeCode}`, `Km Ociosa ${dt.dayTypeCode}`, `Km % Ociosa ${dt.dayTypeCode}`]),
     'Km Produtiva Mês', 'Km Ociosa Mês', 'Km % Ociosa Mês', 'Km Total Mês',
     'Vel. Média', 'Ocupação %', 'Headway Manhã', 'Headway Entrepico', 'Headway Tarde',
@@ -171,6 +177,9 @@ function exportDopCsv(data: DopPeriodSummary, dayTypes: DopPeriodSummary['calend
       ...dayTypes.map(dt => byDayType.get(dt.dayTypeId)?.fleet ?? ''),
       ...dayTypes.map(dt => byDayType.get(dt.dayTypeId)?.trips ?? 0),
       line.tripsMes,
+      line.peakFleetMorning ?? '', line.peakFleetOffPeak ?? '', line.peakFleetAfternoon ?? '',
+      fleetVariation(line.peakFleetOffPeak, line.peakFleetMorning) ?? '', fleetVariation(line.peakFleetAfternoon, line.peakFleetMorning) ?? '',
+      line.fleetOperacional ?? '',
       ...dayTypes.flatMap(dt => {
         const bd = byDayType.get(dt.dayTypeId) ?? { kmProdutiva: 0, kmOciosa: 0 }
         return [Math.round(bd.kmProdutiva), Math.round(bd.kmOciosa), (kmPct(bd) * 100).toFixed(1)]
@@ -195,6 +204,7 @@ function exportDopCsv(data: DopPeriodSummary, dayTypes: DopPeriodSummary['calend
     ...dayTypeSummary.map(dt => dt.fleet || ''),
     ...dayTypeSummary.map(dt => dt.trips),
     data.totals.tripsMes,
+    '', '', '', '', '', data.totals.fleetOperacional,
     ...dayTypeSummary.flatMap(dt => [Math.round(dt.kmProdutiva), Math.round(dt.kmOciosa), (kmPct(dt) * 100).toFixed(1)]),
     Math.round(data.totals.kmProdutivaMes), Math.round(data.totals.kmOciosaMes), (kmPct({ kmProdutiva: data.totals.kmProdutivaMes, kmOciosa: data.totals.kmOciosaMes }) * 100).toFixed(1), Math.round(data.totals.kmProdutivaMes + data.totals.kmOciosaMes),
     '', '', '', '', '',
@@ -277,6 +287,7 @@ export default function DopPage() {
   const kmTotalMes  = (data?.totals.kmProdutivaMes ?? 0) + (data?.totals.kmOciosaMes ?? 0)
   const idlePctPlan = kmTotalMes > 0 ? (data!.totals.kmOciosaMes / kmTotalMes) : 0
   const pmm         = data && data.totals.fleetOperacional > 0 ? kmTotalMes / data.totals.fleetOperacional : 0
+  const hvm         = data && data.totals.fleetOperacional > 0 ? data.totals.vehicleHoursMes / data.totals.fleetOperacional : 0
 
   if (guardNode) return guardNode
 
@@ -371,6 +382,7 @@ export default function DopPage() {
             <StatTile icon={Icons.Gauge} label="% Ociosidade"         value={fmtPct(idlePctPlan)} sub={`${fmtKm(data.totals.kmOciosaMes)} km`} />
             <StatTile icon={Icons.ClipboardList} label="Viagens no período" value={data.totals.tripsMes.toLocaleString('pt-BR')} />
             <StatTile icon={Icons.Ruler} label="PMM" value={`${fmtKm(pmm)} km`} sub="por veículo/mês" />
+            <StatTile icon={Icons.Clock} label="HVM" value={`${hvm.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} h`} sub="horas por veículo/mês" />
           </div>
 
           {/* ── km por empresa (gráfico) + km por tipo de dia (tabela) ── */}
@@ -470,12 +482,14 @@ export default function DopPage() {
             </div>
 
             <div className="overflow-auto max-h-[480px]">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs border-separate border-spacing-0">
+                {/* border-separate: with collapsed borders the borders belong to the table, not the cells,
+                    and a sticky header leaves a seam the rows show through — borders go on the cells */}
                 <thead className="sticky top-0 bg-card z-10">
                   {tab === 'km' && (
                     <>
                       <tr className="text-[11px] text-muted-foreground">
-                        <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom">Linha</th>
+                        <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom border-b border-border">Linha</th>
                         {dayTypes.map((dt, i) => (
                           <th key={dt.dayTypeId} colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, i > 0 && GROUP_DIVIDER)}>
                             {dt.dayTypeName}
@@ -483,7 +497,7 @@ export default function DopPage() {
                         ))}
                         <th colSpan={4} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Mês</th>
                       </tr>
-                      <tr className={cn('text-[11px] text-muted-foreground border-b border-border', HEADER_SUBGROUP_BG)}>
+                      <tr className={cn('text-[11px] text-muted-foreground [&>*]:border-b [&>*]:border-border', HEADER_SUBGROUP_BG)}>
                         {dayTypes.map((dt, i) => <KmGroupHeader key={dt.dayTypeId} divider={i > 0} />)}
                         <KmGroupHeader isMonth divider />
                       </tr>
@@ -493,12 +507,17 @@ export default function DopPage() {
                   {tab === 'frota' && (
                     <>
                       <tr className="text-[11px] text-muted-foreground">
-                        <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom">Linha</th>
+                        <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom border-b border-border">Linha</th>
                         <th colSpan={dayTypes.length} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG)}>Frota</th>
+                        <th colSpan={4} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Picos</th>
                         <th colSpan={dayTypes.length + 1} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Viagens</th>
                       </tr>
-                      <tr className={cn('text-[11px] text-muted-foreground border-b border-border', HEADER_SUBGROUP_BG)}>
+                      <tr className={cn('text-[11px] text-muted-foreground [&>*]:border-b [&>*]:border-border', HEADER_SUBGROUP_BG)}>
                         {dayTypes.map(dt => <th key={`f-${dt.dayTypeId}`} className="text-right font-medium px-2 py-1">{dt.dayTypeCode}</th>)}
+                        <th className={cn('text-right font-medium px-2 py-1', GROUP_DIVIDER)} title="Pico manhã (sem reforços)">M</th>
+                        <th className="text-right font-medium px-2 py-1" title="Entrepico — % sobre o pico manhã">EP</th>
+                        <th className="text-right font-medium px-2 py-1" title="Pico tarde — % sobre o pico manhã">T</th>
+                        <th className="text-right font-medium px-2 py-1" title="Frota operacional — maior pico (manhã ou tarde)">Ope</th>
                         {dayTypes.map((dt, i) => (
                           <th key={`v-${dt.dayTypeId}`} className={cn('text-right font-medium px-2 py-1', i === 0 && GROUP_DIVIDER)}>{dt.dayTypeCode}</th>
                         ))}
@@ -508,7 +527,7 @@ export default function DopPage() {
                   )}
 
                   {tab === 'indicadores' && (
-                    <tr className="border-b border-border text-[11px] text-muted-foreground">
+                    <tr className="[&>*]:border-b [&>*]:border-border text-[11px] text-muted-foreground">
                       <th className="text-left  font-medium px-3 py-2">Linha</th>
                       <th className="text-right font-medium px-3 py-2">Vel. média</th>
                       <th className="text-center font-medium px-3 py-2">Ocupação</th>
@@ -520,7 +539,7 @@ export default function DopPage() {
                   {data.lines.map((line, i) => {
                     const byDayType = new Map(line.byDayType.map(bd => [bd.dayTypeId, bd]))
                     return (
-                      <tr key={line.lineId} className={cn('border-b border-border last:border-0 hover:bg-row-hover', i % 2 === 1 && 'bg-muted/40')}>
+                      <tr key={line.lineId} className={cn('[&>*]:border-b [&>*]:border-border [&:last-child>*]:border-b-0 hover:bg-row-hover', i % 2 === 1 && 'bg-muted/40')}>
                         <td className="px-3 py-2">
                           <div className="font-medium">{line.lineCode}</div>
                           <div className="text-[11px] text-muted-foreground">{line.lineName}</div>
@@ -531,6 +550,10 @@ export default function DopPage() {
                             const fleet = byDayType.get(dt.dayTypeId)?.fleet
                             return <td key={`f-${dt.dayTypeId}`} className="px-2 py-2 text-right">{fleet ? fleet.toLocaleString('pt-BR') : '—'}</td>
                           })}
+                          <td className={cn('px-2 py-2 text-right', GROUP_DIVIDER)}>{line.peakFleetMorning ?? '—'}</td>
+                          <PeakFleetCell fleet={line.peakFleetOffPeak} morning={line.peakFleetMorning} />
+                          <PeakFleetCell fleet={line.peakFleetAfternoon} morning={line.peakFleetMorning} />
+                          <td className="px-2 py-2 text-right font-medium">{line.fleetOperacional ?? '—'}</td>
                           {dayTypes.map((dt, di) => {
                             const trips = byDayType.get(dt.dayTypeId)?.trips
                             return <td key={`v-${dt.dayTypeId}`} className={cn('px-2 py-2 text-right', di === 0 && GROUP_DIVIDER)}>{trips ? trips.toLocaleString('pt-BR') : '—'}</td>
@@ -562,9 +585,11 @@ export default function DopPage() {
                 </tbody>
                 {tab === 'frota' && (
                   <tfoot className="sticky bottom-0 bg-muted z-10">
-                    <tr className="border-t border-border font-medium">
+                    <tr className="[&>*]:border-t [&>*]:border-border font-medium">
                       <td className="px-3 py-2">Total</td>
                       {dayTypeSummary.map(dt => <td key={`tf-${dt.dayTypeId}`} className="px-2 py-2 text-right">{dt.fleet ? dt.fleet.toLocaleString('pt-BR') : '—'}</td>)}
+                      <td className={cn('px-2 py-2 text-right text-muted-foreground', GROUP_DIVIDER)} colSpan={3}>escopo, cada carro uma vez:</td>
+                      <td className="px-2 py-2 text-right">{data.totals.fleetOperacional.toLocaleString('pt-BR')}</td>
                       {dayTypeSummary.map((dt, di) => (
                         <td key={`tv-${dt.dayTypeId}`} className={cn('px-2 py-2 text-right', di === 0 && GROUP_DIVIDER)}>{dt.trips.toLocaleString('pt-BR')}</td>
                       ))}
@@ -574,7 +599,7 @@ export default function DopPage() {
                 )}
                 {tab === 'km' && (
                   <tfoot className="sticky bottom-0 bg-muted z-10">
-                    <tr className="border-t border-border font-medium">
+                    <tr className="[&>*]:border-t [&>*]:border-border font-medium">
                       <td className="px-3 py-2">Total</td>
                       {dayTypeSummary.map((dt, di) => <KmGroupCells key={`tf-${dt.dayTypeId}`} block={dt} divider={di > 0} />)}
                       <KmGroupCells block={{ kmProdutiva: data.totals.kmProdutivaMes, kmOciosa: data.totals.kmOciosaMes }} divider withTotal />
@@ -587,5 +612,16 @@ export default function DopPage() {
         </>
       )}
     </div>
+  )
+}
+
+// a band's peak fleet with its variation over the morning peak below
+function PeakFleetCell({ fleet, morning }: { fleet: number | null; morning: number | null }) {
+  const variation = fleetVariation(fleet, morning)
+  return (
+    <td className="px-2 py-2 text-right">
+      <div>{fleet ?? '—'}</div>
+      {variation != null && <div className="text-[11px] text-muted-foreground">{variation}%</div>}
+    </td>
   )
 }

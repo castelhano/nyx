@@ -14,7 +14,7 @@ import type { VehiclePlanDiff } from '@nyx/schemas'
 import type { PreviewLineScoreDto, PlanActivationPreview } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
-import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
+import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
 import { blockIssues, defaultIntervalMaxMinutes } from './block-issues.utils'
@@ -210,7 +210,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     // ── idle km rated to each line — see scoring/idle-km-rateio.calc.ts ─────────
     // A block belongs 100% to one empresa (VehicleBlock.branchId) — no rateio needed
     // between empresas, just tagging each block's per-line km with its branchId (or
-    // 'unassigned' when the block has none — docs/proposal/plan_dop_v1.md).
+    // 'unassigned' when the block has none).
     const idleKmByLine = new Map<string, number>()
     const kmByLineBranch = new Map<string, Map<string, { kmProdutiva: number; kmOciosa: number; trips: number; fleet: number }>>()
     for (const block of blocksWithTrips as any[]) {
@@ -270,7 +270,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const aggregates = blocksWithTrips.map((b: any) => buildAggregateFromPersisted(b, matrixKm))
     const scored      = scoreFromAggregates(aggregates, planTrips, resolvedCfg, operatorShares(plan.scope.operators))
 
-    const planSummary: VehiclePlanSummary = { ...scored, fleetCount: blocksWithTrips.length }
+    const peakFleets = planPeakFleets(blocksWithTrips.map((b: any) => ({
+      trips: b.blockTrips.map((bt: any) => ({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes, direction: bt.trip.route.direction })),
+    })))
+    const planSummary: VehiclePlanSummary = { ...scored, fleetCount: blocksWithTrips.length, ...peakFleets }
 
     await Promise.all([
       db.vehiclePlan.update({

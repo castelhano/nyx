@@ -16,6 +16,12 @@ export const vehiclePlanSummarySchema = z.object({
   deadrunMinutes:    z.number(),
   productiveMinutes: z.number(),
   totalMinutes:      z.number(),
+  // the whole plan's peak fleet per band — the most vehicles in a trip at once, each once however
+  // many lines it runs, isolated reinforcements left out (planPeakFleets). Missing until the
+  // plan is recalculated
+  peakFleetMorning:   z.number().optional(),
+  peakFleetAfternoon: z.number().optional(),
+  peakFleetOffPeak:   z.number().optional(),
   errors: z.object({
     missingMatrix: z.array(z.object({ origin: z.string(), destination: z.string() })),
   }).optional(),
@@ -39,21 +45,21 @@ export const vehiclePlanLineSummarySchema = z.object({
   peakAfternoonInterval: z.number().nullable(),
   offPeakInterval:       z.number().nullable(),
   // Peak concurrent fleet within each band (same reinforcement-exclusion rule as
-  // the *Interval fields above — a block with <=1 trip per direction in the band
-  // doesn't count) — DOP's "frota por pico" (docs/proposal/plan_dop_v1.md).
+  // the *Interval fields above — a block with a single trip in the band doesn't
+  // count) — DOP's "frota por pico".
   peakFleetMorning:      z.number(),
   peakFleetAfternoon:    z.number(),
   peakFleetOffPeak:      z.number(),
   // Idle (deadrun) km rated to this line — ACCESS/RETURN proportional to the
   // line's share of each block's productive km, DISPLACEMENT split between the
   // two trips it connects (100% when same line, 50/50 otherwise). idlePct =
-  // idleKm / (idleKm + dailyKm). See plan_dop_v1.md, nota [1].
+  // idleKm / (idleKm + dailyKm) — see idle-km-rateio.calc.ts.
   idleKm:                z.number(),
   idlePct:               z.number(),
   // Km (produtiva + ociosa) desta linha rateada por empresa (VehicleBlock.branchId)
   // — cada bloco pertence 100% a uma única empresa, então não há rateio entre
   // empresas, só a soma dos blocos dessa linha agrupada por branchId. Blocos sem
-  // branchId caem no bucket 'unassigned' (docs/proposal/plan_dop_v1.md).
+  // branchId caem no bucket 'unassigned'.
   byBranch: z.array(z.object({
     branchId:    z.string().nullable(),
     kmProdutiva: z.number(),

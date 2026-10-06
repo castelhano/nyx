@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common'
-import type { VehiclePlanLineSummary, DopPeriodSummary, DopLineDayTypeBreakdown, DopBranchBreakdown } from '@nyx/schemas'
+import type { VehiclePlanLineSummary, VehiclePlanSummary, VehicleBlockSummary, DopPeriodSummary, DopLineDayTypeBreakdown, DopBranchBreakdown } from '@nyx/schemas'
 import { dopSchema } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { resourceRegistry } from '../../../../core/resource-registry'
 import { DayTypeService } from '../day-type/day-type.service'
 import { periodDates, findActivePlan, formatDay } from './dop-resolution'
 
-// DOP has no Prisma model and no CRUD (docs/proposal/plan_dop_v1.md, decisão 2/3) —
-// computed on-the-fly from whatever VehiclePlan is ACTIVE and in vigência for each
-// (line, day) of the requested period. Registers itself into resourceRegistry the
+// DOP has no Prisma model and no CRUD — computed on-the-fly from whatever VehiclePlan is
+// ACTIVE and in vigência for each (line, day) of the requested period (no snapshot:
+// reopening a past month after editing a plan may change its numbers). Registers itself into resourceRegistry the
 // same way BaseSettingsService does (base-settings.service.ts:38-39), without
 // extending it — there's no get()/put() against a Settings row here, just a report.
 @Injectable()
@@ -37,7 +37,9 @@ export class DopService {
           dayTypeId: true,
           validFrom: true,
           validTo:   true,
+          summary:   true,
           lines:     { select: { lineId: true, summary: true } },
+          blocks:    { select: { branchId: true, summary: true } },
         },
       }),
       this.dayTypeService.getCalendarComposition(from, to),
@@ -52,16 +54,24 @@ export class DopService {
     const dates = periodDates(from, to)
 
     const branchAcc = new Map<string, { branchId: string | null; kmProdutiva: number; kmOciosa: number }>()
+    // day → the plans in force on it (any line), for the Scope-level fleet and hours
+    const plansByDay = new Map<string, Set<any>>()
 
     const lineSummaries = lines.map((line: any) => {
       const byDayType = new Map<string, DopLineDayTypeBreakdown>()
       let tripsMes = 0, kmProdutivaMes = 0, kmOciosaMes = 0
-      let latest: VehiclePlanLineSummary | null = null
+      // a summary per day type — the snapshot values come from the predominant one
+      const snapshotByDayType = new Map<string, VehiclePlanLineSummary>()
 
       for (const date of dates) {
         const dayType = resolveDayType(date, line.id)
         const plan    = findActivePlan<any>(activePlans, dayType.id, line.id, date)
         const summary = (plan?.lines.find((l: any) => l.lineId === line.id)?.summary as VehiclePlanLineSummary | undefined) ?? null
+        if (plan) {
+          const day = formatDay(date)
+          if (!plansByDay.has(day)) plansByDay.set(day, new Set())
+          plansByDay.get(day)!.add(plan)
+        }
 
         let entry = byDayType.get(dayType.id)
         if (!entry) {
@@ -88,7 +98,7 @@ export class DopService {
           tripsMes          += trips
           kmProdutivaMes    += km
           kmOciosaMes       += idleKm
-          latest = summary
+          snapshotByDayType.set(dayType.id, summary)
 
           // byBranch is new (same change as idleKm) — a plan summary generated
           // before it exists just contributes nothing to the empresa breakdown.
@@ -102,32 +112,57 @@ export class DopService {
         }
       }
 
+      const dominant = Array.from(byDayType.values())
+        .filter(e => snapshotByDayType.has(e.dayTypeId))
+        .reduce<DopLineDayTypeBreakdown | null>((a, b) => (!a || b.days > a.days ? b : a), null)
+      const snap = dominant ? snapshotByDayType.get(dominant.dayTypeId)! : null
+      // with an operator filter the peaks have no per-operator split — its fleet on the day stands in
+      const fleetOperacional = !snap ? null
+        : branchId ? dominant!.fleet
+        : Math.max(snap.peakFleetMorning ?? 0, snap.peakFleetAfternoon ?? 0)
+
       return {
         lineId: line.id, lineCode: line.code, lineName: line.name,
         byDayType: Array.from(byDayType.values()),
         tripsMes, kmProdutivaMes, kmOciosaMes,
-        avgSpeed:              latest?.avgSpeed ?? null,
-        occupancyIndex:        latest?.occupancyIndex ?? null,
-        peakMorningInterval:   latest?.peakMorningInterval ?? null,
-        peakAfternoonInterval: latest?.peakAfternoonInterval ?? null,
-        offPeakInterval:       latest?.offPeakInterval ?? null,
-        peakFleetMorning:      latest?.peakFleetMorning ?? null,
-        peakFleetAfternoon:    latest?.peakFleetAfternoon ?? null,
-        peakFleetOffPeak:      latest?.peakFleetOffPeak ?? null,
+        avgSpeed:              snap?.avgSpeed ?? null,
+        occupancyIndex:        snap?.occupancyIndex ?? null,
+        peakMorningInterval:   snap?.peakMorningInterval ?? null,
+        peakAfternoonInterval: snap?.peakAfternoonInterval ?? null,
+        offPeakInterval:       snap?.offPeakInterval ?? null,
+        peakFleetMorning:      snap?.peakFleetMorning ?? null,
+        peakFleetAfternoon:    snap?.peakFleetAfternoon ?? null,
+        peakFleetOffPeak:      snap?.peakFleetOffPeak ?? null,
+        fleetOperacional,
       }
     })
 
-    const totals = { fleetOperacional: 0, kmProdutivaMes: 0, kmOciosaMes: 0, tripsMes: 0 }
+    const totals = { fleetOperacional: 0, vehicleHoursMes: 0, kmProdutivaMes: 0, kmOciosaMes: 0, tripsMes: 0 }
     for (const l of lineSummaries) {
       totals.kmProdutivaMes += l.kmProdutivaMes
       totals.kmOciosaMes    += l.kmOciosaMes
       totals.tripsMes       += l.tripsMes
-      // "Frota operacional" do escopo — soma, por linha, da frota do dayType mais
-      // frequente no período (tipicamente dia útil, só por ter mais ocorrências,
-      // sem precisar hardcodar qual DayType é "o" dia útil).
-      const dominant = l.byDayType.reduce((a: DopLineDayTypeBreakdown | null, b: DopLineDayTypeBreakdown) => (!a || b.days > a.days ? b : a), null)
-      totals.fleetOperacional += dominant?.fleet ?? 0
     }
+
+    // Scope level, per day, over the plans in force: vehicles at the larger peak (each once,
+    // however many lines it runs — not the lines' peaks summed) and vehicle hours. With an
+    // operator filter: the hours of its blocks, and its lines' operational fleets summed (the
+    // plan peaks have no per-operator split).
+    const fleetByDay: number[] = []
+    for (const plans of plansByDay.values()) {
+      let fleet = 0
+      for (const plan of plans) {
+        const s = plan.summary as VehiclePlanSummary | null
+        if (!branchId) fleet += Math.max(s?.peakFleetMorning ?? 0, s?.peakFleetAfternoon ?? 0)
+        for (const b of plan.blocks as { branchId: string | null; summary: VehicleBlockSummary | null }[]) {
+          if (!branchId || b.branchId === branchId) totals.vehicleHoursMes += (b.summary?.totalMinutes ?? 0) / 60
+        }
+      }
+      if (fleet > 0) fleetByDay.push(fleet)
+    }
+    totals.fleetOperacional = branchId
+      ? lineSummaries.reduce((s: number, l: { fleetOperacional: number | null }) => s + (l.fleetOperacional ?? 0), 0)
+      : mostCommon(fleetByDay)
 
     const byBranch: DopBranchBreakdown[] = Array.from(branchAcc.values())
       .map(b => ({
@@ -148,4 +183,14 @@ export class DopService {
       totals,
     }
   }
+}
+
+// the value most days share (ties → the larger) — the period's typical day, without
+// hardcoding which day type is "the" weekday; 0 with no day at all
+function mostCommon(values: number[]): number {
+  const count = new Map<number, number>()
+  for (const v of values) count.set(v, (count.get(v) ?? 0) + 1)
+  let best = 0, bestCount = 0
+  for (const [v, n] of count) if (n > bestCount || (n === bestCount && v > best)) { best = v; bestCount = n }
+  return best
 }

@@ -2,8 +2,8 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
-// Registered purely for resourceRegistry/discovery/CASL (docs/proposal/plan_dop_v1.md,
-// decisão 3) — DOP has no Prisma model and no CRUD, just a computed GET. `scopeId` is
+// Registered purely for resourceRegistry/discovery/CASL — DOP has no Prisma model and
+// no CRUD, just a computed GET. `scopeId` is
 // the only "field" that matters here, kept mostly so this is a real ZodObject.
 export const dopSchema = withMeta(
   z.object({
@@ -36,8 +36,7 @@ export interface DopLineDayTypeBreakdown extends DopDayTypeCount {
 }
 
 // Scope-level, cross-line km per empresa (VehicleBlock.branchId). branchId is null
-// for the 'Não informado' bucket — blocks with no branch assigned (docs/proposal/
-// plan_dop_v1.md, "Km por empresa").
+// for the 'Não informado' bucket — blocks with no branch assigned.
 export interface DopBranchBreakdown {
   branchId:    string | null
   branchName:  string
@@ -56,8 +55,8 @@ export interface DopLineSummary {
   kmProdutivaMes: number
   kmOciosaMes:    number
 
-  // Snapshot values (not summed over the period) from the most recent day in
-  // range that had an active plan covering this line.
+  // Snapshot values (not summed over the period) from the line's predominant day type in the
+  // period (the one with most days that had an active plan covering the line).
   avgSpeed:              number | null
   occupancyIndex:        number | null
   peakMorningInterval:   number | null
@@ -66,6 +65,9 @@ export interface DopLineSummary {
   peakFleetMorning:      number | null
   peakFleetAfternoon:    number | null
   peakFleetOffPeak:      number | null
+  // the line's operational fleet: its larger peak (morning / afternoon), isolated
+  // reinforcements left out — the vehicles it needs, each line on its own
+  fleetOperacional:      number | null
 }
 
 export interface DopPeriodSummary {
@@ -78,7 +80,11 @@ export interface DopPeriodSummary {
   byBranch: DopBranchBreakdown[]
 
   totals: {
+    // the Scope's operational fleet: on each day, the larger peak of every plan in force, each
+    // vehicle once however many lines it runs; the period's figure is the most common day's
     fleetOperacional: number
+    // vehicle hours in the period: the plans' blocks from pull-out to pull-in, summed per day
+    vehicleHoursMes:  number
     kmProdutivaMes:   number
     kmOciosaMes:      number
     tripsMes:         number

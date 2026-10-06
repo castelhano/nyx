@@ -66,14 +66,11 @@ export function peakVehicleRequirement(trips: { departureMinutes: number; arriva
 const PEAK_HOURS: [number, number][] = [[5.5, 8], [15.5, 18]]
 const isPeakHour = (hour: number) => PEAK_HOURS.some(([from, to]) => hour >= from && hour < to)
 
-// A block whose whole footprint inside [bandFrom, bandTo) is at most one trip per
-// direction (at most a single round trip — or a single trip on a CIRCULAR line,
-// which has only one direction) doesn't represent the line's steady-state service
-// in that band; a lone reinforcement run would otherwise skew both the average
-// headway and the peak-fleet count for the whole band. Threshold is evaluated
-// jointly across every direction the line has — a block with 1 OUTBOUND + 1
-// INBOUND trip in the band is still "isolated" (docs/proposal/plan_dop_v1.md,
-// "Dúvidas nos apontamentos" — confirmed with the user).
+// A block with a single trip inside [bandFrom, bandTo) doesn't represent the line's
+// steady-state service in that band — a lone reinforcement run would otherwise skew both
+// the average headway and the peak-fleet count for the whole band. A round trip is not a
+// reinforcement: in a 2h30 peak a regular vehicle of a long line makes just that (one trip
+// per direction used to count as isolated, which dropped half the fleet out of the peaks).
 function excludeIsolatedReinforcement(
   tripsByDirection: Record<string, { departureMinutes: number; arrivalMinutes: number; blockId: string }[]>,
   bandFrom: number,
@@ -96,7 +93,7 @@ function excludeIsolatedReinforcement(
 
   const isolatedBlocks = new Set<string>()
   for (const [blockId, byDir] of countByBlock) {
-    if (directions.every(dir => (byDir.get(dir) ?? 0) <= 1)) isolatedBlocks.add(blockId)
+    if ([...byDir.values()].reduce((s, n) => s + n, 0) <= 1) isolatedBlocks.add(blockId)
   }
 
   const filtered: Record<string, { departureMinutes: number; arrivalMinutes: number }[]> = {}
@@ -128,6 +125,31 @@ function bandHeadway(bandTrips: Record<string, { departureMinutes: number }[]>):
 // applied to the band's own (reinforcement-excluded) trips across every direction.
 function peakFleetBand(bandTrips: Record<string, { departureMinutes: number; arrivalMinutes: number }[]>): number {
   return peakVehicleRequirement(Object.values(bandTrips).flat())
+}
+
+// One vehicle, for the plan's peak fleet: its trips.
+export interface PeakFleetBlockInput {
+  trips: { departureMinutes: number; arrivalMinutes: number; direction: string }[]
+}
+
+// The whole plan's peak fleet per band — the most vehicles running a trip at once, every line
+// together: a vehicle is never in two trips at once, so one running two lines in the band counts
+// once (summing the lines' peak fleets would count it once per line). Same measure as the lines'
+// peakFleetBand and the same isolated-reinforcement rule, judged on the vehicle's trips in the
+// band. What DOP sums up for a Scope.
+export function planPeakFleets(blocks: PeakFleetBlockInput[]): { peakFleetMorning: number; peakFleetAfternoon: number; peakFleetOffPeak: number } {
+  const band = (fromHour: number, toHour: number): number => {
+    const tripsByDirection: Record<string, { departureMinutes: number; arrivalMinutes: number; blockId: string }[]> = {}
+    blocks.forEach((block, i) => {
+      for (const t of block.trips) (tripsByDirection[t.direction] ??= []).push({ ...t, blockId: String(i) })
+    })
+    return peakFleetBand(excludeIsolatedReinforcement(tripsByDirection, fromHour, toHour))
+  }
+  return {
+    peakFleetMorning:   band(PEAK_HOURS[0][0], PEAK_HOURS[0][1]),
+    peakFleetAfternoon: band(PEAK_HOURS[1][0], PEAK_HOURS[1][1]),
+    peakFleetOffPeak:   band(PEAK_HOURS[0][1], PEAK_HOURS[1][0]),
+  }
 }
 
 export interface AggregateScoreResult {

@@ -424,10 +424,11 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
         </div>
 
         <div className="overflow-auto max-h-[480px]">
-          <table className="w-full text-xs tabular-nums">
+          <table className="w-full text-xs tabular-nums border-separate border-spacing-0">
+            {/* border-separate: with collapsed borders a sticky header leaves a seam — borders go on the cells */}
             <thead className="sticky top-0 bg-card z-10">
               {tab === 'jornadas' && (
-                <tr className="border-b border-border text-[11px] text-muted-foreground">
+                <tr className="[&>*]:border-b [&>*]:border-border text-[11px] text-muted-foreground">
                   <th className="text-left font-medium px-3 py-1.5">Linha</th>
                   {dayTypes.map(dt => <th key={dt.dayTypeId} className={th}>{dt.dayTypeName}</th>)}
                   <th className={cn(th, GROUP_DIVIDER)}>Quadro-dia (mês)</th>
@@ -436,13 +437,13 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
               {tab === 'horas' && (
                 <>
                   <tr className="text-[11px] text-muted-foreground">
-                    <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom">Linha</th>
+                    <th rowSpan={2} className="text-left font-medium px-3 py-1.5 align-bottom border-b border-border">Linha</th>
                     {dayTypes.map((dt, i) => (
                       <th key={dt.dayTypeId} colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, i > 0 && GROUP_DIVIDER)}>{dt.dayTypeName}</th>
                     ))}
                     <th colSpan={3} className={cn('text-center font-medium px-2 py-1 border-b border-border', HEADER_GROUP_BG, GROUP_DIVIDER)}>Mês</th>
                   </tr>
-                  <tr className={cn('text-[11px] text-muted-foreground border-b border-border', HEADER_SUBGROUP_BG)}>
+                  <tr className={cn('text-[11px] text-muted-foreground [&>*]:border-b [&>*]:border-border', HEADER_SUBGROUP_BG)}>
                     {[...dayTypes.map(dt => dt.dayTypeId), 'month'].map((k, i) => (
                       <HoursHeader key={k} divider={i > 0} />
                     ))}
@@ -450,7 +451,7 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
                 </>
               )}
               {tab === 'custos' && (
-                <tr className="border-b border-border text-[11px] text-muted-foreground">
+                <tr className="[&>*]:border-b [&>*]:border-border text-[11px] text-muted-foreground">
                   <th className="text-left font-medium px-3 py-1.5">Linha</th>
                   <th className={th}>Horas operacionais</th><th className={th}>Custo</th><th className={th}>R$/h operacional</th><th className={th}>% do custo</th>
                 </tr>
@@ -461,7 +462,7 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
                 const bd = new Map(l.byDayType.map(b => [b.dayTypeId, sumMetrics(b.byRole, roles)]))
                 const m  = sumMetrics(l.byRole, roles)
                 return (
-                  <tr key={l.lineId ?? 'none'} className={cn('border-b border-border last:border-0 hover:bg-row-hover', i % 2 === 1 && 'bg-muted/40', l.lineId === null && 'italic')}>
+                  <tr key={l.lineId ?? 'none'} className={cn('[&>*]:border-b [&>*]:border-border [&:last-child>*]:border-b-0 hover:bg-row-hover', i % 2 === 1 && 'bg-muted/40', l.lineId === null && 'italic')}>
                     <td className="px-3 py-2">
                       <div className="font-medium">{l.lineCode}</div>
                       <div className="text-[11px] text-muted-foreground">{l.lineName}</div>
@@ -485,7 +486,7 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
               })}
             </tbody>
             <tfoot className="sticky bottom-0 bg-muted z-10">
-              <tr className="border-t border-border font-medium">
+              <tr className="[&>*]:border-t [&>*]:border-border font-medium">
                 <td className="px-3 py-2">Total</td>
                 {tab === 'jornadas' && (<>
                   {byDayType.map(dt => <td key={dt.dayTypeId} className={td}>{fmtNum(dt.dutyShare, 0)}</td>)}

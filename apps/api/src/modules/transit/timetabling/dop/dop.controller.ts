@@ -8,8 +8,7 @@ import { DopService } from './dop.service'
 import { DopCrewService } from './dop-crew.service'
 import { parseDay } from './dop-resolution'
 
-// No BaseController here — DOP is a single computed GET, not CRUD (docs/proposal/
-// plan_dop_v1.md, decisão 3). The metadata endpoint is still needed even though
+// No BaseController here — DOP is a single computed GET, not CRUD. The metadata endpoint is still needed even though
 // there's no CRUD: it's what usePageGuard()/useMetadata() on the frontend read to
 // gate the page on the 'Dop' CASL subject, same as every other resource's page.
 @Controller('transit/dop')

@@ -1,7 +1,6 @@
 // Attributes a VehicleBlock's idle (deadrun) km to the lines it serves that day —
 // needed because BlockDeadrun has no lineId (it belongs to the block as a whole),
-// but a block can legitimately serve more than one line (aproveitamento). Rule
-// (docs/proposal/plan_dop_v1.md, "Percentual de ociosidade"):
+// but a block can legitimately serve more than one line (aproveitamento). Rule:
 //
 //   ACCESS/RETURN  — proportional to each line's share of the block's productive
 //                    km. They're the cost of positioning the vehicle for the block

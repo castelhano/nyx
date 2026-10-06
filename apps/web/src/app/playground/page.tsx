@@ -1,7 +1,7 @@
 'use client'
 
-// Protótipo visual — Fase 0 do DOP (Dados Operacionais Previstos), ver
-// docs/proposal/plan_dop_v1.md. Dado 100% sintético, hardcoded — sem fetch,
+// Protótipo visual — Fase 0 do DOP (Dados Operacionais Previstos; a página real é
+// app/transit/dop). Dado 100% sintético, hardcoded — sem fetch,
 // sem interatividade real além da troca de aba da tabela por linha (só pra
 // provar o padrão de "muitas colunas -> aba, não scroll horizontal
 // permanente"). Objetivo único: validar a composição visual do dashboard
@@ -9,8 +9,8 @@
 //
 // Estrutura de dado por dia-tipo (útil/sáb/dom) e a quebra km produtiva/
 // ociosa/% por bloco inspiradas na planilha de referência que o usuário usa
-// hoje pro cálculo manual (docs/proposal/plan_dop_v1.md não replica a
-// planilha 1:1 — só o suficiente pro protótipo).
+// hoje pro cálculo manual (não replica a planilha 1:1 — só o suficiente pro
+// protótipo).
 
 import { useState } from 'react'
 import { Icons } from '@/lib/icons'
