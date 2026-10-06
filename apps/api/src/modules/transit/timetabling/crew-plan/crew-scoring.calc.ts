@@ -248,6 +248,10 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   const idleSpans = gaps.filter(g => g !== restGap && g.minutes > 0)
     .flatMap(g => subtractSpans({ startMinutes: g.prev.endMinutes, endMinutes: g.next.startMinutes }, acts))
   const idleMinutes = idleSpans.reduce((s, sp) => s + dur(sp), 0)
+  // the split interval off the clock — its activities aside (a break in it is in breakMinutes)
+  const splitMinutes = restGap
+    ? subtractSpans({ startMinutes: restGap.prev.endMinutes, endMinutes: restGap.next.startMinutes }, acts).reduce((s, sp) => s + dur(sp), 0)
+    : 0
 
   const workMinutes  = pieceMinutes + [...otherActs, ...paidBreaks].reduce((s, a) => s + dur(a), 0) + implicitOn + implicitOff + idleMinutes
   const paidMinutes  = workMinutes
@@ -319,6 +323,8 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   const summary: DutySummary = {
     spreadMinutes: events.length ? last - first : 0,
     workMinutes, paidMinutes, breakMinutes,
+    paidBreakMinutes: paidBreaks.reduce((s, b) => s + dur(b), 0),
+    splitMinutes,
     overtimeMinutes: overtime,
     nightMinutes,
     pieceCount: live.length,

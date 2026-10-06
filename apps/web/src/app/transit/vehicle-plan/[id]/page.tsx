@@ -47,6 +47,7 @@ import { BusyOverlay } from '@/components/ui/busy-overlay'
 import { Badge } from '@/components/ui/badge'
 import { vigenceBadge } from '@/lib/plan-vigence'
 import { ActivationModal } from '../../activation-modal'
+import { PlanCsvModal } from '../../plan-csv-modal'
 import type { ViewportSnapshot } from './engine/gantt.types'
 
 const fmtClock = (ms: number) => {
@@ -152,6 +153,7 @@ export default function VehiclePlanPage() {
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [exportOsoModalOpen, setExportOsoModalOpen] = useState(false)
   const [planExportOpen, setPlanExportOpen] = useState(false)
+  const [csvExportOpen,  setCsvExportOpen]  = useState(false)
   const [syncFromOsoOpen,    setSyncFromOsoOpen]    = useState(false)
   const [generateLineModal, setGenerateLineModal] = useState<{ lineIds: string[] } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
@@ -446,6 +448,16 @@ export default function VehiclePlanPage() {
         onClick:  () => setOptimizeTab(solverJob ? 'scenarios' : 'panel'),
         disabled: isPending || pendingCount > 0,
       }] : []),
+      // CSV export — reads the saved plan, so not with pending Gantt edits
+      ...(!isNew ? [{
+        label:    'Exportar Plano',
+        icon:     Icons.FileSpreadsheet,
+        onClick:  () => {
+          if (pendingCount > 0) { toast.error('Salve ou descarte as alterações pendentes antes de exportar'); return }
+          setCsvExportOpen(true)
+        },
+        overflow: true,
+      }] : []),
       // activate
       ...(!solverJob?.running && canEdit ? [{
         label:    isPending ? 'Ativando…' : 'Ativar',
@@ -595,6 +607,13 @@ export default function VehiclePlanPage() {
         />
       )}
 
+      {csvExportOpen && (
+        <PlanCsvModal
+          title="Exportar Plano"
+          endpoint={`/transit/vehicle-plan/${id}/csv`}
+          onClose={() => setCsvExportOpen(false)}
+        />
+      )}
       {planExportOpen && (
         <PlanExportModal
           planId={id}

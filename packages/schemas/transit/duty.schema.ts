@@ -12,6 +12,22 @@ export const CREW_ROLE_PREFIX: Record<CrewRole, string> = {
   ASSISTANT:      'A',
 }
 
+export const CREW_ROLE_LABEL: Record<CrewRole, string> = {
+  DRIVER:         'Motorista',
+  FARE_COLLECTOR: 'Cobrador',
+  ASSISTANT:      'Auxiliar',
+}
+
+export const DUTY_KINDS = ['STRAIGHT', 'SPLIT', 'TRIPPER', 'STANDBY'] as const
+export type DutyKind = typeof DUTY_KINDS[number]
+
+export const DUTY_KIND_LABEL: Record<DutyKind, string> = {
+  STRAIGHT: 'Corrida',
+  SPLIT:    'Dupla pegada',
+  TRIPPER:  'Meia jornada',
+  STANDBY:  'Reserva',
+}
+
 export function formatDutyNumber(role: CrewRole, dutyNumber: number): string {
   return `${CREW_ROLE_PREFIX[role]}${dutyNumber}`
 }
@@ -21,6 +37,10 @@ export const dutySummarySchema = z.object({
   workMinutes:     z.number(),
   paidMinutes:     z.number(),
   breakMinutes:    z.number(),
+  // the part of breakMinutes on the clock (IntervalType.isPaid)
+  paidBreakMinutes: z.number().default(0),
+  // a split duty's split interval, minus the activities inside it — off the clock
+  splitMinutes:    z.number().default(0),
   overtimeMinutes: z.number(),
   nightMinutes:    z.number(),
   pieceCount:      z.number(),
@@ -66,6 +86,22 @@ export const dutyIssueSchema = z.object({
 })
 export type DutyIssue = z.infer<typeof dutyIssueSchema>
 
+export const DUTY_ISSUE_LABEL: Record<DutyIssue['code'], string> = {
+  WORK_TIME:          'Duração da jornada',
+  SPREAD:             'Amplitude',
+  MEAL_BREAK:         'Intervalo intrajornada',
+  SPLIT_INTERVAL:     'Intervalo da dupla pegada',
+  WALK_DISTANCE:      'Deslocamento a pé acima do permitido',
+  MEAL_REQUIRED:      'Intrajornada não cumprida',
+  PIECE_OFF_SERVICE:  'Pegada cobre o carro fora de serviço (intervalo/depósito)',
+  CONTINUOUS_DRIVING: 'Direção contínua',
+  MIN_PIECE:          'Pegada curta',
+  IDLE_TIME:          'Tempo ocioso remunerado',
+  TRAVEL_GAP:         'Deslocamento entre pegadas',
+  BRANCH_MISMATCH:    'Bloco de outro operador',
+  MEAL_LOCATION:      'Refeição fora de local permitido',
+}
+
 export const dutySchema = withMeta(
   z.object({
     id: z.uuid().meta({ listVisibility: 'hidden' }),
@@ -83,11 +119,7 @@ export const dutySchema = withMeta(
       defaultValue:   'DRIVER',
       className:      'md:w-40',
       keybind:        'p',
-      optionLabels: {
-        DRIVER:         'Motorista',
-        FARE_COLLECTOR: 'Cobrador',
-        ASSISTANT:      'Auxiliar',
-      },
+      optionLabels:   CREW_ROLE_LABEL,
     }),
 
     // numbered per role; omitted on create → next free number for the role (DutyService)
@@ -98,19 +130,14 @@ export const dutySchema = withMeta(
       keybind:        'n',
     }),
 
-    kind: z.enum(['STRAIGHT', 'SPLIT', 'TRIPPER', 'STANDBY']).default('STRAIGHT').meta({
+    kind: z.enum(DUTY_KINDS).default('STRAIGHT').meta({
       label:          'Tipo',
       listVisibility: 'visible',
       filter:         true,
       defaultValue:   'STRAIGHT',
       className:      'md:w-44',
       keybind:        't',
-      optionLabels: {
-        STRAIGHT: 'Corrida',
-        SPLIT:    'Dupla pegada',
-        TRIPPER:  'Meia jornada',
-        STANDBY:  'Reserva',
-      },
+      optionLabels:   DUTY_KIND_LABEL,
     }),
 
     branchId: z.uuid().optional().nullable().meta({

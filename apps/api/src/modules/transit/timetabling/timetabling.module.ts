@@ -11,9 +11,10 @@ import { CrewPlanModule } from './crew-plan/crew-plan.module'
 import { VehicleSwapModule } from './vehicle-swap/vehicle-swap.module'
 import { CrewSolverModule } from './crew-solver/crew-solver.module'
 import { VehicleSolverModule } from './vehicle-solver/vehicle-solver.module'
+import { PlanCsvModule } from './plan-csv/plan-csv.module'
 
 @Module({
-  imports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule, VehicleSwapModule, CrewSolverModule, VehicleSolverModule],
+  imports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule, VehicleSwapModule, CrewSolverModule, VehicleSolverModule, PlanCsvModule],
   exports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule],
 })
 export class TimetablingModule {}

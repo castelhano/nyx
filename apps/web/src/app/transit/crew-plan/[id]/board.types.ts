@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { swatchColor, lineIndexByCode } from '@/lib/palette'
+import { CREW_ROLE_LABEL, DUTY_KIND_LABEL, DUTY_ISSUE_LABEL, DUTY_PIECE_STALE_LABEL, ROUTE_DIRECTION_LABEL } from '@nyx/schemas'
 import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole, VehicleBlockIssue } from '@nyx/schemas'
 
 // Shape of GET /transit/crew-plan/:id/board (CrewPlanService.getBoard)
@@ -78,18 +79,9 @@ export interface CrewBoardData {
 
 // ── display helpers ──────────────────────────────────────────────────────────
 
-export const ROLE_LABEL: Record<CrewRole, string> = {
-  DRIVER:         'Motorista',
-  FARE_COLLECTOR: 'Cobrador',
-  ASSISTANT:      'Auxiliar',
-}
+export const ROLE_LABEL = CREW_ROLE_LABEL
 
-export const KIND_LABEL: Record<BoardDuty['kind'], string> = {
-  STRAIGHT: 'Corrida',
-  SPLIT:    'Dupla pegada',
-  TRIPPER:  'Meia jornada',
-  STANDBY:  'Reserva',
-}
+export const KIND_LABEL = DUTY_KIND_LABEL
 
 export const ACTIVITY_LABEL: Record<BoardActivity['type'], string> = {
   SIGN_ON:  'Apresentação',
@@ -99,21 +91,7 @@ export const ACTIVITY_LABEL: Record<BoardActivity['type'], string> = {
   STANDBY:  'Reserva',
 }
 
-export const ISSUE_LABEL: Record<DutyIssue['code'], string> = {
-  WORK_TIME:          'Duração da jornada',
-  SPREAD:             'Amplitude',
-  MEAL_BREAK:         'Intervalo intrajornada',
-  SPLIT_INTERVAL:     'Intervalo da dupla pegada',
-  WALK_DISTANCE:      'Deslocamento a pé acima do permitido',
-  MEAL_REQUIRED:      'Intrajornada não cumprida',
-  PIECE_OFF_SERVICE:  'Pegada cobre o carro fora de serviço (intervalo/depósito)',
-  CONTINUOUS_DRIVING: 'Direção contínua',
-  MIN_PIECE:          'Pegada curta',
-  IDLE_TIME:          'Tempo ocioso remunerado',
-  TRAVEL_GAP:         'Deslocamento entre pegadas',
-  BRANCH_MISMATCH:    'Bloco de outro operador',
-  MEAL_LOCATION:      'Refeição fora de local permitido',
-}
+export const ISSUE_LABEL = DUTY_ISSUE_LABEL
 
 // score criteria (CrewPlanSummary.criteria keys)
 export const CRITERION_LABEL: Record<string, string> = {
@@ -141,13 +119,9 @@ export const METER_ISSUES = new Set<DutyIssue['code']>(['WALK_DISTANCE'])
 // issues with no meaningful value/limit — rendered as the label only
 export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION'])
 
-export const DIRECTION_LABEL: Record<string, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
+export const DIRECTION_LABEL = ROUTE_DIRECTION_LABEL
 
-export const STALE_LABEL: Record<NonNullable<BoardPiece['staleReason']>, string> = {
-  BLOCK_REMOVED:        'Bloco removido do planejamento',
-  OUT_OF_BLOCK_WINDOW:  'Fora da janela do bloco',
-  INVALID_RELIEF_POINT: 'Ponto de troca não existe mais',
-}
+export const STALE_LABEL = DUTY_PIECE_STALE_LABEL
 
 // minutes past midnight of the operational day — > 1440 stays as 24:xx, 25:xx...
 export function fmtTime(m: number): string {

@@ -5,6 +5,12 @@ import { withMeta } from '../with-meta'
 export const DUTY_PIECE_STALE_REASONS = ['BLOCK_REMOVED', 'OUT_OF_BLOCK_WINDOW', 'INVALID_RELIEF_POINT'] as const
 export type DutyPieceStaleReason = typeof DUTY_PIECE_STALE_REASONS[number]
 
+export const DUTY_PIECE_STALE_LABEL: Record<DutyPieceStaleReason, string> = {
+  BLOCK_REMOVED:        'Bloco removido do planejamento',
+  OUT_OF_BLOCK_WINDOW:  'Fora da janela do bloco',
+  INVALID_RELIEF_POINT: 'Ponto de troca não existe mais',
+}
+
 // A block's relief point — where a piece may start/end. Computed by
 // DutyPieceService.listReliefPoints(); the UI only offers these points and the server
 // rejects pieces outside them.

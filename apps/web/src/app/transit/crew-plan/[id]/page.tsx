@@ -28,12 +28,12 @@ import { useTimeRange, LABEL_W } from './components/Timeline'
 import { CrewFilterBar } from './components/CrewFilterBar'
 import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, type CrewFilter } from './filters'
 import { lineColorMap, dutyLineCodes } from './board.types'
-import { exportDutiesCsv, exportBlocksCsv } from './export'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 import { Badge } from '@/components/ui/badge'
 import { BusyOverlay } from '@/components/ui/busy-overlay'
 import { vigenceBadge } from '@/lib/plan-vigence'
 import { ActivationModal } from '../../activation-modal'
+import { PlanCsvModal } from '../../plan-csv-modal'
 
 // Logical crew schedule of a VehiclePlan. Every edit
 // is written immediately (no pending queue) — the server recalculates staleness, issues
@@ -125,6 +125,7 @@ export default function CrewPlanPage() {
   const [zoomIdx, setZoomIdx]               = useState(ZOOM_DEFAULT)
   const [resetSignal, setResetSignal]       = useState(0)
   const [activationOpen, setActivationOpen] = useState(false)
+  const [csvExportOpen, setCsvExportOpen]   = useState(false)
   const [swapOpen, setSwapOpen]             = useState(false)
   const [optimizeTabState, setOptimizeTab]  = useState<OptimizeTab | null>(null)
   const optimizeTab: OptimizeTab | null = optimizeTabState ?? (optimizeFromUrl && canEdit ? 'scenarios' : null)
@@ -540,11 +541,9 @@ export default function CrewPlanPage() {
       overflow: true,
     }] : []),
     ...(data ? [{
-      label:    'Baixar CSV',
+      label:    'Exportar Escala',
       icon:     Icons.FileSpreadsheet,
-      onClick:  () => view === 'duties'
-        ? exportDutiesCsv(data, visibleDuties, blockById)
-        : exportBlocksCsv(data, visibleBlocks),
+      onClick:  () => setCsvExportOpen(true),
       overflow: true,
     }] : []),
     ...(canDelete && data && isDraft ? [{ label: '', separator: true, overflow: true }, {
@@ -555,7 +554,7 @@ export default function CrewPlanPage() {
       variant:  'destructive' as const,
       overflow: true,
     }] : []),
-  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors, visibleDuties, visibleBlocks, blockById, solverJob])
+  ], [data, id, saving, canEdit, canDelete, selectedDuty?.id, zoomIdx, view, filterOpen, showLineColors, solverJob])
 
   useShortcut('alt+g', () => {
     (document.getElementById(DUTY_FORM_ID) as HTMLFormElement | null)?.requestSubmit()
@@ -578,6 +577,13 @@ export default function CrewPlanPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {busyMessage && <BusyOverlay message={busyMessage} />}
+      {csvExportOpen && (
+        <PlanCsvModal
+          title="Exportar Escala"
+          endpoint={`/transit/crew-plan/${id}/csv?view=${view}`}
+          onClose={() => setCsvExportOpen(false)}
+        />
+      )}
       {activationOpen && (
         <ActivationModal
           title="Ativar escala"

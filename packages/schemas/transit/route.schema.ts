@@ -2,6 +2,12 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
+export const ROUTE_DIRECTION_LABEL: Record<string, string> = {
+  OUTBOUND: 'Ida',
+  INBOUND:  'Volta',
+  CIRCULAR: 'Circular',
+}
+
 export const routeSchema = withMeta(
   z.object({
     id: z.uuid().meta({listVisibility: 'hidden'}),
@@ -18,11 +24,7 @@ export const routeSchema = withMeta(
       listVisibility: 'visible',
       className:      'md:w-50',
       keybind:        'd',
-      optionLabels: {
-        OUTBOUND: 'Ida',
-        INBOUND:  'Volta',
-        CIRCULAR: 'Circular',
-      },
+      optionLabels:   ROUTE_DIRECTION_LABEL,
     }),
 
     name: z.string().min(2).meta({
