@@ -24,13 +24,14 @@ function writeLogo(logo: { path: string; data: string } | null): string | null {
 }
 
 interface Fixture {
-  localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown }>
-  dayTypes: Array<{ code: string; name: string; pattern: unknown; priority: number; sortOrder: number }>
+  // depot.operators as branch taxIds; depot/externalCodes absent in fixtures exported before them
+  localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown; externalCodes?: unknown; depot?: { operators?: string[] } | null }>
+  dayTypes: Array<{ code: string; name: string; description?: string | null; pattern: unknown; priority: number; sortOrder: number }>
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
   scopes: Array<{ name: string; description: string | null; osoConfig: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
-  lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown; vehicleTypes?: unknown }>
-  routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean }>
-  routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean }>
+  lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown; vehicleTypes?: unknown; externalCodes?: unknown }>
+  routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean; color?: string | null; homeDepotCode?: string | null }>
+  routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean; includeInOso?: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
   // scopeName: SCOPE_KEYED_SETTINGS rows (keyed by transit Scope); absent in fixtures exported before it
   settings: Array<{ key: string; branchTaxId: string | null; scopeName?: string | null; value: Record<string, unknown> }>
@@ -39,18 +40,29 @@ interface Fixture {
 const IMPORTABLE_SETTINGS_KEYS = new Set(['transit.general', 'transit.planning', 'transit.crew', 'transit.crewCost', 'transit.roster'])
 // keys whose Settings.scope is a transit Scope.id (not a branchId) — see BaseSettingsService
 const SCOPE_KEYED_SETTINGS = new Set(['transit.planning', 'transit.crew', 'transit.crewCost'])
+// settings fields pointing at an IntervalType — the fixture carries its code
+const INTERVAL_TYPE_POINTERS: Record<string, string> = {
+  'transit.general': 'defaultIntervalTypeId',
+  'transit.crew':    'mealBreakIntervalTypeId',
+}
 
 async function main() {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as Fixture
   console.log(`Importing fixture exported at ${(fixture as any).exportedAt ?? 'unknown'}`)
 
   // ── localities ──────────────────────────────────────────────────────────────
+  const branchIdByTaxId = new Map((await prisma.branch.findMany({ select: { id: true, taxId: true } })).map(b => [b.taxId, b.id]))
   for (const l of fixture.localities) {
-    await prisma.transitLocality.upsert({
-      where:  { code: l.code },
-      update: { abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
-      create: { code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo as Prisma.InputJsonValue },
-    })
+    const depot = l.depot
+      ? { ...l.depot, operators: (l.depot.operators ?? []).map(taxId => branchIdByTaxId.get(taxId)).filter((id): id is string => !!id) }
+      : undefined
+    const data = {
+      abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng, isDepot: l.isDepot, notes: l.notes,
+      snapInfo:      l.snapInfo as Prisma.InputJsonValue,
+      externalCodes: (l.externalCodes ?? undefined) as Prisma.InputJsonValue,
+      depot:         depot as Prisma.InputJsonValue,
+    }
+    await prisma.transitLocality.upsert({ where: { code: l.code }, update: data, create: { code: l.code, ...data } })
   }
   const localityMap = new Map((await prisma.transitLocality.findMany({ select: { id: true, code: true } })).map(l => [l.code, l.id]))
   console.log(`  ✓ localities (${fixture.localities.length})`)
@@ -59,8 +71,8 @@ async function main() {
   for (const d of fixture.dayTypes) {
     await prisma.dayType.upsert({
       where:  { code: d.code },
-      update: { name: d.name, pattern: d.pattern as Prisma.InputJsonValue, priority: d.priority, sortOrder: d.sortOrder },
-      create: { code: d.code, name: d.name, pattern: d.pattern as Prisma.InputJsonValue, priority: d.priority, sortOrder: d.sortOrder },
+      update: { name: d.name, description: d.description, pattern: d.pattern as Prisma.InputJsonValue, priority: d.priority, sortOrder: d.sortOrder },
+      create: { code: d.code, name: d.name, description: d.description, pattern: d.pattern as Prisma.InputJsonValue, priority: d.priority, sortOrder: d.sortOrder },
     })
   }
   console.log(`  ✓ day types (${fixture.dayTypes.length})`)
@@ -108,8 +120,8 @@ async function main() {
     const scopeId = l.scopeName ? scopeMap.get(l.scopeName) : undefined
     const record = await prisma.transitLine.upsert({
       where:  { code: l.code },
-      update: { name: l.name, type: l.type as any, isActive: l.isActive, scopeId, notes: l.notes, metrics: l.metrics as Prisma.InputJsonValue, vehicleTypes: (l.vehicleTypes ?? undefined) as Prisma.InputJsonValue },
-      create: { code: l.code, name: l.name, type: l.type as any, isActive: l.isActive, scopeId, notes: l.notes, metrics: l.metrics as Prisma.InputJsonValue, vehicleTypes: (l.vehicleTypes ?? undefined) as Prisma.InputJsonValue },
+      update: { name: l.name, type: l.type as any, isActive: l.isActive, scopeId, notes: l.notes, metrics: l.metrics as Prisma.InputJsonValue, vehicleTypes: (l.vehicleTypes ?? undefined) as Prisma.InputJsonValue, externalCodes: (l.externalCodes ?? undefined) as Prisma.InputJsonValue },
+      create: { code: l.code, name: l.name, type: l.type as any, isActive: l.isActive, scopeId, notes: l.notes, metrics: l.metrics as Prisma.InputJsonValue, vehicleTypes: (l.vehicleTypes ?? undefined) as Prisma.InputJsonValue, externalCodes: (l.externalCodes ?? undefined) as Prisma.InputJsonValue },
     })
     lineMap.set(l.code, record.id)
   }
@@ -128,14 +140,15 @@ async function main() {
     const lineId   = lineMap.get(r.lineCode)!
     const originId = localityMap.get(r.originCode)!
     const destId   = localityMap.get(r.destinationCode)!
+    const homeDepotId = r.homeDepotCode ? localityMap.get(r.homeDepotCode) ?? null : null
     const existing = await prisma.transitRoute.findFirst({ where: { lineId, direction: r.direction as any, ordinal: r.ordinal } })
     const record = existing
       ? await prisma.transitRoute.update({
           where: { id: existing.id },
-          data:  { name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary },
+          data:  { name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary, color: r.color ?? null, homeDepotId },
         })
       : await prisma.transitRoute.create({
-          data: { lineId, direction: r.direction as any, ordinal: r.ordinal, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary },
+          data: { lineId, direction: r.direction as any, ordinal: r.ordinal, name: r.name, originLocalityId: originId, destinationLocalityId: destId, isActive: r.isActive, isPrimary: r.isPrimary, color: r.color ?? null, homeDepotId },
         })
     routeMap.set(`${r.lineCode}:${r.direction}:${r.ordinal}`, record.id)
   }
@@ -158,6 +171,7 @@ async function main() {
         routeId, localityId, sequence: rl.sequence, lat: rl.lat, lng: rl.lng,
         deltaMinutes: rl.deltaMinutes, deltaKm: rl.deltaKm, deltaSource: rl.deltaSource as any,
         geometry: rl.geometry as Prisma.InputJsonValue, allowsCrewChange: rl.allowsCrewChange, allowsMealBreak: rl.allowsMealBreak ?? false, allowsVehicleStand: rl.allowsVehicleStand ?? false,
+        includeInOso: rl.includeInOso ?? false,
       },
     })
   }
@@ -183,8 +197,12 @@ async function main() {
     // transit.crew/roster) — skip anything no BaseSettingsService reads anymore
     if (!IMPORTABLE_SETTINGS_KEYS.has(s.key)) continue
     const value = { ...s.value }
-    if (s.key === 'transit.general' && typeof value.defaultIntervalTypeId === 'string') {
-      value.defaultIntervalTypeId = intervalTypeMap.get(value.defaultIntervalTypeId) ?? null
+    const pointer = INTERVAL_TYPE_POINTERS[s.key]
+    if (pointer && typeof value[pointer] === 'string') {
+      const id = intervalTypeMap.get(value[pointer] as string)
+      // fixtures exported before the pointer was mapped carry the source machine's id
+      if (!id) console.warn(`  ! ${s.key}.${pointer} = ${value[pointer]} não é um código de tipo de intervalo — limpo`)
+      value[pointer] = id ?? null
     }
     let scope = 'global'
     if (s.scopeName) {

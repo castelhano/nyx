@@ -17,6 +17,11 @@ import { PrismaPg } from '@prisma/adapter-pg'
 const TRANSIT_SETTINGS_KEYS = ['transit.general', 'transit.planning', 'transit.crew', 'transit.crewCost', 'transit.roster']
 // keys whose Settings.scope is a transit Scope.id (not a branchId) — see BaseSettingsService
 const SCOPE_KEYED_SETTINGS = new Set(['transit.planning', 'transit.crew', 'transit.crewCost'])
+// settings fields pointing at an IntervalType — exported as its code, not portable as an id
+const INTERVAL_TYPE_POINTERS: Record<string, string> = {
+  'transit.general': 'defaultIntervalTypeId',
+  'transit.crew':    'mealBreakIntervalTypeId',
+}
 
 const adapter  = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
 const prisma   = new PrismaClient({ adapter })
@@ -52,6 +57,7 @@ async function main() {
         line:                { select: { code: true } },
         originLocality:      { select: { code: true } },
         destinationLocality: { select: { code: true } },
+        homeDepot:           { select: { code: true } },
       },
       orderBy: [{ lineId: 'asc' }, { direction: 'asc' }],
     }),
@@ -72,7 +78,12 @@ async function main() {
   // branch-scoped settings store `scope` as a branchId — resolve to taxId for portability,
   // same as ScopeOperator/LineGroup above. SCOPE_KEYED_SETTINGS store a transit Scope.id
   // instead — resolved to the (unique) Scope name.
-  const branchIds  = settings.filter(s => !SCOPE_KEYED_SETTINGS.has(s.key)).map(s => s.scope).filter(s => s !== 'global')
+  // TransitLocality.depot.operators holds branchIds too
+  const depotBranchIds = localities.flatMap(l => (l.depot as { operators?: string[] } | null)?.operators ?? [])
+  const branchIds  = [
+    ...settings.filter(s => !SCOPE_KEYED_SETTINGS.has(s.key)).map(s => s.scope).filter(s => s !== 'global'),
+    ...depotBranchIds,
+  ]
   const branches   = branchIds.length
     ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, taxId: true } })
     : []
@@ -84,10 +95,13 @@ async function main() {
     exportedAt: new Date().toISOString(),
     localities: localities.map(l => ({
       code: l.code, abbr: l.abbr, name: l.name, lat: l.lat, lng: l.lng,
-      isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo,
+      isDepot: l.isDepot, notes: l.notes, snapInfo: l.snapInfo, externalCodes: l.externalCodes,
+      depot: l.depot
+        ? { ...(l.depot as Record<string, unknown>), operators: ((l.depot as { operators?: string[] }).operators ?? []).map(id => branchTaxIdById.get(id) ?? null).filter(Boolean) }
+        : null,
     })),
     dayTypes: dayTypes.map(d => ({
-      code: d.code, name: d.name, pattern: d.pattern, priority: d.priority, sortOrder: d.sortOrder,
+      code: d.code, name: d.name, description: d.description, pattern: d.pattern, priority: d.priority, sortOrder: d.sortOrder,
     })),
     intervalTypes: intervalTypes.map(i => ({
       code: i.code, name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes,
@@ -100,12 +114,12 @@ async function main() {
     lines: lines.map(l => ({
       code: l.code, name: l.name, type: l.type, isActive: l.isActive,
       scopeName: l.scope?.name ?? null, parentLineCode: l.parentLine?.code ?? null,
-      notes: l.notes, metrics: l.metrics, vehicleTypes: l.vehicleTypes,
+      notes: l.notes, metrics: l.metrics, vehicleTypes: l.vehicleTypes, externalCodes: l.externalCodes,
     })),
     routes: routes.map(r => ({
       lineCode: r.line.code, direction: r.direction, ordinal: r.ordinal, name: r.name,
       originCode: r.originLocality.code, destinationCode: r.destinationLocality.code,
-      isActive: r.isActive, isPrimary: r.isPrimary,
+      isActive: r.isActive, isPrimary: r.isPrimary, color: r.color, homeDepotCode: r.homeDepot?.code ?? null,
     })),
     // routeName is informational only (helps eyeballing the fixture) — routeOrdinal is
     // the actual matching key, since name isn't guaranteed unique per (lineCode, direction)
@@ -114,6 +128,7 @@ async function main() {
       localityCode: rl.locality?.code ?? null, lat: rl.lat, lng: rl.lng,
       deltaMinutes: rl.deltaMinutes, deltaKm: rl.deltaKm, deltaSource: rl.deltaSource,
       geometry: rl.geometry, allowsCrewChange: rl.allowsCrewChange, allowsMealBreak: rl.allowsMealBreak, allowsVehicleStand: rl.allowsVehicleStand,
+      includeInOso: rl.includeInOso,
     })),
     lineGroups: lineGroups.map(g => ({
       name: g.name, branchTaxId: g.branch?.taxId ?? null, notes: g.notes,
@@ -121,9 +136,9 @@ async function main() {
     })),
     settings: settings.map(s => {
       const value = { ...(s.value as Record<string, unknown>) }
-      // resource-pointer field — not portable as an id across databases
-      if (s.key === 'transit.general' && typeof value.defaultIntervalTypeId === 'string') {
-        value.defaultIntervalTypeId = intervalTypeCodeById.get(value.defaultIntervalTypeId) ?? null
+      const pointer = INTERVAL_TYPE_POINTERS[s.key]
+      if (pointer && typeof value[pointer] === 'string') {
+        value[pointer] = intervalTypeCodeById.get(value[pointer]) ?? null
       }
       const scoped = s.scope !== 'global'
       return {
