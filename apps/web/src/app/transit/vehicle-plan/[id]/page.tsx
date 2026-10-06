@@ -26,6 +26,7 @@ import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './component
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { ExportOsoModal } from './components/ExportOsoModal'
+import { PlanExportModal } from './components/PlanExportModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
 import { TripSummaryPanel }  from './components/TripSummaryPanel'
 import { OptimizeModal, type OptimizeTab, type SolverJob } from './components/OptimizeModal'
@@ -150,6 +151,7 @@ export default function VehiclePlanPage() {
   const [ganttVp,           setGanttVp]           = useState<ViewportSnapshot>(INITIAL_VP)
   const [versionsModalOpen, setVersionsModalOpen] = useState(false)
   const [exportOsoModalOpen, setExportOsoModalOpen] = useState(false)
+  const [planExportOpen, setPlanExportOpen] = useState(false)
   const [syncFromOsoOpen,    setSyncFromOsoOpen]    = useState(false)
   const [generateLineModal, setGenerateLineModal] = useState<{ lineIds: string[] } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
@@ -423,6 +425,12 @@ export default function VehiclePlanPage() {
             setVersionsModalOpen(true)
           } },
           { label: 'OSO', icon: Icons.FileSpreadsheet, onClick: () => setExportOsoModalOpen(true) },
+          // reads the saved plan — pending Gantt edits wouldn't be in the file
+          { label: 'Exportar Planejamento', icon: Icons.Upload, onClick: () => {
+            if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
+            if (pendingCount > 0) { toast.error('Salve ou descarte as alterações pendentes antes de exportar'); return }
+            setPlanExportOpen(true)
+          } },
           ...(canEditGantt ? [{ label: 'Atualizar da OSO', icon: Icons.RefreshCw, onClick: () => {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
             setSyncFromOsoOpen(true)
@@ -584,6 +592,15 @@ export default function VehiclePlanPage() {
         <ExportOsoModal
           planId={id}
           onClose={() => setExportOsoModalOpen(false)}
+        />
+      )}
+
+      {planExportOpen && (
+        <PlanExportModal
+          planId={id}
+          planName={String(record?.description ?? '')}
+          lineIds={[...selectedLineIds]}
+          onClose={() => setPlanExportOpen(false)}
         />
       )}
 

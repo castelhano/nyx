@@ -128,8 +128,13 @@ identificador "globus" só aparece no que é específico do formato de saída.
 ### 3.3 Cortes de tabela
 
 - **Intervalo**: todo `BlockInterval` dentro do trecho corta a tabela.
+- **Ida à garagem**: um par `RETURN` + `ACCESS` no meio do bloco (o solver gera esse par quando
+  o carro não pode ficar parado no ponto) **sempre** corta a tabela. A tabela que fecha
+  termina com recolhe; a seguinte recebe letra de pós-intervalo e começa com acesso e saída
+  da garagem.
 - **Troca de turno**: cada fronteira entre `DutyPiece`s consecutivas e não-stale da escala no
-  bloco, no instante `t` = `startMinutes` da peça seguinte:
+  bloco, só de jornadas de motorista (`role = DRIVER`) e só quando a jornada muda de uma peça
+  para a outra, no instante `t` = `startMinutes` da peça seguinte:
 
   | Onde cai `t` | Resultado |
   |---|---|
@@ -147,13 +152,16 @@ identificador "globus" só aparece no que é específico do formato de saída.
 | Situação | Ativ. | Local | SENTIDO | Saída → Chegada | Corta |
 |---|---|---|---|---|---|
 | Viagem do trecho | `01` | origem da viagem | da rota | partida → chegada | — |
-| Intervalo (`BlockInterval`) | `07` | `07` | oposto da última viagem | chegada da última → a mesma | sim |
+| Intervalo (`BlockInterval`) | `07` | `07` | da próxima viagem | partida do intervalo → a mesma | sim |
 | Troca de turno (escala) | `10` | `10` | da próxima viagem | chegada da última (ou `t`) → a mesma | sim |
 | Fim do trecho sem intervalo nem recolhida (segue para outra linha) | `10` | `10` | oposto da última viagem | chegada da última → a mesma | fim |
 | Recolhida (`RETURN`) no fim do trecho | `11` | `11` | oposto da última viagem | chegada da última → chegada do `RETURN` | fim |
+| Ida à garagem (`RETURN` + `ACCESS` no meio) | `11` | `11` | da próxima viagem | chegada da última → chegada do `RETURN` | sim |
 | Deslocamento (`DISPLACEMENT`) dentro do trecho | `98` | `98` | da próxima viagem | do deadrun | não |
 
 - Sentido da rota: `OUTBOUND → I`, `INBOUND → V`, `CIRCULAR → C`. "Oposto" de `C` é `C`.
+- Um deslocamento colado num corte fica na tabela em que cai cronologicamente: antes do
+  corte, na tabela que fecha; depois, na que abre.
 - `COD_LINHA` só é preenchido nas **viagens** cuja linha é diferente da linha raiz da
   programação, inclusive filhas e linhas da perdedora numa disputa. Fica em branco no
   deslocamento e nas linhas de encerramento.
@@ -168,9 +176,9 @@ identificador "globus" só aparece no que é específico do formato de saída.
 | TURNO | início da tabela < 09:00 → `1`, senão `2` (minutos do dia operacional, sem módulo) |
 | INICIO_SERVICO | partida da 1ª viagem. O preparo **não** é descontado; vai em campo próprio |
 | FIM_SERVICO | horário de chegada da linha de encerramento |
-| COD_LOCAL_MOT | trecho que começa com `ACCESS`: na 1ª tabela, a garagem (`block.depot`). Nos demais casos, a origem da 1ª viagem da tabela |
+| COD_LOCAL_MOT | tabela que começa com `ACCESS` (início do trecho ou depois de ida à garagem): a garagem (`block.depot`). Nos demais casos, a origem da 1ª viagem da tabela |
 | PREPARO_MOT | `signOnMinutes` das configurações efetivas da escala (`CrewPlanService.resolveSettings`) |
-| SAIDA_GAR | só na 1ª tabela de um trecho que começa com `ACCESS`: a partida do `ACCESS`. Nos demais casos, vazio |
+| SAIDA_GAR | tabela que começa com `ACCESS`: a partida do `ACCESS`. Nos demais casos, vazio |
 
 ### 3.6 Códigos externos
 
@@ -253,7 +261,7 @@ endpoint de download.
 
 1. **Schemas**: `plan-export/` (tipos, layout Globus, `formatExport`/`validateExport`),
    `externalCodes` em localidade e linha, mudança no Prisma.
-2. **Formatação**: teste do `formatExport` reproduzindo byte a byte as linhas da §2.2.
+2. **Formatação**: `vitest` no `apps/api` (só funções puras); teste do `formatExport` reproduzindo byte a byte as linhas da §2.2.
 3. **Cortes e perfil**: testes com fixtures para intervalo, TT entre viagens com folga, TT no
    meio da viagem, recolhida, fim de trecho sem recolhida, deslocamento dentro do trecho,
    viagem de outra linha, viagem de linha filha, disputa e letras.

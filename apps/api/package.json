@@ -6,6 +6,7 @@
     "dev": "nodemon --watch src --watch ../../packages/schemas --watch ../../packages/types",
     "build": "nest build",
     "lint": "eslint .",
+    "test": "vitest run",
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:push": "prisma db push && prisma generate",
     "db:generate": "prisma generate",
@@ -62,6 +63,7 @@
     "prisma": "^7",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
   }
 }

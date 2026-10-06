@@ -7,6 +7,8 @@ import { VehiclePlanImportController } from './vehicle-plan-import.controller'
 import { VehiclePlanImportService } from './vehicle-plan-import.service'
 import { VehiclePlanExportController } from './vehicle-plan-export.controller'
 import { VehiclePlanExportService } from './vehicle-plan-export.service'
+import { PlanExportController } from './plan-export/plan-export.controller'
+import { PlanExportService } from './plan-export/plan-export.service'
 import { TransitSettingsModule } from '../../settings/transit-settings.module'
 import { JobModule } from '../../../core/job/job.module'
 import { CaslModule } from '../../../../auth/casl.module'
@@ -14,8 +16,8 @@ import { CrewPlanModule } from '../crew-plan/crew-plan.module'
 
 @Module({
   imports:     [TransitSettingsModule, JobModule, CaslModule, CrewPlanModule],
-  controllers: [VehiclePlanController, VehicleBlockController, VehiclePlanImportController, VehiclePlanExportController],
-  providers:   [VehiclePlanService, VehicleBlockService, VehiclePlanImportService, VehiclePlanExportService],
+  controllers: [VehiclePlanController, VehicleBlockController, VehiclePlanImportController, VehiclePlanExportController, PlanExportController],
+  providers:   [VehiclePlanService, VehicleBlockService, VehiclePlanImportService, VehiclePlanExportService, PlanExportService],
   exports:     [VehiclePlanService],
 })
 export class VehiclePlanModule {}

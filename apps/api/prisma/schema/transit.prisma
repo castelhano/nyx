@@ -90,6 +90,9 @@ model TransitLocality {
   // snapping this locality's coordinates onto the OSRM road network:
   // { lat, lng, distanceM, roadName?, checkedAt: ISO datetime }
   snapInfo  Json?
+  // ExternalCodes (packages/schemas/transit/plan-export/external-system.ts) — this
+  // locality's code per external system ({ GLOBUS?: string }); blank falls back to `code`
+  externalCodes Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -149,6 +152,9 @@ model TransitLine {
   // LineVehicleTypes (packages/schemas/transit/line.schema.ts): { allowed: VehicleType[]
   // (empty = any), preferred: VehicleType | null } — read by the vehicle solver
   vehicleTypes Json?
+  // ExternalCodes (packages/schemas/transit/plan-export/external-system.ts) — this line's
+  // code per external system ({ GLOBUS?: string }); blank falls back to `code`
+  externalCodes Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
