@@ -13,7 +13,7 @@ import { useShortcut }      from '@/lib/keywatch'
 import { apiFetch }         from '@/lib/auth'
 import { useToast }         from '@/lib/toast-context'
 import { useConfirm }       from '@/lib/confirm-context'
-import { extractError }     from '@/lib/utils'
+import { cn, extractError } from '@/lib/utils'
 import type { CrewBoardData, BoardBlock, BoardDuty } from './board.types'
 import { CrewBoard, type PieceDraftStart } from './components/CrewBoard'
 import { AssignPieceModal, type AssignTarget } from './components/AssignPieceModal'
@@ -204,11 +204,14 @@ export default function CrewPlanPage() {
     () => new Map((data?.duties ?? []).map(d => [d.id, dutyLineCodes(d, blockById, data?.lineCodes ?? [])])),
     [data, blockById],
   )
-  const planLineCodes = useMemo(() => {
+  // keyed by content so a refetch that keeps the same lines keeps the same array (and the
+  // line colors below, which every memoized row receives)
+  const planLineKey = useMemo(() => {
     const used = new Set((data?.blocks ?? []).flatMap(b => b.trips.map(t => t.lineCode)))
     // numeric-aware: 032 < 301 < A01
-    return (data?.lineCodes ?? []).filter(c => used.has(c)).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+    return (data?.lineCodes ?? []).filter(c => used.has(c)).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join('\n')
   }, [data])
+  const planLineCodes = useMemo(() => (planLineKey ? planLineKey.split('\n') : []), [planLineKey])
 
   // indexed over the lines the plan runs — same as the vehicle plan Gantt
   const lineColors = useMemo(
@@ -292,6 +295,7 @@ export default function CrewPlanPage() {
   }
 
   function handlePointClick(block: BoardBlock, point: ReliefPoint, pickStart: boolean) {
+    if (saving) return
     if (pickStart) { setDraftStart({ blockId: block.id, point }); return }
 
     if (draftStart && draftStart.blockId === block.id) {
@@ -698,7 +702,9 @@ export default function CrewPlanPage() {
               />
             </div>
           )}
-          <div className="flex-1 min-h-0">
+          {/* clicks are ignored while saving (handlers check it) — not passed to the rows, so a
+              save doesn't re-render every row twice */}
+          <div className={cn('flex-1 min-h-0', saving && 'cursor-progress')}>
           {data ? (
             view === 'duties' ? (
               <DutyBoard
@@ -712,8 +718,8 @@ export default function CrewPlanPage() {
                 selectedDutyId={selectedDutyId}
                 onSelectDuty={(duty) => setSelectedDutyId(duty.id)}
                 lineColors={lineColors}
-                canEdit={canEdit && !saving}
-                onSlotClick={(duty, slot) => { setSelectedDutyId(duty.id); setBreakDraft({ duty, ...slot }) }}
+                canEdit={canEdit}
+                onSlotClick={(duty, slot) => { if (saving) return; setSelectedDutyId(duty.id); setBreakDraft({ duty, ...slot }) }}
                 scrollRef={boardScroll}
                 pinnable={filterOpen}
                 pinnedIds={pinnedDutyIds}
@@ -729,7 +735,7 @@ export default function CrewPlanPage() {
                 pxPerMinute={ZOOMS[zoomIdx]}
                 selectedDutyId={selectedDutyId}
                 draftStart={draftStart}
-                canEdit={canEdit && !saving}
+                canEdit={canEdit}
                 onPointClick={handlePointClick}
                 onPieceClick={(duty) => setSelectedDutyId(duty.id)}
                 lineColors={lineColors}

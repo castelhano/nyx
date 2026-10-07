@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece, BoardActivity, BreakSlot } from '../board.types'
 import { fmtTime, fmtDuration, blockColorVars, pieceTrips, pieceDeadruns, breakSlots, SWATCH_BG_CLASS, LINE_BG_CLASS, ACTIVITY_LABEL, DIRECTION_LABEL, STALE_LABEL, DEADRUN_LABEL, DEADRUN_CLASS } from '../board.types'
-import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
+import { LABEL_W, Ruler, hourGridStyle, type TimeRange } from './Timeline'
 import { PinToggle } from './CrewFilterBar'
 
 // One row per duty, whatever vehicles it runs on: its pieces colored per vehicle (so a
@@ -125,8 +125,7 @@ const DutyRow = memo(function DutyRow({
         </span>
       </div>
 
-      <div className="relative" style={{ width }}>
-        <HourGrid range={range} pxPerMinute={pxPerMinute} />
+      <div className="relative" style={{ width, ...hourGridStyle(pxPerMinute) }}>
 
         {/* implicit sign-on/off assumed by the calculation */}
         {first != null && !hasOn && signOnMinutes > 0 && (

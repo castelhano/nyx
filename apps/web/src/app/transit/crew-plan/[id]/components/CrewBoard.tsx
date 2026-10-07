@@ -1,11 +1,11 @@
 'use client'
 
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { formatDutyNumber, vehicleBlockIssueText, type ReliefPoint } from '@nyx/schemas'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import type { BoardBlock, BoardDuty, BoardPiece } from '../board.types'
-import { LABEL_W, Ruler, HourGrid, type TimeRange } from './Timeline'
+import { LABEL_W, Ruler, hourGridStyle, type TimeRange } from './Timeline'
 import { PinToggle } from './CrewFilterBar'
 import { fmtTime, fmtDuration, dutyColorVars, SWATCH_BG_CLASS, LINE_BG_CLASS, STALE_LABEL, DEADRUN_LABEL, DEADRUN_CLASS } from '../board.types'
 import type { CSSProperties, Ref } from 'react'
@@ -48,10 +48,6 @@ export function CrewBoard({
   range, blocks, duties, uncovered, localityName, pxPerMinute, selectedDutyId, draftStart, canEdit, onPointClick, onPieceClick,
   lineColors, scrollRef, pinnable, pinnedIds, onTogglePin,
 }: Props) {
-  // relief points are only rendered for the hovered row (or the row being picked on) —
-  // a plan easily has ~200 blocks × ~100 points each
-  const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
-
   // pieces grouped by block, split into the driver lane and the other-roles lane
   const piecesByBlock = useMemo(() => {
     const map = new Map<string, { duty: BoardDuty; piece: BoardPiece }[]>()
@@ -100,11 +96,10 @@ export function CrewBoard({
             <BlockRow
               key={block.id} block={block} items={items} uncovered={uncoveredByBlock.get(block.id) ?? NONE}
               range={range} pxPerMinute={pxPerMinute} localityName={localityName} lineColors={lineColors} canEdit={canEdit}
-              hovered={hoveredBlockId === block.id}
               draftStart={draftStart?.blockId === block.id ? draftStart : null}
               selectedDutyId={items.some(i => i.duty.id === selectedDutyId) ? selectedDutyId : null}
               issuePieceIds={issuePieceIds} pinned={pinnedIds.has(block.id)}
-              onHover={setHoveredBlockId} onPointClick={pointClick} onPieceClick={pieceClick} onTogglePin={togglePin}
+              onPointClick={pointClick} onPieceClick={pieceClick} onTogglePin={togglePin}
             />
           )
         })}
@@ -116,17 +111,19 @@ export function CrewBoard({
 const NONE: never[] = []
 
 const BlockRow = memo(function BlockRow({
-  block, items, uncovered: blockUncovered, range, pxPerMinute, localityName, lineColors, canEdit, hovered, draftStart,
-  selectedDutyId, issuePieceIds, pinned, onHover, onPointClick, onPieceClick, onTogglePin,
+  block, items, uncovered: blockUncovered, range, pxPerMinute, localityName, lineColors, canEdit, draftStart,
+  selectedDutyId, issuePieceIds, pinned, onPointClick, onPieceClick, onTogglePin,
 }: {
   block: BoardBlock; items: { duty: BoardDuty; piece: BoardPiece }[]
   uncovered: { startMinutes: number; endMinutes: number }[]; range: TimeRange; pxPerMinute: number
   localityName: (id: string) => string; lineColors: Map<string, CSSProperties> | null; canEdit: boolean
-  hovered: boolean; draftStart: PieceDraftStart | null; selectedDutyId: string | null; issuePieceIds: Set<string>
-  pinned: boolean; onHover: Dispatch<SetStateAction<string | null>>
+  draftStart: PieceDraftStart | null; selectedDutyId: string | null; issuePieceIds: Set<string>; pinned: boolean
   onPointClick: (block: BoardBlock, point: ReliefPoint, pickStart: boolean) => void
   onPieceClick: (duty: BoardDuty, piece: BoardPiece) => void; onTogglePin: (blockId: string) => void
 }) {
+  // relief points are only rendered for the hovered row (or the row being picked on) — a plan
+  // easily has ~200 blocks × ~100 points each; kept here so hovering doesn't re-render the board
+  const [hovered, setHovered] = useState(false)
   const x          = (m: number) => (m - range.start) * pxPerMinute
   const width      = (range.end - range.start) * pxPerMinute
   const driver     = items.filter(i => i.duty.role === 'DRIVER')
@@ -138,8 +135,8 @@ const BlockRow = memo(function BlockRow({
       data-row={block.id}
       className={cn('flex border-b border-border/60', isDraftRow && 'bg-accent/30')}
       style={{ height: ROW_H }}
-      onMouseEnter={() => onHover(block.id)}
-      onMouseLeave={() => onHover(h => (h === block.id ? null : h))}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div style={{ width: LABEL_W }} className="sticky left-0 z-10 shrink-0 bg-background border-r border-border flex items-center justify-between px-2 text-xs">
         <span className="flex items-center gap-1 font-medium">
@@ -158,8 +155,7 @@ const BlockRow = memo(function BlockRow({
         </span>
       </div>
 
-      <div className="relative" style={{ width }}>
-        <HourGrid range={range} pxPerMinute={pxPerMinute} />
+      <div className="relative" style={{ width, ...hourGridStyle(pxPerMinute) }}>
 
         {/* vehicle lane */}
         {block.trips.map(t => {
