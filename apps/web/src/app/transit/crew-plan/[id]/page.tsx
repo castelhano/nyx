@@ -206,7 +206,8 @@ export default function CrewPlanPage() {
   )
   const planLineCodes = useMemo(() => {
     const used = new Set((data?.blocks ?? []).flatMap(b => b.trips.map(t => t.lineCode)))
-    return (data?.lineCodes ?? []).filter(c => used.has(c))
+    // numeric-aware: 032 < 301 < A01
+    return (data?.lineCodes ?? []).filter(c => used.has(c)).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
   }, [data])
 
   // indexed over the lines the plan runs — same as the vehicle plan Gantt

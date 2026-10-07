@@ -15,7 +15,7 @@ interface Props {
   onChange:   (next: CrewFilter) => void
   matchCount: number
   operators:  CrewBoardData['operators']
-  // lines the plan's trips run, in Scope order
+  // lines the plan's trips run, sorted by code (numeric-aware)
   lineCodes:  string[]
   // "X" — closes the bar entirely (criteria + pins reset by the caller)
   onClose:    () => void
