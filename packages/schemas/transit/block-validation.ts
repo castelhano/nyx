@@ -8,8 +8,8 @@ import { z } from 'zod'
 
 export const VEHICLE_BLOCK_ISSUE_CODES = [
   'NO_COMPANY',            // no empresa (VehicleBlock.branchId) assigned
-  'NO_START_ACCESS',       // the first movement isn't an ACCESS
-  'NO_END_RETURN',         // the last movement isn't a RETURN
+  'NO_START_ACCESS',       // the first movement doesn't leave the depot (ACCESS, or a trip from it)
+  'NO_END_RETURN',         // the last movement doesn't reach the depot (RETURN, or a trip to it)
   'MISSING_ACCESS',        // after a RETURN, the vehicle moves again without an ACCESS
   'ACCESS_WITHOUT_RETURN', // an ACCESS mid-day whose previous movement isn't a RETURN
   'DEPOT_MISMATCH',        // ACCESS from / RETURN to a place other than the block's depot
@@ -70,10 +70,15 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
   ].sort((a, b) => a.departureMinutes - b.departureMinutes || a.arrivalMinutes - b.arrivalMinutes)
   if (!moves.length) return issues
 
+  // a trip whose terminal is the depot itself leaves/reaches it directly — it plays the role of
+  // the ACCESS/RETURN, there's no deadrun to model
+  const leavesDepot  = (m: Move) => m.kind === 'ACCESS' || (m.kind === 'TRIP' && m.originLocalityId === input.depotId)
+  const reachesDepot = (m: Move) => m.kind === 'RETURN' || (m.kind === 'TRIP' && m.destinationLocalityId === input.depotId)
+
   const first = moves[0], last = moves[moves.length - 1]
   if (!input.branchId) issues.push({ code: 'NO_COMPANY', minutes: first.departureMinutes })
-  if (first.kind !== 'ACCESS') issues.push({ code: 'NO_START_ACCESS', minutes: first.departureMinutes })
-  if (last.kind !== 'RETURN')  issues.push({ code: 'NO_END_RETURN',   minutes: last.arrivalMinutes })
+  if (!leavesDepot(first)) issues.push({ code: 'NO_START_ACCESS', minutes: first.departureMinutes })
+  if (!reachesDepot(last)) issues.push({ code: 'NO_END_RETURN',   minutes: last.arrivalMinutes })
 
   for (const m of moves) {
     if ((m.kind === 'ACCESS' && m.originLocalityId !== input.depotId) || (m.kind === 'RETURN' && m.destinationLocalityId !== input.depotId)) {
@@ -84,9 +89,9 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
   for (let i = 1; i < moves.length; i++) {
     const prev = moves[i - 1], cur = moves[i]
     if (cur.departureMinutes < prev.arrivalMinutes) { issues.push({ code: 'OVERLAP', minutes: cur.departureMinutes }); continue }
-    // parked at the depot in between: only an ACCESS may follow (a different depot is DEPOT_MISMATCH)
-    if (prev.kind === 'RETURN') {
-      if (cur.kind !== 'ACCESS') issues.push({ code: 'MISSING_ACCESS', minutes: cur.departureMinutes })
+    // parked at the depot in between: only a way out of it may follow (a different depot is DEPOT_MISMATCH)
+    if (reachesDepot(prev)) {
+      if (!leavesDepot(cur)) issues.push({ code: 'MISSING_ACCESS', minutes: cur.departureMinutes })
       continue
     }
     if (cur.kind === 'ACCESS') { issues.push({ code: 'ACCESS_WITHOUT_RETURN', minutes: cur.departureMinutes }); continue }
