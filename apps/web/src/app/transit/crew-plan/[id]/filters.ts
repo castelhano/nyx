@@ -5,10 +5,18 @@ import type { BoardBlock, BoardDuty } from './board.types'
 // AND; pinned rows stay visible regardless. Criteria that don't apply to the current view
 // are ignored (e.g. role on the vehicle view).
 
+// start/end: time of day; duration: duties' summary.workMinutes, vehicles' window length
+export type ConditionField = 'start' | 'end' | 'duration'
+
+export interface FilterCondition {
+  field:   ConditionField
+  op:      'gt' | 'lt'
+  minutes: number
+}
+
 export interface CrewFilter {
-  timeField:     'start' | 'end'
-  timeRelation:  'after' | 'before'
-  minutes:       number | null
+  // all must hold (AND)
+  conditions:    FilterCondition[]
   branchId:      string | null
   // vehicles running / duties operating this line
   lineCode:      string | null
@@ -23,28 +31,35 @@ export interface CrewFilter {
 }
 
 export const EMPTY_FILTER: CrewFilter = {
-  timeField: 'start', timeRelation: 'after', minutes: null, branchId: null, lineCode: null,
+  conditions: [], branchId: null, lineCode: null,
   uncoveredOnly: false, role: null, kind: null, withIssues: false, staleOnly: false, multiLine: false,
 }
 
 export type CrewView = 'vehicles' | 'duties'
 
 export function isFilterActive(f: CrewFilter, view: CrewView): boolean {
-  if (f.minutes != null || f.branchId || f.lineCode) return true
+  if (f.conditions.length || f.branchId || f.lineCode) return true
   return view === 'vehicles'
     ? f.uncoveredOnly
     : !!f.role || !!f.kind || f.withIssues || f.staleOnly || f.multiLine
 }
 
-function matchesTime(f: CrewFilter, start: number | null, end: number | null): boolean {
-  if (f.minutes == null) return true
-  const value = f.timeField === 'start' ? start : end
-  if (value == null) return false
-  return f.timeRelation === 'after' ? value > f.minutes : value < f.minutes
+// same field + same relation replaces; the opposite relation is kept (a range: > 6h and < 8h)
+export function addCondition(list: FilterCondition[], c: FilterCondition): FilterCondition[] {
+  return [...list.filter(x => !(x.field === c.field && x.op === c.op)), c]
+}
+
+function matchesConditions(f: CrewFilter, values: Record<ConditionField, number | null>): boolean {
+  return f.conditions.every(c => {
+    const value = values[c.field]
+    if (value == null) return false
+    return c.op === 'gt' ? value > c.minutes : value < c.minutes
+  })
 }
 
 export function blockMatches(f: CrewFilter, block: BoardBlock, hasUncovered: boolean): boolean {
-  if (!matchesTime(f, block.window?.startMinutes ?? null, block.window?.endMinutes ?? null)) return false
+  const w = block.window
+  if (!matchesConditions(f, { start: w?.startMinutes ?? null, end: w?.endMinutes ?? null, duration: w ? w.endMinutes - w.startMinutes : null })) return false
   if (f.branchId && block.branchId !== f.branchId) return false
   if (f.lineCode && !block.trips.some(t => t.lineCode === f.lineCode)) return false
   if (f.uncoveredOnly && !hasUncovered) return false
@@ -56,7 +71,7 @@ export function dutyMatches(f: CrewFilter, duty: BoardDuty, lineCodes: string[])
   const events = [...duty.pieces, ...duty.activities]
   const start  = events.length ? Math.min(...events.map(e => e.startMinutes)) : null
   const end    = events.length ? Math.max(...events.map(e => e.endMinutes)) : null
-  if (!matchesTime(f, start, end)) return false
+  if (!matchesConditions(f, { start, end, duration: duty.summary?.workMinutes ?? null })) return false
   if (f.branchId && duty.branchId !== f.branchId) return false
   if (f.role && duty.role !== f.role) return false
   if (f.kind && duty.kind !== f.kind) return false

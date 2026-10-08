@@ -51,6 +51,7 @@ const iconNames = [
   'FileText',
   'FileWarning',
   'Filter',
+  'FilterX',
   'Gauge',
   'GitBranch',
   'Home',
