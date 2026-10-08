@@ -420,6 +420,11 @@ model TransitTrip {
   // sempre inferida em tempo de export, nunca persistida (docs/proposal/
   // plan_trip_markings_v1.md, regra 6).
   markings            Json?
+  // trip group ("grupo de viagens") — trips sharing this id run back to back, nothing else
+  // between them, on one vehicle and one driver: the vehicle solver keeps them as one fixed
+  // unit (with the deadruns/intervals between them) and the crew solver never cuts inside it.
+  // A plain shared uuid, no table. Removing any trip of a group dissolves the whole group.
+  bundleId            String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
@@ -428,6 +433,7 @@ model TransitTrip {
   dayType       DayType        @relation(fields: [dayTypeId], references: [id])
   blockTrips    BlockTrip[]
 
+  @@index([bundleId])
   @@map("transit_trips")
 }
 

@@ -49,9 +49,19 @@ export interface GanttSegment {
   irregular?:   SegmentIrregularity | null
 }
 
+// An outline around a stretch of a row (e.g. a trip group) — drawn over the segments, border
+// only; `broken` draws it dashed in the warning color.
+export interface GanttFrame {
+  rowId:       string
+  startMinute: number
+  endMinute:   number
+  broken?:     boolean
+}
+
 export interface GanttView<TData = unknown> {
   getRows:         (data: TData) => GanttRow[]
   getSegments:     (row: GanttRow, data: TData) => GanttSegment[]
+  getFrames?:      (row: GanttRow, data: TData) => GanttFrame[]
   getRowLabel:     (row: GanttRow) => string
   segmentColor:    (seg: GanttSegment) => string
   onSegmentClick?: (seg: GanttSegment, pos: Point) => void

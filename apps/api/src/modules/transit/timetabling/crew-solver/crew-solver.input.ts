@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { mealPolicy, type CrewSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
-import { loadBlockRelief } from '../crew-plan/relief-points'
+import { insideBundle, loadBlockRelief } from '../crew-plan/relief-points'
 import { loadCrewWalk } from '../crew-plan/crew-walk'
 import type { CrewCalcDuty } from '../crew-plan/crew-scoring.calc'
 import type { CrewSolverInput, SolverBlock } from './crew-solver.calc'
@@ -39,8 +39,11 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   ])
   const relief = await loadBlockRelief(prisma, blockRows.map(b => b.id))
 
+  // no relief point inside a trip group: every cut, split or meal gap the solver can pick sits on
+  // one, so a group always stays with one driver and nothing is placed inside it
   const blocks: SolverBlock[] = [...relief.entries()].map(([id, r]) => ({
-    id, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips, deadruns: r.deadruns,
+    id, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, trips: r.trips, deadruns: r.deadruns, bundles: r.bundles,
+    points: r.points.filter(p => !insideBundle(r.bundles, p.minutes)),
   }))
 
   const localityIds = [...new Set(blocks.flatMap(b => b.points.map(p => p.localityId)))]

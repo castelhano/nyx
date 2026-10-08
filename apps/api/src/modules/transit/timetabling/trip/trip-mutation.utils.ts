@@ -122,6 +122,18 @@ export async function afterTripUpdate(
   }
 }
 
+// A group losing a trip is dissolved whole (TransitTrip.bundleId) — its remaining trips go
+// back to being free trips. Runs before the trips are deleted.
+export async function dissolveBundlesOf(db: any, tripIds: string[]): Promise<void> {
+  if (tripIds.length === 0) return
+  const rows: { bundleId: string | null }[] = await db.transitTrip.findMany({
+    where:  { id: { in: tripIds }, bundleId: { not: null } },
+    select: { bundleId: true },
+  })
+  const bundleIds = [...new Set(rows.map(r => r.bundleId!))]
+  if (bundleIds.length) await db.transitTrip.updateMany({ where: { bundleId: { in: bundleIds } }, data: { bundleId: null } })
+}
+
 export async function applyTripRemoval(db: any, id: string): Promise<{ affectedPlanIds: string[] }> {
   const existing = await db.transitTrip.findUnique({
     where:  { id },
@@ -147,6 +159,7 @@ export async function applyTripRemoval(db: any, id: string): Promise<{ affectedP
     await Promise.all(blockIds.map(vehicleBlockId => findDeadrunIdsAnchoredToTrips(db, vehicleBlockId, [id])))
   ).flat()
 
+  await dissolveBundlesOf(db, [id])
   await db.transitTrip.delete({ where: { id } })  // cascades BlockTrip
 
   // Removing a departure this line was covering is itself a possible divergence

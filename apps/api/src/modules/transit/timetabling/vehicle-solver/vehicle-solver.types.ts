@@ -19,7 +19,8 @@ export interface ProposalBlock {
   vehicleType: VehicleTypeValue
   tripIds:     string[]
   deadruns:    { type: DeadrunKind; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
-  intervals:   { departureMinutes: number; arrivalMinutes: number }[]
+  // intervalTypeId: kept from a trip group's own intervals; absent = the default interval type
+  intervals:   { departureMinutes: number; arrivalMinutes: number; intervalTypeId?: string }[]
 }
 
 // What the Cenários tab compares — for the proposal and for the plan as it is

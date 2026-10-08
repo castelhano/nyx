@@ -70,11 +70,13 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 
 // A rule not met — flagged, never blocks a save. Range criteria flag only outside
 // [floor, ceiling] (`error`); outside the ideal they only cost score (see settings-crew.schema.ts).
-// `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix).
+// `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix,
+// BUNDLE_SPLIT).
 export const dutyIssueSchema = z.object({
   code: z.enum([
     'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE', 'MEAL_REQUIRED', 'PIECE_OFF_SERVICE',
     'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION', 'IDLE_TIME',
+    'BUNDLE_SPLIT',
   ]),
   severity: z.enum(['warning', 'error']),
   value:    z.number(),
@@ -100,6 +102,7 @@ export const DUTY_ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   TRAVEL_GAP:         'Deslocamento entre pegadas',
   BRANCH_MISMATCH:    'Bloco de outro operador',
   MEAL_LOCATION:      'Refeição fora de local permitido',
+  BUNDLE_SPLIT:       'Troca de condutor dentro de um grupo de viagens',
 }
 
 export const dutySchema = withMeta(

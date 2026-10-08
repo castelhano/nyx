@@ -194,6 +194,14 @@ const BlockRow = memo(function BlockRow({
             title={`Intervalo ${fmtTime(i.departureMinutes)}–${fmtTime(i.arrivalMinutes)}`}
           />
         ))}
+        {/* trip groups — outline only, managed on the vehicle plan */}
+        {block.bundles.map(g => (
+          <div
+            key={`bundle:${g.startMinutes}`}
+            className="absolute top-0.5 h-5 rounded border-[1.5px] border-slate-700 dark:border-slate-200 pointer-events-none"
+            style={{ left: x(g.startMinutes) - 2, width: (g.endMinutes - g.startMinutes) * pxPerMinute + 4 }}
+          />
+        ))}
 
         {/* relief points — only on the hovered row, or while picking a piece on this row */}
         {canEdit && (hovered || isDraftRow) && block.points.map((p, idx) => {

@@ -24,9 +24,26 @@ import type { DeadrunKind, ProposalBlock, VehicleSolverSummary } from './vehicle
 //    .allowsVehicleStand of the arriving trip's destination or the next trip's origin);
 //    anywhere else it goes back to the depot and out again, and with no time for that round
 //    trip the two trips can't follow each other.
+//
+// A trip group (TransitTrip.bundleId) is one SolverTrip: it moves as a unit, from its first
+// trip's departure to its last one's arrival, and its inside — the trips and the deadruns /
+// intervals between them — is never touched, only expanded when the block is materialized.
 
 // minutes between a trip and the deadrun next to it — same as the import's normalization
 export const DEADRUN_GAP = 1
+
+// a trip of a group, as the aggregate and the issues check read it
+export interface BundleTrip {
+  id:        string
+  lineId:    string
+  lineCode:  string
+  origin:    string
+  dest:      string
+  dep:       number
+  arr:       number
+  direction: string
+  line:      { metrics: unknown; vehicleTypes: unknown }
+}
 
 export interface SolverTrip {
   id:        string
@@ -46,7 +63,12 @@ export interface SolverTrip {
   // RouteLocality.allowsVehicleStand there
   standAtOrigin: boolean
   standAtDest:   boolean
+  // a trip group: its trips in order and the rows between them, kept as they are
+  bundle?:   { trips: BundleTrip[]; rows: Rows }
 }
+
+// the trips a unit stands for
+export const expand = (t: SolverTrip): BundleTrip[] => t.bundle?.trips ?? [t]
 
 export interface SolverDepot {
   id:        string
@@ -145,6 +167,8 @@ export class Capacity {
 
 export class VehicleModel {
   readonly tripById:  Map<string, SolverTrip>
+  // every trip id → the unit it belongs to (itself, or its group)
+  readonly unitOf:    Map<string, SolverTrip>
   readonly depotById: Map<string, SolverDepot>
   readonly matrixKm:  Record<string, number> = {}
   readonly minLayover: number
@@ -155,6 +179,7 @@ export class VehicleModel {
 
   constructor(readonly input: VehicleSolverInput) {
     this.tripById  = new Map(input.trips.map(t => [t.id, t]))
+    this.unitOf    = new Map(input.trips.flatMap(t => expand(t).map(x => [x.id, t] as const)))
     this.depotById = new Map(input.depots.map(d => [d.id, d]))
     for (const [key, e] of Object.entries(input.matrix)) this.matrixKm[key] = e.km
     this.minLayover = input.settings.minLayoverMinutes
@@ -245,6 +270,11 @@ export class VehicleModel {
       deadruns.push({ type, originLocalityId: from, destinationLocalityId: to, departureMinutes: dep, arrivalMinutes: arr })
 
     deadrun('ACCESS', depotId, first.origin, first.dep - DEADRUN_GAP - access.minutes, first.dep - DEADRUN_GAP)
+    for (const t of trips) {
+      if (!t.bundle) continue
+      deadruns.push(...t.bundle.rows.deadruns)
+      intervals.push(...t.bundle.rows.intervals)
+    }
     for (let i = 1; i < trips.length; i++) {
       const prev = trips[i - 1], cur = trips[i]
       const stand = this.standMinutes(prev, cur)!
@@ -282,7 +312,7 @@ export class VehicleModel {
     if (!rows) return null
     const agg = buildAggregateFromPersisted({
       vehicleType, branchId,
-      blockTrips: trips.map(t => ({
+      blockTrips: trips.flatMap(expand).map(t => ({
         trip: {
           departureMinutes: t.dep, arrivalMinutes: t.arr,
           route: { lineId: t.lineId, originLocalityId: t.origin, destinationLocalityId: t.dest, direction: t.direction, line: t.line },
@@ -420,9 +450,12 @@ function seedBlocks(model: VehicleModel): WorkBlock[] | null {
   const covered = new Set<string>()
   const blocks: WorkBlock[] = []
   for (const s of seed) {
-    const found = s.tripIds.map(id => model.tripById.get(id))
+    const found = s.tripIds.map(id => model.unitOf.get(id))
     if (found.some(t => !t)) return null
-    const ordered = (found as SolverTrip[]).sort((a, b) => a.dep - b.dep)
+    // a group split across blocks goes whole to the first one
+    const ordered = [...new Set(found as SolverTrip[])].filter(t => !covered.has(t.id)).sort((a, b) => a.dep - b.dep)
+    if (!ordered.length) continue
+    for (const t of ordered) covered.add(t.id)
     const runs: SolverTrip[][] = [[ordered[0]]]
     for (let i = 1; i < ordered.length; i++) {
       const run = runs[runs.length - 1]
@@ -436,7 +469,6 @@ function seedBlocks(model: VehicleModel): WorkBlock[] | null {
         ?? model.branches.map(br => model.place(run, br, cap)).find(Boolean)
       if (!b) return null
       cap.add(b.depotId, b.vehicleType)
-      for (const t of run) covered.add(t.id)
       blocks.push(b)
     }
   }
@@ -462,7 +494,7 @@ export function constructBlocks(model: VehicleModel): WorkBlock[] {
 // the line a block runs the most trips of (ties: the one it runs first)
 function mainLineCode(b: WorkBlock): string {
   const counts = new Map<string, number>()
-  for (const t of b.trips) counts.set(t.lineCode, (counts.get(t.lineCode) ?? 0) + 1)
+  for (const t of b.trips.flatMap(expand)) counts.set(t.lineCode, (counts.get(t.lineCode) ?? 0) + 1)
   let best = b.trips[0].lineCode
   for (const [code, n] of counts) if (n > counts.get(best)!) best = code
   return best
@@ -475,14 +507,14 @@ export function toProposalBlocks(blocks: WorkBlock[]): ProposalBlock[] {
     .sort((a, b) => line.get(a)!.localeCompare(line.get(b)!, 'pt-BR', { numeric: true }) || a.trips[0].dep - b.trips[0].dep)
     .map(b => ({
       depotId: b.depotId, branchId: b.branchId, vehicleType: b.vehicleType,
-      tripIds: b.trips.map(t => t.id), deadruns: b.rows.deadruns, intervals: b.rows.intervals,
+      tripIds: b.trips.flatMap(expand).map(t => t.id), deadruns: b.rows.deadruns, intervals: b.rows.intervals,
     }))
 }
 
 export function blockHasIssues(model: VehicleModel, b: WorkBlock): boolean {
   return validateBlock({
     depotId: b.depotId, branchId: b.branchId,
-    trips: b.trips.map(t => ({ departureMinutes: t.dep, arrivalMinutes: t.arr, originLocalityId: t.origin, destinationLocalityId: t.dest })),
+    trips: b.trips.flatMap(expand).map(t => ({ departureMinutes: t.dep, arrivalMinutes: t.arr, originLocalityId: t.origin, destinationLocalityId: t.dest })),
     deadruns: b.rows.deadruns, intervals: b.rows.intervals,
     maxStandMinutes: model.input.maxStandMinutes,
   }).length > 0

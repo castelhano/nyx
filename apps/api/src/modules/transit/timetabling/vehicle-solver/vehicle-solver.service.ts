@@ -263,7 +263,8 @@ export class VehicleSolverService {
       || planTripIds.some(t => !covered.has(t.id))) {
       throw new BadRequestException('O planejamento mudou desde a geração — gere novamente')
     }
-    if (best.blocks.some(b => b.intervals.length) && !general.defaultIntervalTypeId) {
+    // a trip group's own intervals keep their type
+    if (best.blocks.some(b => b.intervals.some(iv => !iv.intervalTypeId)) && !general.defaultIntervalTypeId) {
       throw new BadRequestException('Tipo de intervalo padrão não configurado')
     }
     this.drop(jobId)
@@ -285,7 +286,9 @@ export class VehicleSolverService {
       blockRows.push({ id, vehiclePlanId: planId, blockNumber: nextNumber(), depotId: b.depotId, branchId: b.branchId, vehicleType: b.vehicleType, isStale: true })
       b.tripIds.forEach((tripId, i) => tripRows.push({ vehicleBlockId: id, tripId, sequence: i + 1 }))
       for (const d of b.deadruns) deadrunRows.push({ vehicleBlockId: id, ...d })
-      for (const iv of b.intervals) intervalRows.push({ vehicleBlockId: id, intervalTypeId: general.defaultIntervalTypeId!, ...iv })
+      for (const iv of b.intervals) {
+        intervalRows.push({ vehicleBlockId: id, intervalTypeId: iv.intervalTypeId ?? general.defaultIntervalTypeId!, departureMinutes: iv.departureMinutes, arrivalMinutes: iv.arrivalMinutes })
+      }
     }
 
     await this.prisma.$transaction([

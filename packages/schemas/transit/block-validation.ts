@@ -17,6 +17,7 @@ export const VEHICLE_BLOCK_ISSUE_CODES = [
   'LOCATION_JUMP',         // a movement starts somewhere other than where the previous one ended
   'LONG_STAND',            // stands still longer than the default interval type's max, no interval
   'OVERLAP',               // two events at the same time
+  'BUNDLE_BROKEN',         // a trip group split across blocks, or another trip between its trips
 ] as const
 export type VehicleBlockIssueCode = typeof VEHICLE_BLOCK_ISSUE_CODES[number]
 
@@ -31,6 +32,7 @@ export const VEHICLE_BLOCK_ISSUE_LABEL: Record<VehicleBlockIssueCode, string> = 
   LOCATION_JUMP:         'Parte de local diferente de onde o carro estava',
   LONG_STAND:            'Parado além do intervalo máximo, sem intervalo lançado',
   OVERLAP:               'Eventos sobrepostos',
+  BUNDLE_BROKEN:         'Grupo de viagens dividido ou intercalado',
 }
 
 export const vehicleBlockIssueSchema = z.object({
@@ -53,11 +55,13 @@ export function vehicleBlockIssueText(issue: VehicleBlockIssue): string {
 export interface BlockValidationInput {
   depotId:   string
   branchId:  string | null
-  trips:     { departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
+  trips:     { departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
   // the default IntervalType's maxMinutes (general settings) — null skips LONG_STAND
   maxStandMinutes: number | null
+  // trips per group (TransitTrip.bundleId) in the whole plan — absent skips BUNDLE_BROKEN
+  bundleSizes?: Map<string, number>
 }
 
 type Move = { kind: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }
@@ -105,10 +109,26 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
       issues.push({ code: 'LONG_STAND', minutes: prev.arrivalMinutes, value: stand })
     }
   }
+  if (input.bundleSizes) issues.push(...bundleIssues(input.trips, input.bundleSizes))
   for (const iv of input.intervals) {
     if (moves.some(m => m.departureMinutes < iv.arrivalMinutes && m.arrivalMinutes > iv.departureMinutes)) {
       issues.push({ code: 'OVERLAP', minutes: iv.departureMinutes })
     }
   }
   return issues.sort((a, b) => a.minutes - b.minutes)
+}
+
+// A group must sit whole in one block, its trips one right after the other
+function bundleIssues(trips: BlockValidationInput['trips'], sizes: Map<string, number>): VehicleBlockIssue[] {
+  const sorted = [...trips].sort((a, b) => a.departureMinutes - b.departureMinutes)
+  const at = new Map<string, number[]>()
+  sorted.forEach((t, i) => { if (t.bundleId) at.set(t.bundleId, [...(at.get(t.bundleId) ?? []), i]) })
+  const issues: VehicleBlockIssue[] = []
+  for (const [bundleId, idx] of at) {
+    const contiguous = idx[idx.length - 1] - idx[0] === idx.length - 1
+    if (idx.length !== (sizes.get(bundleId) ?? idx.length) || !contiguous) {
+      issues.push({ code: 'BUNDLE_BROKEN', minutes: sorted[idx[0]].departureMinutes })
+    }
+  }
+  return issues
 }

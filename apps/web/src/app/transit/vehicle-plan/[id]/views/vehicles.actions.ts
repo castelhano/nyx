@@ -21,6 +21,9 @@ export interface VehiclesActionDeps {
   // docs/proposal/plan_trip_deadrun_conversion_v1.md — trip <-> DISPLACEMENT deadrun
   onConvertToDeadrun:  (tripId: string, blockId: string) => void
   onConvertToTrip:     (deadrunId: string, blockId: string) => void
+  // trip groups (TransitTrip.bundleId)
+  onGroupTrips:        (tripIds: string[]) => void
+  onUngroup:           (bundleIds: string[]) => void
 }
 
 export function createVehiclesActionSpec(
@@ -84,6 +87,7 @@ export function createVehiclesActionSpec(
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           makeTripDetailsAction([bt.trip.id], deps),
+          ...(bt.trip.bundleId ? [makeUngroupAction([bt.trip.bundleId], deps, onClose)] : []),
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddInterval(bt.trip.arrivalMinutes, block) ? [makeAddIntervalAction(bt.trip.arrivalMinutes, block.id, deps)] : []),
@@ -100,10 +104,14 @@ export function createVehiclesActionSpec(
       const tripIds    = tripSegs.map(s => (s.data as GanttBlockTrip).trip.id)
       const deadrunIds = drSegs.map(s => (s.data as GanttBlockDeadrun).id)
       const breakIds   = bkSegs.map(s => (s.data as GanttBlockInterval).id)
+      const bundleIds  = [...new Set(tripSegs.flatMap(s => (s.data as GanttBlockTrip).trip.bundleId ?? []))]
 
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
         ...(tripIds.length > 0 ? [makeTripDetailsAction(tripIds, deps)] : []),
+        // a range is contiguous by construction — exactly what a group needs
+        ...(bundleIds.length > 0 ? [makeUngroupAction(bundleIds, deps, onClose)]
+          : tripIds.length > 1  ? [makeGroupAction(tripIds, deps, onClose)] : []),
         makeDeleteIntervalAction(tripIds, deadrunIds, breakIds, selection.rowId, deps),
       ]
     },
@@ -177,6 +185,28 @@ function makeTripDetailsAction(tripIds: string[], deps: VehiclesActionDeps): Act
     variant: 'icon',
     label:   'Detalhes',
     onClick: () => deps.onOpenTripDetails(tripIds),
+  }
+}
+
+// ── trip group buttons ─────────────────────────────────────────────────────────
+
+function makeGroupAction(tripIds: string[], deps: VehiclesActionDeps, onClose: () => void): ActionItem {
+  return {
+    id:      'group',
+    label:   'Agrupar',
+    icon:    'Group',
+    variant: 'both',
+    onClick: () => { deps.onGroupTrips(tripIds); onClose() },
+  }
+}
+
+function makeUngroupAction(bundleIds: string[], deps: VehiclesActionDeps, onClose: () => void): ActionItem {
+  return {
+    id:      'ungroup',
+    label:   'Desagrupar',
+    icon:    'Ungroup',
+    variant: 'both',
+    onClick: () => { deps.onUngroup(bundleIds); onClose() },
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Viewport } from './viewport'
 import type { LayoutRow, LayoutSegment } from './layout/layout.types'
+import type { GanttFrame } from './gantt.types'
 
 const SEG_RADIUS  = 3
 const SEG_PADDING = 3   // px vertical
@@ -33,6 +34,14 @@ const BRACKET_LABEL_FONT  = '10px Inter, system-ui, sans-serif'
 const BRACKET_LABEL_GAP   = 4  // px entre a linha e o rótulo, abaixo
 const IRREGULAR_COLOR     = '#f59e0b'  // amber-500 — intervalo fora do min/máx
 
+// ── frame (e.g. trip group) — border only, hugging the row, around the segments' padding ──
+const FRAME_INSET       = 1     // px from the row's top/bottom edge
+const FRAME_OUTSET      = 2     // px beyond the first/last minute
+const FRAME_WIDTH       = 1.5
+const FRAME_RADIUS      = 5
+const FRAME_DASH        = [4, 3]
+const FRAME_BROKEN      = '#f59e0b'  // amber-500, same as irregular
+
 const EMPTY_SET = new Set<string>()
 
 export class Renderer {
@@ -54,6 +63,7 @@ export class Renderer {
     selectedSegIds:  Set<string> = EMPTY_SET,
     focusedSegId:    string | null = null,
     moveTargetRowId: string | null = null,
+    frames:          GanttFrame[] = [],
   ): void {
     const { ctx } = this
     ctx.clearRect(0, 0, viewport.width, viewport.height)
@@ -62,7 +72,31 @@ export class Renderer {
     this.drawTimeGrid(viewport)
     this.drawDayBoundaries(viewport)
     this.drawSegments(viewport, rows, segments, hoveredSegId, selectedSegIds, focusedSegId)
+    this.drawFrames(viewport, rows, frames)
     this.drawMoveTargetBorder(viewport, rows, moveTargetRowId)
+  }
+
+  private drawFrames(viewport: Viewport, rows: LayoutRow[], frames: GanttFrame[]): void {
+    if (frames.length === 0) return
+    const { ctx }  = this
+    const rowMap   = new Map(rows.map((r) => [r.id, r]))
+    const neutral  = this.isDark() ? 'rgba(226, 232, 240, 0.85)' : 'rgba(51, 65, 85, 0.85)'  // slate-200 / slate-700
+    ctx.save()
+    ctx.lineWidth = FRAME_WIDTH
+    for (const f of frames) {
+      if (!viewport.isTimeVisible(f.startMinute, f.endMinute)) continue
+      const row = rowMap.get(f.rowId)
+      if (!row || !viewport.isRowVisible(row.y, row.height)) continue
+      const x = viewport.minuteToX(f.startMinute) - FRAME_OUTSET
+      const w = (f.endMinute - f.startMinute) * viewport.pixelsPerMinute + FRAME_OUTSET * 2
+      const y = viewport.contentToCanvasY(row.y) + FRAME_INSET
+      ctx.strokeStyle = f.broken ? FRAME_BROKEN : neutral
+      ctx.setLineDash(f.broken ? FRAME_DASH : [])
+      ctx.beginPath()
+      ctx.roundRect(x, y, w, row.height - FRAME_INSET * 2, FRAME_RADIUS)
+      ctx.stroke()
+    }
+    ctx.restore()
   }
 
   private drawDayBoundaries(viewport: Viewport): void {

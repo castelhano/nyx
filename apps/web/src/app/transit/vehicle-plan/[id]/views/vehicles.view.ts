@@ -1,4 +1,4 @@
-import type { GanttView, GanttRow, GanttSegment } from '../engine/gantt.types'
+import type { GanttView, GanttRow, GanttSegment, GanttFrame } from '../engine/gantt.types'
 import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking, VehicleBlockIssue } from '@nyx/schemas'
 import { swatchColor, lineIndexByCode } from '@/lib/palette'
 
@@ -90,6 +90,8 @@ export interface GanttBlockTrip {
     stopPattern:      'LOCAL' | 'LIMITED' | 'EXPRESS'
     // absent on pending-add trips (set from the OSO, only ever read for the sync)
     requiredVehicleType?: VehicleType | null
+    // trip group (TransitTrip.bundleId) — absent on pending-add trips
+    bundleId?: string | null
     route: {
       direction:           string
       line:                { id: string; code: string; name: string; metrics: LineMetrics | null }
@@ -217,6 +219,37 @@ function lineColorMap(blocks: GanttBlock[]): Map<string, LineColor> {
 let _colorCacheBlocks: GanttBlock[] | null = null
 let _colorCacheMap:  Map<string, LineColor> | null = null
 
+// trips per group across the shown blocks — a group with trips elsewhere draws broken
+let _bundleCacheBlocks: GanttBlock[] | null = null
+let _bundleCacheSizes:  Map<string, number> | null = null
+
+function bundleSizes(blocks: GanttBlock[]): Map<string, number> {
+  if (_bundleCacheBlocks !== blocks) {
+    const sizes = new Map<string, number>()
+    for (const b of blocks) for (const bt of b.blockTrips) {
+      const id = bt.trip.bundleId
+      if (id) sizes.set(id, (sizes.get(id) ?? 0) + 1)
+    }
+    _bundleCacheBlocks = blocks
+    _bundleCacheSizes  = sizes
+  }
+  return _bundleCacheSizes!
+}
+
+// One frame per group on the block, first departure → last arrival; broken when part of the
+// group is on another block or another trip sits between its trips (BUNDLE_BROKEN)
+export function bundleFrames(block: GanttBlock, sizes: Map<string, number>): GanttFrame[] {
+  const trips = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+  const at = new Map<string, number[]>()
+  trips.forEach((bt, i) => { const id = bt.trip.bundleId; if (id) at.set(id, [...(at.get(id) ?? []), i]) })
+  return [...at.entries()].map(([id, idx]) => ({
+    rowId:       block.id,
+    startMinute: trips[idx[0]].trip.departureMinutes,
+    endMinute:   trips[idx[idx.length - 1]].trip.arrivalMinutes,
+    broken:      idx.length !== sizes.get(id) || idx[idx.length - 1] - idx[0] !== idx.length - 1,
+  }))
+}
+
 export const vehiclesView: GanttView<VehiclePlanGanttData> = {
   getRows(data): GanttRow[] {
     return data.blocks.map((b) => ({
@@ -288,6 +321,10 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
     }
 
     return segs
+  },
+
+  getFrames(row, data): GanttFrame[] {
+    return bundleFrames(row.data as GanttBlock, bundleSizes(data.blocks))
   },
 
   getRowLabel: (row) => row.label,

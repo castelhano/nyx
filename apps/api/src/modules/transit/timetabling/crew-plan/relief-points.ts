@@ -111,6 +111,9 @@ export interface LoadedBlockRelief extends BlockReliefData {
   trips:     { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[]
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
+  // trip groups (TransitTrip.bundleId) on this block, first departure → last arrival — one
+  // driver runs each whole, no relief inside
+  bundles:   Span[]
 }
 
 // Loads everything computeBlockRelief needs for a set of blocks in a few queries — plus the
@@ -129,7 +132,7 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
         select: {
           trip: {
             select: {
-              id: true, departureMinutes: true, arrivalMinutes: true, routeId: true,
+              id: true, departureMinutes: true, arrivalMinutes: true, routeId: true, bundleId: true,
               route: {
                 select: {
                   lineId: true, originLocalityId: true, destinationLocalityId: true,
@@ -188,7 +191,25 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
       })),
       deadruns:  b.blockDeadruns,
       intervals: b.blockIntervals,
+      bundles:   bundleWindows(b.blockTrips.map(bt => bt.trip)),
     })
   }
   return result
+}
+
+function bundleWindows(trips: { bundleId: string | null; departureMinutes: number; arrivalMinutes: number }[]): Span[] {
+  const windows = new Map<string, Span>()
+  for (const t of trips) {
+    if (!t.bundleId) continue
+    const w = windows.get(t.bundleId)
+    windows.set(t.bundleId, w
+      ? { startMinutes: Math.min(w.startMinutes, t.departureMinutes), endMinutes: Math.max(w.endMinutes, t.arrivalMinutes) }
+      : { startMinutes: t.departureMinutes, endMinutes: t.arrivalMinutes })
+  }
+  return [...windows.values()].sort((a, b) => a.startMinutes - b.startMinutes)
+}
+
+// strictly inside one of the block's trip groups — no driver change there
+export function insideBundle(bundles: Span[] | undefined, minutes: number): boolean {
+  return !!bundles?.some(w => minutes > w.startMinutes && minutes < w.endMinutes)
 }

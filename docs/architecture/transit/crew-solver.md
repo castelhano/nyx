@@ -98,6 +98,7 @@ A meal BREAK is only placed at a **meal stop**: `RouteLocality.allowsMealBreak` 
 | Meal stops | `RouteLocality.allowsMealBreak` | where a meal BREAK may go |
 | Meal type | `mealBreakIntervalTypeId` → `IntervalType` (`minMinutes`, `maxMinutes`, `isPaid`) | meal range; a paid break counts as work |
 | Walk | `TravelTimeMatrix.distanceKm`, else straight line × factor; 4 km/h | walking between pieces at different places |
+| Trip groups | `relief-points.ts` — `bundles`: each group's first departure → last arrival on the block (`TransitTrip.bundleId`) | one driver runs a group whole: relief points strictly inside are dropped from the solver's input |
 
 ---
 
@@ -126,6 +127,8 @@ At most one meal or split per duty. With no long gap: a meal inside a piece wher
 ### Hard rules
 
 A duty the solver builds has **no error** issue: ceilings of the active range criteria (work, spread, split interval, idle time, …), floors where they apply, walk distance and travel gap, continuous driving, piece off service, branch mismatch, required meal. Warnings (short piece, meal location, travel gap without matrix) are allowed — they rank below (see Score).
+
+**Trip groups** — every cut, split gap and meal gap the solver can pick starts at a relief point, so dropping the points inside a group (`crew-solver.input.ts`) keeps it with one driver and leaves its inside untouched: no relief, no split, no meal there. On the screen, a DRIVER piece starting or ending inside a group is flagged `BUNDLE_SPLIT` (warning); the group is drawn as an outline on the vehicle lane, read-only.
 
 ---
 

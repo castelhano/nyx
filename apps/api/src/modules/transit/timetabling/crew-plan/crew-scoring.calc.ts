@@ -3,7 +3,7 @@ import type {
 } from '@nyx/schemas'
 import { mealPolicy } from '@nyx/schemas'
 import { rangeV, anchoredV, SCORE_SCALE } from '../vehicle-plan/scoring/plan-scoring.calc'
-import { isReliefPoint, subtractSpans } from './relief-points'
+import { insideBundle, isReliefPoint, subtractSpans } from './relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
 
 // Pure crew-plan calculation (no Prisma) — the CrewPlan counterpart of plan-scoring.calc.ts.
@@ -51,6 +51,8 @@ export interface CrewCalcBlock {
   points:   ReliefPoint[]
   trips:    { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
   deadruns: { departureMinutes: number; arrivalMinutes: number }[]
+  // trip groups (see LoadedBlockRelief.bundles) — a driver piece must not start or end inside one
+  bundles?: { startMinutes: number; endMinutes: number }[]
 }
 
 // a block's trips + deadruns as spans (where the vehicle moves), cached per block object
@@ -396,6 +398,15 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   if (settings.mealBreakIntervalTypeId) {
     for (const b of breaks.filter(a => a.intervalTypeId === settings.mealBreakIntervalTypeId)) {
       if (mealPlaceAllowed(b, live, blocks, ctx.mealStops) === false) push({ code: 'MEAL_LOCATION', severity: 'warning', value: 0, activityId: b.id })
+    }
+  }
+
+  if (duty.role === 'DRIVER') {
+    for (const p of live) {
+      const bundles = blocks.get(p.vehicleBlockId!)?.bundles
+      if (insideBundle(bundles, p.startMinutes) || insideBundle(bundles, p.endMinutes)) {
+        push({ code: 'BUNDLE_SPLIT', severity: 'warning', value: 0, pieceId: p.id })
+      }
     }
   }
 

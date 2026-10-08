@@ -67,6 +67,7 @@ VehiclePlan.settings ?? Settings(transit.planning, Scope) ?? global
 | Stand points | `RouteLocality.allowsVehicleStand` ("Permite parada (carro)" on the route's point, default off) | where a vehicle may stand in an interval |
 | Default interval type | general `defaultIntervalTypeId` | its `minMinutes` (else 120) splits a turnaround from an interval; intervals are placed from it on |
 | Matrix | `TravelTimeMatrix` (minutes = ⌈base × speedRatio⌉) | deadruns, reachability |
+| Trip groups | `TransitTrip.bundleId` | trips sharing it are one fixed unit (see Trip groups) |
 
 `TransitRoute.homeDepot` is not used by the solver (only by the schedule generator).
 
@@ -88,6 +89,7 @@ A block = its trips + operator + depot + vehicle type, always held **materialize
 | Span | a construction chain / a merge never spans beyond `range.minBlockDuration.ceiling` |
 | Stand | a stop of the interval threshold or more stays only where the vehicle may stand — the arriving trip's destination point or the next trip's origin point; elsewhere it goes back to the block's depot and out again, and with no time for that round trip the trips can't follow each other |
 | Locked | `VehicleBlock.constraints.locked` blocks stay as they are (base "Respeita travados") |
+| Trip group | a group's trips stay together, back to back, in one block — nothing between them (see Trip groups) |
 
 ### Materialization
 
@@ -104,6 +106,17 @@ RETURN        last.dest → depot          leaves last.arr + 1
 ```
 
 The vehicle type is chosen among the accepted ones: the one most of the block's trips prefer, then `STANDARD`, then the enum order — the first that fits the depot's capacity.
+
+### Trip groups
+
+A trip group ("grupo de viagens", `TransitTrip.bundleId` — a shared uuid, no table) is a set of trips that must run back to back on one vehicle and one driver, e.g. four F01 trips 02:00–06:00. Unlike a locked block, the rest of the vehicle stays free: the solver may put other trips before and after the group, never between its trips.
+
+- **Unit** — `bundleUnits` (`vehicle-solver.input.ts`) turns each group into one `SolverTrip` from its first departure to its last arrival (`SolverTrip.bundle`); every move handles it as a single trip, so no move can split it. `expand()` gives its trips back for the aggregate, the issues check and the proposal.
+- **Inside kept as it is** — the deadruns and intervals between the group's first departure and last arrival are copied from the block that holds the whole group (`bundle.rows`), intervals with their own type. A group not yet together gets only the displacements its trips need. Nothing else is placed inside, and the stand rule doesn't apply there — what's inside is the user's.
+- **Vehicle type** — the intersection of its trips' accepted types; none is an error.
+- **Locked blocks** — a group partly inside a locked block is an error (lock or unlock the whole group).
+
+Groups are created and removed on the Gantt (see `gantt-interaction.md`); `applyDiff` checks a new group once (`trip-bundle.utils.ts`): 2+ trips on the same vehicle with nothing between them, within `range.minBlockDuration.ceiling` and the crew `maxContinuousDrivingMinutes`, with a common vehicle type. Later edits that break it only flag `BUNDLE_BROKEN` on the block. Removing any trip of a group dissolves the whole group; duplicating a plan gives each group a new id.
 
 ---
 

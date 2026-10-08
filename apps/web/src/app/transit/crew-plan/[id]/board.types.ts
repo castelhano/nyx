@@ -52,6 +52,8 @@ export interface BoardBlock {
   // where the vehicle needs a driver (window minus its own intervals and depot time)
   serviceSpans: { startMinutes: number; endMinutes: number }[]
   points:      ReliefPoint[]
+  // trip groups (first departure → last arrival) — one driver runs each whole
+  bundles:     { startMinutes: number; endMinutes: number }[]
   trips:       { id: string; departureMinutes: number; arrivalMinutes: number; lineCode: string; direction: string }[]
   deadruns:    { id: string; type: string; departureMinutes: number; arrivalMinutes: number }[]
   intervals:   { id: string; departureMinutes: number; arrivalMinutes: number; intervalTypeId: string; intervalTypeName: string }[]

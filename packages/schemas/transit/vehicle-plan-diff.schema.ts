@@ -63,6 +63,8 @@ export const vehiclePlanDiffSchema = z.object({
     stopPattern:      z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
     // only ever set by "Atualizar da OSO" (OSO → plano) — the Gantt has no editor for it
     requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).nullable().optional(),
+    // trip group: a new id groups the trips sharing it (validated by applyDiff), null ungroups
+    bundleId:         z.string().nullable().optional(),
   })).default([]),
   // origin/destination only change via "Modificar depósito" (ACCESS origin / RETURN destination)
   deadrunUpdates:  z.array(timeUpdateSchema.extend({

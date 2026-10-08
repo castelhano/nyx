@@ -4,7 +4,7 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import type { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { buildAggregateFromPersisted } from '../vehicle-plan/scoring/block-aggregate'
 import { operatorShares } from '../vehicle-plan/scoring/plan-scoring.calc'
-import { summarizeBlocks, type LockedBlock, type SeedBlock, type SolverDepot, type SolverTrip, type VehicleSolverInput } from './vehicle-solver.calc'
+import { DEADRUN_GAP, summarizeBlocks, type LockedBlock, type Rows, type SeedBlock, type SolverDepot, type SolverTrip, type VehicleSolverInput } from './vehicle-solver.calc'
 import type { VehicleSolverParams, VehicleSolverSummary } from './vehicle-solver.types'
 
 // a stop this long is an interval (only where the vehicle may stand) when no default interval
@@ -38,7 +38,7 @@ export async function loadVehicleSolverInput(
       where:  { vehiclePlanId: planId },
       select: {
         id: true, departureMinutes: true, arrivalMinutes: true, requiredVehicleType: true,
-        routeId: true,
+        routeId: true, bundleId: true,
         route: { select: { lineId: true, originLocalityId: true, destinationLocalityId: true, direction: true, line: lineSelect } },
       },
     }),
@@ -58,8 +58,8 @@ export async function loadVehicleSolverInput(
             },
           },
         },
-        blockDeadruns:  { select: { originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
-        blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true } },
+        blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
+        blockIntervals: { select: { intervalTypeId: true, departureMinutes: true, arrivalMinutes: true } },
       },
     }),
     prisma.travelTimeMatrix.findMany({ select: { originId: true, destinationId: true, baseMinutes: true, speedRatio: true, distanceKm: true } }),
@@ -100,7 +100,7 @@ export async function loadVehicleSolverInput(
   }))
 
   const standPoints = new Set(standRows.map(r => `${r.routeId}:${r.localityId}`))
-  const trips: SolverTrip[] = tripRows.filter(t => !lockedTripIds.has(t.id)).map(t => {
+  const free: SolverTrip[] = tripRows.filter(t => !lockedTripIds.has(t.id)).map(t => {
     const vt = lineVehicleTypesSchema.safeParse(t.route.line.vehicleTypes ?? {})
     const lineTypes = vt.success ? vt.data : { allowed: [], preferred: null }
     return {
@@ -112,6 +112,7 @@ export async function loadVehicleSolverInput(
       standAtDest:   standPoints.has(`${t.routeId}:${t.route.destinationLocalityId}`),
     }
   })
+  const trips = bundleUnits(free, tripRows, withTrips, lockedTripIds, matrix)
 
   const shares = operatorShares(plan.scope.operators)
   const planTrips = tripRows.map(t => ({ departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes }))
@@ -128,4 +129,77 @@ export async function loadVehicleSolverInput(
     depotId: b.depotId, branchId: b.branchId, vehicleType: b.vehicleType, hasIssues: b.hasIssues, aggregate: aggregateOf(b),
   })))
   return { input, baseline }
+}
+
+const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+
+// Each trip group (TransitTrip.bundleId) becomes one unit (SolverTrip.bundle). Its inside — the
+// deadruns and intervals between its first departure and last arrival — comes from the block that
+// holds the whole group, as it is; a group not yet together gets just the displacements its
+// trips need. A group of one trip is a plain trip.
+function bundleUnits(
+  free:      SolverTrip[],
+  tripRows:  { id: string; bundleId: string | null; departureMinutes: number }[],
+  blocks:    { blockTrips: { tripId: string }[]; blockDeadruns: Rows['deadruns']; blockIntervals: Rows['intervals'] }[],
+  locked:    Set<string>,
+  matrix:    VehicleSolverInput['matrix'],
+): SolverTrip[] {
+  const members = new Map<string, string[]>()
+  for (const t of tripRows) if (t.bundleId) members.set(t.bundleId, [...(members.get(t.bundleId) ?? []), t.id])
+  const byId = new Map(free.map(t => [t.id, t]))
+  const grouped = new Set<string>()
+  const units: SolverTrip[] = []
+
+  for (const ids of members.values()) {
+    if (ids.length < 2) continue
+    const trips = ids.map(id => byId.get(id)).filter((t): t is SolverTrip => !!t).sort((a, b) => a.dep - b.dep)
+    if (trips.length === 0) continue
+    if (trips.length !== ids.length) {
+      // part of it in a locked block: only a locked block holding the whole group keeps it whole
+      const start = Math.min(...tripRows.filter(t => ids.includes(t.id)).map(t => t.departureMinutes))
+      throw new BadRequestException(`Grupo de viagens das ${clock(start)} dividido entre um carro travado e outro — trave ou destrave o grupo inteiro`)
+    }
+    const last = trips[trips.length - 1]
+
+    let allowed: VehicleTypeValue[] | null = null
+    for (const t of trips) if (t.allowed) allowed = allowed ? t.allowed.filter(v => allowed!.includes(v)) : [...t.allowed]
+    if (allowed && !allowed.length) throw new BadRequestException(`Grupo de viagens das ${clock(trips[0].dep)}: as viagens não têm um tipo de veículo em comum`)
+
+    const home = blocks.find(b => ids.every(id => b.blockTrips.some(bt => bt.tripId === id)))
+    const inside = (r: { departureMinutes: number; arrivalMinutes: number }) => r.departureMinutes >= trips[0].dep && r.arrivalMinutes <= last.arr
+    const rows: Rows = home
+      ? { deadruns: home.blockDeadruns.filter(inside), intervals: home.blockIntervals.filter(inside) }
+      : { deadruns: displacements(trips, matrix), intervals: [] }
+
+    units.push({
+      ...trips[0],
+      id:        `bundle:${trips[0].id}`,
+      dest:      last.dest,
+      arr:       last.arr,
+      allowed,
+      preferred: trips.find(t => t.preferred)?.preferred ?? null,
+      standAtDest: last.standAtDest,
+      bundle: {
+        trips: trips.map(t => ({ id: t.id, lineId: t.lineId, lineCode: t.lineCode, origin: t.origin, dest: t.dest, dep: t.dep, arr: t.arr, direction: t.direction, line: t.line })),
+        rows,
+      },
+    })
+    for (const t of trips) grouped.add(t.id)
+  }
+  return [...free.filter(t => !grouped.has(t.id)), ...units]
+}
+
+// right after each trip that ends elsewhere than where the next one starts
+function displacements(trips: SolverTrip[], matrix: VehicleSolverInput['matrix']): Rows['deadruns'] {
+  const out: Rows['deadruns'] = []
+  for (let i = 1; i < trips.length; i++) {
+    const prev = trips[i - 1], cur = trips[i]
+    const e = prev.dest !== cur.origin ? matrix[`${prev.dest}:${cur.origin}`] : null
+    if (!e) continue
+    out.push({
+      type: 'DISPLACEMENT', originLocalityId: prev.dest, destinationLocalityId: cur.origin,
+      departureMinutes: prev.arr + DEADRUN_GAP, arrivalMinutes: Math.min(prev.arr + DEADRUN_GAP + e.minutes, cur.dep - DEADRUN_GAP),
+    })
+  }
+  return out
 }

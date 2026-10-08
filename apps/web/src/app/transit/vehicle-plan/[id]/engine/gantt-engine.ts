@@ -3,7 +3,7 @@ import { Renderer }           from './renderer'
 import { HitTester }          from './hit-tester'
 import { Interaction }        from './interaction'
 import { SequentialLayout }   from './layout/sequential.layout'
-import type { GanttView, Point, ViewportSnapshot } from './gantt.types'
+import type { GanttFrame, GanttView, Point, ViewportSnapshot } from './gantt.types'
 import type { LayoutRow, LayoutSegment, LayoutStrategy } from './layout/layout.types'
 
 export interface EngineState {
@@ -27,6 +27,7 @@ export class GanttEngine {
 
   private layoutRows:    LayoutRow[]     = []
   private segments:      LayoutSegment[] = []
+  private frames:        GanttFrame[]    = []
   private hoveredSeg:    string | null   = null
   private selectedSegIds: Set<string>   = new Set()
   private focusedSegId:  string | null  = null
@@ -72,6 +73,7 @@ export class GanttEngine {
     const rawRows     = view.getRows(data)
     const rawSegments = rawRows.flatMap((row) => view.getSegments(row, data))
     const result      = this.layout.compute(rawRows, rawSegments)
+    this.frames       = view.getFrames ? rawRows.flatMap((row) => view.getFrames!(row, data)) : []
 
     this.layoutRows           = result.rows
     this.segments             = result.segments
@@ -154,7 +156,7 @@ export class GanttEngine {
   // ── private ────────────────────────────────────────────────────────────────
 
   private draw(): void {
-    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds, this.focusedSegId, this.moveTargetRowId)
+    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds, this.focusedSegId, this.moveTargetRowId, this.frames)
     this.hitTester.build(this.segments, this.viewport, this.layoutRows)
   }
 

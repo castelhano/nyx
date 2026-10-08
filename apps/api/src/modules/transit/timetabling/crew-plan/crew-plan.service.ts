@@ -334,6 +334,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           window:       r?.window ?? null,
           serviceSpans: r?.serviceSpans ?? [],
           points:       r?.points ?? [],
+          bundles:      r?.bundles ?? [],
           trips: b.blockTrips
             .map(({ trip }) => ({
               id: trip.id, departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
@@ -410,7 +411,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
 
     const result = computeCrewPlan({
       settings,
-      blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips, deadruns: r.deadruns })),
+      blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips, deadruns: r.deadruns, bundles: r.bundles })),
       duties: duties.map(d => ({
         id: d.id, role: d.role, kind: d.kind, branchId: d.branchId,
         pieces:     d.pieces,

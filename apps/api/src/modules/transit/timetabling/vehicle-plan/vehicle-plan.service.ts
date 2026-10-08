@@ -1,8 +1,10 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { randomUUID } from 'crypto'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitGeneralConfigService }  from '../../settings/transit-general-config.service'
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
+import { TransitCrewConfigService }     from '../../settings/transit-crew-config.service'
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings } from '@nyx/schemas'
@@ -17,10 +19,11 @@ import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
-import { blockIssues, defaultIntervalMaxMinutes } from './block-issues.utils'
-import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, recomputeLineDrift, recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
+import { blockIssues, defaultIntervalMaxMinutes, planBundleSizes } from './block-issues.utils'
+import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, dissolveBundlesOf, recomputeLineDrift, recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
+import { validateNewBundles } from './trip-bundle.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, parseStartDate, toDbDate } from '../plan-validity'
 
@@ -44,6 +47,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     prisma: PrismaService,
     private readonly generalConfig:  TransitGeneralConfigService,
     private readonly planningConfig: TransitPlanningConfigService,
+    private readonly crewConfig:     TransitCrewConfigService,
     private readonly jobService:     JobService,
     private readonly crewPlans:      CrewPlanService,
   ) {
@@ -145,7 +149,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // Accepts an optional transaction client so applyDiff can run this as the closing
   // step of its own atomic batch instead of opening a second transaction.
   async recalculate(planId: string, db: any = this.prisma): Promise<void> {
-    const [plan, blocks, matrix, planLines, { settings: planningCfg }, maxStandMinutes] = await Promise.all([
+    const [plan, blocks, matrix, planLines, { settings: planningCfg }, maxStandMinutes, bundleSizes] = await Promise.all([
       db.vehiclePlan.findUnique({
         where:  { id: planId },
         select: { dayType: { select: { code: true } }, scope: { select: { operators: { select: { branchId: true, share: true } } } } },
@@ -160,6 +164,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 select: {
                   departureMinutes:    true,
                   arrivalMinutes:      true,
+                  bundleId:            true,
                   route: {
                     select: {
                       lineId:                true,
@@ -194,6 +199,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }),
       this.resolveSettings(planId, db),
       defaultIntervalMaxMinutes(db, this.generalConfig),
+      planBundleSizes(db, planId),
     ])
 
     if (!plan) return
@@ -296,7 +302,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           productiveKm:      a.productiveKm,
           deadrunKm:         a.deadrunKm,
         }
-        const issues = blockIssues(block, maxStandMinutes)
+        const issues = blockIssues(block, maxStandMinutes, bundleSizes)
         return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false, issues, hasIssues: issues.length > 0 } })
       }),
       ...blocks
@@ -393,7 +399,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                   select: {
                     id: true, routeId: true, dayTypeId: true,
                     departureMinutes: true, arrivalMinutes: true,
-                    requiredVehicleType: true, stopPattern: true, constraints: true, notes: true, markings: true,
+                    requiredVehicleType: true, stopPattern: true, constraints: true, notes: true, markings: true, bundleId: true,
                   },
                 },
               },
@@ -430,6 +436,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // Build a map of original tripId → new tripId to deduplicate trips that
       // appear in more than one block (e.g. after manual reassignments).
       const tripIdMap = new Map<string, string>()
+      // each group gets its own id in the copy
+      const bundleIdMap = new Map<string, string>()
+      const copyBundle = (id: string | null) => {
+        if (!id) return undefined
+        if (!bundleIdMap.has(id)) bundleIdMap.set(id, randomUUID())
+        return bundleIdMap.get(id)
+      }
 
       for (const block of plan.blocks) {
         const newBlock = await tx.vehicleBlock.create({
@@ -464,6 +477,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                   constraints:         bt.trip.constraints ?? undefined,
                   notes:               bt.trip.notes ?? undefined,
                   markings:            bt.trip.markings ?? undefined,
+                  bundleId:            copyBundle(bt.trip.bundleId),
                 },
               })
               tripIdMap.set(origId, newTrip.id)
@@ -574,7 +588,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   async applyDiff(planId: string, diff: VehiclePlanDiff): Promise<{ blockIdMap: Record<string, string> }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
-      select: { id: true, dayTypeId: true, status: true },
+      select: { id: true, dayTypeId: true, status: true, scopeId: true },
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     // ACTIVE plans allow punctual edits (trip moves/adds/deletes, markers, intervals)
@@ -638,6 +652,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         for (const r of rows) linesToRecheck.add(r.route.lineId)
       }
 
+      // trip groups this diff creates, and the ones it takes trips from — read before step 1
+      const groupPatches  = diff.tripUpdates.filter(u => u.bundleId !== undefined)
+      const newBundleIds  = new Set(groupPatches.flatMap(u => u.bundleId ? [u.bundleId] : []))
+      const prevBundleIds = groupPatches.length === 0 ? [] : (await tx.transitTrip.findMany({
+        where:  { id: { in: groupPatches.map(u => u.id) }, bundleId: { not: null } },
+        select: { bundleId: true },
+      })).map((r: any) => r.bundleId as string).filter((id: string) => !newBundleIds.has(id))
+
       // 1. trip time patches
       for (const u of diff.tripUpdates) {
         // constraints (field-level lock) is excluded from `patch` — it never marks
@@ -646,12 +668,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const patch: { departureMinutes?: number; arrivalMinutes?: number } = {}
         if (u.departureMinutes !== undefined) patch.departureMinutes = u.departureMinutes
         if (u.arrivalMinutes   !== undefined) patch.arrivalMinutes   = u.arrivalMinutes
-        const data: typeof patch & { constraints?: unknown; markings?: unknown; notes?: unknown; stopPattern?: unknown; requiredVehicleType?: unknown } = { ...patch }
+        const data: typeof patch & { constraints?: unknown; markings?: unknown; notes?: unknown; stopPattern?: unknown; requiredVehicleType?: unknown; bundleId?: string | null } = { ...patch }
         if (u.constraints !== undefined) data.constraints = u.constraints
         if (u.markings    !== undefined) data.markings    = u.markings ?? Prisma.DbNull
         if (u.notes       !== undefined) data.notes       = u.notes
         if (u.stopPattern !== undefined) data.stopPattern = u.stopPattern
         if (u.requiredVehicleType !== undefined) data.requiredVehicleType = u.requiredVehicleType
+        if (u.bundleId !== undefined) data.bundleId = u.bundleId
         const existing = await beforeTripUpdate(tx, u.id)
         const result   = await tx.transitTrip.update({ where: { id: u.id }, data })
         await afterTripUpdate(tx, u.id, existing, patch, result)
@@ -869,6 +892,19 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         })
       }
 
+      // 8c. trip groups — a group is ungrouped whole, never split into another one; the new
+      // ones are checked against the plan as it now stands (after moves)
+      if (prevBundleIds.length > 0 && await tx.transitTrip.count({ where: { vehiclePlanId: planId, bundleId: { in: prevBundleIds } } }) > 0) {
+        throw new BadRequestException('Viagem de um grupo existente passada para outro grupo — desagrupe o grupo inteiro antes')
+      }
+      if (newBundleIds.size > 0) {
+        const [{ settings }, crew] = await Promise.all([this.resolveSettings(planId, tx), this.crewConfig.get(plan.scopeId)])
+        await validateNewBundles(tx, planId, [...newBundleIds], {
+          maxSpan:              settings.range.minBlockDuration.ceiling,
+          maxContinuousDriving: crew.maxContinuousDrivingMinutes,
+        })
+      }
+
       // 9. recompute isDrifted for every line whose trip coverage this diff could
       // have changed — one final, authoritative re-derivation per line (see
       // recomputeLineDrift, trip-mutation.utils.ts) instead of judging each
@@ -955,6 +991,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       Promise.all(blockIds.map(blockId => findDeadrunIdsAnchoredToTrips(db, blockId, tripIds))).then(r => r.flat()),
     ])
 
+    await dissolveBundlesOf(db, tripIds)
     await db.blockTrip.deleteMany({ where: { id: { in: blockTripIds } } })
 
     if (anchoredIntervalIds.length > 0) {

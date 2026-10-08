@@ -136,7 +136,7 @@ export type DepotModal  = { kind: 'access' | 'return'; blockTripId: string; bloc
 export type AddIntervalModalState = { afterMinutes: number; blockId: string }
 export type StopPattern = Trip['stopPattern']
 // requiredVehicleType is only ever staged by "Atualizar da OSO" — the Gantt has no editor for it
-export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern; requiredVehicleType?: VehicleType | null }
+export type TripPatch   = { departureMinutes?: number; arrivalMinutes?: number; constraints?: TripConstraints | null; markings?: TripMarking[] | null; notes?: string | null; stopPattern?: StopPattern; requiredVehicleType?: VehicleType | null; bundleId?: string | null }
 // origin/destination only via "Modificar depósito" — both the id (sent to apply-diff) and the
 // {id, name} ref (rendered) are set together, so spreading the patch onto the deadrun keeps them in sync
 export type DeadrunPatch = {
@@ -845,6 +845,39 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       tripIds.forEach((tripId, i) => {
         next.set(tripId, { ...next.get(tripId), markings: patches[i] })
       })
+      return next
+    })
+  }
+
+  // Trip groups (TransitTrip.bundleId) — staged like any trip patch; Salvar checks a new group
+  // (same vehicle, nothing between its trips, block and continuous driving limits, vehicle type)
+  function handleGroupTrips(tripIds: string[]) {
+    if (!canEditGantt) return
+    const tempTripIds = new Set(pendingAdds.filter((a): a is PendingAddTrip => a._kind === 'trip').map(a => `${a._tempId}:trip`))
+    if (tripIds.some(id => tempTripIds.has(id))) {
+      toast.error('Salve as viagens novas antes de agrupar')
+      return
+    }
+    const bundleId = crypto.randomUUID()
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      for (const tripId of tripIds) next.set(tripId, { ...next.get(tripId), bundleId })
+      return next
+    })
+  }
+
+  // Ungroups the whole group, wherever its trips are (the line filter may hide some blocks)
+  function handleUngroup(bundleIds: string[]) {
+    if (!canEditGantt || !ganttData) return
+    const ids = new Set(bundleIds)
+    const tripIds = ganttData.blocks.flatMap(b => b.blockTrips).filter(bt => {
+      const patched = pendingChanges.get(bt.trip.id)?.bundleId
+      const current = patched !== undefined ? patched : bt.trip.bundleId
+      return !!current && ids.has(current)
+    }).map(bt => bt.trip.id)
+    setPendingChanges(prev => {
+      const next = new Map(prev)
+      for (const tripId of tripIds) next.set(tripId, { ...next.get(tripId), bundleId: null })
       return next
     })
   }
@@ -2092,6 +2125,21 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
     if (blockTripIds.length === 0) return
 
+    // a trip group moves whole, with what's between its trips, however much of it is selected —
+    // and only into a free stretch of the target (nothing may sit between its trips)
+    const groupWindows = [...new Set(blockTripIds.flatMap(btId => sourceBlock.blockTrips.find(bt => bt.id === btId)?.trip.bundleId ?? []))]
+      .map(bundleId => {
+        const bts = sourceBlock.blockTrips.filter(bt => bt.trip.bundleId === bundleId)
+        for (const bt of bts) if (!blockTripIds.includes(bt.id)) blockTripIds.push(bt.id)
+        return { from: Math.min(...bts.map(bt => bt.trip.departureMinutes)), to: Math.max(...bts.map(bt => bt.trip.arrivalMinutes)) }
+      })
+    if (groupWindows.some(w => targetBlock.blockTrips.some(bt => bt.trip.departureMinutes < w.to + 1 && bt.trip.arrivalMinutes + 1 > w.from))) {
+      toast.error('O grupo de viagens não cabe no bloco destino')
+      return
+    }
+    const insideGroup = (item: { departureMinutes: number; arrivalMinutes: number }) =>
+      groupWindows.some(w => item.departureMinutes >= w.from && item.arrivalMinutes <= w.to)
+
     const movedTrips = blockTripIds.map(btId => {
       const bt = sourceBlock.blockTrips.find(bt => bt.id === btId)
       if (!bt) return null
@@ -2126,11 +2174,12 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
     // Segment ids carry a ":bk" suffix for layout-engine uniqueness — the real
     // BlockInterval id (matching findAnchoredBreakIds' output) lives in .data.id.
-    const selectedBreakIds = new Set(
-      selection.type === 'interval'
+    const selectedBreakIds = new Set([
+      ...(selection.type === 'interval'
         ? selection.segments.filter(s => s.kind === 'break').map(s => (s.data as GanttBlockInterval).id)
-        : [],
-    )
+        : []),
+      ...sourceBlock.blockIntervals.filter(insideGroup).map(bi => bi.id),
+    ])
     const movedBreakIds    = anchoredBreakIds.filter(id => selectedBreakIds.has(id))
     const orphanedBreakIds = anchoredBreakIds.filter(id => !selectedBreakIds.has(id))
 
@@ -2139,12 +2188,12 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     // no "orphaned" set to drop. Access/return deadruns synthesized for a pending trip
     // (buildFakeAccessReturn) have no independent existence, so they're excluded here —
     // they follow automatically once their trip's own blockId/timing moves.
-    const selectedDeadrunIds = selection.type === 'interval'
-      ? selection.segments
-          .filter(s => s.kind === 'deadhead')
-          .map(s => (s.data as GanttBlockDeadrun).id)
-          .filter(id => !id.endsWith(':access') && !id.endsWith(':return'))
-      : []
+    const selectedDeadrunIds = [...new Set([
+      ...(selection.type === 'interval'
+        ? selection.segments.filter(s => s.kind === 'deadhead').map(s => (s.data as GanttBlockDeadrun).id)
+        : []),
+      ...sourceBlock.blockDeadruns.filter(insideGroup).map(d => d.id),
+    ])].filter(id => !id.endsWith(':access') && !id.endsWith(':return'))
 
     // Pending (unsaved) trips/breaks/deadruns aren't real persisted ids yet — relocate
     // them by editing pendingAdds directly instead of routing them through pendingMoves,
@@ -2529,6 +2578,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     onAddDisplacement:   handleAddDisplacement,
     onConvertToDeadrun:  handleConvertToDeadrun,
     onConvertToTrip:     handleOpenConvertToTrip,
+    onGroupTrips:        handleGroupTrips,
+    onUngroup:           handleUngroup,
   }, canEditGantt)
 
   // onAddAccess/onAddReturn/onAddInterval/onAddDisplacement/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
