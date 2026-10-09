@@ -2,7 +2,8 @@
 
 import type { PlanningSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 import { Icons } from '@/lib/icons'
-import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
+import { DurationInput } from '@/components/ui/duration-input'
+import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable, DURATION_UNIT } from './criteria-tables'
 
 // Planning (vehicle plan) settings editor — used by the transit settings page (global / per
 // Scope) and by the vehicle plan's optimize modal (per-plan customization).
@@ -10,7 +11,7 @@ import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable } from '
 const RANGE_META: Record<keyof PlanningSettings['range'], { label: string; unit: string; hint: string }> = {
   lineTransfer:         { label: 'Troca de Linha',          unit: 'trocas', hint: 'Nº de trocas de linha no bloco (linhas distintas - 1). Zero = bloco com linha única.' },
   deadrunRatio:         { label: 'Ratio Km em Vazio',       unit: '%',      hint: 'Proporção de km em vazio sobre o total do bloco.' },
-  minBlockDuration:     { label: 'Duração Mínima Bloco',    unit: 'min',    hint: 'Duração total do bloco (minutos). Blocos abaixo do idealMin são candidatos a fusão.' },
+  minBlockDuration:     { label: 'Duração Mínima Bloco',    unit: DURATION_UNIT,    hint: 'Duração total do bloco (minutos). Blocos abaixo do idealMin são candidatos a fusão.' },
   distributionVariance: { label: 'Variância de Distribuição', unit: '% CV', hint: 'Coeficiente de variação (desvio padrão / média) da duração dos blocos do plano.' },
   preferredVehicleType: { label: 'Tipo Preferencial',       unit: '% viagens', hint: 'Viagens de linhas com tipo de veículo preferencial rodando em outro tipo.' },
   operatorShareFleet:   { label: 'Participação — Frota',    unit: 'p.p.',   hint: 'Maior desvio entre a participação de cada empresa na frota e a definida no escopo (entre as empresas com participação).' },
@@ -32,7 +33,7 @@ type LineRangeKey = Exclude<keyof PlanningSettings['line'], 'fleetUsage'>
 const LINE_RANGE_META: Record<LineRangeKey, { label: string; unit: string; hint: string }> = {
   demandMatch:          { label: 'Oferta x Demanda',        unit: '% ocupação', hint: 'Ocupação por hora e sentido (demanda/oferta). Penaliza excesso e falta de oferta.' },
   headwayRegularity:    { label: 'Regularidade de Intervalo', unit: '% CV',     hint: 'Coeficiente de variação dos intervalos entre partidas consecutivas, por sentido.' },
-  maxGap:               { label: 'Maior Vão sem Atendimento', unit: 'min',     hint: 'Maior intervalo entre partidas consecutivas de um mesmo sentido.' },
+  maxGap:               { label: 'Maior Vão sem Atendimento', unit: DURATION_UNIT,     hint: 'Maior intervalo entre partidas consecutivas de um mesmo sentido.' },
   peakConcentration:    { label: 'Concentração Pico/Vale',  unit: '%',         hint: 'Participação da oferta no horário de pico sobre a participação da demanda no pico (100% = equivalente).' },
   distributionVariance: { label: 'Variância de Distribuição', unit: '% CV',    hint: 'Coeficiente de variação do km que a linha demanda de cada veículo que a atende.' },
 }
@@ -41,9 +42,9 @@ const LINE_FLEET_META: Record<'fleetUsage', { label: string; unit: string; hint:
   fleetUsage: { label: 'Uso de Frota', unit: '% sobre mínimo', hint: 'Frota da linha sobre o mínimo teórico (requisito de pico de veículos simultâneos, só desta linha).' },
 }
 
-const STOP_PARAMS: { key: 'stopNoImprovementMinutes' | 'stopMaxTotalMinutes'; label: string; hint: string; max: number }[] = [
-  { key: 'stopNoImprovementMinutes', label: 'Parar sem Melhora',       max: 60,   hint: 'Encerra se nenhuma solução melhor for encontrada neste intervalo' },
-  { key: 'stopMaxTotalMinutes',      label: 'Tempo Máximo de Geração', max: 1440, hint: 'Encerra independentemente do resultado após este tempo' },
+const STOP_PARAMS: { key: 'stopNoImprovementMinutes' | 'stopMaxTotalMinutes'; label: string; hint: string; unit: string; max: number }[] = [
+  { key: 'stopNoImprovementMinutes', label: 'Parar sem Melhora',       unit: 'min',         max: 60,   hint: 'Encerra se nenhuma solução melhor for encontrada neste intervalo' },
+  { key: 'stopMaxTotalMinutes',      label: 'Tempo Máximo de Geração', unit: DURATION_UNIT, max: 1440, hint: 'Encerra independentemente do resultado após este tempo' },
 ]
 
 const lineRanges = (line: PlanningSettings['line']): Record<LineRangeKey, RangeCriterion> => ({
@@ -124,14 +125,16 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <NumberInput
-                  value={value[p.key]}
-                  onChange={(v) => onChange({ ...value, [p.key]: Math.round(v) })}
-                  min={1}
-                  max={p.max}
-                  disabled={disabled}
-                />
-                <span className="text-sm text-muted-foreground w-6">min</span>
+                {p.unit === DURATION_UNIT
+                  ? <DurationInput value={value[p.key]} onChange={(v) => onChange({ ...value, [p.key]: v })} min={1} max={p.max} disabled={disabled} />
+                  : <NumberInput
+                      value={value[p.key]}
+                      onChange={(v) => onChange({ ...value, [p.key]: Math.round(v) })}
+                      min={1}
+                      max={p.max}
+                      disabled={disabled}
+                    />}
+                <span className="text-sm text-muted-foreground w-6">{p.unit === DURATION_UNIT ? 'h' : p.unit}</span>
               </div>
             </div>
           ))}

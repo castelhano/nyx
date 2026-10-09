@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { Icons } from '@/lib/icons'
 import { Switch } from '@/components/ui/switch'
+import { DurationInput } from '@/components/ui/duration-input'
 import { cn } from '@/lib/utils'
 import type { AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 
@@ -57,6 +58,9 @@ function HintPopover({ hint }: { hint: string }) {
   )
 }
 
+
+// meta unit of a minutes field edited as H:MM (DurationInput) instead of a plain number
+export const DURATION_UNIT = 'h:mm'
 
 export function DiffDot({ show }: { show: boolean }) {
   if (!show) return <span className="w-1.5" />
@@ -230,6 +234,12 @@ export function RangeTable<T extends Record<string, RangeCriterion>>({ data, glo
 
             const set = (field: keyof RangeCriterion, value: unknown) =>
               onChange?.(key, field, value)
+            // called as a function, not a component — a component declared here would remount
+            // (and lose focus) on every keystroke
+            const bound = (field: 'floor' | 'idealMin' | 'idealMax' | 'ceiling') =>
+              m.unit === DURATION_UNIT
+                ? <DurationInput value={row[field]} onChange={(v) => set(field, v)} disabled={disabled} />
+                : <NumberInput value={row[field]} onChange={(v) => set(field, v)} min={0} disabled={disabled} />
 
             return (
               <tr key={String(key)} className="group">
@@ -260,22 +270,22 @@ export function RangeTable<T extends Record<string, RangeCriterion>>({ data, glo
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex justify-center">
-                    <NumberInput value={row.floor} onChange={(v) => set('floor', v)} min={0} disabled={disabled} />
+                    {bound('floor')}
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex justify-center">
-                    <NumberInput value={row.idealMin} onChange={(v) => set('idealMin', v)} min={0} disabled={disabled} />
+                    {bound('idealMin')}
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex justify-center">
-                    <NumberInput value={row.idealMax} onChange={(v) => set('idealMax', v)} min={0} disabled={disabled} />
+                    {bound('idealMax')}
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex justify-center">
-                    <NumberInput value={row.ceiling} onChange={(v) => set('ceiling', v)} min={0} disabled={disabled} />
+                    {bound('ceiling')}
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-center">

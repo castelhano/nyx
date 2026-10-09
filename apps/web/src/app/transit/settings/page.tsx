@@ -14,7 +14,7 @@ import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
 import type { GeneralSettings, PlanningSettings, CrewSettings, CrewCostSettings, RosterSettings, RangeCriterion } from '@nyx/schemas'
-import { SectionHeader, NumberInput, RangeTable } from './criteria-tables'
+import { SectionHeader, NumberInput, RangeTable, DURATION_UNIT } from './criteria-tables'
 import { PlanningSettingsEditor } from './planning-settings-editor'
 import { CrewSettingsEditor } from './crew-settings-editor'
 import { CrewCostEditor } from './crew-cost-editor'
@@ -22,7 +22,7 @@ import { CrewCostEditor } from './crew-cost-editor'
 // ── UI metadata (not stored in settings) ────────────────────────────────────
 
 const ROSTER_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
-  interShiftRest: { label: 'Descanso entre Jornadas', unit: 'min', hint: 'Descanso entre jornadas consecutivas da mesma pessoa.' },
+  interShiftRest: { label: 'Descanso entre Jornadas', unit: DURATION_UNIT, hint: 'Descanso entre jornadas consecutivas da mesma pessoa.' },
   driverPrefLine: { label: 'Linha Preferencial',      unit: '%',   hint: '% de viagens da jornada nas linhas preferenciais da pessoa.' },
   driverPrefTech: { label: 'Tech Preferencial',       unit: '%',   hint: '% de viagens da jornada com tecnologia de veículo preferencial da pessoa.' },
 }

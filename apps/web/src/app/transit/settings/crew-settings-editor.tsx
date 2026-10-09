@@ -2,18 +2,19 @@
 
 import type { CrewSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 import { Select } from '@/components/ui/select'
-import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable } from './criteria-tables'
+import { DurationInput } from '@/components/ui/duration-input'
+import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable, DURATION_UNIT } from './criteria-tables'
 import { useIntervalTypes } from '../use-interval-types'
 
 // Crew (duty/CCT) settings editor — used by the transit settings page (global / per Scope)
 // and by the crew plan's own settings modal (per-plan customization).
 
 const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit: string; hint: string }> = {
-  workTime:       { label: 'Duração da Jornada',      unit: 'min',    hint: 'Minutos trabalhados na jornada (pegadas + atividades pagas).' },
-  spread:         { label: 'Amplitude',               unit: 'min',    hint: 'Da apresentação ao encerramento da jornada, incluindo intervalos.' },
-  mealBreak:      { label: 'Intervalo Intrajornada',  unit: 'min',    hint: 'Duração do intervalo de refeição dentro da jornada.' },
-  splitInterval:  { label: 'Intervalo Dupla Pegada',  unit: 'min',    hint: 'Intervalo entre as pegadas de uma jornada em dupla pegada.' },
-  idleTime:       { label: 'Tempo Ocioso Remunerado', unit: 'min',    hint: 'Tempo parado e pago entre as pegadas (fora refeição e dupla pegada). Acima do teto a jornada fica pendente.' },
+  workTime:       { label: 'Duração da Jornada',      unit: DURATION_UNIT,    hint: 'Minutos trabalhados na jornada (pegadas + atividades pagas).' },
+  spread:         { label: 'Amplitude',               unit: DURATION_UNIT,    hint: 'Da apresentação ao encerramento da jornada, incluindo intervalos.' },
+  mealBreak:      { label: 'Intervalo Intrajornada',  unit: DURATION_UNIT,    hint: 'Duração do intervalo de refeição dentro da jornada.' },
+  splitInterval:  { label: 'Intervalo Dupla Pegada',  unit: DURATION_UNIT,    hint: 'Intervalo entre as pegadas de uma jornada em dupla pegada.' },
+  idleTime:       { label: 'Tempo Ocioso Remunerado', unit: DURATION_UNIT,    hint: 'Tempo parado e pago entre as pegadas (fora refeição e dupla pegada). Acima do teto a jornada fica pendente.' },
   overtimeRatio:  { label: 'Horas Extras',            unit: '%',      hint: 'Minutos extras sobre o total trabalhado no plano.' },
   splitRatio:     { label: 'Jornadas em Dupla Pegada', unit: '%',     hint: 'Proporção de jornadas em dupla pegada no plano.' },
   tripperRatio:   { label: 'Meias Jornadas',          unit: '%',      hint: 'Proporção de meias jornadas no plano. Ideal e teto 0 = não permitidas.' },
@@ -31,12 +32,12 @@ const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes'
   { key: 'signOnMinutes',               label: 'Apresentação',              unit: 'min', max: 120,  hint: 'Tempo antes da primeira pegada da jornada' },
   { key: 'signOffMinutes',              label: 'Encerramento',              unit: 'min', max: 120,  hint: 'Tempo após a última pegada da jornada' },
   { key: 'handoverMinutes',             label: 'Sobreposição na Rendição',  unit: 'min', max: 60,   hint: 'Sobreposição tolerada entre pegadas do mesmo papel no mesmo carro' },
-  { key: 'minPieceMinutes',             label: 'Pegada Mínima',             unit: 'min', max: 1440, hint: 'Pegadas mais curtas são sinalizadas' },
-  { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: 'min', max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
+  { key: 'minPieceMinutes',             label: 'Pegada Mínima',             unit: DURATION_UNIT, max: 1440, hint: 'Pegadas mais curtas são sinalizadas' },
+  { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: DURATION_UNIT, max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
   { key: 'maxWalkMeters',               label: 'Distância Máxima a Pé',     unit: 'm',   max: 20000, hint: 'Deslocamento a pé permitido entre pegadas em locais diferentes (4 km/h)' },
   { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
   { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
-  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: 'min', max: 1440, hint: 'Duração máxima da geração da escala' },
+  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: DURATION_UNIT, max: 1440, hint: 'Duração máxima da geração da escala' },
   { key: 'stopNoImprovementMinutes',    label: 'Parar sem Melhora',         unit: 'min', max: 60,   hint: 'Encerra a geração após este tempo sem encontrar escala melhor' },
 ]
 
@@ -81,14 +82,16 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <NumberInput
-                  value={value[p.key]}
-                  onChange={(v) => onChange({ ...value, [p.key]: Math.round(v) })}
-                  min={0}
-                  max={p.max}
-                  disabled={disabled}
-                />
-                <span className="text-sm text-muted-foreground w-6">{p.unit}</span>
+                {p.unit === DURATION_UNIT
+                  ? <DurationInput value={value[p.key]} onChange={(v) => onChange({ ...value, [p.key]: v })} max={p.max} disabled={disabled} />
+                  : <NumberInput
+                      value={value[p.key]}
+                      onChange={(v) => onChange({ ...value, [p.key]: Math.round(v) })}
+                      min={0}
+                      max={p.max}
+                      disabled={disabled}
+                    />}
+                <span className="text-sm text-muted-foreground w-6">{p.unit === DURATION_UNIT ? 'h' : p.unit}</span>
               </div>
             </div>
           ))}
