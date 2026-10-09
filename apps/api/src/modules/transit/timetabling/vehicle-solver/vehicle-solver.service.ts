@@ -287,7 +287,7 @@ export class VehicleSolverService {
       b.tripIds.forEach((tripId, i) => tripRows.push({ vehicleBlockId: id, tripId, sequence: i + 1 }))
       for (const d of b.deadruns) deadrunRows.push({ vehicleBlockId: id, ...d })
       for (const iv of b.intervals) {
-        intervalRows.push({ vehicleBlockId: id, intervalTypeId: iv.intervalTypeId ?? general.defaultIntervalTypeId!, departureMinutes: iv.departureMinutes, arrivalMinutes: iv.arrivalMinutes })
+        intervalRows.push({ vehicleBlockId: id, intervalTypeId: iv.intervalTypeId ?? general.defaultIntervalTypeId!, departureMinutes: iv.departureMinutes, arrivalMinutes: iv.arrivalMinutes, bundleId: iv.bundleId })
       }
     }
 

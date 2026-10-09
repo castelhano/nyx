@@ -18,9 +18,10 @@ export interface ProposalBlock {
   branchId:    string | null
   vehicleType: VehicleTypeValue
   tripIds:     string[]
-  deadruns:    { type: DeadrunKind; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
+  // bundleId: a trip group's own rows keep their group
+  deadruns:    { type: DeadrunKind; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number; bundleId?: string }[]
   // intervalTypeId: kept from a trip group's own intervals; absent = the default interval type
-  intervals:   { departureMinutes: number; arrivalMinutes: number; intervalTypeId?: string }[]
+  intervals:   { departureMinutes: number; arrivalMinutes: number; intervalTypeId?: string; bundleId?: string }[]
 }
 
 // What the Cenários tab compares — for the proposal and for the plan as it is

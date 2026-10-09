@@ -25,9 +25,10 @@ import type { DeadrunKind, ProposalBlock, VehicleSolverSummary } from './vehicle
 //    anywhere else it goes back to the depot and out again, and with no time for that round
 //    trip the two trips can't follow each other.
 //
-// A trip group (TransitTrip.bundleId) is one SolverTrip: it moves as a unit, from its first
-// trip's departure to its last one's arrival, and its inside — the trips and the deadruns /
-// intervals between them — is never touched, only expanded when the block is materialized.
+// A trip group (bundleId) is one SolverTrip: it moves as a unit, from its first trip's
+// departure to its last one's arrival, and its inside — the trips and the deadruns / intervals
+// between them — is never touched, only expanded when the block is materialized. A group that
+// holds its own ACCESS (RETURN) starts (ends) its block, at that deadrun's depot.
 
 // minutes between a trip and the deadrun next to it — same as the import's normalization
 export const DEADRUN_GAP = 1
@@ -63,8 +64,9 @@ export interface SolverTrip {
   // RouteLocality.allowsVehicleStand there
   standAtOrigin: boolean
   standAtDest:   boolean
-  // a trip group: its trips in order and the rows between them, kept as they are
-  bundle?:   { trips: BundleTrip[]; rows: Rows }
+  // a trip group: its trips in order and its rows, kept as they are; fromDepot / toDepot: the
+  // depot of the group's own ACCESS / RETURN
+  bundle?:   { trips: BundleTrip[]; rows: Rows; fromDepot?: string; toDepot?: string }
 }
 
 // the trips a unit stands for
@@ -207,6 +209,7 @@ export class VehicleModel {
   // `cur` can be the next trip of a vehicle that just ran `prev` — through some depot when the
   // stop between them can't stay where it is (the block's depot is checked when materialized)
   canFollow(prev: SolverTrip, cur: SolverTrip): boolean {
+    if (prev.bundle?.toDepot || cur.bundle?.fromDepot) return false // the group ends / starts its block
     const stand = this.standMinutes(prev, cur)
     if (stand == null) return false
     if (stand < this.input.standThreshold || prev.standAtDest || cur.standAtOrigin) return true
@@ -260,16 +263,19 @@ export class VehicleModel {
   // (the chain itself must already hold)
   materialize(trips: SolverTrip[], depotId: string): Rows | null {
     const first = trips[0], last = trips[trips.length - 1]
+    // a group's own ACCESS / RETURN stands for the block's, from its depot only
+    const ownAccess = first.bundle?.fromDepot, ownReturn = last.bundle?.toDepot
+    if ((ownAccess && ownAccess !== depotId) || (ownReturn && ownReturn !== depotId)) return null
     const access = this.edge(depotId, first.origin)
     const back   = this.edge(last.dest, depotId)
-    if (!access || !back) return null
+    if ((!access && !ownAccess) || (!back && !ownReturn)) return null
 
     const deadruns: Rows['deadruns'] = []
     const intervals: Rows['intervals'] = []
     const deadrun = (type: DeadrunKind, from: string, to: string, dep: number, arr: number) =>
       deadruns.push({ type, originLocalityId: from, destinationLocalityId: to, departureMinutes: dep, arrivalMinutes: arr })
 
-    deadrun('ACCESS', depotId, first.origin, first.dep - DEADRUN_GAP - access.minutes, first.dep - DEADRUN_GAP)
+    if (!ownAccess) deadrun('ACCESS', depotId, first.origin, first.dep - DEADRUN_GAP - access!.minutes, first.dep - DEADRUN_GAP)
     for (const t of trips) {
       if (!t.bundle) continue
       deadruns.push(...t.bundle.rows.deadruns)
@@ -302,7 +308,7 @@ export class VehicleModel {
       const interval = this.input.interval
       if (interval && standTo - standFrom >= interval.min) intervals.push({ departureMinutes: standFrom, arrivalMinutes: standTo })
     }
-    deadrun('RETURN', last.dest, depotId, last.arr + DEADRUN_GAP, last.arr + DEADRUN_GAP + back.minutes)
+    if (!ownReturn) deadrun('RETURN', last.dest, depotId, last.arr + DEADRUN_GAP, last.arr + DEADRUN_GAP + back!.minutes)
     return { deadruns, intervals }
   }
 

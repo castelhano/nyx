@@ -110,6 +110,8 @@ export interface GanttBlockDeadrun {
   destinationLocality:   { id: string; name: string }
   departureMinutes:      number
   arrivalMinutes:        number
+  // trip group member (bundleId) — absent on pending adds
+  bundleId?:             string | null
 }
 
 export interface GanttIntervalType {
@@ -127,6 +129,8 @@ export interface GanttBlockInterval {
   intervalType:     GanttIntervalType
   departureMinutes: number
   arrivalMinutes:   number
+  // trip group member (bundleId) — absent on pending adds
+  bundleId?:        string | null
 }
 
 export interface GanttBlock {
@@ -219,33 +223,43 @@ function lineColorMap(blocks: GanttBlock[]): Map<string, LineColor> {
 let _colorCacheBlocks: GanttBlock[] | null = null
 let _colorCacheMap:  Map<string, LineColor> | null = null
 
-// trips per group across the shown blocks — a group with trips elsewhere draws broken
+// members per group across the shown blocks — a group with members elsewhere draws broken
 let _bundleCacheBlocks: GanttBlock[] | null = null
 let _bundleCacheSizes:  Map<string, number> | null = null
 
 function bundleSizes(blocks: GanttBlock[]): Map<string, number> {
   if (_bundleCacheBlocks !== blocks) {
     const sizes = new Map<string, number>()
-    for (const b of blocks) for (const bt of b.blockTrips) {
-      const id = bt.trip.bundleId
-      if (id) sizes.set(id, (sizes.get(id) ?? 0) + 1)
-    }
+    for (const b of blocks) for (const m of blockMembers(b)) sizes.set(m.bundleId, (sizes.get(m.bundleId) ?? 0) + 1)
     _bundleCacheBlocks = blocks
     _bundleCacheSizes  = sizes
   }
   return _bundleCacheSizes!
 }
 
-// One frame per group on the block, first departure → last arrival; broken when part of the
-// group is on another block or another trip sits between its trips (BUNDLE_BROKEN)
+// the block's trips, deadruns and intervals in time order, with their group (if any)
+function blockEvents(block: GanttBlock): { bundleId: string | null; dep: number; arr: number }[] {
+  return [
+    ...block.blockTrips.map(bt => ({ bundleId: bt.trip.bundleId ?? null, dep: bt.trip.departureMinutes, arr: bt.trip.arrivalMinutes })),
+    ...block.blockDeadruns.map(d => ({ bundleId: d.bundleId ?? null, dep: d.departureMinutes, arr: d.arrivalMinutes })),
+    ...block.blockIntervals.map(i => ({ bundleId: i.bundleId ?? null, dep: i.departureMinutes, arr: i.arrivalMinutes })),
+  ].sort((a, b) => a.dep - b.dep || a.arr - b.arr)
+}
+
+function blockMembers(block: GanttBlock): { bundleId: string; dep: number; arr: number }[] {
+  return blockEvents(block).filter((e): e is { bundleId: string; dep: number; arr: number } => !!e.bundleId)
+}
+
+// One frame per group on the block, first member's departure → last one's arrival; broken when
+// part of the group is on another block or something else sits between its members (BUNDLE_BROKEN)
 export function bundleFrames(block: GanttBlock, sizes: Map<string, number>): GanttFrame[] {
-  const trips = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+  const events = blockEvents(block)
   const at = new Map<string, number[]>()
-  trips.forEach((bt, i) => { const id = bt.trip.bundleId; if (id) at.set(id, [...(at.get(id) ?? []), i]) })
+  events.forEach((e, i) => { if (e.bundleId) at.set(e.bundleId, [...(at.get(e.bundleId) ?? []), i]) })
   return [...at.entries()].map(([id, idx]) => ({
     rowId:       block.id,
-    startMinute: trips[idx[0]].trip.departureMinutes,
-    endMinute:   trips[idx[idx.length - 1]].trip.arrivalMinutes,
+    startMinute: Math.min(...idx.map(i => events[i].dep)),
+    endMinute:   Math.max(...idx.map(i => events[i].arr)),
     broken:      idx.length !== sizes.get(id) || idx[idx.length - 1] - idx[0] !== idx.length - 1,
   }))
 }

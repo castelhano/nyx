@@ -32,6 +32,9 @@ import { computeServiceSpans, isReliefPoint, subtractSpans } from '../crew-plan/
 // over a new deadrun leaving right after X's head (DISPLACEMENT or via-depot RETURN): the
 // same driver stays with the car — unless the duty is busy at that time. A candidate is rejected when any piece of the active plan would become invalid;
 // pieces of other plans that do are only counted (they go stale on the next recalc).
+//
+// A trip group (bundleId) is never cut, and a candidate that would drop one of its deadruns or
+// intervals at the junction is skipped.
 
 type Span = { startMinutes: number; endMinutes: number }
 type DeadrunType = 'ACCESS' | 'RETURN' | 'DISPLACEMENT'
@@ -45,8 +48,9 @@ export interface SwapDeadrun {
   id: string; type: DeadrunType
   originLocalityId: string; destinationLocalityId: string
   departureMinutes: number; arrivalMinutes: number
+  bundleId?: string | null
 }
-export interface SwapInterval { id: string; departureMinutes: number; arrivalMinutes: number }
+export interface SwapInterval { id: string; departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }
 
 export interface SwapBlock {
   id: string; blockNumber: number; branchId: string | null; vehicleType: string; depotId: string
@@ -55,6 +59,8 @@ export interface SwapBlock {
   intervals: SwapInterval[]
   // trip-derived relief points (origin/destination/crew-change stops, all carrying tripId)
   tripPoints: ReliefPoint[]
+  // trip groups' spans (LoadedBlockRelief.bundles) — never cut
+  bundles:    Span[]
 }
 
 export interface SwapPiece {
@@ -125,6 +131,7 @@ function lastPlaceOf(head: SwapTrip[], headDeadruns: SwapDeadrun[]): string {
 
 function splitBlock(block: SwapBlock, cut: number): Split | null {
   if (block.trips.some(t => t.departureMinutes < cut && t.arrivalMinutes > cut)) return null // mid-trip
+  if (block.bundles.some(w => cut > w.startMinutes && cut < w.endMinutes)) return null       // inside a trip group
 
   const head = block.trips.filter(t => t.arrivalMinutes <= cut)
   const tail = block.trips.filter(t => t.departureMinutes >= cut)
@@ -435,6 +442,8 @@ export function analyzeVehicleSwaps(input: {
     const uncoveredAfter  = uncoveredMinutes(shapeX, driverSpans(x.id, true)) + uncoveredMinutes(shapeY, driverSpans(y.id, true))
 
     const removed = [...sx.leadIn, ...sy.leadIn].filter(d => !nx.keptLeadIn.includes(d) && !ny.keptLeadIn.includes(d))
+    const droppedIds = new Set([...nx.dropped, ...ny.dropped])
+    if (removed.some(d => d.bundleId) || [...x.intervals, ...y.intervals].some(i => i.bundleId && droppedIds.has(i.id))) return null
     const added   = [...nx.created, ...ny.created]
     const retargetedFrom = [...nx.retargetedFrom, ...ny.retargetedFrom], retargets = [...nx.retargets, ...ny.retargets]
     const deadrunMinutesDelta = [...added, ...retargets].reduce((s, d) => s + dur(d), 0) - [...removed, ...retargetedFrom].reduce((s, d) => s + dur(d), 0)

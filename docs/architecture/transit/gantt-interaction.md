@@ -173,16 +173,16 @@ Access and Return are suppressed when the trip is back-to-back (gap ≤ 15 min) 
 | 2 | Move to block (`Mover para bloco`) | Always |
 | 3 | Delete interval (`Excluir`) | Always — removes all trips and deadruns in the span |
 
-`Agrupar` / `Desagrupar` (trip groups, below) also show on a productive trip (`Desagrupar`, when it's in a group) and on an interval selection (`Desagrupar` when it holds a grouped trip, else `Agrupar` with 2+ trips).
+`Agrupar` / `Desagrupar` (trip groups, below) also show on a productive trip, deadrun or interval (`Desagrupar`, when it's in a group) and on an interval selection (`Desagrupar` when it holds a group member, else `Agrupar` with at least one trip and two elements).
 
 ### Trip groups
 
-A trip group (`TransitTrip.bundleId`, see `solver.md` — Trip groups) is staged like any trip patch (`TripPatch.bundleId`) and saved by `applyDiff`:
+A trip group (`bundleId` on trips, deadruns and intervals, see `solver.md` — Trip groups) is staged like any patch (`TripPatch` / `DeadrunPatch` / `IntervalPatch.bundleId`) and saved by `applyDiff`:
 
-- **Agrupar** — on an interval selection, contiguous by construction (nothing may sit between a group's trips); a new uuid on each trip. Pending (unsaved) trips can't be grouped. Salvar validates the group and fails with the reason.
-- **Desagrupar** — clears the whole group, its trips on every block (the line filter may hide some).
-- **Selecting** part of a group is allowed (e.g. to see the sum of a few trips); **moving** (`q+m`) always takes the whole group with the deadruns/intervals between its trips, and refuses with a toast when the target has a trip in that stretch.
-- **Drawing** — `GanttView.getFrames` returns one `GanttFrame` per group on the block (first departure → last arrival), drawn by the renderer as an outline over the segments; dashed amber when broken (split across blocks or with another trip between — `BUNDLE_BROKEN`).
+- **Agrupar** — on an interval selection, contiguous by construction (nothing may sit between a group's members); a new uuid on each selected trip, deadrun and interval — selecting a whole block groups its ACCESS and RETURN too. Pending (unsaved) entries can't be grouped. Salvar validates the group and fails with the reason.
+- **Desagrupar** — clears the whole group, every member on every block (the line filter may hide some).
+- **Selecting** part of a group is allowed (e.g. to see the sum of a few trips); **moving** (`q+m`) always takes the whole group — trips, deadruns and intervals — and refuses with a toast when the target has a trip or deadrun in that stretch. The server does the same on its own (`applyMoveTrip` adds the members of the moved trips' groups).
+- **Drawing** — `GanttView.getFrames` returns one `GanttFrame` per group on the block (first member's departure → last one's arrival), drawn by the renderer as an outline over the segments; dashed amber when broken (split across blocks or with something else between its members — `BUNDLE_BROKEN`).
 
 ---
 

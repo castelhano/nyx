@@ -111,7 +111,7 @@ export interface LoadedBlockRelief extends BlockReliefData {
   trips:     { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[]
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
-  // trip groups (TransitTrip.bundleId) on this block, first departure → last arrival — one
+  // trip groups (bundleId) on this block, first member's departure → last one's arrival — one
   // driver runs each whole, no relief inside
   bundles:   Span[]
 }
@@ -146,8 +146,8 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
           },
         },
       },
-      blockDeadruns:  { select: { id: true, type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
-      blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true } },
+      blockDeadruns:  { select: { id: true, bundleId: true, type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
+      blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true } },
     },
   })
 
@@ -191,15 +191,15 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
       })),
       deadruns:  b.blockDeadruns,
       intervals: b.blockIntervals,
-      bundles:   bundleWindows(b.blockTrips.map(bt => bt.trip)),
+      bundles:   bundleWindows([...b.blockTrips.map(bt => bt.trip), ...b.blockDeadruns, ...b.blockIntervals]),
     })
   }
   return result
 }
 
-function bundleWindows(trips: { bundleId: string | null; departureMinutes: number; arrivalMinutes: number }[]): Span[] {
+function bundleWindows(members: { bundleId: string | null; departureMinutes: number; arrivalMinutes: number }[]): Span[] {
   const windows = new Map<string, Span>()
-  for (const t of trips) {
+  for (const t of members) {
     if (!t.bundleId) continue
     const w = windows.get(t.bundleId)
     windows.set(t.bundleId, w

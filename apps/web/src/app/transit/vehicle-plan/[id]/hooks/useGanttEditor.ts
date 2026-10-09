@@ -143,17 +143,25 @@ export type DeadrunPatch = {
   departureMinutes?: number; arrivalMinutes?: number
   originLocalityId?: string; originLocality?: { id: string; name: string }
   destinationLocalityId?: string; destinationLocality?: { id: string; name: string }
+  bundleId?: string | null
 }
 type BlockPatch = { depotId: string; depot: { id: string; name: string } }
 
-// Replaces a deadrun patch's timing while keeping any locality change already staged —
+// Replaces a deadrun patch's timing while keeping any locality / group change already staged —
 // null when nothing is left to patch.
 function withDeadrunTiming(prev: DeadrunPatch | undefined, timing: DeadrunPatch): DeadrunPatch | null {
   const { departureMinutes: _dep, arrivalMinutes: _arr, ...localities } = prev ?? {}
   const patch = { ...localities, ...timing }
   return Object.keys(patch).length ? patch : null
 }
-type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number }
+type IntervalPatch = { departureMinutes?: number; arrivalMinutes?: number; bundleId?: string | null }
+
+// same as withDeadrunTiming, keeping a staged group change
+function withIntervalTiming(prev: IntervalPatch | undefined, timing: IntervalPatch): IntervalPatch | null {
+  const { departureMinutes: _dep, arrivalMinutes: _arr, ...rest } = prev ?? {}
+  const patch = { ...rest, ...timing }
+  return Object.keys(patch).length ? patch : null
+}
 type PendingMove = { blockTripIds: string[]; breakIds: string[]; deadrunIds: string[]; fromBlockId: string; toBlockId: string }
 
 // Moves are applied against the server snapshot (both in mergedPlottedData and in
@@ -849,37 +857,48 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     })
   }
 
-  // Trip groups (TransitTrip.bundleId) — staged like any trip patch; Salvar checks a new group
-  // (same vehicle, nothing between its trips, block and continuous driving limits, vehicle type)
-  function handleGroupTrips(tripIds: string[]) {
+  // Trip groups (bundleId on trips, deadruns and intervals) — staged like any patch; Salvar
+  // checks a new group (same vehicle, nothing else between its members, block and continuous
+  // driving limits, vehicle type)
+  function handleGroup(tripIds: string[], deadrunIds: string[], breakIds: string[]) {
     if (!canEditGantt) return
-    const tempTripIds = new Set(pendingAdds.filter((a): a is PendingAddTrip => a._kind === 'trip').map(a => `${a._tempId}:trip`))
-    if (tripIds.some(id => tempTripIds.has(id))) {
-      toast.error('Salve as viagens novas antes de agrupar')
+    const tempIds = new Set(pendingAdds.flatMap(a => a._kind === 'trip' ? [`${a._tempId}:trip`, `${a._tempId}:access`, `${a._tempId}:return`] : [a._tempId]))
+    if ([...tripIds, ...deadrunIds, ...breakIds].some(id => tempIds.has(id))) {
+      toast.error('Salve os lançamentos novos antes de agrupar')
       return
     }
     const bundleId = crypto.randomUUID()
-    setPendingChanges(prev => {
+    const stage = <P extends { bundleId?: string | null }>(prev: Map<string, P>, ids: string[]) => {
       const next = new Map(prev)
-      for (const tripId of tripIds) next.set(tripId, { ...next.get(tripId), bundleId })
+      for (const id of ids) next.set(id, { ...next.get(id), bundleId } as P)
       return next
-    })
+    }
+    setPendingChanges(prev => stage(prev, tripIds))
+    if (deadrunIds.length) setPendingDeadrunChanges(prev => stage(prev, deadrunIds))
+    if (breakIds.length)   setPendingIntervalChanges(prev => stage(prev, breakIds))
   }
 
-  // Ungroups the whole group, wherever its trips are (the line filter may hide some blocks)
+  // Ungroups the whole group — trips, deadruns and intervals — wherever its members are (the
+  // line filter may hide some blocks)
   function handleUngroup(bundleIds: string[]) {
     if (!canEditGantt || !ganttData) return
     const ids = new Set(bundleIds)
-    const tripIds = ganttData.blocks.flatMap(b => b.blockTrips).filter(bt => {
-      const patched = pendingChanges.get(bt.trip.id)?.bundleId
-      const current = patched !== undefined ? patched : bt.trip.bundleId
+    const inGroup = (patched: string | null | undefined, saved: string | null | undefined) => {
+      const current = patched !== undefined ? patched : saved
       return !!current && ids.has(current)
-    }).map(bt => bt.trip.id)
-    setPendingChanges(prev => {
+    }
+    const blocks     = ganttData.blocks
+    const tripIds    = blocks.flatMap(b => b.blockTrips).filter(bt => inGroup(pendingChanges.get(bt.trip.id)?.bundleId, bt.trip.bundleId)).map(bt => bt.trip.id)
+    const deadrunIds = blocks.flatMap(b => b.blockDeadruns).filter(d => inGroup(pendingDeadrunChanges.get(d.id)?.bundleId, d.bundleId)).map(d => d.id)
+    const breakIds   = blocks.flatMap(b => b.blockIntervals).filter(i => inGroup(pendingIntervalChanges.get(i.id)?.bundleId, i.bundleId)).map(i => i.id)
+    const clear = <P extends { bundleId?: string | null }>(prev: Map<string, P>, list: string[]) => {
       const next = new Map(prev)
-      for (const tripId of tripIds) next.set(tripId, { ...next.get(tripId), bundleId: null })
+      for (const id of list) next.set(id, { ...next.get(id), bundleId: null } as P)
       return next
-    })
+    }
+    setPendingChanges(prev => clear(prev, tripIds))
+    if (deadrunIds.length) setPendingDeadrunChanges(prev => clear(prev, deadrunIds))
+    if (breakIds.length)   setPendingIntervalChanges(prev => clear(prev, breakIds))
   }
 
   function handleOpenTripDetails(tripIds: string[]) {
@@ -1133,13 +1152,18 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     if (!plottedData || !canEditStructural) return
 
     const overrides   = new Map<string, TripPatch>()
-    // timing is recomputed from scratch, but a staged "Modificar depósito" locality change is kept
+    // timing is recomputed from scratch, but a staged "Modificar depósito" locality change (or a
+    // deadrun/interval group change) is kept
     const drOverrides = new Map<string, DeadrunPatch>()
     for (const [drId, patch] of pendingDeadrunChanges) {
       const localities = withDeadrunTiming(patch, {})
       if (localities) drOverrides.set(drId, localities)
     }
     const bkOverrides = new Map<string, IntervalPatch>()
+    for (const [bkId, patch] of pendingIntervalChanges) {
+      const rest = withIntervalTiming(patch, {})
+      if (rest) bkOverrides.set(bkId, rest)
+    }
     let tripsWithWindow = 0
 
     // Process per block: a block = one vehicle.
@@ -1216,7 +1240,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
           const bpatch: IntervalPatch = {}
           if (newDep !== bi.departureMinutes) bpatch.departureMinutes = newDep
           if (newArr !== bi.arrivalMinutes)   bpatch.arrivalMinutes   = newArr
-          if (Object.keys(bpatch).length > 0) bkOverrides.set(bi.id, bpatch)
+          const merged = withIntervalTiming(bkOverrides.get(bi.id), bpatch)
+          if (merged) bkOverrides.set(bi.id, merged)
 
           prevArrival     = newArr
           pendingInterval = 0
@@ -1320,7 +1345,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       const patch: IntervalPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
       if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
-      if (Object.keys(patch).length) bkOverrides.set(bkId, patch)
+      const merged = withIntervalTiming(bkOverrides.get(bkId), patch)
+      if (merged) bkOverrides.set(bkId, merged)
       else bkOverrides.delete(bkId)
     }
 
@@ -1508,7 +1534,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       const patch: IntervalPatch = {}
       if (!orig || dep !== orig.departureMinutes) patch.departureMinutes = dep
       if (!orig || arr !== orig.arrivalMinutes)   patch.arrivalMinutes   = arr
-      if (Object.keys(patch).length) newBks.set(bkId, patch)
+      const merged = withIntervalTiming(newBks.get(bkId), patch)
+      if (merged) newBks.set(bkId, merged)
       else newBks.delete(bkId)
     }
 
@@ -1896,6 +1923,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
                   arrivalMinutes:        patch.arrivalMinutes   ?? dr.arrivalMinutes,
                   originLocalityId:      patch.originLocalityId,
                   destinationLocalityId: patch.destinationLocalityId,
+                  bundleId:              patch.bundleId,
                 }
               }),
           )
@@ -1911,6 +1939,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
                   id:               bi.id,
                   departureMinutes: patch.departureMinutes ?? bi.departureMinutes,
                   arrivalMinutes:   patch.arrivalMinutes   ?? bi.arrivalMinutes,
+                  bundleId:         patch.bundleId,
                 }
               }),
           )
@@ -2130,20 +2159,31 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
     if (blockTripIds.length === 0) return
 
-    // a trip group moves whole, with what's between its trips, however much of it is selected —
-    // and only into a free stretch of the target (nothing may sit between its trips)
-    const groupWindows = [...new Set(blockTripIds.flatMap(btId => sourceBlock.blockTrips.find(bt => bt.id === btId)?.trip.bundleId ?? []))]
-      .map(bundleId => {
-        const bts = sourceBlock.blockTrips.filter(bt => bt.trip.bundleId === bundleId)
-        for (const bt of bts) if (!blockTripIds.includes(bt.id)) blockTripIds.push(bt.id)
-        return { from: Math.min(...bts.map(bt => bt.trip.departureMinutes)), to: Math.max(...bts.map(bt => bt.trip.arrivalMinutes)) }
-      })
-    if (groupWindows.some(w => targetBlock.blockTrips.some(bt => bt.trip.departureMinutes < w.to + 1 && bt.trip.arrivalMinutes + 1 > w.from))) {
+    // a trip group moves whole — its trips, deadruns and intervals (ACCESS / RETURN included),
+    // however much of it is selected — and only into a free stretch of the target
+    const movedBundleIds = new Set(blockTripIds.flatMap(btId => sourceBlock.blockTrips.find(bt => bt.id === btId)?.trip.bundleId ?? []))
+    const groupWindows = [...movedBundleIds].map(bundleId => {
+      const bts = sourceBlock.blockTrips.filter(bt => bt.trip.bundleId === bundleId)
+      for (const bt of bts) if (!blockTripIds.includes(bt.id)) blockTripIds.push(bt.id)
+      const spans = [
+        ...bts.map(bt => bt.trip),
+        ...sourceBlock.blockDeadruns.filter(d => d.bundleId === bundleId),
+        ...sourceBlock.blockIntervals.filter(i => i.bundleId === bundleId),
+      ]
+      return {
+        tripsFrom: Math.min(...bts.map(bt => bt.trip.departureMinutes)), tripsTo: Math.max(...bts.map(bt => bt.trip.arrivalMinutes)),
+        from: Math.min(...spans.map(s => s.departureMinutes)), to: Math.max(...spans.map(s => s.arrivalMinutes)),
+      }
+    })
+    const targetEvents = [...targetBlock.blockTrips.map(bt => bt.trip), ...targetBlock.blockDeadruns]
+    if (groupWindows.some(w => targetEvents.some(e => e.departureMinutes < w.to + 1 && e.arrivalMinutes + 1 > w.from))) {
       toast.error('O grupo de viagens não cabe no bloco destino')
       return
     }
-    const insideGroup = (item: { departureMinutes: number; arrivalMinutes: number }) =>
-      groupWindows.some(w => item.departureMinutes >= w.from && item.arrivalMinutes <= w.to)
+    // members, plus what sits between the trips of a group made before deadruns/intervals could join
+    const inGroup = (item: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }) =>
+      (!!item.bundleId && movedBundleIds.has(item.bundleId))
+      || groupWindows.some(w => item.departureMinutes >= w.tripsFrom && item.arrivalMinutes <= w.tripsTo)
 
     const movedTrips = blockTripIds.map(btId => {
       const bt = sourceBlock.blockTrips.find(bt => bt.id === btId)
@@ -2183,9 +2223,11 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       ...(selection.type === 'interval'
         ? selection.segments.filter(s => s.kind === 'break').map(s => (s.data as GanttBlockInterval).id)
         : []),
-      ...sourceBlock.blockIntervals.filter(insideGroup).map(bi => bi.id),
+      ...sourceBlock.blockIntervals.filter(inGroup).map(bi => bi.id),
     ])
-    const movedBreakIds    = anchoredBreakIds.filter(id => selectedBreakIds.has(id))
+    // a group's own intervals go too, even one anchored to a trip that stays (before the group)
+    const memberBreakIds   = sourceBlock.blockIntervals.filter(bi => bi.bundleId && movedBundleIds.has(bi.bundleId)).map(bi => bi.id)
+    const movedBreakIds    = [...new Set([...anchoredBreakIds.filter(id => selectedBreakIds.has(id)), ...memberBreakIds])]
     const orphanedBreakIds = anchoredBreakIds.filter(id => !selectedBreakIds.has(id))
 
     // Deadruns have no anchor concept (unlike breaks) — they're never implied by a
@@ -2197,7 +2239,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       ...(selection.type === 'interval'
         ? selection.segments.filter(s => s.kind === 'deadhead').map(s => (s.data as GanttBlockDeadrun).id)
         : []),
-      ...sourceBlock.blockDeadruns.filter(insideGroup).map(d => d.id),
+      ...sourceBlock.blockDeadruns.filter(inGroup).map(d => d.id),
     ])].filter(id => !id.endsWith(':access') && !id.endsWith(':return'))
 
     // Pending (unsaved) trips/breaks/deadruns aren't real persisted ids yet — relocate
@@ -2583,7 +2625,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     onAddDisplacement:   handleAddDisplacement,
     onConvertToDeadrun:  handleConvertToDeadrun,
     onConvertToTrip:     handleOpenConvertToTrip,
-    onGroupTrips:        handleGroupTrips,
+    onGroup:             handleGroup,
     onUngroup:           handleUngroup,
   }, canEditGantt)
 

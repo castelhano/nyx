@@ -1,5 +1,6 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
+import { bundleRowsOf } from './trip-bundle.utils'
 
 // The core block-mutation logic used by VehiclePlanService.applyDiff — extracted out
 // of what used to be individual VehicleBlockService endpoints (addAccess, addReturn,
@@ -88,12 +89,18 @@ export async function applyMoveTrip(
   const maxSeq = await tx.blockTrip.aggregate({ where: { vehicleBlockId: targetBlockId }, _max: { sequence: true } })
   let nextSequence = (maxSeq._max.sequence ?? 0) + 1
 
+  // a trip group's deadruns and intervals always go with its trips, selected or not
+  const tripIds = found.map((f: any) => f.tripId)
+  const members = await bundleRowsOf(tx, blockId, tripIds)
+  breakIds   = [...new Set([...breakIds, ...members.intervalIds])]
+  deadrunIds = [...new Set([...deadrunIds, ...members.deadrunIds])]
+
   // Intervals live attached to the trip that precedes them (positional, no FK — see
   // block-interval.utils.ts). Moving a trip without also moving its interval leaves
   // it orphaned, so it's dropped unless the caller explicitly included it (breakIds).
-  const tripIds              = found.map((f: any) => f.tripId)
   const anchoredIntervalIds  = await findIntervalIdsAnchoredToTrips(tx, blockId, tripIds)
-  const movedIntervalIds     = breakIds.filter(bid => anchoredIntervalIds.includes(bid))
+  // members ride along even when anchored to a trip that stays (an interval before the group)
+  const movedIntervalIds     = breakIds.filter(bid => anchoredIntervalIds.includes(bid) || members.intervalIds.includes(bid))
   const orphanedIntervalIds  = anchoredIntervalIds.filter(bid => !movedIntervalIds.includes(bid))
 
   for (const btId of blockTripIds) {

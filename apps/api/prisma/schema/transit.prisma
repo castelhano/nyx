@@ -420,10 +420,11 @@ model TransitTrip {
   // sempre inferida em tempo de export, nunca persistida (docs/proposal/
   // plan_trip_markings_v1.md, regra 6).
   markings            Json?
-  // trip group ("grupo de viagens") — trips sharing this id run back to back, nothing else
-  // between them, on one vehicle and one driver: the vehicle solver keeps them as one fixed
-  // unit (with the deadruns/intervals between them) and the crew solver never cuts inside it.
-  // A plain shared uuid, no table. Removing any trip of a group dissolves the whole group.
+  // trip group ("grupo de viagens") — the trips, deadruns and intervals sharing this id
+  // (BlockDeadrun/BlockInterval.bundleId) run back to back, nothing else between them, on one
+  // vehicle and one driver: the vehicle solver keeps them as one fixed unit and the crew
+  // solver never cuts inside it. A plain shared uuid, no table. Removing any trip of a group
+  // dissolves the whole group; removing a deadrun/interval only takes it out.
   bundleId            String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -468,12 +469,15 @@ model BlockInterval {
   intervalTypeId   String
   departureMinutes Int
   arrivalMinutes   Int
+  // trip group member (see TransitTrip.bundleId)
+  bundleId         String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   vehicleBlock VehicleBlock @relation(fields: [vehicleBlockId], references: [id], onDelete: Cascade)
   intervalType IntervalType @relation(fields: [intervalTypeId], references: [id])
 
+  @@index([bundleId])
   @@map("transit_block_intervals")
 }
 
@@ -686,6 +690,8 @@ model BlockDeadrun {
   destinationLocalityId String
   departureMinutes      Int
   arrivalMinutes        Int
+  // trip group member (see TransitTrip.bundleId)
+  bundleId              String?
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
@@ -693,6 +699,7 @@ model BlockDeadrun {
   originLocality      TransitLocality @relation("DeadrunOrigin", fields: [originLocalityId], references: [id])
   destinationLocality TransitLocality @relation("DeadrunDestination", fields: [destinationLocalityId], references: [id])
 
+  @@index([bundleId])
   @@map("transit_block_deadruns")
 }
 

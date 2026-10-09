@@ -56,11 +56,12 @@ export interface BlockValidationInput {
   depotId:   string
   branchId:  string | null
   trips:     { departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
-  deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
-  intervals: { departureMinutes: number; arrivalMinutes: number }[]
+  deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
+  intervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[]
   // the default IntervalType's maxMinutes (general settings) — null skips LONG_STAND
   maxStandMinutes: number | null
-  // trips per group (TransitTrip.bundleId) in the whole plan — absent skips BUNDLE_BROKEN
+  // members per group (trips, deadruns and intervals sharing a bundleId) in the whole plan —
+  // absent skips BUNDLE_BROKEN
   bundleSizes?: Map<string, number>
 }
 
@@ -109,7 +110,7 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
       issues.push({ code: 'LONG_STAND', minutes: prev.arrivalMinutes, value: stand })
     }
   }
-  if (input.bundleSizes) issues.push(...bundleIssues(input.trips, input.bundleSizes))
+  if (input.bundleSizes) issues.push(...bundleIssues([...input.trips, ...input.deadruns, ...input.intervals], input.bundleSizes))
   for (const iv of input.intervals) {
     if (moves.some(m => m.departureMinutes < iv.arrivalMinutes && m.arrivalMinutes > iv.departureMinutes)) {
       issues.push({ code: 'OVERLAP', minutes: iv.departureMinutes })
@@ -118,9 +119,9 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
   return issues.sort((a, b) => a.minutes - b.minutes)
 }
 
-// A group must sit whole in one block, its trips one right after the other
-function bundleIssues(trips: BlockValidationInput['trips'], sizes: Map<string, number>): VehicleBlockIssue[] {
-  const sorted = [...trips].sort((a, b) => a.departureMinutes - b.departureMinutes)
+// A group must sit whole in one block, its members one right after the other
+function bundleIssues(events: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[], sizes: Map<string, number>): VehicleBlockIssue[] {
+  const sorted = [...events].sort((a, b) => a.departureMinutes - b.departureMinutes || a.arrivalMinutes - b.arrivalMinutes)
   const at = new Map<string, number[]>()
   sorted.forEach((t, i) => { if (t.bundleId) at.set(t.bundleId, [...(at.get(t.bundleId) ?? []), i]) })
   const issues: VehicleBlockIssue[] = []

@@ -122,8 +122,8 @@ export async function afterTripUpdate(
   }
 }
 
-// A group losing a trip is dissolved whole (TransitTrip.bundleId) — its remaining trips go
-// back to being free trips. Runs before the trips are deleted.
+// A group losing a trip is dissolved whole (bundleId) — its remaining trips, deadruns and
+// intervals go back to being free. Runs before the trips are deleted.
 export async function dissolveBundlesOf(db: any, tripIds: string[]): Promise<void> {
   if (tripIds.length === 0) return
   const rows: { bundleId: string | null }[] = await db.transitTrip.findMany({
@@ -131,7 +131,11 @@ export async function dissolveBundlesOf(db: any, tripIds: string[]): Promise<voi
     select: { bundleId: true },
   })
   const bundleIds = [...new Set(rows.map(r => r.bundleId!))]
-  if (bundleIds.length) await db.transitTrip.updateMany({ where: { bundleId: { in: bundleIds } }, data: { bundleId: null } })
+  if (!bundleIds.length) return
+  const where = { bundleId: { in: bundleIds } }
+  await db.transitTrip.updateMany({ where, data: { bundleId: null } })
+  await db.blockDeadrun.updateMany({ where, data: { bundleId: null } })
+  await db.blockInterval.updateMany({ where, data: { bundleId: null } })
 }
 
 export async function applyTripRemoval(db: any, id: string): Promise<{ affectedPlanIds: string[] }> {

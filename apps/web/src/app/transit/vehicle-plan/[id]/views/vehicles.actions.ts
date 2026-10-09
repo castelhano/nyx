@@ -22,7 +22,7 @@ export interface VehiclesActionDeps {
   onConvertToDeadrun:  (tripId: string, blockId: string) => void
   onConvertToTrip:     (deadrunId: string, blockId: string) => void
   // trip groups (TransitTrip.bundleId)
-  onGroupTrips:        (tripIds: string[]) => void
+  onGroup:             (tripIds: string[], deadrunIds: string[], breakIds: string[]) => void
   onUngroup:           (bundleIds: string[]) => void
 }
 
@@ -66,6 +66,7 @@ export function createVehiclesActionSpec(
           if (!block) return []
           return [
             ...(d.type === 'DISPLACEMENT' ? [makeConvertToTripAction(d.id, block.id, deps)] : []),
+            ...(d.bundleId ? [makeUngroupAction([d.bundleId], deps, onClose)] : []),
             // e.g. [viagem][recolhe][INTERVALO][acesso] — allowed after any deadrun,
             // unusual placements are left for the user to judge
             ...(canAddInterval(d.arrivalMinutes, block) ? [makeAddIntervalAction(d.arrivalMinutes, block.id, deps)] : []),
@@ -78,7 +79,10 @@ export function createVehiclesActionSpec(
         if (selection.segment.id.endsWith(':bk')) {
           const bi    = selection.segment.data as GanttBlockInterval
           const block = data.blocks.find(b => b.id === selection.segment.rowId)
-          return block ? [makeDeleteBreaksAction([bi.id], block.id, deps)] : []
+          return block ? [
+            ...(bi.bundleId ? [makeUngroupAction([bi.bundleId], deps, onClose)] : []),
+            makeDeleteBreaksAction([bi.id], block.id, deps),
+          ] : []
         }
 
         const bt    = selection.segment.data as GanttBlockTrip
@@ -104,14 +108,20 @@ export function createVehiclesActionSpec(
       const tripIds    = tripSegs.map(s => (s.data as GanttBlockTrip).trip.id)
       const deadrunIds = drSegs.map(s => (s.data as GanttBlockDeadrun).id)
       const breakIds   = bkSegs.map(s => (s.data as GanttBlockInterval).id)
-      const bundleIds  = [...new Set(tripSegs.flatMap(s => (s.data as GanttBlockTrip).trip.bundleId ?? []))]
+      const bundleIds  = [...new Set([
+        ...tripSegs.flatMap(s => (s.data as GanttBlockTrip).trip.bundleId ?? []),
+        ...drSegs.flatMap(s => (s.data as GanttBlockDeadrun).bundleId ?? []),
+        ...bkSegs.flatMap(s => (s.data as GanttBlockInterval).bundleId ?? []),
+      ])]
+      const canGroup = tripIds.length > 0 && tripIds.length + deadrunIds.length + breakIds.length > 1
 
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
         ...(tripIds.length > 0 ? [makeTripDetailsAction(tripIds, deps)] : []),
-        // a range is contiguous by construction — exactly what a group needs
+        // a range is contiguous by construction — exactly what a group needs; its deadruns and
+        // intervals (ACCESS / RETURN included) join the group too
         ...(bundleIds.length > 0 ? [makeUngroupAction(bundleIds, deps, onClose)]
-          : tripIds.length > 1  ? [makeGroupAction(tripIds, deps, onClose)] : []),
+          : canGroup ? [makeGroupAction(tripIds, deadrunIds, breakIds, deps, onClose)] : []),
         makeDeleteIntervalAction(tripIds, deadrunIds, breakIds, selection.rowId, deps),
       ]
     },
@@ -190,13 +200,13 @@ function makeTripDetailsAction(tripIds: string[], deps: VehiclesActionDeps): Act
 
 // ── trip group buttons ─────────────────────────────────────────────────────────
 
-function makeGroupAction(tripIds: string[], deps: VehiclesActionDeps, onClose: () => void): ActionItem {
+function makeGroupAction(tripIds: string[], deadrunIds: string[], breakIds: string[], deps: VehiclesActionDeps, onClose: () => void): ActionItem {
   return {
     id:      'group',
     label:   'Agrupar',
     icon:    'Group',
     variant: 'both',
-    onClick: () => { deps.onGroupTrips(tripIds); onClose() },
+    onClick: () => { deps.onGroup(tripIds, deadrunIds, breakIds); onClose() },
   }
 }
 

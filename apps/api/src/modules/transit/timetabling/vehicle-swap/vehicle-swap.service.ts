@@ -98,8 +98,8 @@ export class VehicleSwapService {
               trip: { select: { departureMinutes: true, arrivalMinutes: true, route: { select: { originLocalityId: true, destinationLocalityId: true } } } },
             },
           },
-          blockDeadruns:  { select: { id: true, type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
-          blockIntervals: { select: { id: true, departureMinutes: true, arrivalMinutes: true } },
+          blockDeadruns:  { select: { id: true, type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
+          blockIntervals: { select: { id: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
         },
       }),
       this.prisma.dutyPiece.findMany({
@@ -125,6 +125,7 @@ export class VehicleSwapService {
       deadruns:   b.blockDeadruns,
       intervals:  b.blockIntervals,
       tripPoints: (relief.get(b.id)?.points ?? []).filter(p => p.tripId),
+      bundles:    relief.get(b.id)?.bundles ?? [],
     }))
 
     // travel matrix among every trip endpoint and depot of the plan

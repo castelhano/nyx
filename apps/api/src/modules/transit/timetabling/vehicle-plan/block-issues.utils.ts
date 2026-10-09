@@ -14,22 +14,27 @@ export async function defaultIntervalMaxMinutes(db: any, generalConfig: TransitG
   return type?.maxMinutes ?? null
 }
 
-// trips per group (TransitTrip.bundleId) in the plan — BUNDLE_BROKEN needs the whole group
+// members per group (trips, deadruns, intervals sharing a bundleId) in the plan — BUNDLE_BROKEN
+// needs the whole group
 export async function planBundleSizes(db: any, planId: string): Promise<Map<string, number>> {
-  const rows: { bundleId: string | null; _count: { _all: number } }[] = await db.transitTrip.groupBy({
-    by:     ['bundleId'],
-    where:  { vehiclePlanId: planId, bundleId: { not: null } },
-    _count: { _all: true },
-  })
-  return new Map(rows.map(r => [r.bundleId!, r._count._all]))
+  type Row = { bundleId: string | null; _count: { _all: number } }
+  const grouped = { by: ['bundleId'], _count: { _all: true } }
+  const [trips, deadruns, intervals]: Row[][] = await Promise.all([
+    db.transitTrip.groupBy({ ...grouped, where: { vehiclePlanId: planId, bundleId: { not: null } } }),
+    db.blockDeadrun.groupBy({ ...grouped, where: { vehicleBlock: { vehiclePlanId: planId }, bundleId: { not: null } } }),
+    db.blockInterval.groupBy({ ...grouped, where: { vehicleBlock: { vehiclePlanId: planId }, bundleId: { not: null } } }),
+  ])
+  const sizes = new Map<string, number>()
+  for (const r of [...trips, ...deadruns, ...intervals]) sizes.set(r.bundleId!, (sizes.get(r.bundleId!) ?? 0) + r._count._all)
+  return sizes
 }
 
 export interface IssueBlockRow {
   depotId:        string
   branchId:       string | null
   blockTrips:     { trip: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null; route: { originLocalityId: string; destinationLocalityId: string } } }[]
-  blockDeadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }[]
-  blockIntervals: { departureMinutes: number; arrivalMinutes: number }[]
+  blockDeadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
+  blockIntervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[]
 }
 
 export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null, bundleSizes?: Map<string, number>): VehicleBlockIssue[] {
@@ -57,8 +62,8 @@ export async function refreshBlockIssues(db: any, blockId: string, generalConfig
         depotId:        true,
         branchId:       true,
         blockTrips:     { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true, route: { select: { originLocalityId: true, destinationLocalityId: true } } } } } },
-        blockDeadruns:  { select: { type: true, departureMinutes: true, arrivalMinutes: true, originLocalityId: true, destinationLocalityId: true } },
-        blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true } },
+        blockDeadruns:  { select: { type: true, departureMinutes: true, arrivalMinutes: true, originLocalityId: true, destinationLocalityId: true, bundleId: true } },
+        blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true } },
       },
     }),
     defaultIntervalMaxMinutes(db, generalConfig),

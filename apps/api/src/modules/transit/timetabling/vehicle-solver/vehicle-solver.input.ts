@@ -58,8 +58,8 @@ export async function loadVehicleSolverInput(
             },
           },
         },
-        blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
-        blockIntervals: { select: { intervalTypeId: true, departureMinutes: true, arrivalMinutes: true } },
+        blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
+        blockIntervals: { select: { intervalTypeId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
       },
     }),
     prisma.travelTimeMatrix.findMany({ select: { originId: true, destinationId: true, baseMinutes: true, speedRatio: true, distanceKm: true } }),
@@ -133,14 +133,17 @@ export async function loadVehicleSolverInput(
 
 const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
-// Each trip group (TransitTrip.bundleId) becomes one unit (SolverTrip.bundle). Its inside — the
-// deadruns and intervals between its first departure and last arrival — comes from the block that
-// holds the whole group, as it is; a group not yet together gets just the displacements its
-// trips need. A group of one trip is a plain trip.
+type RowOf<T> = Omit<T, 'bundleId'> & { bundleId?: string | null }
+
+// Each trip group (bundleId) becomes one unit (SolverTrip.bundle). Its rows — the deadruns and
+// intervals grouped with it, plus whatever sits between its first departure and last arrival
+// (groups made before deadruns/intervals could be members) — come from the block that holds the
+// whole group, as they are; a group not yet together gets just the displacements its trips need.
+// A group of one trip and nothing else is a plain trip.
 function bundleUnits(
   free:      SolverTrip[],
   tripRows:  { id: string; bundleId: string | null; departureMinutes: number }[],
-  blocks:    { blockTrips: { tripId: string }[]; blockDeadruns: Rows['deadruns']; blockIntervals: Rows['intervals'] }[],
+  blocks:    { blockTrips: { tripId: string }[]; blockDeadruns: RowOf<Rows['deadruns'][number]>[]; blockIntervals: RowOf<Rows['intervals'][number]>[] }[],
   locked:    Set<string>,
   matrix:    VehicleSolverInput['matrix'],
 ): SolverTrip[] {
@@ -150,8 +153,7 @@ function bundleUnits(
   const grouped = new Set<string>()
   const units: SolverTrip[] = []
 
-  for (const ids of members.values()) {
-    if (ids.length < 2) continue
+  for (const [bundleId, ids] of members) {
     const trips = ids.map(id => byId.get(id)).filter((t): t is SolverTrip => !!t).sort((a, b) => a.dep - b.dep)
     if (trips.length === 0) continue
     if (trips.length !== ids.length) {
@@ -166,10 +168,17 @@ function bundleUnits(
     if (allowed && !allowed.length) throw new BadRequestException(`Grupo de viagens das ${clock(trips[0].dep)}: as viagens não têm um tipo de veículo em comum`)
 
     const home = blocks.find(b => ids.every(id => b.blockTrips.some(bt => bt.tripId === id)))
-    const inside = (r: { departureMinutes: number; arrivalMinutes: number }) => r.departureMinutes >= trips[0].dep && r.arrivalMinutes <= last.arr
+    const own = (r: { bundleId?: string | null; departureMinutes: number; arrivalMinutes: number }) =>
+      r.bundleId === bundleId || (r.departureMinutes >= trips[0].dep && r.arrivalMinutes <= last.arr)
     const rows: Rows = home
-      ? { deadruns: home.blockDeadruns.filter(inside), intervals: home.blockIntervals.filter(inside) }
-      : { deadruns: displacements(trips, matrix), intervals: [] }
+      ? {
+          deadruns:  home.blockDeadruns.filter(own).map(d => ({ ...d, bundleId })),
+          intervals: home.blockIntervals.filter(own).map(i => ({ ...i, bundleId })),
+        }
+      : { deadruns: displacements(trips, matrix).map(d => ({ ...d, bundleId })), intervals: [] }
+    if (trips.length < 2 && rows.deadruns.length + rows.intervals.length === 0) continue
+    const fromDepot = rows.deadruns.find(d => d.type === 'ACCESS' && d.arrivalMinutes <= trips[0].dep)?.originLocalityId
+    const toDepot   = rows.deadruns.find(d => d.type === 'RETURN' && d.departureMinutes >= last.arr)?.destinationLocalityId
 
     units.push({
       ...trips[0],
@@ -181,7 +190,7 @@ function bundleUnits(
       standAtDest: last.standAtDest,
       bundle: {
         trips: trips.map(t => ({ id: t.id, lineId: t.lineId, lineCode: t.lineCode, origin: t.origin, dest: t.dest, dep: t.dep, arr: t.arr, direction: t.direction, line: t.line })),
-        rows,
+        rows, fromDepot, toDepot,
       },
     })
     for (const t of trips) grouped.add(t.id)

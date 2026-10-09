@@ -54,6 +54,13 @@ export const blockDeadrunSchema = withMeta(
       keybind:        'h',
     }),
 
+    // trip group member (TransitTrip.bundleId) — managed from the vehicle plan Gantt only
+    bundleId: z.string().nullable().optional().meta({
+      label:          'Grupo de viagens',
+      listVisibility: 'never',
+      showInForm:     false,
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

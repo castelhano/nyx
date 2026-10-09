@@ -98,7 +98,7 @@ A meal BREAK is only placed at a **meal stop**: `RouteLocality.allowsMealBreak` 
 | Meal stops | `RouteLocality.allowsMealBreak` | where a meal BREAK may go |
 | Meal type | `mealBreakIntervalTypeId` → `IntervalType` (`minMinutes`, `maxMinutes`, `isPaid`) | meal range; a paid break counts as work |
 | Walk | `TravelTimeMatrix.distanceKm`, else straight line × factor; 4 km/h | walking between pieces at different places |
-| Trip groups | `relief-points.ts` — `bundles`: each group's first departure → last arrival on the block (`TransitTrip.bundleId`) | one driver runs a group whole: relief points strictly inside are dropped from the solver's input |
+| Trip groups | `relief-points.ts` — `bundles`: each group's first member's departure → last one's arrival on the block (`bundleId` on trips, deadruns, intervals) | one driver runs a group whole: relief points strictly inside are dropped from the solver's input |
 
 ---
 

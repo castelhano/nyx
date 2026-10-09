@@ -50,7 +50,11 @@ export const pendingAddEntrySchema = z.discriminatedUnion('_kind', [
 ])
 export type PendingAddEntryDto = z.infer<typeof pendingAddEntrySchema>
 
-const timeUpdateSchema = z.object({ id: z.string(), departureMinutes: z.number(), arrivalMinutes: z.number() })
+const timeUpdateSchema = z.object({
+  id: z.string(), departureMinutes: z.number(), arrivalMinutes: z.number(),
+  // trip group membership — same as tripUpdates.bundleId
+  bundleId: z.string().nullable().optional(),
+})
 
 export const vehiclePlanDiffSchema = z.object({
   tripUpdates: z.array(z.object({

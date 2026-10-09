@@ -185,10 +185,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               destinationLocalityId: true,
               departureMinutes:      true,
               arrivalMinutes:        true,
+              bundleId:              true,
             },
           },
           blockIntervals: {
-            select: { departureMinutes: true, arrivalMinutes: true },
+            select: { departureMinutes: true, arrivalMinutes: true, bundleId: true },
           },
         },
       }),
@@ -404,8 +405,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 },
               },
             },
-            blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
-            blockIntervals: { select: { intervalTypeId: true, departureMinutes: true, arrivalMinutes: true } },
+            blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
+            blockIntervals: { select: { intervalTypeId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
           },
         },
       },
@@ -497,6 +498,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               destinationLocalityId: d.destinationLocalityId,
               departureMinutes:      d.departureMinutes,
               arrivalMinutes:        d.arrivalMinutes,
+              bundleId:              copyBundle(d.bundleId),
             })),
           })
         }
@@ -508,6 +510,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
               intervalTypeId:   bi.intervalTypeId,
               departureMinutes: bi.departureMinutes,
               arrivalMinutes:   bi.arrivalMinutes,
+              bundleId:         copyBundle(bi.bundleId),
             })),
           })
         }
@@ -652,13 +655,19 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         for (const r of rows) linesToRecheck.add(r.route.lineId)
       }
 
-      // trip groups this diff creates, and the ones it takes trips from — read before step 1
-      const groupPatches  = diff.tripUpdates.filter(u => u.bundleId !== undefined)
-      const newBundleIds  = new Set(groupPatches.flatMap(u => u.bundleId ? [u.bundleId] : []))
-      const prevBundleIds = groupPatches.length === 0 ? [] : (await tx.transitTrip.findMany({
-        where:  { id: { in: groupPatches.map(u => u.id) }, bundleId: { not: null } },
-        select: { bundleId: true },
-      })).map((r: any) => r.bundleId as string).filter((id: string) => !newBundleIds.has(id))
+      // trip groups this diff creates, and the ones it takes members from — read before step 1
+      const tripGroupPatches     = diff.tripUpdates.filter(u => u.bundleId !== undefined)
+      const deadrunGroupPatches  = diff.deadrunUpdates.filter(u => u.bundleId !== undefined)
+      const intervalGroupPatches = diff.intervalUpdates.filter(u => u.bundleId !== undefined)
+      const newBundleIds = new Set(
+        [...tripGroupPatches, ...deadrunGroupPatches, ...intervalGroupPatches].flatMap(u => u.bundleId ? [u.bundleId] : []),
+      )
+      const previous = (rows: { bundleId: string | null }[]) => rows.map(r => r.bundleId!)
+      const prevBundleIds = [...new Set([
+        ...previous(tripGroupPatches.length ? await tx.transitTrip.findMany({ where: { id: { in: tripGroupPatches.map(u => u.id) }, bundleId: { not: null } }, select: { bundleId: true } }) : []),
+        ...previous(deadrunGroupPatches.length ? await tx.blockDeadrun.findMany({ where: { id: { in: deadrunGroupPatches.map(u => u.id) }, bundleId: { not: null } }, select: { bundleId: true } }) : []),
+        ...previous(intervalGroupPatches.length ? await tx.blockInterval.findMany({ where: { id: { in: intervalGroupPatches.map(u => u.id) }, bundleId: { not: null } }, select: { bundleId: true } }) : []),
+      ])].filter(id => !newBundleIds.has(id))
 
       // 1. trip time patches
       for (const u of diff.tripUpdates) {
@@ -727,7 +736,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         if (!dr) throw new NotFoundException('Vazio não encontrado')
         await tx.blockDeadrun.update({
           where: { id: u.id },
-          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes, originLocalityId: u.originLocalityId, destinationLocalityId: u.destinationLocalityId },
+          data:  { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes, originLocalityId: u.originLocalityId, destinationLocalityId: u.destinationLocalityId, bundleId: u.bundleId },
         })
         await tx.vehicleBlock.update({ where: { id: dr.vehicleBlockId }, data: { isStale: true } })
       }
@@ -738,7 +747,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       for (const u of diff.intervalUpdates) {
         const bi = await tx.blockInterval.findUnique({ where: { id: u.id }, select: { vehicleBlockId: true } })
         if (!bi) continue
-        await tx.blockInterval.update({ where: { id: u.id }, data: { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes } })
+        await tx.blockInterval.update({ where: { id: u.id }, data: { departureMinutes: u.departureMinutes, arrivalMinutes: u.arrivalMinutes, bundleId: u.bundleId } })
         await tx.vehicleBlock.update({ where: { id: bi.vehicleBlockId }, data: { isStale: true } })
       }
 
@@ -894,8 +903,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       // 8c. trip groups — a group is ungrouped whole, never split into another one; the new
       // ones are checked against the plan as it now stands (after moves)
-      if (prevBundleIds.length > 0 && await tx.transitTrip.count({ where: { vehiclePlanId: planId, bundleId: { in: prevBundleIds } } }) > 0) {
-        throw new BadRequestException('Viagem de um grupo existente passada para outro grupo — desagrupe o grupo inteiro antes')
+      if (prevBundleIds.length > 0) {
+        const where = { bundleId: { in: prevBundleIds } }
+        const left  = await tx.transitTrip.count({ where: { vehiclePlanId: planId, ...where } })
+          + await tx.blockDeadrun.count({ where: { vehicleBlock: { vehiclePlanId: planId }, ...where } })
+          + await tx.blockInterval.count({ where: { vehicleBlock: { vehiclePlanId: planId }, ...where } })
+        if (left > 0) throw new BadRequestException('Elemento de um grupo existente passado para outro grupo — desagrupe o grupo inteiro antes')
       }
       if (newBundleIds.size > 0) {
         const [{ settings }, crew] = await Promise.all([this.resolveSettings(planId, tx), this.crewConfig.get(plan.scopeId)])
