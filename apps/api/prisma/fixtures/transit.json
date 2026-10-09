@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-10-06T19:17:43.492Z",
+  "exportedAt": "2026-10-09T18:55:50.612Z",
   "localities": [
     {
       "code": "A0025-001",
@@ -12,7 +12,7 @@
       "snapInfo": {
         "lat": -15.510653,
         "lng": -55.990049,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.64371
       },
       "externalCodes": null,
@@ -29,7 +29,7 @@
       "snapInfo": {
         "lat": -15.521686,
         "lng": -56.051296,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.64371
       },
       "externalCodes": null,
@@ -46,7 +46,7 @@
       "snapInfo": {
         "lat": -15.523324,
         "lng": -56.002884,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.525442
       },
       "externalCodes": null,
@@ -64,7 +64,7 @@
         "lat": -15.536248,
         "lng": -56.073243,
         "roadName": "Rua Vinte e Cinco",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 12.741946
       },
       "externalCodes": null,
@@ -82,7 +82,7 @@
         "lat": -15.541344,
         "lng": -56.075813,
         "roadName": "Rua Quinze",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.110648
       },
       "externalCodes": null,
@@ -99,7 +99,7 @@
       "snapInfo": {
         "lat": -15.541082,
         "lng": -56.064006,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 18.751876
       },
       "externalCodes": null,
@@ -128,7 +128,7 @@
         "lat": -15.540777,
         "lng": -56.042153,
         "roadName": "Rua Três",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.390592
       },
       "externalCodes": null,
@@ -146,7 +146,7 @@
         "lat": -15.537414,
         "lng": -56.032564,
         "roadName": "Rua B",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 5.391649
       },
       "externalCodes": null,
@@ -164,7 +164,7 @@
         "lat": -15.538108,
         "lng": -56.029636,
         "roadName": "Rua H",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.848785
       },
       "externalCodes": null,
@@ -182,7 +182,7 @@
         "lat": -15.538099,
         "lng": -56.029645,
         "roadName": "Rua H",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.848785
       },
       "externalCodes": null,
@@ -200,7 +200,7 @@
         "lat": -15.544121,
         "lng": -56.022052,
         "roadName": "Rua Vinte",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.491861
       },
       "externalCodes": null,
@@ -218,7 +218,7 @@
         "lat": -15.547521,
         "lng": -56.046175,
         "roadName": "Rua Dálias",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 5.483266
       },
       "externalCodes": null,
@@ -236,7 +236,7 @@
         "lat": -15.546529,
         "lng": -56.021244,
         "roadName": "Avenida C",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.983721
       },
       "externalCodes": null,
@@ -253,7 +253,7 @@
       "snapInfo": {
         "lat": -15.561789,
         "lng": -56.072018,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.771456
       },
       "externalCodes": null,
@@ -287,7 +287,7 @@
       "snapInfo": {
         "lat": -15.557161,
         "lng": -56.050923,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.308205
       },
       "externalCodes": null,
@@ -304,7 +304,7 @@
       "snapInfo": {
         "lat": -15.5571,
         "lng": -56.051092,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.474992
       },
       "externalCodes": null,
@@ -322,7 +322,7 @@
         "lat": -15.565103,
         "lng": -56.012225,
         "roadName": "Rua Tiradentes",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.83632
       },
       "externalCodes": null,
@@ -358,7 +358,7 @@
         "lat": -15.575014,
         "lng": -56.073032,
         "roadName": "Avenida Historiador Rubens de Mendonça",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0
       },
       "externalCodes": null,
@@ -376,7 +376,7 @@
         "lat": -15.574368,
         "lng": -56.034417,
         "roadName": "Avenida Ulisses Guimarães",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.308205
       },
       "externalCodes": null,
@@ -394,7 +394,7 @@
         "lat": -15.579345,
         "lng": -56.022209,
         "roadName": "Avenida Guanabara",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.49184
       },
       "externalCodes": null,
@@ -412,7 +412,7 @@
         "lat": -15.589031,
         "lng": -56.059937,
         "roadName": "Avenida Governador Dante Martins de Oliveira",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.18675
       },
       "externalCodes": null,
@@ -430,7 +430,7 @@
         "lat": -15.585184,
         "lng": -56.036006,
         "roadName": "Rua Alfredo Antônio Juvenal",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 7.858444
       },
       "externalCodes": null,
@@ -448,7 +448,7 @@
         "lat": -15.509923,
         "lng": -56.174527,
         "roadName": "Avenida Beira Rio",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.773687
       },
       "externalCodes": null,
@@ -466,7 +466,7 @@
         "lat": -15.526534,
         "lng": -56.11301,
         "roadName": "Rodovia Arquiteto Helder Cândia",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 11.72192
       },
       "externalCodes": null,
@@ -502,7 +502,7 @@
         "lat": -15.542127,
         "lng": -56.078304,
         "roadName": "Rua Dezoito",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.354055
       },
       "externalCodes": null,
@@ -520,7 +520,7 @@
         "lat": -15.547574,
         "lng": -56.157046,
         "roadName": "Rua das Flores",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.821085
       },
       "externalCodes": null,
@@ -537,7 +537,7 @@
       "snapInfo": {
         "lat": -15.546293,
         "lng": -56.083959,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.414432
       },
       "externalCodes": null,
@@ -555,7 +555,7 @@
         "lat": -15.562813,
         "lng": -56.10735,
         "roadName": "Rua Orivaldo M. de Souza",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.420134
       },
       "externalCodes": null,
@@ -573,7 +573,7 @@
         "lat": -15.558132,
         "lng": -56.0914,
         "roadName": "Rua Alberto Martins",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.617514
       },
       "externalCodes": null,
@@ -590,7 +590,7 @@
       "snapInfo": {
         "lat": -15.566397,
         "lng": -56.128141,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 9.187294
       },
       "externalCodes": null,
@@ -608,7 +608,7 @@
         "lat": -15.579578,
         "lng": -56.091569,
         "roadName": "Rua Oslo",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 18.555123
       },
       "externalCodes": null,
@@ -636,7 +636,7 @@
         "lat": -15.575121,
         "lng": -56.091059,
         "roadName": "Rua Estolcolmo",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 5.213108
       },
       "externalCodes": null,
@@ -654,7 +654,7 @@
         "lat": -15.591172,
         "lng": -56.130876,
         "roadName": "Rua Professora Neuza Lula Rodrigues",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 7.871282
       },
       "externalCodes": null,
@@ -672,7 +672,7 @@
         "lat": -15.590806,
         "lng": -56.119422,
         "roadName": "Avenida Miguel Sutil",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 6.482477
       },
       "externalCodes": null,
@@ -690,7 +690,7 @@
         "lat": -15.597385,
         "lng": -56.096119,
         "roadName": "Avenida Getúlio Vargas",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 8.569954
       },
       "externalCodes": null,
@@ -708,7 +708,7 @@
         "lat": -15.59737,
         "lng": -56.096345,
         "roadName": "Rua Joaquim Murtinho",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.002233
       },
       "externalCodes": null,
@@ -726,7 +726,7 @@
         "lat": -15.598477,
         "lng": -56.095578,
         "roadName": "Rua Treze de Junho",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.158145
       },
       "externalCodes": null,
@@ -744,7 +744,7 @@
         "lat": -15.599891,
         "lng": -56.095684,
         "roadName": "Avenida Tenente-Coronel Duarte",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 11.027931
       },
       "externalCodes": null,
@@ -762,7 +762,7 @@
         "lat": -15.601196,
         "lng": -56.097137,
         "roadName": "Avenida Tenente-Coronel Duarte",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.542376
       },
       "externalCodes": null,
@@ -779,7 +779,7 @@
       "snapInfo": {
         "lat": -15.609908,
         "lng": -56.016173,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.857866
       },
       "externalCodes": null,
@@ -796,7 +796,7 @@
       "snapInfo": {
         "lat": -15.611755,
         "lng": -56.070349,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.083982
       },
       "externalCodes": null,
@@ -814,7 +814,7 @@
         "lat": -15.630047,
         "lng": -56.074416,
         "roadName": "Avenida General Melo",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 7.358789
       },
       "externalCodes": null,
@@ -831,7 +831,7 @@
       "snapInfo": {
         "lat": -15.633479,
         "lng": -55.942218,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.061747
       },
       "externalCodes": null,
@@ -849,7 +849,7 @@
         "lat": -15.606723,
         "lng": -56.105067,
         "roadName": "Rua Joaquim Murtinho",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.154085
       },
       "externalCodes": null,
@@ -867,7 +867,7 @@
         "lat": -15.607363,
         "lng": -56.099995,
         "roadName": "Avenida XV de Novembro",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 9.474651
       },
       "externalCodes": null,
@@ -885,7 +885,7 @@
         "lat": -15.615527,
         "lng": -56.125846,
         "roadName": "Rua São Benedito",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0
       },
       "externalCodes": null,
@@ -903,7 +903,7 @@
         "lat": -15.614506,
         "lng": -56.105358,
         "roadName": "Rua Comandante Suídio",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.677384
       },
       "externalCodes": null,
@@ -921,7 +921,7 @@
         "lat": -15.626188,
         "lng": -56.082965,
         "roadName": "Avenida Beira Rio",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 9.037373
       },
       "externalCodes": null,
@@ -938,7 +938,7 @@
       "snapInfo": {
         "lat": -15.63392,
         "lng": -56.092542,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 0.442975
       },
       "externalCodes": null,
@@ -956,7 +956,7 @@
         "lat": -15.34418,
         "lng": -56.23302,
         "roadName": "Rua Everaldo Rondon",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 2.562618
       },
       "externalCodes": null,
@@ -974,7 +974,7 @@
         "lat": -15.458258,
         "lng": -55.978946,
         "roadName": "Rua Benedito Dimensiano Pedroso",
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 11.870034
       },
       "externalCodes": null,
@@ -991,7 +991,7 @@
       "snapInfo": {
         "lat": -15.281531,
         "lng": -56.130389,
-        "checkedAt": "2026-10-05T18:08:04.146Z",
+        "checkedAt": "2026-10-02T12:08:32.926Z",
         "distanceM": 1.696283
       },
       "externalCodes": null,
@@ -1067,14 +1067,6 @@
       "minMinutes": 60,
       "maxMinutes": 600,
       "notes": "Intervalo de carro parados nos terminais, nao presupoe jornada de condutor"
-    },
-    {
-      "code": "REFEI",
-      "name": "Refeição",
-      "isPaid": false,
-      "minMinutes": 60,
-      "maxMinutes": 120,
-      "notes": "Intrajornada CLT"
     }
   ],
   "scopes": [
@@ -210838,147 +210830,6 @@
   ],
   "settings": [
     {
-      "key": "transit.general",
-      "branchTaxId": null,
-      "scopeName": null,
-      "value": {
-        "baseSpeedRatio": 1.3,
-        "demandModifier": 1,
-        "suggestThresholdM": 300,
-        "defaultIntervalTypeId": "PAUSA",
-        "operationalDayStartHour": 3,
-        "propagateExtensionToOfficialKm": true
-      }
-    },
-    {
-      "key": "transit.crew",
-      "branchTaxId": null,
-      "scopeName": null,
-      "value": {
-        "range": {
-          "spread": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 780,
-            "idealMax": 720,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "idleTime": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 180,
-            "idealMax": 30,
-            "idealMin": 0,
-            "modifier": 20
-          },
-          "workTime": {
-            "floor": 360,
-            "active": true,
-            "ceiling": 560,
-            "idealMax": 550,
-            "idealMin": 440,
-            "modifier": 25
-          },
-          "mealBreak": {
-            "floor": 60,
-            "active": true,
-            "ceiling": 120,
-            "idealMax": 110,
-            "idealMin": 70,
-            "modifier": 20
-          },
-          "splitRatio": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 40,
-            "idealMax": 20,
-            "idealMin": 0,
-            "modifier": 20
-          },
-          "lineChanges": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 3,
-            "idealMax": 1,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "tripperRatio": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 8,
-            "idealMax": 3,
-            "idealMin": 0,
-            "modifier": 40
-          },
-          "walkDistance": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 3500,
-            "idealMax": 1000,
-            "idealMin": 0,
-            "modifier": 10
-          },
-          "overtimeRatio": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 20,
-            "idealMax": 15,
-            "idealMin": 0,
-            "modifier": 15
-          },
-          "splitInterval": {
-            "floor": 60,
-            "active": true,
-            "ceiling": 400,
-            "idealMax": 240,
-            "idealMin": 120,
-            "modifier": 10
-          },
-          "vehicleChanges": {
-            "floor": 0,
-            "active": true,
-            "ceiling": 3,
-            "idealMax": 1,
-            "idealMin": 0,
-            "modifier": 20
-          }
-        },
-        "anchored": {
-          "dutyCount": {
-            "active": true,
-            "weight": 30,
-            "ceilingOverPercent": 25,
-            "idealMaxOverPercent": 5
-          },
-          "efficiency": {
-            "active": true,
-            "weight": 20,
-            "ceilingOverPercent": 15,
-            "idealMaxOverPercent": 3
-          }
-        },
-        "mealRule": {
-          "form": "continuous",
-          "mode": "allowed",
-          "fractionedMinTotal": 30,
-          "fractionedMinLongest": 15
-        },
-        "nightEndHour": 5,
-        "maxWalkMeters": 3500,
-        "signOnMinutes": 5,
-        "nightStartHour": 22,
-        "signOffMinutes": 0,
-        "handoverMinutes": 5,
-        "minPieceMinutes": 60,
-        "stopMaxTotalMinutes": 10,
-        "mealBreakIntervalTypeId": "REFEI",
-        "stopNoImprovementMinutes": 3,
-        "maxContinuousDrivingMinutes": 540
-      }
-    },
-    {
       "key": "transit.roster",
       "branchTaxId": null,
       "scopeName": null,
@@ -211009,6 +210860,155 @@
             "modifier": 1
           }
         }
+      }
+    },
+    {
+      "key": "transit.crew",
+      "branchTaxId": null,
+      "scopeName": null,
+      "value": {
+        "range": {
+          "spread": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 780,
+            "idealMax": 720,
+            "idealMin": 0,
+            "modifier": 15
+          },
+          "coverage": {
+            "floor": 95,
+            "active": true,
+            "ceiling": 100,
+            "idealMax": 100,
+            "idealMin": 100,
+            "modifier": 50
+          },
+          "workTime": {
+            "floor": 360,
+            "active": true,
+            "ceiling": 560,
+            "idealMax": 550,
+            "idealMin": 440,
+            "modifier": 25
+          },
+          "mealBreak": {
+            "floor": 60,
+            "active": true,
+            "ceiling": 120,
+            "idealMax": 110,
+            "idealMin": 70,
+            "modifier": 20
+          },
+          "splitRatio": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 40,
+            "idealMax": 20,
+            "idealMin": 0,
+            "modifier": 20
+          },
+          "lineChanges": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 3,
+            "idealMax": 0,
+            "idealMin": 0,
+            "modifier": 15
+          },
+          "tripperRatio": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 1,
+            "idealMax": 0,
+            "idealMin": 0,
+            "modifier": 40
+          },
+          "walkDistance": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 3500,
+            "idealMax": 0,
+            "idealMin": 0,
+            "modifier": 35
+          },
+          "overtimeRatio": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 20,
+            "idealMax": 15,
+            "idealMin": 5,
+            "modifier": 15
+          },
+          "splitInterval": {
+            "floor": 60,
+            "active": true,
+            "ceiling": 250,
+            "idealMax": 240,
+            "idealMin": 120,
+            "modifier": 10
+          },
+          "vehicleChanges": {
+            "floor": 0,
+            "active": true,
+            "ceiling": 3,
+            "idealMax": 0,
+            "idealMin": 0,
+            "modifier": 15
+          },
+          "driversPerVehicle": {
+            "floor": 0,
+            "active": false,
+            "ceiling": 4,
+            "idealMax": 2,
+            "idealMin": 0,
+            "modifier": 20
+          }
+        },
+        "anchored": {
+          "dutyCount": {
+            "active": true,
+            "weight": 30,
+            "ceilingOverPercent": 25,
+            "idealMaxOverPercent": 5
+          },
+          "efficiency": {
+            "active": true,
+            "weight": 20,
+            "ceilingOverPercent": 30,
+            "idealMaxOverPercent": 10
+          }
+        },
+        "mealRule": {
+          "continuous": false,
+          "fractioned": false,
+          "fractionedMinTotal": 30,
+          "fractionedMinLongest": 15
+        },
+        "nightEndHour": 5,
+        "maxWalkMeters": 3500,
+        "signOnMinutes": 5,
+        "nightStartHour": 22,
+        "signOffMinutes": 0,
+        "handoverMinutes": 5,
+        "minPieceMinutes": 90,
+        "stopMaxTotalMinutes": 10,
+        "mealBreakIntervalTypeId": null,
+        "stopNoImprovementMinutes": 3,
+        "maxContinuousDrivingMinutes": 540
+      }
+    },
+    {
+      "key": "transit.general",
+      "branchTaxId": null,
+      "scopeName": null,
+      "value": {
+        "baseSpeedRatio": 1.3,
+        "demandModifier": 1,
+        "suggestThresholdM": 300,
+        "defaultIntervalTypeId": "PAUSA",
+        "operationalDayStartHour": 3,
+        "propagateExtensionToOfficialKm": true
       }
     },
     {
