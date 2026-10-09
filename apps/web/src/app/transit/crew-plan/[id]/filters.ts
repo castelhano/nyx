@@ -3,7 +3,8 @@ import type { BoardBlock, BoardDuty } from './board.types'
 
 // Crew plan filters (same idea as the vehicle plan's BlockFilterBar): criteria combine with
 // AND; pinned rows stay visible regardless. Criteria that don't apply to the current view
-// are ignored (e.g. role on the vehicle view).
+// are ignored (e.g. role on the vehicle view). withIssues/staleOnly apply to both: on the
+// vehicle view they keep the vehicles carrying pieces of such duties.
 
 // start/end: time of day; duration: duties' summary.workMinutes, vehicles' window length
 export type ConditionField = 'start' | 'end' | 'duration'
@@ -22,11 +23,12 @@ export interface CrewFilter {
   lineCode:      string | null
   // vehicle view
   uncoveredOnly: boolean
+  // both views
+  withIssues:    boolean
+  staleOnly:     boolean
   // duty view
   role:          CrewRole | null
   kind:          BoardDuty['kind'] | null
-  withIssues:    boolean
-  staleOnly:     boolean
   multiLine:     boolean
 }
 
@@ -39,9 +41,10 @@ export type CrewView = 'vehicles' | 'duties'
 
 export function isFilterActive(f: CrewFilter, view: CrewView): boolean {
   if (f.conditions.length || f.branchId || f.lineCode) return true
+  if (f.withIssues || f.staleOnly) return true
   return view === 'vehicles'
     ? f.uncoveredOnly
-    : !!f.role || !!f.kind || f.withIssues || f.staleOnly || f.multiLine
+    : !!f.role || !!f.kind || f.multiLine
 }
 
 // same field + same relation replaces; the opposite relation is kept (a range: > 6h and < 8h)
@@ -57,12 +60,15 @@ function matchesConditions(f: CrewFilter, values: Record<ConditionField, number 
   })
 }
 
-export function blockMatches(f: CrewFilter, block: BoardBlock, hasUncovered: boolean): boolean {
+// carried: whether this block holds pieces of a stale duty / of a duty with issues
+export function blockMatches(f: CrewFilter, block: BoardBlock, hasUncovered: boolean, carried: { stale: boolean; issues: boolean }): boolean {
   const w = block.window
   if (!matchesConditions(f, { start: w?.startMinutes ?? null, end: w?.endMinutes ?? null, duration: w ? w.endMinutes - w.startMinutes : null })) return false
   if (f.branchId && block.branchId !== f.branchId) return false
   if (f.lineCode && !block.trips.some(t => t.lineCode === f.lineCode)) return false
   if (f.uncoveredOnly && !hasUncovered) return false
+  if (f.staleOnly && !carried.stale) return false
+  if (f.withIssues && !carried.issues) return false
   return true
 }
 

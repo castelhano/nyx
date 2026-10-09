@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { formatDutyNumber, CREW_ROLES, type CrewRole } from '@nyx/schemas'
+import { formatDutyNumber, pieceAdjustFailureText, CREW_ROLES, type CrewRole } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import type { BoardDuty, BoardBlock, BoardActivity, CrewBoardData } from '../board.types'
+import type { BoardDuty, BoardBlock, BoardActivity, BoardPiece, CrewBoardData } from '../board.types'
 import { useIntervalTypes } from '../../../use-interval-types'
 import {
   fmtTime, fmtDuration, parseTime, dutyColorVars, pieceTrips, SWATCH_BG_CLASS,
@@ -42,6 +42,7 @@ interface Props {
   onSave:           (patch: DutyPatch) => void
   onDelete:         () => void
   onDeletePiece:    (pieceId: string) => void
+  onAdjustPiece:    (pieceId: string) => void
   onAddActivity:    (input: ActivityInput) => Promise<boolean>
   onDeleteActivity: (activityId: string) => void
   onClose:          () => void
@@ -56,7 +57,7 @@ export function DutyPanel(props: Props) {
 
 function DutyPanelInner({
   duty, blockById, lineCodes, operators, localityName, canEdit,
-  onSave, onDelete, onDeletePiece, onAddActivity, onDeleteActivity, onClose, onToggleLock,
+  onSave, onDelete, onDeletePiece, onAdjustPiece, onAddActivity, onDeleteActivity, onClose, onToggleLock,
 }: Props) {
   const flaggedActivityIds = new Set(duty.issues.map(i => i.activityId).filter(Boolean))
   const [role, setRole]         = useState<CrewRole>(duty.role)
@@ -179,11 +180,23 @@ function DutyPanelInner({
                   {lines.length > 0 && <span className="text-muted-foreground"> · {lines.join(', ')}</span>}
                   <span className="block">{fmtTime(p.startMinutes)} {localityName(p.startLocalityId)} → {fmtTime(p.endMinutes)} {localityName(p.endLocalityId)}</span>
                   {p.isStale && p.staleReason && <span className="block text-red-600 dark:text-red-400">{STALE_LABEL[p.staleReason]}</span>}
+                  {p.adjust && (
+                    <span className="block text-muted-foreground">
+                      {p.adjust.ok ? `Ajuste: ${adjustText(p, p.adjust, localityName)}` : pieceAdjustFailureText(p.adjust.side, p.adjust.reason)}
+                    </span>
+                  )}
                 </span>
                 {canEdit && (
-                  <button type="button" onClick={() => onDeletePiece(p.id)} className="text-muted-foreground hover:text-destructive shrink-0" title="Remover pegada">
-                    <Icons.Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <span className="flex items-center gap-2 shrink-0">
+                    {p.adjust?.ok && (
+                      <button type="button" onClick={() => onAdjustPiece(p.id)} className="text-primary hover:underline" title="Mover as pontas da pegada para os novos horários">
+                        Ajustar
+                      </button>
+                    )}
+                    <button type="button" onClick={() => onDeletePiece(p.id)} className="text-muted-foreground hover:text-destructive" title="Remover pegada">
+                      <Icons.Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
                 )}
               </li>
               )
@@ -294,4 +307,18 @@ export function Badge({ tone, children, className }: { tone: 'red' | 'amber' | '
     green: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   }
   return <span className={cn('text-[10px] font-medium rounded px-1.5 py-0.5', tones[tone], className)}>{children}</span>
+}
+
+// "início 06:00 → 05:50 · fim 12:00 CENTRO → 11:55 TERM" — only the ends that move
+function adjustText(p: BoardPiece, a: Extract<NonNullable<BoardPiece['adjust']>, { ok: true }>, localityName: (id: string) => string): string {
+  const end = (label: string, fromMin: number, fromLoc: string, toMin: number, toLoc: string) => {
+    if (fromMin === toMin && fromLoc === toLoc) return null
+    return fromLoc === toLoc
+      ? `${label} ${fmtTime(fromMin)} → ${fmtTime(toMin)}`
+      : `${label} ${fmtTime(fromMin)} ${localityName(fromLoc)} → ${fmtTime(toMin)} ${localityName(toLoc)}`
+  }
+  return [
+    end('início', p.startMinutes, p.startLocalityId, a.startMinutes, a.startLocalityId),
+    end('fim', p.endMinutes, p.endLocalityId, a.endMinutes, a.endLocalityId),
+  ].filter(Boolean).join(' · ')
 }

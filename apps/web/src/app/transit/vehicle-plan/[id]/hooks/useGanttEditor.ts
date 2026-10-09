@@ -1941,6 +1941,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         const j = await res.json().catch(() => ({}))
         throw new Error(extractError(j))
       }
+      const { removedDuties = 0 } = await res.json().catch(() => ({})) as { removedDuties?: number }
 
       await refetchGantt()
       setPendingChanges(new Map())
@@ -1963,6 +1964,10 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       // stale-focus recovery effect (keyed off navBlocks) picks a fallback segment
       // once the refetched data lands, same as after a discard.
       toast.success('Alterações salvas')
+      // draft crew plans drop duties that held pieces of the removed blocks
+      if (removedDuties > 0) {
+        toast.warning(`${removedDuties} jornada(s) removida(s) da escala por usar carros que deixaram de existir — os trechos ficaram sem motorista`)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar alterações')
     } finally {

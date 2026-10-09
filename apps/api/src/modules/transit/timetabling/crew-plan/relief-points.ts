@@ -28,7 +28,7 @@ export function computeBlockRelief(input: {
     originLocalityId: string; destinationLocalityId: string
     stops: StopRow[] // route localities ordered by sequence
   }[]
-  deadruns: { type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
+  deadruns: { id?: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
   matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes
 }): BlockReliefData {
@@ -51,8 +51,8 @@ export function computeBlockRelief(input: {
   }
 
   for (const d of input.deadruns) {
-    points.push({ localityId: d.originLocalityId,      minutes: d.departureMinutes, kind: 'DEADRUN_ORIGIN' })
-    points.push({ localityId: d.destinationLocalityId, minutes: d.arrivalMinutes,   kind: 'DEADRUN_DESTINATION' })
+    points.push({ localityId: d.originLocalityId,      minutes: d.departureMinutes, kind: 'DEADRUN_ORIGIN',      deadrunId: d.id })
+    points.push({ localityId: d.destinationLocalityId, minutes: d.arrivalMinutes,   kind: 'DEADRUN_DESTINATION', deadrunId: d.id })
   }
 
   const starts = [...input.trips, ...input.deadruns, ...input.intervals].map(e => e.departureMinutes)
@@ -146,7 +146,7 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
           },
         },
       },
-      blockDeadruns:  { select: { type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
+      blockDeadruns:  { select: { id: true, type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true } },
       blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true } },
     },
   })

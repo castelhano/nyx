@@ -6,9 +6,9 @@ export const DUTY_PIECE_STALE_REASONS = ['BLOCK_REMOVED', 'OUT_OF_BLOCK_WINDOW',
 export type DutyPieceStaleReason = typeof DUTY_PIECE_STALE_REASONS[number]
 
 export const DUTY_PIECE_STALE_LABEL: Record<DutyPieceStaleReason, string> = {
-  BLOCK_REMOVED:        'Bloco removido do planejamento',
-  OUT_OF_BLOCK_WINDOW:  'Fora da janela do bloco',
-  INVALID_RELIEF_POINT: 'Ponto de troca não existe mais',
+  BLOCK_REMOVED:        'Carro removido do planejamento',
+  OUT_OF_BLOCK_WINDOW:  'Passa do início ou do fim do carro',
+  INVALID_RELIEF_POINT: 'O horário de troca mudou no carro',
 }
 
 // A block's relief point — where a piece may start/end. Computed by
@@ -20,6 +20,23 @@ export interface ReliefPoint {
   minutes:    number
   kind:       ReliefPointKind
   tripId?:    string
+  deadrunId?: string
+}
+
+// "Ajustar" on a stale piece (piece-adjust.ts) — why an end couldn't follow the edit:
+// ANCHOR_GONE the event left the block; NO_CANDIDATE / AMBIGUOUS the fallback for ends
+// without an anchor found no point / a tie; INVERTED the ends would cross
+export const PIECE_ADJUST_FAILURES = ['ANCHOR_GONE', 'NO_CANDIDATE', 'AMBIGUOUS', 'INVERTED'] as const
+export type PieceAdjustFailure = typeof PIECE_ADJUST_FAILURES[number]
+
+export function pieceAdjustFailureText(side: 'start' | 'end' | null, reason: PieceAdjustFailure): string {
+  const end = side === 'start' ? 'o início' : 'o fim'
+  switch (reason) {
+    case 'ANCHOR_GONE':  return `A viagem ou deslocamento onde estava ${end} da pegada não está mais neste carro`
+    case 'NO_CANDIDATE': return `Não há ponto de troca no mesmo local para ${end} da pegada`
+    case 'AMBIGUOUS':    return `Há mais de um ponto de troca possível para ${end} da pegada`
+    case 'INVERTED':     return 'Os novos horários fariam a pegada terminar antes de começar'
+  }
 }
 
 export const dutyPieceSchema = withMeta(
@@ -98,6 +115,10 @@ export const dutyPieceSchema = withMeta(
         INVALID_RELIEF_POINT: 'Ponto de troca inválido',
       },
     }),
+
+    // relief event each end sits on (`${ReliefPointKind}:${tripId | deadrunId}`) — server-kept
+    startAnchor: z.string().nullable().optional().meta({ showInForm: false, listVisibility: 'never' }),
+    endAnchor:   z.string().nullable().optional().meta({ showInForm: false, listVisibility: 'never' }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
-  dutyPieceSchema, createDutyPieceSchema,
+  dutyPieceSchema, createDutyPieceSchema, formatDutyNumber, pieceAdjustFailureText,
   DutyPiece, CreateDutyPieceDto, UpdateDutyPieceDto,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
@@ -9,6 +9,7 @@ import { BaseService } from '../../../../core/base.service'
 import { CrewPlanService } from './crew-plan.service'
 import { loadBlockRelief, isReliefPoint, BlockReliefData } from './relief-points'
 import { assertTimeWindow, assertNoDutyOverlap, overlaps } from './duty-occupancy.utils'
+import { anchorOf, planPieceAdjust } from './piece-adjust'
 
 const PLACEHOLDER_SEQUENCE = -1_000_000
 
@@ -16,6 +17,10 @@ type PieceInput = {
   dutyId: string; vehicleBlockId: string | null
   startMinutes: number; endMinutes: number; startLocalityId: string; endLocalityId: string
 }
+
+type AdjustablePiece = PieceInput & { id: string; startAnchor: string | null; endAnchor: string | null }
+
+const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
 @Injectable()
 export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto, UpdateDutyPieceDto> {
@@ -79,6 +84,65 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
     await this.recalculatePlanOf(current.dutyId)
   }
 
+  // "Ajustar": a stale piece's ends follow their events to the new times (piece-adjust.ts),
+  // through the same structural checks as a manual edit — an overlap with another duty is
+  // reported, never forced
+  async adjust(id: string): Promise<DutyPiece> {
+    const piece = await this.prisma.dutyPiece.findUnique({ where: { id } })
+    if (!piece) throw new NotFoundException('dutyPiece not found')
+    await this.crewPlans.assertDutyEditable(piece.dutyId)
+    await this.applyAdjust(piece)
+    await this.recalculatePlanOf(piece.dutyId)
+    return this.findOne(id)
+  }
+
+  // "Ajustar todas": every stale piece still on a block, one recalculation at the end; the
+  // ones that can't follow their events are returned with the reason
+  async adjustPlan(crewPlanId: string): Promise<{ adjusted: number; failed: { pieceId: string; duty: string; message: string }[] }> {
+    await this.crewPlans.assertEditable(crewPlanId)
+    const pieces = await this.prisma.dutyPiece.findMany({
+      where:   { isStale: true, vehicleBlockId: { not: null }, duty: { crewPlanId } },
+      include: { duty: { select: { role: true, dutyNumber: true } } },
+      orderBy: [{ duty: { dutyNumber: 'asc' } }, { sequence: 'asc' }],
+    })
+    let adjusted = 0
+    const failed: { pieceId: string; duty: string; message: string }[] = []
+    for (const p of pieces) {
+      try {
+        await this.applyAdjust(p)
+        adjusted++
+      } catch (err) {
+        if (!(err instanceof BadRequestException)) throw err
+        failed.push({ pieceId: p.id, duty: formatDutyNumber(p.duty.role, p.duty.dutyNumber), message: err.message })
+      }
+    }
+    if (adjusted > 0) await this.crewPlans.recalculate(crewPlanId)
+    return { adjusted, failed }
+  }
+
+  // writes the adjusted piece as valid (isStale cleared) so the next piece adjusted in the
+  // same batch sees it in validate's overlap check; the caller recalculates
+  private async applyAdjust(piece: AdjustablePiece): Promise<void> {
+    if (!piece.vehicleBlockId) throw new BadRequestException('O carro desta pegada foi removido do planejamento')
+    const relief = await this.listReliefPoints(piece.vehicleBlockId)
+    const plan   = planPieceAdjust(piece, relief.points)
+    if (!plan.ok) throw new BadRequestException(pieceAdjustFailureText(plan.side, plan.reason))
+
+    const input: PieceInput = {
+      dutyId: piece.dutyId, vehicleBlockId: piece.vehicleBlockId,
+      startMinutes: plan.start.minutes, endMinutes: plan.end.minutes,
+      startLocalityId: plan.start.localityId, endLocalityId: plan.end.localityId,
+    }
+    await this.validate(input, piece.id)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.dutyPiece.update({
+        where: { id: piece.id },
+        data:  { ...this.toData(input), isStale: false, staleReason: null, startAnchor: anchorOf(plan.start), endAnchor: anchorOf(plan.end) },
+      })
+      await this.renumber(tx, piece.dutyId)
+    })
+  }
+
   private async recalculatePlanOf(dutyId: string): Promise<void> {
     const duty = await this.prisma.duty.findUnique({ where: { id: dutyId }, select: { crewPlanId: true } })
     if (duty) await this.crewPlans.recalculate(duty.crewPlanId)
@@ -140,13 +204,16 @@ export class DutyPieceService extends BaseService<DutyPiece, CreateDutyPieceDto,
         duty:           { crewPlanId: duty.crewPlanId, role: duty.role },
         ...(pieceId ? { id: { not: pieceId } } : {}),
       },
-      select: { startMinutes: true, endMinutes: true },
+      select: { startMinutes: true, endMinutes: true, duty: { select: { role: true, dutyNumber: true } } },
     })
-    const conflict = sameRole.some(p =>
+    const conflict = sameRole.find(p =>
       overlaps(input.startMinutes, input.endMinutes, p.startMinutes, p.endMinutes) &&
       Math.min(input.endMinutes, p.endMinutes) - Math.max(input.startMinutes, p.startMinutes) > settings.handoverMinutes,
     )
-    if (conflict) throw new BadRequestException('Trecho do bloco já coberto por outra jornada do mesmo papel')
+    if (conflict) {
+      const from = Math.max(input.startMinutes, conflict.startMinutes), to = Math.min(input.endMinutes, conflict.endMinutes)
+      throw new BadRequestException(`Trecho do carro já coberto pela ${formatDutyNumber(conflict.duty.role, conflict.duty.dutyNumber)} entre ${clock(from)} e ${clock(to)}`)
+    }
   }
 
   // sequence = chronological order within the duty (two passes because of the @@unique)

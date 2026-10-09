@@ -9,6 +9,7 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { loadBlockRelief } from './relief-points'
+import { planPieceAdjust, resolveAnchor } from './piece-adjust'
 import { loadCrewWalk } from './crew-walk'
 import { computeCrewPlan } from './crew-scoring.calc'
 import {
@@ -223,9 +224,12 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     return this.findOne(created.id)
   }
 
-  async recalculateForVehiclePlan(vehiclePlanId: string): Promise<void> {
+  // returns how many duties were dropped for holding pieces of removed blocks (see recalculate)
+  async recalculateForVehiclePlan(vehiclePlanId: string): Promise<number> {
     const plans = await this.prisma.crewPlan.findMany({ where: { vehiclePlanId }, select: { id: true } })
-    for (const p of plans) await this.recalculate(p.id)
+    let removed = 0
+    for (const p of plans) removed += await this.recalculate(p.id)
+    return removed
   }
 
   // ── board (crew plan screen) ───────────────────────────────────────────────
@@ -357,6 +361,8 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           startMinutes: p.startMinutes, endMinutes: p.endMinutes,
           startLocalityId: p.startLocalityId, endLocalityId: p.endLocalityId,
           isStale: p.isStale, staleReason: p.staleReason,
+          // what "Ajustar" would do to a stale piece still on a block (piece-adjust.ts)
+          adjust: p.isStale && p.vehicleBlockId ? adjustPreview(planPieceAdjust(p, relief.get(p.vehicleBlockId)?.points ?? [])) : null,
         })),
         activities: d.activities.map(a => ({
           id: a.id, type: a.type, intervalTypeId: a.intervalTypeId, intervalTypeName: a.intervalType?.name ?? null,
@@ -371,12 +377,22 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
   // The only write path for piece staleness, duty summary/issues and the plan summary.
   // Runs after every duty/piece/activity write, when the plan is opened (settings may have
   // changed upstream) and after its VehiclePlan is edited.
-  async recalculate(id: string): Promise<void> {
+  // Returns how many duties were dropped for holding pieces of removed blocks.
+  async recalculate(id: string): Promise<number> {
     const plan = await this.prisma.crewPlan.findUnique({
       where:  { id },
-      select: { vehiclePlanId: true, summary: true, vehiclePlan: { select: { dayType: { select: { pattern: true } } } } },
+      select: { vehiclePlanId: true, summary: true, status: true, vehiclePlan: { select: { status: true, dayType: { select: { pattern: true } } } } },
     })
     if (!plan) throw new NotFoundException('crewPlan not found')
+
+    // Draft over a draft VehiclePlan: a duty holding a piece of a removed block (line
+    // regenerated or cleared) is dropped whole — its leftovers rarely form a workable duty,
+    // and the spans it covered show up as uncovered instead. Elsewhere the piece is only
+    // marked (BLOCK_REMOVED): an active VehiclePlan is copied before structural changes.
+    let removed = 0
+    if (plan.status === 'DRAFT' && plan.vehiclePlan.status === 'DRAFT') {
+      ({ count: removed } = await this.prisma.duty.deleteMany({ where: { crewPlanId: id, pieces: { some: { vehicleBlockId: null } } } }))
+    }
 
     const [{ settings }, blockRows, duties] = await Promise.all([
       this.resolveSettings(id),
@@ -386,7 +402,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         select: {
           id: true, role: true, kind: true, branchId: true,
           summary: true, issues: true, isStale: true,
-          pieces:     { select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true } },
+          pieces:     { select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true, startAnchor: true, endAnchor: true } },
           activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
         },
       }),
@@ -433,8 +449,12 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     await this.prisma.$transaction(async (tx) => {
       for (const [pieceId, st] of result.pieces) {
         const cur = piecesById.get(pieceId)!
-        if (cur.isStale !== st.isStale || cur.staleReason !== st.staleReason) {
-          await tx.dutyPiece.update({ where: { id: pieceId }, data: { isStale: st.isStale, staleReason: st.staleReason } })
+        // a valid piece re-anchors its ends; a stale one keeps the anchors it had (piece-adjust.ts)
+        const points      = !st.isStale && cur.vehicleBlockId ? relief.get(cur.vehicleBlockId)?.points ?? [] : null
+        const startAnchor = points ? resolveAnchor(points, cur.startLocalityId, cur.startMinutes, cur.startAnchor, 'start') : cur.startAnchor
+        const endAnchor   = points ? resolveAnchor(points, cur.endLocalityId, cur.endMinutes, cur.endAnchor, 'end') : cur.endAnchor
+        if (cur.isStale !== st.isStale || cur.staleReason !== st.staleReason || cur.startAnchor !== startAnchor || cur.endAnchor !== endAnchor) {
+          await tx.dutyPiece.update({ where: { id: pieceId }, data: { isStale: st.isStale, staleReason: st.staleReason, startAnchor, endAnchor } })
         }
       }
       for (const [dutyId, d] of result.duties) {
@@ -447,7 +467,14 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       }
       if (!same(plan.summary, result.summary)) await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })
     }, { timeout: 30_000 })
+    return removed
   }
+}
+
+function adjustPreview(plan: ReturnType<typeof planPieceAdjust>) {
+  return plan.ok
+    ? { ok: true as const, startMinutes: plan.start.minutes, endMinutes: plan.end.minutes, startLocalityId: plan.start.localityId, endLocalityId: plan.end.localityId }
+    : plan
 }
 
 // JSON with object keys sorted — jsonb doesn't preserve key order, so comparing a stored

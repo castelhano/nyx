@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { swatchColor, lineIndexByCode } from '@/lib/palette'
 import { CREW_ROLE_LABEL, DUTY_KIND_LABEL, DUTY_ISSUE_LABEL, DUTY_PIECE_STALE_LABEL, ROUTE_DIRECTION_LABEL } from '@nyx/schemas'
-import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole, VehicleBlockIssue } from '@nyx/schemas'
+import type { CrewPlanSummary, DutySummary, DutyIssue, ReliefPoint, CrewRole, VehicleBlockIssue, PieceAdjustFailure } from '@nyx/schemas'
 
 // Shape of GET /transit/crew-plan/:id/board (CrewPlanService.getBoard)
 
@@ -15,7 +15,13 @@ export interface BoardPiece {
   endLocalityId:   string
   isStale:         boolean
   staleReason:     'BLOCK_REMOVED' | 'OUT_OF_BLOCK_WINDOW' | 'INVALID_RELIEF_POINT' | null
+  // stale piece still on a block: what "Ajustar" would do (piece-adjust.ts)
+  adjust:          PieceAdjustPreview | null
 }
+
+export type PieceAdjustPreview =
+  | { ok: true; startMinutes: number; endMinutes: number; startLocalityId: string; endLocalityId: string }
+  | { ok: false; side: 'start' | 'end' | null; reason: PieceAdjustFailure }
 
 export interface BoardActivity {
   id:               string

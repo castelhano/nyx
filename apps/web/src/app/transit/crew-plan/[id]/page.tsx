@@ -225,7 +225,13 @@ export default function CrewPlanPage() {
     if (!filterOpen || !isFilterActive(filter, view)) return { visibleBlocks: blocks, visibleDuties: duties, matchCount: 0 }
     if (view === 'vehicles') {
       const uncoveredIds = new Set((data?.plan.summary?.uncovered ?? []).map(u => u.vehicleBlockId))
-      const matched = blocks.filter(b => blockMatches(filter, b, uncoveredIds.has(b.id)))
+      const staleIds = new Set<string>(), issueIds = new Set<string>()
+      for (const d of duties) for (const p of d.pieces) {
+        if (!p.vehicleBlockId) continue
+        if (d.isStale)   staleIds.add(p.vehicleBlockId)
+        if (d.hasIssues) issueIds.add(p.vehicleBlockId)
+      }
+      const matched = blocks.filter(b => blockMatches(filter, b, uncoveredIds.has(b.id), { stale: staleIds.has(b.id), issues: issueIds.has(b.id) }))
       const ids = new Set(matched.map(b => b.id))
       return { visibleBlocks: blocks.filter(b => ids.has(b.id) || pinnedBlockIds.has(b.id)), visibleDuties: duties, matchCount: matched.length }
     }
@@ -372,6 +378,20 @@ export default function CrewPlanPage() {
 
   async function handleDeletePiece(pieceId: string) {
     await run(() => api(`/transit/duty-piece/${pieceId}`, { method: 'DELETE' }))
+  }
+
+  async function handleAdjustPiece(pieceId: string) {
+    await run(() => api(`/transit/duty-piece/${pieceId}/adjust`, { method: 'POST' }), 'Pegada ajustada')
+  }
+
+  // every stale piece of the plan; the ones that couldn't follow their events are listed
+  async function handleAdjustAll() {
+    const result = await run(() => api(`/transit/duty-piece/adjust-plan/${id}`, { method: 'POST' }) as Promise<{ adjusted: number; failed: { duty: string; message: string }[] }>)
+    if (!result) return
+    if (result.adjusted > 0) toast.success(`${result.adjusted} pegada(s) ajustada(s)`)
+    if (result.failed.length > 0) {
+      toast.warning(`Não ajustadas: ${result.failed.map(f => `${f.duty} — ${f.message}`).join('; ')}`)
+    }
   }
 
   // creates the activity; a meal break away from a meal locality is saved but flagged
@@ -578,6 +598,8 @@ export default function CrewPlanPage() {
 
   const summary = data?.plan.summary
   const flaggedBlocks = data?.blocks.filter(b => b.issues.length > 0).length ?? 0
+  // stale pieces "Ajustar" can move to their events' new times
+  const adjustableCount = data?.duties.reduce((n, d) => n + d.pieces.filter(p => p.adjust?.ok).length, 0) ?? 0
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -678,6 +700,11 @@ export default function CrewPlanPage() {
             {summary && summary.staleDutyCount > 0 && (
               <span className="text-red-600 dark:text-red-400">{summary.staleDutyCount} jornada(s) desatualizada(s)</span>
             )}
+            {canEdit && adjustableCount > 0 && (
+              <button type="button" onClick={() => void handleAdjustAll()} disabled={saving} className="text-primary hover:underline disabled:opacity-50" title="Mover as pontas das pegadas desatualizadas para os novos horários">
+                Ajustar {adjustableCount} pegada(s)
+              </button>
+            )}
             {view === 'duties'
               ? null
               : draftStart
@@ -765,6 +792,7 @@ export default function CrewPlanPage() {
             onSave={(p) => void handleSaveDuty(p)}
             onDelete={() => void handleDeleteDuty()}
             onDeletePiece={(pid) => void handleDeletePiece(pid)}
+            onAdjustPiece={(pid) => void handleAdjustPiece(pid)}
             onAddActivity={handleAddActivity}
             onDeleteActivity={(aid) => void handleDeleteActivity(aid)}
             onClose={() => setSelectedDutyId(null)}

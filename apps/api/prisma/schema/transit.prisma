@@ -786,6 +786,10 @@ model DutyPiece {
   isStale         Boolean  @default(false)
   // BLOCK_REMOVED | OUT_OF_BLOCK_WINDOW | INVALID_RELIEF_POINT
   staleReason     String?
+  // the relief event each end sits on — `${ReliefPointKind}:${tripId | deadrunId}` — kept by
+  // recalculate while the piece is valid, so a stale end can follow its event (piece-adjust.ts)
+  startAnchor     String?
+  endAnchor       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -38,8 +38,8 @@ function conditionText(c: FilterCondition): string {
   return `${FIELD_LABEL[c.field]} ${c.op === 'gt' ? '>' : '<'} ${value}`
 }
 
-// duty view on/off criteria, grouped in one dropdown to save room on the bar
-const DUTY_FLAGS = [
+// on/off criteria, grouped in one dropdown to save room on the bar; multiLine is duty-only
+const FLAGS = [
   { key: 'withIssues', label: 'Com pendências' },
   { key: 'staleOnly',  label: 'Desatualizadas' },
   { key: 'multiLine',  label: 'Mais de uma linha' },
@@ -48,9 +48,31 @@ const DUTY_FLAGS = [
 export function CrewFilterBar({ view, filter, onChange, matchCount, operators, lineCodes, onClose }: Props) {
   const set = (patch: Partial<CrewFilter>) => onChange({ ...filter, ...patch })
   const active = isFilterActive(filter, view)
-  const flagsOn = DUTY_FLAGS.filter(f => filter[f.key]).length
+  const flags   = view === 'vehicles' ? FLAGS.filter(f => f.key !== 'multiLine') : FLAGS
+  const flagsOn = flags.filter(f => filter[f.key]).length
   const noun   = view === 'vehicles' ? (matchCount === 1 ? 'carro' : 'carros') : (matchCount === 1 ? 'jornada' : 'jornadas')
   const removeCondition = (c: FilterCondition) => set({ conditions: filter.conditions.filter(x => x !== c) })
+
+  const flagsDropdown = (
+    <Dropdown
+      align="start"
+      trigger={
+        <Chip on={flagsOn > 0}>
+          <span className="flex items-center gap-1">
+            Situação{flagsOn > 0 && ` (${flagsOn})`}
+            <Icons.ChevronDown className="w-3 h-3" />
+          </span>
+        </Chip>
+      }
+    >
+      {flags.map(f => (
+        <DropdownItem key={f.key} keepOpen onClick={() => set({ [f.key]: !filter[f.key] })} className="text-xs">
+          <Icons.Check className={cn('w-3.5 h-3.5', !filter[f.key] && 'invisible')} />
+          {f.label}
+        </DropdownItem>
+      ))}
+    </Dropdown>
+  )
 
   return (
     <div
@@ -80,7 +102,10 @@ export function CrewFilterBar({ view, filter, onChange, matchCount, operators, l
       </select>
 
       {view === 'vehicles' ? (
-        <Chip on={filter.uncoveredOnly} onClick={() => set({ uncoveredOnly: !filter.uncoveredOnly })}>Sem motorista</Chip>
+        <>
+          <Chip on={filter.uncoveredOnly} onClick={() => set({ uncoveredOnly: !filter.uncoveredOnly })}>Sem motorista</Chip>
+          {flagsDropdown}
+        </>
       ) : (
         <>
           <select value={filter.role ?? ''} onChange={e => set({ role: (e.target.value || null) as CrewRole | null })} className={selectCls}>
@@ -91,24 +116,7 @@ export function CrewFilterBar({ view, filter, onChange, matchCount, operators, l
             <option value="">Tipo</option>
             {(Object.keys(KIND_LABEL) as BoardDuty['kind'][]).map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
-          <Dropdown
-            align="start"
-            trigger={
-              <Chip on={flagsOn > 0}>
-                <span className="flex items-center gap-1">
-                  Situação{flagsOn > 0 && ` (${flagsOn})`}
-                  <Icons.ChevronDown className="w-3 h-3" />
-                </span>
-              </Chip>
-            }
-          >
-            {DUTY_FLAGS.map(f => (
-              <DropdownItem key={f.key} keepOpen onClick={() => set({ [f.key]: !filter[f.key] })} className="text-xs">
-                <Icons.Check className={cn('w-3.5 h-3.5', !filter[f.key] && 'invisible')} />
-                {f.label}
-              </DropdownItem>
-            ))}
-          </Dropdown>
+          {flagsDropdown}
         </>
       )}
 

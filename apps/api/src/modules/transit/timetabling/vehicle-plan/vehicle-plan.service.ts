@@ -585,7 +585,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // leaving isStale blocks with no guaranteed follow-up recalculation. Replaces the
   // old N-HTTP-calls-plus-final-rescore flow. See docs/proposal/vehicle-plan-
   // summary-score-consolidation.md §2.4.
-  async applyDiff(planId: string, diff: VehiclePlanDiff): Promise<{ blockIdMap: Record<string, string> }> {
+  async applyDiff(planId: string, diff: VehiclePlanDiff): Promise<{ blockIdMap: Record<string, string>; removedDuties: number }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
       select: { id: true, dayTypeId: true, status: true, scopeId: true },
@@ -921,8 +921,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       await this.recalculate(planId, tx)
     }, { timeout: 30_000 })
 
-    await this.crewPlans.recalculateForVehiclePlan(planId)
-    return { blockIdMap: Object.fromEntries(newBlockIds) }
+    // duties dropped from draft crew plans for holding pieces of blocks this diff removed
+    const removedDuties = await this.crewPlans.recalculateForVehiclePlan(planId)
+    return { blockIdMap: Object.fromEntries(newBlockIds), removedDuties }
   }
 
   // "Limpa" uma linha do plano: remove os blocos/viagens materializados (dayType-scoped)
