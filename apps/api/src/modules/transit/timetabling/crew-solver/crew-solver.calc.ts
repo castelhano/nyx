@@ -12,8 +12,9 @@ import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 // DRIVER duties whose pieces start/end at relief points, and places meal BREAKs explicitly.
 //
 // 1. Chains — per block, the uncovered service spans, joined across the vehicle's own idle
-//    time (intervals) but not across depot parking or locked coverage: a driver can stay with
-//    the vehicle through an interval, not through a depot stay.
+//    time (intervals) but not across locked coverage: a driver can stay with the vehicle
+//    through an interval. A depot stay joins them only when it fits range.splitInterval, and
+//    then only as a split — the driver leaves the vehicle at the depot and comes back to it.
 // 2. Each chain is covered with whole duties on the same vehicle — around one of its idle gaps
 //    (STRAIGHT with the meal inside the piece when the gap fits the meal type's range at a meal
 //    stop of the arriving line; SPLIT when it's longer and fits range.splitInterval, the driver
@@ -195,12 +196,13 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
     const covered = lockedCover.get(v.block.id) ?? []
     const uncovered = v.block.serviceSpans.flatMap(s => subtractSpans(s, covered))
 
-    // 1. chains — each keeps its uncovered spans as segments (joined over vehicle intervals)
+    // 1. chains — each keeps its uncovered spans as segments (joined over vehicle intervals, and
+    //    over a depot stay that fits a split)
     const chains: (Span & { segments: Span[] })[] = []
     for (const u of uncovered) {
       const last = chains[chains.length - 1]
       const gap  = last && { startMinutes: last.endMinutes, endMinutes: u.startMinutes }
-      if (gap && !v.parks.some(p => overlaps(p, gap)) && !covered.some(c => overlaps(c, gap))) {
+      if (gap && (!v.parks.some(p => overlaps(p, gap)) || splitFits(len(gap))) && !covered.some(c => overlaps(c, gap))) {
         last.endMinutes = u.endMinutes
         last.segments.push({ ...u })
       } else {
@@ -219,7 +221,8 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         .map(c => ({ startMinutes: c[0], endMinutes: c[c.length - 1] }))
       const gaps = v.idleGaps(cuts[0], cuts[cuts.length - 1]).flatMap(g => {
         const l = len(g)
-        if (mealFits(l) && v.mealAllowed(g.startMinutes)) return [{ ...g, split: false }]
+        // a depot stay is never a meal inside the piece — only a split
+        if (mealFits(l) && v.mealAllowed(g.startMinutes) && !v.parks.some(p => overlaps(p, g))) return [{ ...g, split: false }]
         // only gaps longer than the meal become a split (a meal-sized gap where meals aren't allowed doesn't)
         if (splitFits(l) && v.isCut(g.endMinutes)) return [{ ...g, split: true }]
         return []

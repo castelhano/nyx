@@ -14,8 +14,9 @@ export interface BlockReliefData {
   window: Span | null
   // the parts of the window where the vehicle is in service and therefore needs a driver:
   // the window minus the vehicle's own intervals (BlockInterval, stretched over the standing
-  // time around them — a piece can only start/end at the trips/deadruns there) and minus
-  // time parked at the depot (see depotStays)
+  // time around them — a piece can only start/end at the trips/deadruns there; not one inside
+  // a trip group, whose driver stays through it) and minus time parked at the depot (see
+  // depotStays)
   serviceSpans: Span[]
   points: ReliefPoint[]
 }
@@ -29,7 +30,7 @@ export function computeBlockRelief(input: {
     stops: StopRow[] // route localities ordered by sequence
   }[]
   deadruns: { id?: string; type: string; originLocalityId: string; destinationLocalityId: string; departureMinutes: number; arrivalMinutes: number }[]
-  intervals: { departureMinutes: number; arrivalMinutes: number }[]
+  intervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[]
   matrixMinutes: Map<string, number> // `${from}:${to}` → baseMinutes
 }): BlockReliefData {
   const points: ReliefPoint[] = []
@@ -68,10 +69,11 @@ export function computeServiceSpans(
   window:    Span,
   moving:    { departureMinutes: number; arrivalMinutes: number }[], // trips + deadruns
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[],
-  intervals: { departureMinutes: number; arrivalMinutes: number }[],
+  intervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[],
 ): Span[] {
-  // an interval runs from the vehicle's last arrival before it to its next departure after it
-  const idle: Span[] = intervals.map(i => ({
+  // an interval runs from the vehicle's last arrival before it to its next departure after it;
+  // one in a trip group is service — the group's driver stays with the vehicle through it
+  const idle: Span[] = intervals.filter(i => !i.bundleId).map(i => ({
     startMinutes: moving.reduce((m, e) => (e.arrivalMinutes <= i.departureMinutes && e.arrivalMinutes > m ? e.arrivalMinutes : m), window.startMinutes),
     endMinutes:   moving.reduce((m, e) => (e.departureMinutes >= i.arrivalMinutes && e.departureMinutes < m ? e.departureMinutes : m), window.endMinutes),
   }))
@@ -79,15 +81,24 @@ export function computeServiceSpans(
 }
 
 // time parked at the depot: from a RETURN's arrival to the vehicle's next departure — normally an
-// ACCESS, but some imported blocks leave the depot straight into a trip (no ACCESS deadrun)
+// ACCESS, but some imported blocks leave the depot straight into a trip (no ACCESS deadrun) —
+// and from the vehicle's last arrival to an ACCESS's departure: a line can end at the depot
+// itself (no RETURN deadrun)
 export function depotStays(
   moving:   { departureMinutes: number; arrivalMinutes: number }[], // trips + deadruns
   deadruns: { type: string; departureMinutes: number; arrivalMinutes: number }[],
 ): Span[] {
-  return deadruns.filter(d => d.type === 'RETURN').flatMap(ret => {
-    const next = moving.reduce((m, e) => (e.departureMinutes >= ret.arrivalMinutes && e.departureMinutes < m ? e.departureMinutes : m), Infinity)
-    return Number.isFinite(next) && next > ret.arrivalMinutes ? [{ startMinutes: ret.arrivalMinutes, endMinutes: next }] : []
-  })
+  const stays = new Map<string, Span>()
+  for (const d of deadruns) {
+    if (d.type === 'RETURN') {
+      const next = moving.reduce((m, e) => (e.departureMinutes >= d.arrivalMinutes && e.departureMinutes < m ? e.departureMinutes : m), Infinity)
+      if (Number.isFinite(next) && next > d.arrivalMinutes) stays.set(`${d.arrivalMinutes}:${next}`, { startMinutes: d.arrivalMinutes, endMinutes: next })
+    } else if (d.type === 'ACCESS') {
+      const prev = moving.reduce((m, e) => (e.arrivalMinutes <= d.departureMinutes && e.arrivalMinutes > m ? e.arrivalMinutes : m), -Infinity)
+      if (Number.isFinite(prev) && prev < d.departureMinutes) stays.set(`${prev}:${d.departureMinutes}`, { startMinutes: prev, endMinutes: d.departureMinutes })
+    }
+  }
+  return [...stays.values()]
 }
 
 export function subtractSpans(from: Span, cut: Span[]): Span[] {

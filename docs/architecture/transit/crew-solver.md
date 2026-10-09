@@ -93,7 +93,7 @@ A meal BREAK is only placed at a **meal stop**: `RouteLocality.allowsMealBreak` 
 |---|---|---|
 | Blocks | `VehicleBlock` + trips, deadruns, intervals of the plan's `VehiclePlan` | what needs a driver |
 | Relief points | `relief-points.ts` — each trip's route endpoints, every `RouteLocality.allowsCrewChange` stop along the way, deadrun endpoints | where a piece may start/end |
-| Service spans | `relief-points.ts` — the block window minus the vehicle's own intervals (stretched over the standing time around them) and depot stays | the stretches a driver must cover; a piece covering time outside them needs a break there (`PIECE_OFF_SERVICE`) |
+| Service spans | `relief-points.ts` — the block window minus the vehicle's own intervals (stretched over the standing time around them; not one inside a trip group, whose driver stays through it) and depot stays (from a RETURN to the next departure, and from the last arrival to an ACCESS — a line can end at the depot itself) | the stretches a driver must cover; a piece covering time outside them needs a break there (`PIECE_OFF_SERVICE`) |
 | Locked duties | `Duty.constraints.locked` | kept as they are with base "Completar" |
 | Meal stops | `RouteLocality.allowsMealBreak` | where a meal BREAK may go |
 | Meal type | `mealBreakIntervalTypeId` → `IntervalType` (`minMinutes`, `maxMinutes`, `isPaid`) | meal range; a paid break counts as work |
@@ -165,7 +165,7 @@ The score is the weighted mean of the criteria values (0–1) on a 0–9999 scal
 
 ## Construction (`solveCrewPlan`)
 
-1. **Chains** — per block, the uncovered service spans (locked duties aside), joined across the vehicle's own intervals but never across a depot stay.
+1. **Chains** — per block, the uncovered service spans (locked duties aside), joined across the vehicle's own intervals; across a depot stay only when it fits `splitInterval`, and then it can only be a split (the driver leaves the vehicle at the depot and comes back to it — never a meal inside the piece, never worked).
 2. **Whole duties on one vehicle first** — a whole duty is one around one of the vehicle's idle gaps (STRAIGHT with the meal inside the piece, or SPLIT on the same vehicle) or a single piece meeting the rule without a meal, every hard rule met (`workTime` floor and ceiling, `spread`, continuous driving, minimum piece around the gap). Each candidate is weighed in score units (each criterion costs `modifier × (1 − rangeV)`). Each chain is covered, in this order:
    1. **one** duty;
    2. **two** — the cheapest pair, the more balanced among equals;
