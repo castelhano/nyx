@@ -325,7 +325,8 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
     // an existing break only counts as "the gap" if nothing else sits between it and the trip
     const startMinutes = nextBreak && (nextOther == null || nextBreak.departureMinutes < nextOther)
       ? nextBreak.arrivalMinutes + 1
-      : referenceTrip.trip.arrivalMinutes + (resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, referenceTrip.trip.arrivalMinutes)?.intervalMinutes ?? 5)
+      // recovery time belongs to the reference trip (rest after it), not to the new one
+      : referenceTrip.trip.arrivalMinutes + (resolveCycleWindow(lineMetrics, dayTypeCode, refDirection, referenceTrip.trip.departureMinutes)?.intervalMinutes ?? 5)
 
     // space check only when a metrics window gives a synchronous duration — otherwise
     // let the async resolveCycle() + the submit-time overlap fallback handle it
