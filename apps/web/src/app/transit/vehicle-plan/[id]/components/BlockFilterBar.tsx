@@ -30,6 +30,15 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
       : null)
   }
 
+  // The bar must never keep the keyboard: arrows on a focused select/time input change its value
+  // instead of moving the Gantt focus. Selects let go once picked; the time applies on Enter
+  // (which lets go too) or when leaving the field — not on every keystroke.
+  const release = (e: { currentTarget: HTMLElement }) => e.currentTarget.blur()
+
+  function commitTime(label: string) {
+    if (label !== (filter?.minutes != null ? minutesToLabel(filter.minutes) : '')) commit(field, relation, label)
+  }
+
   // "Limpar" — resets the criteria only. Bar stays open (unlike "X"), pins
   // untouched, so refining a search never loses what was already marked to
   // keep. The local field/relation/time selections need an explicit reset
@@ -50,7 +59,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
     >
       <select
         value={field}
-        onChange={e => commit(e.target.value as BlockFilter['field'], relation, timeLabel)}
+        onChange={e => { commit(e.target.value as BlockFilter['field'], relation, timeLabel); release(e) }}
         className="h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
       >
         <option value="start">Início</option>
@@ -59,7 +68,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
 
       <select
         value={relation}
-        onChange={e => commit(field, e.target.value as BlockFilter['relation'], timeLabel)}
+        onChange={e => { commit(field, e.target.value as BlockFilter['relation'], timeLabel); release(e) }}
         className="h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
       >
         <option value="after">depois de</option>
@@ -69,7 +78,10 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
       <input
         type="time"
         value={timeLabel}
-        onChange={e => commit(field, relation, e.target.value)}
+        onChange={e => setTimeLabel(e.target.value)}
+        onBlur={e => commitTime(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); release(e) } }}
+        title="Enter aplica o filtro e volta ao grid"
         className="h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
       />
 

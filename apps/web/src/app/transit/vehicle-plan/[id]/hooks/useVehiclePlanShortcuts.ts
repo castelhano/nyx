@@ -55,8 +55,8 @@ interface UseVehiclePlanShortcutsParams {
   // Same shape as navBlocks, restricted to blocks visible under the active
   // block filter (filtered ∪ pinned) — see docs/proposal/
   // plan_vehicle_plan_block_filter_v1.md §4. Equal to navBlocks with no
-  // filter active. Used for ↑/↓ block-to-block navigation only — focus
-  // recovery stays on the full navBlocks (in useGanttEditor).
+  // filter active. Used for ↑/↓ block-to-block navigation; focus recovery (in
+  // useGanttEditor) moves a focus the filter hides onto it.
   visibleNavBlocks:     NavItem[][]
   // Same restriction as visibleNavBlocks, but over allTrips (PageUp/PageDown
   // and shift+Home/End, same-direction nav) — without it those would walk
@@ -89,7 +89,7 @@ interface UseVehiclePlanShortcutsParams {
 
   blockFilterOpen:      boolean
   setBlockFilterOpen:   Dispatch<SetStateAction<boolean>>
-  setBlockFilter:       Dispatch<SetStateAction<BlockFilter | null>>
+  setBlockFilter:       (next: BlockFilter | null) => void
   clearPinnedBlocks:    () => void
 
   clearAllPending:            () => void

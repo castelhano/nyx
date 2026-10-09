@@ -300,7 +300,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // *clearing* the filter criteria while the bar stays open (so a refined
   // search keeps what you'd already marked) but reset when the bar is
   // actually closed (X) — that's a deliberate "start fresh" action.
-  const [blockFilter,    setBlockFilter]    = useState<BlockFilter | null>(null)
+  const [blockFilter,    setBlockFilterState] = useState<BlockFilter | null>(null)
   const [pinnedBlockIds, setPinnedBlockIds] = useState<Set<string>>(new Set())
 
   function togglePinnedBlock(blockId: string) {
@@ -613,10 +613,9 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   }, [mergedPlottedData, blockFilter, pinnedBlockIds])
 
   // Navigation-only view of navBlocks, restricted to visible blocks — kept
-  // separate from navBlocks itself, which stays over the full block set so the
-  // focus-recovery effect below doesn't treat a block hidden by the filter as
-  // "gone" and reset focus. Same reference as navBlocks when no filter is
-  // active (§4 of the proposal doc).
+  // separate from navBlocks itself, which stays over the full block set (the
+  // focus recovery below uses it to find where a hidden focus was). Same
+  // reference as navBlocks when no filter is active (§4 of the proposal doc).
   const visibleNavBlocks = useMemo(() => {
     // visibleBlockIds is null exactly when there's no active filter — same
     // condition, no need to also check blockFilter here.
@@ -646,22 +645,18 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // Activating the filter (null → non-null) auto-pins the block owning the
   // current selection/focus, so turning it on never yanks away what's
   // currently in view without explanation — RESPOSTA in the proposal doc §6.
-  const wasFilterActiveRef = useRef(false)
-  useEffect(() => {
-    const isActive = blockFilter !== null
-    if (isActive && !wasFilterActiveRef.current && mergedPlottedData) {
+  // Pinned in the same update as the filter, so the focus recovery below never
+  // sees that block hidden for a render.
+  function setBlockFilter(next: BlockFilter | null) {
+    if (next && !blockFilter && mergedPlottedData) {
       const anchorSegId = selection
         ? (selection.type === 'trip' ? selection.segment.id : selection.from.id)
         : focusedSegId
       const owner = anchorSegId ? findBlockForSegId(mergedPlottedData.blocks, anchorSegId) : undefined
-      if (owner) {
-        const ownerId = owner.id
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setPinnedBlockIds(prev => prev.has(ownerId) ? prev : new Set(prev).add(ownerId))
-      }
+      if (owner) setPinnedBlockIds(prev => prev.has(owner.id) ? prev : new Set(prev).add(owner.id))
     }
-    wasFilterActiveRef.current = isActive
-  }, [blockFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+    setBlockFilterState(next)
+  }
 
   // shift+pagedown/pageup range: window [anchor, focus] over allTrips,
   // restricted to the anchor's line + direction — same traversal plain
@@ -736,15 +731,25 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   )
 
   // Focus/selection can go stale when the data underneath changes (e.g. a pending
-  // add gets discarded via alt+l) — without this, keyboard nav gets stuck since
-  // most arrow shortcuts require a valid focus and no dangling selection.
+  // add gets discarded via alt+l) or the block filter hides the focused block —
+  // without this, keyboard nav gets stuck since most arrow shortcuts require a
+  // valid, visible focus and no dangling selection. Focus lands on the visible
+  // block closest (in row order) to where it was, at the closest departure.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!editBarOpen) return
     const flatIds = new Set(navBlocks.flatMap(block => block.map(i => i.segId)))
 
-    if (focusedSegId && !flatIds.has(focusedSegId)) {
-      setFocusedSegId(navBlocks.find(block => block.length > 0)?.[0]?.segId ?? null)
+    if (focusedSegId && !visibleNavBlocks.some(block => block.some(i => i.segId === focusedSegId))) {
+      const from = navBlocks.findIndex(block => block.some(i => i.segId === focusedSegId))
+      const dep  = from === -1 ? null : navBlocks[from].find(i => i.segId === focusedSegId)!.dep
+      // visibleNavBlocks holds navBlocks' own rows, so indexOf gives each one's position
+      const rows = visibleNavBlocks.filter(block => block.length > 0)
+        .map(block => ({ block, at: navBlocks.indexOf(block) }))
+      const row  = from === -1 ? rows[0] : rows.reduce<typeof rows[number] | undefined>(
+        (best, r) => (!best || Math.abs(r.at - from) < Math.abs(best.at - from) ? r : best), undefined)
+      const item = row && (dep == null ? row.block[0] : row.block.reduce((best, i) => (Math.abs(i.dep - dep) < Math.abs(best.dep - dep) ? i : best)))
+      setFocusedSegId(item?.segId ?? null)
     }
 
     if (tripSeqAnchor && !flatIds.has(tripSeqAnchor)) setTripSeqAnchor(null)
@@ -753,7 +758,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       const selIds = selection.type === 'trip' ? [selection.segment.id] : selection.segments.map(s => s.id)
       if (selIds.some(id => !flatIds.has(id))) setSelection(null)
     }
-  }, [navBlocks, editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [navBlocks, visibleNavBlocks, editBarOpen]) // eslint-disable-line react-hooks/exhaustive-deps
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Reference trip for the "add trip" modal prefill: the focused trip itself, or —
@@ -2278,6 +2283,14 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     }
 
     discardBreaks(orphanedBreakIds)
+
+    // with the block filter on (e.g. picking a block to take another one's trips), a move changes
+    // both blocks' windows and could drop them out of the filter — they stay pinned instead; a
+    // source left without trips is gone anyway
+    if (blockFilter) {
+      const keep = [moveTargetBlockId, ...(sourceBlock.blockTrips.length > blockTripIds.length ? [sourceBlockId] : [])]
+      setPinnedBlockIds(prev => keep.every(id => prev.has(id)) ? prev : new Set([...prev, ...keep]))
+    }
 
     if (orphanedBreakIds.length > 0) {
       toast.info(
