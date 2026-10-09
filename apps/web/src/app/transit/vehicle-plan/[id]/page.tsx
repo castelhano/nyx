@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Icons }             from '@/lib/icons'
@@ -22,6 +22,7 @@ import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { HeadwayRangeBar }   from './components/HeadwayRangeBar'
 import { BlockFilterBar }    from './components/BlockFilterBar'
+import { GotoBlockInput }    from './components/GotoBlockInput'
 import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './components/LineFreqPanel'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
@@ -143,6 +144,7 @@ export default function VehiclePlanPage() {
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
   const [blockFilterOpen,   setBlockFilterOpen]   = useState(false)
+  const [gotoBlockOpen,     setGotoBlockOpen]     = useState(false)
   const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   // Fase 4 — FrequencyPanel can plot the delta-crossing instant instead of the
@@ -178,11 +180,48 @@ export default function VehiclePlanPage() {
     pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
     setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
     summaryLineIds, setSummaryLineIds, setRedistributeModal,
-    blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks,
+    blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoBlockOpen,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
   })
+
+  // ── goto block (ctrl+g) — centers the block and focuses its first trip,
+  // opening the edit bar if needed ─────────────────────────────────────────────
+
+  const [centerBlockId, setCenterBlockId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!centerBlockId) return
+    // Next frame: opening the edit bar in the same commit can resize the board,
+    // which would throw off a centering computed against the old height.
+    const raf = requestAnimationFrame(() => {
+      ganttBoardRef.current?.centerRow(centerBlockId)
+      setCenterBlockId(null)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [centerBlockId])
+
+  function handleGotoBlock(blockNumber: number): string | null {
+    const blocks = mergedPlottedData?.blocks ?? []
+    const index  = blocks.findIndex(b => b.blockNumber === blockNumber)
+    if (index < 0) return `Bloco ${blockNumber} não encontrado`
+    const block = blocks[index]
+    if (visibleBlockIds && !visibleBlockIds.has(block.id)) return `Bloco ${blockNumber} oculto pelo filtro`
+
+    const firstTrip = block.blockTrips.reduce<GanttBlockTrip | null>(
+      (min, bt) => (!min || bt.trip.departureMinutes < min.trip.departureMinutes) ? bt : min, null)
+    // Blocks without trips fall back to their first deadrun/interval
+    const targetSegId = firstTrip?.id ?? navBlocks[index]?.[0]?.segId
+    if (targetSegId) {
+      setSelection(null)
+      setTripSeqAnchor(null)
+      setFocusedSegId(targetSegId)
+      setEditBarOpen(true)
+    }
+    setCenterBlockId(block.id)
+    setGotoBlockOpen(false)
+    return null
+  }
 
   // ── OSO drift — per-trip/per-line comparison, gated to isDrifted lines only
   // (see useOsoCoverage) ─────────────────────────────────────────────────────────
@@ -790,6 +829,10 @@ export default function VehiclePlanPage() {
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                     Carregando…
                   </div>
+                )}
+
+                {gotoBlockOpen && (
+                  <GotoBlockInput onGoto={handleGotoBlock} onClose={() => setGotoBlockOpen(false)} />
                 )}
 
                 {blockFilterOpen && (

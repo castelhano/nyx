@@ -89,6 +89,7 @@ interface UseVehiclePlanShortcutsParams {
 
   blockFilterOpen:      boolean
   setBlockFilterOpen:   Dispatch<SetStateAction<boolean>>
+  setGotoBlockOpen:     Dispatch<SetStateAction<boolean>>
   setBlockFilter:       (next: BlockFilter | null) => void
   clearPinnedBlocks:    () => void
 
@@ -116,7 +117,7 @@ export function useVehiclePlanShortcuts({
   pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
   setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
   summaryLineIds, setSummaryLineIds, setRedistributeModal,
-  blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks,
+  blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoBlockOpen,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
   handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -133,6 +134,8 @@ export function useVehiclePlanShortcuts({
       shiftAnchorRef.current = null
       return
     }
+    // Focus already placed by whoever opened the bar (goto block lands on its target).
+    if (focusedSegId) return
     // visibleNavBlocks, not navBlocks — landing focus on a block hidden by an
     // active filter left it "stuck": that segId never appears in
     // visibleNavBlocks, so ↑/↓ (which walks visibleNavBlocks) never finds it.
@@ -242,6 +245,14 @@ export function useVehiclePlanShortcuts({
     icon:    Icons.LayoutList,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     section: SEC_PAINEIS,
+  })
+
+  useShortcut('ctrl+g', () => setGotoBlockOpen(true), {
+    desc:    'Ir para bloco',
+    icon:    Icons.Search,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: !isNew,
+    section: SEC_GERAL,
   })
 
   useShortcut('f6', () => setLinesPanelOpen(v => !v), {

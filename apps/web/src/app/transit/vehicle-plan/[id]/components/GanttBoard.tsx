@@ -18,6 +18,7 @@ import type { ViewportSnapshot, Selection, GanttActionSpec, RowHintEntry } from 
 export interface GanttBoardHandle {
   getSegments: () => LayoutSegment[]
   getRows:     () => LayoutRow[]
+  centerRow:   (rowId: string) => void
 }
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
@@ -91,6 +92,13 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
   useImperativeHandle(ref, () => ({
     getSegments: () => engineRef.current?.getLayoutSegments() ?? [],
     getRows:     () => engineRef.current?.getLayoutRows()     ?? [],
+    centerRow:   (rowId) => {
+      const engine = engineRef.current
+      const row    = engine?.getLayoutRows().find(r => r.id === rowId)
+      if (!engine || !row) return
+      engine.viewport.scrollTo(row.y + row.height / 2 - engine.viewport.height / 2)
+      engine.notify()
+    },
   }), [])
   const onViewportChangeRef   = useRef(onViewportChange)
   const onSelectionChangeRef  = useRef(onSelectionChange)
