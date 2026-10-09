@@ -126,7 +126,7 @@ At most one meal or split per duty. With no long gap: a meal inside a piece wher
 
 ### Hard rules
 
-A duty the solver builds has **no error** issue: ceilings of the active range criteria (work, spread, split interval, idle time, …), floors where they apply, walk distance and travel gap, continuous driving, piece off service, branch mismatch, required meal. Warnings (short piece, meal location, travel gap without matrix) are allowed — they rank below (see Score).
+A duty the improvement builds has **no error** issue (the construction may leave incomplete STRAIGHTs, see Construction): ceilings of the active range criteria (work, spread, split interval, idle time, …), floors where they apply, walk distance and travel gap, continuous driving, piece off service, branch mismatch, required meal. Warnings (short piece, meal location, travel gap without matrix) are allowed — they rank below (see Score).
 
 **Trip groups** — every cut, split gap and meal gap the solver can pick starts at a relief point, so dropping the points inside a group (`crew-solver.input.ts`) keeps it with one driver and leaves its inside untouched: no relief, no split, no meal there. On the screen, a DRIVER piece starting or ending inside a group is flagged `BUNDLE_SPLIT` (warning); the group is drawn as an outline on the vehicle lane, read-only.
 
@@ -166,9 +166,16 @@ The score is the weighted mean of the criteria values (0–1) on a 0–9999 scal
 ## Construction (`solveCrewPlan`)
 
 1. **Chains** — per block, the uncovered service spans (locked duties aside), joined across the vehicle's own intervals but never across a depot stay.
-2. **A duty on one vehicle first** — each chain is cut left to right; at each position, a whole duty around one of the vehicle's idle gaps (STRAIGHT with the meal inside the piece, or SPLIT on the same vehicle), or a single piece meeting the rule without a meal. Each candidate is weighed in score units (each criterion costs `modifier × (1 − rangeV)`).
-3. **Loose pieces** otherwise — about half an ideal duty, within continuous driving, never leaving a remainder shorter than the minimum piece, never crossing the vehicle's own intervals.
-4. **Pairing** — loose pieces of the same operator, within walking distance, best partner first: meal between them, split, or a worked gap (never over the `idleTime` ceiling) as STRAIGHT or TRIPPER. What's left is a TRIPPER.
+2. **Whole duties on one vehicle first** — a whole duty is one around one of the vehicle's idle gaps (STRAIGHT with the meal inside the piece, or SPLIT on the same vehicle) or a single piece meeting the rule without a meal, every hard rule met (`workTime` floor and ceiling, `spread`, continuous driving, minimum piece around the gap). Each candidate is weighed in score units (each criterion costs `modifier × (1 − rangeV)`). Each chain is covered, in this order:
+   1. **one** duty;
+   2. **two** — the cheapest pair, the more balanced among equals;
+   3. **one at each end**, as close above `workTime.idealMin` as the relief points allow, and what's between covered the same way — usually a loose piece: the incomplete part stays in the middle, where it pairs up best (`[05:01–12:22 · 446] [12:22–15:56 · loose] [15:56–23:41 · 470]`);
+   4. **one** (the cheapest, the longest among equals) and the rest loose — after it, else before;
+   5. loose pieces only.
+3. **Loose pieces** — about half an ideal duty, within continuous driving, never leaving a remainder shorter than the minimum piece, never crossing the vehicle's own intervals.
+4. **Pairing** — loose pieces of the same operator, within walking distance, best partner first: meal between them, split, or a worked gap (never over the `idleTime` ceiling) as STRAIGHT. What's left is a STRAIGHT of its own.
+
+The construction places **no TRIPPER**: a short duty is an incomplete STRAIGHT, flagged `WORK_TIME` for review (and the first thing the improvement works on — pending duties rank first).
 
 It runs in tens of milliseconds and covers 100%.
 
