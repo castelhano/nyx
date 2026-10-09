@@ -103,8 +103,9 @@ export class CrewSolverService {
 
     const isTs    = __filename.endsWith('.ts')
     const seed    = Date.now()
-    const workers = Array.from({ length: SEARCHES }, (_, i) => new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
-      workerData: { input, seed: seed + i * 7919 } satisfies CrewSolverWorkerData,
+    // the construction has no seed: without the improvement one search is enough
+    const workers = Array.from({ length: params.optimize ? SEARCHES : 1 }, (_, i) => new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
+      workerData: { input, seed: seed + i * 7919, optimize: params.optimize } satisfies CrewSolverWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
     }))
     // one generation per crew plan: a new one replaces the previous

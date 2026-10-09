@@ -9,10 +9,12 @@ export interface CrewSolverParams {
   direction:     'balanced' | 'fewer_duties' | 'fewer_paid'
   fareCollector: boolean
   assistant:     boolean
+  // false: only the construction — the run ends with proposal 1
+  optimize:      boolean
 }
 
 export const DEFAULT_CREW_SOLVER_PARAMS: CrewSolverParams = {
-  base: 'complete', direction: 'balanced', fareCollector: false, assistant: false,
+  base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true,
 }
 
 export interface CrewSolverProposal {
@@ -33,4 +35,4 @@ export type CrewSolverMessage =
 export type CrewSolverCommand = { type: 'stop' }
 
 // each worker of a generation searches from its own seed (see CrewSolverService.start)
-export interface CrewSolverWorkerData { input: CrewSolverInput; seed: number }
+export interface CrewSolverWorkerData { input: CrewSolverInput; seed: number; optimize: boolean }

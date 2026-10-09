@@ -199,7 +199,7 @@ Every duty a move builds follows the hard rules (`build`); a move that breaks on
 
 ## Jobs and protocol
 
-`CrewSolverService.start` loads the input once and starts `min(4, cpus − 1)` workers from different seeds. Each worker: construction → proposal 1, then improvement in 50 ms slices (the event loop turns between them, so `stop` gets through), a better proposal at most once a second, progress every 500 ms; it ends on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes`, posting its best first.
+`CrewSolverService.start` loads the input once and starts `min(4, cpus − 1)` workers from different seeds. Each worker: construction → proposal 1, then improvement in 50 ms slices (the event loop turns between them, so `stop` gets through), a better proposal at most once a second, progress every 500 ms; it ends on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes`, posting its best first. With `optimize: false` there is a single worker and it ends (`finished`) right after proposal 1.
 
 The job combines them:
 
@@ -226,6 +226,7 @@ Jobs live in memory (a restart loses them) until accepted, discarded or 30 min a
 | `base` | `complete` | **complete**: keeps the locked duties and covers the rest; **scratch**: vehicles only |
 | `direction` | `balanced` | `fewer_duties` doubles `anchored.dutyCount.weight`; `fewer_paid` doubles `anchored.efficiency.weight` and `range.overtimeRatio.modifier` |
 | `fareCollector` / `assistant` | off | replicate the driver duties with role `FARE_COLLECTOR` / `ASSISTANT` (same pieces and breaks) |
+| `optimize` | on | off: only the construction (one worker, ends after proposal 1) |
 
 ### Accepting
 

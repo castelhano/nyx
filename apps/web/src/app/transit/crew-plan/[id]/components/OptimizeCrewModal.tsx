@@ -45,6 +45,7 @@ interface Params {
   direction:     'balanced' | 'fewer_duties' | 'fewer_paid'
   fareCollector: boolean
   assistant:     boolean
+  optimize:      boolean
 }
 
 type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'
@@ -142,7 +143,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
   const isCustom = !!settingsView?.isCustom
 
   // ── generation ──
-  const [params, setParams]           = useState<Params>(job?.params ?? { base: 'complete', direction: 'balanced', fareCollector: false, assistant: false })
+  const [params, setParams]           = useState<Params>({ base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, ...job?.params })
   const [jobId, setJobId]             = useState<string | null>(job?.jobId ?? null)
   const [running, setRunning]         = useState(job?.running ?? false)
   const [proposal, setProposal]       = useState<{ index: number; summary: CrewPlanSummary } | null>(null)
@@ -384,6 +385,10 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
                   Gerar auxiliar
                 </label>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={params.optimize} onChange={e => setParams(p => ({ ...p, optimize: e.target.checked }))} />
+                Otimizar após o corte inicial
+              </label>
               <p className="text-xs text-muted-foreground">
                 A escala é montada para motorista e replicada para os papéis marcados, com as regras da aba Config. {inPlace ? 'O resultado substitui as jornadas desta escala (rascunho) — as travadas são mantidas em "Completar".' : 'O resultado vira uma nova versão em rascunho — esta escala não é alterada.'}
                 {jobId && ' Gerar novamente descarta o cenário atual.'}
