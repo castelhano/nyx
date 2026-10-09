@@ -390,7 +390,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
-        lines:  { select: { lineId: true, lineScheduleId: true, summary: true } },
+        lines:  { select: { lineId: true, lineScheduleId: true, isDrifted: true, hasAttributeDrift: true, summary: true } },
         blocks: {
           include: {
             blockTrips: {
@@ -425,12 +425,17 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           summary:     plan.summary     ?? undefined,
           generatedAt: plan.generatedAt ?? undefined,
           constraints: plan.constraints ?? undefined,
+          // notes (the scenario's purpose) stay behind — each copy states its own
         },
       })
 
       if (plan.lines.length > 0) {
         await tx.vehiclePlanLine.createMany({
-          data: plan.lines.map((l: any) => ({ vehiclePlanId: newPlan.id, lineId: l.lineId, lineScheduleId: l.lineScheduleId ?? undefined, summary: l.summary ?? undefined })),
+          // the copy diverges from its OSO exactly as the source does
+          data: plan.lines.map((l: any) => ({
+            vehiclePlanId: newPlan.id, lineId: l.lineId, lineScheduleId: l.lineScheduleId ?? undefined,
+            isDrifted: l.isDrifted, hasAttributeDrift: l.hasAttributeDrift, summary: l.summary ?? undefined,
+          })),
         })
       }
 
