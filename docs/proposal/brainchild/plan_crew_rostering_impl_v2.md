@@ -878,6 +878,21 @@ model DailyChangeLog {
 
 ## Fase 5 — Gerador de escala
 
+> **Implementado (primeira entrega) — diferenças em relação ao texto abaixo:**
+> - Job em memória (como o crew solver), não `Job.input`: um por empresa/função, SSE, aceitar/descartar.
+>   Tela: Dias Operacionais → "Gerar escala" (`/transit/daily-operation/generate`). Horizonte até 31 dias.
+> - Antes da busca cria os dias que faltam dos escopos que a empresa opera; só dias `PLANNED` são escalados.
+> - Tabelas da empresa = `DailyDuty.branchId` da empresa, ou sem empresa num escopo que ela opera sozinha.
+> - Entradas preservadas: travadas (cadeado na aba Tabelas do dia), de dias não `PLANNED`, folga
+>   compensada e **folga lançada à mão** (decisão: trocar uma folga digitada pelo gestor seria surpresa).
+> - `loadDeficit`/`overtimePref` usam recompensa convexa (quadrática além do ideal), não `rangeRaw`:
+>   com `rangeRaw` o critério achata em −1 longe do ideal e a carga se concentra em poucos.
+> - Regra "empresa" (`ruleModes.branch`) não entrou: o gerador só usa condutores da própria empresa.
+> - Veículos: ao aceitar, preenche só carros ainda sem veículo; carro habitual = mais dirigido nos
+>   `habitualVehicleDays` antes do início do horizonte.
+> - Ficou para depois: meta de reserva (`reserveTargets`, passo 4 do algoritmo) e `RESERVE_SHORT` —
+>   falta definir em qual escopo/dia nasce o plantão quando a empresa opera mais de um escopo.
+
 ### 5.1 Parâmetros (tela → `Job.input`)
 
 | Parâmetro | Uso |

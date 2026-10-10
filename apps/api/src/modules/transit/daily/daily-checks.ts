@@ -140,7 +140,7 @@ export function crewIssues(
 }
 
 // the shift's bounds, with the crew member's own and an approved time-window request on top
-function effectiveWindow(
+export function effectiveWindow(
   shift: ShiftWindow, m: Pick<CrewRow, 'notBeforeMinutes' | 'notAfterMinutes'>,
   occurrences: { kind: string; startNotBefore: number | null; endNotAfter: number | null }[],
 ): ShiftWindow {

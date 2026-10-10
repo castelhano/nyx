@@ -17,7 +17,7 @@ export interface DayBlock {
 
 export interface DayDuty {
   id: string; role: CrewRole; dutyNumber: number; kind: string; branchId: string | null; shiftId: string | null
-  summary: DutySummary | null; issues: DayIssue[]; isStale: boolean; hasIssues: boolean; crewMemberId: string | null
+  summary: DutySummary | null; issues: DayIssue[]; isStale: boolean; hasIssues: boolean; crewMemberId: string | null; locked: boolean
   pieces: { id: string; dailyBlockId: string | null; startMinutes: number; endMinutes: number; isStale: boolean }[]
   activities: { id: string; type: string; startMinutes: number; endMinutes: number }[]
 }

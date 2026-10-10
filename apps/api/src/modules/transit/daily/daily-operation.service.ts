@@ -16,7 +16,7 @@ import { loadCrewBranchRules } from '../timetabling/crew-plan/crew-branch-rules'
 import { loadCrewWalk } from '../timetabling/crew-plan/crew-walk'
 import { canonicalJson } from '../timetabling/crew-plan/crew-plan.service'
 import { defaultIntervalMaxMinutes } from '../timetabling/vehicle-plan/block-issues.utils'
-import { addDays, dayOf, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
+import { addDays, dayOf, parseStartDate, toDbDate } from '../timetabling/plan-validity'
 import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
 import { crewIssues, loadCrewFacts, vehicleIssues, type BlockFacts, type DutyFacts } from './daily-checks'
@@ -118,6 +118,13 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     await this.log(op, userId, crewMemberId ? 'ASSIGN_CREW' : 'UNASSIGN_CREW', 'DailyDuty', dutyId,
       [previous, crewMemberId], { crewMemberId: previous }, { crewMemberId })
     await this.recalculateAround(op, [previous, crewMemberId])
+  }
+
+  // a locked allocation survives the roster generator
+  async setLocked(id: string, dutyId: string, locked: boolean): Promise<void> {
+    await this.editable(id)
+    const { count } = await this.prisma.rosterEntry.updateMany({ where: { dailyDutyId: dutyId, dailyDuty: { dailyOperationId: id } }, data: { locked } })
+    if (!count) throw new BadRequestException('A tabela não tem condutor')
   }
 
   async assignVehicle(id: string, blockId: string, vehicleId: string | null, userId?: string): Promise<void> {
@@ -458,6 +465,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
         id: d.id, role: d.role, dutyNumber: d.dutyNumber, kind: d.kind, branchId: d.branchId, shiftId: d.shiftId,
         summary: d.summary as DutySummary | null, issues: (d.issues as unknown[] | null) ?? [], isStale: d.isStale, hasIssues: d.hasIssues,
         crewMemberId: d.rosterEntries[0]?.crewMemberId ?? null,
+        locked:       d.rosterEntries[0]?.locked ?? false,
         pieces: d.pieces.map(p => ({
           id: p.id, dailyBlockId: p.dailyBlockId, startMinutes: p.startMinutes, endMinutes: p.endMinutes,
           startLocalityId: p.startLocalityId, endLocalityId: p.endLocalityId, isStale: p.isStale, staleReason: p.staleReason,

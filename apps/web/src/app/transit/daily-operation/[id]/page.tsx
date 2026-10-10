@@ -190,7 +190,7 @@ function DailyOperationBoard({ id }: { id: string }) {
         {!data ? (
           <p className="py-6 text-sm text-muted-foreground">Carregando…</p>
         ) : tab === 'duties' ? (
-          <DutiesTable data={data} duties={duties} canEdit={canEdit} onAssign={(dutyId, crewMemberId) => void put(`/duty/${dutyId}/crew`, { crewMemberId })} />
+          <DutiesTable data={data} duties={duties} canEdit={canEdit} onAssign={(dutyId, crewMemberId) => void put(`/duty/${dutyId}/crew`, { crewMemberId })} onLock={(dutyId, locked) => void put(`/duty/${dutyId}/lock`, { locked })} />
         ) : tab === 'blocks' ? (
           <>
             {data.uncoveredTrips.length > 0 && (

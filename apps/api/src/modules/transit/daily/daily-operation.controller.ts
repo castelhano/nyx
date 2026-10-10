@@ -58,6 +58,13 @@ export class DailyOperationController extends BaseController<DailyOperation, Cre
     await this.daily.assignCrew(id, dutyId, crewMemberId || null, req.user?.id)
   }
 
+  @Put(':id/duty/:dutyId/lock')
+  @HttpCode(204)
+  async lock(@Req() req: Req, @Param('id') id: string, @Param('dutyId') dutyId: string, @Body('locked') locked: boolean) {
+    await this.assertAbility(req.user, 'update')
+    await this.daily.setLocked(id, dutyId, !!locked)
+  }
+
   @Put(':id/block/:blockId/vehicle')
   @HttpCode(204)
   async assignVehicle(@Req() req: Req, @Param('id') id: string, @Param('blockId') blockId: string, @Body('vehicleId') vehicleId: string | null) {

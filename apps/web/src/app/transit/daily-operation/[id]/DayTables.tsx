@@ -55,8 +55,11 @@ function LocalPicker({ value, options, onSelect, disabled, placeholder }: {
 
 // ── duties ────────────────────────────────────────────────────────────────────
 
-export function DutiesTable({ data, duties, canEdit, onAssign }: {
-  data: DailyBoardData; duties: DayDuty[]; canEdit: boolean; onAssign: (dutyId: string, crewMemberId: string | null) => void
+export function DutiesTable({ data, duties, canEdit, onAssign, onLock }: {
+  data: DailyBoardData; duties: DayDuty[]; canEdit: boolean
+  onAssign: (dutyId: string, crewMemberId: string | null) => void
+  // a locked allocation survives the roster generator
+  onLock:   (dutyId: string, locked: boolean) => void
 }) {
   const blockById = useMemo(() => new Map(data.blocks.map(b => [b.id, b])), [data.blocks])
   const shiftCode = useMemo(() => new Map(data.shifts.map(s => [s.id, s.code])), [data.shifts])
@@ -88,7 +91,18 @@ export function DutiesTable({ data, duties, canEdit, onAssign }: {
               <td className={cn(td, 'tabular-nums')}>{s ? fmtTime(s.workMinutes) : '—'}</td>
               <td className={cn(td, 'text-xs text-muted-foreground')}>{blocks.map(b => b.blockNumber).join(', ') || '—'}{lines.length > 0 && ` · ${lines.join(', ')}`}</td>
               <td className={td}>
-                <LocalPicker value={d.crewMemberId} options={crewOptions(d)} onSelect={(id) => onAssign(d.id, id)} disabled={!canEdit} placeholder="Sem condutor" />
+                <div className="flex items-center gap-1">
+                  <LocalPicker value={d.crewMemberId} options={crewOptions(d)} onSelect={(id) => onAssign(d.id, id)} disabled={!canEdit} placeholder="Sem condutor" />
+                  {d.crewMemberId && (
+                    <button
+                      type="button" disabled={!canEdit} onClick={() => onLock(d.id, !d.locked)}
+                      title={d.locked ? 'Travado — o gerador de escala mantém' : 'Travar — o gerador de escala mantém'}
+                      className={cn('p-1 rounded hover:bg-muted disabled:opacity-50', d.locked ? 'text-foreground' : 'text-muted-foreground/50')}
+                    >
+                      {d.locked ? <Icons.Lock className="w-3.5 h-3.5" /> : <Icons.LockOpen className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </div>
               </td>
               <td className={td}><IssueList issues={d.issues} /></td>
             </tr>
