@@ -8,8 +8,7 @@ import {
 import type { PrismaService } from '../../../../prisma/prisma.service'
 
 // Warnings for the LineServiceRequirements of `lineIds` on `dayTypeId` that none of `trips`
-// covers — shown in the activation/approval preview, never blocking
-// (docs/proposal/plan_line_service_requirement_v1.md).
+// covers — shown in the activation/approval preview, never blocking.
 export async function uncoveredRequirementWarnings(
   prisma:    PrismaService,
   dayTypeId: string,
@@ -36,6 +35,6 @@ export async function uncoveredRequirementWarnings(
   const { coveredBy } = checkServiceRequirements(requirements, trips, stopsByRoute)
   return requirements
     .filter(r => (coveredBy.get(r.id) ?? []).length === 0)
-    .map(r => `Linha ${r.line.code}: atendimento "${r.label}" (${ROUTE_DIRECTION_LABEL[r.direction] ?? r.direction} `
+    .map(r => `Linha ${r.line.code}: marco "${r.label}" (${ROUTE_DIRECTION_LABEL[r.direction] ?? r.direction} `
       + `${serviceRequirementWindowText(r)}${r.locality ? ` em ${r.locality.name}` : ''}) sem viagem na janela`)
 }

@@ -21,7 +21,7 @@ const MARK_DASH_MIN_WIDTH    = 12  // skip below this segment width, same thresh
 const STOP_PATTERN_COLOR     = '#ffffff'  // white — same reasoning as the mark dash, holds contrast on every line color
 const STOP_PATTERN_SIZE      = 3   // px — chevron half-height/width, top-left corner (the one still free)
 const STOP_PATTERN_MIN_WIDTH = 12  // skip below this segment width, same threshold as lock/marked
-// LineServiceRequirement marker (docs/proposal/plan_line_service_requirement_v1.md) — a thicker
+// Marco (LineServiceRequirement) marker — a thicker
 // top border, inside the bar and clipped to its rounded corners so it never spills onto a
 // neighbor. Theme-aware: dark on the light theme, light on the dark one.
 const REQ_STRIPE_HEIGHT      = 4   // px

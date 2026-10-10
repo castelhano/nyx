@@ -1,22 +1,17 @@
 import { useMemo } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import {
   checkServiceRequirements,
   routeStopFractions,
   serviceRequirementWindowText,
   type RouteStopLike,
-  type ServiceRequirementLike,
   type ServiceRequirementTrip,
 } from '@nyx/schemas'
+import { useLineServiceRequirements, type ServiceRequirementRecord } from '../../../use-line-service-requirements'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
 
-export interface ServiceRequirementRecord extends ServiceRequirementLike {
-  label:    string
-  locality: { id: string; name: string } | null
-}
-
-export interface UncoveredRequirement {
+interface UncoveredRequirement {
   requirement: ServiceRequirementRecord
   lineCode:    string
 }
@@ -30,8 +25,8 @@ interface UseServiceRequirementsResult {
 
 const EMPTY_LABELS = new Map<string, string[]>()
 
-/** Checks the plan's lines against their LineServiceRequirements for the plan's day type
- *  (docs/proposal/plan_line_service_requirement_v1.md). Covers the whole plan, not just the
+/** Checks the plan's lines against their Marcos (LineServiceRequirement) for the plan's day
+ *  type. Covers the whole plan, not just the
  *  lines plotted in "Linhas": plotted lines are read from `merged` (pending edits included),
  *  every other line from the persisted `ganttData`. */
 export function useServiceRequirements(
@@ -41,16 +36,7 @@ export function useServiceRequirements(
 ): UseServiceRequirementsResult {
   const dayTypeId = ganttData?.plan.dayType?.id ?? null
 
-  const reqQuery = useQuery({
-    queryKey: ['transit', 'line-service-requirement', 'by-day-type', dayTypeId],
-    queryFn:  async (): Promise<ServiceRequirementRecord[]> => {
-      const res = await apiFetch(`/transit/line-service-requirement?dayTypeId=${dayTypeId}&pageSize=999`)
-      if (!res.ok) return []
-      return (await res.json()).data ?? []
-    },
-    enabled:   !!dayTypeId,
-    staleTime: 30_000,
-  })
+  const reqQuery = useLineServiceRequirements(dayTypeId)
 
   const planLines = useMemo(
     () => new Map((ganttData?.plan.lines ?? []).filter(l => l.inPlan).map(l => [l.lineId, l.line.code])),
@@ -104,7 +90,7 @@ export function useServiceRequirements(
   // don't change any of the fetched data
   const stopsSignal = stopQueries.map(q => q.dataUpdatedAt ?? 0).join(':')
 
-  return useMemo(() => {
+  const result = useMemo<UseServiceRequirementsResult>(() => {
     if (!dayTypeId) return { tripLabels: EMPTY_LABELS, uncovered: [], isLoading: false }
     if (isLoading)  return { tripLabels: EMPTY_LABELS, uncovered: [], isLoading: true }
 
@@ -128,4 +114,11 @@ export function useServiceRequirements(
     return { tripLabels, uncovered, isLoading: false }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stopQueries is re-created each render; stopsSignal proxies its contents
   }, [dayTypeId, isLoading, requirements, trips, routeIds, stopsSignal, planLines])
+
+  // Keyed on content, not identity: a background refetch (window focus) or an edit that doesn't
+  // change any coverage recomputes `result` with equal content — handing that new Map to
+  // boardData would rerun the whole Gantt layout (engine.setView) for nothing.
+  const signature = useMemo(() => JSON.stringify([result.isLoading, [...result.tripLabels], result.uncovered]), [result])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- see above: only a content change gets through
+  return useMemo(() => result, [signature])
 }

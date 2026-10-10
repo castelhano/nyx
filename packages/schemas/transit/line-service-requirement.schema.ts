@@ -9,7 +9,7 @@ export const SERVICE_REQUIREMENT_KIND_LABEL: Record<string, string> = {
 }
 
 // A departure the line must cover on a day type / direction — see
-// docs/proposal/plan_line_service_requirement_v1.md. earliest ≤ latest and the
+// LineServiceRequirement in transit.prisma. earliest ≤ latest and the
 // direction/locality checks against the line's routes live in LineServiceRequirementService
 // (a refine here would break the .omit() below).
 export const lineServiceRequirementSchema = withMeta(
@@ -99,14 +99,14 @@ export const lineServiceRequirementSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:         'Atendimento',
-    labelPlural:   'Atendimentos',
+    label:         'Marco',
+    labelPlural:   'Marcos',
     nameField:     'label',
     nameFirstWord: false,
     icon:          'Clock',
     defaultSort:   { field: 'earliestMinutes', order: 'asc' },
     breadcrumb:    [
-      { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'code', keybind: 'f8', overflow: true },
+      { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'code', keybind: 'f8', overflow: true, order: 1 },
     ],
   },
 )

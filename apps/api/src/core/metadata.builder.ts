@@ -47,7 +47,7 @@ function serializeRowActions(actions: any[] | undefined): RowActionDef[] | undef
 }
 
 function deriveChildren(resource: string): ChildResourceDef[] | undefined {
-  const children: ChildResourceDef[] = []
+  const children: (ChildResourceDef & { order: number })[] = []
 
   for (const entry of resourceRegistry) {
     if (entry.resource === resource) continue
@@ -63,10 +63,13 @@ function deriveChildren(resource: string): ChildResourceDef[] | undefined {
       ...(breadcrumbEntry.keybind  ? { keybind:            breadcrumbEntry.keybind } : {}),
       ...(breadcrumbEntry.overflow ? { overflow:           true }                    : {}),
       ...(m.privatePermissions     ? { privatePermissions: true }                    : {}),
+      order:        breadcrumbEntry.order ?? 0,
     })
   }
 
-  return children.length > 0 ? children : undefined
+  // registration order follows Nest's module instantiation — `order` pins it where it matters
+  children.sort((a, b) => a.order - b.order)
+  return children.length > 0 ? children.map(({ order: _order, ...child }) => child) : undefined
 }
 
 function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {

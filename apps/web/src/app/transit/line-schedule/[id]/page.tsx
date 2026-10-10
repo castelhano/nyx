@@ -23,7 +23,7 @@ import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { KeyHint } from '@/core/FieldRenderer'
 import { usePageGuard } from '@/core/usePageGuard'
 import { useRecordQuery } from '@/core/useRecordQuery'
-import { useTopbarActions } from '@/components/layout/topbar-actions-context'
+import { useTopbarActions, type TopbarStatus } from '@/components/layout/topbar-actions-context'
 import { useShortcut, useFieldKeybinds } from '@/lib/keywatch'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
@@ -33,6 +33,8 @@ import { cn, extractError } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { vigenceBadge } from '@/lib/plan-vigence'
 import { ActivationModal } from '../../activation-modal'
+import { useScheduleRequirements } from './use-schedule-requirements'
+import { ROUTE_DIRECTION_LABEL, serviceRequirementWindowText } from '@nyx/schemas'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'line-schedule'
@@ -175,12 +177,14 @@ function toPayload(d: DraftDeparture) {
 
 // ── subcomponents ──────────────────────────────────────────────────────────
 
-function DepartureChip({ dep, focused, selected, dirty, deleted, onClick }: {
+function DepartureChip({ dep, focused, selected, dirty, deleted, marcos, onClick }: {
   dep:      DraftDeparture
   focused:  boolean
   selected: boolean
   dirty:    boolean
   deleted:  boolean
+  // Marcos (LineServiceRequirement) this departure covers — same top border as the vehicle plan
+  marcos?:  string[]
   onClick:  (e: React.MouseEvent) => void
 }) {
   const dotHex = dep.markings?.[0] ? BG_COLOR_OPTIONS.find(o => o.value === dep.markings![0].bgColor)?.hex : undefined
@@ -189,8 +193,10 @@ function DepartureChip({ dep, focused, selected, dirty, deleted, onClick }: {
     <button
       type="button"
       onClick={onClick}
+      title={marcos?.length ? marcos.map(m => `Marco: ${m}`).join('\n') : undefined}
       className={cn(
         'relative h-9 flex items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors',
+        marcos?.length && 'border-t-4 border-t-neutral-900 dark:border-t-neutral-400',
         'border-border bg-card hover:bg-muted',
         focused  && 'ring-2 ring-ring',
         selected && 'bg-accent/60 border-accent',
@@ -771,6 +777,42 @@ export default function LineScheduleDetailPage() {
     }
   }
 
+  // ── Marcos (LineServiceRequirement) — notification only, never blocks saving/approving ──
+
+  const liveDepartures = useMemo(() => (draft ?? []).filter(d => !deletedIds.has(d.id)), [draft, deletedIds])
+  const requirementCoverage = useScheduleRequirements(
+    lineId, header?.dayTypeId ?? schedule?.dayTypeId, liveDepartures, routes,
+  )
+
+  // takes the grid to the uncovered Marco: its direction's tab, focused on the departure
+  // closest to the window
+  function revealRequirement(direction: string, from: number, to: number) {
+    const route = routes.find(r => r.direction === direction)
+    if (!route) { toast.error(`A linha não tem rota de ${ROUTE_DIRECTION_LABEL[direction] ?? direction}`); return }
+    switchTab(route.id)
+    const list    = departuresFor(route.id).filter(d => !deletedIds.has(d.id))
+    const dist    = (m: number) => (m < from ? from - m : m > to ? m - to : 0)
+    const nearest = list.reduce<DraftDeparture | null>((best, d) => (!best || dist(d.departureMinutes) < dist(best.departureMinutes) ? d : best), null)
+    if (pendingNew) setPendingNew(null)
+    setSelectedIds(new Set())
+    shiftAnchorRef.current = nearest?.id ?? null
+    setFocusedId(nearest?.id ?? null)
+  }
+
+  const requirementStatus: TopbarStatus = {
+    loading: requirementCoverage.isLoading,
+    groups:  [{
+      label: 'Marcos sem partida na janela',
+      items: requirementCoverage.uncovered.map(r => ({
+        label:    r.label,
+        detail:   `${ROUTE_DIRECTION_LABEL[r.direction] ?? r.direction} · ${r.kind === 'BOARDING' ? 'embarque' : 'desembarque'}`
+          + `${r.locality ? ` em ${r.locality.name}` : ''} ${serviceRequirementWindowText(r)}`,
+        severity: 'warning' as const,
+        onClick:  () => revealRequirement(r.direction, r.earliestMinutes, r.latestMinutes),
+      })),
+    }],
+  }
+
   // ── topbar ─────────────────────────────────────────────────────────────
 
   useTopbarActions(
@@ -779,13 +821,14 @@ export default function LineScheduleDetailPage() {
           { label: creating ? 'Criando…' : 'Criar', icon: Icons.Save, onClick: () => { void handleCreate() }, primary: true, disabled: creating || !canCreate },
         ]
       : [
+          { label: 'Pendências', status: requirementStatus, position: 'start' as const },
           ...(canCreate ? [{ label: 'Duplicar', icon: Icons.Copy, overflow: true, onClick: () => { void handleDuplicate() }, variant: 'outline' as const }] : []),
           ...(schedule?.status === 'DRAFT' && canUpdate ? [{ label: 'Aprovar', icon: Icons.Check, onClick: () => setApproveOpen(true) }] : []),
           ...(canDelete ? [{ label: deleting ? 'Excluindo…' : 'Excluir', icon: Icons.Trash2, overflow: true, onClick: () => { void handleDelete() }, variant: 'destructive' as const, disabled: deleting }] : []),
           { label: 'Limpar', icon: Icons.Undo2, onClick: () => { void handleDiscard() }, variant: 'outline', disabled: !hasUnsavedWork },
           { label: 'Salvar', icon: Icons.Save, onClick: () => { void handleSave() }, primary: true, disabled: !isDirty || !canUpdate },
         ],
-    [isNew, creating, deleting, schedule?.status, isDirty, hasUnsavedWork, canCreate, canUpdate, canDelete, header, draft, deletedIds],
+    [isNew, creating, deleting, schedule?.status, isDirty, hasUnsavedWork, canCreate, canUpdate, canDelete, header, draft, deletedIds, requirementCoverage, routes],
   )
 
   // ── shortcuts ────────────────────────────────────────────────────────────
@@ -1058,6 +1101,7 @@ export default function LineScheduleDetailPage() {
                     selected={selectedIds.has(dep.id)}
                     dirty={JSON.stringify(baselineById.get(dep.id)) !== JSON.stringify(dep)}
                     deleted={deletedIds.has(dep.id)}
+                    marcos={requirementCoverage.departureLabels.get(dep.id)}
                     onClick={e => handleChipClick(dep, e)}
                   />
                 ))}

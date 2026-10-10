@@ -93,6 +93,7 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
   const containerRef          = useRef<HTMLDivElement>(null)
   const engineRef             = useRef<GanttEngine | null>(null)
 
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useImperativeHandle(ref, () => ({
     getSegments: () => engineRef.current?.getLayoutSegments() ?? [],
     getRows:     () => engineRef.current?.getLayoutRows()     ?? [],
@@ -115,7 +116,6 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
       highlightTimerRef.current = setTimeout(() => engineRef.current?.setTimeHighlight(null), TIME_HIGHLIGHT_MS)
     },
   }), [])
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => { if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current) }, [])
   const onViewportChangeRef   = useRef(onViewportChange)
   const onSelectionChangeRef  = useRef(onSelectionChange)

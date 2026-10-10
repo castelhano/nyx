@@ -1,5 +1,5 @@
-// Checks which trips cover each LineServiceRequirement — pure, shared by the vehicle plan screen
-// and (later) the API's notifications. See docs/proposal/plan_line_service_requirement_v1.md.
+// Checks which trips cover each Marco (LineServiceRequirement in transit.prisma) — pure, shared
+// by the vehicle plan and OSO screens and the API's activation/approval previews.
 
 export interface ServiceRequirementLike {
   id:              string
@@ -51,7 +51,7 @@ export function routeStopFractions(stops: RouteStopLike[]): { localityId: string
 // The trip's time(s) at the requirement's reference point — the passing time at the locality
 // (more than one when the route visits it twice), else the departure (BOARDING) or the arrival
 // (ALIGHTING). Null when the route's stops aren't known yet; [] when the route doesn't pass there.
-export function tripTimesAtRequirement(
+function tripTimesAtRequirement(
   req:       ServiceRequirementLike,
   trip:      ServiceRequirementTrip,
   stopsByRoute: Map<string, { localityId: string; fraction: number }[]>,

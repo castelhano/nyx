@@ -182,8 +182,8 @@ model TransitLine {
 // (ALIGHTING at the company, OUTBOUND). Any trip of the line in that direction (route
 // variants included) satisfies it when its time at the reference point falls inside
 // [earliestMinutes, latestMinutes]: the passing time for BOARDING, the arrival for ALIGHTING.
-// Never blocks anything — an uncovered requirement is a warning
-// (docs/proposal/plan_line_service_requirement_v1.md).
+// Called "Marco" in the UI. Never blocks anything — an uncovered requirement is a warning on the
+// vehicle plan / OSO screens and in the activation/approval previews.
 model LineServiceRequirement {
   id              String                 @id @default(uuid())
   lineId          String

@@ -611,8 +611,7 @@ export interface GeneratedRound {
   slack?:            { early: number; late: number }
 }
 
-/** A LineServiceRequirement as the generator sees it (docs/proposal/
- *  plan_line_service_requirement_v1.md): some passenger leg of `direction` must reach the
+/** A Marco (LineServiceRequirement) as the generator sees it: some passenger leg of `direction` must reach the
  *  reference point within [from, to]. `fraction` is where that point sits along the leg —
  *  0 = its departure, 1 = its arrival, in between for an intermediate stop (proportional to
  *  the route's legs, see routeStopFractions in @nyx/schemas). */
@@ -920,7 +919,7 @@ function applyAnchors(
     const hi     = a.to   - margin
     const times  = rounds.map(r => timeAt(r, a))
     if (times.every(t => t == null)) {
-      warnings.push(`Atendimento "${a.label}": nenhuma viagem de ${DIR_LABEL_INTERNAL[a.direction]} gerada`)
+      warnings.push(`Marco "${a.label}": nenhuma viagem de ${DIR_LABEL_INTERNAL[a.direction]} gerada`)
       continue
     }
     const covering = times.findIndex(t => t != null && t >= lo && t <= hi)
@@ -963,14 +962,14 @@ function applyAnchors(
     const mid    = (a.from + a.to) / 2
     const relief = solveDep(a, mid, anchorDep(rounds[idx]) + (mid - t), fallback)
     if (relief == null) {
-      warnings.push(`Atendimento "${a.label}" (${windowText(a)}) não pôde ser atendido`)
+      warnings.push(`Marco "${a.label}" (${windowText(a)}) não pôde ser atendido`)
       continue
     }
     const round = build(relief, fallback)
     const at    = rounds.findIndex(r => anchorDep(r) > relief)
     rounds.splice(at === -1 ? rounds.length : at, 0, round)
     pin(round.id, a)
-    warnings.push(`Reforço inserido para o atendimento "${a.label}" (${DIR_LABEL_INTERNAL[a.direction]} ${windowText(a)}) — pode exigir um carro a mais`)
+    warnings.push(`Reforço inserido para o marco "${a.label}" (${DIR_LABEL_INTERNAL[a.direction]} ${windowText(a)}) — pode exigir um carro a mais`)
   }
 
   for (let i = 0; i < rounds.length; i++) {
@@ -1283,9 +1282,8 @@ export function generateSchedule(
   firstTripDirection:     Direction,
   lastTripDirection:      Direction,
   maneuverMarginMinutes:  number,
-  anchors:                GenAnchor[] = [],
 ): { blocks: GeneratedBlock[]; warnings: string[] } {
-  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection, anchors)
+  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection)
   const blocks = assignRoundsToBlocks(rounds, maneuverMarginMinutes)
   return { blocks, warnings }
 }

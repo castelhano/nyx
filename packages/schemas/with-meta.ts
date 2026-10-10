@@ -18,6 +18,7 @@ export type BreadcrumbDef = {
   nameFirstWord?: boolean  // show only the first word of the name in the breadcrumb; default true
   keybind?:      string   // shortcut to the button that the parent renders to navigate to this child
   overflow?:     boolean  // force the parent's nav button for this child into the topbar's ⋯ dropdown
+  order?:        number   // position among the parent's child buttons — ascending, default 0; ties keep registration order
 }
 
 export type RowActionInput = {

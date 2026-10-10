@@ -112,7 +112,7 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway,
               </p>
             )}
             {serviceLabels?.map(l => (
-              <p key={l} className="text-xs mt-0.5 font-medium">Atende: {l}</p>
+              <p key={l} className="text-xs mt-0.5 font-medium">Marco: {l}</p>
             ))}
           </>
         )}

@@ -25,7 +25,7 @@ import {
   type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock, type GeneratedLeg, type GenAnchor,
 } from '../line-generator-logic'
 import { checkServiceRequirements, routeStopFractions, serviceRequirementWindowText } from '@nyx/schemas'
-import type { ServiceRequirementRecord } from '../hooks/useServiceRequirements'
+import { useLineServiceRequirements } from '../../../use-line-service-requirements'
 import {
   detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup, measureInterleaveShift, earliestCrossingMinutes,
   DEFAULT_MIN_TRUNK_HEADWAY_MINUTES, DEFAULT_MAX_SHIFT_FRACTION,
@@ -231,8 +231,7 @@ interface Props {
   planId:               string
   lineIds:              string[]
   dayTypeCode:          string
-  // LineServiceRequirements of this day type become generation anchors
-  // (docs/proposal/plan_line_service_requirement_v1.md)
+  // the Marcos (LineServiceRequirement) of this day type become generation anchors
   dayTypeId:            string | null
   // trips already persisted for these lines in this plan — Gerar replaces them, but
   // only on the server once the user saves (staged in pendingDeletes until then).
@@ -285,17 +284,7 @@ export function LineScheduleGeneratorModal({
     return m
   }, [routesQueries, lineIds])
 
-  // same key as useServiceRequirements — shared cache
-  const { data: allRequirements = [] } = useQuery<ServiceRequirementRecord[]>({
-    queryKey: ['transit', 'line-service-requirement', 'by-day-type', dayTypeId],
-    queryFn:  async () => {
-      const res = await apiFetch(`/transit/line-service-requirement?dayTypeId=${dayTypeId}&pageSize=999`)
-      if (!res.ok) return []
-      return (await res.json()).data ?? []
-    },
-    enabled:   !!dayTypeId,
-    staleTime: 30_000,
-  })
+  const { data: allRequirements = [] } = useLineServiceRequirements(dayTypeId)
 
   const { data: localities = [] } = useQuery<LocalityRecord[]>({
     queryKey: ['transit', 'transit-locality', 'all'],
@@ -971,14 +960,14 @@ export function LineScheduleGeneratorModal({
         const direction = r.direction as Direction
         const route     = routeByDir?.get(direction)
         if (!route) {
-          generalWarnings.add(`${code}: atendimento "${r.label}" ignorado — sem rota de ${DIR_LABEL[direction]}`)
+          generalWarnings.add(`${code}: marco "${r.label}" ignorado — sem rota de ${DIR_LABEL[direction]}`)
           continue
         }
         let fraction = r.kind === 'BOARDING' ? 0 : 1
         if (r.localityId) {
           const stop = stopsByRouteId.get(route.routeId)?.find(st => st.localityId === r.localityId)
           if (!stop) {
-            generalWarnings.add(`${code}: atendimento "${r.label}" ignorado — a rota de ${DIR_LABEL[direction]} usada na geração não passa por ${r.locality?.name ?? 'o ponto'}`)
+            generalWarnings.add(`${code}: marco "${r.label}" ignorado — a rota de ${DIR_LABEL[direction]} usada na geração não passa por ${r.locality?.name ?? 'o ponto'}`)
             continue
           }
           fraction = stop.fraction
@@ -1147,7 +1136,7 @@ export function LineScheduleGeneratorModal({
     const { coveredBy } = checkServiceRequirements(requirements, generatedTrips, stopsByRouteId)
     const uncoveredRequirements = requirements.filter(r => (coveredBy.get(r.id) ?? []).length === 0)
     for (const r of uncoveredRequirements) {
-      generalWarnings.add(`${linesById.get(r.lineId)?.code ?? r.lineId}: atendimento "${r.label}" `
+      generalWarnings.add(`${linesById.get(r.lineId)?.code ?? r.lineId}: marco "${r.label}" `
         + `(${DIR_LABEL[r.direction as Direction]} ${serviceRequirementWindowText(r)}) não atendido`)
     }
 
@@ -1362,7 +1351,7 @@ export function LineScheduleGeneratorModal({
 
       const blockCount = [...perLineBlocks.values()].reduce((s, b) => s + b.length, 0)
       const coverageText = requirements.length > 0
-        ? ` · atendimentos ${requirements.length - uncoveredRequirements.length}/${requirements.length}`
+        ? ` · marcos ${requirements.length - uncoveredRequirements.length}/${requirements.length}`
         : ''
       toast.success(`${generatedTripCount} viagens geradas em ${blockCount} blocos${coverageText} — revise e clique em Salvar para persistir`)
       generalWarnings.forEach(w => toast.warning(w))

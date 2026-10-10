@@ -249,7 +249,7 @@ export default function VehiclePlanPage() {
   }, [mergedPlottedData, offScheduleTripIds, visibleBlockIds, serviceReqs.tripLabels])
 
   // ── pendências (topbar status) — uncovered service requirements + the blocks' modeling
-  // issues as of the last save (docs/proposal/plan_line_service_requirement_v1.md). Clicking
+  // issues as of the last save. Clicking
   // one takes the Gantt to it; its line may not be plotted yet, so the line gets selected
   // first and the reveal runs once mergedPlottedData has it.
 
@@ -325,7 +325,7 @@ export default function VehiclePlanPage() {
       loading: !ganttData || serviceReqs.isLoading,
       groups:  [
         ...[...byLine].sort(([a], [b]) => a.localeCompare(b, 'pt-BR', { numeric: true }))
-          .map(([code, items]) => ({ label: `Atendimentos — linha ${code}`, items })),
+          .map(([code, items]) => ({ label: `Marcos — linha ${code}`, items })),
         { label: 'Blocos (última gravação)', items: blockItems },
       ],
     }

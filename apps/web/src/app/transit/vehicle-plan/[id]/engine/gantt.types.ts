@@ -34,8 +34,8 @@ export interface GanttSegment {
   // Trip has one or more entries in TripMarking[] (docs/proposal/plan_trip_markings_v1.md) —
   // one dash regardless of how many markings, count is only visible in TripDetailsModal.
   marked?:     boolean
-  // Trip covers one or more LineServiceRequirements (docs/proposal/plan_line_service_requirement_v1.md)
-  // — a stripe on the left edge, the labels only in the tooltip.
+  // Trip covers one or more Marcos (LineServiceRequirement) — a thicker top border, the labels
+  // only in the tooltip.
   servesRequirement?: boolean
   // Boarding pattern of the trip — undefined for non-'trip' kinds. No color
   // channel: color is already spoken for by line identity (see vehiclesView).
