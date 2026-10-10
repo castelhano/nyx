@@ -61,6 +61,9 @@ export interface FieldMeta {
   lazyEdit?: boolean
   /** For `widget: 'map-picker'` — name of the sibling field holding the paired coordinate (e.g. lat's pairField is 'lng'). */
   pairField?: string
+  /** Form row label: consecutive fields with the same `row` share one form row under this label,
+   *  each with its own `label` as a small caption above it (switches keep theirs beside them). */
+  row?: string
   /** On create-only forms, GET this endpoint once on mount and prefill the field with `response[fieldName]` if the field has no value yet. */
   suggestEndpoint?: string
   /** Names of sibling fields to send as query params to `suggestEndpoint`. When set, the suggestion also re-fetches whenever these fields change (not just once on mount), as long as the field itself hasn't been edited by hand. */
@@ -105,6 +108,7 @@ export interface MetadataField {
   pairField?: string
   suggestEndpoint?: string
   suggestParams?: string[]
+  row?: string
   fields?: MetadataField[]
   itemFields?: MetadataField[]
 }

@@ -6,6 +6,7 @@ import { useMetadata } from './useMetadata'
 import { FieldRenderer } from './FieldRenderer'
 import { Tabs, type TabsHandle } from '@/components/ui/tabs'
 import { useKeywatch } from '@/lib/keywatch/context'
+import { cn } from '@/lib/utils'
 import { apiFetch, uploadFile } from '@/lib/auth'
 import type { MetadataField } from '@nyx/types'
 
@@ -182,27 +183,61 @@ export function AutoForm({ domain, resource, defaultValues, readonlyFields, read
 
   function fieldGrid(fields: MetadataField[], autoFocusFirst = false) {
     let focusGiven = false
+    const render = (field: MetadataField, bare = false) => {
+      const isReadonly  = readOnly || readonlySet.has(field.name)
+      // lazyEdit fields with a value will render as locked (no focusable input) — skip them
+      const willBeLocked = field.lazyEdit && !!mergedValues[field.name]
+      const giveFocus   = autoFocusFirst && !focusGiven && !isReadonly && !willBeLocked
+      if (giveFocus) focusGiven = true
+      const Custom = customFields?.[field.name]
+      if (Custom) return <div key={field.name} className="md:col-span-2"><Custom control={control} readonly={!!isReadonly} /></div>
+      return (
+        <FieldRenderer
+          // remount lazyEdit fields on reset so isEditing state reverts to locked
+          key={field.lazyEdit ? `${field.name}-${resetSignal ?? 0}` : field.name}
+          field={field}
+          register={register(field.name, { required: field.required ? 'Campo obrigatório' : false })}
+          control={control}
+          readonly={isReadonly}
+          error={errors[field.name]?.message as string | undefined}
+          autoFocus={giveFocus}
+          bare={bare}
+        />
+      )
+    }
+
+    // consecutive fields sharing a `row` go side by side under its label
+    const rows: MetadataField[][] = []
+    for (const field of fields) {
+      const last = rows[rows.length - 1]
+      if (field.row && last?.[0].row === field.row) last.push(field)
+      else rows.push([field])
+    }
+
     return (
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start">
-        {fields.map((field) => {
-          const isReadonly  = readOnly || readonlySet.has(field.name)
-          // lazyEdit fields with a value will render as locked (no focusable input) — skip them
-          const willBeLocked = field.lazyEdit && !!mergedValues[field.name]
-          const giveFocus   = autoFocusFirst && !focusGiven && !isReadonly && !willBeLocked
-          if (giveFocus) focusGiven = true
-          const Custom = customFields?.[field.name]
-          if (Custom) return <div key={field.name} className="md:col-span-2"><Custom control={control} readonly={!!isReadonly} /></div>
+        {rows.map((row) => {
+          if (!row[0].row) return render(row[0])
+          const help = row.filter((f) => f.helpText)
+          // captions (non-switch fields) push the controls down — the row label follows them
+          const captioned = row.some((f) => f.widget !== 'switch')
           return (
-            <FieldRenderer
-              // remount lazyEdit fields on reset so isEditing state reverts to locked
-              key={field.lazyEdit ? `${field.name}-${resetSignal ?? 0}` : field.name}
-              field={field}
-              register={register(field.name, { required: field.required ? 'Campo obrigatório' : false })}
-              control={control}
-              readonly={isReadonly}
-              error={errors[field.name]?.message as string | undefined}
-              autoFocus={giveFocus}
-            />
+            <div key={row[0].name} className="contents">
+              <span className={cn('text-sm font-medium', captioned ? 'md:pt-7' : 'pt-2')}>{row[0].row}</span>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+                  {row.map((field) => field.widget === 'switch' ? (
+                    <div key={field.name} className="h-9 flex items-center">{render(field, true)}</div>
+                  ) : (
+                    <div key={field.name} className="space-y-1">
+                      <label htmlFor={field.name} className="block text-xs text-muted-foreground">{field.label}</label>
+                      {render(field, true)}
+                    </div>
+                  ))}
+                </div>
+                {help.map((f) => <p key={f.name} className="text-xs text-muted-foreground">{f.label}: {f.helpText}</p>)}
+              </div>
+            </div>
           )
         })}
       </div>

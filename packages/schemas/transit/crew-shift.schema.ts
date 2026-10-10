@@ -7,11 +7,12 @@ import { withMeta } from '../with-meta'
 // outside [idealMin, idealMax] it still fits, only further from the ideal. floor ≤ idealMin ≤
 // idealMax ≤ ceiling is checked in CrewShiftService (a refine here would break the .omit() below).
 
-const timeField = (label: string, keybind?: string) => z.number().int().min(0).max(2880).meta({
+const timeField = (row: string, label: string, keybind?: string) => z.number().int().min(0).max(2880).meta({
   label,
+  row,
   widget:         'time',
   listVisibility: 'hidden',
-  className:      'md:w-28',
+  className:      'md:w-32',
   ...(keybind ? { keybind } : {}),
 })
 
@@ -21,38 +22,42 @@ export const crewShiftSchema = withMeta(
 
     code: z.string().min(1).max(10).meta({
       label:          'Código',
+      row:            'Turno',
       listVisibility: 'visible',
-      className:      'md:w-28',
+      className:      'md:w-32',
       keybind:        'c',
     }),
 
     name: z.string().min(2).meta({
       label:          'Nome',
+      row:            'Turno',
       listVisibility: 'visible',
-      className:      'md:w-1/3',
+      // two columns of the rows below (2 × w-32 + gap-x-3)
+      className:      'md:w-[16.75rem]',
       keybind:        'n',
     }),
 
     priority: z.number().int().min(0).default(0).meta({
       label:          'Prioridade',
-      helpText:       'Desempate quando uma tabela cabe em mais de um turno — menor vence.',
+      row:            'Turno',
       listVisibility: 'visible',
-      className:      'md:w-28',
+      className:      'md:w-32',
       defaultValue:   0,
     }),
 
-    startFloor:    timeField('Início — mínimo', 'i'),
-    startIdealMin: timeField('Início — ideal de'),
-    startIdealMax: timeField('Início — ideal até'),
-    startCeiling:  timeField('Início — máximo'),
+    startFloor:    timeField('Início', 'Mínimo', 'i'),
+    startIdealMin: timeField('Início', 'Ideal de'),
+    startIdealMax: timeField('Início', 'Ideal até'),
+    startCeiling:  timeField('Início', 'Máximo'),
 
-    endFloor:      timeField('Término — mínimo', 't'),
-    endIdealMin:   timeField('Término — ideal de'),
-    endIdealMax:   timeField('Término — ideal até'),
-    endCeiling:    timeField('Término — máximo'),
+    endFloor:      timeField('Término', 'Mínimo', 't'),
+    endIdealMin:   timeField('Término', 'Ideal de'),
+    endIdealMax:   timeField('Término', 'Ideal até'),
+    endCeiling:    timeField('Término', 'Máximo'),
 
     allowSplit: z.boolean().default(false).meta({
-      label:          'Aceita dupla pegada',
+      label:          'Dupla pegada',
+      row:            'Opções',
       widget:         'switch',
       listVisibility: 'visible',
       defaultValue:   'false',
@@ -60,6 +65,7 @@ export const crewShiftSchema = withMeta(
 
     isActive: z.boolean().default(true).meta({
       label:          'Ativo',
+      row:            'Opções',
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
@@ -69,7 +75,6 @@ export const crewShiftSchema = withMeta(
     // CrewShiftBranch — the empresas using the shift
     branchIds: z.array(z.uuid()).min(1, 'Selecione ao menos uma empresa').meta({
       label:          'Empresas',
-      helpText:       'Empresas com horário diferente ganham um turno próprio.',
       widget:         'multi-select',
       resource:       'branch',
       domain:         'core',

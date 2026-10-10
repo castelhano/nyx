@@ -227,6 +227,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       ...(meta.pairField           ? { pairField:   meta.pairField }            : {}),
       ...(meta.suggestEndpoint     ? { suggestEndpoint: meta.suggestEndpoint }  : {}),
       ...(meta.suggestParams       ? { suggestParams: meta.suggestParams }      : {}),
+      ...(meta.row                 ? { row:         meta.row }                  : {}),
       ...(fieldGroupMap.has(name)  ? { group:       fieldGroupMap.get(name)! }  : {}),
       ...(resolveFilterDef(field, meta.filter) ? { filter: resolveFilterDef(field, meta.filter) } : {}),
       ...(meta.widget === 'object-editor' && inner instanceof ZodObject

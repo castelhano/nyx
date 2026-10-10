@@ -32,6 +32,8 @@ interface Props {
   readonly?:   boolean
   error?:      string
   autoFocus?:  boolean
+  // only the control (+ error), no label/help — the field sits in a shared form row (meta `row`)
+  bare?:       boolean
 }
 
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
@@ -661,7 +663,7 @@ function MapPickerFieldWidget({
   )
 }
 
-export function FieldRenderer({ field, register, control, readonly, error, autoFocus }: Props) {
+export function FieldRenderer({ field, register, control, readonly, error, autoFocus, bare }: Props) {
   if (field.widget === 'map-picker' && control) {
     return (
       <>
@@ -707,7 +709,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
 
   if (field.widget === 'switch' && control) {
     return (
-      <div className="md:col-start-2 flex items-center gap-2 pt-1">
+      <div className={cn('flex items-center gap-2 pt-1', !bare && 'md:col-start-2')}>
         <Controller
           name={field.name}
           control={control}
@@ -833,6 +835,15 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
           className={cn(fieldInputCls, field.keybind && 'md:pr-10', readonly && readonlyCls)}
         />
         {field.keybind && <KeyHint k={field.keybind} />}
+      </div>
+    )
+  }
+
+  if (bare) {
+    return (
+      <div className="space-y-1">
+        {controlEl}
+        {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
     )
   }
