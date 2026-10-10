@@ -9,25 +9,32 @@ import type { CrewBoardData, BoardDuty } from '../board.types'
 import { fmtDuration, dutyColorVars, SWATCH_BG_CLASS, ROLE_LABEL, KIND_LABEL, CRITERION_LABEL } from '../board.types'
 import { cn } from '@/lib/utils'
 import { Badge } from './DutyPanel'
+import { dutyWalks } from '../filters'
 
 interface Props {
   data:           CrewBoardData
   // duties left after the filter bar's criteria
   duties:         BoardDuty[]
+  // filter matches (no pins) — the summary is recomputed over them; null = that side unfiltered
+  matchedDuties:   BoardDuty[] | null
+  matchedBlockIds: Set<string> | null
   issuesActive:   boolean
   staleActive:    boolean
   onToggleIssues: () => void
   onToggleStale:  () => void
+  walkActive:     boolean
+  onToggleWalk:   () => void
   canEdit:        boolean
   onSelect:       (duty: BoardDuty) => void
   onCreate:       (role: CrewRole) => void
 }
 
 // Shown when no duty is selected — plan-level summary and the full duty list.
-export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIssues, onToggleStale, canEdit, onSelect, onCreate }: Props) {
+export function PlanPanel({ data, duties, matchedDuties, matchedBlockIds, issuesActive, staleActive, onToggleIssues, onToggleStale, walkActive, onToggleWalk, canEdit, onSelect, onCreate }: Props) {
   const [role, setRole] = useState<CrewRole>('DRIVER')
   const [dutySearch, setDutySearch] = useState('')
   const s = data.plan.summary
+  const f = filteredSummary(data, matchedDuties, matchedBlockIds)
 
   const filteredDuties = dutySearch.trim()
     ? duties.filter(d => formatDutyNumber(d.role, d.dutyNumber).toLowerCase().includes(dutySearch.trim().toLowerCase()))
@@ -46,20 +53,21 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
         {s && (
           <div className="grid grid-cols-3 gap-2 text-xs">
-            <Stat label="Jornadas"   value={String(s.dutyCount)} />
+            <Stat label="Jornadas"   value={String(f.dutyCount)} filtered={!!matchedDuties} />
             <Stat label="Score"      value={String(s.score)} />
-            <Stat label="Sem motorista" value={fmtDuration(s.uncoveredMinutes)} tone={s.uncoveredMinutes > 0 ? 'red' : undefined} />
+            <Stat label="Sem motorista" value={fmtDuration(f.uncoveredMinutes ?? s.uncoveredMinutes)} tone={(f.uncoveredMinutes ?? s.uncoveredMinutes) > 0 ? 'red' : undefined} filtered={!!matchedBlockIds} />
             {(['STRAIGHT', 'SPLIT', 'TRIPPER'] as const).map(k => {
-              const n = s.byKind[k] ?? 0
-              return <Stat key={k} label={KIND_LABEL[k]} value={String(n)} suffix={`${s.dutyCount ? Math.round((n / s.dutyCount) * 100) : 0}%`} />
+              const n = f.byKind[k] ?? 0
+              return <Stat key={k} label={KIND_LABEL[k]} value={String(n)} suffix={`${f.dutyCount ? Math.round((n / f.dutyCount) * 100) : 0}%`} filtered={!!matchedDuties} />
             })}
-            <Stat label="Trabalhado" value={fmtDuration(s.workMinutes)} />
-            <Stat label="Pago"       value={fmtDuration(s.paidMinutes)} />
-            <Stat label="Extra"      value={fmtDuration(s.overtimeMinutes)} />
-            <Stat label="Desatualizadas" value={String(s.staleDutyCount)} tone={s.staleDutyCount > 0 ? 'red' : undefined} active={staleActive} onClick={onToggleStale} />
-            <Stat label="Com pendências" value={String(s.issueDutyCount)} tone={s.issueDutyCount > 0 ? 'amber' : undefined} active={issuesActive} onClick={onToggleIssues} />
-            <Stat label="Noturno"    value={fmtDuration(s.nightMinutes)} />
-            <Stat label="Condutores/carro" value={s.driversPerVehicle != null ? s.driversPerVehicle.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'} />
+            <Stat label="Trabalhado" value={fmtDuration(f.workMinutes)} filtered={!!matchedDuties} />
+            <Stat label="Pago"       value={fmtDuration(f.paidMinutes)} filtered={!!matchedDuties} />
+            <Stat label="Extra"      value={fmtDuration(f.overtimeMinutes)} filtered={!!matchedDuties} />
+            <Stat label="Desatualizadas" value={String(f.staleCount)} tone={f.staleCount > 0 ? 'red' : undefined} active={staleActive} onClick={onToggleStale} filtered={!!matchedDuties} />
+            <Stat label="Com pendências" value={String(f.issueCount)} tone={f.issueCount > 0 ? 'amber' : undefined} active={issuesActive} onClick={onToggleIssues} filtered={!!matchedDuties} />
+            <Stat label="Noturno"    value={fmtDuration(f.nightMinutes)} filtered={!!matchedDuties} />
+            <Stat label="A pé" value={String(f.walkCount)} suffix={`${f.walkMeters.toLocaleString('pt-BR')} m`} active={walkActive} onClick={onToggleWalk} filtered={!!matchedDuties} />
+            <Stat label="Condutores/carro" value={f.driversPerVehicle != null ? f.driversPerVehicle.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'} filtered={!!matchedDuties} />
           </div>
         )}
 
@@ -124,6 +132,45 @@ export function PlanPanel({ data, duties, issuesActive, staleActive, onToggleIss
   )
 }
 
+// The summary cards over the filtered duties / vehicles. Unfiltered it sums the same per-duty
+// summaries the server does, so the numbers match plan.summary; uncoveredMinutes is null when
+// the vehicle side is unfiltered (the card falls back to the plan's).
+function filteredSummary(data: CrewBoardData, matchedDuties: BoardDuty[] | null, matchedBlockIds: Set<string> | null) {
+  const duties = matchedDuties ?? data.duties
+  const byKind: Partial<Record<BoardDuty['kind'], number>> = {}
+  let workMinutes = 0, paidMinutes = 0, overtimeMinutes = 0, nightMinutes = 0
+  let staleCount = 0, issueCount = 0, walkCount = 0, walkMeters = 0
+  // distinct DRIVER duties per vehicle (live pieces only), as the server's driversPerVehicle
+  const driversByBlock = new Map<string, Set<string>>()
+  for (const d of duties) {
+    byKind[d.kind] = (byKind[d.kind] ?? 0) + 1
+    workMinutes     += d.summary?.workMinutes ?? 0
+    paidMinutes     += d.summary?.paidMinutes ?? 0
+    overtimeMinutes += d.summary?.overtimeMinutes ?? 0
+    nightMinutes    += d.summary?.nightMinutes ?? 0
+    if (d.isStale)   staleCount++
+    if (d.hasIssues) issueCount++
+    if (dutyWalks(d)) { walkCount++; walkMeters += d.summary?.walkMeters ?? 0 }
+    if (d.role !== 'DRIVER') continue
+    for (const p of d.pieces) {
+      if (!p.vehicleBlockId || p.isStale) continue
+      const set = driversByBlock.get(p.vehicleBlockId) ?? new Set<string>()
+      set.add(d.id)
+      driversByBlock.set(p.vehicleBlockId, set)
+    }
+  }
+  let slots = 0
+  for (const set of driversByBlock.values()) slots += set.size
+  const uncoveredMinutes = matchedBlockIds
+    ? (data.plan.summary?.uncovered ?? []).filter(u => matchedBlockIds.has(u.vehicleBlockId)).reduce((sum, u) => sum + u.endMinutes - u.startMinutes, 0)
+    : null
+  return {
+    dutyCount: duties.length, byKind, workMinutes, paidMinutes, overtimeMinutes, nightMinutes,
+    staleCount, issueCount, walkCount, walkMeters, uncoveredMinutes,
+    driversPerVehicle: driversByBlock.size ? slots / driversByBlock.size : null,
+  }
+}
+
 // points each criterion took off the score (9999 × weight × (1 − value) ÷ Σ weights), largest
 // first — collapsed until asked for
 function ScoreLosses({ criteria }: { criteria: { key: string; weight: number; value: number }[] }) {
@@ -160,8 +207,9 @@ function ScoreLosses({ criteria }: { criteria: { key: string; weight: number; va
   )
 }
 
-function Stat({ label, value, suffix, tone, active, onClick }: {
-  label: string; value: string; suffix?: string; tone?: 'red' | 'amber'; active?: boolean; onClick?: () => void
+// filtered: the value follows the filter bar — tinted so it reads apart from plan-wide values
+function Stat({ label, value, suffix, tone, active, onClick, filtered }: {
+  label: string; value: string; suffix?: string; tone?: 'red' | 'amber'; active?: boolean; onClick?: () => void; filtered?: boolean
 }) {
   const content = (
     <>
@@ -171,13 +219,14 @@ function Stat({ label, value, suffix, tone, active, onClick }: {
       </p>
     </>
   )
-  if (!onClick) return <div className="rounded bg-muted/40 px-2 py-1">{content}</div>
+  const bg = filtered ? 'bg-primary/10' : 'bg-muted/40'
+  if (!onClick) return <div className={cn('rounded px-2 py-1', bg)}>{content}</div>
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={cn('rounded px-2 py-1 text-left ring-1 ring-inset', active ? 'bg-muted ring-ring' : 'bg-muted/40 ring-transparent hover:bg-muted')}
+      className={cn('rounded px-2 py-1 text-left ring-1 ring-inset', active ? 'bg-muted ring-ring' : cn(bg, 'ring-transparent hover:bg-muted'))}
     >
       {content}
     </button>

@@ -42,6 +42,7 @@ function conditionText(c: FilterCondition): string {
 const FLAGS = [
   { key: 'withIssues', label: 'Com pendências' },
   { key: 'staleOnly',  label: 'Desatualizadas' },
+  { key: 'walking',    label: 'Deslocamento a pé' },
   { key: 'multiLine',  label: 'Mais de uma linha' },
 ] as const
 

@@ -26,7 +26,7 @@ import { PlanPanel } from './components/PlanPanel'
 import { DutyBoard } from './components/DutyBoard'
 import { useTimeRange, LABEL_W } from './components/Timeline'
 import { CrewFilterBar } from './components/CrewFilterBar'
-import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, type CrewFilter } from './filters'
+import { EMPTY_FILTER, isFilterActive, blockMatches, dutyMatches, dutyWalks, type CrewFilter } from './filters'
 import { lineColorMap, dutyLineCodes } from './board.types'
 import { InlineDescription } from '../../vehicle-plan/[id]/components/InlineDescription'
 import { Badge } from '@/components/ui/badge'
@@ -219,35 +219,48 @@ export default function CrewPlanPage() {
     [showLineColors, planLineCodes],
   )
 
+  // rows matching the filter's vehicle / duty criteria (pins excluded) — null when that side's
+  // criteria are off. Both views use them: the board for its rows, the side panel for its summary
+  const matchedBlockIds = useMemo(() => {
+    if (!data || !filterOpen || !isFilterActive(filter, 'vehicles')) return null
+    const uncoveredIds = new Set((data.plan.summary?.uncovered ?? []).map(u => u.vehicleBlockId))
+    const staleIds = new Set<string>(), issueIds = new Set<string>(), walkIds = new Set<string>()
+    for (const d of data.duties) for (const p of d.pieces) {
+      if (!p.vehicleBlockId) continue
+      if (d.isStale)      staleIds.add(p.vehicleBlockId)
+      if (d.hasIssues)    issueIds.add(p.vehicleBlockId)
+      if (dutyWalks(d))   walkIds.add(p.vehicleBlockId)
+    }
+    return new Set(data.blocks
+      .filter(b => blockMatches(filter, b, uncoveredIds.has(b.id), { stale: staleIds.has(b.id), issues: issueIds.has(b.id), walking: walkIds.has(b.id) }))
+      .map(b => b.id))
+  }, [data, filter, filterOpen])
+  const matchedDuties = useMemo(() => {
+    if (!data || !filterOpen || !isFilterActive(filter, 'duties')) return null
+    return data.duties.filter(d => dutyMatches(filter, d, dutyLines.get(d.id) ?? []))
+  }, [data, dutyLines, filter, filterOpen])
+
   // rows left after the filter (pinned rows always stay); count excludes pins
   const { visibleBlocks, visibleDuties, matchCount } = useMemo(() => {
     const blocks = data?.blocks ?? [], duties = data?.duties ?? []
-    if (!filterOpen || !isFilterActive(filter, view)) return { visibleBlocks: blocks, visibleDuties: duties, matchCount: 0 }
     if (view === 'vehicles') {
-      const uncoveredIds = new Set((data?.plan.summary?.uncovered ?? []).map(u => u.vehicleBlockId))
-      const staleIds = new Set<string>(), issueIds = new Set<string>()
-      for (const d of duties) for (const p of d.pieces) {
-        if (!p.vehicleBlockId) continue
-        if (d.isStale)   staleIds.add(p.vehicleBlockId)
-        if (d.hasIssues) issueIds.add(p.vehicleBlockId)
-      }
-      const matched = blocks.filter(b => blockMatches(filter, b, uncoveredIds.has(b.id), { stale: staleIds.has(b.id), issues: issueIds.has(b.id) }))
-      const ids = new Set(matched.map(b => b.id))
-      return { visibleBlocks: blocks.filter(b => ids.has(b.id) || pinnedBlockIds.has(b.id)), visibleDuties: duties, matchCount: matched.length }
+      if (!matchedBlockIds) return { visibleBlocks: blocks, visibleDuties: duties, matchCount: 0 }
+      return { visibleBlocks: blocks.filter(b => matchedBlockIds.has(b.id) || pinnedBlockIds.has(b.id)), visibleDuties: duties, matchCount: matchedBlockIds.size }
     }
-    const matched = duties.filter(d => dutyMatches(filter, d, dutyLines.get(d.id) ?? []))
-    const ids = new Set(matched.map(d => d.id))
-    return { visibleBlocks: blocks, visibleDuties: duties.filter(d => ids.has(d.id) || pinnedDutyIds.has(d.id)), matchCount: matched.length }
-  }, [data, dutyLines, filter, filterOpen, view, pinnedBlockIds, pinnedDutyIds])
+    if (!matchedDuties) return { visibleBlocks: blocks, visibleDuties: duties, matchCount: 0 }
+    const ids = new Set(matchedDuties.map(d => d.id))
+    return { visibleBlocks: blocks, visibleDuties: duties.filter(d => ids.has(d.id) || pinnedDutyIds.has(d.id)), matchCount: matchedDuties.length }
+  }, [data, view, matchedBlockIds, matchedDuties, pinnedBlockIds, pinnedDutyIds])
 
   // side panel list: duty criteria apply on either view
   const panelDuties = useMemo(() => {
     const duties = data?.duties ?? []
-    if (!filterOpen || !isFilterActive(filter, 'duties')) return duties
-    return duties.filter(d => dutyMatches(filter, d, dutyLines.get(d.id) ?? []) || pinnedDutyIds.has(d.id))
-  }, [data, dutyLines, filter, filterOpen, pinnedDutyIds])
+    if (!matchedDuties) return duties
+    const ids = new Set(matchedDuties.map(d => d.id))
+    return duties.filter(d => ids.has(d.id) || pinnedDutyIds.has(d.id))
+  }, [data, matchedDuties, pinnedDutyIds])
 
-  function toggleDutyFlag(key: 'withIssues' | 'staleOnly') {
+  function toggleDutyFlag(key: 'withIssues' | 'staleOnly' | 'walking') {
     setFilter(f => ({ ...f, [key]: !(filterOpen && f[key]) }))
     setFilterOpen(true)
   }
@@ -802,10 +815,14 @@ export default function CrewPlanPage() {
           <PlanPanel
             data={data}
             duties={panelDuties}
+            matchedDuties={matchedDuties}
+            matchedBlockIds={matchedBlockIds}
             issuesActive={filterOpen && filter.withIssues}
             staleActive={filterOpen && filter.staleOnly}
             onToggleIssues={() => toggleDutyFlag('withIssues')}
             onToggleStale={() => toggleDutyFlag('staleOnly')}
+            walkActive={filterOpen && filter.walking}
+            onToggleWalk={() => toggleDutyFlag('walking')}
             canEdit={canEdit}
             onSelect={focusDuty}
             onCreate={(role) => void handleCreateDuty(role)}
