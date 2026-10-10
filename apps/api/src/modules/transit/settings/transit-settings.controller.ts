@@ -66,13 +66,16 @@ export class TransitSettingsController {
     return this.crewCost.put(dto, scopeId)
   }
 
+  // ?branch=<Branch.id> | global
   @Get('roster')
-  getRoster() {
-    return this.roster.get()
+  getRoster(@Query('branch') branch?: string) {
+    const branchId = branch && branch !== 'global' ? branch : undefined
+    return this.roster.get(branchId)
   }
 
   @Put('roster')
-  putRoster(@Body() dto: unknown) {
-    return this.roster.put(dto)
+  putRoster(@Body() dto: unknown, @Query('branch') branch?: string) {
+    const branchId = branch && branch !== 'global' ? branch : undefined
+    return this.roster.put(dto, branchId)
   }
 }

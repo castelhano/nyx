@@ -30,6 +30,9 @@ const rangeDefault = {
   lineChanges:    { active: true, modifier: 15, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 2   },
   // meters a duty walks between pieces at different places — only worth it when it pays off
   walkDistance:   { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 3500 },
+  // rest between consecutive duties of the same person (minutes) — a CCT rule, read by the DOP
+  // (duty repeated the next day) and by the rostering (real consecutive days)
+  interShiftRest: { active: true, modifier: 1,  floor: 600, idealMin: 660, idealMax: 960, ceiling: 960  },
 }
 // Not criteria: a duty with an issue and an uncovered vehicle are unmet rules, not a matter of
 // weight — the crew solver puts fewer pending duties ahead of any score (solverRank) and never
@@ -102,6 +105,8 @@ export const crewSettingsSchema = withMeta(z.object({
     vehicleChanges: rangeCriterionSchema,
     lineChanges:    rangeCriterionSchema.default(rangeDefault.lineChanges),
     walkDistance:   rangeCriterionSchema.default(rangeDefault.walkDistance),
+    // moved from the roster settings — own default, settings stored before it still parse
+    interShiftRest: rangeCriterionSchema.default(rangeDefault.interShiftRest),
   }).default(rangeDefault),
 
   anchored: z.object({

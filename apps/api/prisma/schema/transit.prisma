@@ -173,6 +173,8 @@ model TransitLine {
   lineGroups LineGroupLine[]
   schedules  LineSchedule[]
   serviceRequirements LineServiceRequirement[]
+  operators           LineOperator[]
+  crewMembers         CrewMemberLine[]
 
   @@map("transit_lines")
 }
@@ -703,6 +705,21 @@ model LineGroupLine {
   @@map("transit_line_group_lines")
 }
 
+// Which branches operate a line — a line may be shared by several operators. A line with no
+// row is operated by any operator of its Scope. Read by the vehicle solver ("Consistir linha
+// da empresa", PlanningSettings.restrictToBranchLines) and flagged on blocks/duties
+// (LINE_NOT_OPERATED).
+model LineOperator {
+  lineId   String
+  branchId String
+
+  line   TransitLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  branch Branch      @relation("BranchLineOperators", fields: [branchId], references: [id])
+
+  @@id([lineId, branchId])
+  @@map("transit_line_operators")
+}
+
 // Join table (ordered) — assigns a TransitTrip to a VehicleBlock; sequence defines
 // the trip's position within the block's duty.
 model BlockTrip {
@@ -741,6 +758,238 @@ model BlockDeadrun {
 
   @@index([bundleId])
   @@map("transit_block_deadruns")
+}
+
+// A branch's work shift ("turno") — a window a duty must fit, not a label: a duty's sign-on
+// and sign-off (DutySummary.startMinutes/endMinutes) inside [floor, ceiling] of each window
+// fit the shift; outside [idealMin, idealMax] it still fits, only further from the ideal.
+// Minutes of the operational day (may run past 1440). Shared by the branches that use it
+// (CrewShiftBranch) — a branch whose hours differ gets a shift of its own. A duty gets the
+// best-fitting shift among its branch's (Duty.shiftId); crew members are bound to one
+// (rostering, later phase).
+model CrewShift {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  name               String
+  // tie-break when a duty fits several shifts — lower wins
+  priority           Int      @default(0)
+  startFloor         Int
+  startIdealMin      Int
+  startIdealMax      Int
+  startCeiling       Int
+  endFloor           Int
+  endIdealMin        Int
+  endIdealMax        Int
+  endCeiling         Int
+  // SPLIT duties fit this shift
+  allowSplit         Boolean  @default(false)
+  // default day-off cycle of the shift's crew — a crew member may override it
+  restPatternId      String?
+  isActive           Boolean  @default(true)
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  restPattern  RestPattern?      @relation(fields: [restPatternId], references: [id])
+  branches     CrewShiftBranch[]
+  duties       Duty[]
+  crewMembers  CrewMemberShift[]
+
+  @@map("transit_crew_shifts")
+}
+
+// Which branches use a CrewShift
+model CrewShiftBranch {
+  shiftId  String
+  branchId String
+
+  shift  CrewShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  branch Branch    @relation("BranchCrewShifts", fields: [branchId], references: [id])
+
+  @@id([shiftId, branchId])
+  @@map("transit_crew_shift_branches")
+}
+
+// Day-off cycle ("regime de folga") — one char per day: T = works, F = day off. Shared by every
+// branch. Day of the cycle on a date = (date − anchorDate + CrewMember.restOffset) mod length,
+// so crew members of the same pattern with different offsets are the rotation's groups
+// (half off on Saturday, half on Sunday).
+model RestPattern {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  pattern       String
+  // day 0 of the cycle
+  anchorDate    DateTime @db.Date
+  // also off on a Holiday that applies to the crew member's branch
+  offOnHolidays Boolean  @default(false)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  shifts      CrewShift[]
+  crewMembers CrewMember[]
+
+  @@map("transit_rest_patterns")
+}
+
+enum OvertimePreference {
+  LIKES
+  NEUTRAL
+  AVOIDS
+}
+
+// A crew member's operational profile — 1:1 with the Employee (branch, status and contract
+// come from there). Created by hand; the rostering (later phase) reads it.
+model CrewMember {
+  id                  String             @id @default(uuid())
+  employeeId          String             @unique
+  role                CrewRole           @default(DRIVER)
+  // out of the generator when false (still assignable by hand)
+  isRosterable        Boolean            @default(true)
+  // replace the bound shift's hard bounds: earliest sign-on (startFloor) / latest sign-off
+  // (endCeiling) — "can't start before X / finish after Y"
+  notBeforeMinutes    Int?
+  notAfterMinutes     Int?
+  // overrides the shift's RestPattern
+  restPatternId       String?
+  // the crew member's group in the cycle — days shifted from the pattern's anchor
+  restOffset          Int                @default(0)
+  // vehicle types this person may NOT operate — empty = all
+  blockedVehicleTypes VehicleType[]      @default([])
+  // optional fixed car — the generator keeps it when it can; null = habitual car
+  preferredVehicleId  String?
+  // overrides the contract's weekly hours (monthly load = weekly × 5)
+  weeklyHours         Int?
+  licenseCategory     String?
+  licenseExpiresAt    DateTime?          @db.Date
+  // collective transport course (curso de transporte coletivo)
+  courseExpiresAt     DateTime?          @db.Date
+  overtimePreference  OvertimePreference @default(NEUTRAL)
+  notes               String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  employee         Employee          @relation(fields: [employeeId], references: [id])
+  restPattern      RestPattern?      @relation(fields: [restPatternId], references: [id])
+  preferredVehicle Vehicle?          @relation(fields: [preferredVehicleId], references: [id])
+  shifts           CrewMemberShift[]
+  lines            CrewMemberLine[]
+  occurrences      CrewOccurrence[]
+
+  @@map("transit_crew_members")
+}
+
+// The crew member's shift over time — no overlap; null validTo = current
+model CrewMemberShift {
+  id           String    @id @default(uuid())
+  crewMemberId String
+  shiftId      String
+  validFrom    DateTime  @db.Date
+  validTo      DateTime? @db.Date
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  shift      CrewShift  @relation(fields: [shiftId], references: [id])
+
+  @@index([crewMemberId, validFrom])
+  @@map("transit_crew_member_shifts")
+}
+
+enum CrewLineAccess {
+  ENABLED // whitelist branch: may operate
+  BLOCKED // blacklist branch: may not operate
+}
+
+// A crew member and a line: access (meaning depends on the branch's lineAccessMode, roster
+// settings) and/or preference rank (1 = primary...). One row per pair, so a preferred line
+// can never be a blocked one.
+model CrewMemberLine {
+  id           String          @id @default(uuid())
+  crewMemberId String
+  lineId       String
+  // null = no explicit access (blacklist: allowed; whitelist: not allowed)
+  access       CrewLineAccess?
+  // 1 = primary, 2 = secondary... ≤ roster.maxPreferredLines; null = not preferred
+  rank         Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  crewMember CrewMember  @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  line       TransitLine @relation(fields: [lineId], references: [id])
+
+  @@unique([crewMemberId, lineId])
+  @@unique([crewMemberId, rank])
+  @@map("transit_crew_member_lines")
+}
+
+// Kind of absence — férias, atestado, falta, afastamento, licença...
+model CrewAbsenceType {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  // may be requested through the crew portal (quotas live in the portal profile)
+  requestable Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  occurrences CrewOccurrence[]
+
+  @@map("transit_crew_absence_types")
+}
+
+enum CrewOccurrenceKind {
+  ABSENCE     // out on [startDate, endDate]
+  TIME_WINDOW // works, but only inside the window — "parar até X horas"
+}
+
+enum CrewOccurrenceStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum CrewOccurrenceOrigin {
+  PORTAL          // asked by the crew member in the portal
+  STAFF_ON_BEHALF // asked by the crew member, entered by staff
+  STAFF           // staff decision (atestado, falta...)
+}
+
+// Something that changes a crew member's availability — an absence or a one-off time window.
+// Only APPROVED takes effect. A request (PORTAL / STAFF_ON_BEHALF) is always one day and
+// keeps what was asked in `requested`, so "requests made vs granted" holds even when staff
+// adjusts it before approving.
+model CrewOccurrence {
+  id               String               @id @default(uuid())
+  crewMemberId     String
+  kind             CrewOccurrenceKind
+  // ABSENCE only
+  absenceTypeId    String?
+  startDate        DateTime             @db.Date
+  // inclusive
+  endDate          DateTime             @db.Date
+  // TIME_WINDOW only — minutes of the operational day; either may be null
+  startNotBefore   Int?
+  endNotAfter      Int?
+  // immutable copy of what was asked — { startDate, endDate, startNotBefore?, endNotAfter? }
+  requested        Json?
+  status           CrewOccurrenceStatus @default(APPROVED)
+  origin           CrewOccurrenceOrigin @default(STAFF)
+  createdByUserId  String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  notes            String?
+  reviewNotes      String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  crewMember  CrewMember       @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  absenceType CrewAbsenceType? @relation(fields: [absenceTypeId], references: [id])
+
+  @@index([crewMemberId, startDate])
+  @@map("transit_crew_occurrences")
 }
 
 // Logical crew schedule built on top of one VehiclePlan's blocks — duties ("tabelas")
@@ -800,12 +1049,17 @@ model Duty {
   hasIssues   Boolean  @default(false)
   // DutyConstraints — { locked?: true }: the crew solver never changes a locked duty
   constraints Json?
+  // CrewShift the duty fits — derived on recalculate (best fit among the branch's shifts)
+  // unless shiftPinned, when it's the user's choice and only checked (SHIFT_MISMATCH)
+  shiftId     String?
+  shiftPinned Boolean  @default(false)
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   crewPlan   CrewPlan       @relation(fields: [crewPlanId], references: [id], onDelete: Cascade)
   branch     Branch?        @relation("BranchDuties", fields: [branchId], references: [id])
+  shift      CrewShift?     @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   pieces     DutyPiece[]
   activities DutyActivity[]
 

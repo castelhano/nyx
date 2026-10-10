@@ -32,7 +32,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const include: Record<string, unknown> = {}
     for (const [fieldName, rawField] of Object.entries(this.schema.shape)) {
       const meta = (rawField as any).meta?.() ?? {}
-      if ((meta.widget !== 'select' && meta.widget !== 'combobox') || !meta.labelField || meta.virtual) continue
+      if ((meta.widget !== 'select' && meta.widget !== 'combobox') || !meta.labelField || meta.virtual || meta.computed) continue
       const relationName = fieldName.replace(/Id$/, '')
       const select: Record<string, boolean> = { id: true, [meta.labelField]: true }
       if (Array.isArray(meta.relatedDisplayFields)) {
@@ -120,6 +120,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const result: Record<string, unknown> = {}
     for (const [name, rawField] of Object.entries(this.schema.shape)) {
       if (BaseService.IMMUTABLE_FIELDS.has(name) || !(name in dto)) continue
+      if ((rawField as any).meta?.()?.computed) continue
       const unwrapped = this.unwrapField(rawField as ZodType)
       const isOptional = (rawField as ZodType) instanceof ZodOptional || (rawField as ZodType) instanceof ZodNullable
       if (unwrapped instanceof ZodDate) {

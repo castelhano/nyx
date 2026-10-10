@@ -6,6 +6,6 @@ import { BaseSettingsService } from '../../../core/base-settings.service'
 @Injectable()
 export class TransitRosterConfigService extends BaseSettingsService<RosterSettings> {
   constructor(prisma: PrismaService) {
-    super(prisma, 'transit.roster', 'transit', rosterSettingsSchema)
+    super(prisma, 'transit.roster', 'transit', rosterSettingsSchema, 'branch')
   }
 }

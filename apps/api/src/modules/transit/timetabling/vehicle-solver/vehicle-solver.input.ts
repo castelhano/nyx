@@ -33,7 +33,7 @@ export async function loadVehicleSolverInput(
 
   const general = await generalConfig.get()
   const lineSelect = { select: { code: true, metrics: true, vehicleTypes: true } } as const
-  const [tripRows, blockRows, matrixRows, depotRows, standRows, intervalType] = await Promise.all([
+  const [tripRows, blockRows, matrixRows, depotRows, standRows, intervalType, operatorRows] = await Promise.all([
     prisma.transitTrip.findMany({
       where:  { vehiclePlanId: planId },
       select: {
@@ -67,6 +67,9 @@ export async function loadVehicleSolverInput(
     prisma.routeLocality.findMany({ where: { allowsVehicleStand: true, localityId: { not: null } }, select: { routeId: true, localityId: true } }),
     general.defaultIntervalTypeId
       ? prisma.intervalType.findUnique({ where: { id: general.defaultIntervalTypeId }, select: { minMinutes: true, maxMinutes: true } })
+      : Promise.resolve(null),
+    settings.restrictToBranchLines
+      ? prisma.lineOperator.findMany({ where: { line: { planLines: { some: { vehiclePlanId: planId } } } }, select: { lineId: true, branchId: true } })
       : Promise.resolve(null),
   ])
   if (!tripRows.length) throw new BadRequestException('O planejamento não tem viagens')
@@ -123,12 +126,19 @@ export async function loadVehicleSolverInput(
     interval:        intervalType ? { min: intervalType.minMinutes ?? 0, max: intervalType.maxMinutes ?? Infinity } : null,
     standThreshold:  intervalType?.minMinutes ?? DEFAULT_STAND_THRESHOLD,
     maxStandMinutes: intervalType?.maxMinutes ?? null,
+    lineOperators:   operatorRows ? groupLineOperators(operatorRows) : null,
   }
 
   const baseline = summarizeBlocks(reportSettings, planTrips, shares, withTrips.map(b => ({
     depotId: b.depotId, branchId: b.branchId, vehicleType: b.vehicleType, hasIssues: b.hasIssues, aggregate: aggregateOf(b),
   })))
   return { input, baseline }
+}
+
+function groupLineOperators(rows: { lineId: string; branchId: string }[]): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  for (const r of rows) map.set(r.lineId, [...(map.get(r.lineId) ?? []), r.branchId])
+  return map
 }
 
 const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`

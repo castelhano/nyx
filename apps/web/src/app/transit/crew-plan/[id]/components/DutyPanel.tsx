@@ -19,6 +19,9 @@ export interface DutyPatch {
   role:     CrewRole
   kind:     BoardDuty['kind']
   branchId: string | null
+  // pinned shift — shiftPinned false: the server derives it
+  shiftId:     string | null
+  shiftPinned: boolean
   notes:    string | null
 }
 
@@ -35,6 +38,7 @@ interface Props {
   // lines the duty operates (dutyLineCodes)
   lineCodes:    string[]
   operators:    CrewBoardData['operators']
+  shifts:       CrewBoardData['shifts']
   localityName: (id: string) => string
   canEdit:      boolean
   // bumped by alt+l — discards unsaved form edits
@@ -56,7 +60,7 @@ export function DutyPanel(props: Props) {
 }
 
 function DutyPanelInner({
-  duty, blockById, lineCodes, operators, localityName, canEdit,
+  duty, blockById, lineCodes, operators, shifts, localityName, canEdit,
   onSave, onDelete, onDeletePiece, onAdjustPiece, onAddActivity, onDeleteActivity, onClose, onToggleLock,
 }: Props) {
   const flaggedActivityIds = new Set(duty.issues.map(i => i.activityId).filter(Boolean))
@@ -64,13 +68,18 @@ function DutyPanelInner({
   const [kind, setKind]         = useState<BoardDuty['kind']>(duty.kind)
   const [branchId, setBranchId] = useState(duty.branchId ?? '')
   const [notes, setNotes]       = useState(duty.notes ?? '')
+  // '' = derived (not pinned)
+  const [pinnedShift, setPinnedShift] = useState(duty.shiftPinned ? duty.shiftId ?? '' : '')
+  // the operator's shifts — inactive ones only when pinned to one
+  const branchShifts = shifts.filter(sh => sh.branchIds.includes(branchId) && (sh.isActive || sh.id === pinnedShift))
+  const derived = !duty.shiftPinned && duty.shiftId ? shifts.find(sh => sh.id === duty.shiftId) : undefined
 
   const blockOf = (id: string | null) => (id ? blockById.get(id) : undefined)
   const s = duty.summary
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    onSave({ role, kind, branchId: branchId || null, notes: notes || null })
+    onSave({ role, kind, branchId: branchId || null, shiftId: pinnedShift || null, shiftPinned: !!pinnedShift, notes: notes || null })
   }
 
   return (
@@ -112,9 +121,22 @@ function DutyPanelInner({
             </Select>
           </Field>
           <Field label="Operador" className="col-span-2">
-            <Select value={branchId} onChange={e => setBranchId(e.target.value)} size="sm" disabled={!canEdit}>
+            <Select
+              value={branchId} size="sm" disabled={!canEdit}
+              onChange={e => {
+                setBranchId(e.target.value)
+                // a pinned shift belongs to the operator — another operator starts derived
+                if (pinnedShift && !shifts.find(sh => sh.id === pinnedShift)?.branchIds.includes(e.target.value)) setPinnedShift('')
+              }}
+            >
               <option value="">—</option>
               {operators.map(o => <option key={o.branchId} value={o.branchId}>{o.abbr} — {o.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Turno" className="col-span-2">
+            <Select value={pinnedShift} onChange={e => setPinnedShift(e.target.value)} size="sm" disabled={!canEdit || !branchId}>
+              <option value="">Automático{derived ? ` (${derived.code} — ${derived.name})` : duty.shiftPinned ? '' : ' (nenhum)'}</option>
+              {branchShifts.map(sh => <option key={sh.id} value={sh.id}>Fixar: {sh.code} — {sh.name}{!sh.isActive && ' (inativo)'}</option>)}
             </Select>
           </Field>
           <Field label="Observações" className="col-span-2">

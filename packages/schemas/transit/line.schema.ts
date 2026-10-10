@@ -76,6 +76,18 @@ export const lineSchema = withMeta(
       className:      'md:w-1/4',
     }),
 
+    // LineOperator — the empresas operating the line; none = any operator of the Scope.
+    // Each one must be an operator of the line's Scope (LineService)
+    operatorBranchIds: z.array(z.uuid()).default([]).meta({
+      label:          'Empresas operadoras',
+      helpText:       'Vazio: qualquer empresa do escopo opera a linha.',
+      widget:         'multi-select',
+      resource:       'branch',
+      domain:         'core',
+      labelField:     'name',
+      listVisibility: 'hidden',
+    }),
+
     isActive: z.boolean().default(true).meta({
       label:          'Ativo',
       widget:         'switch',

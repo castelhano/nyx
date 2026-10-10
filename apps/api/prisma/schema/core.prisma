@@ -79,6 +79,9 @@ model Branch {
   lineGroups     LineGroup[]     @relation("BranchLineGroups")
   scopeOperators ScopeOperator[] @relation("BranchScopeOperators")
   duties         Duty[]          @relation("BranchDuties")
+  lineOperators  LineOperator[]  @relation("BranchLineOperators")
+  crewShifts     CrewShiftBranch[] @relation("BranchCrewShifts")
+  holidays       Holiday[]
 
   @@map("branches")
 }
@@ -151,6 +154,22 @@ model Job {
   createdBy User @relation(fields: [createdById], references: [id])
 
   @@map("jobs")
+}
+
+// A holiday — global (branchId null) or a branch's own (municipal holiday of a garage's city).
+// Read by RestPattern.offOnHolidays; the day type a line runs is still LineCalendarException's.
+model Holiday {
+  id        String   @id @default(uuid())
+  date      DateTime @db.Date
+  name      String
+  branchId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([date, branchId])
+  @@map("holidays")
 }
 
 // App settings, one JSON blob per (key, scope) — no migration needed to add/remove/rename a

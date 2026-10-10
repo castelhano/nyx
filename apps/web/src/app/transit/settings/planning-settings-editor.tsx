@@ -3,6 +3,7 @@
 import type { PlanningSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
 import { Icons } from '@/lib/icons'
 import { DurationInput } from '@/components/ui/duration-input'
+import { Switch } from '@/components/ui/switch'
 import { SectionHeader, DiffDot, NumberInput, AnchoredTable, RangeTable, DURATION_UNIT } from './criteria-tables'
 
 // Planning (vehicle plan) settings editor — used by the transit settings page (global / per
@@ -107,6 +108,16 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
               />
               <span className="text-sm text-muted-foreground w-6">min</span>
             </div>
+          </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <DiffDot show={!!reference && value.restrictToBranchLines !== reference.restrictToBranchLines} />
+              <div>
+                <p className="text-sm font-medium">Consistir Linha da Empresa</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Cada carro vai só para uma empresa que opera todas as linhas dele (empresas operadoras da linha; linha sem nenhuma aceita qualquer empresa)</p>
+              </div>
+            </div>
+            <Switch checked={value.restrictToBranchLines} onToggle={() => onChange({ ...value, restrictToBranchLines: !value.restrictToBranchLines })} disabled={disabled} />
           </div>
         </div>
       </div>

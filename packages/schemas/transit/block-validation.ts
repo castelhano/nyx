@@ -18,6 +18,7 @@ export const VEHICLE_BLOCK_ISSUE_CODES = [
   'LONG_STAND',            // stands still longer than the default interval type's max, no interval
   'OVERLAP',               // two events at the same time
   'BUNDLE_BROKEN',         // a trip group split across blocks, or another trip between its trips
+  'LINE_NOT_OPERATED',     // a trip of a line the block's empresa doesn't operate (LineOperator)
 ] as const
 export type VehicleBlockIssueCode = typeof VEHICLE_BLOCK_ISSUE_CODES[number]
 
@@ -33,6 +34,7 @@ export const VEHICLE_BLOCK_ISSUE_LABEL: Record<VehicleBlockIssueCode, string> = 
   LONG_STAND:            'Parado além do intervalo máximo, sem intervalo lançado',
   OVERLAP:               'Eventos sobrepostos',
   BUNDLE_BROKEN:         'Grupo de viagens dividido ou intercalado',
+  LINE_NOT_OPERATED:     'Viagem de linha não operada pela empresa do carro',
 }
 
 export const vehicleBlockIssueSchema = z.object({
@@ -55,7 +57,7 @@ export function vehicleBlockIssueText(issue: VehicleBlockIssue): string {
 export interface BlockValidationInput {
   depotId:   string
   branchId:  string | null
-  trips:     { departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
+  trips:     { departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null; lineId?: string }[]
   deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
   intervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[]
   // the default IntervalType's maxMinutes (general settings) — null skips LONG_STAND
@@ -63,6 +65,9 @@ export interface BlockValidationInput {
   // members per group (trips, deadruns and intervals sharing a bundleId) in the whole plan —
   // absent skips BUNDLE_BROKEN
   bundleSizes?: Map<string, number>
+  // lineId → branchIds operating it (LineOperator); a line absent or with none is operated by
+  // any empresa — absent map skips LINE_NOT_OPERATED
+  lineOperators?: Map<string, string[]>
 }
 
 type Move = { kind: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string }
@@ -108,6 +113,12 @@ export function validateBlock(input: BlockValidationInput): VehicleBlockIssue[] 
     if (input.maxStandMinutes != null && stand > input.maxStandMinutes
       && !input.intervals.some(iv => iv.departureMinutes < cur.departureMinutes && iv.arrivalMinutes > prev.arrivalMinutes)) {
       issues.push({ code: 'LONG_STAND', minutes: prev.arrivalMinutes, value: stand })
+    }
+  }
+  if (input.lineOperators && input.branchId) {
+    for (const t of input.trips) {
+      const ops = t.lineId ? input.lineOperators.get(t.lineId) : undefined
+      if (ops?.length && !ops.includes(input.branchId)) issues.push({ code: 'LINE_NOT_OPERATED', minutes: t.departureMinutes })
     }
   }
   if (input.bundleSizes) issues.push(...bundleIssues([...input.trips, ...input.deadruns, ...input.intervals], input.bundleSizes))

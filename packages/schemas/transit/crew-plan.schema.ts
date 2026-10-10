@@ -47,6 +47,13 @@ export const crewPlanSummarySchema = z.object({
     overtimeMinutes: z.number(),
     nightMinutes:    z.number(),
   })),
+  // duties per shift (Duty.shiftId; null = no shift) — demand per shift before rostering
+  byShift: z.array(z.object({
+    branchId:  z.string().nullable(),
+    shiftId:   z.string().nullable(),
+    role:      z.string(),
+    dutyCount: z.number(),
+  })).default([]),
   byBranch: z.array(z.object({
     branchId:        z.string().nullable(),
     role:            z.string(),

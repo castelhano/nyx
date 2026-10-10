@@ -1,7 +1,7 @@
 import type {
   CrewSettings, CrewPlanSummary, DutySummary, DutyIssue, DutyPieceStaleReason, RangeCriterion, ReliefPoint,
 } from '@nyx/schemas'
-import { mealPolicy } from '@nyx/schemas'
+import { mealPolicy, bestShift, shiftFits, type ShiftWindow } from '@nyx/schemas'
 import { rangeV, anchoredV, SCORE_SCALE } from '../vehicle-plan/scoring/plan-scoring.calc'
 import { insideBundle, isReliefPoint, subtractSpans } from './relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
@@ -82,13 +82,16 @@ export interface CrewCalcDuty {
   role:       string
   kind:       'STRAIGHT' | 'SPLIT' | 'TRIPPER' | 'STANDBY'
   branchId:   string | null
+  // Duty.shiftId / shiftPinned — a pinned shift is kept and only checked
+  shiftId?:     string | null
+  shiftPinned?: boolean
   pieces:     CrewCalcPiece[]
   activities: { id: string; type: string; intervalTypeId: string | null; startMinutes: number; endMinutes: number; isPaidBreak: boolean }[]
 }
 
 export interface CrewCalcResult {
   pieces: Map<string, { isStale: boolean; staleReason: DutyPieceStaleReason | null }>
-  duties: Map<string, { summary: DutySummary; issues: DutyIssue[]; isStale: boolean }>
+  duties: Map<string, { summary: DutySummary; issues: DutyIssue[]; isStale: boolean; shiftId: string | null }>
   summary: CrewPlanSummary
 }
 
@@ -194,6 +197,11 @@ export interface CrewCalcContext {
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
   // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
   repeatsNextDay?: boolean
+  // active CrewShifts per branchId — absent: shifts aren't derived (shiftId stays as given)
+  shifts?:        Map<string, ShiftWindow[]>
+  // lineId → branchIds operating it (LineOperator; a line absent or with none: any) — absent
+  // skips LINE_NOT_OPERATED
+  lineOperators?: Map<string, string[]>
 }
 
 export interface DutyEvaluation {
@@ -207,6 +215,8 @@ export interface DutyEvaluation {
   lineMinutes: Map<string, number>
   // the per-duty score criteria that apply to this duty (active only), value 0–1 (raw: unfloored)
   criteria:   { key: string; weight: number; value: number; raw: number }[]
+  // the shift the duty gets (see dutyShift)
+  shiftId:    string | null
 }
 
 // One duty on its own: summary, issues and its per-duty score criteria. No plan state — the
@@ -267,12 +277,18 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
   let vehicleChanges = 0
   const lineSeq: string[] = []
   const lineMinutes = new Map<string, number>()
+  // pieces running a line the duty's operator doesn't operate
+  const notOperated: string[] = []
   for (let i = 0; i < live.length; i++) {
     if (i > 0 && live[i].vehicleBlockId !== live[i - 1].vehicleBlockId) vehicleChanges++
     const block = blocks.get(live[i].vehicleBlockId!)
     const trips = (block?.trips ?? [])
       .filter(t => t.arrivalMinutes > live[i].startMinutes && t.departureMinutes < live[i].endMinutes)
       .sort((a, b) => a.departureMinutes - b.departureMinutes)
+    if (duty.branchId && ctx.lineOperators && trips.some(t => {
+      const ops = ctx.lineOperators!.get(t.lineId)
+      return !!ops?.length && !ops.includes(duty.branchId!)
+    })) notOperated.push(live[i].id)
     for (const t of trips) {
       if (lineSeq[lineSeq.length - 1] !== t.lineId) lineSeq.push(t.lineId)
       const overlap = Math.min(t.arrivalMinutes, live[i].endMinutes) - Math.max(t.departureMinutes, live[i].startMinutes)
@@ -416,6 +432,10 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
       if (b?.branchId && b.branchId !== duty.branchId) push({ code: 'BRANCH_MISMATCH', severity: 'error', value: 0, pieceId: p.id })
     }
   }
+  for (const pieceId of notOperated) push({ code: 'LINE_NOT_OPERATED', severity: 'warning', value: 0, pieceId })
+
+  const shift = dutyShift(duty, summary, ctx)
+  push(shift.issue)
 
   // per-duty criteria enter the plan score with the same applicability as the issues
   const criteria: DutyEvaluation['criteria'] = []
@@ -433,7 +453,25 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     crit('walkDistance', range.walkDistance, walked)
   }
 
-  return { summary, issues, isStale: live.length !== duty.pieces.length, pieceState, live, lineMinutes, criteria }
+  return { summary, issues, isStale: live.length !== duty.pieces.length, pieceState, live, lineMinutes, criteria, shiftId: shift.shiftId }
+}
+
+// The duty's shift: a pinned one is kept (SHIFT_MISMATCH when the duty no longer fits it);
+// otherwise the best fit among its operator's shifts (SHIFT_NONE when the operator has shifts
+// and the duty fits none). Without ctx.shifts nothing is derived.
+function dutyShift(duty: CrewCalcDuty, summary: DutySummary, ctx: CrewCalcContext): { shiftId: string | null; issue: DutyIssue | null } {
+  const given = duty.shiftId ?? null
+  if (!ctx.shifts) return { shiftId: given, issue: null }
+  const shifts = duty.branchId ? ctx.shifts.get(duty.branchId) ?? [] : []
+  const start = summary.startMinutes, end = summary.endMinutes
+  if (duty.shiftPinned && given) {
+    const pinned = shifts.find(s => s.id === given)
+    const fits = !!pinned && start != null && end != null && shiftFits(pinned, start, end, duty.kind)
+    return { shiftId: given, issue: fits ? null : { code: 'SHIFT_MISMATCH', severity: 'warning', value: 0 } }
+  }
+  if (start == null || end == null || !shifts.length) return { shiftId: null, issue: null }
+  const best = bestShift(shifts, start, end, duty.kind)
+  return { shiftId: best?.id ?? null, issue: best ? null : { code: 'SHIFT_NONE', severity: 'warning', value: 0 } }
 }
 
 // A block's DRIVER coverage over its service spans — only they need a driver (its own intervals
@@ -590,19 +628,23 @@ export function computeCrewPlan(input: {
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
   // the day type runs on consecutive days — enables DutySummary.interShiftRestMinutes
   repeatsNextDay?: boolean
+  shifts?:         CrewCalcContext['shifts']
+  lineOperators?:  CrewCalcContext['lineOperators']
 }): CrewCalcResult {
   const ctx: CrewCalcContext = {
     settings: input.settings, blocks: new Map(input.blocks.map(b => [b.id, b])),
     walk: input.walk, mealStops: input.mealStops, repeatsNextDay: input.repeatsNextDay,
+    shifts: input.shifts, lineOperators: input.lineOperators,
   }
   const agg = new CrewScoreAggregate(ctx)
 
   const pieceState = new Map<string, { isStale: boolean; staleReason: DutyPieceStaleReason | null }>()
-  const dutyOut    = new Map<string, { summary: DutySummary; issues: DutyIssue[]; isStale: boolean }>()
+  const dutyOut    = new Map<string, { summary: DutySummary; issues: DutyIssue[]; isStale: boolean; shiftId: string | null }>()
 
   let totalWork = 0, totalPaid = 0, totalOvertime = 0, totalNight = 0
   const byLine   = new Map<string, CrewPlanSummary['byLine'][number]>()
   const byBranch = new Map<string, CrewPlanSummary['byBranch'][number]>()
+  const byShift  = new Map<string, CrewPlanSummary['byShift'][number]>()
   const byRole: Record<string, number> = {}
   const byKind: Record<string, number> = {}
 
@@ -612,7 +654,11 @@ export function computeCrewPlan(input: {
 
     const ev = evaluateDuty(duty, ctx)
     for (const [id, st] of ev.pieceState) pieceState.set(id, st)
-    dutyOut.set(duty.id, { summary: ev.summary, issues: ev.issues, isStale: ev.isStale })
+    dutyOut.set(duty.id, { summary: ev.summary, issues: ev.issues, isStale: ev.isStale, shiftId: ev.shiftId })
+    const shiftKey = `${duty.branchId ?? ''}|${ev.shiftId ?? ''}|${duty.role}`
+    const shiftRow = byShift.get(shiftKey) ?? { branchId: duty.branchId, shiftId: ev.shiftId, role: duty.role, dutyCount: 0 }
+    shiftRow.dutyCount++
+    byShift.set(shiftKey, shiftRow)
     agg.add(duty, ev)
 
     // ── plan-level accumulation ──────────────────────────────────────────────
@@ -677,6 +723,7 @@ export function computeCrewPlan(input: {
       coveredByBranch:  [...coveredByBranch].map(([branchId, minutes]) => ({ branchId, minutes })),
       byLine:           [...byLine.values()],
       byBranch:         [...byBranch.values()],
+      byShift:          [...byShift.values()],
     },
   }
 }

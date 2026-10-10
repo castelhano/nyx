@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { DayTypeService } from '../day-type/day-type.service'
 import { TransitCrewCostConfigService } from '../../settings/transit-crew-cost-config.service'
-import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
+import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { periodDates, findActivePlan, inForce, formatDay } from './dop-resolution'
 
 // DOP, visão Escala. Same (day, line) resolution as the
@@ -43,14 +43,14 @@ export class DopCrewService {
     private readonly prisma:         PrismaService,
     private readonly dayTypeService: DayTypeService,
     private readonly crewCost:       TransitCrewCostConfigService,
-    private readonly roster:         TransitRosterConfigService,
+    private readonly crew:           TransitCrewConfigService,
   ) {}
 
   // branchId: only that operator's duties (Duty.branchId) and vehicles (VehicleBlock.branchId)
   async getPeriodSummary(scopeId: string, from: Date, to: Date, branchId?: string): Promise<DopCrewPeriodSummary> {
     const ofBranch = (b: string | null) => !branchId || b === branchId
 
-    const [lines, vehiclePlans, calendar, scopeOperators, dayTypes, costSettings, rosterSettings] = await Promise.all([
+    const [lines, vehiclePlans, calendar, scopeOperators, dayTypes, costSettings, crewSettings] = await Promise.all([
       this.prisma.transitLine.findMany({ where: { scopeId, isActive: true }, select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } }),
       this.prisma.vehiclePlan.findMany({
         where:  { scopeId, status: { in: ['ACTIVE', 'SUPERSEDED'] } },
@@ -64,7 +64,7 @@ export class DopCrewService {
       this.prisma.scopeOperator.findMany({ where: { scopeId }, select: { branchId: true, branch: { select: { name: true } } } }),
       this.prisma.dayType.findMany({ where: { pattern: { not: Prisma.DbNull } }, select: { id: true, pattern: true }, orderBy: { priority: 'asc' } }),
       this.crewCost.get(scopeId),
-      this.roster.get(),
+      this.crew.get(scopeId),
     ])
 
     const branchNameById = new Map(scopeOperators.map(so => [so.branchId, so.branch.name]))
@@ -213,7 +213,7 @@ export class DopCrewService {
           select: { crewPlanId: true, role: true, kind: true, summary: true, isStale: true, hasIssues: true },
         })
       : []
-    const { floor, idealMin } = rosterSettings.range.interShiftRest
+    const { floor, idealMin } = crewSettings.range.interShiftRest
     const quality: DopCrewDayTypeQuality[] = [...latestPlanByDt].map(([dayTypeId, cpId]) => {
       const byRole: Record<string, DopCrewRoleQuality> = {}
       for (const role of CREW_ROLES) {

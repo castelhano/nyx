@@ -9,7 +9,7 @@ import type { CrewBoardData, BoardDuty } from '../board.types'
 import { fmtDuration, dutyColorVars, SWATCH_BG_CLASS, ROLE_LABEL, KIND_LABEL, CRITERION_LABEL } from '../board.types'
 import { cn } from '@/lib/utils'
 import { Badge } from './DutyPanel'
-import { dutyWalks } from '../filters'
+import { dutyWalks, NO_SHIFT } from '../filters'
 
 interface Props {
   data:           CrewBoardData
@@ -24,18 +24,22 @@ interface Props {
   onToggleStale:  () => void
   walkActive:     boolean
   onToggleWalk:   () => void
+  // the shift filter (a shift's id or NO_SHIFT) — null when off
+  shiftActive:    string | null
+  onToggleShift:  (shiftId: string) => void
   canEdit:        boolean
   onSelect:       (duty: BoardDuty) => void
   onCreate:       (role: CrewRole) => void
 }
 
 // Shown when no duty is selected — plan-level summary and the full duty list.
-export function PlanPanel({ data, duties, matchedDuties, matchedBlockIds, issuesActive, staleActive, onToggleIssues, onToggleStale, walkActive, onToggleWalk, canEdit, onSelect, onCreate }: Props) {
+export function PlanPanel({ data, duties, matchedDuties, matchedBlockIds, issuesActive, staleActive, onToggleIssues, onToggleStale, walkActive, onToggleWalk, shiftActive, onToggleShift, canEdit, onSelect, onCreate }: Props) {
   const [role, setRole] = useState<CrewRole>('DRIVER')
   const [dutySearch, setDutySearch] = useState('')
   const s = data.plan.summary
   const f = filteredSummary(data, matchedDuties, matchedBlockIds)
 
+  const shiftById = new Map(data.shifts.map(sh => [sh.id, sh]))
   const filteredDuties = dutySearch.trim()
     ? duties.filter(d => formatDutyNumber(d.role, d.dutyNumber).toLowerCase().includes(dutySearch.trim().toLowerCase()))
     : duties
@@ -69,6 +73,10 @@ export function PlanPanel({ data, duties, matchedDuties, matchedBlockIds, issues
             <Stat label="A pé" value={String(f.walkCount)} suffix={`${f.walkMeters.toLocaleString('pt-BR')} m`} active={walkActive} onClick={onToggleWalk} filtered={!!matchedDuties} />
             <Stat label="Condutores/carro" value={f.driversPerVehicle != null ? f.driversPerVehicle.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—'} filtered={!!matchedDuties} />
           </div>
+        )}
+
+        {data.shifts.length > 0 && (
+          <ShiftCounts data={data} duties={matchedDuties ?? data.duties} filtered={!!matchedDuties} active={shiftActive} onToggle={onToggleShift} />
         )}
 
         {s && (s.criteria ?? []).length > 0 && <ScoreLosses criteria={s.criteria} />}
@@ -106,6 +114,7 @@ export function PlanPanel({ data, duties, matchedDuties, matchedBlockIds, issues
                     <span className="font-medium">{formatDutyNumber(d.role, d.dutyNumber)}</span>
                     <span className="text-muted-foreground">{KIND_LABEL[d.kind]}</span>
                     {d.summary && <span className="text-muted-foreground">{fmtDuration(d.summary.workMinutes)}</span>}
+                    {d.shiftId && shiftById.get(d.shiftId) && <span className="text-muted-foreground">{shiftById.get(d.shiftId)!.code}</span>}
                   </span>
                   <span className="flex gap-1">
                     {d.isStale && <Badge tone="red">Desatualizada</Badge>}
@@ -169,6 +178,44 @@ function filteredSummary(data: CrewBoardData, matchedDuties: BoardDuty[] | null,
     staleCount, issueCount, walkCount, walkMeters, uncoveredMinutes,
     driversPerVehicle: driversByBlock.size ? slots / driversByBlock.size : null,
   }
+}
+
+// Duties per shift (Duty.shiftId) over the filtered duties — the demand each shift will need
+// crew members for. A row filters the duties to that shift.
+function ShiftCounts({ data, duties, filtered, active, onToggle }: {
+  data: CrewBoardData; duties: BoardDuty[]; filtered: boolean; active: string | null; onToggle: (shiftId: string) => void
+}) {
+  const counts = new Map<string, number>()
+  for (const d of duties) counts.set(d.shiftId ?? NO_SHIFT, (counts.get(d.shiftId ?? NO_SHIFT) ?? 0) + 1)
+  const rows = [
+    ...data.shifts
+      .filter(sh => sh.isActive || counts.has(sh.id))
+      .map(sh => ({ key: sh.id, label: `${sh.code} — ${sh.name}`, n: counts.get(sh.id) ?? 0 })),
+    ...(counts.has(NO_SHIFT) ? [{ key: NO_SHIFT, label: 'Sem turno', n: counts.get(NO_SHIFT)! }] : []),
+  ]
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Turnos</p>
+      <ul className="text-xs space-y-1">
+        {rows.map(r => (
+          <li key={r.key}>
+            <button
+              type="button"
+              onClick={() => onToggle(r.key)}
+              aria-pressed={active === r.key}
+              className={cn(
+                'w-full flex items-center justify-between gap-2 rounded px-2 py-1 text-left ring-1 ring-inset',
+                active === r.key ? 'bg-muted ring-ring' : cn(filtered ? 'bg-primary/10' : 'bg-muted/40', 'ring-transparent hover:bg-muted'),
+              )}
+            >
+              <span className={cn(r.key === NO_SHIFT && 'text-amber-600 dark:text-amber-400')}>{r.label}</span>
+              <span className="font-medium tabular-nums">{r.n}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 // points each criterion took off the score (9999 × weight × (1 − value) ÷ Σ weights), largest

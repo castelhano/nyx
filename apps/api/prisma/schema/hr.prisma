@@ -79,6 +79,7 @@ model Employee {
 
   branch    Branch     @relation(fields: [branchId], references: [id])
   contracts Contract[]
+  crewMember CrewMember?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

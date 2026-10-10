@@ -18,6 +18,8 @@ import type { DeadrunKind, ProposalBlock, VehicleSolverSummary } from './vehicle
 //  - the depot reaches the first trip and is reached from the last one (matrix);
 //  - one vehicle type accepted by every trip (requiredVehicleType, else the line's allowed);
 //  - the depot serves the block's operator (TransitLocality.depot.operators);
+//  - with restrictToBranchLines ("Consistir linha da empresa"), the operator runs every line of
+//    the block's trips (LineOperator — a line with none: any operator);
 //  - depot capacity, total and per vehicle type (counting the locked blocks);
 //  - a stop of standThreshold or more (the default interval type's min — shorter is just the
 //    terminal turnaround) only stays where the vehicle may stand (RouteLocality
@@ -119,6 +121,8 @@ export interface VehicleSolverInput {
   standThreshold:  number
   // the issues check (validateBlock) — the default interval type's max
   maxStandMinutes: number | null
+  // lineId → branchIds operating it, when settings.restrictToBranchLines — null: the rule is off
+  lineOperators:   Map<string, string[]> | null
 }
 
 export interface Rows {
@@ -199,6 +203,24 @@ export class VehicleModel {
 
   depotsFor(branchId: string | null): SolverDepot[] {
     return this.depotsByBranch.get(branchId) ?? []
+  }
+
+  // the operators that run every line of these trips — null: any (rule off, or no line restricted)
+  lineBranches(trips: SolverTrip[]): Set<string> | null {
+    const map = this.input.lineOperators
+    if (!map) return null
+    let allowed: Set<string> | null = null
+    for (const t of trips.flatMap(expand)) {
+      const ops = map.get(t.lineId)
+      if (!ops?.length) continue
+      allowed = new Set(allowed ? ops.filter(b => allowed!.has(b)) : ops)
+    }
+    return allowed
+  }
+
+  branchAllows(trips: SolverTrip[], branchId: string | null): boolean {
+    const allowed = this.lineBranches(trips)
+    return !allowed || (!!branchId && allowed.has(branchId))
   }
 
   depotAllows(depotId: string, branchId: string | null): boolean {
@@ -334,6 +356,7 @@ export class VehicleModel {
   // type the trips prefer most, then the depot with the least deadrun km. `depotId` limits the
   // search to that depot (a move keeps the block where it is). Doesn't touch `cap`.
   place(trips: SolverTrip[], branchId: string | null, cap: Capacity, depotId?: string): WorkBlock | null {
+    if (!this.branchAllows(trips, branchId)) return null
     const types  = this.typeCandidates(trips)
     const depots = depotId ? [this.depotById.get(depotId)!].filter(d => d && this.depotAllows(d.id, branchId)) : this.depotsFor(branchId)
     for (const type of types) {
@@ -374,7 +397,7 @@ const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')
 // that isn't) costs more, so the few restricted trips tend to stay among themselves instead of
 // tying many vehicles to a scarce type.
 function buildChains(model: VehicleModel): SolverTrip[][] {
-  const chains: { trips: SolverTrip[]; types: Set<VehicleTypeValue> | null }[] = []
+  const chains: { trips: SolverTrip[]; types: Set<VehicleTypeValue> | null; branches: Set<string> | null }[] = []
   const trips = [...model.input.trips].sort((a, b) => a.dep - b.dep || a.arr - b.arr)
   for (const t of trips) {
     let best: (typeof chains)[number] | null = null
@@ -384,6 +407,8 @@ function buildChains(model: VehicleModel): SolverTrip[][] {
       if (!model.canFollow(last, t)) continue
       if (t.arr - c.trips[0].dep > model.maxSpan) continue
       if (t.allowed && c.types && !t.allowed.some(v => c.types!.has(v))) continue
+      const tBranches = model.lineBranches([t])
+      if (tBranches && c.branches && ![...tBranches].some(b => c.branches!.has(b))) continue
       const displace = last.dest !== t.origin ? (model.edge(last.dest, t.origin)?.minutes ?? 0) + 10 : 0
       const narrows  = !!t.allowed !== !!c.types || (t.allowed && c.types && t.allowed.length !== c.types.size)
       const cost = t.dep - last.arr + displace + (last.lineId !== t.lineId ? 20 : 0) + (narrows ? 120 : 0)
@@ -392,8 +417,10 @@ function buildChains(model: VehicleModel): SolverTrip[][] {
     if (best) {
       best.trips.push(t)
       if (t.allowed) best.types = new Set(best.types ? t.allowed.filter(v => best.types!.has(v)) : t.allowed)
+      const tBranches = model.lineBranches([t])
+      if (tBranches) best.branches = new Set(best.branches ? [...tBranches].filter(b => best.branches!.has(b)) : tBranches)
     } else {
-      chains.push({ trips: [t], types: t.allowed ? new Set(t.allowed) : null })
+      chains.push({ trips: [t], types: t.allowed ? new Set(t.allowed) : null, branches: model.lineBranches([t]) })
     }
   }
   return chains.map(c => c.trips)
@@ -469,7 +496,7 @@ function seedBlocks(model: VehicleModel): WorkBlock[] | null {
       else runs.push([ordered[i]])
     }
     for (const run of runs) {
-      const keep = model.typeCandidates(run).includes(s.vehicleType) && model.depotAllows(s.depotId, s.branchId) && cap.fits(s.depotId, s.vehicleType)
+      const keep = model.typeCandidates(run).includes(s.vehicleType) && model.depotAllows(s.depotId, s.branchId) && model.branchAllows(run, s.branchId) && cap.fits(s.depotId, s.vehicleType)
       const b = (keep ? model.build(run, s.branchId, s.depotId, s.vehicleType) : null)
         ?? model.place(run, s.branchId, cap)
         ?? model.branches.map(br => model.place(run, br, cap)).find(Boolean)

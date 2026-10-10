@@ -51,6 +51,10 @@ export interface FieldMeta {
   optionColors?: Record<string, 'success' | 'warning' | 'destructive' | 'info' | 'muted'>
   /** Field exists in the form for UX purposes but is excluded from API payloads on submit. */
   virtual?: boolean
+  /** Not a column: the service fills it on read and handles it on write (a link table, a value
+   *  from a related record). BaseService leaves it out of relation includes and of the data it
+   *  writes — unlike `virtual`, it is part of the API payload. */
+  computed?: boolean
   /** Re-fetches select options using `?f_<dependsOn>=<value>` when the named sibling field changes. Clears own value when parent changes. */
   dependsOn?: string
   /** In edit mode, shows the related record label as locked text with an edit button instead of loading all options up front. Fetches only the current record by ID until the user unlocks the field. */

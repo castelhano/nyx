@@ -71,12 +71,12 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 // A rule not met — flagged, never blocks a save. Range criteria flag only outside
 // [floor, ceiling] (`error`); outside the ideal they only cost score (see settings-crew.schema.ts).
 // `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix,
-// BUNDLE_SPLIT).
+// BUNDLE_SPLIT, SHIFT_NONE, SHIFT_MISMATCH, LINE_NOT_OPERATED).
 export const dutyIssueSchema = z.object({
   code: z.enum([
     'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE', 'MEAL_REQUIRED', 'PIECE_OFF_SERVICE',
     'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION', 'IDLE_TIME',
-    'BUNDLE_SPLIT',
+    'BUNDLE_SPLIT', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED',
   ]),
   severity: z.enum(['warning', 'error']),
   value:    z.number(),
@@ -103,6 +103,9 @@ export const DUTY_ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   BRANCH_MISMATCH:    'Bloco de outro operador',
   MEAL_LOCATION:      'Refeição fora de local permitido',
   BUNDLE_SPLIT:       'Troca de condutor dentro de um grupo de viagens',
+  SHIFT_NONE:         'Fora de todos os turnos do operador',
+  SHIFT_MISMATCH:     'Fora do turno fixado',
+  LINE_NOT_OPERATED:  'Linha não operada pelo operador',
 }
 
 export const dutySchema = withMeta(
@@ -151,6 +154,24 @@ export const dutySchema = withMeta(
       labelField:     'name',
       listVisibility: 'visible',
       keybind:        'o',
+    }),
+
+    // CrewShift the duty fits — derived by CrewPlanService.recalculate unless shiftPinned
+    shiftId: z.uuid().optional().nullable().meta({
+      label:          'Turno',
+      widget:         'select',
+      resource:       'crew-shift',
+      domain:         'transit',
+      labelField:     'code',
+      listVisibility: 'visible',
+      showInForm:     false,
+    }),
+
+    // shiftId is the user's choice — recalculate only checks it (SHIFT_MISMATCH)
+    shiftPinned: z.boolean().default(false).meta({
+      label:          'Turno fixado',
+      listVisibility: 'hidden',
+      showInForm:     false,
     }),
 
     summary: z.record(z.string(), z.unknown()).optional().meta({

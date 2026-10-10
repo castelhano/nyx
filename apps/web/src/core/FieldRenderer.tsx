@@ -510,7 +510,33 @@ function RelationMultiSelect({
 }) {
   const { options } = useFieldOptions(field)
   const labelField  = field.labelField ?? 'name'
+  return (
+    <ChipMultiSelect
+      field={field} control={control} readonly={readonly}
+      options={options.map((opt: Record<string, unknown>) => ({ id: String(opt.id), label: String(opt[labelField] ?? opt.id) }))}
+    />
+  )
+}
 
+// multi-select over an array of enum values — options from the schema, labels from optionLabels
+function EnumMultiSelect({
+  field, control, readonly,
+}: {
+  field: MetadataField; control: Control<any>; readonly?: boolean
+}) {
+  return (
+    <ChipMultiSelect
+      field={field} control={control} readonly={readonly}
+      options={(field.options ?? []).map(o => ({ id: o, label: field.optionLabels?.[o] ?? o }))}
+    />
+  )
+}
+
+function ChipMultiSelect({
+  field, control, readonly, options,
+}: {
+  field: MetadataField; control: Control<any>; readonly?: boolean; options: { id: string; label: string }[]
+}) {
   return (
     <Controller
       name={field.name}
@@ -524,7 +550,7 @@ function RelationMultiSelect({
             selected.includes(id) ? selected.filter(v => v !== id) : [...selected, id],
           )
         }
-        const allIds = options.map((opt: Record<string, unknown>) => String(opt.id))
+        const allIds = options.map(opt => opt.id)
         return (
           <div className="space-y-2">
             {!readonly && (
@@ -547,14 +573,13 @@ function RelationMultiSelect({
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-            {options.map((opt: Record<string, unknown>) => {
-              const id      = String(opt.id)
-              const checked = selected.includes(id)
+            {options.map(opt => {
+              const checked = selected.includes(opt.id)
               return (
                 <button
-                  key={id}
+                  key={opt.id}
                   type="button"
-                  onClick={() => toggle(id)}
+                  onClick={() => toggle(opt.id)}
                   disabled={readonly}
                   className={cn(
                     'px-3 py-1 rounded-sm border text-sm transition-colors cursor-pointer',
@@ -564,7 +589,7 @@ function RelationMultiSelect({
                     readonly && readonlyCls,
                   )}
                 >
-                  {String(opt[labelField] ?? id)}
+                  {opt.label}
                 </button>
               )
             })}
@@ -651,12 +676,14 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   }
 
 
-  if (field.widget === 'multi-select' && field.resource && control) {
+  if (field.widget === 'multi-select' && (field.resource || field.options) && control) {
     return (
       <>
         <label className="text-sm font-medium pt-2">{field.label}</label>
         <div className="space-y-1">
-          <RelationMultiSelect field={field} control={control} readonly={readonly} />
+          {field.resource
+            ? <RelationMultiSelect field={field} control={control} readonly={readonly} />
+            : <EnumMultiSelect field={field} control={control} readonly={readonly} />}
           {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>

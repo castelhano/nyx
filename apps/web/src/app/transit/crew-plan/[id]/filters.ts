@@ -31,12 +31,16 @@ export interface CrewFilter {
   // duty view
   role:          CrewRole | null
   kind:          BoardDuty['kind'] | null
+  // Duty.shiftId — NO_SHIFT: duties without one
+  shiftId:       string | null
   multiLine:     boolean
 }
 
+export const NO_SHIFT = '-'
+
 export const EMPTY_FILTER: CrewFilter = {
   conditions: [], branchId: null, lineCode: null,
-  uncoveredOnly: false, role: null, kind: null, withIssues: false, staleOnly: false, walking: false, multiLine: false,
+  uncoveredOnly: false, role: null, kind: null, shiftId: null, withIssues: false, staleOnly: false, walking: false, multiLine: false,
 }
 
 export type CrewView = 'vehicles' | 'duties'
@@ -46,7 +50,7 @@ export function isFilterActive(f: CrewFilter, view: CrewView): boolean {
   if (f.withIssues || f.staleOnly || f.walking) return true
   return view === 'vehicles'
     ? f.uncoveredOnly
-    : !!f.role || !!f.kind || f.multiLine
+    : !!f.role || !!f.kind || !!f.shiftId || f.multiLine
 }
 
 // same field + same relation replaces; the opposite relation is kept (a range: > 6h and < 8h)
@@ -84,6 +88,7 @@ export function dutyMatches(f: CrewFilter, duty: BoardDuty, lineCodes: string[])
   if (f.branchId && duty.branchId !== f.branchId) return false
   if (f.role && duty.role !== f.role) return false
   if (f.kind && duty.kind !== f.kind) return false
+  if (f.shiftId && (f.shiftId === NO_SHIFT ? duty.shiftId != null : duty.shiftId !== f.shiftId)) return false
   if (f.withIssues && !duty.hasIssues) return false
   if (f.staleOnly && !duty.isStale) return false
   if (f.walking && !dutyWalks(duty)) return false

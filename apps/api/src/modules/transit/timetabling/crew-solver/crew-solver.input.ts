@@ -3,6 +3,7 @@ import { mealPolicy, type CrewSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { insideBundle, loadBlockRelief } from '../crew-plan/relief-points'
 import { loadCrewWalk } from '../crew-plan/crew-walk'
+import { loadCrewBranchRules } from '../crew-plan/crew-branch-rules'
 import type { CrewCalcDuty } from '../crew-plan/crew-scoring.calc'
 import type { CrewSolverInput, SolverBlock } from './crew-solver.calc'
 
@@ -25,17 +26,18 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   if (!plan) throw new NotFoundException('crewPlan not found')
   if (mealTypeId && !mealType) throw new BadRequestException('Tipo de intervalo de refeição não encontrado')
 
-  const [blockRows, lockedRows, mealStops] = await Promise.all([
+  const [blockRows, lockedRows, mealStops, branchRules] = await Promise.all([
     prisma.vehicleBlock.findMany({ where: { vehiclePlanId: plan.vehiclePlanId }, select: { id: true } }),
     prisma.duty.findMany({
       where:  { crewPlanId, constraints: { path: ['locked'], equals: true } },
       select: {
-        id: true, role: true, kind: true, branchId: true,
+        id: true, role: true, kind: true, branchId: true, shiftId: true, shiftPinned: true,
         pieces:     { where: { isStale: false }, select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true } },
         activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
       },
     }),
     prisma.routeLocality.findMany({ where: { allowsMealBreak: true, localityId: { not: null } }, select: { routeId: true, localityId: true } }),
+    loadCrewBranchRules(prisma, plan.vehiclePlanId),
   ])
   const relief = await loadBlockRelief(prisma, blockRows.map(b => b.id))
 
@@ -50,7 +52,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   const walk = await loadCrewWalk(prisma, localityIds)
 
   const locked: CrewCalcDuty[] = lockedRows.map(d => ({
-    id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, pieces: d.pieces,
+    id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, shiftId: d.shiftId, shiftPinned: d.shiftPinned, pieces: d.pieces,
     activities: d.activities.map(a => ({
       id: a.id, type: a.type, intervalTypeId: a.intervalTypeId, startMinutes: a.startMinutes, endMinutes: a.endMinutes,
       isPaidBreak: a.type === 'BREAK' && !!a.intervalType?.isPaid,
@@ -68,5 +70,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     } : null,
     mealStops:     new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
     walk,
+    shifts:        branchRules.shifts,
+    lineOperators: branchRules.lineOperators,
   }
 }

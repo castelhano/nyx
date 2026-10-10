@@ -23,14 +23,29 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     super(prisma, 'transitLine', lineSchema, 'transit')
   }
 
-  override async create(dto: CreateLineDto): Promise<Line> {
+  override async create(input: CreateLineDto): Promise<Line> {
+    const { operatorBranchIds, ...dto } = input
     if (dto.parentLineId) await this.validateParentLine(null, dto.parentLineId)
-    return super.create(dto)
+    await this.validateOperators(dto.scopeId ?? null, operatorBranchIds ?? [])
+    const created = await super.create(dto as CreateLineDto)
+    if (operatorBranchIds?.length) await this.setOperators(created.id, operatorBranchIds)
+    return this.findOne(created.id)
   }
 
-  override async update(id: string, dto: UpdateLineDto): Promise<Line> {
+  override async update(id: string, input: UpdateLineDto): Promise<Line> {
+    const { operatorBranchIds, ...dto } = input
     if (dto.parentLineId) await this.validateParentLine(id, dto.parentLineId)
+    if (operatorBranchIds !== undefined || dto.scopeId !== undefined) {
+      const current = await this.findOne(id)
+      const scopeId = dto.scopeId !== undefined ? dto.scopeId ?? null : current.scopeId ?? null
+      await this.validateOperators(scopeId, operatorBranchIds ?? current.operatorBranchIds)
+    }
+    await this.updateFields(id, dto)
+    if (operatorBranchIds !== undefined) await this.setOperators(id, operatorBranchIds)
+    return this.findOne(id)
+  }
 
+  private async updateFields(id: string, dto: UpdateLineDto): Promise<Line> {
     if (dto.scopeId === undefined && dto.metrics === undefined) return super.update(id, dto)
 
     const current = await this.findOne(id)
@@ -49,6 +64,37 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
       where: { id },
       data:  this.sanitizeDto({ ...dto, metrics: merged }),
     }) as Promise<Line>
+  }
+
+  // every operator of a line must operate in its Scope (ScopeOperator)
+  private async validateOperators(scopeId: string | null, branchIds: string[]): Promise<void> {
+    if (!branchIds.length) return
+    if (!scopeId) throw new BadRequestException('Defina o escopo da linha antes das empresas operadoras')
+    const ops = await this.prisma.scopeOperator.findMany({ where: { scopeId, branchId: { in: branchIds } }, select: { branchId: true } })
+    if (ops.length !== new Set(branchIds).size) {
+      throw new BadRequestException('Toda empresa operadora da linha precisa ser operadora do escopo dela')
+    }
+  }
+
+  private async setOperators(lineId: string, branchIds: string[]): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.lineOperator.deleteMany({ where: { lineId } }),
+      this.prisma.lineOperator.createMany({ data: [...new Set(branchIds)].map(branchId => ({ lineId, branchId })) }),
+    ])
+  }
+
+  private async operatorsByLine(lineIds: string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>()
+    if (!lineIds.length) return map
+    const rows = await this.prisma.lineOperator.findMany({ where: { lineId: { in: lineIds } }, select: { lineId: true, branchId: true } })
+    for (const r of rows) map.set(r.lineId, [...(map.get(r.lineId) ?? []), r.branchId])
+    return map
+  }
+
+  override async findOne(id: string): Promise<Line> {
+    const line = await super.findOne(id)
+    const ops  = await this.operatorsByLine([id])
+    return { ...line, operatorBranchIds: ops.get(id) ?? [] }
   }
 
   // enforces max chain depth of 1: a line can only derive from a line that is itself
@@ -88,6 +134,12 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
   }
 
   override async findAll(query: PaginationQuery): Promise<PaginatedResult<Line>> {
+    const result = await this.findAllSorted(query)
+    const ops = await this.operatorsByLine(result.data.map(l => l.id))
+    return { ...result, data: result.data.map(l => ({ ...l, operatorBranchIds: ops.get(l.id) ?? [] })) }
+  }
+
+  private async findAllSorted(query: PaginationQuery): Promise<PaginatedResult<Line>> {
     if (query.sortField) return super.findAll(query)
     const all  = await super.findAll({ ...query, page: 1, pageSize: 10_000 })
     const sorted = [...all.data].sort((a, b) => sortByCode((a as any).code, (b as any).code))

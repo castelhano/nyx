@@ -1,6 +1,6 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
 import { mealPolicy } from '@nyx/schemas'
-import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
+import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcContext, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
 import { depotStays, subtractSpans } from '../crew-plan/relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
 import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
@@ -56,6 +56,9 @@ export interface CrewSolverInput {
   meal:          SolverMeal | null
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
   walk:          CrewWalk            // crew walking between relief points
+  // operators' shifts and line operators — the same issues the screen flags (crew-branch-rules.ts)
+  shifts?:        CrewCalcContext['shifts']
+  lineOperators?: CrewCalcContext['lineOperators']
 }
 
 export interface SolverPiece {
@@ -439,6 +442,8 @@ export function evaluateSolverDuties(input: CrewSolverInput, solverDuties: Solve
     blocks:        input.blocks,
     walk:          input.walk,
     mealStops:     input.mealStops,
+    shifts:        input.shifts,
+    lineOperators: input.lineOperators,
     duties: [
       ...input.locked,
       ...duties.map((d, i): CrewCalcDuty => ({

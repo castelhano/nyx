@@ -13,23 +13,17 @@ import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { msgs } from '@/lib/messages'
-import type { GeneralSettings, PlanningSettings, CrewSettings, CrewCostSettings, RosterSettings, RangeCriterion } from '@nyx/schemas'
-import { SectionHeader, NumberInput, RangeTable, DURATION_UNIT } from './criteria-tables'
+import type { GeneralSettings, PlanningSettings, CrewSettings, CrewCostSettings, RosterSettings } from '@nyx/schemas'
+import { SectionHeader, NumberInput } from './criteria-tables'
 import { PlanningSettingsEditor } from './planning-settings-editor'
 import { CrewSettingsEditor } from './crew-settings-editor'
 import { CrewCostEditor } from './crew-cost-editor'
-
-// ── UI metadata (not stored in settings) ────────────────────────────────────
-
-const ROSTER_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
-  interShiftRest: { label: 'Descanso entre Jornadas', unit: DURATION_UNIT, hint: 'Descanso entre jornadas consecutivas da mesma pessoa.' },
-  driverPrefLine: { label: 'Linha Preferencial',      unit: '%',   hint: '% de viagens da jornada nas linhas preferenciais da pessoa.' },
-  driverPrefTech: { label: 'Tech Preferencial',       unit: '%',   hint: '% de viagens da jornada com tecnologia de veículo preferencial da pessoa.' },
-}
+import { RosterSettingsEditor } from './roster-settings-editor'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface TransitScope { id: string; name: string }
+interface BranchOption { id: string; name: string }
 interface IntervalTypeOption { id: string; name: string }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -52,6 +46,8 @@ export default function TransitSettingsPage() {
   const [crewCost, setCrewCost] = useState<CrewCostSettings | null>(null)
   // crew rules are keyed by transit Scope (CCT), independent from the planning one above
   const [crewScope, setCrewScope] = useState<string>('global')
+  // the real roster's rules are keyed by empresa (Branch)
+  const [rosterBranch, setRosterBranch] = useState<string>('global')
 
   // ── remote data ────────────────────────────────────────────────────────────
 
@@ -138,10 +134,29 @@ export default function TransitSettingsPage() {
     },
   })
 
-  const { data: serverRoster } = useQuery<RosterSettings>({
-    queryKey: ['transit', 'settings', 'roster'],
+  const { data: branches } = useQuery<BranchOption[]>({
+    queryKey: ['core', 'branch', 'all'],
     queryFn:  async () => {
-      const res = await apiFetch('/transit/settings/roster')
+      const res = await apiFetch('/core/branch?pageSize=999')
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      return json.data ?? json
+    },
+  })
+
+  const { data: globalRoster } = useQuery<RosterSettings>({
+    queryKey: ['transit', 'settings', 'roster', 'global'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/roster?branch=global')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: serverRoster } = useQuery<RosterSettings>({
+    queryKey: ['transit', 'settings', 'roster', rosterBranch],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/settings/roster?branch=${rosterBranch}`)
       if (!res.ok) throw new Error()
       return res.json()
     },
@@ -169,7 +184,7 @@ export default function TransitSettingsPage() {
         apiFetch('/transit/settings/general', { method: 'PUT', body: JSON.stringify(general) }),
         apiFetch(`/transit/settings/planning?scope=${scope}`, { method: 'PUT', body: JSON.stringify(planning) }),
         apiFetch(`/transit/settings/crew?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crew) }),
-        apiFetch('/transit/settings/roster', { method: 'PUT', body: JSON.stringify(roster) }),
+        apiFetch(`/transit/settings/roster?branch=${rosterBranch}`, { method: 'PUT', body: JSON.stringify(roster) }),
         apiFetch(`/transit/settings/crew-cost?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crewCost) }),
       ])
       if (responses.some((r) => !r.ok)) throw new Error()
@@ -186,7 +201,7 @@ export default function TransitSettingsPage() {
 
   useTopbarActions([
     { label: 'Salvar', icon: Icons.Save, onClick: handleSave, primary: true, disabled: saving, keybind: 'ALT+G' },
-  ], [general, planning, crew, roster, crewCost, saving, scope, crewScope])
+  ], [general, planning, crew, roster, crewCost, saving, scope, crewScope, rosterBranch])
 
   useShortcut('alt+g', handleSave, { desc: 'Salvar configurações', icon: Icons.Save, origin: 'TransitSettingsPage' })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: 'TransitSettingsPage' })
@@ -194,17 +209,11 @@ export default function TransitSettingsPage() {
 
   // ── update helpers ─────────────────────────────────────────────────────────
 
-  function updateRosterRange(key: keyof RosterSettings['range'], field: keyof RangeCriterion, value: unknown) {
-    setRoster((prev) => prev ? {
-      ...prev,
-      range: { ...prev.range, [key]: { ...prev.range[key], [field]: value } },
-    } : null)
-  }
-
   const isPlanningScoped = scope !== 'global'
   const gPlanning  = globalPlanning ?? planning
   const isCrewScoped = crewScope !== 'global'
   const gCrew        = globalCrew ?? crew
+  const isRosterScoped = rosterBranch !== 'global'
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -373,7 +382,7 @@ export default function TransitSettingsPage() {
       <hr className='mt-2' />
 
       {/* ── Escala ── */}
-      <section className="flex flex-col gap-6 mb-20">
+      <section className="flex flex-col gap-6">
         <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 02 - Escala de operadores</h1>
 
         {/* Transit Scope selector — CCT rules are shared by every operator of the Scope */}
@@ -416,16 +425,41 @@ export default function TransitSettingsPage() {
           </div>
         )}
 
+      </section>
+      <hr className='mt-2' />
+
+      {/* ── Escala real ── */}
+      <section className="flex flex-col gap-6 mb-20">
+        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 03 - Escala real</h1>
+
+        {/* Branch selector — each empresa has its own rules */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">Empresa</span>
+          <Select
+            value={rosterBranch}
+            onChange={(e) => setRosterBranch(e.target.value)}
+            size="sm"
+            className="w-56"
+          >
+            <option value="global">Global</option>
+            {branches?.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </Select>
+          {isRosterScoped && (
+            <span className="flex items-center gap-x-2 text-xs text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
+              <span>Diferentes do Global</span>
+            </span>
+          )}
+        </div>
+
         {roster && (
-          <div className="flex flex-col gap-3 mt-4">
-            <SectionHeader label="Escala Nominal" sub="Global — ainda sem uso, reservado para a atribuição de pessoas às jornadas" />
-            <RangeTable
-              data={roster.range}
-              globalData={roster.range}
-              meta={ROSTER_META}
-              onChange={updateRosterRange}
-            />
-          </div>
+          <RosterSettingsEditor
+            value={roster}
+            reference={isRosterScoped ? (globalRoster ?? null) : null}
+            onChange={setRoster}
+          />
         )}
       </section>
     </div>

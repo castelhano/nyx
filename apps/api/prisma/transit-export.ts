@@ -49,7 +49,7 @@ async function main() {
       orderBy: { name: 'asc' },
     }),
     prisma.transitLine.findMany({
-      include: { scope: { select: { name: true } }, parentLine: { select: { code: true } } },
+      include: { scope: { select: { name: true } }, parentLine: { select: { code: true } }, operators: { select: { branchId: true } } },
       orderBy: { code: 'asc' },
     }),
     prisma.transitRoute.findMany({
@@ -83,6 +83,7 @@ async function main() {
   const branchIds  = [
     ...settings.filter(s => !SCOPE_KEYED_SETTINGS.has(s.key)).map(s => s.scope).filter(s => s !== 'global'),
     ...depotBranchIds,
+    ...lines.flatMap(l => l.operators.map(o => o.branchId)),
   ]
   const branches   = branchIds.length
     ? await prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, taxId: true } })
@@ -115,6 +116,7 @@ async function main() {
       code: l.code, name: l.name, type: l.type, isActive: l.isActive,
       scopeName: l.scope?.name ?? null, parentLineCode: l.parentLine?.code ?? null,
       notes: l.notes, metrics: l.metrics, vehicleTypes: l.vehicleTypes, externalCodes: l.externalCodes,
+      operatorTaxIds: l.operators.map(o => branchTaxIdById.get(o.branchId) ?? null).filter(Boolean),
     })),
     routes: routes.map(r => ({
       lineCode: r.line.code, direction: r.direction, ordinal: r.ordinal, name: r.name,

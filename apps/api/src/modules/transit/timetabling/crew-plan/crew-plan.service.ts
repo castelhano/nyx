@@ -12,6 +12,7 @@ import { loadBlockRelief } from './relief-points'
 import { planPieceAdjust, resolveAnchor } from './piece-adjust'
 import { loadCrewWalk } from './crew-walk'
 import { computeCrewPlan } from './crew-scoring.calc'
+import { loadCrewBranchRules } from './crew-branch-rules'
 import {
   activationEffect, addDays, applyEffect, assertRetroactiveAllowed, dayOf, fmtDay, parseStartDate, toDbDate,
   type ActivationEffect, type VersionRow,
@@ -201,6 +202,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           data: {
             crewPlanId: copy.id, role: d.role, dutyNumber: d.dutyNumber, kind: d.kind,
             branchId: d.branchId, notes: d.notes,
+            ...(d.shiftPinned ? { shiftId: d.shiftId, shiftPinned: true } : {}),
             pieces: {
               create: d.pieces.map(p => ({
                 vehicleBlockId: p.vehicleBlockId, sequence: p.sequence,
@@ -261,7 +263,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     })
     if (!plan) throw new NotFoundException('crewPlan not found')
 
-    const [versions, blockRows, duties, operators, { settings, isCustom }] = await Promise.all([
+    const [versions, blockRows, duties, operators, shifts, { settings, isCustom }] = await Promise.all([
       this.prisma.crewPlan.findMany({
         where:   { vehiclePlanId: plan.vehiclePlanId },
         orderBy: { createdAt: 'desc' },
@@ -298,6 +300,16 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         where:  { scopeId: plan.vehiclePlan.scopeId },
         select: { branchId: true, abbr: true, branch: { select: { name: true } } },
       }),
+      // the shifts of the Scope's operators — inactive ones too, a duty may be pinned to one
+      this.prisma.crewShift.findMany({
+        where:   { branches: { some: { branch: { scopeOperators: { some: { scopeId: plan.vehiclePlan.scopeId } } } } } },
+        orderBy: [{ priority: 'asc' }, { code: 'asc' }],
+        select: {
+          id: true, code: true, name: true, priority: true, allowSplit: true, isActive: true, branches: { select: { branchId: true } },
+          startFloor: true, startIdealMin: true, startIdealMax: true, startCeiling: true,
+          endFloor: true, endIdealMin: true, endIdealMax: true, endCeiling: true,
+        },
+      }),
       this.resolveSettings(id),
     ])
 
@@ -325,6 +337,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       },
       versions,
       operators: operators.map(o => ({ branchId: o.branchId, abbr: o.abbr, name: o.branch.name })),
+      shifts: shifts.map(({ branches, ...sh }) => ({ ...sh, branchIds: branches.map(b => b.branchId) })),
       // every line of the Scope — line colors are indexed over this set (same as the
       // vehicle plan Gantt), so a line has the same color on both screens
       lineCodes: plan.vehiclePlan.scope.lines.map(l => l.code),
@@ -354,6 +367,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       }),
       duties: duties.map(d => ({
         id: d.id, role: d.role, dutyNumber: d.dutyNumber, kind: d.kind, branchId: d.branchId, notes: d.notes,
+        shiftId: d.shiftId, shiftPinned: d.shiftPinned,
         summary: d.summary, issues: d.issues ?? [], isStale: d.isStale, hasIssues: d.hasIssues,
         locked: (d.constraints as { locked?: boolean } | null)?.locked === true,
         pieces: d.pieces.map(p => ({
@@ -394,18 +408,19 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       ({ count: removed } = await this.prisma.duty.deleteMany({ where: { crewPlanId: id, pieces: { some: { vehicleBlockId: null } } } }))
     }
 
-    const [{ settings }, blockRows, duties] = await Promise.all([
+    const [{ settings }, blockRows, duties, branchRules] = await Promise.all([
       this.resolveSettings(id),
       this.prisma.vehicleBlock.findMany({ where: { vehiclePlanId: plan.vehiclePlanId }, select: { id: true } }),
       this.prisma.duty.findMany({
         where:  { crewPlanId: id },
         select: {
-          id: true, role: true, kind: true, branchId: true,
+          id: true, role: true, kind: true, branchId: true, shiftId: true, shiftPinned: true,
           summary: true, issues: true, isStale: true,
           pieces:     { select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true, startAnchor: true, endAnchor: true } },
           activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
         },
       }),
+      loadCrewBranchRules(this.prisma, plan.vehiclePlanId),
     ])
     const [relief, mealStops] = await Promise.all([
       loadBlockRelief(this.prisma, blockRows.map(b => b.id)),
@@ -429,7 +444,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       settings,
       blocks: [...relief.entries()].map(([blockId, r]) => ({ id: blockId, branchId: r.branchId, window: r.window, serviceSpans: r.serviceSpans, points: r.points, trips: r.trips, deadruns: r.deadruns, bundles: r.bundles })),
       duties: duties.map(d => ({
-        id: d.id, role: d.role, kind: d.kind, branchId: d.branchId,
+        id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, shiftId: d.shiftId, shiftPinned: d.shiftPinned,
         pieces:     d.pieces,
         activities: d.activities.map(a => ({
           id: a.id, type: a.type, intervalTypeId: a.intervalTypeId, startMinutes: a.startMinutes, endMinutes: a.endMinutes,
@@ -439,6 +454,8 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       walk,
       mealStops: new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
       repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
+      shifts:         branchRules.shifts,
+      lineOperators:  branchRules.lineOperators,
     })
 
     // only rows whose derived state actually changed are written — a single piece edit
@@ -459,10 +476,10 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       }
       for (const [dutyId, d] of result.duties) {
         const cur = dutiesById.get(dutyId)!
-        if (cur.isStale === d.isStale && same(cur.summary, d.summary) && same(cur.issues, d.issues)) continue
+        if (cur.isStale === d.isStale && cur.shiftId === d.shiftId && same(cur.summary, d.summary) && same(cur.issues, d.issues)) continue
         await tx.duty.update({
           where: { id: dutyId },
-          data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.length > 0, isStale: d.isStale },
+          data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.length > 0, isStale: d.isStale, shiftId: d.shiftId },
         })
       }
       if (!same(plan.summary, result.summary)) await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })

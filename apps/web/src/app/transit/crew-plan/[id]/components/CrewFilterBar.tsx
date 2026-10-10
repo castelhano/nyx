@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import type { BoardDuty, CrewBoardData } from '../board.types'
 import { fmtTime, fmtDuration, parseTime, ROLE_LABEL, KIND_LABEL } from '../board.types'
-import { EMPTY_FILTER, isFilterActive, addCondition, type CrewFilter, type CrewView, type ConditionField, type FilterCondition } from '../filters'
+import { EMPTY_FILTER, NO_SHIFT, isFilterActive, addCondition, type CrewFilter, type CrewView, type ConditionField, type FilterCondition } from '../filters'
 
 // Same look as the vehicle plan's BlockFilterBar; criteria adapt to the current view.
 
@@ -17,6 +17,7 @@ interface Props {
   onChange:   (next: CrewFilter) => void
   matchCount: number
   operators:  CrewBoardData['operators']
+  shifts:     CrewBoardData['shifts']
   // lines the plan's trips run, sorted by code (numeric-aware)
   lineCodes:  string[]
   // "X" — closes the bar entirely (criteria + pins reset by the caller)
@@ -46,7 +47,7 @@ const FLAGS = [
   { key: 'multiLine',  label: 'Mais de uma linha' },
 ] as const
 
-export function CrewFilterBar({ view, filter, onChange, matchCount, operators, lineCodes, onClose }: Props) {
+export function CrewFilterBar({ view, filter, onChange, matchCount, operators, shifts, lineCodes, onClose }: Props) {
   const set = (patch: Partial<CrewFilter>) => onChange({ ...filter, ...patch })
   const active = isFilterActive(filter, view)
   const flags   = view === 'vehicles' ? FLAGS.filter(f => f.key !== 'multiLine') : FLAGS
@@ -117,6 +118,13 @@ export function CrewFilterBar({ view, filter, onChange, matchCount, operators, l
             <option value="">Tipo</option>
             {(Object.keys(KIND_LABEL) as BoardDuty['kind'][]).map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
+          {shifts.length > 0 && (
+            <select value={filter.shiftId ?? ''} onChange={e => set({ shiftId: e.target.value || null })} className={selectCls}>
+              <option value="">Turno</option>
+              {shifts.map(sh => <option key={sh.id} value={sh.id}>{sh.code}</option>)}
+              <option value={NO_SHIFT}>Sem turno</option>
+            </select>
+          )}
           {flagsDropdown}
         </>
       )}

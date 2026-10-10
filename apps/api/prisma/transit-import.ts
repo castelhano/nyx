@@ -29,7 +29,7 @@ interface Fixture {
   dayTypes: Array<{ code: string; name: string; description?: string | null; pattern: unknown; priority: number; sortOrder: number }>
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
   scopes: Array<{ name: string; description: string | null; osoConfig: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
-  lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown; vehicleTypes?: unknown; externalCodes?: unknown }>
+  lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown; vehicleTypes?: unknown; externalCodes?: unknown; operatorTaxIds?: string[] }>
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean; color?: string | null; homeDepotCode?: string | null }>
   routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean; includeInOso?: boolean }>
   lineGroups: Array<{ name: string; branchTaxId: string | null; notes: string | null; lineCodes: string[] }>
@@ -124,6 +124,12 @@ async function main() {
       create: { code: l.code, name: l.name, type: l.type as any, isActive: l.isActive, scopeId, notes: l.notes, metrics: l.metrics as Prisma.InputJsonValue, vehicleTypes: (l.vehicleTypes ?? undefined) as Prisma.InputJsonValue, externalCodes: (l.externalCodes ?? undefined) as Prisma.InputJsonValue },
     })
     lineMap.set(l.code, record.id)
+    // operatorTaxIds absent in fixtures exported before LineOperator — leave the line's as they are
+    if (l.operatorTaxIds) {
+      const branchIds = l.operatorTaxIds.map(taxId => branchIdByTaxId.get(taxId)).filter((id): id is string => !!id)
+      await prisma.lineOperator.deleteMany({ where: { lineId: record.id } })
+      if (branchIds.length) await prisma.lineOperator.createMany({ data: branchIds.map(branchId => ({ lineId: record.id, branchId })) })
+    }
   }
   for (const l of fixture.lines) {
     if (!l.parentLineCode) continue

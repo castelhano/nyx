@@ -29,27 +29,39 @@ export async function planBundleSizes(db: any, planId: string): Promise<Map<stri
   return sizes
 }
 
+// lineId → branchIds operating it (LineOperator) for the plan's lines — LINE_NOT_OPERATED
+export async function planLineOperators(db: any, planId: string): Promise<Map<string, string[]>> {
+  const rows: { lineId: string; branchId: string }[] = await db.lineOperator.findMany({
+    where:  { line: { planLines: { some: { vehiclePlanId: planId } } } },
+    select: { lineId: true, branchId: true },
+  })
+  const map = new Map<string, string[]>()
+  for (const r of rows) map.set(r.lineId, [...(map.get(r.lineId) ?? []), r.branchId])
+  return map
+}
+
 export interface IssueBlockRow {
   depotId:        string
   branchId:       string | null
-  blockTrips:     { trip: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null; route: { originLocalityId: string; destinationLocalityId: string } } }[]
+  blockTrips:     { trip: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null; route: { lineId?: string; originLocalityId: string; destinationLocalityId: string } } }[]
   blockDeadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
   blockIntervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[]
 }
 
-export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null, bundleSizes?: Map<string, number>): VehicleBlockIssue[] {
+export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null, bundleSizes?: Map<string, number>, lineOperators?: Map<string, string[]>): VehicleBlockIssue[] {
   return validateBlock({
     depotId:  block.depotId,
     branchId: block.branchId,
     trips:   block.blockTrips.map(({ trip }) => ({
       departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
       originLocalityId: trip.route.originLocalityId, destinationLocalityId: trip.route.destinationLocalityId,
-      bundleId: trip.bundleId,
+      bundleId: trip.bundleId, lineId: trip.route.lineId,
     })),
     deadruns:  block.blockDeadruns,
     intervals: block.blockIntervals,
     maxStandMinutes,
     bundleSizes,
+    lineOperators,
   })
 }
 
@@ -61,7 +73,7 @@ export async function refreshBlockIssues(db: any, blockId: string, generalConfig
         vehiclePlanId:  true,
         depotId:        true,
         branchId:       true,
-        blockTrips:     { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true, route: { select: { originLocalityId: true, destinationLocalityId: true } } } } } },
+        blockTrips:     { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true, route: { select: { lineId: true, originLocalityId: true, destinationLocalityId: true } } } } } },
         blockDeadruns:  { select: { type: true, departureMinutes: true, arrivalMinutes: true, originLocalityId: true, destinationLocalityId: true, bundleId: true } },
         blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true } },
       },
@@ -69,6 +81,7 @@ export async function refreshBlockIssues(db: any, blockId: string, generalConfig
     defaultIntervalMaxMinutes(db, generalConfig),
   ])
   if (!block) return
-  const issues = blockIssues(block, maxStand, await planBundleSizes(db, block.vehiclePlanId))
+  const [bundleSizes, lineOperators] = await Promise.all([planBundleSizes(db, block.vehiclePlanId), planLineOperators(db, block.vehiclePlanId)])
+  const issues = blockIssues(block, maxStand, bundleSizes, lineOperators)
   await db.vehicleBlock.update({ where: { id: blockId }, data: { issues, hasIssues: issues.length > 0 } })
 }

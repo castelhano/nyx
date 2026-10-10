@@ -46,6 +46,9 @@ export interface BoardDuty {
   hasIssues:  boolean
   // Duty.constraints.locked — the crew solver leaves it alone
   locked:     boolean
+  // CrewShift the duty fits (derived) — or the user's, when shiftPinned
+  shiftId:    string | null
+  shiftPinned: boolean
   pieces:     BoardPiece[]
   activities: BoardActivity[]
 }
@@ -67,6 +70,20 @@ export interface BoardBlock {
   issues:      VehicleBlockIssue[]
 }
 
+// CrewShift used by the Scope's operators (inactive ones too — a duty may be pinned to one)
+export interface BoardShift {
+  id:       string
+  // the operators using it (CrewShiftBranch)
+  branchIds: string[]
+  code:     string
+  name:     string
+  priority: number
+  allowSplit: boolean
+  isActive: boolean
+  startFloor: number; startIdealMin: number; startIdealMax: number; startCeiling: number
+  endFloor:   number; endIdealMin:   number; endIdealMax:   number; endCeiling:   number
+}
+
 export interface CrewBoardData {
   plan: {
     id: string; description: string | null; status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED'
@@ -79,6 +96,7 @@ export interface CrewBoardData {
   vehiclePlan: { id: string; description: string | null; status: string; scopeName: string; dayTypeName: string }
   versions:    { id: string; description: string | null; status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED'; createdAt: string }[]
   operators:   { branchId: string; abbr: string; name: string }[]
+  shifts:      BoardShift[]
   lineCodes:   string[]
   localities:  { id: string; name: string; abbr: string | null }[]
   blocks:      BoardBlock[]
@@ -125,7 +143,7 @@ export const CRITERION_LABEL: Record<string, string> = {
 export const METER_ISSUES = new Set<DutyIssue['code']>(['WALK_DISTANCE'])
 
 // issues with no meaningful value/limit — rendered as the label only
-export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION'])
+export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED'])
 
 export const DIRECTION_LABEL = ROUTE_DIRECTION_LABEL
 

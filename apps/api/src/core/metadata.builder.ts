@@ -147,6 +147,12 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
   })
 }
 
+// an array of enum values (multi-select of fixed options) — its options; undefined otherwise
+function arrayEnumOptions(inner: ZodType): string[] | undefined {
+  const element = unwrap((inner as any)._def.element as ZodType)
+  return element instanceof ZodEnum ? Object.keys((element as ZodEnum<any>)._def.entries ?? {}) : undefined
+}
+
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
   const schemaMeta = (schema as any)._schemaMeta ?? {}
 
@@ -192,7 +198,8 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
       label:          meta.label      ?? toTitleCase(name),
       type,
       required:       isRequired(field),
-      options:        type === 'enum' ? Object.keys((inner as ZodEnum<any>)._def.entries ?? {}) : undefined,
+      options:        type === 'enum' ? Object.keys((inner as ZodEnum<any>)._def.entries ?? {})
+        : type === 'array' ? arrayEnumOptions(inner) : undefined,
       ...(defaultValue !== undefined ? { defaultValue } : {}),
       listVisibility,
       showInForm: meta.showInForm ?? (!isId && !isPassword && !isTimestamp),

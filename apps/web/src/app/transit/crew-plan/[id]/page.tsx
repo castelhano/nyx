@@ -265,6 +265,13 @@ export default function CrewPlanPage() {
     setFilterOpen(true)
   }
 
+  // shiftId: a shift's id, or NO_SHIFT — filters the duties (switching to the duty view)
+  function toggleShiftFilter(shiftId: string) {
+    setFilter(f => ({ ...f, shiftId: filterOpen && f.shiftId === shiftId ? null : shiftId }))
+    setFilterOpen(true)
+    setView('duties')
+  }
+
   const localityName = useMemo(() => {
     const map = new Map((data?.localities ?? []).map(l => [l.id, l.abbr || l.name]))
     return (localityId: string) => map.get(localityId) ?? '?'
@@ -737,6 +744,7 @@ export default function CrewPlanPage() {
                 onChange={setFilter}
                 matchCount={matchCount}
                 operators={data.operators}
+                shifts={data.shifts}
                 lineCodes={planLineCodes}
                 onClose={toggleFilter}
               />
@@ -799,6 +807,7 @@ export default function CrewPlanPage() {
             blockById={blockById}
             lineCodes={dutyLines.get(selectedDuty.id) ?? []}
             operators={data.operators}
+            shifts={data.shifts}
             localityName={localityName}
             canEdit={canEdit}
             resetSignal={resetSignal}
@@ -823,6 +832,8 @@ export default function CrewPlanPage() {
             onToggleStale={() => toggleDutyFlag('staleOnly')}
             walkActive={filterOpen && filter.walking}
             onToggleWalk={() => toggleDutyFlag('walking')}
+            shiftActive={filterOpen ? filter.shiftId : null}
+            onToggleShift={toggleShiftFilter}
             canEdit={canEdit}
             onSelect={focusDuty}
             onCreate={(role) => void handleCreateDuty(role)}

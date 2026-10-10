@@ -21,6 +21,7 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
   lineChanges:    { label: 'Trocas de Linha',         unit: 'trocas', hint: 'Trocas de linha dentro de uma mesma jornada — somam às trocas de carro.' },
   walkDistance:   { label: 'Deslocamento a Pé',       unit: 'm',      hint: 'Metros caminhados na jornada entre pegadas em locais diferentes.' },
+  interShiftRest: { label: 'Descanso entre Jornadas', unit: DURATION_UNIT, hint: 'Interjornada da mesma pessoa entre dois dias — o DOP estima repetindo a jornada no dia seguinte.' },
 }
 
 const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
