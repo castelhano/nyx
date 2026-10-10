@@ -7,7 +7,7 @@ import { Icons }             from '@/lib/icons'
 import { AutoBreadcrumb }    from '@/core/AutoBreadcrumb'
 import { usePageGuard }      from '@/core/usePageGuard'
 import { useRecordQuery }    from '@/core/useRecordQuery'
-import { useTopbarActions }  from '@/components/layout/topbar-actions-context'
+import { useTopbarActions, type TopbarStatus, type TopbarStatusItem } from '@/components/layout/topbar-actions-context'
 import { apiFetch }          from '@/lib/auth'
 import { useToast }          from '@/lib/toast-context'
 import { useConfirm }        from '@/lib/confirm-context'
@@ -17,6 +17,8 @@ import { InlineDescription } from './components/InlineDescription'
 import { useGanttEditor } from './hooks/useGanttEditor'
 import { useVehiclePlanShortcuts } from './hooks/useVehiclePlanShortcuts'
 import { useOsoCoverage } from './hooks/useOsoCoverage'
+import { useServiceRequirements } from './hooks/useServiceRequirements'
+import { ROUTE_DIRECTION_LABEL, vehicleBlockIssueText, serviceRequirementWindowText } from '@nyx/schemas'
 import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
@@ -231,6 +233,8 @@ export default function VehiclePlanPage() {
   // any other line compares against the persisted data instead (it can't have pending
   // edits: those only exist for plotted lines). Same departure queries, deduped.
   const persistedCoverage = useOsoCoverage(ganttData ?? null)
+  // LineServiceRequirements — the whole plan, plotted lines with their pending edits
+  const serviceReqs = useServiceRequirements(ganttData, mergedPlottedData, selectedLineIds)
   // Memoized so panning/zooming the Gantt (onViewportChange fires on every
   // scroll tick) doesn't hand GanttBoard a new `data` reference every render —
   // that would defeat its memo() and retrigger a full engine.setView layout
@@ -241,8 +245,91 @@ export default function VehiclePlanPage() {
     const blocks = visibleBlockIds
       ? mergedPlottedData.blocks.filter(b => visibleBlockIds.has(b.id))
       : mergedPlottedData.blocks
-    return { ...mergedPlottedData, blocks, offScheduleTripIds }
-  }, [mergedPlottedData, offScheduleTripIds, visibleBlockIds])
+    return { ...mergedPlottedData, blocks, offScheduleTripIds, serviceTripLabels: serviceReqs.tripLabels }
+  }, [mergedPlottedData, offScheduleTripIds, visibleBlockIds, serviceReqs.tripLabels])
+
+  // ── pendências (topbar status) — uncovered service requirements + the blocks' modeling
+  // issues as of the last save (docs/proposal/plan_line_service_requirement_v1.md). Clicking
+  // one takes the Gantt to it; its line may not be plotted yet, so the line gets selected
+  // first and the reveal runs once mergedPlottedData has it.
+
+  type RevealTarget =
+    | { kind: 'block';  blockId: string; minutes: number }
+    | { kind: 'window'; from: number; to: number }
+  const [pendingReveal, setPendingReveal] = useState<{ lineIds: string[]; target: RevealTarget } | null>(null)
+
+  function revealIssue(lineIds: string[], target: RevealTarget) {
+    if (lineIds.length === 0) { toast.error('Bloco sem viagens — não aparece no Gantt'); return }
+    setSelectedLineIds(prev => lineIds.every(l => prev.has(l)) ? prev : new Set([...prev, ...lineIds]))
+    setPendingReveal({ lineIds, target })
+  }
+
+  useEffect(() => {
+    if (!pendingReveal || !mergedPlottedData) return
+    if (!pendingReveal.lineIds.every(l => selectedLineIds.has(l))) return
+    const { target } = pendingReveal
+    // one-shot: consumed the render the selected lines reach the Gantt
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPendingReveal(null)
+    if (target.kind === 'window') {
+      ganttBoardRef.current?.revealTime(target.from, target.to)
+      return
+    }
+    const index = mergedPlottedData.blocks.findIndex(b => b.id === target.blockId)
+    if (index < 0) return
+    if (visibleBlockIds && !visibleBlockIds.has(target.blockId)) {
+      toast.error(`Bloco ${mergedPlottedData.blocks[index].blockNumber} oculto pelo filtro`)
+      return
+    }
+    // the last event starting at or before the issue's time, else the block's first
+    const items  = navBlocks[index] ?? []
+    const segId  = [...items].reverse().find(it => it.dep <= target.minutes)?.segId ?? items[0]?.segId
+    if (segId) {
+      setSelection(null)
+      setTripSeqAnchor(null)
+      setFocusedSegId(segId)
+      setEditBarOpen(true)
+    }
+    setCenterBlockId(target.blockId)
+  }, [pendingReveal, mergedPlottedData, selectedLineIds]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const issueStatus = useMemo<TopbarStatus>(() => {
+    const byLine = new Map<string, TopbarStatusItem[]>()
+    for (const { requirement: r, lineCode } of serviceReqs.uncovered) {
+      const where = r.locality ? ` em ${r.locality.name}` : ''
+      const items = byLine.get(lineCode) ?? []
+      items.push({
+        label:    r.label,
+        detail:   `${ROUTE_DIRECTION_LABEL[r.direction] ?? r.direction} · ${r.kind === 'BOARDING' ? 'embarque' : 'desembarque'}${where} `
+          + `${serviceRequirementWindowText(r)} — sem viagem na janela`,
+        severity: 'warning',
+        onClick:  () => revealIssue([r.lineId], { kind: 'window', from: r.earliestMinutes, to: r.latestMinutes }),
+      })
+      byLine.set(lineCode, items)
+    }
+
+    const blockItems: TopbarStatusItem[] = (ganttData?.blocks ?? [])
+      .slice()
+      .sort((a, b) => a.blockNumber - b.blockNumber)
+      .flatMap(b => {
+        const lineIds = [...new Set(b.blockTrips.map(bt => bt.trip.route.line.id))]
+        return (b.issues ?? []).map(issue => ({
+          label:    `Bloco ${b.blockNumber}`,
+          detail:   vehicleBlockIssueText(issue),
+          severity: 'error' as const,
+          onClick:  () => revealIssue(lineIds, { kind: 'block', blockId: b.id, minutes: issue.minutes }),
+        }))
+      })
+
+    return {
+      loading: !ganttData || serviceReqs.isLoading,
+      groups:  [
+        ...[...byLine].sort(([a], [b]) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+          .map(([code, items]) => ({ label: `Atendimentos — linha ${code}`, items })),
+        { label: 'Blocos (última gravação)', items: blockItems },
+      ],
+    }
+  }, [ganttData, serviceReqs.uncovered, serviceReqs.isLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── solver ──────────────────────────────────────────────────────────────────
 
@@ -339,6 +426,8 @@ export default function VehiclePlanPage() {
       disabled: pendingCount > 0,
       position: 'start' as const,
     }] : []),
+
+    ...(!isNew ? [{ label: 'Pendências', status: issueStatus, position: 'start' as const }] : []),
 
     // edit-bar toggle — always visible, aligned to the start
     ...(!isNew ? [{
@@ -515,7 +604,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, solverJob, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen])
+  ], [isPending, isSaving, solverJob, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen, issueStatus])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -920,6 +1009,7 @@ export default function VehiclePlanPage() {
             planId={id}
             lineIds={generateLineModal.lineIds}
             dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
+            dayTypeId={ganttData?.plan?.dayType?.id ?? null}
             existingTripIds={
               (ganttData?.blocks ?? [])
                 .flatMap(b => b.blockTrips)
@@ -944,6 +1034,7 @@ export default function VehiclePlanPage() {
               lineMetrics={line.line.metrics}
               dayTypeCode={ganttData?.plan?.dayType?.code ?? ''}
               blocks={ganttData?.blocks ?? []}
+              coveringTripIds={new Set(serviceReqs.tripLabels.keys())}
               hasPendingChanges={pendingCount > 0}
               onClose={() => setRedistributeModal(null)}
               onPendingAdd={handlePendingAdd}

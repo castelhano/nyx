@@ -11,6 +11,7 @@ import type { UseFormRegisterReturn } from 'react-hook-form'
 import { inputBaseCls, selectBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
+import { DurationInput } from '@/components/ui/duration-input'
 import { apiFetch } from '@/lib/auth'
 import { Icons } from '@/lib/icons'
 import { useFieldOptions } from './useFieldOptions'
@@ -176,6 +177,37 @@ function CurrencyInput({
             placeholder={field.placeholder}
             readOnly={readonly}
             className={cn(className, field.keybind && 'md:pr-10', readonly && readonlyCls)}
+          />
+          {field.keybind && <KeyHint k={field.keybind} />}
+        </div>
+      )}
+    />
+  )
+}
+
+// widget 'time' — minutes since 00:00 typed and shown as H:MM
+function TimeInput({
+  field, control, autoFocus, className, readonly, containerClassName,
+}: {
+  field: MetadataField; control: Control<any>; autoFocus?: boolean; className: string; readonly?: boolean; containerClassName?: string
+}) {
+  return (
+    <Controller
+      name={field.name}
+      control={control}
+      rules={{ required: field.required ? 'Campo obrigatório' : false }}
+      render={({ field: ctrl }) => (
+        <div className={cn('relative', containerClassName)}>
+          <DurationInput
+            id={field.name}
+            value={ctrl.value ?? null}
+            onChange={ctrl.onChange}
+            min={field.min ?? 0}
+            max={field.max}
+            autoFocus={autoFocus}
+            readOnly={readonly}
+            placeholder={field.placeholder ?? 'H:MM'}
+            className={cn(className, 'text-left', field.keybind && 'md:pr-10', readonly && readonlyCls)}
           />
           {field.keybind && <KeyHint k={field.keybind} />}
         </div>
@@ -734,6 +766,8 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
       : field.lazyEdit
         ? <LockedRelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
         : <RelationSelect field={field} control={control} autoFocus={autoFocus} className={fieldSelectCls} readonly={readonly} containerClassName={field.className} />
+  } else if (field.widget === 'time' && control) {
+    controlEl = <TimeInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.widget === 'currency' && control) {
     controlEl = <CurrencyInput field={field} control={control} autoFocus={autoFocus} className={fieldInputCls} readonly={readonly} containerClassName={field.className} />
   } else if (field.mask && control) {

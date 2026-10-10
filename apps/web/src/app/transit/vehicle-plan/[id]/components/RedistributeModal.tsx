@@ -30,6 +30,8 @@ interface Props {
   lineMetrics:        LineMetrics | null
   dayTypeCode:        string
   blocks:             GanttBlock[]
+  // trips covering a LineServiceRequirement — their cycle is never shrunk (see redistributeTrips)
+  coveringTripIds:    Set<string>
   hasPendingChanges:  boolean
   onClose:            () => void
   onPendingAdd:       (entry: PendingAddEntry) => void
@@ -37,7 +39,7 @@ interface Props {
 }
 
 export function RedistributeModal({
-  lineId, lineCode, lineName, lineMetrics, dayTypeCode, blocks, hasPendingChanges,
+  lineId, lineCode, lineName, lineMetrics, dayTypeCode, blocks, coveringTripIds, hasPendingChanges,
   onClose, onPendingAdd, onQueueTripDeletes,
 }: Props) {
   useShortcutContext('redistribute_md')
@@ -134,6 +136,7 @@ export function RedistributeModal({
           destinationLocalityId:   bt.trip.route.destinationLocality.id,
           departureMinutes:        bt.trip.departureMinutes,
           originalDurationMinutes: bt.trip.arrivalMinutes - bt.trip.departureMinutes,
+          coversRequirement:       coveringTripIds.has(bt.trip.id),
         })
         signatureParts.push(`${bt.trip.id}:${bt.trip.arrivalMinutes}`)
       }

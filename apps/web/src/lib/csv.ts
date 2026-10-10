@@ -1,4 +1,5 @@
 import type { MetadataField } from '@nyx/types'
+import { formatDuration } from './duration'
 
 function escapeCell(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -22,6 +23,7 @@ export function downloadCsv(
       const obj = row[rel]
       if (obj && typeof obj === 'object') return escapeCell((obj as Record<string, unknown>)[f.labelField])
     }
+    if (f.widget === 'time' && typeof row[f.name] === 'number') return escapeCell(formatDuration(row[f.name] as number))
     if (f.widget === 'currency') {
       const num = parseFloat(String(row[f.name]))
       if (!isNaN(num)) return escapeCell(num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))

@@ -191,6 +191,9 @@ export interface VehiclePlanGanttData {
   // their line's pinned OSO — only populated for lines currently isDrifted (see
   // useOsoCoverage). Optional: absent while the coverage fetch hasn't resolved yet.
   offScheduleTripIds?: Set<string>
+  // trip id → labels of the LineServiceRequirements it covers (see useServiceRequirements).
+  // Optional: absent while the requirements haven't loaded.
+  serviceTripLabels?: Map<string, string[]>
 }
 
 // ── color palette ─────────────────────────────────────────────────────────────
@@ -297,6 +300,7 @@ export const vehiclesView: GanttView<VehiclePlanGanttData> = {
         locked:      (c?.locked?.length ?? 0) > 0,
         offSchedule: data.offScheduleTripIds?.has(bt.trip.id) ?? false,
         marked:      (bt.trip.markings?.length ?? 0) > 0,
+        servesRequirement: data.serviceTripLabels?.has(bt.trip.id) ?? false,
         stopPattern: bt.trip.stopPattern,
         label:       bt.trip.route.line.code,
         color:       segColor,

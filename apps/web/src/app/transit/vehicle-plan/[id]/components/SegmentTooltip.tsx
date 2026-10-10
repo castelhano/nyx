@@ -14,6 +14,8 @@ interface Props {
   containerW: number
   containerH: number
   headway:    number | null
+  // LineServiceRequirements the trip covers (see useServiceRequirements)
+  serviceLabels?: string[]
 }
 
 const GAP          = 8
@@ -26,7 +28,7 @@ function formatMinute(m: number): string {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
 }
 
-export function SegmentTooltip({ segment, rect, containerW, containerH, headway }: Props) {
+export function SegmentTooltip({ segment, rect, containerW, containerH, headway, serviceLabels }: Props) {
   const bt   = segment.kind === 'trip' ? (segment.data as GanttBlockTrip) : null
   const trip = bt?.trip
 
@@ -109,6 +111,9 @@ export function SegmentTooltip({ segment, rect, containerW, containerH, headway 
                 partida não localizada na OSO
               </p>
             )}
+            {serviceLabels?.map(l => (
+              <p key={l} className="text-xs mt-0.5 font-medium">Atende: {l}</p>
+            ))}
           </>
         )}
         <p className="text-xs mt-1 flex items-center gap-1.5 flex-wrap">

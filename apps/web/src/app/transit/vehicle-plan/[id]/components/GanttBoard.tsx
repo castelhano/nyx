@@ -19,7 +19,11 @@ export interface GanttBoardHandle {
   getSegments: () => LayoutSegment[]
   getRows:     () => LayoutRow[]
   centerRow:   (rowId: string) => void
+  // scrolls the window into the middle of the view and highlights it for a few seconds
+  revealTime:  (from: number, to: number) => void
 }
+
+const TIME_HIGHLIGHT_MS = 4000
 
 const RULER_HEIGHT = 40   // px — matches TimeRuler h-10
 export const LABEL_WIDTH  = 160  // px — matches RowList width
@@ -99,7 +103,20 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
       engine.viewport.scrollTo(row.y + row.height / 2 - engine.viewport.height / 2)
       engine.notify()
     },
+    revealTime: (from, to) => {
+      const engine = engineRef.current
+      if (!engine) return
+      const vp     = engine.viewport
+      const center = ((from + to) / 2 - vp.dayStartMinute) * vp.pixelsPerMinute
+      vp.scrollXTo(center - (vp.width - vp.rightInset) / 2)
+      engine.setTimeHighlight({ from, to })
+      engine.notify()
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = setTimeout(() => engineRef.current?.setTimeHighlight(null), TIME_HIGHLIGHT_MS)
+    },
   }), [])
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current) }, [])
   const onViewportChangeRef   = useRef(onViewportChange)
   const onSelectionChangeRef  = useRef(onSelectionChange)
   const actionSpecRef         = useRef(actionSpec)
@@ -437,6 +454,9 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
               containerW={vp.width}
               containerH={canvasH}
               headway={tooltip.headway}
+              serviceLabels={tooltip.segment.kind === 'trip'
+                ? data.serviceTripLabels?.get((tooltip.segment.data as GanttBlockTrip).trip.id)
+                : undefined}
             />
           )}
 

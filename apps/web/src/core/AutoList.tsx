@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge'
 import { useComboboxSearch } from './useComboboxSearch'
 import { useRelationLabel } from './useRelationLabel'
 import { cn, extractError } from '@/lib/utils'
+import { formatDuration } from '@/lib/duration'
 import type { FilterDef, MetadataField, PaginatedResult, RowActionDef } from '@nyx/types'
 import { RowActionsCell } from './RowActionsCell'
 
@@ -292,6 +293,7 @@ function buildColumns(
         }
         if (col.type === 'enum' && col.optionLabels && typeof val === 'string') return col.optionLabels[val] ?? val
         if (col.type === 'date') return formatDate(val, dateFormat)
+        if (col.widget === 'time' && typeof val === 'number') return formatDuration(val)
         if (col.widget === 'currency') {
           const num = parseFloat(String(val))
           if (!isNaN(num)) return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

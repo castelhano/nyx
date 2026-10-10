@@ -64,6 +64,11 @@ enum DutyActivityType {
   STANDBY
 }
 
+enum ServiceRequirementKind {
+  BOARDING
+  ALIGHTING
+}
+
 enum TripStopPattern {
   LOCAL
   LIMITED
@@ -109,6 +114,7 @@ model TransitLocality {
   dutyPiecesAsEnd             DutyPiece[]        @relation("DutyPieceEnd")
   dutyActivitiesAsOrigin      DutyActivity[]     @relation("DutyActivityOrigin")
   dutyActivitiesAsDestination DutyActivity[]     @relation("DutyActivityDestination")
+  serviceRequirements         LineServiceRequirement[]
 
   @@map("transit_localities")
 }
@@ -166,8 +172,41 @@ model TransitLine {
   exceptions LineCalendarExceptionLine[]
   lineGroups LineGroupLine[]
   schedules  LineSchedule[]
+  serviceRequirements LineServiceRequirement[]
 
   @@map("transit_lines")
+}
+
+// A departure the line's schedule must cover on a day type / direction — e.g. a school
+// letting out at 17:00 (BOARDING at the school, INBOUND) or a company shift starting at 08:00
+// (ALIGHTING at the company, OUTBOUND). Any trip of the line in that direction (route
+// variants included) satisfies it when its time at the reference point falls inside
+// [earliestMinutes, latestMinutes]: the passing time for BOARDING, the arrival for ALIGHTING.
+// Never blocks anything — an uncovered requirement is a warning
+// (docs/proposal/plan_line_service_requirement_v1.md).
+model LineServiceRequirement {
+  id              String                 @id @default(uuid())
+  lineId          String
+  dayTypeId       String
+  direction       RouteDirection
+  kind            ServiceRequirementKind
+  // reference point — null falls back to the route's origin (BOARDING) or destination
+  // (ALIGHTING); when set, only trips whose route passes through it count
+  localityId      String?
+  // window in minutes since 00:00 (may run past 1440), both ends inclusive
+  earliestMinutes Int
+  latestMinutes   Int
+  label           String
+  notes           String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  line     TransitLine      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  dayType  DayType          @relation(fields: [dayTypeId], references: [id])
+  locality TransitLocality? @relation(fields: [localityId], references: [id])
+
+  @@index([lineId, dayTypeId])
+  @@map("transit_line_service_requirements")
 }
 
 // One direction (or circular variant) of a line's trajectory — the ordered path a
@@ -302,6 +341,7 @@ model DayType {
   lineSchedules                LineSchedule[]
   calendarExceptionsAsOverride LineCalendarException[] @relation("ExceptionOverrideDayType")
   calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
+  serviceRequirements          LineServiceRequirement[]
 
   @@map("transit_day_types")
 }

@@ -7,9 +7,10 @@ import { RouteLocalityModule } from './route-locality/route-locality.module'
 import { TravelTimeModule } from './travel-time/travel-time.module'
 import { ScopeModule } from './scope/scope.module'
 import { ScopeOperatorModule } from './scope-operator/scope-operator.module'
+import { LineServiceRequirementModule } from './line-service-requirement/line-service-requirement.module'
 
 @Module({
-  imports: [LocalityModule, LineModule, LineGroupModule, RouteModule, RouteLocalityModule, TravelTimeModule, ScopeModule, ScopeOperatorModule],
-  exports: [LocalityModule, LineModule, LineGroupModule, RouteModule, RouteLocalityModule, TravelTimeModule, ScopeModule, ScopeOperatorModule],
+  imports: [LocalityModule, LineModule, LineGroupModule, RouteModule, RouteLocalityModule, TravelTimeModule, ScopeModule, ScopeOperatorModule, LineServiceRequirementModule],
+  exports: [LocalityModule, LineModule, LineGroupModule, RouteModule, RouteLocalityModule, TravelTimeModule, ScopeModule, ScopeOperatorModule, LineServiceRequirementModule],
 })
 export class NetworkModule {}

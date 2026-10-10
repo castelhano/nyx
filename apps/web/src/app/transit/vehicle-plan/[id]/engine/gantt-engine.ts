@@ -32,6 +32,7 @@ export class GanttEngine {
   private selectedSegIds: Set<string>   = new Set()
   private focusedSegId:  string | null  = null
   private moveTargetRowId: string | null = null
+  private timeHighlight:  { from: number; to: number } | null = null
 
   private onStateChange?: (state: EngineState) => void
   private onSegmentClickCb?: (seg: LayoutSegment, pos: Point) => void
@@ -103,6 +104,11 @@ export class GanttEngine {
     this.requestDraw()
   }
 
+  setTimeHighlight(range: { from: number; to: number } | null): void {
+    this.timeHighlight = range
+    this.requestDraw()
+  }
+
   getLayoutSegments(): LayoutSegment[] {
     return this.segments
   }
@@ -156,7 +162,7 @@ export class GanttEngine {
   // ── private ────────────────────────────────────────────────────────────────
 
   private draw(): void {
-    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds, this.focusedSegId, this.moveTargetRowId, this.frames)
+    this.renderer.render(this.viewport, this.layoutRows, this.segments, this.hoveredSeg, this.selectedSegIds, this.focusedSegId, this.moveTargetRowId, this.frames, this.timeHighlight)
     this.hitTester.build(this.segments, this.viewport, this.layoutRows)
   }
 

@@ -605,7 +605,29 @@ export interface GeneratedRound {
   id:                string
   legs:              GeneratedLeg[]
   readyAgainMinutes: number
+  // set on a round placed to cover a GenAnchor — how far it can still move (minutes) and keep
+  // every anchor it covers inside its window; later passes (block assignment, multiline
+  // interleave) must stay within it
+  slack?:            { early: number; late: number }
 }
+
+/** A LineServiceRequirement as the generator sees it (docs/proposal/
+ *  plan_line_service_requirement_v1.md): some passenger leg of `direction` must reach the
+ *  reference point within [from, to]. `fraction` is where that point sits along the leg —
+ *  0 = its departure, 1 = its arrival, in between for an intermediate stop (proportional to
+ *  the route's legs, see routeStopFractions in @nyx/schemas). */
+export interface GenAnchor {
+  id:        string
+  label:     string
+  direction: Direction
+  fraction:  number
+  from:      number
+  to:        number
+}
+
+// how much an anchor may stretch/compress the headways around it (relative to the span it's
+// spread over) before a reinforcement round is inserted instead
+const MAX_ANCHOR_HEADWAY_STRETCH = 0.3
 
 export interface GeneratedBlock {
   id:     string
@@ -689,6 +711,7 @@ export function generateRounds(
   opEndMinutes:       number,
   firstTripDirection: Direction,
   lastTripDirection:  Direction,
+  anchors:            GenAnchor[] = [],
 ): { rounds: GeneratedRound[]; warnings: string[] } {
   const warnings: string[] = []
   if (rows.length === 0 || opEndMinutes <= opStartMinutes) return { rounds: [], warnings }
@@ -833,6 +856,10 @@ export function generateRounds(
     }
   }
 
+  if (anchors.length > 0 && rounds.length > 0) {
+    applyAnchors(rows, rounds, anchors, firstTripDirection, pairedDirection, warnings)
+  }
+
   const lastRoundFinal = rounds[rounds.length - 1]
   const lastLegDirection = lastRoundFinal?.legs[lastRoundFinal.legs.length - 1]?.direction
   if (lastLegDirection && lastLegDirection !== lastTripDirection) {
@@ -845,6 +872,121 @@ export function generateRounds(
 }
 
 const DIR_LABEL_INTERNAL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
+
+/** Anchors pass — generalizes the closing pass above: each anchor not already covered pulls
+ *  the round closest to its window into it, spreading the shift linearly back to the nearest
+ *  fixed round on each side (the day's first/last round, or a round already pinned by another
+ *  anchor), so the headways bend gradually instead of one gap absorbing it all. When that
+ *  would stretch the headways too much (MAX_ANCHOR_HEADWAY_STRETCH), or the closest round is
+ *  itself fixed, a reinforcement round is inserted at the window instead. Mutates `rounds`. */
+function applyAnchors(
+  rows:               GenWindow[],
+  rounds:             GeneratedRound[],
+  anchors:            GenAnchor[],
+  firstTripDirection: Direction,
+  pairedDirection:    Direction | null,
+  warnings:           string[],
+): void {
+  const windowText = (a: GenAnchor) =>
+    a.from === a.to ? minutesToLabel(Math.round(a.from)) : `${minutesToLabel(Math.round(a.from))}–${minutesToLabel(Math.round(a.to))}`
+  const anchorDep = (r: GeneratedRound) => r.legs[0].departureMinutes
+  const timeAt = (r: GeneratedRound, a: GenAnchor): number | null => {
+    const leg = r.legs.find(l => l.direction === a.direction && !l.isDeadrun)
+    return leg ? leg.departureMinutes + a.fraction * (leg.arrivalMinutes - leg.departureMinutes) : null
+  }
+  const build = (dep: number, fallback: GenWindow) =>
+    buildRound(rows, windowAtMinutes(rows, dep) ?? fallback, dep, firstTripDirection, pairedDirection)
+  // anchor-leg departure that puts the anchor's leg at `target` — a few fixed-point steps,
+  // since the leg times depend on the band the departure falls in
+  const solveDep = (a: GenAnchor, target: number, guess: number, fallback: GenWindow): number | null => {
+    let dep = guess
+    for (let i = 0; i < 5; i++) {
+      const t = timeAt(build(dep, fallback), a)
+      if (t == null) return null
+      if (Math.abs(target - t) < 0.05) break
+      dep += target - t
+    }
+    return dep
+  }
+
+  const fixed  = new Set([rounds[0].id, rounds[rounds.length - 1].id])
+  const pinned = new Map<string, GenAnchor[]>()
+  const pin = (id: string, a: GenAnchor) => { fixed.add(id); pinned.set(id, [...(pinned.get(id) ?? []), a]) }
+
+  for (const a of [...anchors].sort((x, y) => x.from - y.from)) {
+    // aim half a minute inside the window — trip times get rounded to whole minutes later
+    const margin = Math.min(0.5, (a.to - a.from) / 2)
+    const lo     = a.from + margin
+    const hi     = a.to   - margin
+    const times  = rounds.map(r => timeAt(r, a))
+    if (times.every(t => t == null)) {
+      warnings.push(`Atendimento "${a.label}": nenhuma viagem de ${DIR_LABEL_INTERNAL[a.direction]} gerada`)
+      continue
+    }
+    const covering = times.findIndex(t => t != null && t >= lo && t <= hi)
+    if (covering !== -1) { pin(rounds[covering].id, a); continue }
+
+    const distance = (t: number | null) => t == null ? Infinity : t < lo ? lo - t : t > hi ? t - hi : 0
+    const idx      = times.reduce<number>((best, t, i) => distance(t) < distance(times[best]) ? i : best, 0)
+    const t        = times[idx]!
+    const fallback = windowAtMinutes(rows, anchorDep(rounds[idx])) ?? rows[0]
+    const target   = Math.min(hi, Math.max(lo, t))
+    const newDep   = solveDep(a, target, anchorDep(rounds[idx]), fallback)
+
+    // nearest fixed rounds on each side — the spread's endpoints, which never move
+    let left = idx - 1
+    while (left >= 0 && !fixed.has(rounds[left].id)) left--
+    let right = idx + 1
+    while (right < rounds.length && !fixed.has(rounds[right].id)) right++
+
+    const delta   = newDep == null ? 0 : newDep - anchorDep(rounds[idx])
+    const spanL   = left  >= 0            ? anchorDep(rounds[idx]) - anchorDep(rounds[left])  : 0
+    const spanR   = right < rounds.length ? anchorDep(rounds[right]) - anchorDep(rounds[idx]) : 0
+    const canMove = newDep != null && !fixed.has(rounds[idx].id) && spanL > 0 && spanR > 0
+      && Math.abs(delta) / spanL <= MAX_ANCHOR_HEADWAY_STRETCH
+      && Math.abs(delta) / spanR <= MAX_ANCHOR_HEADWAY_STRETCH
+
+    if (canMove) {
+      const depL = anchorDep(rounds[left])
+      const depI = anchorDep(rounds[idx])
+      const depR = anchorDep(rounds[right])
+      for (let i = left + 1; i < right; i++) {
+        const dep = anchorDep(rounds[i])
+        const shift = i === idx ? delta : i < idx ? delta * (dep - depL) / (depI - depL) : delta * (depR - dep) / (depR - depI)
+        rounds[i] = build(dep + shift, fallback)
+      }
+      pin(rounds[idx].id, a)
+      continue
+    }
+
+    // reinforcement — aimed at the middle of the window, so later passes have room both ways
+    const mid    = (a.from + a.to) / 2
+    const relief = solveDep(a, mid, anchorDep(rounds[idx]) + (mid - t), fallback)
+    if (relief == null) {
+      warnings.push(`Atendimento "${a.label}" (${windowText(a)}) não pôde ser atendido`)
+      continue
+    }
+    const round = build(relief, fallback)
+    const at    = rounds.findIndex(r => anchorDep(r) > relief)
+    rounds.splice(at === -1 ? rounds.length : at, 0, round)
+    pin(round.id, a)
+    warnings.push(`Reforço inserido para o atendimento "${a.label}" (${DIR_LABEL_INTERNAL[a.direction]} ${windowText(a)}) — pode exigir um carro a mais`)
+  }
+
+  for (let i = 0; i < rounds.length; i++) {
+    const list = pinned.get(rounds[i].id)
+    if (!list) continue
+    let early = Infinity
+    let late  = Infinity
+    for (const a of list) {
+      const t = timeAt(rounds[i], a)
+      if (t == null) continue
+      early = Math.min(early, Math.max(0, t - a.from))
+      late  = Math.min(late,  Math.max(0, a.to - t))
+    }
+    rounds[i] = { ...rounds[i], slack: { early, late } }
+  }
+}
 
 /** Step 3: assigns the generated rounds to blocks (vehicles) via round-robin —
  *  the first round always opens block 1; each following round goes into
@@ -871,7 +1013,8 @@ export function assignRoundsToBlocks(
 
     if (!chosen) {
       for (const ob of open) {
-        if (ob.availableFrom > anchorDep && ob.availableFrom - anchorDep <= maneuverMarginMinutes) {
+        // a round covering a service requirement only waits as long as it stays in its window
+        if (ob.availableFrom > anchorDep && ob.availableFrom - anchorDep <= Math.min(maneuverMarginMinutes, round.slack?.late ?? Infinity)) {
           if (!chosen || ob.availableFrom < chosen.availableFrom) chosen = ob
         }
       }
@@ -1023,6 +1166,9 @@ export interface RedistributeTripCandidate {
   // departure — the trip's current (pre-redistribution) duration, same
   // fallback handleAdjustCycle uses (useGanttEditor.ts).
   originalDurationMinutes: number
+  // covers a LineServiceRequirement — its cycle is never shrunk to fit the next trip, which
+  // could pull its arrival (or its passing time at an intermediate stop) out of the window
+  coversRequirement?:      boolean
 }
 
 export interface RedistributedTrip {
@@ -1100,7 +1246,7 @@ export function redistributeTrips(
       // Margin only ever applies to guarantee a fit, and never shrinks a cycle
       // past zero — a margin larger than the trip's own registered duration is
       // clamped, not honored literally.
-      const margin       = Math.min(marginByDirection[last.candidate.direction] ?? 0, lastCanonicalDuration)
+      const margin       = last.candidate.coversRequirement ? 0 : Math.min(marginByDirection[last.candidate.direction] ?? 0, lastCanonicalDuration)
       const shrinkNeeded  = naturalAvailableFrom - candidate.departureMinutes
       if (margin <= 0 || shrinkNeeded > margin) return null
 
@@ -1137,8 +1283,9 @@ export function generateSchedule(
   firstTripDirection:     Direction,
   lastTripDirection:      Direction,
   maneuverMarginMinutes:  number,
+  anchors:                GenAnchor[] = [],
 ): { blocks: GeneratedBlock[]; warnings: string[] } {
-  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection)
+  const { rounds, warnings } = generateRounds(rows, opStartMinutes, opEndMinutes, firstTripDirection, lastTripDirection, anchors)
   const blocks = assignRoundsToBlocks(rounds, maneuverMarginMinutes)
   return { blocks, warnings }
 }

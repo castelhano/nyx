@@ -21,6 +21,15 @@ const MARK_DASH_MIN_WIDTH    = 12  // skip below this segment width, same thresh
 const STOP_PATTERN_COLOR     = '#ffffff'  // white — same reasoning as the mark dash, holds contrast on every line color
 const STOP_PATTERN_SIZE      = 3   // px — chevron half-height/width, top-left corner (the one still free)
 const STOP_PATTERN_MIN_WIDTH = 12  // skip below this segment width, same threshold as lock/marked
+// LineServiceRequirement marker (docs/proposal/plan_line_service_requirement_v1.md) — a thicker
+// top border, inside the bar and clipped to its rounded corners so it never spills onto a
+// neighbor. Theme-aware: dark on the light theme, light on the dark one.
+const REQ_STRIPE_HEIGHT      = 4   // px
+const REQ_STRIPE_COLOR       = '#171717'  // neutral-900 — near-black, no blue tint
+const REQ_STRIPE_COLOR_DARK  = '#a3a3a3'  // neutral-400 — no hue at all, so it never reads as a line color (the palette is all tinted, lib/palette.ts)
+const REQ_STRIPE_MIN_WIDTH   = 12  // skip below this segment width, same threshold as lock/marked
+const TIME_HIGHLIGHT_FILL    = 'rgba(245, 158, 11, 0.14)'  // amber-500 — a window being pointed at (e.g. an uncovered requirement)
+const TIME_HIGHLIGHT_EDGE    = 'rgba(245, 158, 11, 0.8)'
 const MOVE_TARGET_COLOR      = '#3b82f6'
 const MOVE_TARGET_FILL       = 'rgba(59, 130, 246, 0.08)'
 const MOVE_TARGET_WIDTH      = 2
@@ -64,6 +73,7 @@ export class Renderer {
     focusedSegId:    string | null = null,
     moveTargetRowId: string | null = null,
     frames:          GanttFrame[] = [],
+    timeHighlight:   { from: number; to: number } | null = null,
   ): void {
     const { ctx } = this
     ctx.clearRect(0, 0, viewport.width, viewport.height)
@@ -71,6 +81,7 @@ export class Renderer {
     this.drawMoveTargetFill(viewport, rows, moveTargetRowId)
     this.drawTimeGrid(viewport)
     this.drawDayBoundaries(viewport)
+    this.drawTimeHighlight(viewport, timeHighlight)
     this.drawSegments(viewport, rows, segments, hoveredSegId, selectedSegIds, focusedSegId)
     this.drawFrames(viewport, rows, frames)
     this.drawMoveTargetBorder(viewport, rows, moveTargetRowId)
@@ -94,6 +105,27 @@ export class Renderer {
       ctx.setLineDash(f.broken ? FRAME_DASH : [])
       ctx.beginPath()
       ctx.roundRect(x, y, w, row.height - FRAME_INSET * 2, FRAME_RADIUS)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  // translucent band across every row, edges marked — drawn under the segments
+  private drawTimeHighlight(viewport: Viewport, range: { from: number; to: number } | null): void {
+    if (!range || !viewport.isTimeVisible(range.from, range.to + 1)) return
+    const { ctx } = this
+    const x1 = viewport.minuteToX(range.from)
+    // inclusive end — a one-minute window still shows as a sliver
+    const x2 = viewport.minuteToX(range.to + 1)
+    ctx.save()
+    ctx.fillStyle = TIME_HIGHLIGHT_FILL
+    ctx.fillRect(x1, 0, x2 - x1, viewport.height)
+    ctx.strokeStyle = TIME_HIGHLIGHT_EDGE
+    ctx.lineWidth   = 1
+    for (const x of [x1, x2]) {
+      ctx.beginPath()
+      ctx.moveTo(Math.round(x) + 0.5, 0)
+      ctx.lineTo(Math.round(x) + 0.5, viewport.height)
       ctx.stroke()
     }
     ctx.restore()
@@ -200,6 +232,7 @@ export class Renderer {
     const dots:  Array<{ cx: number; cy: number; dimmed: boolean }>     = []
     const driftRibbons: Array<{ x: number; y: number; w: number; h: number; radius: number; dimmed: boolean }> = []
     const markDashes: Array<{ x: number; y: number; dimmed: boolean }> = []
+    const reqStripes: Array<{ x: number; y: number; w: number; h: number; radius: number; dimmed: boolean }> = []
     const stopPatternMarks: Array<{ x: number; y: number; pattern: 'LIMITED' | 'EXPRESS'; dimmed: boolean }> = []
     let focusRect: { x: number; y: number; w: number; h: number; radius: number } | null = null
 
@@ -308,6 +341,10 @@ export class Renderer {
         driftRibbons.push({ x, y, w, h, radius, dimmed })
       }
 
+      if (seg.servesRequirement && seg.kind === 'trip' && w > REQ_STRIPE_MIN_WIDTH) {
+        reqStripes.push({ x, y, w, h, radius, dimmed })
+      }
+
       if (seg.stopPattern && seg.stopPattern !== 'LOCAL' && seg.kind === 'trip' && w > STOP_PATTERN_MIN_WIDTH) {
         stopPatternMarks.push({ x, y, pattern: seg.stopPattern, dimmed })
       }
@@ -370,6 +407,21 @@ export class Renderer {
         ctx.lineTo(x + w - DRIFT_RIBBON_SIZE, y + h)
         ctx.closePath()
         ctx.fill()
+        ctx.restore()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    // stripe pass: LineServiceRequirement marker — top band clipped to the bar's shape
+    if (reqStripes.length > 0) {
+      ctx.fillStyle = this.isDark() ? REQ_STRIPE_COLOR_DARK : REQ_STRIPE_COLOR
+      for (const { x, y, w, h, radius, dimmed } of reqStripes) {
+        ctx.save()
+        ctx.globalAlpha = dimmed ? DIM_ALPHA : 1
+        ctx.beginPath()
+        ctx.roundRect(x, y, w, h, radius)
+        ctx.clip()
+        ctx.fillRect(x, y, w, REQ_STRIPE_HEIGHT)
         ctx.restore()
       }
       ctx.globalAlpha = 1

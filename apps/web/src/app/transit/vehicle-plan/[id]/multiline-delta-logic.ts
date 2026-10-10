@@ -263,8 +263,13 @@ export function interleaveDeltaGroup(params: InterleaveParams): Map<string, Gene
 
     const capA   = a.naturalHeadway === Infinity ? needed : a.naturalHeadway * maxShiftFraction
     const capB   = b.naturalHeadway === Infinity ? needed : b.naturalHeadway * maxShiftFraction
-    const slackA = Math.max(0, capA - Math.abs(shift.get(key(a)) ?? 0))
-    const slackB = Math.max(0, capB - Math.abs(shift.get(key(b)) ?? 0))
+    // a round covering a service requirement (GeneratedRound.slack) never leaves its window
+    const roundA = perLineRounds.get(a.lineId)![a.roundIndex]
+    const roundB = perLineRounds.get(b.lineId)![b.roundIndex]
+    const pinA   = roundA.slack ? Math.max(0, roundA.slack.early + (shift.get(key(a)) ?? 0)) : Infinity
+    const pinB   = roundB.slack ? Math.max(0, roundB.slack.late  - (shift.get(key(b)) ?? 0)) : Infinity
+    const slackA = Math.min(pinA, Math.max(0, capA - Math.abs(shift.get(key(a)) ?? 0)))
+    const slackB = Math.min(pinB, Math.max(0, capB - Math.abs(shift.get(key(b)) ?? 0)))
 
     let backA = 0 // a moves earlier
     let fwdB  = 0 // b moves later

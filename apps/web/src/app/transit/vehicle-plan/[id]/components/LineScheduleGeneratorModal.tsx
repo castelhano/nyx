@@ -22,8 +22,10 @@ import {
   effectiveCycleWindow, computeOfertaSeries, estimateGeneration, generateRounds, assignRoundsToBlocks,
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour,
   TOLERANCE_MINUTES, TOLERANCE_LABELS, DEFAULT_MANEUVER_MARGIN_MINUTES,
-  type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock, type GeneratedLeg,
+  type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock, type GeneratedLeg, type GenAnchor,
 } from '../line-generator-logic'
+import { checkServiceRequirements, routeStopFractions, serviceRequirementWindowText } from '@nyx/schemas'
+import type { ServiceRequirementRecord } from '../hooks/useServiceRequirements'
 import {
   detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup, measureInterleaveShift, earliestCrossingMinutes,
   DEFAULT_MIN_TRUNK_HEADWAY_MINUTES, DEFAULT_MAX_SHIFT_FRACTION,
@@ -78,6 +80,7 @@ interface RouteLocalityRecord {
   localityId:   string | null
   sequence:     number
   deltaMinutes: number | null
+  deltaKm:      number | null
   // the vehicle may stand here (interval) — elsewhere a stop of the interval type's min or more
   // goes back to the depot
   allowsVehicleStand: boolean
@@ -228,6 +231,9 @@ interface Props {
   planId:               string
   lineIds:              string[]
   dayTypeCode:          string
+  // LineServiceRequirements of this day type become generation anchors
+  // (docs/proposal/plan_line_service_requirement_v1.md)
+  dayTypeId:            string | null
   // trips already persisted for these lines in this plan — Gerar replaces them, but
   // only on the server once the user saves (staged in pendingDeletes until then).
   existingTripIds:      string[]
@@ -238,7 +244,7 @@ interface Props {
 }
 
 export function LineScheduleGeneratorModal({
-  planId, lineIds, dayTypeCode, existingTripIds, hasPendingChanges, onClose, onPendingAdd, onPendingDeleteTrips,
+  planId, lineIds, dayTypeCode, dayTypeId, existingTripIds, hasPendingChanges, onClose, onPendingAdd, onPendingDeleteTrips,
 }: Props) {
   useShortcutContext('line_gen_md')
   const { toast } = useToast()
@@ -278,6 +284,18 @@ export function LineScheduleGeneratorModal({
     routesQueries.forEach((q, i) => m.set(lineIds[i], q.data ?? []))
     return m
   }, [routesQueries, lineIds])
+
+  // same key as useServiceRequirements — shared cache
+  const { data: allRequirements = [] } = useQuery<ServiceRequirementRecord[]>({
+    queryKey: ['transit', 'line-service-requirement', 'by-day-type', dayTypeId],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/line-service-requirement?dayTypeId=${dayTypeId}&pageSize=999`)
+      if (!res.ok) return []
+      return (await res.json()).data ?? []
+    },
+    enabled:   !!dayTypeId,
+    staleTime: 30_000,
+  })
 
   const { data: localities = [] } = useQuery<LocalityRecord[]>({
     queryKey: ['transit', 'transit-locality', 'all'],
@@ -940,13 +958,43 @@ export function LineScheduleGeneratorModal({
       effectiveWindowsByLineId.set(lineId, resolved)
     }
 
+    // Service requirements → anchors, measured on the routes the generator actually uses
+    // (one per direction). Their stops come from the stand queries (every route of the lines).
+    const requirements   = allRequirements.filter(r => lineIds.includes(r.lineId))
+    const stopsByRouteId = new Map(standRouteIds.map((id, i) => [id, routeStopFractions(standQueries[i].data ?? [])]))
+    const anchorsByLineId = new Map<string, GenAnchor[]>()
+    for (const lineId of lineIds) {
+      const code       = linesById.get(lineId)?.code ?? lineId
+      const routeByDir = routeByDirectionByLineId.get(lineId)
+      const anchors: GenAnchor[] = []
+      for (const r of requirements.filter(req => req.lineId === lineId)) {
+        const direction = r.direction as Direction
+        const route     = routeByDir?.get(direction)
+        if (!route) {
+          generalWarnings.add(`${code}: atendimento "${r.label}" ignorado — sem rota de ${DIR_LABEL[direction]}`)
+          continue
+        }
+        let fraction = r.kind === 'BOARDING' ? 0 : 1
+        if (r.localityId) {
+          const stop = stopsByRouteId.get(route.routeId)?.find(st => st.localityId === r.localityId)
+          if (!stop) {
+            generalWarnings.add(`${code}: atendimento "${r.label}" ignorado — a rota de ${DIR_LABEL[direction]} usada na geração não passa por ${r.locality?.name ?? 'o ponto'}`)
+            continue
+          }
+          fraction = stop.fraction
+        }
+        anchors.push({ id: r.id, label: r.label, direction, fraction, from: r.earliestMinutes, to: r.latestMinutes })
+      }
+      anchorsByLineId.set(lineId, anchors)
+    }
+
     // Fase 3, unchanged: each line generates its own rounds independently first.
     const perLineRounds = new Map<string, ReturnType<typeof generateRounds>['rounds']>()
     const perLineWarnings = new Map<string, string[]>()
     const effectiveOpStartByLineId = new Map<string, number>()
     for (const lineId of lineIds) {
       const st = lineStates[lineId]!
-      const { rounds, warnings } = generateRounds(effectiveWindowsByLineId.get(lineId)!, st.opStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
+      const { rounds, warnings } = generateRounds(effectiveWindowsByLineId.get(lineId)!, st.opStart, st.opEnd, st.firstTripDirection, st.lastTripDirection, anchorsByLineId.get(lineId))
       if (rounds.length === 0) {
         toast.error(`${linesById.get(lineId)?.code ?? lineId}: nenhuma viagem gerada — revise as janelas e o horário de operação`)
         return
@@ -1018,7 +1066,7 @@ export function LineScheduleGeneratorModal({
         for (let off = -FLEXIBLE_START_RANGE_MINUTES; off <= FLEXIBLE_START_RANGE_MINUTES; off += FLEXIBLE_START_STEP_MINUTES) {
           const candStart = st.opStart + off
           if (candStart < 0 || candStart >= st.opEnd) continue
-          const cand = generateRounds(effectiveWindowsByLineId.get(lineId)!, candStart, st.opEnd, st.firstTripDirection, st.lastTripDirection)
+          const cand = generateRounds(effectiveWindowsByLineId.get(lineId)!, candStart, st.opEnd, st.firstTripDirection, st.lastTripDirection, anchorsByLineId.get(lineId))
           if (cand.rounds.length === 0) continue
 
           const violatesOrder = orderGuards.some(g => {
@@ -1082,11 +1130,32 @@ export function LineScheduleGeneratorModal({
       perLineBlocks.set(lineId, blocks)
     }
 
+    // final check — the multiline interleave and block assignment run after the anchors
+    const generatedTrips = lineIds.flatMap(lineId => {
+      const routeByDir = routeByDirectionByLineId.get(lineId)
+      return perLineBlocks.get(lineId)!.flatMap(b => b.rounds.flatMap(r => r.legs))
+        .filter(leg => !leg.isDeadrun && routeByDir?.has(leg.direction))
+        .map((leg, i) => ({
+          id:               `${lineId}:${i}`,
+          lineId,
+          direction:        leg.direction,
+          routeId:          routeByDir!.get(leg.direction)!.routeId,
+          departureMinutes: leg.departureMinutes,
+          arrivalMinutes:   leg.arrivalMinutes,
+        }))
+    })
+    const { coveredBy } = checkServiceRequirements(requirements, generatedTrips, stopsByRouteId)
+    const uncoveredRequirements = requirements.filter(r => (coveredBy.get(r.id) ?? []).length === 0)
+    for (const r of uncoveredRequirements) {
+      generalWarnings.add(`${linesById.get(r.lineId)?.code ?? r.lineId}: atendimento "${r.label}" `
+        + `(${DIR_LABEL[r.direction as Direction]} ${serviceRequirementWindowText(r)}) não atendido`)
+    }
+
     setIsGenerating(true)
     try {
       if (existingTripIds.length > 0) onPendingDeleteTrips(existingTripIds)
 
-      let generatedTrips = 0
+      let generatedTripCount = 0
       let noDepotWarned = false
 
       for (const lineId of lineIds) {
@@ -1229,7 +1298,7 @@ export function LineScheduleGeneratorModal({
             }
 
             onPendingAdd(entry)
-            generatedTrips++
+            generatedTripCount++
             if (i === 0) anchorTempId = tempId
           }
 
@@ -1292,7 +1361,10 @@ export function LineScheduleGeneratorModal({
       }
 
       const blockCount = [...perLineBlocks.values()].reduce((s, b) => s + b.length, 0)
-      toast.success(`${generatedTrips} viagens geradas em ${blockCount} blocos — revise e clique em Salvar para persistir`)
+      const coverageText = requirements.length > 0
+        ? ` · atendimentos ${requirements.length - uncoveredRequirements.length}/${requirements.length}`
+        : ''
+      toast.success(`${generatedTripCount} viagens geradas em ${blockCount} blocos${coverageText} — revise e clique em Salvar para persistir`)
       generalWarnings.forEach(w => toast.warning(w))
       onClose()
     } catch (err) {

@@ -9,6 +9,7 @@ import { generateDraftRef } from './line-schedule.util'
 import { recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import type { PlanActivationPreview } from '@nyx/schemas'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, parseStartDate, toDbDate } from '../plan-validity'
+import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
 
 export interface SaveDeparturesBatchDto {
   header?:     UpdateLineScheduleDto
@@ -106,13 +107,33 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     assertRetroactiveAllowed(others, start)
     const effect = activationEffect(others, start)
 
+    // the departures against the line's service requirements — warning only. A departure has
+    // no arrival of its own: estimated from the route's legs (sum of deltaMinutes)
+    const departures = await this.prisma.lineDeparture.findMany({
+      where:  { lineScheduleId: id },
+      select: { id: true, routeId: true, departureMinutes: true, route: { select: { direction: true } } },
+    })
+    const legs = await this.prisma.routeLocality.groupBy({
+      by:    ['routeId'],
+      where: { routeId: { in: [...new Set(departures.map(d => d.routeId))] } },
+      _sum:  { deltaMinutes: true },
+    })
+    const durationByRoute = new Map(legs.map(l => [l.routeId, l._sum.deltaMinutes ?? 0]))
+    const requirementWarnings = await uncoveredRequirementWarnings(
+      this.prisma, schedule.dayTypeId, [schedule.lineId],
+      departures.map(d => ({
+        id: d.id, lineId: schedule.lineId, direction: d.route.direction, routeId: d.routeId,
+        departureMinutes: d.departureMinutes, arrivalMinutes: d.departureMinutes + (durationByRoute.get(d.routeId) ?? 0),
+      })),
+    )
+
     if (confirm) {
       await this.prisma.$transaction(async tx => {
         await applyEffect(tx.lineSchedule, effect)
         await tx.lineSchedule.update({ where: { id }, data: { status: 'APPROVED', validFrom: toDbDate(start), validTo: null, approvedAt: new Date() } })
       })
     }
-    return { startDate: start, ...effect, crewSuperseded: [], crewReverted: [], warnings: [], applied: confirm }
+    return { startDate: start, ...effect, crewSuperseded: [], crewReverted: [], warnings: requirementWarnings, applied: confirm }
   }
 
   // Single commit for the schedule editor (header + departures). No status guard: editing an

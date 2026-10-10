@@ -29,7 +29,8 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge' | 'map-picker'
+  /** `time`: an int field holding minutes since 00:00, edited and listed as H:MM (may run past 24:00). */
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge' | 'map-picker' | 'time'
   defaultValue?: unknown
   min?: number
   max?: number

@@ -26,6 +26,7 @@ import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { validateNewBundles } from './trip-bundle.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, parseStartDate, toDbDate } from '../plan-validity'
+import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
 
 // A trip patch touching any attribute kept in sync with the OSO's LineDeparture
 // (docs/proposal/plan_oso_attribute_sync_v1.md).
@@ -1407,6 +1408,22 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       : []
     const crewEffect = CrewPlanService.cascade(crewPlans, effect)
 
+    // the plan's trips against its lines' service requirements — warning only
+    const [planLines, blockTrips] = await Promise.all([
+      this.prisma.vehiclePlanLine.findMany({ where: { vehiclePlanId: planId }, select: { lineId: true } }),
+      this.prisma.blockTrip.findMany({
+        where:  { vehicleBlock: { vehiclePlanId: planId } },
+        select: { trip: { select: { id: true, routeId: true, departureMinutes: true, arrivalMinutes: true, route: { select: { lineId: true, direction: true } } } } },
+      }),
+    ])
+    const requirementWarnings = await uncoveredRequirementWarnings(
+      this.prisma, plan.dayTypeId, planLines.map(l => l.lineId),
+      blockTrips.map(({ trip }) => ({
+        id: trip.id, lineId: trip.route.lineId, direction: trip.route.direction, routeId: trip.routeId,
+        departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
+      })),
+    )
+
     if (confirm) {
       await this.prisma.$transaction(async (tx) => {
         await applyEffect(tx.vehiclePlan, effect)
@@ -1419,7 +1436,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       ...effect,
       crewSuperseded: crewEffect.superseded,
       crewReverted:   crewEffect.reverted,
-      warnings: [`Lembre de ativar uma escala a partir de ${fmtDay(start)}`],
+      warnings: [`Lembre de ativar uma escala a partir de ${fmtDay(start)}`, ...requirementWarnings],
       applied: confirm,
     }
   }

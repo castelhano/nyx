@@ -7,6 +7,20 @@ export type TopbarMenuItem =
   | { separator: true }
   | { separator?: never; label: string; icon?: React.ElementType; onClick: () => void; disabled?: boolean; checked?: boolean }
 
+// A page's problem list behind one indicator (e.g. the vehicle plan's pendências) — the
+// indicator's color follows the worst item, green when there's none, neutral while loading.
+export interface TopbarStatusItem {
+  label:    string
+  detail?:  string
+  severity: 'warning' | 'error'
+  onClick?: () => void
+}
+
+export interface TopbarStatus {
+  loading?: boolean
+  groups:   { label: string; items: TopbarStatusItem[] }[]
+}
+
 export interface TopbarAction {
   // opcional só para { separator: true } — todo botão real precisa de label
   label?:    string
@@ -37,6 +51,9 @@ export interface TopbarAction {
   // className: extra classes on the button itself (e.g. a fixed width for a toggle whose
   // label changes, so the topbar doesn't reflow)
   className?: string
+  // status: renders the action as a problem indicator (count + color) whose dropdown lists
+  // the items; label is the dropdown's title. Never collapses into the ⋯ menu.
+  status?: TopbarStatus
 }
 
 interface TopbarActionsContextValue {
