@@ -429,7 +429,7 @@ export const crewOccurrenceSchema = withMeta(
 
     origin: z.enum(['PORTAL', 'STAFF_ON_BEHALF', 'STAFF']).default('STAFF').meta({
       label:          'Origem',
-      helpText:       'Pedido do operador é sempre de um dia e guarda o que foi pedido.',
+      helpText:       'Pedido do operador guarda o que foi pedido.',
       listVisibility: 'hidden',
       filter:         true,
       defaultValue:   'STAFF',
@@ -464,8 +464,8 @@ export const crewOccurrenceSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Ocorrência',
-    labelPlural: 'Ocorrências',
+    label:       'Pedido',
+    labelPlural: 'Pedidos',
     nameField:   'startDate',
     icon:        'CalendarX',
     defaultSort: { field: 'startDate', order: 'desc' },
