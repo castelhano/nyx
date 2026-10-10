@@ -75,7 +75,7 @@ export function DutiesTable({ data, duties, canEdit, onAssign, onLock }: {
       <thead className="border-b border-border">
         <tr>
           <th className={th}>Tabela</th><th className={th}>Turno</th><th className={th}>Horário</th><th className={th}>Trab.</th>
-          <th className={th}>Carros · linhas</th><th className={th}>Condutor</th><th className={th}>Pendências</th>
+          <th className={th}>Carros · linhas</th><th className={th}>Operador</th><th className={th}>Pendências</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
@@ -92,7 +92,7 @@ export function DutiesTable({ data, duties, canEdit, onAssign, onLock }: {
               <td className={cn(td, 'text-xs text-muted-foreground')}>{blocks.map(b => b.blockNumber).join(', ') || '—'}{lines.length > 0 && ` · ${lines.join(', ')}`}</td>
               <td className={td}>
                 <div className="flex items-center gap-1">
-                  <LocalPicker value={d.crewMemberId} options={crewOptions(d)} onSelect={(id) => onAssign(d.id, id)} disabled={!canEdit} placeholder="Sem condutor" />
+                  <LocalPicker value={d.crewMemberId} options={crewOptions(d)} onSelect={(id) => onAssign(d.id, id)} disabled={!canEdit} placeholder="Sem operador" />
                   {d.crewMemberId && (
                     <button
                       type="button" disabled={!canEdit} onClick={() => onLock(d.id, !d.locked)}

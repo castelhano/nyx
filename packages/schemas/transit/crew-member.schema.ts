@@ -11,10 +11,10 @@ export const OVERTIME_PREFERENCE_LABEL: Record<string, string> = {
 }
 
 const crewBreadcrumb = [
-  { resource: 'crew-member', contextField: 'crewMemberId', listLabel: 'Condutores', nameField: 'displayName', nameFirstWord: false },
+  { resource: 'crew-member', contextField: 'crewMemberId', listLabel: 'Operadores', nameField: 'displayName', nameFirstWord: false },
 ]
 
-// A crew member's operational profile — see CrewMember in transit.prisma. displayName, branchId
+// A crew member's operational profile — see CrewMember in transit.prisma. code, displayName, branchId
 // and shiftId are computed by CrewMemberService (from the Employee and the current
 // CrewMemberShift); shiftId on create/update starts a new CrewMemberShift today.
 export const crewMemberSchema = withMeta(
@@ -34,9 +34,18 @@ export const crewMemberSchema = withMeta(
       keybind:              'f',
     }),
 
+    // the Employee's code — the reference (nameField) typed in lookups
+    code: z.string().optional().meta({
+      label:          'Matrícula',
+      listVisibility: 'hidden',
+      showInForm:     false,
+      sortable:       false,
+      computed:       true,
+    }),
+
     // "1234 — Fulano de Tal"
     displayName: z.string().optional().meta({
-      label:          'Condutor',
+      label:          'Operador',
       listVisibility: 'visible',
       showInForm:     false,
       sortable:       false,
@@ -59,7 +68,7 @@ export const crewMemberSchema = withMeta(
     // the current CrewMemberShift — changing it starts a new one today (history in "Turnos")
     shiftId: z.uuid().optional().meta({
       label:          'Turno atual',
-      helpText:       'Trocar aqui inicia o novo turno hoje. Datas específicas: aba Turnos do condutor.',
+      helpText:       'Trocar aqui inicia o novo turno hoje. Para outras datas: botão Turnos (F6).',
       widget:         'select',
       resource:       'crew-shift',
       domain:         'transit',
@@ -90,18 +99,19 @@ export const crewMemberSchema = withMeta(
 
     notBeforeMinutes: z.number().int().min(0).max(2880).optional().nullable().meta({
       label:          'Não inicia antes de',
-      helpText:       'Substitui o início mínimo do turno.',
+      row:            'Horário',
+      helpText:       'Vazio: valem os limites do turno.',
       widget:         'time',
       listVisibility: 'hidden',
-      className:      'md:w-28',
+      className:      'md:w-40',
     }),
 
     notAfterMinutes: z.number().int().min(0).max(2880).optional().nullable().meta({
       label:          'Não termina depois de',
-      helpText:       'Substitui o término máximo do turno.',
+      row:            'Horário',
       widget:         'time',
       listVisibility: 'hidden',
-      className:      'md:w-28',
+      className:      'md:w-40',
     }),
 
     restPatternId: z.uuid().optional().nullable().meta({
@@ -112,7 +122,7 @@ export const crewMemberSchema = withMeta(
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'hidden',
-      className:      'md:w-1/3',
+      className:      'md:w-[20.75rem]',
     }),
 
     // the group's offset from the pattern's anchor (restGroupOffsets)
@@ -121,12 +131,12 @@ export const crewMemberSchema = withMeta(
       helpText:       'Grupos do mesmo regime revezam as folgas.',
       widget:         'rest-group',
       listVisibility: 'hidden',
-      className:      'md:w-80',
+      className:      'md:w-[20.75rem]',
     }),
 
     blockedVehicleTypes: z.array(vehicleTypeSchema).default([]).meta({
       label:          'Não opera',
-      helpText:       'Tipos de veículo que o condutor não pode operar.',
+      helpText:       'Tipos de veículo que o operador não pode operar.',
       widget:         'multi-select',
       optionLabels:   VEHICLE_TYPE_LABELS,
       listVisibility: 'never',
@@ -134,18 +144,19 @@ export const crewMemberSchema = withMeta(
 
     preferredVehicleId: z.uuid().optional().nullable().meta({
       label:          'Carro fixo',
-      helpText:       'O gerador tenta manter o condutor neste carro. Vazio: o carro habitual dele.',
+      helpText:       'O gerador tenta manter o operador neste carro. Vazio: o carro habitual dele.',
       widget:         'combobox',
       resource:       'vehicle',
       domain:         'fleet',
       labelField:     'code',
       listVisibility: 'hidden',
       lazyEdit:       true,
-      className:      'md:w-1/4',
+      className:      'md:w-[20.75rem]',
     }),
 
     weeklyHours: z.number().int().min(1).max(44).optional().nullable().meta({
-      label:          'Carga semanal (h)',
+      label:          'Semanal (h)',
+      row:            'Carga',
       helpText:       'Vazio: a do contrato, ou a padrão da empresa. Mensal = semanal × 5.',
       listVisibility: 'hidden',
       className:      'md:w-28',
@@ -153,28 +164,31 @@ export const crewMemberSchema = withMeta(
 
     overtimePreference: z.enum(['LIKES', 'NEUTRAL', 'AVOIDS']).default('NEUTRAL').meta({
       label:          'Hora extra',
+      row:            'Carga',
       listVisibility: 'hidden',
       defaultValue:   'NEUTRAL',
-      className:      'md:w-1/4',
+      className:      'md:w-52',
       optionLabels:   OVERTIME_PREFERENCE_LABEL,
     }),
 
     licenseCategory: z.string().max(5).optional().meta({
-      label:          'Categoria CNH',
+      label:          'Categoria',
+      row:            'CNH',
       listVisibility: 'hidden',
-      className:      'md:w-28',
+      className:      'md:w-40',
     }),
 
     licenseExpiresAt: z.date().optional().nullable().meta({
-      label:          'Validade CNH',
+      label:          'Validade',
+      row:            'CNH',
       listVisibility: 'hidden',
-      className:      'md:w-1/4',
+      className:      'md:w-44',
     }),
 
     courseExpiresAt: z.date().optional().nullable().meta({
       label:          'Validade curso transp. coletivo',
       listVisibility: 'hidden',
-      className:      'md:w-1/4',
+      className:      'md:w-44',
     }),
 
     notes: z.string().optional().meta({
@@ -187,9 +201,10 @@ export const crewMemberSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:         'Condutor',
-    labelPlural:   'Condutores',
-    nameField:     'displayName',
+    label:         'Operador',
+    labelPlural:   'Operadores',
+    featured:      2,
+    nameField:     'code',
     nameFirstWord: false,
     icon:          'IdCard',
     groups: {
@@ -199,7 +214,7 @@ export const crewMemberSchema = withMeta(
   },
 )
 
-export const createCrewMemberSchema = crewMemberSchema.omit({ id: true, createdAt: true, updatedAt: true, displayName: true, branchId: true })
+export const createCrewMemberSchema = crewMemberSchema.omit({ id: true, createdAt: true, updatedAt: true, code: true, displayName: true, branchId: true })
 export const updateCrewMemberSchema  = createCrewMemberSchema.partial()
 
 export type CrewMember          = z.infer<typeof crewMemberSchema>
@@ -212,7 +227,7 @@ export const crewMemberShiftSchema = withMeta(
   z.object({
     id: z.uuid().meta({ listVisibility: 'hidden' }),
 
-    crewMemberId: z.uuid().meta({ label: 'Condutor', showInForm: false, listVisibility: 'hidden' }),
+    crewMemberId: z.uuid().meta({ label: 'Operador', showInForm: false, listVisibility: 'hidden' }),
 
     shiftId: z.uuid().meta({
       label:          'Turno',
@@ -244,7 +259,7 @@ export const crewMemberShiftSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Turno do Condutor',
+    label:       'Turno do Operador',
     labelPlural: 'Turnos',
     nameField:   'validFrom',
     icon:        'Sunrise',
@@ -271,7 +286,7 @@ export const crewMemberLineSchema = withMeta(
   z.object({
     id: z.uuid().meta({ listVisibility: 'hidden' }),
 
-    crewMemberId: z.uuid().meta({ label: 'Condutor', showInForm: false, listVisibility: 'hidden' }),
+    crewMemberId: z.uuid().meta({ label: 'Operador', showInForm: false, listVisibility: 'hidden' }),
 
     lineId: z.uuid().meta({
       label:          'Linha',
@@ -286,7 +301,7 @@ export const crewMemberLineSchema = withMeta(
 
     access: z.enum(['ENABLED', 'BLOCKED']).optional().nullable().meta({
       label:          'Acesso',
-      helpText:       'Empresa no modo "habilitadas": o condutor só opera as linhas Habilitadas. No modo "bloqueadas": opera todas menos as Bloqueadas.',
+      helpText:       'Empresa no modo "habilitadas": o operador só opera as linhas Habilitadas. No modo "bloqueadas": opera todas menos as Bloqueadas.',
       listVisibility: 'visible',
       className:      'md:w-1/4',
       keybind:        'a',
@@ -295,7 +310,7 @@ export const crewMemberLineSchema = withMeta(
 
     rank: z.number().int().min(1).max(10).optional().nullable().meta({
       label:          'Preferência',
-      helpText:       '1 = primária, 2 = secundária... Só entre as linhas que o condutor pode operar.',
+      helpText:       '1 = primária, 2 = secundária... Só entre as linhas que o operador pode operar.',
       listVisibility: 'visible',
       className:      'md:w-28',
       keybind:        'p',
@@ -305,7 +320,7 @@ export const crewMemberLineSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Linha do Condutor',
+    label:       'Linha do Operador',
     labelPlural: 'Linhas',
     nameField:   'lineId',
     icon:        'Route',
@@ -336,8 +351,8 @@ export const CREW_OCCURRENCE_STATUS_LABEL: Record<string, string> = {
 }
 
 export const CREW_OCCURRENCE_ORIGIN_LABEL: Record<string, string> = {
-  PORTAL:          'Portal do condutor',
-  STAFF_ON_BEHALF: 'Pedido do condutor (lançado)',
+  PORTAL:          'Portal do operador',
+  STAFF_ON_BEHALF: 'Pedido do operador (lançado)',
   STAFF:           'Lançamento da empresa',
 }
 
@@ -345,7 +360,7 @@ export const crewOccurrenceSchema = withMeta(
   z.object({
     id: z.uuid().meta({ listVisibility: 'hidden' }),
 
-    crewMemberId: z.uuid().meta({ label: 'Condutor', showInForm: false, listVisibility: 'hidden' }),
+    crewMemberId: z.uuid().meta({ label: 'Operador', showInForm: false, listVisibility: 'hidden' }),
 
     kind: z.enum(['ABSENCE', 'TIME_WINDOW']).default('ABSENCE').meta({
       label:          'Tipo',
@@ -414,7 +429,7 @@ export const crewOccurrenceSchema = withMeta(
 
     origin: z.enum(['PORTAL', 'STAFF_ON_BEHALF', 'STAFF']).default('STAFF').meta({
       label:          'Origem',
-      helpText:       'Pedido do condutor é sempre de um dia e guarda o que foi pedido.',
+      helpText:       'Pedido do operador é sempre de um dia e guarda o que foi pedido.',
       listVisibility: 'hidden',
       filter:         true,
       defaultValue:   'STAFF',

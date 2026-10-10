@@ -116,12 +116,12 @@ export class RosterGeneratorService {
     }
     if (this.jobs.get(job.id) !== job) return
 
-    this.stage(job, 'Lendo condutores e tabelas')
+    this.stage(job, 'Lendo operadores e tabelas')
     const context = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, params)
     job.context = context
     if (!context.input.duties.length) throw new BadRequestException('Nenhuma tabela a escalar no período (dias planejados da empresa)')
-    if (!context.input.members.length) throw new BadRequestException('Nenhum condutor escalável da empresa nessa função')
-    this.stage(job, `${context.input.duties.length} tabela(s), ${context.input.members.length} condutor(es)`)
+    if (!context.input.members.length) throw new BadRequestException('Nenhum operador escalável da empresa nessa função')
+    this.stage(job, `${context.input.duties.length} tabela(s), ${context.input.members.length} operador(es)`)
     if (this.jobs.get(job.id) !== job) return
 
     const isTs = __filename.endsWith('.ts')

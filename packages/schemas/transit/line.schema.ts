@@ -148,6 +148,7 @@ export const lineSchema = withMeta(
   {
     label:       'Linha',
     labelPlural: 'Linhas',
+    featured:    1,
     nameField:   'code',
     icon:        'Route',
     afterCreate: '/transit/transit-route?lineId={id}',

@@ -56,14 +56,14 @@ export function RestCycleWidget({ field, control, readonly }: { field: MetadataF
   async function balance() {
     const ok = await confirm({
       title:        'Equilibrar grupos',
-      description:  'Condutores mudam de grupo (e de dias de folga) para que, em cada turno, os grupos fiquem com quantidades iguais. Quem já está num grupo dentro da cota não muda.',
+      description:  'Operadores mudam de grupo (e de dias de folga) para que, em cada turno, os grupos fiquem com quantidades iguais. Quem já está num grupo dentro da cota não muda.',
       confirmLabel: 'Equilibrar',
     })
     if (!ok) return
     const res  = await apiFetch(`/transit/rest-pattern/${id}/balance`, { method: 'POST' })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) { toast.error(extractError(json)); return }
-    toast.success(json.moved ? `${json.moved} condutor(es) mudaram de grupo` : 'Os grupos já estavam equilibrados')
+    toast.success(json.moved ? `${json.moved} operador(es) mudaram de grupo` : 'Os grupos já estavam equilibrados')
     void refetch()
   }
 

@@ -76,7 +76,7 @@ function DailyOperationBoard({ id }: { id: string }) {
   const put = (path: string, body: unknown) => run(() => api(`${base}${path}`, { method: 'PUT', body: JSON.stringify(body) }))
 
   async function handlePublish() {
-    const ok = await confirm({ title: 'Publicar dia', description: 'Depois de publicado, cada mudança de condutor, carro ou viagem fica registrada no histórico do dia.', confirmLabel: 'Publicar' })
+    const ok = await confirm({ title: 'Publicar dia', description: 'Depois de publicado, cada mudança de operador, carro ou viagem fica registrada no histórico do dia.', confirmLabel: 'Publicar' })
     if (ok) await run(() => api(`${base}/publish`, { method: 'POST' }), 'Dia publicado')
   }
   async function handleClose() {
@@ -85,7 +85,7 @@ function DailyOperationBoard({ id }: { id: string }) {
   }
   async function handleRematerialize() {
     const ok = await confirm({
-      title: 'Refazer o dia', description: 'O dia é descartado e copiado de novo dos planejamentos em vigor — condutores e veículos alocados são perdidos (folgas lançadas ficam).',
+      title: 'Refazer o dia', description: 'O dia é descartado e copiado de novo dos planejamentos em vigor — operadores e veículos alocados são perdidos (folgas lançadas ficam).',
       confirmLabel: 'Refazer', variant: 'destructive',
     })
     if (!ok) return

@@ -22,7 +22,7 @@ export const crewAbsenceTypeSchema = withMeta(
     }),
 
     requestable: z.boolean().default(false).meta({
-      label:          'Pode ser solicitada pelo condutor',
+      label:          'Pode ser solicitada pelo operador',
       widget:         'switch',
       listVisibility: 'visible',
       defaultValue:   'false',

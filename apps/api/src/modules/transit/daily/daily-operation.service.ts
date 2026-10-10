@@ -51,7 +51,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   }
 
   override update(): Promise<DailyOperation> {
-    throw new BadRequestException('O dia operacional muda pelas ações da tela do dia')
+    throw new BadRequestException('A escala diária muda pelas ações da tela do dia')
   }
 
   override async remove(id: string): Promise<void> {
@@ -97,14 +97,14 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
         select: { kind: true, dailyDuty: { select: { summary: true } } },
       })
       if (entries.some(e => e.kind === 'DAY_OFF' || e.kind === 'COMP_OFF')) {
-        throw new BadRequestException('O condutor está de folga no dia — remova a folga antes')
+        throw new BadRequestException('O operador está de folga no dia — remova a folga antes')
       }
       const span = (s: unknown) => s as DutySummary | null
       const mine = span(duty.summary)
       if (mine?.startMinutes != null && mine.endMinutes != null && entries.some(e => {
         const o = span(e.dailyDuty?.summary)
         return o?.startMinutes != null && o.endMinutes != null && o.startMinutes < mine.endMinutes! && o.endMinutes > mine.startMinutes!
-      })) throw new BadRequestException('O condutor já está em outra tabela nesse horário')
+      })) throw new BadRequestException('O operador já está em outra tabela nesse horário')
     }
 
     await this.prisma.$transaction(async tx => {
@@ -124,7 +124,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   async setLocked(id: string, dutyId: string, locked: boolean): Promise<void> {
     await this.editable(id)
     const { count } = await this.prisma.rosterEntry.updateMany({ where: { dailyDutyId: dutyId, dailyDuty: { dailyOperationId: id } }, data: { locked } })
-    if (!count) throw new BadRequestException('A tabela não tem condutor')
+    if (!count) throw new BadRequestException('A tabela não tem operador')
   }
 
   async assignVehicle(id: string, blockId: string, vehicleId: string | null, userId?: string): Promise<void> {
@@ -152,7 +152,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   async setDayOff(id: string, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
     const op = await this.editable(id)
     const entries = await this.prisma.rosterEntry.findMany({ where: { crewMemberId, date: op.date }, select: { id: true, kind: true, dailyDutyId: true } })
-    if (kind && entries.some(e => e.dailyDutyId)) throw new BadRequestException('O condutor está escalado no dia — tire-o da tabela antes')
+    if (kind && entries.some(e => e.dailyDutyId)) throw new BadRequestException('O operador está escalado no dia — tire-o da tabela antes')
     const before = entries.find(e => !e.dailyDutyId)?.kind ?? null
     if (before === kind) return
     await this.prisma.$transaction(async tx => {

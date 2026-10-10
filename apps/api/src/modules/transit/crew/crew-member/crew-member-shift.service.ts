@@ -68,8 +68,8 @@ export class CrewMemberShiftService extends BaseService<CrewMemberShift, CreateC
   // the shift must be one of the crew member's empresa (CrewShiftBranch)
   private async assertShiftOfBranch(crewMemberId: string, shiftId: string): Promise<void> {
     const member = await this.prisma.crewMember.findUnique({ where: { id: crewMemberId }, select: { employee: { select: { branchId: true } } } })
-    if (!member) throw new BadRequestException('Condutor não encontrado')
+    if (!member) throw new BadRequestException('Operador não encontrado')
     const link = await this.prisma.crewShiftBranch.findUnique({ where: { shiftId_branchId: { shiftId, branchId: member.employee.branchId } } })
-    if (!link) throw new BadRequestException('O turno não é da empresa do condutor')
+    if (!link) throw new BadRequestException('O turno não é da empresa do operador')
   }
 }

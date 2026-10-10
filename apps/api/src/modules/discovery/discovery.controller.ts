@@ -41,10 +41,15 @@ export class DiscoveryController {
         nameField:   meta.nameField   ?? 'name',
         ...(meta.isSingleton        ? { isSingleton: true }        : {}),
         ...(meta.privatePermissions ? { privatePermissions: true } : {}),
+        ...(meta.featured != null   ? { featured: meta.featured }  : {}),
       }
       if (!grouped.has(entry.domain)) grouped.set(entry.domain, [])
       grouped.get(entry.domain)!.push(resource)
     }
+
+    // featured first (in their order), then alphabetical
+    const byOrder = (a: DiscoveryResource, b: DiscoveryResource) =>
+      (a.featured ?? Infinity) - (b.featured ?? Infinity) || a.label.localeCompare(b.label, 'pt-BR')
 
     // Filtra domínios sem recursos visíveis para este usuário
     return domainRegistry
@@ -52,7 +57,7 @@ export class DiscoveryController {
         key:       domain.key,
         label:     domain.label,
         icon:      domain.icon,
-        resources: grouped.get(domain.key) ?? [],
+        resources: (grouped.get(domain.key) ?? []).sort(byOrder),
       }))
       .filter((domain) => domain.resources.length > 0)
   }

@@ -8,9 +8,11 @@ interface DomainCardProps {
   href:     string
   active?:  boolean
   badge?:   number
+  // a main resource of the domain — slightly highlighted
+  featured?: boolean
 }
 
-export function DomainCard({ label, icon, href, active, badge }: DomainCardProps) {
+export function DomainCard({ label, icon, href, active, badge, featured }: DomainCardProps) {
   const Icon = typeof icon === 'string' ? resolveIcon(icon) : icon
   return (
     <Link
@@ -19,6 +21,7 @@ export function DomainCard({ label, icon, href, active, badge }: DomainCardProps
       className={cn(
         'flex flex-col gap-3 rounded-lg border p-4 transition-colors outline-none',
         'hover:bg-accent/40 hover:border-ring/50',
+        featured && 'bg-muted/50',
         active && 'border-ring bg-accent/20 ring-1 ring-ring',
       )}
     >

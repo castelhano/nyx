@@ -194,6 +194,7 @@ export interface DiscoveryResource {
   nameField:           string
   isSingleton?:        boolean
   privatePermissions?: boolean  // exige concessão explícita; não aparece no sidebar
+  featured?:           number   // principal do domínio: vem primeiro (nesta ordem) e com destaque
 }
 
 export interface DiscoveryDomain {

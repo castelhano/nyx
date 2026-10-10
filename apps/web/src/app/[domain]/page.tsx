@@ -49,6 +49,7 @@ export default function DomainPage() {
             icon={res.icon}
             href={`/${domainKey}/${res.key}`}
             active={i === active}
+            featured={res.featured != null}
           />
         ))}
       </div>

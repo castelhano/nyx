@@ -759,7 +759,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
   if (field.type === 'enum' && field.options) {
     return (
       <>
-        <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>
+        {!bare && <label htmlFor={field.name} className="text-sm font-medium pt-2">{field.label}</label>}
         <div className="space-y-1">
           <div className={cn('relative', field.className)}>
             <select
@@ -777,7 +777,7 @@ export function FieldRenderer({ field, register, control, readonly, error, autoF
             {field.keybind && <KeyHint k={field.keybind} className="right-8" />}
             <Icons.ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           </div>
-          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          {!bare && field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
       </>

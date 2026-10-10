@@ -47,6 +47,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   rowActions?:         RowActionInput[]
   privatePermissions?: boolean      // child resource that requires explicit permission — does not inherit permissions from its parent
   hidden?:             boolean      // exclude from sidebar and discovery entirely (e.g. engine-managed resources)
+  featured?:           number       // main resource of its domain: listed first (in this order) and highlighted; the rest go alphabetically
   nameFirstWord?:      boolean      // show only first word of record name in breadcrumb; default true
   defaultSort?:        { field: string; order: 'asc' | 'desc' }
   afterCreate?:        string       // template with placeholders {fieldName} — redirects after creation instead of going to the list

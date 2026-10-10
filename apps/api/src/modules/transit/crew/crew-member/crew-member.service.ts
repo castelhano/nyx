@@ -7,7 +7,7 @@ import { stringContains } from '../../../../core/db.utils'
 import { localToday } from '../../timetabling/plan-validity'
 import { CrewMemberShiftService } from './crew-member-shift.service'
 
-// displayName, branchId (with `branch`) and shiftId (with `shift`) are computed — see
+// code, displayName, branchId (with `branch`) and shiftId (with `shift`) are computed — see
 // crew-member.schema.ts; shiftId written here starts a new CrewMemberShift today.
 @Injectable()
 export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberDto, UpdateCrewMemberDto> {
@@ -37,6 +37,7 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
       const shift = shifts.get(r.id) ?? null
       return {
         ...r,
+        code:        e?.code,
         displayName: e ? `${e.code} — ${e.fullName}` : undefined,
         branchId:    e?.branch.id,
         branch:      e?.branch,
@@ -51,15 +52,21 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
     return { ...result, data: await this.withComputed(result.data) }
   }
 
+  // the reference is the Employee's code (not a column here)
+  override async lookupByNameField(value: string): Promise<CrewMember | null> {
+    const row = await this.prisma.crewMember.findFirst({ where: { employee: { code: value.trim() } }, select: { id: true } })
+    return row ? this.findOne(row.id) : null
+  }
+
   override async findOne(id: string): Promise<CrewMember> {
     const [row] = await this.withComputed([await super.findOne(id)])
     return row
   }
 
   override async create(dto: CreateCrewMemberDto): Promise<CrewMember> {
-    if (!dto.shiftId) throw new BadRequestException('Informe o turno do condutor')
+    if (!dto.shiftId) throw new BadRequestException('Informe o turno do operador')
     const taken = await this.prisma.crewMember.findUnique({ where: { employeeId: dto.employeeId }, select: { id: true } })
-    if (taken) throw new BadRequestException('Este funcionário já tem cadastro de condutor')
+    if (taken) throw new BadRequestException('Este funcionário já tem cadastro de operador')
     const created = await super.create(dto)
     try {
       await this.shifts.startShift(created.id, dto.shiftId, localToday())

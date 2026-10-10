@@ -35,7 +35,7 @@ export default function DailyOperationListPage() {
   return (
     <div className="p-6 space-y-4">
       <AutoBreadcrumb domain="transit" resource="daily-operation" contextParams={filters} />
-      <h1 className="text-xl font-semibold">{meta?.labelPlural ?? 'Dias Operacionais'}</h1>
+      <h1 className="text-xl font-semibold">{meta?.labelPlural ?? 'Escalas Diárias'}</h1>
       <AutoList
         domain="transit"
         resource="daily-operation"

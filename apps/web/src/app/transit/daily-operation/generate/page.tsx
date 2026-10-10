@@ -189,7 +189,7 @@ export default function RosterGeneratorPage() {
     <div className="p-6 space-y-5">
       <Breadcrumb segments={[
         { label: 'Operação', href: '/transit' },
-        { label: 'Dias Operacionais', href: '/transit/daily-operation' },
+        { label: 'Escalas Diárias', href: '/transit/daily-operation' },
         { label: 'Gerar escala' },
       ]} />
 
@@ -220,7 +220,7 @@ export default function RosterGeneratorPage() {
             onChange={e => set('maxChanges', Math.max(0, Math.min(31, Math.round(Number(e.target.value) || 0))))}
             className={cn(inputCls, 'w-20 text-right')}
           />
-          <span className="text-xs text-muted-foreground">trocas de tabela (linha principal ou turno) por condutor no período da carga</span>
+          <span className="text-xs text-muted-foreground">trocas de tabela (linha principal ou turno) por operador no período da carga</span>
         </div>
 
         <ToggleRow label="Garantir Carga" checked={params.ensureMonthlyLoad} onToggle={() => set('ensureMonthlyLoad', !params.ensureMonthlyLoad)} disabled={running}
@@ -275,7 +275,7 @@ function ProposalView({ summary }: { summary: RosterProposalSummary }) {
     { label: 'Pontuação',    value: summary.score },
     { label: 'Tabelas',      value: summary.duties },
     { label: 'Escaladas',    value: summary.assigned },
-    { label: 'Sem condutor', value: summary.unassigned, tone: summary.unassigned ? 'text-red-600 dark:text-red-400' : undefined },
+    { label: 'Sem operador', value: summary.unassigned, tone: summary.unassigned ? 'text-red-600 dark:text-red-400' : undefined },
     { label: 'Com pendência', value: summary.warnings, tone: summary.warnings ? 'text-amber-600 dark:text-amber-400' : undefined },
     { label: 'Folgas',       value: summary.dayOffs },
   ]

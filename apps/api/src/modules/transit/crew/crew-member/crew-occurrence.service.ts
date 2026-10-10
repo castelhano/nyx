@@ -21,11 +21,11 @@ export class CrewOccurrenceService extends BaseService<CrewOccurrence, CreateCre
 
   async createAs(dto: CreateCrewOccurrenceDto, userId: string | undefined): Promise<CrewOccurrence> {
     const row = CrewOccurrenceService.normalized(dto)
-    if (row.origin === 'PORTAL') throw new BadRequestException('Solicitações do portal só são criadas pelo próprio condutor')
+    if (row.origin === 'PORTAL') throw new BadRequestException('Solicitações do portal só são criadas pelo próprio operador')
     CrewOccurrenceService.assertValid(row)
     const request = row.origin === 'STAFF_ON_BEHALF'
     if (request && dayOf(new Date(row.startDate)) !== dayOf(new Date(row.endDate))) {
-      throw new BadRequestException('Pedido do condutor é sempre de um dia')
+      throw new BadRequestException('Pedido do operador é sempre de um dia')
     }
     const { requested: _r, createdByUserId: _c, reviewedByUserId: _rb, reviewedAt: _ra, ...data } = row
     return super.create({

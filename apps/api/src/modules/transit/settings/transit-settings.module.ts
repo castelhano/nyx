@@ -11,7 +11,7 @@ import { TransitSettingsController }    from './transit-settings.controller'
 
 const transitSettingsEntrySchema = withMeta(
   z.object({}),
-  { label: 'Configurações', labelPlural: 'Configurações', icon: 'Settings2', isSingleton: true },
+  { label: 'Configurações', labelPlural: 'Configurações', icon: 'Settings2', isSingleton: true, featured: 4 },
 )
 
 @Module({

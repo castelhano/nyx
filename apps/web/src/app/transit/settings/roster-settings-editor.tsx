@@ -5,7 +5,7 @@ import { Select } from '@/components/ui/select'
 import { SectionHeader, DiffDot, NumberInput, RangeTable, DURATION_UNIT } from './criteria-tables'
 
 const ROSTER_RANGE_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
-  driverPrefLine: { label: 'Linhas Preferenciais',  unit: '%',          hint: 'Minutos de viagem nas linhas preferenciais do condutor, ponderados pelo peso de cada uma.' },
+  driverPrefLine: { label: 'Linhas Preferenciais',  unit: '%',          hint: 'Minutos de viagem nas linhas preferenciais do operador, ponderados pelo peso de cada uma.' },
   shiftFit:       { label: 'Ajuste ao Turno',       unit: DURATION_UNIT, hint: 'Média por jornada de quanto o início/fim fica fora do ideal do turno.' },
   loadDeficit:    { label: 'Déficit de Carga',      unit: '%',          hint: 'Quanto falta para a carga do período (com "Garantir carga").' },
   overtimePref:   { label: 'Horas Extras',          unit: DURATION_UNIT, hint: 'Minutos acima da carga para quem evita extras (sem "Garantir carga").' },
@@ -28,12 +28,12 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
     onChange({ ...value, range: { ...value.range, [key]: { ...value.range[key], [field]: v } } })
   return (
     <div className="flex flex-col gap-3">
-      <SectionHeader label="Condutores" sub="Regras dos cadastros de condutor da empresa" />
+      <SectionHeader label="Operadores" sub="Regras dos cadastros de operador da empresa" />
       <div className="rounded-lg border border-border divide-y divide-border">
         <Row
           diff={diff('lineAccessMode')}
-          label="Linhas do Condutor"
-          hint="Como ler o acesso cadastrado nas linhas de cada condutor"
+          label="Linhas do Operador"
+          hint="Como ler o acesso cadastrado nas linhas de cada operador"
         >
           <Select
             value={value.lineAccessMode}
@@ -48,7 +48,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
         <Row
           diff={diff('maxPreferredLines')}
-          label="Linhas Preferenciais por Condutor"
+          label="Linhas Preferenciais por Operador"
           hint="Primária, secundária... — 0 desliga as preferências"
         >
           <NumberInput value={value.maxPreferredLines} onChange={(v) => onChange({ ...value, maxPreferredLines: Math.round(v) })} min={0} max={10} />
@@ -57,7 +57,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         <Row
           diff={diff('defaultWeeklyHours')}
           label="Carga Semanal Padrão"
-          hint="Quando nem o condutor nem o contrato definem — mensal = semanal × 5"
+          hint="Quando nem o operador nem o contrato definem — mensal = semanal × 5"
         >
           <NumberInput value={value.defaultWeeklyHours} onChange={(v) => onChange({ ...value, defaultWeeklyHours: Math.round(v) })} min={1} max={44} />
           <span className="text-sm text-muted-foreground w-6">h</span>
@@ -83,7 +83,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         <Row
           diff={diff('habitualVehicleDays')}
           label="Carro Habitual"
-          hint="O carro mais dirigido pelo condutor nestes últimos dias"
+          hint="O carro mais dirigido pelo operador nestes últimos dias"
         >
           <NumberInput value={value.habitualVehicleDays} onChange={(v) => onChange({ ...value, habitualVehicleDays: Math.round(v) })} min={1} max={90} />
           <span className="text-sm text-muted-foreground w-6">dias</span>
@@ -111,7 +111,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         ))}
       </div>
 
-      <SectionHeader label="Critérios do Gerador" sub="Pontuação de cada condutor no horizonte gerado — a média de todos é a pontuação da proposta." />
+      <SectionHeader label="Critérios do Gerador" sub="Pontuação de cada operador no horizonte gerado — a média de todos é a pontuação da proposta." />
       <RangeTable
         data={value.range}
         globalData={reference ? reference.range : value.range}

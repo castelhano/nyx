@@ -43,7 +43,7 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
     if (!row.access && row.rank == null) throw new BadRequestException('Informe o acesso ou a preferência')
 
     const member = await this.prisma.crewMember.findUnique({ where: { id: row.crewMemberId }, select: { employee: { select: { branchId: true } } } })
-    if (!member) throw new BadRequestException('Condutor não encontrado')
+    if (!member) throw new BadRequestException('Operador não encontrado')
     const branchId = member.employee.branchId
     const { lineAccessMode, maxPreferredLines } = await this.roster.get(branchId)
 
@@ -63,7 +63,7 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
     const operated = line.operators.length
       ? line.operators.some(o => o.branchId === branchId)
       : !!line.scopeId && !!(await this.prisma.scopeOperator.findFirst({ where: { scopeId: line.scopeId, branchId }, select: { id: true } }))
-    if (!operated) throw new BadRequestException('A linha não é operada pela empresa do condutor')
+    if (!operated) throw new BadRequestException('A linha não é operada pela empresa do operador')
 
     if (row.rank != null) {
       if (row.rank < 1 || row.rank > maxPreferredLines) {
@@ -81,6 +81,6 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
       where:  { crewMemberId: row.crewMemberId, ...(id ? { id: { not: id } } : {}), OR: [{ lineId: row.lineId }, ...(row.rank != null ? [{ rank: row.rank }] : [])] },
       select: { lineId: true, rank: true },
     })
-    if (dup) throw new BadRequestException(dup.lineId === row.lineId ? 'A linha já está cadastrada para o condutor' : `O condutor já tem a preferência ${row.rank}`)
+    if (dup) throw new BadRequestException(dup.lineId === row.lineId ? 'A linha já está cadastrada para o operador' : `O operador já tem a preferência ${row.rank}`)
   }
 }

@@ -64,14 +64,14 @@ export const rosterSettingsSchema = withMeta(z.object({
 export type RosterSettings = z.infer<typeof rosterSettingsSchema>
 
 export const LINE_ACCESS_MODE_LABEL: Record<RosterSettings['lineAccessMode'], string> = {
-  WHITELIST: 'Habilitadas — o condutor só opera as linhas habilitadas para ele',
-  BLACKLIST: 'Bloqueadas — o condutor opera todas, menos as bloqueadas para ele',
+  WHITELIST: 'Habilitadas — o operador só opera as linhas habilitadas para ele',
+  BLACKLIST: 'Bloqueadas — o operador opera todas, menos as bloqueadas para ele',
 }
 
 export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { label: string; hint: string }> = {
-  lineAccess:     { label: 'Linha do Condutor',  hint: 'Linha bloqueada (ou não habilitada) para o condutor' },
-  vehicleType:    { label: 'Tipo de Veículo',    hint: 'Tipo de veículo bloqueado para o condutor' },
-  shiftWindow:    { label: 'Janela do Turno',    hint: 'Fora do turno, dos limites do condutor ou de uma restrição de horário' },
+  lineAccess:     { label: 'Linha do Operador',  hint: 'Linha bloqueada (ou não habilitada) para o operador' },
+  vehicleType:    { label: 'Tipo de Veículo',    hint: 'Tipo de veículo bloqueado para o operador' },
+  shiftWindow:    { label: 'Janela do Turno',    hint: 'Fora do turno, dos limites do operador ou de uma restrição de horário' },
   interShiftRest: { label: 'Interjornada',       hint: 'Descanso abaixo do mínimo entre dias seguidos' },
   license:        { label: 'CNH',                hint: 'CNH vencida na data' },
   course:         { label: 'Curso',              hint: 'Curso de transporte coletivo vencido na data' },

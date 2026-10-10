@@ -63,7 +63,7 @@ export function NewDailyOperation() {
     <div className="p-6 max-w-2xl space-y-4">
       <Breadcrumb segments={[
         { label: 'Operação', href: '/transit' },
-        { label: 'Dias Operacionais', href: '/transit/daily-operation' },
+        { label: 'Escalas Diárias', href: '/transit/daily-operation' },
         { label: 'Novo' },
       ]} />
       <form id={FORM_ID} onSubmit={handleSubmit} className="grid grid-cols-[8rem_1fr] items-center gap-3">
