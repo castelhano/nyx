@@ -236,14 +236,14 @@ export const crewMemberShiftSchema = withMeta(
       domain:         'transit',
       labelField:     'code',
       listVisibility: 'visible',
-      className:      'md:w-1/3',
+      className:      'md:w-44',
       keybind:        't',
     }),
 
     validFrom: z.date().meta({
       label:          'Desde',
       listVisibility: 'visible',
-      className:      'md:w-1/4',
+      className:      'md:w-44',
       defaultValue:   '$today',
       keybind:        'd',
     }),
@@ -252,7 +252,7 @@ export const crewMemberShiftSchema = withMeta(
       label:          'Até',
       helpText:       'Vazio: vigente. Um novo turno encerra o anterior no dia anterior ao seu início.',
       listVisibility: 'visible',
-      className:      'md:w-1/4',
+      className:      'md:w-44',
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),

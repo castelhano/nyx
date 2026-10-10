@@ -56,6 +56,7 @@ const iconNames = [
   'FilterX',
   'Gauge',
   'GitBranch',
+  'GripVertical',
   'Group',
   'Home',
   'IdCard',

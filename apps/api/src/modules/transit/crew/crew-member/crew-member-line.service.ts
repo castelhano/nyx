@@ -1,10 +1,18 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { crewMemberLineSchema, CrewMemberLine, CreateCrewMemberLineDto, UpdateCrewMemberLineDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 
 type LineRow = { crewMemberId: string; lineId: string; access?: string | null; rank?: number | null }
+
+// the operator's lines screen: every line his empresa operates (by line group) and his rows
+export interface CrewLinesBoard {
+  lineAccessMode:    'WHITELIST' | 'BLACKLIST'
+  maxPreferredLines: number
+  lines:   { id: string; code: string; name: string; groups: { id: string; name: string }[] }[]
+  entries: { lineId: string; access: 'ENABLED' | 'BLOCKED' | null; rank: number | null }[]
+}
 
 // One row per (crew member, line). What `access` means comes from the crew member's empresa
 // (roster settings lineAccessMode); a preferred line (rank) must be one he may operate.
@@ -28,6 +36,80 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
     const row = CrewMemberLineService.normalized({ ...current, ...dto })
     await this.assertValid(id, row)
     return super.update(id, { lineId: row.lineId, access: row.access, rank: row.rank })
+  }
+
+  // ── board ───────────────────────────────────────────────────────────────────
+
+  private async branchOf(crewMemberId: string): Promise<string> {
+    const member = await this.prisma.crewMember.findUnique({ where: { id: crewMemberId }, select: { employee: { select: { branchId: true } } } })
+    if (!member) throw new NotFoundException('Operador não encontrado')
+    return member.employee.branchId
+  }
+
+  // active lines the empresa operates: one of their LineOperators, or (no operators) any
+  // operator of their Scope
+  private operatedLines(branchId: string) {
+    return this.prisma.transitLine.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { operators: { some: { branchId } } },
+          { operators: { none: {} }, scope: { operators: { some: { branchId } } } },
+        ],
+      },
+      orderBy: { code: 'asc' },
+      select: {
+        id: true, code: true, name: true,
+        lineGroups: { where: { lineGroup: { OR: [{ branchId: null }, { branchId }] } }, select: { lineGroup: { select: { id: true, name: true } } } },
+      },
+    })
+  }
+
+  async board(crewMemberId: string): Promise<CrewLinesBoard> {
+    const branchId = await this.branchOf(crewMemberId)
+    const [settings, lines, entries] = await Promise.all([
+      this.roster.get(branchId),
+      this.operatedLines(branchId),
+      this.prisma.crewMemberLine.findMany({ where: { crewMemberId }, select: { lineId: true, access: true, rank: true } }),
+    ])
+    return {
+      lineAccessMode:    settings.lineAccessMode,
+      maxPreferredLines: settings.maxPreferredLines,
+      lines:   lines.map(l => ({ id: l.id, code: l.code, name: l.name, groups: l.lineGroups.map(g => g.lineGroup) })),
+      entries: entries.map(e => ({ lineId: e.lineId, access: e.access, rank: e.rank })),
+    }
+  }
+
+  // replaces every row of the operator — the screen saves the whole board at once
+  async replaceAll(crewMemberId: string, raw: unknown): Promise<CrewLinesBoard> {
+    const branchId = await this.branchOf(crewMemberId)
+    const [{ lineAccessMode, maxPreferredLines }, lines] = await Promise.all([this.roster.get(branchId), this.operatedLines(branchId)])
+    const operated = new Set(lines.map(l => l.id))
+    const list = Array.isArray(raw) ? raw as { lineId: string; access?: string | null; rank?: number | null }[] : []
+    const rows = list
+      .map(e => ({ lineId: String(e.lineId), access: (e.access || null) as 'ENABLED' | 'BLOCKED' | null, rank: e.rank == null ? null : Number(e.rank) }))
+      .filter(e => e.access || e.rank != null)
+
+    const seen = new Set<string>(), ranks = new Set<number>()
+    for (const r of rows) {
+      if (!operated.has(r.lineId)) throw new BadRequestException('Há linha não operada pela empresa do operador')
+      if (seen.has(r.lineId)) throw new BadRequestException('Linha repetida')
+      seen.add(r.lineId)
+      if (r.access && r.access !== (lineAccessMode === 'WHITELIST' ? 'ENABLED' : 'BLOCKED')) {
+        throw new BadRequestException('Acesso não condiz com o modo de linhas da empresa')
+      }
+      if (r.rank == null) continue
+      if (r.rank < 1 || r.rank > maxPreferredLines || ranks.has(r.rank)) throw new BadRequestException(`Preferências de 1 a ${maxPreferredLines}, sem repetir`)
+      ranks.add(r.rank)
+      if (lineAccessMode === 'WHITELIST' ? r.access !== 'ENABLED' : r.access === 'BLOCKED') {
+        throw new BadRequestException('Linha preferencial precisa poder ser operada')
+      }
+    }
+    await this.prisma.$transaction([
+      this.prisma.crewMemberLine.deleteMany({ where: { crewMemberId } }),
+      this.prisma.crewMemberLine.createMany({ data: rows.map(r => ({ crewMemberId, ...r })) }),
+    ])
+    return this.board(crewMemberId)
   }
 
   // a cleared select / number arrives as '' — sanitizeDto would keep the old value
