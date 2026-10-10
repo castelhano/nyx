@@ -37,7 +37,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
       },
     }),
     prisma.routeLocality.findMany({ where: { allowsMealBreak: true, localityId: { not: null } }, select: { routeId: true, localityId: true } }),
-    loadCrewBranchRules(prisma, plan.vehiclePlanId),
+    loadCrewBranchRules(prisma, { vehiclePlanId: plan.vehiclePlanId }),
   ])
   const relief = await loadBlockRelief(prisma, blockRows.map(b => b.id))
 

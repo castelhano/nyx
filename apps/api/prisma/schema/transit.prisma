@@ -344,6 +344,7 @@ model DayType {
   calendarExceptionsAsOverride LineCalendarException[] @relation("ExceptionOverrideDayType")
   calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
   serviceRequirements          LineServiceRequirement[]
+  dailyOperations              DailyOperation[]
 
   @@map("transit_day_types")
 }
@@ -581,6 +582,7 @@ model Scope {
   lines        TransitLine[]
   operators    ScopeOperator[]
   vehiclePlans VehiclePlan[]
+  dailyOperations DailyOperation[]
 
   @@map("transit_scopes")
 }
@@ -875,6 +877,7 @@ model CrewMember {
   shifts           CrewMemberShift[]
   lines            CrewMemberLine[]
   occurrences      CrewOccurrence[]
+  rosterEntries    RosterEntry[]
 
   @@map("transit_crew_members")
 }
@@ -1125,4 +1128,225 @@ model DutyActivity {
   destinationLocality TransitLocality? @relation("DutyActivityDestination", fields: [destinationLocalityId], references: [id])
 
   @@map("transit_duty_activities")
+}
+
+// ── Daily operation ─────────────────────────────────────────────────────────────
+// A date's real operation of a transit Scope: a copy of the logical plans in force that day
+// (VehiclePlan blocks + CrewPlan duties), edited for the day and allocated to real vehicles
+// and crew members. Its own tables, never the plan's: nothing done to a day reaches the plans
+// or the OSO, and plan edits never rewrite a materialized day.
+
+enum DailyStatus {
+  PLANNED   // being built / allocated
+  PUBLISHED // visible to the crew; changes are logged
+  CLOSED    // executed — read-only
+}
+
+model DailyOperation {
+  id          String      @id @default(uuid())
+  scopeId     String
+  date        DateTime    @db.Date
+  // DayType of the date's pattern (lines may run under others — see sources)
+  dayTypeId   String
+  status      DailyStatus @default(PLANNED)
+  // DailySource[] — [{ vehiclePlanId, crewPlanId | null, dayTypeId, lineIds }]: the logical plans
+  // the day was copied from, per line
+  sources     Json
+  // DailySummary — issue counts by code
+  summary     Json?
+  publishedAt DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  scope   Scope             @relation(fields: [scopeId], references: [id])
+  dayType DayType           @relation(fields: [dayTypeId], references: [id])
+  blocks  DailyBlock[]
+  events  DailyBlockEvent[]
+  duties  DailyDuty[]
+  changes DailyChangeLog[]
+
+  @@unique([scopeId, date])
+  @@map("transit_daily_operations")
+}
+
+// A vehicle's day — copied from a VehicleBlock, with the real vehicle
+model DailyBlock {
+  id               String      @id @default(uuid())
+  dailyOperationId String
+  // VehicleBlock it was copied from — plain id, the plan may change or go away
+  sourceBlockId    String?
+  blockNumber      Int
+  branchId         String?
+  depotId          String
+  vehicleType      VehicleType
+  vehicleId        String?
+  // VehicleBlockIssue[] (block-validation.ts) + the day's own (DailyIssue) — never blocks a save
+  issues           Json?
+  hasIssues        Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  operation DailyOperation    @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle?          @relation(fields: [vehicleId], references: [id])
+  events    DailyBlockEvent[]
+  pieces    DailyDutyPiece[]
+
+  @@unique([dailyOperationId, blockNumber])
+  @@map("transit_daily_blocks")
+}
+
+enum DailyEventKind {
+  TRIP
+  DEADRUN
+  INTERVAL
+}
+
+// Trips, deadruns and intervals of the day in one table
+model DailyBlockEvent {
+  id                    String         @id @default(uuid())
+  dailyOperationId      String
+  // null = a trip left without a vehicle (mixed day) — TRIP_UNCOVERED
+  dailyBlockId          String?
+  kind                  DailyEventKind
+  // TransitTrip / BlockDeadrun / BlockInterval it was copied from — plain id
+  sourceId              String?
+  lineId                String?
+  routeId               String?
+  deadrunType           DeadrunType?
+  intervalTypeId        String?
+  originLocalityId      String?
+  destinationLocalityId String?
+  startMinutes          Int
+  endMinutes            Int
+  requiredVehicleType   VehicleType?
+  bundleId              String?
+  // a trip not run today (supressão) — kept for the record
+  isCancelled           Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  operation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+  block     DailyBlock?    @relation(fields: [dailyBlockId], references: [id], onDelete: SetNull)
+
+  @@index([dailyOperationId])
+  @@index([dailyBlockId])
+  @@map("transit_daily_block_events")
+}
+
+// A duty of the day — copied from a Duty; who works it is a RosterEntry
+model DailyDuty {
+  id               String     @id @default(uuid())
+  dailyOperationId String
+  // Duty it was copied from — plain id
+  sourceDutyId     String?
+  role             CrewRole
+  dutyNumber       Int
+  kind             DutyKind
+  branchId         String?
+  shiftId          String?
+  // DutySummary — same shape as the logical duty
+  summary          Json?
+  // DutyIssue[] + the day's own (DailyIssue)
+  issues           Json?
+  hasIssues        Boolean    @default(false)
+  isStale          Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  operation     DailyOperation      @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+  pieces        DailyDutyPiece[]
+  activities    DailyDutyActivity[]
+  rosterEntries RosterEntry[]
+
+  @@unique([dailyOperationId, role, dutyNumber])
+  @@map("transit_daily_duties")
+}
+
+model DailyDutyPiece {
+  id              String      @id @default(uuid())
+  dailyDutyId     String
+  // null = its block didn't come to the day (mixed day) — stale
+  dailyBlockId    String?
+  sequence        Int
+  startMinutes    Int
+  endMinutes      Int
+  startLocalityId String
+  endLocalityId   String
+  isStale         Boolean     @default(false)
+  staleReason     String?
+
+  duty  DailyDuty   @relation(fields: [dailyDutyId], references: [id], onDelete: Cascade)
+  block DailyBlock? @relation(fields: [dailyBlockId], references: [id], onDelete: SetNull)
+
+  @@unique([dailyDutyId, sequence])
+  @@map("transit_daily_duty_pieces")
+}
+
+model DailyDutyActivity {
+  id                    String           @id @default(uuid())
+  dailyDutyId           String
+  type                  DutyActivityType
+  intervalTypeId        String?
+  startMinutes          Int
+  endMinutes            Int
+  originLocalityId      String?
+  destinationLocalityId String?
+
+  duty DailyDuty @relation(fields: [dailyDutyId], references: [id], onDelete: Cascade)
+
+  @@map("transit_daily_duty_activities")
+}
+
+enum RosterEntryKind {
+  DUTY     // works a daily duty
+  STANDBY  // plantão — a STANDBY daily duty
+  DAY_OFF  // day off of the rest pattern
+  COMP_OFF // folga compensada — reduces the period load like an absence
+}
+
+// What a crew member does on an operational date — THE roster (the month is these rows over
+// its dates). Absences aren't rows here: they come from CrewOccurrence. A duty has at most one
+// crew member; a crew member may hold more than one duty by hand (flagged), never overlapping.
+model RosterEntry {
+  id           String          @id @default(uuid())
+  crewMemberId String
+  date         DateTime        @db.Date
+  kind         RosterEntryKind
+  // DUTY / STANDBY
+  dailyDutyId  String?         @unique
+  // kept by the generator when it reprocesses
+  locked       Boolean         @default(false)
+  // GENERATED | MANUAL
+  source       String          @default("MANUAL")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  dailyDuty  DailyDuty? @relation(fields: [dailyDutyId], references: [id], onDelete: Cascade)
+
+  @@index([crewMemberId, date])
+  @@index([date])
+  @@map("transit_roster_entries")
+}
+
+// What changed in a PUBLISHED day — the source of crew notifications (crew portal)
+model DailyChangeLog {
+  id               String   @id @default(uuid())
+  dailyOperationId String
+  userId           String?
+  // ASSIGN_CREW | UNASSIGN_CREW | ASSIGN_VEHICLE | CANCEL_TRIP | RESTORE_TRIP | DAY_OFF
+  action           String
+  entityType       String
+  entityId         String
+  // crew members affected — who gets notified
+  crewMemberIds    String[]
+  before           Json?
+  after            Json?
+  createdAt        DateTime @default(now())
+
+  operation DailyOperation @relation(fields: [dailyOperationId], references: [id], onDelete: Cascade)
+
+  @@index([dailyOperationId, createdAt])
+  @@map("transit_daily_change_logs")
 }

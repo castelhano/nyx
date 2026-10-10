@@ -578,6 +578,16 @@ Prioridade: tipo = `preferred` das linhas / `vehicleType` planejado do bloco.
 
 ## Fase 4 — Dia operacional
 
+> **Implementado (primeira entrega) — diferenças em relação ao texto abaixo:**
+> - Pendências do condutor ficam em `DailyDuty.issues` (junto das da tabela), não no `RosterEntry`;
+>   pendências do veículo em `DailyBlock.issues`. Códigos: `DAILY_ISSUE_CODES` (`daily-operation.schema.ts`).
+> - O dia usa as regras de escala do escopo (`transit.crew`); uma configuração personalizada do
+>   `CrewPlan` de origem não é levada.
+> - Ficaram para depois: dividir tabela, `RESERVE_SHORT` (depende da meta de reserva, Fase 5),
+>   notificações (Fase 7). Reparo automático é a Fase 6.
+> - Tela do dia: abas Tabelas (condutor por tabela), Carros (veículo, viagens canceladas) e
+>   Pessoal (situação no dia, folga lançada). A linha do tempo (Gantt) fica para uma etapa seguinte.
+
 ### 4.1 Por que tabelas próprias
 
 O dia precisa de cálculo, validação e Gantt iguais aos do plano, mas **nenhum** dos efeitos do

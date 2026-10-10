@@ -1,0 +1,491 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import {
+  dailyOperationSchema, restPatternWorks, validateBlock,
+  type CreateDailyOperationDto, type DailyIssue, type DailyOperation, type DailySource, type DailySummary,
+  type DutySummary, type UpdateDailyOperationDto, type VehicleTypeValue,
+} from '@nyx/schemas'
+import { PrismaService } from '../../../prisma/prisma.service'
+import { BaseService } from '../../../core/base.service'
+import { TransitCrewConfigService } from '../settings/transit-crew-config.service'
+import { TransitRosterConfigService } from '../settings/transit-roster-config.service'
+import { TransitGeneralConfigService } from '../settings/transit-general-config.service'
+import { DayTypeService } from '../timetabling/day-type/day-type.service'
+import { computeCrewPlan } from '../timetabling/crew-plan/crew-scoring.calc'
+import { loadCrewBranchRules } from '../timetabling/crew-plan/crew-branch-rules'
+import { loadCrewWalk } from '../timetabling/crew-plan/crew-walk'
+import { canonicalJson } from '../timetabling/crew-plan/crew-plan.service'
+import { defaultIntervalMaxMinutes } from '../timetabling/vehicle-plan/block-issues.utils'
+import { addDays, dayOf, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
+import { materializeDay } from './daily-materialize'
+import { loadDailyRelief } from './daily-relief'
+import { crewIssues, loadCrewFacts, vehicleIssues, type BlockFacts, type DutyFacts } from './daily-checks'
+
+type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL_TRIP' | 'RESTORE_TRIP' | 'DAY_OFF'
+
+// The day's real operation (DailyOperation). Creating one materializes the plans in force on the
+// date; every edit recalculates the day (duty summaries/issues through the crew calculation,
+// block issues through validateBlock, and the day's own crew/vehicle checks). A PUBLISHED day
+// logs each change (DailyChangeLog); a CLOSED one is read-only.
+@Injectable()
+export class DailyOperationService extends BaseService<DailyOperation, CreateDailyOperationDto, UpdateDailyOperationDto> {
+  constructor(
+    prisma: PrismaService,
+    private readonly dayTypes: DayTypeService,
+    private readonly crewConfig: TransitCrewConfigService,
+    private readonly rosterConfig: TransitRosterConfigService,
+    private readonly generalConfig: TransitGeneralConfigService,
+  ) {
+    super(prisma, 'dailyOperation', dailyOperationSchema, 'transit')
+  }
+
+  // ── lifecycle ───────────────────────────────────────────────────────────────
+
+  override async create(dto: CreateDailyOperationDto): Promise<DailyOperation> {
+    const day = parseStartDate(typeof dto.date === 'string' ? (dto.date as string).slice(0, 10) : dayOf(new Date(dto.date)))
+    const existing = await this.prisma.dailyOperation.findUnique({ where: { scopeId_date: { scopeId: dto.scopeId, date: toDbDate(day) } }, select: { id: true } })
+    if (existing) return this.findOne(existing.id)
+    const id = await materializeDay(this.prisma, this.dayTypes, dto.scopeId, day)
+    await this.recalculate(id)
+    return this.findOne(id)
+  }
+
+  override update(): Promise<DailyOperation> {
+    throw new BadRequestException('O dia operacional muda pelas ações da tela do dia')
+  }
+
+  override async remove(id: string): Promise<void> {
+    const op = await this.operation(id)
+    if (op.status !== 'PLANNED') throw new BadRequestException('Só um dia ainda planejado pode ser excluído')
+    await super.remove(id)
+  }
+
+  // discards the day and copies the plans again — its allocation goes with it
+  async rematerialize(id: string): Promise<{ id: string }> {
+    const op = await this.operation(id)
+    if (op.status !== 'PLANNED') throw new BadRequestException('Só um dia ainda planejado pode ser refeito')
+    await this.prisma.dailyOperation.delete({ where: { id } })
+    const created = await this.create({ scopeId: op.scopeId, date: op.date })
+    return { id: created.id }
+  }
+
+  async setStatus(id: string, status: 'PUBLISHED' | 'CLOSED'): Promise<void> {
+    const op = await this.operation(id)
+    const from = status === 'PUBLISHED' ? 'PLANNED' : 'PUBLISHED'
+    if (op.status !== from) throw new BadRequestException(status === 'PUBLISHED' ? 'Só um dia planejado pode ser publicado' : 'Só um dia publicado pode ser encerrado')
+    await this.prisma.dailyOperation.update({
+      where: { id },
+      data:  status === 'PUBLISHED' ? { status, publishedAt: new Date() } : { status, closedAt: new Date() },
+    })
+  }
+
+  // ── allocation ──────────────────────────────────────────────────────────────
+
+  async assignCrew(id: string, dutyId: string, crewMemberId: string | null, userId?: string): Promise<void> {
+    const op = await this.editable(id)
+    const duty = await this.prisma.dailyDuty.findFirst({
+      where:  { id: dutyId, dailyOperationId: id },
+      select: { id: true, kind: true, summary: true, rosterEntries: { select: { id: true, crewMemberId: true } } },
+    })
+    if (!duty) throw new NotFoundException('Tabela não encontrada')
+    const previous = duty.rosterEntries[0]?.crewMemberId ?? null
+    if (previous === crewMemberId) return
+
+    if (crewMemberId) {
+      const entries = await this.prisma.rosterEntry.findMany({
+        where:  { crewMemberId, date: op.date, NOT: { dailyDutyId: dutyId } },
+        select: { kind: true, dailyDuty: { select: { summary: true } } },
+      })
+      if (entries.some(e => e.kind === 'DAY_OFF' || e.kind === 'COMP_OFF')) {
+        throw new BadRequestException('O condutor está de folga no dia — remova a folga antes')
+      }
+      const span = (s: unknown) => s as DutySummary | null
+      const mine = span(duty.summary)
+      if (mine?.startMinutes != null && mine.endMinutes != null && entries.some(e => {
+        const o = span(e.dailyDuty?.summary)
+        return o?.startMinutes != null && o.endMinutes != null && o.startMinutes < mine.endMinutes! && o.endMinutes > mine.startMinutes!
+      })) throw new BadRequestException('O condutor já está em outra tabela nesse horário')
+    }
+
+    await this.prisma.$transaction(async tx => {
+      await tx.rosterEntry.deleteMany({ where: { dailyDutyId: dutyId } })
+      if (crewMemberId) {
+        await tx.rosterEntry.create({
+          data: { crewMemberId, date: op.date, kind: duty.kind === 'STANDBY' ? 'STANDBY' : 'DUTY', dailyDutyId: dutyId },
+        })
+      }
+    })
+    await this.log(op, userId, crewMemberId ? 'ASSIGN_CREW' : 'UNASSIGN_CREW', 'DailyDuty', dutyId,
+      [previous, crewMemberId], { crewMemberId: previous }, { crewMemberId })
+    await this.recalculateAround(op, [previous, crewMemberId])
+  }
+
+  async assignVehicle(id: string, blockId: string, vehicleId: string | null, userId?: string): Promise<void> {
+    const op = await this.editable(id)
+    const block = await this.prisma.dailyBlock.findFirst({ where: { id: blockId, dailyOperationId: id }, select: { vehicleId: true } })
+    if (!block) throw new NotFoundException('Carro não encontrado')
+    if (block.vehicleId === vehicleId) return
+    await this.prisma.dailyBlock.update({ where: { id: blockId }, data: { vehicleId } })
+    await this.log(op, userId, 'ASSIGN_VEHICLE', 'DailyBlock', blockId, await this.crewOfBlock(blockId), { vehicleId: block.vehicleId }, { vehicleId })
+    await this.recalculate(id)
+  }
+
+  async setTripCancelled(id: string, eventId: string, cancelled: boolean, userId?: string): Promise<void> {
+    const op = await this.editable(id)
+    const event = await this.prisma.dailyBlockEvent.findFirst({ where: { id: eventId, dailyOperationId: id, kind: 'TRIP' }, select: { isCancelled: true, dailyBlockId: true } })
+    if (!event) throw new NotFoundException('Viagem não encontrada')
+    if (event.isCancelled === cancelled) return
+    await this.prisma.dailyBlockEvent.update({ where: { id: eventId }, data: { isCancelled: cancelled } })
+    await this.log(op, userId, cancelled ? 'CANCEL_TRIP' : 'RESTORE_TRIP', 'DailyBlockEvent', eventId,
+      event.dailyBlockId ? await this.crewOfBlock(event.dailyBlockId) : [], { isCancelled: !cancelled }, { isCancelled: cancelled })
+    await this.recalculate(id)
+  }
+
+  // DAY_OFF / COMP_OFF on the day for a crew member without a duty; null clears it
+  async setDayOff(id: string, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
+    const op = await this.editable(id)
+    const entries = await this.prisma.rosterEntry.findMany({ where: { crewMemberId, date: op.date }, select: { id: true, kind: true, dailyDutyId: true } })
+    if (kind && entries.some(e => e.dailyDutyId)) throw new BadRequestException('O condutor está escalado no dia — tire-o da tabela antes')
+    const before = entries.find(e => !e.dailyDutyId)?.kind ?? null
+    if (before === kind) return
+    await this.prisma.$transaction(async tx => {
+      await tx.rosterEntry.deleteMany({ where: { crewMemberId, date: op.date, dailyDutyId: null } })
+      if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: op.date, kind } })
+    })
+    await this.log(op, userId, 'DAY_OFF', 'CrewMember', crewMemberId, [crewMemberId], { kind: before }, { kind })
+  }
+
+  private async crewOfBlock(blockId: string): Promise<string[]> {
+    const entries = await this.prisma.rosterEntry.findMany({
+      where:  { dailyDuty: { pieces: { some: { dailyBlockId: blockId } } } },
+      select: { crewMemberId: true },
+    })
+    return entries.map(e => e.crewMemberId)
+  }
+
+  private async log(
+    op: { id: string; status: string }, userId: string | undefined, action: ChangeAction, entityType: string, entityId: string,
+    crewMemberIds: (string | null)[], before: Record<string, unknown>, after: Record<string, unknown>,
+  ): Promise<void> {
+    if (op.status !== 'PUBLISHED') return
+    await this.prisma.dailyChangeLog.create({
+      data: {
+        dailyOperationId: op.id, userId: userId ?? null, action, entityType, entityId,
+        crewMemberIds: [...new Set(crewMemberIds.filter((m): m is string => !!m))],
+        before: before as Prisma.InputJsonValue, after: after as Prisma.InputJsonValue,
+      },
+    })
+  }
+
+  private async operation(id: string) {
+    const op = await this.prisma.dailyOperation.findUnique({ where: { id }, select: { id: true, scopeId: true, date: true, status: true, sources: true } })
+    if (!op) throw new NotFoundException('Dia operacional não encontrado')
+    return op
+  }
+
+  private async editable(id: string) {
+    const op = await this.operation(id)
+    if (op.status === 'CLOSED') throw new BadRequestException('Dia encerrado — somente leitura')
+    return op
+  }
+
+  // a crew change also moves the rest to/from the neighboring days of the same Scope
+  private async recalculateAround(op: { id: string; scopeId: string; date: Date }, crewMemberIds: (string | null)[]): Promise<void> {
+    await this.recalculate(op.id)
+    if (!crewMemberIds.some(Boolean)) return
+    const day = dayOf(op.date)
+    const neighbors = await this.prisma.dailyOperation.findMany({
+      where:  { scopeId: op.scopeId, date: { in: [toDbDate(addDays(day, -1)), toDbDate(addDays(day, 1))] }, status: { not: 'CLOSED' } },
+      select: { id: true },
+    })
+    for (const n of neighbors) await this.recalculate(n.id)
+  }
+
+  // ── recalculate ─────────────────────────────────────────────────────────────
+
+  async recalculate(id: string): Promise<void> {
+    const op = await this.operation(id)
+    const day = dayOf(op.date)
+    const sources = op.sources as unknown as DailySource[]
+
+    const [settings, relief, duties, blocks, events, maxStand] = await Promise.all([
+      this.crewConfig.get(op.scopeId),
+      loadDailyRelief(this.prisma, id),
+      this.prisma.dailyDuty.findMany({
+        where:  { dailyOperationId: id },
+        select: {
+          id: true, role: true, kind: true, branchId: true, shiftId: true, summary: true, issues: true, isStale: true,
+          pieces:     { select: { id: true, dailyBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true } },
+          activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true } },
+        },
+      }),
+      this.prisma.dailyBlock.findMany({
+        where:  { dailyOperationId: id },
+        select: { id: true, branchId: true, depotId: true, vehicleType: true, vehicleId: true, issues: true, vehicle: { select: { vehicleType: true } } },
+      }),
+      this.prisma.dailyBlockEvent.findMany({ where: { dailyOperationId: id } }),
+      defaultIntervalMaxMinutes(this.prisma, this.generalConfig),
+    ])
+
+    const intervalTypeIds = [...new Set(duties.flatMap(d => d.activities.map(a => a.intervalTypeId)).filter((x): x is string => !!x))]
+    const pairs = new Map<string, { originId: string; destinationId: string }>()
+    for (const d of duties) {
+      const sorted = [...d.pieces].sort((a, b) => a.startMinutes - b.startMinutes)
+      for (let i = 1; i < sorted.length; i++) {
+        const from = sorted[i - 1].endLocalityId, to = sorted[i].startLocalityId
+        if (from !== to) pairs.set(`${from}:${to}`, { originId: from, destinationId: to })
+      }
+    }
+    const [paidTypes, walk, mealStops, branchRules] = await Promise.all([
+      intervalTypeIds.length ? this.prisma.intervalType.findMany({ where: { id: { in: intervalTypeIds } }, select: { id: true, isPaid: true } }) : Promise.resolve([]),
+      loadCrewWalk(this.prisma, [...new Set([...pairs.values()].flatMap(p => [p.originId, p.destinationId]))], [...pairs.values()]),
+      settings.mealBreakIntervalTypeId
+        ? this.prisma.routeLocality.findMany({ where: { allowsMealBreak: true, localityId: { not: null } }, select: { routeId: true, localityId: true } })
+        : Promise.resolve([]),
+      loadCrewBranchRules(this.prisma, { lineIds: sources.flatMap(s => s.lineIds) }),
+    ])
+    const isPaid = new Map(paidTypes.map(t => [t.id, t.isPaid]))
+
+    const result = computeCrewPlan({
+      settings,
+      blocks: [...relief.values()],
+      duties: duties.map(d => ({
+        id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, shiftId: null, shiftPinned: false,
+        pieces: d.pieces.map(p => ({ ...p, vehicleBlockId: p.dailyBlockId })),
+        activities: d.activities.map(a => ({ ...a, isPaidBreak: a.type === 'BREAK' && !!a.intervalTypeId && !!isPaid.get(a.intervalTypeId) })),
+      })),
+      walk,
+      mealStops:     new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
+      shifts:        branchRules.shifts,
+      lineOperators: branchRules.lineOperators,
+    })
+
+    // ── the day's own checks ──
+    const blockById = new Map(blocks.map(b => [b.id, b]))
+    const dutyFacts: DutyFacts[] = duties.map(d => {
+      const live = d.pieces.filter(p => !result.pieces.get(p.id)?.isStale && p.dailyBlockId)
+      const lineIds = new Set<string>(), types = new Set<VehicleTypeValue>()
+      for (const p of live) {
+        const rb = relief.get(p.dailyBlockId!)
+        for (const t of rb?.trips ?? []) if (t.arrivalMinutes > p.startMinutes && t.departureMinutes < p.endMinutes) lineIds.add(t.lineId)
+        const b = blockById.get(p.dailyBlockId!)
+        if (b) types.add(b.vehicle?.vehicleType ?? b.vehicleType)
+      }
+      return { id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, summary: result.duties.get(d.id)!.summary, lineIds: [...lineIds], vehicleTypes: [...types] }
+    })
+    const crewFacts = await loadCrewFacts(this.prisma, this.rosterConfig, day, duties.map(d => d.id))
+    const dutyDayIssues = crewIssues(day, dutyFacts, crewFacts, settings.range.interShiftRest.floor)
+
+    const live = events.filter(e => !e.isCancelled)
+    const uncoveredByBlock = new Map<string, number>()
+    for (const u of result.summary.uncovered) uncoveredByBlock.set(u.vehicleBlockId, (uncoveredByBlock.get(u.vehicleBlockId) ?? 0) + u.endMinutes - u.startMinutes)
+    const blockFacts: BlockFacts[] = blocks.map(b => {
+      const trips = live.filter(e => e.dailyBlockId === b.id && e.kind === 'TRIP')
+      return {
+        id: b.id, branchId: b.branchId, vehicleId: b.vehicleId, window: relief.get(b.id)?.window ?? null,
+        lineIds: [...new Set(trips.map(t => t.lineId!))],
+        requiredTypes: [...new Set(trips.map(t => t.requiredVehicleType).filter((t): t is VehicleTypeValue => !!t))],
+        uncoveredMinutes: uncoveredByBlock.get(b.id) ?? 0,
+      }
+    })
+    const blockDayIssues = await vehicleIssues(this.prisma, day, blockFacts)
+
+    const bundleSizes = new Map<string, number>()
+    for (const e of live) if (e.bundleId && e.dailyBlockId) bundleSizes.set(e.bundleId, (bundleSizes.get(e.bundleId) ?? 0) + 1)
+
+    // ── write ──
+    const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b)
+    const counts: Record<string, number> = {}
+    const count = (issues: { code: string }[]) => { for (const i of new Set(issues.map(x => x.code))) counts[i] = (counts[i] ?? 0) + 1 }
+
+    await this.prisma.$transaction(async tx => {
+      for (const d of duties) {
+        for (const p of d.pieces) {
+          const st = result.pieces.get(p.id)
+          if (st && (st.isStale !== p.isStale || st.staleReason !== p.staleReason)) {
+            await tx.dailyDutyPiece.update({ where: { id: p.id }, data: { isStale: st.isStale, staleReason: st.staleReason } })
+          }
+        }
+        const r = result.duties.get(d.id)!
+        const issues = [...r.issues, ...(dutyDayIssues.get(d.id) ?? [])]
+        count(issues)
+        if (d.isStale === r.isStale && d.shiftId === r.shiftId && same(d.summary, r.summary) && same(d.issues, issues)) continue
+        await tx.dailyDuty.update({
+          where: { id: d.id },
+          data:  { summary: r.summary, issues: issues as unknown as Prisma.InputJsonValue, hasIssues: issues.length > 0, isStale: r.isStale, shiftId: r.shiftId },
+        })
+      }
+      for (const b of blocks) {
+        const evs = live.filter(e => e.dailyBlockId === b.id)
+        const planIssues = validateBlock({
+          depotId: b.depotId, branchId: b.branchId,
+          trips: evs.filter(e => e.kind === 'TRIP').map(e => ({
+            departureMinutes: e.startMinutes, arrivalMinutes: e.endMinutes,
+            originLocalityId: e.originLocalityId!, destinationLocalityId: e.destinationLocalityId!, bundleId: e.bundleId, lineId: e.lineId ?? undefined,
+          })),
+          deadruns: evs.filter(e => e.kind === 'DEADRUN').map(e => ({
+            type: e.deadrunType ?? 'DISPLACEMENT', departureMinutes: e.startMinutes, arrivalMinutes: e.endMinutes,
+            originLocalityId: e.originLocalityId!, destinationLocalityId: e.destinationLocalityId!, bundleId: e.bundleId,
+          })),
+          intervals: evs.filter(e => e.kind === 'INTERVAL').map(e => ({ departureMinutes: e.startMinutes, arrivalMinutes: e.endMinutes, bundleId: e.bundleId })),
+          maxStandMinutes: maxStand,
+          bundleSizes,
+          lineOperators: branchRules.lineOperators,
+        })
+        const issues: (typeof planIssues[number] | DailyIssue)[] = [...planIssues, ...(blockDayIssues.get(b.id) ?? [])]
+        count(issues)
+        if (same(b.issues, issues)) continue
+        await tx.dailyBlock.update({ where: { id: b.id }, data: { issues: issues as unknown as Prisma.InputJsonValue, hasIssues: issues.length > 0 } })
+      }
+
+      const assigned = await tx.rosterEntry.count({ where: { dailyDuty: { dailyOperationId: id } } })
+      const summary: DailySummary = {
+        issues:         counts,
+        dutyCount:      duties.length,
+        assignedCount:  assigned,
+        blockCount:     blocks.length,
+        vehicleCount:   blocks.filter(b => b.vehicleId).length,
+        uncoveredTrips: events.filter(e => e.kind === 'TRIP' && !e.dailyBlockId && !e.isCancelled).length,
+        cancelledTrips: events.filter(e => e.kind === 'TRIP' && e.isCancelled).length,
+      }
+      await tx.dailyOperation.update({ where: { id }, data: { summary: summary as unknown as Prisma.InputJsonValue } })
+    }, { timeout: 60_000 })
+  }
+
+  // ── board (the day's screen) ────────────────────────────────────────────────
+
+  async getBoard(id: string) {
+    const op = await this.prisma.dailyOperation.findUnique({
+      where:   { id },
+      include: { scope: { select: { name: true, lines: { select: { id: true, code: true } } } }, dayType: { select: { name: true } } },
+    })
+    if (!op) throw new NotFoundException('Dia operacional não encontrado')
+    const day = dayOf(op.date)
+    const date = op.date
+    const sources = op.sources as unknown as DailySource[]
+
+    const operators = await this.prisma.scopeOperator.findMany({
+      where:  { scopeId: op.scopeId },
+      select: { branchId: true, abbr: true, branch: { select: { name: true } } },
+    })
+    const branchIds = operators.map(o => o.branchId)
+
+    const [blocks, events, duties, shifts, members, vehicles, entries, occurrences, holidays, planLabels, dayTypeNames] = await Promise.all([
+      this.prisma.dailyBlock.findMany({ where: { dailyOperationId: id }, orderBy: { blockNumber: 'asc' } }),
+      this.prisma.dailyBlockEvent.findMany({ where: { dailyOperationId: id }, orderBy: { startMinutes: 'asc' } }),
+      this.prisma.dailyDuty.findMany({
+        where:   { dailyOperationId: id },
+        orderBy: [{ role: 'asc' }, { dutyNumber: 'asc' }],
+        include: {
+          pieces:        { orderBy: { sequence: 'asc' } },
+          activities:    { orderBy: { startMinutes: 'asc' } },
+          rosterEntries: { select: { crewMemberId: true, locked: true } },
+        },
+      }),
+      this.prisma.crewShift.findMany({
+        where:  { branches: { some: { branchId: { in: branchIds } } } },
+        select: { id: true, code: true, name: true },
+      }),
+      this.prisma.crewMember.findMany({
+        where:  { employee: { branchId: { in: branchIds }, status: 'ACTIVE' } },
+        select: {
+          id: true, role: true, restOffset: true,
+          employee:    { select: { code: true, fullName: true, branchId: true } },
+          restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } },
+          shifts: {
+            where:  { validFrom: { lte: date }, OR: [{ validTo: null }, { validTo: { gte: date } }] },
+            select: { shift: { select: { id: true, code: true, restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } } } } },
+          },
+        },
+        orderBy: { employee: { code: 'asc' } },
+      }),
+      this.prisma.vehicle.findMany({
+        where:   { branchId: { in: branchIds }, status: { not: 'DECOMMISSIONED' } },
+        orderBy: { code: 'asc' },
+        select: {
+          id: true, code: true, branchId: true, vehicleType: true, status: true,
+          unavailabilities: { where: { startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }] }, select: { reason: true } },
+        },
+      }),
+      this.prisma.rosterEntry.findMany({ where: { date }, select: { crewMemberId: true, kind: true, dailyDutyId: true } }),
+      this.prisma.crewOccurrence.findMany({
+        where:  { status: 'APPROVED', kind: 'ABSENCE', startDate: { lte: date }, endDate: { gte: date } },
+        select: { crewMemberId: true, absenceType: { select: { name: true } } },
+      }),
+      this.prisma.holiday.findMany({ where: { date }, select: { branchId: true } }),
+      this.prisma.vehiclePlan.findMany({ where: { id: { in: sources.map(s => s.vehiclePlanId) } }, select: { id: true, description: true } }),
+      this.prisma.dayType.findMany({ where: { id: { in: sources.map(s => s.dayTypeId) } }, select: { id: true, name: true } }),
+    ])
+
+    const lineCode = new Map(op.scope.lines.map(l => [l.id, l.code]))
+    const localityIds = new Set<string>()
+    for (const e of events) { if (e.originLocalityId) localityIds.add(e.originLocalityId); if (e.destinationLocalityId) localityIds.add(e.destinationLocalityId) }
+    for (const d of duties) for (const p of d.pieces) { localityIds.add(p.startLocalityId); localityIds.add(p.endLocalityId) }
+    const localities = await this.prisma.transitLocality.findMany({ where: { id: { in: [...localityIds] } }, select: { id: true, name: true, abbr: true } })
+
+    const dutyIdsOf = new Map<string, string[]>()
+    for (const e of entries) if (e.dailyDutyId) dutyIdsOf.set(e.crewMemberId, [...(dutyIdsOf.get(e.crewMemberId) ?? []), e.dailyDutyId])
+    const ownDutyIds = new Set(duties.map(d => d.id))
+
+    return {
+      operation: {
+        id: op.id, scopeId: op.scopeId, scopeName: op.scope.name, date: day, dayTypeName: op.dayType.name,
+        status: op.status, summary: op.summary as DailySummary | null, publishedAt: op.publishedAt, closedAt: op.closedAt,
+        sources: sources.map(s => ({
+          ...s,
+          vehiclePlanLabel: planLabels.find(p => p.id === s.vehiclePlanId)?.description ?? null,
+          dayTypeName:      dayTypeNames.find(t => t.id === s.dayTypeId)?.name ?? null,
+          lineCodes:        s.lineIds.map(l => lineCode.get(l) ?? '?'),
+        })),
+      },
+      operators: operators.map(o => ({ branchId: o.branchId, abbr: o.abbr, name: o.branch.name })),
+      shifts,
+      lineCodes: op.scope.lines.map(l => l.code),
+      localities,
+      blocks: blocks.map(b => ({
+        id: b.id, blockNumber: b.blockNumber, branchId: b.branchId, vehicleType: b.vehicleType, vehicleId: b.vehicleId,
+        issues: (b.issues as unknown[] | null) ?? [], hasIssues: b.hasIssues,
+        events: events.filter(e => e.dailyBlockId === b.id).map(e => ({
+          id: e.id, kind: e.kind, deadrunType: e.deadrunType, lineCode: e.lineId ? lineCode.get(e.lineId) ?? '?' : null,
+          startMinutes: e.startMinutes, endMinutes: e.endMinutes, isCancelled: e.isCancelled,
+          originLocalityId: e.originLocalityId, destinationLocalityId: e.destinationLocalityId,
+        })),
+      })),
+      uncoveredTrips: events.filter(e => e.kind === 'TRIP' && !e.dailyBlockId).map(e => ({
+        id: e.id, lineCode: e.lineId ? lineCode.get(e.lineId) ?? '?' : '?', startMinutes: e.startMinutes, endMinutes: e.endMinutes, isCancelled: e.isCancelled,
+      })),
+      duties: duties.map(d => ({
+        id: d.id, role: d.role, dutyNumber: d.dutyNumber, kind: d.kind, branchId: d.branchId, shiftId: d.shiftId,
+        summary: d.summary as DutySummary | null, issues: (d.issues as unknown[] | null) ?? [], isStale: d.isStale, hasIssues: d.hasIssues,
+        crewMemberId: d.rosterEntries[0]?.crewMemberId ?? null,
+        pieces: d.pieces.map(p => ({
+          id: p.id, dailyBlockId: p.dailyBlockId, startMinutes: p.startMinutes, endMinutes: p.endMinutes,
+          startLocalityId: p.startLocalityId, endLocalityId: p.endLocalityId, isStale: p.isStale, staleReason: p.staleReason,
+        })),
+        activities: d.activities.map(a => ({ id: a.id, type: a.type, startMinutes: a.startMinutes, endMinutes: a.endMinutes })),
+      })),
+      // the operators' crew members and what each does on the day
+      crew: members.map(m => {
+        const mine = entries.filter(e => e.crewMemberId === m.id)
+        const absence = occurrences.find(o => o.crewMemberId === m.id)
+        const pattern = m.restPattern ?? m.shifts[0]?.shift.restPattern ?? null
+        const isHoliday = holidays.some(h => !h.branchId || h.branchId === m.employee.branchId)
+        const off = mine.find(e => !e.dailyDutyId)?.kind ?? null
+        return {
+          id: m.id, code: m.employee.code, name: m.employee.fullName, branchId: m.employee.branchId, role: m.role,
+          shiftId: m.shifts[0]?.shift.id ?? null,
+          dutyIds:      (dutyIdsOf.get(m.id) ?? []).filter(x => ownDutyIds.has(x)),
+          // duties of another Scope's day on the same date
+          elsewhere:    (dutyIdsOf.get(m.id) ?? []).filter(x => !ownDutyIds.has(x)).length,
+          dayOff:       off,
+          absence:      absence?.absenceType?.name ?? (absence ? 'Ausência' : null),
+          patternOff:   !!pattern && !restPatternWorks(pattern, m.restOffset, day, isHoliday),
+        }
+      }),
+      vehicles: vehicles.map(v => ({
+        id: v.id, code: v.code, branchId: v.branchId, vehicleType: v.vehicleType,
+        unavailable: v.status !== 'ACTIVE' ? v.status : v.unavailabilities[0]?.reason ?? null,
+      })),
+    }
+  }
+}

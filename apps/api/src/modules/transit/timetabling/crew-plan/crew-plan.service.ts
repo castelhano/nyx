@@ -420,7 +420,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
         },
       }),
-      loadCrewBranchRules(this.prisma, plan.vehiclePlanId),
+      loadCrewBranchRules(this.prisma, { vehiclePlanId: plan.vehiclePlanId }),
     ])
     const [relief, mealStops] = await Promise.all([
       loadBlockRelief(this.prisma, blockRows.map(b => b.id)),

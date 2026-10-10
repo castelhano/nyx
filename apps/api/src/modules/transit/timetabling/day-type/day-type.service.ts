@@ -89,7 +89,8 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
     })
   }
 
-  private async resolveByPattern(date: Date): Promise<DayType> {
+  // the DayType of the date's pattern alone (no line exception)
+  async resolveByPattern(date: Date): Promise<DayType> {
     const dayTypes = await this.prisma.dayType.findMany({
       where:   { pattern: { not: Prisma.DbNull } },
       orderBy: { priority: 'asc' },

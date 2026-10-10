@@ -80,10 +80,31 @@ model Vehicle {
   brand  VehicleBrand? @relation(fields: [brandId], references: [id])
   model  VehicleModel? @relation(fields: [modelId], references: [id])
 
-  crewMembers CrewMember[]
+  crewMembers      CrewMember[]
+  unavailabilities VehicleUnavailability[]
+  dailyBlocks      DailyBlock[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("vehicles")
+}
+
+// A vehicle out of service over a date range (maintenance, inspection, accident...) — the daily
+// operation won't put it on a block. Vehicle.status keeps saying how it is now.
+model VehicleUnavailability {
+  id        String    @id @default(uuid())
+  vehicleId String
+  startDate DateTime  @db.Date
+  // inclusive; null = open-ended
+  endDate   DateTime? @db.Date
+  reason    String
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, startDate])
+  @@map("vehicle_unavailabilities")
 }
