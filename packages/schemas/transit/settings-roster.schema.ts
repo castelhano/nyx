@@ -44,7 +44,9 @@ export const rosterSettingsSchema = withMeta(z.object({
     shiftWindow:    ruleMode.default('BLOCK'),
     interShiftRest: ruleMode.default('BLOCK'),
     license:        ruleMode.default('BLOCK'),
-  }).default({ lineAccess: 'BLOCK', vehicleType: 'BLOCK', shiftWindow: 'BLOCK', interShiftRest: 'BLOCK', license: 'BLOCK' }),
+    // some empresas operate for a while with the course expired, never with the license
+    course:         ruleMode.default('BLOCK'),
+  }).default({ lineAccess: 'BLOCK', vehicleType: 'BLOCK', shiftWindow: 'BLOCK', interShiftRest: 'BLOCK', license: 'BLOCK', course: 'BLOCK' }),
   range: z.object({
     driverPrefLine: rangeCriterionSchema.default(rosterRangeDefault.driverPrefLine),
     shiftFit:       rangeCriterionSchema.default(rosterRangeDefault.shiftFit),
@@ -71,7 +73,8 @@ export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { labe
   vehicleType:    { label: 'Tipo de Veículo',    hint: 'Tipo de veículo bloqueado para o condutor' },
   shiftWindow:    { label: 'Janela do Turno',    hint: 'Fora do turno, dos limites do condutor ou de uma restrição de horário' },
   interShiftRest: { label: 'Interjornada',       hint: 'Descanso abaixo do mínimo entre dias seguidos' },
-  license:        { label: 'CNH / Curso',        hint: 'CNH ou curso vencido na data' },
+  license:        { label: 'CNH',                hint: 'CNH vencida na data' },
+  course:         { label: 'Curso',              hint: 'Curso de transporte coletivo vencido na data' },
 }
 
 export const ROSTER_RULE_MODE_LABEL: Record<typeof ROSTER_RULE_MODES[number], string> = {

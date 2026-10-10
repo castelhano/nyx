@@ -124,7 +124,8 @@ export function crewIssues(
     if (duty.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t))) push('VEHICLE_TYPE_BLOCKED')
 
     const expired = (d: Date | null) => !!d && dayOf(d) < day
-    if (expired(m.licenseExpiresAt) || expired(m.courseExpiresAt)) push('LICENSE_EXPIRED')
+    if (expired(m.licenseExpiresAt)) push('LICENSE_EXPIRED')
+    if (expired(m.courseExpiresAt)) push('COURSE_EXPIRED')
 
     // rest from the previous day's duty to this one, and from this one to the next day's
     if (start != null && end != null) {

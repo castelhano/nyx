@@ -29,8 +29,9 @@ export interface FieldMeta {
   listVisibility?: 'visible' | 'hidden' | 'never'
   showInForm?: boolean
   sortable?: boolean
-  /** `time`: an int field holding minutes since 00:00, edited and listed as H:MM (may run past 24:00). */
-  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge' | 'map-picker' | 'time'
+  /** `time`: an int field holding minutes since 00:00, edited and listed as H:MM (may run past 24:00).
+   *  `rest-cycle` / `rest-group`: RestPattern.pattern as a weekly grid / CrewMember.restOffset as its group. */
+  widget?: 'textarea' | 'select' | 'combobox' | 'switch' | 'datepicker' | 'password' | 'stepper' | 'email' | 'avatar' | 'currency' | 'object-editor' | 'multi-select' | 'badge' | 'map-picker' | 'time' | 'rest-cycle' | 'rest-group'
   defaultValue?: unknown
   min?: number
   max?: number

@@ -824,6 +824,9 @@ model RestPattern {
   anchorDate    DateTime @db.Date
   // also off on a Holiday that applies to the crew member's branch
   offOnHolidays Boolean  @default(false)
+  // the crew member groups (CrewMember.restOffset): false = a week apart, keeping the days off
+  // on the same weekdays (cycle a multiple of 7); true = a day apart (staggered days off)
+  staggered     Boolean  @default(false)
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

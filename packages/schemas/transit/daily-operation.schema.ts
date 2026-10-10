@@ -104,7 +104,8 @@ export const DAILY_ISSUE_CODES = [
   'VEHICLE_TYPE_BLOCKED',  // a vehicle type blocked for him
   'CREW_BRANCH_MISMATCH',  // crew member of another empresa than the duty's
   'INTER_SHIFT_REST',      // rest from / to the neighboring day's duty below the floor
-  'LICENSE_EXPIRED',       // license or collective transport course expired
+  'LICENSE_EXPIRED',       // driver's license (CNH) expired
+  'COURSE_EXPIRED',        // collective transport course expired
   // block / vehicle
   'BLOCK_NO_VEHICLE',
   'VEHICLE_DOUBLE',        // same vehicle on overlapping blocks
@@ -136,7 +137,8 @@ export const DAILY_ISSUE_LABEL: Record<DailyIssueCode, string> = {
   VEHICLE_TYPE_BLOCKED:    'Tipo de veículo bloqueado ao condutor',
   CREW_BRANCH_MISMATCH:    'Condutor de outra empresa',
   INTER_SHIFT_REST:        'Interjornada abaixo do mínimo',
-  LICENSE_EXPIRED:         'CNH ou curso vencido',
+  LICENSE_EXPIRED:         'CNH vencida',
+  COURSE_EXPIRED:          'Curso de transporte coletivo vencido',
   BLOCK_NO_VEHICLE:        'Carro sem veículo',
   VEHICLE_DOUBLE:          'Veículo em dois carros ao mesmo tempo',
   VEHICLE_UNAVAILABLE:     'Veículo indisponível',

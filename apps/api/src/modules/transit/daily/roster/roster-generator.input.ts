@@ -138,14 +138,15 @@ export async function loadRosterInput(
     const isFixed = (e: typeof mine[number]) =>
       e.locked || e.kind === 'COMP_OFF' || (e.kind === 'DAY_OFF' && e.source === 'MANUAL') || (!!e.dailyDuty && e.dailyDuty.operation.status !== 'PLANNED')
 
-    const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = []
+    const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = [], courseExpired: boolean[] = []
     for (const day of days) {
       const onDay = mine.filter(e => dayOf(e.date) === day && isFixed(e))
       const works = onDay.filter(e => e.dailyDuty)
       const bound = m.shifts.find(s => dayOf(s.validFrom) <= day && (!s.validTo || dayOf(s.validTo) >= day))?.shift ?? null
       const timeWindows = occ.filter(o => o.kind === 'TIME_WINDOW' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
       windows.push(bound ? effectiveWindow(bound, m, timeWindows) : null)
-      licenseExpired.push([m.licenseExpiresAt, m.courseExpiresAt].some(d => !!d && dayOf(d) < day))
+      licenseExpired.push(!!m.licenseExpiresAt && dayOf(m.licenseExpiresAt) < day)
+      courseExpired.push(!!m.courseExpiresAt && dayOf(m.courseExpiresAt) < day)
       fixed.push(works.length ? merge(works.map(e => ({ s: e.dailyDuty!.summary as DutySummary | null, sig: signature(e.dailyDutyId!, e.dailyDuty!.shiftId) }))) : null)
 
       if (works.length) status.push('fixed')
@@ -194,7 +195,7 @@ export async function loadRosterInput(
       prefGrade,
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
-      status, windows, fixed, licenseExpired,
+      status, windows, fixed, licenseExpired, courseExpired,
       targetMinutes, workedBefore, changesBefore, lastSignature: last, prevEnd, nextStart,
     }
   })

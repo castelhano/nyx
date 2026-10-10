@@ -115,11 +115,13 @@ export const crewMemberSchema = withMeta(
       className:      'md:w-1/3',
     }),
 
+    // the group's offset from the pattern's anchor (restGroupOffsets)
     restOffset: z.number().int().min(0).default(0).meta({
       label:          'Grupo no regime',
-      helpText:       'Dias de deslocamento a partir da data base do regime — condutores com valores diferentes revezam a folga.',
+      helpText:       'Grupos do mesmo regime revezam as folgas.',
+      widget:         'rest-group',
       listVisibility: 'hidden',
-      className:      'md:w-28',
+      className:      'md:w-80',
     }),
 
     blockedVehicleTypes: z.array(vehicleTypeSchema).default([]).meta({

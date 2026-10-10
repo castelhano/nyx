@@ -58,6 +58,7 @@ export interface RgMember {
   windows: (ShiftWindow | null)[]
   fixed:   (RgFixed | null)[]
   licenseExpired: boolean[]
+  courseExpired:  boolean[]
   // load window = load period start .. horizon end, reduced by absences / compensatory days off
   targetMinutes: number
   // before the horizon, inside the load window
@@ -120,6 +121,7 @@ export function pairRule(input: RgInput, m: RgMember, d: RgDuty): number {
   if (!rule(d.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t)), input.ruleModes.vehicleType)) return -1
   if (!rule(!shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return -1
   if (!rule(m.licenseExpired[d.day], input.ruleModes.license)) return -1
+  if (!rule(m.courseExpired[d.day], input.ruleModes.course)) return -1
   return warns
 }
 
