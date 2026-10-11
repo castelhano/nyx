@@ -64,8 +64,8 @@ export const rosterSettingsSchema = withMeta(z.object({
 export type RosterSettings = z.infer<typeof rosterSettingsSchema>
 
 export const LINE_ACCESS_MODE_LABEL: Record<RosterSettings['lineAccessMode'], string> = {
-  WHITELIST: 'WHITELIST • libera todas',
-  BLACKLIST: 'BLACKLIST • bloqueia todos',
+  WHITELIST: 'WHITELIST • bloqueia todas',
+  BLACKLIST: 'BLACKLIST • libera todas',
 }
 
 export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { label: string; hint: string }> = {

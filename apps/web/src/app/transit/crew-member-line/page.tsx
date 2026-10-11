@@ -30,8 +30,8 @@ interface Board {
 interface Draft { on: string[]; prefs: string[] }
 
 const MODE_TEXT = {
-  WHITELIST: 'WHITELIST • libera todas',
-  BLACKLIST: 'BLACKLIST • bloqueia todos',
+  WHITELIST: 'WHITELIST • bloqueia todas',
+  BLACKLIST: 'BLACKLIST • libera todas',
 }
 
 async function fetchBoard(crewMemberId: string): Promise<Board> {
