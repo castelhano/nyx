@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
   dailyOperationSchema, restPatternWorks, validateBlock,
@@ -16,12 +16,12 @@ import { loadCrewBranchRules } from '../timetabling/crew-plan/crew-branch-rules'
 import { loadCrewWalk } from '../timetabling/crew-plan/crew-walk'
 import { canonicalJson } from '../timetabling/crew-plan/crew-plan.service'
 import { defaultIntervalMaxMinutes } from '../timetabling/vehicle-plan/block-issues.utils'
-import { addDays, dayOf, parseStartDate, toDbDate } from '../timetabling/plan-validity'
+import { addDays, dayOf, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
 import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
 import { crewIssues, loadCrewFacts, vehicleIssues, type BlockFacts, type DutyFacts } from './daily-checks'
 
-type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL_TRIP' | 'RESTORE_TRIP' | 'DAY_OFF'
+type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'SWAP_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL_TRIP' | 'RESTORE_TRIP' | 'DAY_OFF'
 
 // The day's real operation (DailyOperation). Creating one materializes the plans in force on the
 // date; every edit recalculates the day (duty summaries/issues through the crew calculation,
@@ -29,6 +29,7 @@ type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL
 // logs each change (DailyChangeLog); a CLOSED one is read-only.
 @Injectable()
 export class DailyOperationService extends BaseService<DailyOperation, CreateDailyOperationDto, UpdateDailyOperationDto> {
+  private readonly logger = new Logger(DailyOperationService.name)
   constructor(
     prisma: PrismaService,
     private readonly dayTypes: DayTypeService,
@@ -83,13 +84,40 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
 
   async assignCrew(id: string, dutyId: string, crewMemberId: string | null, userId?: string): Promise<void> {
     const op = await this.editable(id)
+    const touched = await this.applyCrew(op, dutyId, crewMemberId, userId)
+    if (touched) await this.recalculateAround(op, touched)
+  }
+
+  // Several duties at once (the roster screen's block edits, paste): applied in order — each one
+  // validated against what the previous left — then each touched day recalculated once.
+  async assignMany(items: { dutyId: string; crewMemberId: string | null }[], userId?: string): Promise<void> {
+    const duties = await this.prisma.dailyDuty.findMany({ where: { id: { in: items.map(i => i.dutyId) } }, select: { id: true, dailyOperationId: true } })
+    const opOf = new Map(duties.map(d => [d.id, d.dailyOperationId]))
+    const ops = new Map<string, Awaited<ReturnType<DailyOperationService['editable']>>>()
+    const members = new Map<string, Set<string>>()
+    for (const item of items) {
+      const opId = opOf.get(item.dutyId)
+      if (!opId) throw new NotFoundException('Tabela não encontrada')
+      if (!ops.has(opId)) ops.set(opId, await this.editable(opId))
+      const touched = await this.applyCrew(ops.get(opId)!, item.dutyId, item.crewMemberId, userId)
+      for (const m of touched ?? []) if (m) members.set(opId, (members.get(opId) ?? new Set()).add(m))
+    }
+    for (const [opId, op] of ops) await this.recalculateAround(op, [...(members.get(opId) ?? [])])
+  }
+
+  // writes one duty's crew member (no recalculation) — the crew members touched, or null when
+  // nothing changed
+  private async applyCrew(
+    op: { id: string; scopeId: string; date: Date; status: string }, dutyId: string, crewMemberId: string | null, userId?: string,
+  ): Promise<(string | null)[] | null> {
+    const id = op.id
     const duty = await this.prisma.dailyDuty.findFirst({
       where:  { id: dutyId, dailyOperationId: id },
       select: { id: true, kind: true, summary: true, rosterEntries: { select: { id: true, crewMemberId: true } } },
     })
     if (!duty) throw new NotFoundException('Tabela não encontrada')
     const previous = duty.rosterEntries[0]?.crewMemberId ?? null
-    if (previous === crewMemberId) return
+    if (previous === crewMemberId) return null
 
     if (crewMemberId) {
       const entries = await this.prisma.rosterEntry.findMany({
@@ -117,7 +145,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     })
     await this.log(op, userId, crewMemberId ? 'ASSIGN_CREW' : 'UNASSIGN_CREW', 'DailyDuty', dutyId,
       [previous, crewMemberId], { crewMemberId: previous }, { crewMemberId })
-    await this.recalculateAround(op, [previous, crewMemberId])
+    return [previous, crewMemberId]
   }
 
   // a locked allocation survives the roster generator
@@ -162,6 +190,45 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     await this.log(op, userId, 'DAY_OFF', 'CrewMember', crewMemberId, [crewMemberId], { kind: before }, { kind })
   }
 
+  // Two crew members swap everything they have on a date (duties, days off) — the roster screen's
+  // drag. Nothing locked, no closed day.
+  async swapDay(date: Day, a: string, b: string, userId?: string): Promise<void> {
+    if (a === b) return
+    const entries = await this.prisma.rosterEntry.findMany({
+      where:  { date: toDbDate(date), crewMemberId: { in: [a, b] } },
+      select: { id: true, crewMemberId: true, locked: true, dailyDuty: { select: { operation: { select: { id: true, scopeId: true, date: true, status: true } } } } },
+    })
+    if (!entries.length) return
+    if (entries.some(e => e.locked)) throw new BadRequestException('Há alocação travada — destrave antes de trocar')
+    if (entries.some(e => e.dailyDuty?.operation.status === 'CLOSED')) throw new BadRequestException('Dia encerrado — somente leitura')
+    await this.prisma.$transaction(entries.map(e => this.prisma.rosterEntry.update({
+      where: { id: e.id }, data: { crewMemberId: e.crewMemberId === a ? b : a, source: 'MANUAL' },
+    })))
+    const ops = new Map(entries.flatMap(e => (e.dailyDuty ? [[e.dailyDuty.operation.id, e.dailyDuty.operation] as const] : [])))
+    for (const op of ops.values()) {
+      await this.log(op, userId, 'SWAP_CREW', 'CrewMember', a, [a, b], { crewMemberIds: [a, b] }, { crewMemberIds: [b, a] })
+      await this.recalculateAround(op, [a, b])
+    }
+  }
+
+  async setDayOffMany(items: { date: Day; crewMemberId: string }[], kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
+    for (const i of items) await this.setDayOffOn(i.date, i.crewMemberId, kind, userId)
+  }
+
+  // a day off by date — the roster screen works by date (no day needs to exist yet)
+  async setDayOffOn(date: Day, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
+    const entries = await this.prisma.rosterEntry.findMany({
+      where:  { crewMemberId, date: toDbDate(date) },
+      select: { dailyDutyId: true, dailyDuty: { select: { dailyOperationId: true } } },
+    })
+    const opId = entries.find(e => e.dailyDuty)?.dailyDuty?.dailyOperationId
+    if (opId) return this.setDayOff(opId, crewMemberId, kind, userId)
+    await this.prisma.$transaction(async tx => {
+      await tx.rosterEntry.deleteMany({ where: { crewMemberId, date: toDbDate(date), dailyDutyId: null } })
+      if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: toDbDate(date), kind } })
+    })
+  }
+
   private async crewOfBlock(blockId: string): Promise<string[]> {
     const entries = await this.prisma.rosterEntry.findMany({
       where:  { dailyDuty: { pieces: { some: { dailyBlockId: blockId } } } },
@@ -197,6 +264,8 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   }
 
   // a crew change also moves the rest to/from the neighboring days of the same Scope
+  // The day now; its neighbors (the rest across dates) in the background — the edit answers
+  // without waiting for them.
   private async recalculateAround(op: { id: string; scopeId: string; date: Date }, crewMemberIds: (string | null)[]): Promise<void> {
     await this.recalculate(op.id)
     if (!crewMemberIds.some(Boolean)) return
@@ -205,7 +274,17 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       where:  { scopeId: op.scopeId, date: { in: [toDbDate(addDays(day, -1)), toDbDate(addDays(day, 1))] }, status: { not: 'CLOSED' } },
       select: { id: true },
     })
-    for (const n of neighbors) await this.recalculate(n.id)
+    for (const n of neighbors) this.recalculateLater(n.id)
+  }
+
+  // one background recalculation chain per day — never two of the same day at once
+  private readonly pending = new Map<string, Promise<void>>()
+  recalculateLater(id: string): void {
+    const next = (this.pending.get(id) ?? Promise.resolve())
+      .then(() => this.recalculate(id))
+      .catch(err => this.logger.warn(`Recalculating day ${id} failed: ${err instanceof Error ? err.message : err}`))
+      .finally(() => { if (this.pending.get(id) === next) this.pending.delete(id) })
+    this.pending.set(id, next)
   }
 
   // ── recalculate ─────────────────────────────────────────────────────────────

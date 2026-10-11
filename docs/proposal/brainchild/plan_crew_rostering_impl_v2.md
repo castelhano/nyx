@@ -948,6 +948,36 @@ Proposta → usuário aceita → grava `RosterEntry` (`GENERATED`) e `DailyBlock
 
 ---
 
+## Tela Escala (gestão da escala real)
+
+Uma tela só (`/transit/daily-operation`, menu "Escala Diária") para gerar, editar, ver pedidos e
+publicar. Substitui a lista de dias e a tela por dia.
+
+- **Contexto:** empresa + função (escopo só como filtro); período dia / semana / mês (até 31 dias);
+  tudo na URL, o último contexto lembrado. Dias não criados aparecem como "— não criado" e nascem ao
+  **Gerar** (não ao navegar).
+- **Faixa de dias:** estado de cada dia (não criado, pendências, planejada, publicada, encerrada).
+- **Visão Operadores** (pessoas × dias): célula = tabela / F / FC / ausência / folga do regime
+  prevista; ⏱ restrição, ● pedido pendente, cadeado. Teclado: setas (shift seleciona), Enter abre
+  as tabelas do dia, F folga, Del limpa, L trava; arrastar uma célula para outro operador troca o
+  dia. Colunas de horas × carga e trocas (os números do gerador).
+- **Visão Escalas:** um dia = linha do tempo (pegadas por linha, operador e carros como badge);
+  vários dias = matriz tabela × dia. Veículo editado no painel (não há visão própria de carros).
+- **Painel de contexto:** operador no dia (números, folga, pedidos com aprovar/recusar), tabela
+  (operador, carros, trava, pendências), dia (publicar / encerrar).
+- **Pendências e Pedidos** do período no topo; **Gerar** com empresa/função/período da tela.
+- API: `GET /transit/roster-board` (tudo do período numa consulta), `POST …/swap`, `PUT …/day-off`;
+  edições de tabela/carro/trava pelos endpoints do dia.
+- **Sugestões** por tabela sem operador: os livres que as regras permitem, pela variação da
+  pontuação do gerador, com os motivos (turno, linha preferida, carga, continuidade).
+- **Impacto ao aprovar** um pedido (tabelas que ficam sem operador / fora do horário).
+- **Gerar** dentro da tela: a proposta aparece sobre o quadro (células que mudam tracejadas) até
+  aceitar ou descartar.
+- **Publicar período** (todos os dias planejados do período), **Ctrl+C / Ctrl+V** de bloco
+  (mesmo número de tabela nos dias de destino).
+- Edições aparecem na hora (atualização otimista); edições em bloco vão num pedido só, com um
+  recálculo por dia; os dias vizinhos (interjornada) recalculam em segundo plano.
+
 ## Fase 6 — Reparo do dia
 
 Ação do usuário na `DailyOperation`, com direcionamento; só mexe no que tem pendência, o resto

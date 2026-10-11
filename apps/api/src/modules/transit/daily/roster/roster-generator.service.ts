@@ -206,6 +206,12 @@ export class RosterGeneratorService {
     })
   }
 
+  // the best proposal's allocation — the roster screen draws it over the board
+  getProposal(jobId: string): Pick<RosterProposal, 'index' | 'summary' | 'assignments' | 'dayOffs'> | null {
+    const best = this.jobs.get(jobId)?.best
+    return best ? { index: best.index, summary: best.summary, assignments: best.assignments, dayOffs: best.dayOffs } : null
+  }
+
   async accept(jobId: string): Promise<{ assigned: number; dayOffs: number; vehicles: number }> {
     const job = this.jobs.get(jobId)
     if (!job) throw new NotFoundException('Geração não encontrada ou expirada')

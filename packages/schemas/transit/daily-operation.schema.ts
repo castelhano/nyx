@@ -140,7 +140,7 @@ export const DAILY_ISSUE_LABEL: Record<DailyIssueCode, string> = {
   INTER_SHIFT_REST:        'Interjornada abaixo do mínimo',
   LICENSE_EXPIRED:         'CNH vencida',
   COURSE_EXPIRED:          'Curso de transporte coletivo vencido',
-  BLOCK_NO_VEHICLE:        'Carro sem veículo',
+  BLOCK_NO_VEHICLE:        'Sem veículo',
   VEHICLE_DOUBLE:          'Veículo em dois carros ao mesmo tempo',
   VEHICLE_UNAVAILABLE:     'Veículo indisponível',
   VEHICLE_TYPE_MISMATCH:   'Tipo de veículo não aceito',

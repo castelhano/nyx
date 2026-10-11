@@ -25,8 +25,11 @@ export interface RosterContext {
 
 const HISTORY_DAYS = 45
 
+// `published`: also the duties of PUBLISHED days (the roster screen's suggestions — the generator
+// itself only touches PLANNED days)
 export async function loadRosterInput(
   prisma: PrismaService, rosterConfig: TransitRosterConfigService, crewConfig: TransitCrewConfigService, params: RosterGeneratorParams,
+  options: { published?: boolean } = {},
 ): Promise<RosterContext> {
   const { branchId, role, from, to } = params
   const days: Day[] = []
@@ -44,7 +47,7 @@ export async function loadRosterInput(
   const crewSettings = await crewConfig.get(scopeIds[0])
 
   const operations = await prisma.dailyOperation.findMany({
-    where:  { scopeId: { in: scopeIds }, date: { gte: toDbDate(from), lte: toDbDate(to) }, status: 'PLANNED' },
+    where:  { scopeId: { in: scopeIds }, date: { gte: toDbDate(from), lte: toDbDate(to) }, status: { in: options.published ? ['PLANNED', 'PUBLISHED'] : ['PLANNED'] } },
     select: { id: true, date: true, scopeId: true },
   })
 
@@ -136,7 +139,8 @@ export async function loadRosterInput(
     const occ  = occurrences.filter(o => o.crewMemberId === m.id)
     const absentOn = (day: Day) => occ.some(o => o.kind === 'ABSENCE' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
     const isFixed = (e: typeof mine[number]) =>
-      e.locked || e.kind === 'COMP_OFF' || (e.kind === 'DAY_OFF' && e.source === 'MANUAL') || (!!e.dailyDuty && e.dailyDuty.operation.status !== 'PLANNED')
+      e.locked || e.kind === 'COMP_OFF' || (e.kind === 'DAY_OFF' && e.source === 'MANUAL')
+      || (!!e.dailyDuty && !(e.dailyDuty.operation.status === 'PLANNED' || (options.published && e.dailyDuty.operation.status === 'PUBLISHED')))
 
     const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = [], courseExpired: boolean[] = []
     for (const day of days) {

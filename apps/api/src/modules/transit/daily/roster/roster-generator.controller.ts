@@ -40,6 +40,12 @@ export class RosterGeneratorController {
     return { job: this.generator.getCurrent(branchId, role || 'DRIVER') }
   }
 
+  @Get('proposal')
+  async proposal(@Req() req: { user?: AuthUser }, @Query('jobId') jobId: string) {
+    await this.assert(req.user, 'read')
+    return { proposal: this.generator.getProposal(jobId) }
+  }
+
   @Post('discard')
   @HttpCode(200)
   async discard(@Req() req: { user?: AuthUser }, @Body('jobId') jobId: string) {

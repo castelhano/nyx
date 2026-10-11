@@ -100,12 +100,12 @@ export const DUTY_ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   MIN_PIECE:          'Pegada curta',
   IDLE_TIME:          'Tempo ocioso remunerado',
   TRAVEL_GAP:         'Deslocamento entre pegadas',
-  BRANCH_MISMATCH:    'Bloco de outro operador',
+  BRANCH_MISMATCH:    'Bloco de outra empresa',
   MEAL_LOCATION:      'Refeição fora de local permitido',
   BUNDLE_SPLIT:       'Troca de condutor dentro de um grupo de viagens',
-  SHIFT_NONE:         'Fora de todos os turnos do operador',
+  SHIFT_NONE:         'Fora de todos os turnos da empresa',
   SHIFT_MISMATCH:     'Fora do turno fixado',
-  LINE_NOT_OPERATED:  'Linha não operada pelo operador',
+  LINE_NOT_OPERATED:  'Linha não operada pela empresa',
 }
 
 export const dutySchema = withMeta(

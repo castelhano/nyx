@@ -71,6 +71,7 @@ const iconNames = [
   'LockOpen',
   'Loader2',
   'LogOut',
+  'Mail',
   'MapPin',
   'MinusSquare',
   'Moon',

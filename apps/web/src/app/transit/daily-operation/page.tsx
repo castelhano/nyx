@@ -1,47 +1,396 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Icons } from '@/lib/icons'
-import { AutoList } from '@/core/AutoList'
-import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
-import { usePageGuard } from '@/core/usePageGuard'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { CREW_ROLES, CREW_ROLE_LABEL, type CrewRole } from '@nyx/schemas'
+import { Icons }            from '@/lib/icons'
+import { Breadcrumb }       from '@/components/ui/breadcrumb'
+import { Select }           from '@/components/ui/select'
+import { usePageGuard }     from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
-import { useShortcut } from '@/lib/keywatch'
+import { useShortcut }      from '@/lib/keywatch'
+import { apiFetch }         from '@/lib/auth'
+import { useToast }         from '@/lib/toast-context'
+import { useConfirm }       from '@/lib/confirm-context'
+import { cn, extractError } from '@/lib/utils'
+import { localToday }       from '@/lib/plan-vigence'
+import {
+  ISSUE_LABEL, WEEKDAY, call, cellSummary, dutyName, fmtDay, indexBoard, periodOf, requestImpact, shiftPeriod, weekday,
+  withAssign, withDayOff, withLock, withSwap,
+  type Mode, type RosterBoard, type RosterBoardDuty, type View,
+} from './workspace/board'
+import { OperatorsGrid, type GridPos, type Overlay } from './workspace/OperatorsGrid'
+import { GeneratePanel, type Proposal } from './workspace/GeneratePanel'
+import { DutiesView } from './workspace/DutiesView'
+import { ContextPanel, RequestRow } from './workspace/ContextPanel'
 
-const ORIGIN = 'app/transit/daily-operation/page'
+const ORIGIN = 'apps/web/src/app/transit/daily-operation/page'
+const LAST_KEY = 'nyx.roster.context'
 
-// The generic list plus "Gerar escala" (the real roster generator)
-export default function DailyOperationListPage() {
+// "Escala" — the real roster of one empresa/role, managed in one screen: a period (day, week or
+// month), two views (Operadores: people × days; Escalas: duties), a context panel (the selected
+// crew member / duty / day), the period's pendências and pending requests, and "Gerar".
+// The context lives in the URL (?empresa=&funcao=&data=&modo=&visao=); the last one is
+// remembered. See docs/proposal/brainchild/plan_crew_rostering_impl_v2.md (tela Escala).
+
+export default function RosterPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
-  const { guardNode, meta } = usePageGuard('transit', 'daily-operation')
+  const queryClient  = useQueryClient()
+  const { toast }    = useToast()
+  const confirm      = useConfirm()
+  const { guardNode, canUpdate } = usePageGuard('transit', 'daily-operation')
 
-  const filters: Record<string, string> = {}
-  for (const [key, value] of searchParams.entries()) {
-    if (!key.startsWith('_')) filters[key] = value
+  // ── context (URL; without one, the last one used) ──
+  const branchId = searchParams.get('empresa') ?? ''
+  const role     = (searchParams.get('funcao') ?? 'DRIVER') as CrewRole
+  const date     = searchParams.get('data') ?? localToday()
+  const mode     = (searchParams.get('modo') ?? 'semana') as Mode
+  const view     = (searchParams.get('visao') ?? 'operadores') as View
+  const setCtx = (patch: Record<string, string>) => {
+    const next = { empresa: branchId, funcao: role, data: date, modo: mode, visao: view, ...patch }
+    try { localStorage.setItem(LAST_KEY, JSON.stringify({ empresa: next.empresa, funcao: next.funcao, modo: next.modo, visao: next.visao })) } catch { /* private mode */ }
+    router.replace(`/transit/daily-operation?${new URLSearchParams(next)}`)
   }
-  const canCreate = meta?.permissions?.create !== false
+  const { from, to } = periodOf(mode, date)
+
+  const { data: branches = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['core', 'branch', 'all'],
+    queryFn:  async () => {
+      const res = await apiFetch('/core/branch?pageSize=999')
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      return json.data ?? json
+    },
+  })
+  // no empresa in the URL: the last context used, else the first empresa
+  useEffect(() => {
+    if (branchId || !branches.length) return
+    let last: Record<string, string> = {}
+    try { last = JSON.parse(localStorage.getItem(LAST_KEY) ?? '{}') } catch { /* private mode */ }
+    setCtx({
+      empresa: branches.some(b => b.id === last.empresa) ? last.empresa : branches[0].id,
+      ...(last.funcao ? { funcao: last.funcao } : {}), ...(last.modo ? { modo: last.modo } : {}), ...(last.visao ? { visao: last.visao } : {}),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId, branches])
+
+  const boardKey = ['transit', 'roster-board', branchId, role, from, to]
+  const { data: board, isFetching, error } = useQuery<RosterBoard>({
+    queryKey: boardKey,
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/roster-board?branchId=${branchId}&role=${role}&from=${from}&to=${to}`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(extractError(json))
+      return json
+    },
+    enabled: !!branchId,
+    placeholderData: (prev) => prev,
+  })
+  const idx = useMemo(() => (board ? indexBoard(board) : null), [board])
+  const dates = useMemo(() => board?.days.map(d => d.date) ?? [], [board])
+
+  // ── selection ──
+  const [cursor, setCursor] = useState<GridPos | null>(null)
+  const [anchor, setAnchor] = useState<GridPos | null>(null)
+  const [dutyId, setDutyId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [drawer, setDrawer] = useState<'issues' | 'requests' | null>(null)
+
+  const q = search.trim().toLowerCase()
+  const members = useMemo(() => (board?.members ?? []).filter(m => !q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)), [board, q])
+  const duties = useMemo(() => (board?.duties ?? []).filter(d => {
+    if (!q) return true
+    const holder = d.crewMemberId ? idx?.memberById.get(d.crewMemberId) : null
+    return `${dutyName(d, !!board?.multiScope)} ${d.lines.join(' ')} ${holder?.code ?? ''} ${holder?.name ?? ''}`.toLowerCase().includes(q)
+  }), [board, idx, q])
+
+  // a duty's pendências in one line — the same one on several cars counted once ("Sem veículo (2 carros)")
+  const issueText = (d: RosterBoardDuty) => {
+    const count = new Map<string, number>()
+    for (const i of d.issues) if (i.code !== 'DUTY_UNASSIGNED') count.set(i.code, 1)
+    for (const b of d.blocks) for (const code of new Set(b.issues.map(i => i.code))) count.set(code, (count.get(code) ?? 0) + 1)
+    return [
+      !d.crewMemberId && 'sem operador',
+      ...[...count].map(([code, n]) => `${ISSUE_LABEL[code] ?? code}${n > 1 ? ` (${n} carros)` : ''}`),
+    ].filter(Boolean).join(' · ')
+  }
+  const issueDuties = useMemo(() => (board?.duties ?? []).filter(d => d.issues.length || d.blocks.some(b => b.issues.length) || !d.crewMemberId), [board])
+  const pendingRequests = useMemo(() => {
+    const seen = new Map<string, { id: string; label: string; kind: string; status: string; startNotBefore: number | null; endNotAfter: number | null; memberId: string; dates: string[] }>()
+    for (const c of board?.cells ?? []) for (const r of c.requests) {
+      if (r.status !== 'REQUESTED') continue
+      const x = seen.get(r.id) ?? { ...r, memberId: c.crewMemberId, dates: [] }
+      x.dates.push(c.date)
+      seen.set(r.id, x)
+    }
+    return [...seen.values()]
+  }, [board])
+
+  // ── edits: the board changes at once (instant update), then the server's answer replaces it ──
+  const [busy, setBusy] = useState(0)
+  async function run(fn: () => Promise<unknown>, patch?: (b: RosterBoard) => RosterBoard, ok?: string) {
+    setBusy(n => n + 1)
+    if (patch) queryClient.setQueryData<RosterBoard>(boardKey, b => (b ? patch(b) : b))
+    try {
+      await fn()
+      if (ok) toast.success(ok)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro')
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: ['transit', 'roster-board', branchId, role] })
+      setBusy(n => n - 1)
+    }
+  }
+  const op = (d: RosterBoardDuty) => `/transit/daily-operation/${d.operationId}`
+  const assignMany = (items: { duty: RosterBoardDuty; memberId: string | null }[]) => items.length && run(
+    () => call('/transit/roster-board/assign', 'POST', { items: items.map(i => ({ dutyId: i.duty.id, crewMemberId: i.memberId })) }),
+    b => items.reduce((x, i) => withAssign(x, i.duty.id, i.memberId), b),
+  )
+  const offMany = (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null) => cells.length && run(
+    () => call('/transit/roster-board/day-off', 'PUT', { items: cells.map(c => ({ date: c.date, crewMemberId: c.memberId })), kind }),
+    b => withDayOff(b, cells, kind),
+  )
+  const assign  = (d: RosterBoardDuty, memberId: string | null) => assignMany([{ duty: d, memberId }])
+  const lock    = (d: RosterBoardDuty, locked: boolean) => run(() => call(`${op(d)}/duty/${d.id}/lock`, 'PUT', { locked }), b => withLock(b, [d.id], locked))
+  const vehicle = (d: RosterBoardDuty, blockId: string, vehicleId: string | null) => run(() => call(`${op(d)}/block/${blockId}/vehicle`, 'PUT', { vehicleId }))
+  const dayOff  = (memberId: string, day: string, kind: 'DAY_OFF' | 'COMP_OFF' | null) => offMany([{ memberId, date: day }], kind)
+  const review  = (id: string, status: 'APPROVED' | 'REJECTED', answer?: string) =>
+    run(() => call(`/transit/crew-occurrence/${id}`, 'PATCH', { status, ...(answer ? { reviewNotes: answer } : {}) }), undefined, status === 'APPROVED' ? 'Pedido aprovado' : 'Pedido recusado')
+  const dutiesAt = (p: GridPos) => (idx?.cellOf.get(`${p.memberId}|${p.date}`)?.entries ?? []).flatMap(e => (e.dailyDutyId ? idx?.dutyById.get(e.dailyDutyId) ?? [] : []))
+
+  const gridActions = {
+    assign,
+    // a day off only where there's no duty
+    dayOff: (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null) => offMany(cells.filter(c => !dutiesAt(c).length), kind),
+    clear: (cells: GridPos[]) => {
+      void assignMany(cells.flatMap(c => dutiesAt(c).filter(d => !d.locked).map(duty => ({ duty, memberId: null }))))
+      void offMany(cells.filter(c => !dutiesAt(c).length), null)
+    },
+    lock: (cells: GridPos[]) => {
+      const ds = cells.flatMap(dutiesAt).filter(d => d.crewMemberId)
+      const to = ds.some(d => !d.locked)
+      const change = ds.filter(d => d.locked !== to)
+      if (change.length) void run(async () => { for (const d of change) await call(`${op(d)}/duty/${d.id}/lock`, 'PUT', { locked: to }) }, b => withLock(b, change.map(d => d.id), to))
+    },
+    swap: (day: string, a: string, b: string) => run(() => call('/transit/roster-board/swap', 'POST', { date: day, a, b }), x => withSwap(x, day, a, b)),
+    paste: (items: { duty: RosterBoardDuty; memberId: string }[], off: GridPos[]) => {
+      void assignMany(items)
+      void offMany(off.filter(c => !dutiesAt(c).length), 'DAY_OFF')
+    },
+    notice: (text: string) => toast.success(text),
+  }
+  const panelActions = {
+    assign, lock, vehicle, dayOff, review,
+    status: (operationId: string, to: 'PUBLISHED' | 'CLOSED') =>
+      run(() => call(`/transit/daily-operation/${operationId}/${to === 'PUBLISHED' ? 'publish' : 'close'}`, 'POST', {}), undefined, to === 'PUBLISHED' ? 'Dia publicado' : 'Dia encerrado'),
+  }
+
+  const panelDate = cursor?.date ?? (dutyId ? idx?.dutyById.get(dutyId)?.date : null) ?? (dates.includes(localToday()) ? localToday() : dates[0] ?? null)
+  const recalcDay = () => {
+    const ops = board?.days.find(d => d.date === panelDate)?.operations ?? []
+    if (ops.length) void run(async () => { for (const o of ops) await call(`/transit/daily-operation/${o.id}/recalculate`, 'POST', {}) }, undefined, 'Dia recalculado')
+  }
+
+  // every PLANNED day of the period
+  const toPublish = (board?.days ?? []).flatMap(d => d.operations.filter(o => o.status === 'PLANNED'))
+  async function publishPeriod() {
+    const ok = await confirm({
+      title: 'Publicar o período',
+      description: `${toPublish.length} dia(s) planejado(s) de ${fmtDay(from)} a ${fmtDay(to)} passam a publicados — dali em diante cada mudança fica registrada no histórico do dia.`,
+      confirmLabel: 'Publicar',
+    })
+    if (ok) void run(async () => { for (const o of toPublish) await call(`/transit/daily-operation/${o.id}/publish`, 'POST', {}) }, undefined, 'Período publicado')
+  }
+
+  // ── generation: its proposal drawn over the board ──
+  const [genOpen, setGenOpen] = useState(false)
+  const [proposal, setProposal] = useState<Proposal | null>(null)
+  const overlay = useMemo((): Overlay | null => {
+    if (!proposal || !board || !idx) return null
+    const plannedDates = new Set(board.days.filter(d => !d.operations.length || d.operations.some(o => o.status === 'PLANNED')).map(d => d.date))
+    const labels = new Map<string, string[]>()
+    for (const [dutyId, memberId] of proposal.assignments) {
+      const d = idx.dutyById.get(dutyId)
+      if (d) labels.set(`${memberId}|${d.date}`, [...(labels.get(`${memberId}|${d.date}`) ?? []), dutyName(d, board.multiScope)])
+    }
+    const offs = new Set(proposal.dayOffs.map(([date, memberId]) => `${memberId}|${date}`))
+    const out: Overlay = new Map()
+    for (const m of board.members) for (const date of dates) {
+      if (!plannedDates.has(date)) continue
+      const key = `${m.id}|${date}`
+      const s = cellSummary(idx.cellOf.get(key), idx, board.multiScope)
+      const current = s.label || (s.off === 'COMP_OFF' ? 'FC' : s.off ? 'F' : '')
+      // kept as it is: locked duties, days off already launched
+      const proposed = labels.get(key)?.join('+') || (offs.has(key) ? 'F' : s.locked ? s.label : s.off ? current : '')
+      if (proposed !== current) out.set(key, { label: proposed, changed: true })
+    }
+    return out
+  }, [proposal, board, idx, dates])
 
   useTopbarActions([
-    ...(canCreate ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push('/transit/daily-operation/new'), primary: true }] : []),
-    ...(canCreate ? [{ label: 'Gerar escala', icon: Icons.Sparkles, onClick: () => router.push('/transit/daily-operation/generate'), variant: 'ghost' as const }] : []),
-  ], [canCreate])
-
-  useShortcut('alt+n', () => { if (canCreate) router.push('/transit/daily-operation/new') }, { desc: 'Novo', icon: Icons.Plus, origin: ORIGIN })
+    ...(canUpdate ? [{ label: 'Gerar', icon: Icons.Sparkles, onClick: () => setGenOpen(o => !o), primary: true }] : []),
+    { label: 'Recalcular dia', icon: Icons.RefreshCw, onClick: recalcDay, variant: 'ghost' as const, keybind: 'ALT+G', disabled: busy > 0 },
+  ], [canUpdate, panelDate, busy, board])
+  useShortcut('alt+g', recalcDay, { desc: 'Recalcular o dia selecionado', icon: Icons.RefreshCw, origin: ORIGIN })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: ORIGIN })
+  useShortcut('alt+l', () => void queryClient.invalidateQueries({ queryKey: boardKey }), { display: false, origin: ORIGIN })
 
   if (guardNode) return guardNode
 
+  const periodLabel = mode === 'dia' ? `${WEEKDAY[weekday(from)]} ${fmtDay(from)}` : `${fmtDay(from)} – ${fmtDay(to)}`
+  const ctl = 'h-8 px-2.5 text-sm rounded-sm cursor-pointer'
+
   return (
-    <div className="p-6 space-y-4">
-      <AutoBreadcrumb domain="transit" resource="daily-operation" contextParams={filters} />
-      <h1 className="text-xl font-semibold">{meta?.labelPlural ?? 'Escalas Diárias'}</h1>
-      <AutoList
-        domain="transit"
-        resource="daily-operation"
-        filters={Object.keys(filters).length ? filters : undefined}
-        onEdit={(id) => router.push(`/transit/daily-operation/${id}`)}
-      />
+    <div className="p-6 space-y-3">
+      <Breadcrumb segments={[{ label: 'Operação', href: '/transit' }, { label: 'Escala Diária' }]} />
+
+      {/* ── context ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={branchId} onChange={e => setCtx({ empresa: e.target.value })} size="sm" wrapperClassName="w-52">
+          {!branchId && <option value="">Empresa…</option>}
+          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </Select>
+        <Select value={role} onChange={e => setCtx({ funcao: e.target.value })} size="sm" wrapperClassName="w-40">
+          {CREW_ROLES.map(r => <option key={r} value={r}>{CREW_ROLE_LABEL[r]}</option>)}
+        </Select>
+        <div className="flex items-center gap-1 ml-2">
+          <button type="button" onClick={() => setCtx({ data: shiftPeriod(mode, date, -1) })} className="p-1 rounded hover:bg-muted cursor-pointer"><Icons.ChevronLeft className="w-4 h-4" /></button>
+          <span className="text-sm font-medium tabular-nums w-32 text-center">{periodLabel}</span>
+          <button type="button" onClick={() => setCtx({ data: shiftPeriod(mode, date, 1) })} className="p-1 rounded hover:bg-muted cursor-pointer"><Icons.ChevronRight className="w-4 h-4" /></button>
+          <button type="button" onClick={() => setCtx({ data: localToday() })} className="text-xs text-muted-foreground hover:text-foreground ml-1 cursor-pointer">hoje</button>
+        </div>
+        <div className="flex rounded-sm border border-border overflow-hidden">
+          {(['dia', 'semana', 'mes'] as const).map(m => (
+            <button key={m} type="button" onClick={() => setCtx({ modo: m })} className={cn(ctl, 'rounded-none', mode === m ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
+              {m === 'dia' ? 'Dia' : m === 'semana' ? 'Semana' : 'Mês'}
+            </button>
+          ))}
+        </div>
+        {(isFetching || busy > 0) && <Icons.Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      {/* ── days strip ── */}
+      {board && (
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {board.days.map(d => {
+            const status = !d.operations.length ? 'none' : d.operations.every(o => o.status === 'CLOSED') ? 'closed' : d.operations.every(o => o.status !== 'PLANNED') ? 'published' : 'planned'
+            return (
+              <button
+                key={d.date} type="button"
+                onClick={() => (mode === 'dia' ? setCtx({ data: d.date }) : setCursor(c => (c ? { ...c, date: d.date } : members[0] ? { memberId: members[0].id, date: d.date } : null)))}
+                className={cn('shrink-0 rounded-sm border px-2 py-1 text-left text-xs cursor-pointer hover:bg-muted', panelDate === d.date ? 'border-primary' : 'border-border')}
+              >
+                <span className={cn(weekday(d.date) % 6 === 0 && 'font-medium')}>{WEEKDAY[weekday(d.date)]} {fmtDay(d.date)}</span>
+                <span className="block text-[10px]">
+                  {status === 'none' ? <span className="text-muted-foreground">— não criado</span>
+                    : d.issues ? <span className="text-red-600 dark:text-red-400">● {d.issues} pend.</span>
+                    : status === 'published' ? <span className="text-emerald-600 dark:text-emerald-400">✓ publicada</span>
+                    : status === 'closed' ? <span className="text-muted-foreground">encerrada</span>
+                    : <span className="text-muted-foreground">○ planejada</span>}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── view bar ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-sm border border-border overflow-hidden">
+          {(['escalas', 'operadores'] as const).map(v => (
+            <button key={v} type="button" onClick={() => setCtx({ visao: v })} className={cn(ctl, 'rounded-none', view === v ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
+              {v === 'escalas' ? 'Escalas' : 'Operadores'}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={view === 'escalas' ? 'Tabela, linha ou operador…' : 'Matrícula ou nome…'}
+            className="h-8 w-60 pl-8 pr-2 border border-input rounded-sm text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring" />
+        </div>
+        <button type="button" onClick={() => setDrawer(d => (d === 'issues' ? null : 'issues'))} className={cn(ctl, 'border border-border ml-auto', drawer === 'issues' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
+          <Icons.AlertTriangle className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Pendências {issueDuties.length > 0 && <span className="text-red-600 dark:text-red-400">{issueDuties.length}</span>}
+        </button>
+        <button type="button" onClick={() => setDrawer(d => (d === 'requests' ? null : 'requests'))} className={cn(ctl, 'border border-border', drawer === 'requests' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
+          <Icons.Mail className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Pedidos {pendingRequests.length > 0 && <span className="text-amber-600 dark:text-amber-400">{pendingRequests.length}</span>}
+        </button>
+        {canUpdate && toPublish.length > 0 && (
+          <button type="button" onClick={() => void publishPeriod()} className={cn(ctl, 'border border-border hover:bg-muted')}>
+            <Icons.Send className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Publicar período <span className="text-muted-foreground">{toPublish.length}</span>
+          </button>
+        )}
+      </div>
+
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error instanceof Error ? error.message : 'Erro'}</p>}
+
+      {board && idx && (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] items-start">
+          <div className="min-w-0">
+            {view === 'operadores' ? (
+              <OperatorsGrid
+                board={board} idx={idx} dates={dates} members={members} cursor={cursor} anchor={anchor}
+                canEdit={canUpdate} busy={busy > 0} overlay={overlay}
+                onCursor={(pos, extend) => { setAnchor(extend ? anchor ?? cursor : null); setCursor(pos); setDutyId(null) }}
+                actions={gridActions}
+              />
+            ) : (
+              <DutiesView board={board} idx={idx} dates={dates} duties={duties} selectedId={dutyId} onSelect={(id) => { setDutyId(id); setCursor(null); setAnchor(null) }} />
+            )}
+          </div>
+
+          <div className="xl:sticky xl:top-4 space-y-4">
+            {genOpen && canUpdate && (
+              <GeneratePanel
+                branchId={branchId} role={role} from={from} to={to}
+                onProposal={setProposal}
+                onRefresh={() => void queryClient.invalidateQueries({ queryKey: ['transit', 'roster-board', branchId, role] })}
+                onClose={() => setGenOpen(false)}
+              />
+            )}
+            {drawer === 'issues' && (
+              <section className="rounded-lg border border-border p-3 space-y-1 max-h-80 overflow-y-auto">
+                <p className="text-sm font-medium">Pendências do período</p>
+                {!issueDuties.length && <p className="text-xs text-muted-foreground">Nenhuma.</p>}
+                {issueDuties.map(d => (
+                  <button key={d.id} type="button" onClick={() => { setCtx({ visao: 'escalas' }); setDutyId(d.id); setCursor(null) }}
+                    className="w-full text-left text-xs rounded-sm px-1.5 py-1 hover:bg-muted cursor-pointer">
+                    <span className="tabular-nums text-muted-foreground">{fmtDay(d.date)}</span> <span className="font-medium">{dutyName(d, board.multiScope)}</span>{' '}
+                    <span className="text-muted-foreground">
+                      {issueText(d)}
+                    </span>
+                  </button>
+                ))}
+              </section>
+            )}
+            {drawer === 'requests' && (
+              <section className="rounded-lg border border-border p-3 space-y-2 max-h-96 overflow-y-auto">
+                <p className="text-sm font-medium">Pedidos pendentes do período</p>
+                {!pendingRequests.length && <p className="text-xs text-muted-foreground">Nenhum.</p>}
+                {pendingRequests.map(r => {
+                  const m = idx.memberById.get(r.memberId)
+                  return (
+                    <div key={r.id} className="space-y-0.5">
+                      <button type="button" onClick={() => { setCtx({ visao: 'operadores' }); setCursor({ memberId: r.memberId, date: r.dates[0] }); setAnchor(null) }}
+                        className="text-xs text-left hover:underline cursor-pointer">
+                        <span className="tabular-nums text-muted-foreground">{m?.code}</span> {m?.name} · {fmtDay(r.dates[0])}{r.dates.length > 1 ? `–${fmtDay(r.dates[r.dates.length - 1])}` : ''}
+                      </button>
+                      <RequestRow r={r} canEdit={canUpdate} onReview={review} impact={requestImpact(r, r.memberId, r.dates, idx, board.multiScope)} />
+                    </div>
+                  )
+                })}
+              </section>
+            )}
+            <ContextPanel
+              board={board} idx={idx} date={panelDate}
+              memberId={view === 'operadores' ? cursor?.memberId ?? null : null}
+              dutyId={view === 'escalas' ? dutyId : null}
+              canEdit={canUpdate} actions={panelActions}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

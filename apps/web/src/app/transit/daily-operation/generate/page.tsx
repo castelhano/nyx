@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { CREW_ROLES, CREW_ROLE_LABEL, ROSTER_MAX_HORIZON_DAYS, type CrewRole, type RosterGeneratorParams, type RosterProposalSummary } from '@nyx/schemas'
 import { Icons }            from '@/lib/icons'
@@ -59,11 +59,17 @@ const defaults = (): RosterGeneratorParams => {
 }
 
 export default function RosterGeneratorPage() {
-  const router    = useRouter()
-  const { toast } = useToast()
-  const confirm   = useConfirm()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const { toast }    = useToast()
+  const confirm      = useConfirm()
 
-  const [params, setParams]         = useState<RosterGeneratorParams>(defaults)
+  // the Escala screen sends its empresa, role and period
+  const [params, setParams] = useState<RosterGeneratorParams>(() => {
+    const p = defaults()
+    const get = (k: string) => searchParams.get(k) ?? undefined
+    return { ...p, branchId: get('branchId') ?? p.branchId, role: (get('role') ?? p.role) as CrewRole, from: get('from') ?? p.from, to: get('to') ?? p.to }
+  })
   const [jobId, setJobId]           = useState<string | null>(null)
   const [running, setRunning]       = useState(false)
   const [stages, setStages]         = useState<string[]>([])
@@ -164,6 +170,7 @@ export default function RosterGeneratorPage() {
       if (!res.ok) throw new Error(extractError(json))
       toast.success(`Escala gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s), ${json.vehicles} veículo(s)`)
       clear()
+      router.push(`/transit/daily-operation?empresa=${params.branchId}&funcao=${params.role}&data=${params.from}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao aceitar')
     } finally {
@@ -189,7 +196,7 @@ export default function RosterGeneratorPage() {
     <div className="p-6 space-y-5">
       <Breadcrumb segments={[
         { label: 'Operação', href: '/transit' },
-        { label: 'Escalas Diárias', href: '/transit/daily-operation' },
+        { label: 'Escala Diária', href: '/transit/daily-operation' },
         { label: 'Gerar escala' },
       ]} />
 

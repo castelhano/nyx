@@ -4,6 +4,8 @@ import { TransitSettingsModule } from '../settings/transit-settings.module'
 import { DayTypeModule } from '../timetabling/day-type/day-type.module'
 import { DailyOperationController } from './daily-operation.controller'
 import { DailyOperationService } from './daily-operation.service'
+import { RosterBoardController } from './roster/roster-board.controller'
+import { RosterBoardService } from './roster/roster-board.service'
 import { RosterGeneratorController } from './roster/roster-generator.controller'
 import { RosterGeneratorService } from './roster/roster-generator.service'
 
@@ -11,8 +13,8 @@ import { RosterGeneratorService } from './roster/roster-generator.service'
 // roster generator)
 @Module({
   imports:     [CaslModule, TransitSettingsModule, DayTypeModule],
-  controllers: [DailyOperationController, RosterGeneratorController],
-  providers:   [DailyOperationService, RosterGeneratorService],
+  controllers: [DailyOperationController, RosterGeneratorController, RosterBoardController],
+  providers:   [DailyOperationService, RosterGeneratorService, RosterBoardService],
   exports:     [DailyOperationService],
 })
 export class DailyModule {}
