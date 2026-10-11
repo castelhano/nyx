@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('admin', 'operator');
 
@@ -44,7 +47,7 @@ CREATE TYPE "RouteDirection" AS ENUM ('OUTBOUND', 'INBOUND', 'CIRCULAR');
 CREATE TYPE "TravelTimeSource" AS ENUM ('OSRM', 'MANUAL');
 
 -- CreateEnum
-CREATE TYPE "VehiclePlanStatus" AS ENUM ('DRAFT', 'ACTIVE');
+CREATE TYPE "VehiclePlanStatus" AS ENUM ('DRAFT', 'ACTIVE', 'SUPERSEDED');
 
 -- CreateEnum
 CREATE TYPE "LineScheduleStatus" AS ENUM ('DRAFT', 'APPROVED', 'SUPERSEDED', 'ARCHIVED');
@@ -53,10 +56,49 @@ CREATE TYPE "LineScheduleStatus" AS ENUM ('DRAFT', 'APPROVED', 'SUPERSEDED', 'AR
 CREATE TYPE "transit_deadrun_type" AS ENUM ('ACCESS', 'RETURN', 'DISPLACEMENT');
 
 -- CreateEnum
-CREATE TYPE "LayoverPolicy" AS ENUM ('DEFAULT', 'HOLD', 'DEPOT');
+CREATE TYPE "CrewPlanStatus" AS ENUM ('DRAFT', 'ACTIVE', 'SUPERSEDED');
+
+-- CreateEnum
+CREATE TYPE "CrewRole" AS ENUM ('DRIVER', 'FARE_COLLECTOR', 'ASSISTANT');
+
+-- CreateEnum
+CREATE TYPE "DutyKind" AS ENUM ('STRAIGHT', 'SPLIT', 'TRIPPER', 'STANDBY');
+
+-- CreateEnum
+CREATE TYPE "DutyActivityType" AS ENUM ('SIGN_ON', 'SIGN_OFF', 'BREAK', 'TRAVEL', 'STANDBY');
+
+-- CreateEnum
+CREATE TYPE "ServiceRequirementKind" AS ENUM ('BOARDING', 'ALIGHTING');
 
 -- CreateEnum
 CREATE TYPE "TripStopPattern" AS ENUM ('LOCAL', 'LIMITED', 'EXPRESS');
+
+-- CreateEnum
+CREATE TYPE "OvertimePreference" AS ENUM ('LIKES', 'NEUTRAL', 'AVOIDS');
+
+-- CreateEnum
+CREATE TYPE "CrewLineAccess" AS ENUM ('ENABLED', 'BLOCKED');
+
+-- CreateEnum
+CREATE TYPE "CrewAbsenceEffect" AS ENUM ('ABSENCE', 'DAY_OFF', 'COMP_OFF');
+
+-- CreateEnum
+CREATE TYPE "CrewOccurrenceKind" AS ENUM ('ABSENCE', 'TIME_WINDOW');
+
+-- CreateEnum
+CREATE TYPE "CrewOccurrenceStatus" AS ENUM ('REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "CrewOccurrenceOrigin" AS ENUM ('PORTAL', 'STAFF_ON_BEHALF', 'STAFF');
+
+-- CreateEnum
+CREATE TYPE "DailyStatus" AS ENUM ('PLANNED', 'PUBLISHED', 'CLOSED');
+
+-- CreateEnum
+CREATE TYPE "DailyEventKind" AS ENUM ('TRIP', 'DEADRUN', 'INTERVAL');
+
+-- CreateEnum
+CREATE TYPE "RosterEntryKind" AS ENUM ('DUTY', 'STANDBY', 'DAY_OFF', 'COMP_OFF');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -169,6 +211,18 @@ CREATE TABLE "jobs" (
 );
 
 -- CreateTable
+CREATE TABLE "holidays" (
+    "id" TEXT NOT NULL,
+    "date" DATE NOT NULL,
+    "name" TEXT NOT NULL,
+    "branchId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "holidays_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "settings" (
     "key" TEXT NOT NULL,
     "scope" TEXT NOT NULL DEFAULT 'global',
@@ -226,6 +280,20 @@ CREATE TABLE "vehicles" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "vehicles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "vehicle_unavailabilities" (
+    "id" TEXT NOT NULL,
+    "vehicleId" TEXT NOT NULL,
+    "startDate" DATE NOT NULL,
+    "endDate" DATE,
+    "reason" TEXT NOT NULL,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "vehicle_unavailabilities_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -301,7 +369,9 @@ CREATE TABLE "transit_localities" (
     "lng" DOUBLE PRECISION,
     "isDepot" BOOLEAN NOT NULL DEFAULT false,
     "notes" TEXT,
+    "depot" JSONB,
     "snapInfo" JSONB,
+    "externalCodes" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -319,10 +389,30 @@ CREATE TABLE "transit_lines" (
     "parentLineId" TEXT,
     "notes" TEXT,
     "metrics" JSONB,
+    "vehicleTypes" JSONB,
+    "externalCodes" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "transit_lines_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_line_service_requirements" (
+    "id" TEXT NOT NULL,
+    "lineId" TEXT NOT NULL,
+    "dayTypeId" TEXT NOT NULL,
+    "direction" "RouteDirection" NOT NULL,
+    "kind" "ServiceRequirementKind" NOT NULL,
+    "localityId" TEXT,
+    "earliestMinutes" INTEGER NOT NULL,
+    "latestMinutes" INTEGER NOT NULL,
+    "label" TEXT NOT NULL,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_line_service_requirements_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -337,7 +427,6 @@ CREATE TABLE "transit_routes" (
     "ordinal" INTEGER NOT NULL DEFAULT 0,
     "isPrimary" BOOLEAN NOT NULL DEFAULT false,
     "color" TEXT,
-    "layoverPolicy" "LayoverPolicy" NOT NULL DEFAULT 'DEFAULT',
     "homeDepotId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -358,6 +447,8 @@ CREATE TABLE "transit_route_localities" (
     "deltaSource" "TravelTimeSource" NOT NULL DEFAULT 'OSRM',
     "geometry" JSONB,
     "allowsCrewChange" BOOLEAN NOT NULL DEFAULT false,
+    "allowsMealBreak" BOOLEAN NOT NULL DEFAULT false,
+    "allowsVehicleStand" BOOLEAN NOT NULL DEFAULT false,
     "includeInOso" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -423,8 +514,8 @@ CREATE TABLE "transit_line_schedules" (
     "lineId" TEXT NOT NULL,
     "dayTypeId" TEXT NOT NULL,
     "status" "LineScheduleStatus" NOT NULL DEFAULT 'DRAFT',
-    "validFrom" TIMESTAMP(3),
-    "validTo" TIMESTAMP(3),
+    "validFrom" DATE,
+    "validTo" DATE,
     "approvalRef" TEXT NOT NULL,
     "approvedAt" TIMESTAMP(3),
     "notes" TEXT,
@@ -463,6 +554,7 @@ CREATE TABLE "transit_trips" (
     "constraints" JSONB,
     "notes" TEXT,
     "markings" JSONB,
+    "bundleId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -491,6 +583,7 @@ CREATE TABLE "transit_block_intervals" (
     "intervalTypeId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
+    "bundleId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -504,10 +597,12 @@ CREATE TABLE "transit_vehicle_plans" (
     "dayTypeId" TEXT NOT NULL,
     "description" TEXT,
     "status" "VehiclePlanStatus" NOT NULL DEFAULT 'DRAFT',
+    "validFrom" DATE,
+    "validTo" DATE,
     "summary" JSONB,
     "generatedAt" TIMESTAMP(3),
     "constraints" JSONB,
-    "metrics" JSONB,
+    "settings" JSONB,
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -547,6 +642,7 @@ CREATE TABLE "transit_vehicle_plan_lines" (
     "lineId" TEXT NOT NULL,
     "lineScheduleId" TEXT,
     "isDrifted" BOOLEAN NOT NULL DEFAULT false,
+    "hasAttributeDrift" BOOLEAN NOT NULL DEFAULT false,
     "summary" JSONB,
 
     CONSTRAINT "transit_vehicle_plan_lines_pkey" PRIMARY KEY ("vehiclePlanId","lineId")
@@ -563,6 +659,8 @@ CREATE TABLE "transit_vehicle_blocks" (
     "isStale" BOOLEAN NOT NULL DEFAULT false,
     "summary" JSONB,
     "constraints" JSONB,
+    "issues" JSONB,
+    "hasIssues" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -590,6 +688,14 @@ CREATE TABLE "transit_line_group_lines" (
 );
 
 -- CreateTable
+CREATE TABLE "transit_line_operators" (
+    "lineId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+
+    CONSTRAINT "transit_line_operators_pkey" PRIMARY KEY ("lineId","branchId")
+);
+
+-- CreateTable
 CREATE TABLE "transit_block_trips" (
     "id" TEXT NOT NULL,
     "vehicleBlockId" TEXT NOT NULL,
@@ -610,10 +716,367 @@ CREATE TABLE "transit_block_deadruns" (
     "destinationLocalityId" TEXT NOT NULL,
     "departureMinutes" INTEGER NOT NULL,
     "arrivalMinutes" INTEGER NOT NULL,
+    "bundleId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "transit_block_deadruns_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_shifts" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "priority" INTEGER NOT NULL DEFAULT 0,
+    "startFloor" INTEGER NOT NULL,
+    "startIdealMin" INTEGER NOT NULL,
+    "startIdealMax" INTEGER NOT NULL,
+    "startCeiling" INTEGER NOT NULL,
+    "endFloor" INTEGER NOT NULL,
+    "endIdealMin" INTEGER NOT NULL,
+    "endIdealMax" INTEGER NOT NULL,
+    "endCeiling" INTEGER NOT NULL,
+    "allowSplit" BOOLEAN NOT NULL DEFAULT false,
+    "restPatternId" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_shifts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_shift_branches" (
+    "shiftId" TEXT NOT NULL,
+    "branchId" TEXT NOT NULL,
+
+    CONSTRAINT "transit_crew_shift_branches_pkey" PRIMARY KEY ("shiftId","branchId")
+);
+
+-- CreateTable
+CREATE TABLE "transit_rest_patterns" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "pattern" TEXT NOT NULL,
+    "anchorDate" DATE NOT NULL,
+    "offOnHolidays" BOOLEAN NOT NULL DEFAULT false,
+    "staggered" BOOLEAN NOT NULL DEFAULT false,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_rest_patterns_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_members" (
+    "id" TEXT NOT NULL,
+    "employeeId" TEXT NOT NULL,
+    "role" "CrewRole" NOT NULL DEFAULT 'DRIVER',
+    "isRosterable" BOOLEAN NOT NULL DEFAULT true,
+    "notBeforeMinutes" INTEGER,
+    "notAfterMinutes" INTEGER,
+    "restPatternId" TEXT,
+    "restOffset" INTEGER NOT NULL DEFAULT 0,
+    "blockedVehicleTypes" "VehicleType"[] DEFAULT ARRAY[]::"VehicleType"[],
+    "preferredVehicleId" TEXT,
+    "weeklyHours" INTEGER,
+    "licenseCategory" TEXT,
+    "licenseExpiresAt" DATE,
+    "courseExpiresAt" DATE,
+    "overtimePreference" "OvertimePreference" NOT NULL DEFAULT 'NEUTRAL',
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_members_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_member_shifts" (
+    "id" TEXT NOT NULL,
+    "crewMemberId" TEXT NOT NULL,
+    "shiftId" TEXT NOT NULL,
+    "validFrom" DATE NOT NULL,
+    "validTo" DATE,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_member_shifts_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_member_lines" (
+    "id" TEXT NOT NULL,
+    "crewMemberId" TEXT NOT NULL,
+    "lineId" TEXT NOT NULL,
+    "access" "CrewLineAccess",
+    "rank" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_member_lines_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_absence_types" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "requestable" BOOLEAN NOT NULL DEFAULT false,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "effect" "CrewAbsenceEffect" NOT NULL DEFAULT 'ABSENCE',
+    "systemKey" TEXT,
+    "externalCodes" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_absence_types_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_occurrences" (
+    "id" TEXT NOT NULL,
+    "crewMemberId" TEXT NOT NULL,
+    "kind" "CrewOccurrenceKind" NOT NULL,
+    "absenceTypeId" TEXT,
+    "startDate" DATE NOT NULL,
+    "endDate" DATE NOT NULL,
+    "startNotBefore" INTEGER,
+    "endNotAfter" INTEGER,
+    "requested" JSONB,
+    "status" "CrewOccurrenceStatus" NOT NULL DEFAULT 'APPROVED',
+    "origin" "CrewOccurrenceOrigin" NOT NULL DEFAULT 'STAFF',
+    "createdByUserId" TEXT,
+    "reviewedByUserId" TEXT,
+    "reviewedAt" TIMESTAMP(3),
+    "notes" TEXT,
+    "reviewNotes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_occurrences_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_crew_plans" (
+    "id" TEXT NOT NULL,
+    "vehiclePlanId" TEXT NOT NULL,
+    "description" TEXT,
+    "status" "CrewPlanStatus" NOT NULL DEFAULT 'DRAFT',
+    "validFrom" DATE,
+    "validTo" DATE,
+    "summary" JSONB,
+    "settings" JSONB,
+    "constraints" JSONB,
+    "generatedAt" TIMESTAMP(3),
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_crew_plans_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_duties" (
+    "id" TEXT NOT NULL,
+    "crewPlanId" TEXT NOT NULL,
+    "role" "CrewRole" NOT NULL DEFAULT 'DRIVER',
+    "dutyNumber" INTEGER NOT NULL,
+    "kind" "DutyKind" NOT NULL DEFAULT 'STRAIGHT',
+    "branchId" TEXT,
+    "summary" JSONB,
+    "isStale" BOOLEAN NOT NULL DEFAULT false,
+    "issues" JSONB,
+    "hasIssues" BOOLEAN NOT NULL DEFAULT false,
+    "constraints" JSONB,
+    "shiftId" TEXT,
+    "shiftPinned" BOOLEAN NOT NULL DEFAULT false,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_duties_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_duty_pieces" (
+    "id" TEXT NOT NULL,
+    "dutyId" TEXT NOT NULL,
+    "vehicleBlockId" TEXT,
+    "sequence" INTEGER NOT NULL,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+    "startLocalityId" TEXT NOT NULL,
+    "endLocalityId" TEXT NOT NULL,
+    "isStale" BOOLEAN NOT NULL DEFAULT false,
+    "staleReason" TEXT,
+    "startAnchor" TEXT,
+    "endAnchor" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_duty_pieces_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_duty_activities" (
+    "id" TEXT NOT NULL,
+    "dutyId" TEXT NOT NULL,
+    "type" "DutyActivityType" NOT NULL,
+    "intervalTypeId" TEXT,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+    "originLocalityId" TEXT,
+    "destinationLocalityId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_duty_activities_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_operations" (
+    "id" TEXT NOT NULL,
+    "scopeId" TEXT NOT NULL,
+    "date" DATE NOT NULL,
+    "dayTypeId" TEXT NOT NULL,
+    "status" "DailyStatus" NOT NULL DEFAULT 'PLANNED',
+    "sources" JSONB NOT NULL,
+    "summary" JSONB,
+    "publishedAt" TIMESTAMP(3),
+    "closedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_daily_operations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_blocks" (
+    "id" TEXT NOT NULL,
+    "dailyOperationId" TEXT NOT NULL,
+    "sourceBlockId" TEXT,
+    "blockNumber" INTEGER NOT NULL,
+    "branchId" TEXT,
+    "depotId" TEXT NOT NULL,
+    "vehicleType" "VehicleType" NOT NULL,
+    "vehicleId" TEXT,
+    "issues" JSONB,
+    "hasIssues" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_daily_blocks_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_block_events" (
+    "id" TEXT NOT NULL,
+    "dailyOperationId" TEXT NOT NULL,
+    "dailyBlockId" TEXT,
+    "kind" "DailyEventKind" NOT NULL,
+    "sourceId" TEXT,
+    "lineId" TEXT,
+    "routeId" TEXT,
+    "deadrunType" "transit_deadrun_type",
+    "intervalTypeId" TEXT,
+    "originLocalityId" TEXT,
+    "destinationLocalityId" TEXT,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+    "requiredVehicleType" "VehicleType",
+    "bundleId" TEXT,
+    "isCancelled" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_daily_block_events_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_duties" (
+    "id" TEXT NOT NULL,
+    "dailyOperationId" TEXT NOT NULL,
+    "sourceDutyId" TEXT,
+    "role" "CrewRole" NOT NULL,
+    "dutyNumber" INTEGER NOT NULL,
+    "kind" "DutyKind" NOT NULL,
+    "branchId" TEXT,
+    "shiftId" TEXT,
+    "summary" JSONB,
+    "issues" JSONB,
+    "hasIssues" BOOLEAN NOT NULL DEFAULT false,
+    "isStale" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_daily_duties_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_duty_pieces" (
+    "id" TEXT NOT NULL,
+    "dailyDutyId" TEXT NOT NULL,
+    "dailyBlockId" TEXT,
+    "sequence" INTEGER NOT NULL,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+    "startLocalityId" TEXT NOT NULL,
+    "endLocalityId" TEXT NOT NULL,
+    "isStale" BOOLEAN NOT NULL DEFAULT false,
+    "staleReason" TEXT,
+
+    CONSTRAINT "transit_daily_duty_pieces_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_duty_activities" (
+    "id" TEXT NOT NULL,
+    "dailyDutyId" TEXT NOT NULL,
+    "type" "DutyActivityType" NOT NULL,
+    "intervalTypeId" TEXT,
+    "startMinutes" INTEGER NOT NULL,
+    "endMinutes" INTEGER NOT NULL,
+    "originLocalityId" TEXT,
+    "destinationLocalityId" TEXT,
+
+    CONSTRAINT "transit_daily_duty_activities_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_roster_entries" (
+    "id" TEXT NOT NULL,
+    "crewMemberId" TEXT NOT NULL,
+    "date" DATE NOT NULL,
+    "kind" "RosterEntryKind" NOT NULL,
+    "dailyDutyId" TEXT,
+    "locked" BOOLEAN NOT NULL DEFAULT false,
+    "source" TEXT NOT NULL DEFAULT 'MANUAL',
+    "absenceTypeId" TEXT,
+    "crewOccurrenceId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "transit_roster_entries_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transit_daily_change_logs" (
+    "id" TEXT NOT NULL,
+    "dailyOperationId" TEXT NOT NULL,
+    "userId" TEXT,
+    "action" TEXT NOT NULL,
+    "entityType" TEXT NOT NULL,
+    "entityId" TEXT NOT NULL,
+    "crewMemberIds" TEXT[],
+    "before" JSONB,
+    "after" JSONB,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "transit_daily_change_logs_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -635,6 +1098,9 @@ CREATE UNIQUE INDEX "user_branches_userId_branchId_key" ON "user_branches"("user
 CREATE UNIQUE INDEX "user_permissions_userId_resource_action_key" ON "user_permissions"("userId", "resource", "action");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "holidays_date_branchId_key" ON "holidays"("date", "branchId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "vehicle_brands_name_key" ON "vehicle_brands"("name");
 
 -- CreateIndex
@@ -653,6 +1119,9 @@ CREATE UNIQUE INDEX "vehicles_renavam_key" ON "vehicles"("renavam");
 CREATE UNIQUE INDEX "vehicles_chassis_key" ON "vehicles"("chassis");
 
 -- CreateIndex
+CREATE INDEX "vehicle_unavailabilities_vehicleId_startDate_idx" ON "vehicle_unavailabilities"("vehicleId", "startDate");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "employees_code_key" ON "employees"("code");
 
 -- CreateIndex
@@ -663,6 +1132,9 @@ CREATE UNIQUE INDEX "transit_localities_code_key" ON "transit_localities"("code"
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_lines_code_key" ON "transit_lines"("code");
+
+-- CreateIndex
+CREATE INDEX "transit_line_service_requirements_lineId_dayTypeId_idx" ON "transit_line_service_requirements"("lineId", "dayTypeId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_routes_lineId_direction_ordinal_key" ON "transit_routes"("lineId", "direction", "ordinal");
@@ -680,7 +1152,13 @@ CREATE UNIQUE INDEX "transit_day_types_code_key" ON "transit_day_types"("code");
 CREATE UNIQUE INDEX "transit_line_schedules_lineId_dayTypeId_approvalRef_key" ON "transit_line_schedules"("lineId", "dayTypeId", "approvalRef");
 
 -- CreateIndex
+CREATE INDEX "transit_trips_bundleId_idx" ON "transit_trips"("bundleId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "transit_interval_types_code_key" ON "transit_interval_types"("code");
+
+-- CreateIndex
+CREATE INDEX "transit_block_intervals_bundleId_idx" ON "transit_block_intervals"("bundleId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_scopes_name_key" ON "transit_scopes"("name");
@@ -696,6 +1174,72 @@ CREATE UNIQUE INDEX "transit_line_groups_name_key" ON "transit_line_groups"("nam
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transit_block_trips_vehicleBlockId_sequence_key" ON "transit_block_trips"("vehicleBlockId", "sequence");
+
+-- CreateIndex
+CREATE INDEX "transit_block_deadruns_bundleId_idx" ON "transit_block_deadruns"("bundleId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_crew_shifts_code_key" ON "transit_crew_shifts"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_rest_patterns_name_key" ON "transit_rest_patterns"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_crew_members_employeeId_key" ON "transit_crew_members"("employeeId");
+
+-- CreateIndex
+CREATE INDEX "transit_crew_member_shifts_crewMemberId_validFrom_idx" ON "transit_crew_member_shifts"("crewMemberId", "validFrom");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_crew_member_lines_crewMemberId_lineId_key" ON "transit_crew_member_lines"("crewMemberId", "lineId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_crew_member_lines_crewMemberId_rank_key" ON "transit_crew_member_lines"("crewMemberId", "rank");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_crew_absence_types_code_key" ON "transit_crew_absence_types"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_crew_absence_types_systemKey_key" ON "transit_crew_absence_types"("systemKey");
+
+-- CreateIndex
+CREATE INDEX "transit_crew_occurrences_crewMemberId_startDate_idx" ON "transit_crew_occurrences"("crewMemberId", "startDate");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_duties_crewPlanId_role_dutyNumber_key" ON "transit_duties"("crewPlanId", "role", "dutyNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_duty_pieces_dutyId_sequence_key" ON "transit_duty_pieces"("dutyId", "sequence");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_daily_operations_scopeId_date_key" ON "transit_daily_operations"("scopeId", "date");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_daily_blocks_dailyOperationId_blockNumber_key" ON "transit_daily_blocks"("dailyOperationId", "blockNumber");
+
+-- CreateIndex
+CREATE INDEX "transit_daily_block_events_dailyOperationId_idx" ON "transit_daily_block_events"("dailyOperationId");
+
+-- CreateIndex
+CREATE INDEX "transit_daily_block_events_dailyBlockId_idx" ON "transit_daily_block_events"("dailyBlockId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_daily_duties_dailyOperationId_role_dutyNumber_key" ON "transit_daily_duties"("dailyOperationId", "role", "dutyNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_daily_duty_pieces_dailyDutyId_sequence_key" ON "transit_daily_duty_pieces"("dailyDutyId", "sequence");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "transit_roster_entries_dailyDutyId_key" ON "transit_roster_entries"("dailyDutyId");
+
+-- CreateIndex
+CREATE INDEX "transit_roster_entries_crewMemberId_date_idx" ON "transit_roster_entries"("crewMemberId", "date");
+
+-- CreateIndex
+CREATE INDEX "transit_roster_entries_date_idx" ON "transit_roster_entries"("date");
+
+-- CreateIndex
+CREATE INDEX "transit_daily_change_logs_dailyOperationId_createdAt_idx" ON "transit_daily_change_logs"("dailyOperationId", "createdAt");
 
 -- AddForeignKey
 ALTER TABLE "branches" ADD CONSTRAINT "branches_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "companies"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -716,6 +1260,9 @@ ALTER TABLE "user_password_history" ADD CONSTRAINT "user_password_history_userId
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "holidays" ADD CONSTRAINT "holidays_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "vehicle_models" ADD CONSTRAINT "vehicle_models_brandId_fkey" FOREIGN KEY ("brandId") REFERENCES "vehicle_brands"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -726,6 +1273,9 @@ ALTER TABLE "vehicles" ADD CONSTRAINT "vehicles_brandId_fkey" FOREIGN KEY ("bran
 
 -- AddForeignKey
 ALTER TABLE "vehicles" ADD CONSTRAINT "vehicles_modelId_fkey" FOREIGN KEY ("modelId") REFERENCES "vehicle_models"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "vehicle_unavailabilities" ADD CONSTRAINT "vehicle_unavailabilities_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "vehicles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "job_titles" ADD CONSTRAINT "job_titles_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "departments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -744,6 +1294,15 @@ ALTER TABLE "transit_lines" ADD CONSTRAINT "transit_lines_scopeId_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "transit_lines" ADD CONSTRAINT "transit_lines_parentLineId_fkey" FOREIGN KEY ("parentLineId") REFERENCES "transit_lines"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_line_service_requirements" ADD CONSTRAINT "transit_line_service_requirements_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_line_service_requirements" ADD CONSTRAINT "transit_line_service_requirements_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_line_service_requirements" ADD CONSTRAINT "transit_line_service_requirements_localityId_fkey" FOREIGN KEY ("localityId") REFERENCES "transit_localities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "transit_routes" ADD CONSTRAINT "transit_routes_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -848,6 +1407,12 @@ ALTER TABLE "transit_line_group_lines" ADD CONSTRAINT "transit_line_group_lines_
 ALTER TABLE "transit_line_group_lines" ADD CONSTRAINT "transit_line_group_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "transit_line_operators" ADD CONSTRAINT "transit_line_operators_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_line_operators" ADD CONSTRAINT "transit_line_operators_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "transit_block_trips" ADD CONSTRAINT "transit_block_trips_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -861,3 +1426,127 @@ ALTER TABLE "transit_block_deadruns" ADD CONSTRAINT "transit_block_deadruns_orig
 
 -- AddForeignKey
 ALTER TABLE "transit_block_deadruns" ADD CONSTRAINT "transit_block_deadruns_destinationLocalityId_fkey" FOREIGN KEY ("destinationLocalityId") REFERENCES "transit_localities"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_shifts" ADD CONSTRAINT "transit_crew_shifts_restPatternId_fkey" FOREIGN KEY ("restPatternId") REFERENCES "transit_rest_patterns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_shift_branches" ADD CONSTRAINT "transit_crew_shift_branches_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "transit_crew_shifts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_shift_branches" ADD CONSTRAINT "transit_crew_shift_branches_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_members" ADD CONSTRAINT "transit_crew_members_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "employees"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_members" ADD CONSTRAINT "transit_crew_members_restPatternId_fkey" FOREIGN KEY ("restPatternId") REFERENCES "transit_rest_patterns"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_members" ADD CONSTRAINT "transit_crew_members_preferredVehicleId_fkey" FOREIGN KEY ("preferredVehicleId") REFERENCES "vehicles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_member_shifts" ADD CONSTRAINT "transit_crew_member_shifts_crewMemberId_fkey" FOREIGN KEY ("crewMemberId") REFERENCES "transit_crew_members"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_member_shifts" ADD CONSTRAINT "transit_crew_member_shifts_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "transit_crew_shifts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_member_lines" ADD CONSTRAINT "transit_crew_member_lines_crewMemberId_fkey" FOREIGN KEY ("crewMemberId") REFERENCES "transit_crew_members"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_member_lines" ADD CONSTRAINT "transit_crew_member_lines_lineId_fkey" FOREIGN KEY ("lineId") REFERENCES "transit_lines"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_occurrences" ADD CONSTRAINT "transit_crew_occurrences_crewMemberId_fkey" FOREIGN KEY ("crewMemberId") REFERENCES "transit_crew_members"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_occurrences" ADD CONSTRAINT "transit_crew_occurrences_absenceTypeId_fkey" FOREIGN KEY ("absenceTypeId") REFERENCES "transit_crew_absence_types"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_crew_plans" ADD CONSTRAINT "transit_crew_plans_vehiclePlanId_fkey" FOREIGN KEY ("vehiclePlanId") REFERENCES "transit_vehicle_plans"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duties" ADD CONSTRAINT "transit_duties_crewPlanId_fkey" FOREIGN KEY ("crewPlanId") REFERENCES "transit_crew_plans"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duties" ADD CONSTRAINT "transit_duties_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duties" ADD CONSTRAINT "transit_duties_shiftId_fkey" FOREIGN KEY ("shiftId") REFERENCES "transit_crew_shifts"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_pieces" ADD CONSTRAINT "transit_duty_pieces_dutyId_fkey" FOREIGN KEY ("dutyId") REFERENCES "transit_duties"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_pieces" ADD CONSTRAINT "transit_duty_pieces_vehicleBlockId_fkey" FOREIGN KEY ("vehicleBlockId") REFERENCES "transit_vehicle_blocks"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_pieces" ADD CONSTRAINT "transit_duty_pieces_startLocalityId_fkey" FOREIGN KEY ("startLocalityId") REFERENCES "transit_localities"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_pieces" ADD CONSTRAINT "transit_duty_pieces_endLocalityId_fkey" FOREIGN KEY ("endLocalityId") REFERENCES "transit_localities"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_activities" ADD CONSTRAINT "transit_duty_activities_dutyId_fkey" FOREIGN KEY ("dutyId") REFERENCES "transit_duties"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_activities" ADD CONSTRAINT "transit_duty_activities_intervalTypeId_fkey" FOREIGN KEY ("intervalTypeId") REFERENCES "transit_interval_types"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_activities" ADD CONSTRAINT "transit_duty_activities_originLocalityId_fkey" FOREIGN KEY ("originLocalityId") REFERENCES "transit_localities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_duty_activities" ADD CONSTRAINT "transit_duty_activities_destinationLocalityId_fkey" FOREIGN KEY ("destinationLocalityId") REFERENCES "transit_localities"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_operations" ADD CONSTRAINT "transit_daily_operations_scopeId_fkey" FOREIGN KEY ("scopeId") REFERENCES "transit_scopes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_operations" ADD CONSTRAINT "transit_daily_operations_dayTypeId_fkey" FOREIGN KEY ("dayTypeId") REFERENCES "transit_day_types"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_blocks" ADD CONSTRAINT "transit_daily_blocks_dailyOperationId_fkey" FOREIGN KEY ("dailyOperationId") REFERENCES "transit_daily_operations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_blocks" ADD CONSTRAINT "transit_daily_blocks_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "vehicles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_block_events" ADD CONSTRAINT "transit_daily_block_events_dailyOperationId_fkey" FOREIGN KEY ("dailyOperationId") REFERENCES "transit_daily_operations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_block_events" ADD CONSTRAINT "transit_daily_block_events_dailyBlockId_fkey" FOREIGN KEY ("dailyBlockId") REFERENCES "transit_daily_blocks"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_duties" ADD CONSTRAINT "transit_daily_duties_dailyOperationId_fkey" FOREIGN KEY ("dailyOperationId") REFERENCES "transit_daily_operations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_duty_pieces" ADD CONSTRAINT "transit_daily_duty_pieces_dailyDutyId_fkey" FOREIGN KEY ("dailyDutyId") REFERENCES "transit_daily_duties"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_duty_pieces" ADD CONSTRAINT "transit_daily_duty_pieces_dailyBlockId_fkey" FOREIGN KEY ("dailyBlockId") REFERENCES "transit_daily_blocks"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_duty_activities" ADD CONSTRAINT "transit_daily_duty_activities_dailyDutyId_fkey" FOREIGN KEY ("dailyDutyId") REFERENCES "transit_daily_duties"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_roster_entries" ADD CONSTRAINT "transit_roster_entries_crewMemberId_fkey" FOREIGN KEY ("crewMemberId") REFERENCES "transit_crew_members"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_roster_entries" ADD CONSTRAINT "transit_roster_entries_dailyDutyId_fkey" FOREIGN KEY ("dailyDutyId") REFERENCES "transit_daily_duties"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_roster_entries" ADD CONSTRAINT "transit_roster_entries_absenceTypeId_fkey" FOREIGN KEY ("absenceTypeId") REFERENCES "transit_crew_absence_types"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_roster_entries" ADD CONSTRAINT "transit_roster_entries_crewOccurrenceId_fkey" FOREIGN KEY ("crewOccurrenceId") REFERENCES "transit_crew_occurrences"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transit_daily_change_logs" ADD CONSTRAINT "transit_daily_change_logs_dailyOperationId_fkey" FOREIGN KEY ("dailyOperationId") REFERENCES "transit_daily_operations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+
+-- System absence types: the roster's own days off
+INSERT INTO "transit_crew_absence_types" ("id", "code", "name", "requestable", "isActive", "effect", "systemKey", "createdAt", "updatedAt")
+VALUES
+  (gen_random_uuid(), 'FS', 'Folga semanal (DSR)', false, true, 'DAY_OFF',  'WEEKLY_OFF', now(), now()),
+  (gen_random_uuid(), 'FC', 'Folga compensada',    false, true, 'COMP_OFF', 'COMP_OFF',   now(), now());
