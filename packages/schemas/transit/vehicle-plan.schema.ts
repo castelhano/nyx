@@ -166,6 +166,7 @@ export const vehiclePlanSchema = withMeta(
   {
     label:       'Planejamento',
     labelPlural: 'Planejamentos',
+    featured:    3,
     nameField:   'status',
     icon:        'LayoutList',
     defaultSort: { field: 'generatedAt', order: 'desc' },

@@ -67,7 +67,7 @@ export const dailyOperationSchema = withMeta(
   {
     label:       'Escala Diária',
     labelPlural: 'Escalas Diárias',
-    featured:    3,
+    featured:    4,
     nameField:   'date',
     icon:        'CalendarClock',
     defaultSort: { field: 'date', order: 'desc' },
