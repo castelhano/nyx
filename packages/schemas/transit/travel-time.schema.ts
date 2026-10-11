@@ -63,8 +63,8 @@ export const travelTimeSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Tempo de Percurso',
-    labelPlural: 'Tempos de Percurso',
+    label:       'Matriz de Tempos',
+    labelPlural: 'Matriz de Tempos',
     nameField:   'id',
     icon:        'Timer',
     defaultSort: { field: 'baseMinutes', order: 'asc' },

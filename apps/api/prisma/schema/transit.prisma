@@ -930,17 +930,35 @@ model CrewMemberLine {
 }
 
 // Kind of absence — férias, atestado, falta, afastamento, licença...
-model CrewAbsenceType {
-  id          String   @id @default(uuid())
-  code        String   @unique
-  name        String
-  // may be requested through the crew portal (quotas live in the portal profile)
-  requestable Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// what an absence type becomes on the roster
+enum CrewAbsenceEffect {
+  // the occurrence itself — unavailable on the day, reduces the period load
+  ABSENCE
+  // a day off on the roster (RosterEntry DAY_OFF)
+  DAY_OFF
+  // a compensatory day off on the roster (RosterEntry COMP_OFF)
+  COMP_OFF
+}
 
-  occurrences CrewOccurrence[]
+model CrewAbsenceType {
+  id            String            @id @default(uuid())
+  code          String            @unique
+  name          String
+  // may be requested through the crew portal (quotas live in the portal profile)
+  requestable   Boolean           @default(false)
+  isActive      Boolean           @default(true)
+  effect        CrewAbsenceEffect @default(ABSENCE)
+  // created by the system and never deleted — WEEKLY_OFF (folga semanal) / COMP_OFF (folga
+  // compensada): the types of the roster's own days off
+  systemKey     String?           @unique
+  // ExternalCodes (packages/schemas/transit/plan-export/external-system.ts) — the event's code
+  // per external system ({ GLOBUS?: string }); blank falls back to `code`
+  externalCodes Json?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  occurrences   CrewOccurrence[]
+  rosterEntries RosterEntry[]
 
   @@map("transit_crew_absence_types")
 }
@@ -993,6 +1011,8 @@ model CrewOccurrence {
 
   crewMember  CrewMember       @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
   absenceType CrewAbsenceType? @relation(fields: [absenceTypeId], references: [id])
+  // the days off its approval put on the roster (types with effect DAY_OFF / COMP_OFF)
+  rosterEntries RosterEntry[]
 
   @@index([crewMemberId, startDate])
   @@map("transit_crew_occurrences")
@@ -1320,13 +1340,19 @@ model RosterEntry {
   dailyDutyId  String?         @unique
   // kept by the generator when it reprocesses
   locked       Boolean         @default(false)
-  // GENERATED | MANUAL
+  // GENERATED | MANUAL | REQUEST (an approved request whose type becomes a day off)
   source       String          @default("MANUAL")
+  // DAY_OFF / COMP_OFF: its type (the event's code in the ERP)
+  absenceTypeId    String?
+  // made by approving this request — goes away with its approval
+  crewOccurrenceId String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
-  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
-  dailyDuty  DailyDuty? @relation(fields: [dailyDutyId], references: [id], onDelete: Cascade)
+  crewMember  CrewMember       @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  dailyDuty   DailyDuty?       @relation(fields: [dailyDutyId], references: [id], onDelete: Cascade)
+  absenceType CrewAbsenceType? @relation(fields: [absenceTypeId], references: [id])
+  occurrence  CrewOccurrence?  @relation(fields: [crewOccurrenceId], references: [id], onDelete: Cascade)
 
   @@index([crewMemberId, date])
   @@index([date])

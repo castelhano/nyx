@@ -12,7 +12,7 @@ import { useIntervalTypes } from '../use-interval-types'
 const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit: string; hint: string }> = {
   workTime:       { label: 'Duração da Jornada',      unit: DURATION_UNIT,    hint: 'Minutos trabalhados na jornada (pegadas + atividades pagas).' },
   spread:         { label: 'Amplitude',               unit: DURATION_UNIT,    hint: 'Da apresentação ao encerramento da jornada, incluindo intervalos.' },
-  mealBreak:      { label: 'Intervalo Intrajornada',  unit: DURATION_UNIT,    hint: 'Duração do intervalo de refeição dentro da jornada.' },
+  mealBreak:      { label: 'Duração da Refeição',     unit: DURATION_UNIT,    hint: 'Faixa ideal da refeição contínua — só vale quando há refeição contínua.' },
   splitInterval:  { label: 'Intervalo Dupla Pegada',  unit: DURATION_UNIT,    hint: 'Intervalo entre as pegadas de uma jornada em dupla pegada.' },
   idleTime:       { label: 'Tempo Ocioso Remunerado', unit: DURATION_UNIT,    hint: 'Tempo parado e pago entre as pegadas (fora refeição e dupla pegada). Acima do teto a jornada fica pendente.' },
   overtimeRatio:  { label: 'Horas Extras',            unit: '%',      hint: 'Minutos extras sobre o total trabalhado no plano.' },
@@ -21,7 +21,7 @@ const CREW_RANGE_META: Record<keyof CrewSettings['range'], { label: string; unit
   vehicleChanges: { label: 'Trocas de Carro',         unit: 'trocas', hint: 'Trocas de carro dentro de uma mesma jornada.' },
   lineChanges:    { label: 'Trocas de Linha',         unit: 'trocas', hint: 'Trocas de linha dentro de uma mesma jornada — somam às trocas de carro.' },
   walkDistance:   { label: 'Deslocamento a Pé',       unit: 'm',      hint: 'Metros caminhados na jornada entre pegadas em locais diferentes.' },
-  interShiftRest: { label: 'Descanso entre Jornadas', unit: DURATION_UNIT, hint: 'Interjornada da mesma pessoa entre dois dias — o DOP estima repetindo a jornada no dia seguinte.' },
+  interShiftRest: { label: 'Interjornada', unit: DURATION_UNIT, hint: 'Descanso da mesma pessoa entre duas jornadas — o DOP estima repetindo a jornada no dia seguinte.' },
 }
 
 const CREW_ANCHORED_META: Record<keyof CrewSettings['anchored'], { label: string; unit: string; hint: string }> = {
@@ -38,9 +38,12 @@ const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes'
   { key: 'maxWalkMeters',               label: 'Distância Máxima a Pé',     unit: 'm',   max: 20000, hint: 'Deslocamento a pé permitido entre pegadas em locais diferentes (4 km/h)' },
   { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
   { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
-  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: DURATION_UNIT, max: 1440, hint: 'Duração máxima da geração da escala' },
+  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: 'min',         max: 1440, hint: 'Duração máxima da geração da escala' },
   { key: 'stopNoImprovementMinutes',    label: 'Parar sem Melhora',         unit: 'min', max: 60,   hint: 'Encerra a geração após este tempo sem encontrar escala melhor' },
 ]
+
+// without a continuous meal range.mealBreak is never measured (see crew-scoring.calc.ts)
+const { mealBreak: _mealBreak, ...CREW_RANGE_META_NO_MEAL } = CREW_RANGE_META
 
 type MealRule = CrewSettings['mealRule']
 
@@ -92,7 +95,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
                       max={p.max}
                       disabled={disabled}
                     />}
-                <span className="text-sm text-muted-foreground w-6">{p.unit === DURATION_UNIT ? 'h' : p.unit}</span>
+                <span className="text-sm text-muted-foreground w-8">{p.unit}</span>
               </div>
             </div>
           ))}
@@ -213,7 +216,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
         <RangeTable
           data={value.range}
           globalData={reference ? reference.range : value.range}
-          meta={CREW_RANGE_META}
+          meta={rule.mode !== 'none' && rule.form === 'continuous' ? CREW_RANGE_META : CREW_RANGE_META_NO_MEAL}
           onChange={updateRange}
           disabled={disabled}
         />

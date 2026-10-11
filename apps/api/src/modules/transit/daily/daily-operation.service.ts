@@ -17,6 +17,7 @@ import { loadCrewWalk } from '../timetabling/crew-plan/crew-walk'
 import { canonicalJson } from '../timetabling/crew-plan/crew-plan.service'
 import { defaultIntervalMaxMinutes } from '../timetabling/vehicle-plan/block-issues.utils'
 import { addDays, dayOf, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
+import { systemAbsenceTypeId } from '../crew/crew-absence-type/system-types'
 import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
 import { crewIssues, loadCrewFacts, vehicleIssues, type BlockFacts, type DutyFacts } from './daily-checks'
@@ -177,17 +178,19 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   }
 
   // DAY_OFF / COMP_OFF on the day for a crew member without a duty; null clears it
-  async setDayOff(id: string, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
+  // `absenceTypeId`: the day off's type (its ERP code) — none: the system type of the kind
+  async setDayOff(id: string, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string, absenceTypeId?: string | null): Promise<void> {
     const op = await this.editable(id)
-    const entries = await this.prisma.rosterEntry.findMany({ where: { crewMemberId, date: op.date }, select: { id: true, kind: true, dailyDutyId: true } })
+    const entries = await this.prisma.rosterEntry.findMany({ where: { crewMemberId, date: op.date }, select: { id: true, kind: true, dailyDutyId: true, absenceTypeId: true } })
     if (kind && entries.some(e => e.dailyDutyId)) throw new BadRequestException('O operador está escalado no dia — tire-o da tabela antes')
-    const before = entries.find(e => !e.dailyDutyId)?.kind ?? null
-    if (before === kind) return
+    const typeId = kind ? absenceTypeId ?? await systemAbsenceTypeId(this.prisma, kind) : null
+    const before = entries.find(e => !e.dailyDutyId)
+    if ((before?.kind ?? null) === kind && (before?.absenceTypeId ?? null) === typeId) return
     await this.prisma.$transaction(async tx => {
       await tx.rosterEntry.deleteMany({ where: { crewMemberId, date: op.date, dailyDutyId: null } })
-      if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: op.date, kind } })
+      if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: op.date, kind, absenceTypeId: typeId } })
     })
-    await this.log(op, userId, 'DAY_OFF', 'CrewMember', crewMemberId, [crewMemberId], { kind: before }, { kind })
+    await this.log(op, userId, 'DAY_OFF', 'CrewMember', crewMemberId, [crewMemberId], { kind: before?.kind ?? null }, { kind, absenceTypeId: typeId })
   }
 
   // Two crew members swap everything they have on a date (duties, days off) — the roster screen's
@@ -211,21 +214,28 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     }
   }
 
-  async setDayOffMany(items: { date: Day; crewMemberId: string }[], kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
-    for (const i of items) await this.setDayOffOn(i.date, i.crewMemberId, kind, userId)
+  // a type given: its effect is the kind (a DAY_OFF / COMP_OFF type)
+  async setDayOffMany(items: { date: Day; crewMemberId: string }[], kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string, absenceTypeId?: string | null): Promise<void> {
+    if (absenceTypeId) {
+      const type = await this.prisma.crewAbsenceType.findUnique({ where: { id: absenceTypeId }, select: { effect: true } })
+      if (!type || type.effect === 'ABSENCE') throw new BadRequestException('O tipo não é uma folga')
+      kind = type.effect
+    }
+    for (const i of items) await this.setDayOffOn(i.date, i.crewMemberId, kind, userId, absenceTypeId)
   }
 
   // a day off by date — the roster screen works by date (no day needs to exist yet)
-  async setDayOffOn(date: Day, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string): Promise<void> {
+  async setDayOffOn(date: Day, crewMemberId: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, userId?: string, absenceTypeId?: string | null): Promise<void> {
     const entries = await this.prisma.rosterEntry.findMany({
       where:  { crewMemberId, date: toDbDate(date) },
       select: { dailyDutyId: true, dailyDuty: { select: { dailyOperationId: true } } },
     })
     const opId = entries.find(e => e.dailyDuty)?.dailyDuty?.dailyOperationId
-    if (opId) return this.setDayOff(opId, crewMemberId, kind, userId)
+    if (opId) return this.setDayOff(opId, crewMemberId, kind, userId, absenceTypeId)
+    const typeId = kind ? absenceTypeId ?? await systemAbsenceTypeId(this.prisma, kind) : null
     await this.prisma.$transaction(async tx => {
       await tx.rosterEntry.deleteMany({ where: { crewMemberId, date: toDbDate(date), dailyDutyId: null } })
-      if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: toDbDate(date), kind } })
+      if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: toDbDate(date), kind, absenceTypeId: typeId } })
     })
   }
 

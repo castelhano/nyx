@@ -14,7 +14,8 @@ export interface GridPos { memberId: string; date: string }
 
 export interface GridActions {
   assign:   (duty: RosterBoardDuty, memberId: string | null) => void
-  dayOff:   (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null) => void
+  // absenceTypeId: the day off's type (none: the system one of the kind)
+  dayOff:   (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId?: string | null) => void
   clear:    (cells: GridPos[]) => void
   lock:     (cells: GridPos[]) => void
   swap:     (date: string, a: string, b: string) => void
@@ -230,7 +231,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
             wrapRef.current?.focus()
             if (choice.type === 'duty') actions.assign(choice.duty, picker.pos.memberId)
             else if (choice.type === 'clear') actions.clear([picker.pos])
-            else actions.dayOff([picker.pos], choice.kind)
+            else actions.dayOff([picker.pos], choice.kind, choice.absenceTypeId)
           }}
         />
       )}
@@ -259,7 +260,7 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
           {single && d?.start != null && d.end != null && <span className="ml-1.5 font-normal text-muted-foreground">{clock(d.start)}–{clock(d.end)} · {d.lines.join(', ')}</span>}
         </span>
       ) : s.off ? (
-        <span className="font-medium">{s.off === 'COMP_OFF' ? 'FC' : 'F'}</span>
+        <span className="font-medium" title={s.offName}>{s.offLabel}</span>
       ) : s.absence ? (
         <span className="truncate block max-w-16 mx-auto" title={s.absence.label}>{s.absence.label.slice(0, single ? 30 : 5)}</span>
       ) : s.elsewhere ? (
@@ -274,7 +275,7 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
   )
 }
 
-type Choice = { type: 'duty'; duty: RosterBoardDuty } | { type: 'off'; kind: 'DAY_OFF' | 'COMP_OFF' } | { type: 'clear' }
+type Choice = { type: 'duty'; duty: RosterBoardDuty } | { type: 'off'; kind: 'DAY_OFF' | 'COMP_OFF'; absenceTypeId: string | null } | { type: 'clear' }
 
 // the day's duties for a crew member (free ones first), plus day off / clear
 function DutyPicker({ board, idx, pos, rect, onClose, onPick }: {
@@ -287,8 +288,8 @@ function DutyPicker({ board, idx, pos, rect, onClose, onPick }: {
       .filter(d => d.date === pos.date)
       .sort((a, b) => Number(!!a.crewMemberId) - Number(!!b.crewMemberId) || (a.start ?? 0) - (b.start ?? 0))
     const all: { key: string; label: string; detail: string; choice: Choice; taken?: string }[] = [
-      { key: 'F', label: 'Folga', detail: '', choice: { type: 'off', kind: 'DAY_OFF' } },
-      { key: 'FC', label: 'Folga compensada', detail: '', choice: { type: 'off', kind: 'COMP_OFF' } },
+      // the day off types (system ones first)
+      ...board.offTypes.map(t => ({ key: t.id, label: t.system ? (t.effect === 'COMP_OFF' ? 'FC' : 'F') : t.code, detail: t.name, choice: { type: 'off' as const, kind: t.effect, absenceTypeId: t.id } })),
       { key: '-', label: 'Limpar o dia', detail: '', choice: { type: 'clear' } },
       ...duties.map(d => ({
         key: d.id, label: dutyName(d, board.multiScope),

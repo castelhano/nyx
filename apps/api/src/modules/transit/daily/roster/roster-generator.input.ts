@@ -99,7 +99,7 @@ export async function loadRosterInput(
     }),
     prisma.crewOccurrence.findMany({
       where:  { crewMemberId: { in: memberIds }, status: 'APPROVED', startDate: { lte: toDbDate(to) }, endDate: { gte: toDbDate(periodStart) } },
-      select: { crewMemberId: true, kind: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true },
+      select: { crewMemberId: true, kind: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true, absenceType: { select: { effect: true } } },
     }),
     prisma.holiday.findMany({ where: { date: { gte: toDbDate(from), lte: toDbDate(to) } }, select: { date: true, branchId: true } }),
   ])
@@ -138,8 +138,10 @@ export async function loadRosterInput(
     const mine = entries.filter(e => e.crewMemberId === m.id)
     const occ  = occurrences.filter(o => o.crewMemberId === m.id)
     const absentOn = (day: Day) => occ.some(o => o.kind === 'ABSENCE' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
+    // a requested weekly day off (effect DAY_OFF) takes the day but not the load
+    const reducesLoad = (day: Day) => occ.some(o => o.kind === 'ABSENCE' && o.absenceType?.effect !== 'DAY_OFF' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
     const isFixed = (e: typeof mine[number]) =>
-      e.locked || e.kind === 'COMP_OFF' || (e.kind === 'DAY_OFF' && e.source === 'MANUAL')
+      e.locked || e.kind === 'COMP_OFF' || (e.kind === 'DAY_OFF' && e.source !== 'GENERATED')
       || (!!e.dailyDuty && !(e.dailyDuty.operation.status === 'PLANNED' || (options.published && e.dailyDuty.operation.status === 'PUBLISHED')))
 
     const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = [], courseExpired: boolean[] = []
@@ -185,7 +187,7 @@ export async function loadRosterInput(
     const window  = daysBetween(periodStart, addDays(to, 1))
     const reduced = new Set<Day>()
     for (let d = periodStart; d <= to; d = addDays(d, 1)) {
-      if (absentOn(d) || mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d)) reduced.add(d)
+      if (reducesLoad(d) || mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d)) reduced.add(d)
     }
     const targetMinutes = weekly * 5 * 60 * Math.max(0, window - reduced.size) / periodDays
 

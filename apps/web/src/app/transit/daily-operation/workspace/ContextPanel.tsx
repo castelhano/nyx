@@ -20,7 +20,7 @@ export interface PanelActions {
   assign:   (duty: RosterBoardDuty, memberId: string | null) => void
   lock:     (duty: RosterBoardDuty, locked: boolean) => void
   vehicle:  (duty: RosterBoardDuty, blockId: string, vehicleId: string | null) => void
-  dayOff:   (memberId: string, date: string, kind: 'DAY_OFF' | 'COMP_OFF' | null) => void
+  dayOff:   (memberId: string, date: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId?: string | null) => void
   review:   (requestId: string, status: 'APPROVED' | 'REJECTED', answer?: string) => void
   status:   (operationId: string, to: 'PUBLISHED' | 'CLOSED') => void
 }
@@ -65,15 +65,22 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
             <p className="text-xs text-muted-foreground">{WEEKDAY[weekday(date)]} {fmtDay(date)}{s.holiday && ' · feriado'}</p>
             <p>
               {s.duties.length ? s.duties.map(d => dutyName(d, board.multiScope)).join(' + ')
-                : s.off ? (s.off === 'COMP_OFF' ? 'Folga compensada' : 'Folga')
+                : s.off ? s.offName
                 : s.absence ? s.absence.label
                 : s.patternOff ? 'Folga do regime (não lançada)' : 'Livre'}
               {s.window && <span className="text-muted-foreground"> · ⏱ {s.window.label}</span>}
             </p>
             {canEdit && !s.duties.length && (
-              <div className="flex gap-1.5">
-                <Button size="sm" variant={s.off === 'DAY_OFF' ? 'default' : 'outline'} onClick={() => actions.dayOff(member.id, date, s.off === 'DAY_OFF' ? null : 'DAY_OFF')}>Folga</Button>
-                <Button size="sm" variant={s.off === 'COMP_OFF' ? 'default' : 'outline'} onClick={() => actions.dayOff(member.id, date, s.off === 'COMP_OFF' ? null : 'COMP_OFF')}>Compensada</Button>
+              <div className="flex flex-wrap gap-1.5">
+                {board.offTypes.map(t => {
+                  const on = s.offTypeId === t.id
+                  return (
+                    <Button key={t.id} size="sm" variant={on ? 'default' : 'outline'} title={t.name}
+                      onClick={() => actions.dayOff(member.id, date, on ? null : t.effect, on ? null : t.id)}>
+                      {t.system ? (t.effect === 'COMP_OFF' ? 'Compensada' : 'Folga') : t.code}
+                    </Button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -133,7 +140,7 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
     .filter(m => !m.foreign)
     .map(m => {
       const s = cellSummary(idx.cellOf.get(`${m.id}|${duty.date}`), idx, board.multiScope)
-      const what = s.duties.length ? s.label : s.off ? (s.off === 'COMP_OFF' ? 'FC' : 'folga') : s.absence ? s.absence.label : s.patternOff ? 'folga do regime' : 'livre'
+      const what = s.duties.length ? s.label : s.off ? s.offName.toLowerCase() : s.absence ? s.absence.label : s.patternOff ? 'folga do regime' : 'livre'
       return { id: m.id, label: `${m.code} — ${m.name}`, secondary: what }
     })
     .sort((a, b) => Number(b.secondary === 'livre') - Number(a.secondary === 'livre'))

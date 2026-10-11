@@ -148,14 +148,14 @@ export default function RosterPage() {
     () => call('/transit/roster-board/assign', 'POST', { items: items.map(i => ({ dutyId: i.duty.id, crewMemberId: i.memberId })) }),
     b => items.reduce((x, i) => withAssign(x, i.duty.id, i.memberId), b),
   )
-  const offMany = (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null) => cells.length && run(
-    () => call('/transit/roster-board/day-off', 'PUT', { items: cells.map(c => ({ date: c.date, crewMemberId: c.memberId })), kind }),
-    b => withDayOff(b, cells, kind),
+  const offMany = (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId: string | null = null) => cells.length && run(
+    () => call('/transit/roster-board/day-off', 'PUT', { items: cells.map(c => ({ date: c.date, crewMemberId: c.memberId })), kind, absenceTypeId }),
+    b => withDayOff(b, cells, kind, absenceTypeId),
   )
   const assign  = (d: RosterBoardDuty, memberId: string | null) => assignMany([{ duty: d, memberId }])
   const lock    = (d: RosterBoardDuty, locked: boolean) => run(() => call(`${op(d)}/duty/${d.id}/lock`, 'PUT', { locked }), b => withLock(b, [d.id], locked))
   const vehicle = (d: RosterBoardDuty, blockId: string, vehicleId: string | null) => run(() => call(`${op(d)}/block/${blockId}/vehicle`, 'PUT', { vehicleId }))
-  const dayOff  = (memberId: string, day: string, kind: 'DAY_OFF' | 'COMP_OFF' | null) => offMany([{ memberId, date: day }], kind)
+  const dayOff  = (memberId: string, day: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId?: string | null) => offMany([{ memberId, date: day }], kind, absenceTypeId ?? null)
   const review  = (id: string, status: 'APPROVED' | 'REJECTED', answer?: string) =>
     run(() => call(`/transit/crew-occurrence/${id}`, 'PATCH', { status, ...(answer ? { reviewNotes: answer } : {}) }), undefined, status === 'APPROVED' ? 'Pedido aprovado' : 'Pedido recusado')
   const dutiesAt = (p: GridPos) => (idx?.cellOf.get(`${p.memberId}|${p.date}`)?.entries ?? []).flatMap(e => (e.dailyDutyId ? idx?.dutyById.get(e.dailyDutyId) ?? [] : []))
@@ -163,7 +163,7 @@ export default function RosterPage() {
   const gridActions = {
     assign,
     // a day off only where there's no duty
-    dayOff: (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null) => offMany(cells.filter(c => !dutiesAt(c).length), kind),
+    dayOff: (cells: GridPos[], kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId?: string | null) => offMany(cells.filter(c => !dutiesAt(c).length), kind, absenceTypeId ?? null),
     clear: (cells: GridPos[]) => {
       void assignMany(cells.flatMap(c => dutiesAt(c).filter(d => !d.locked).map(duty => ({ duty, memberId: null }))))
       void offMany(cells.filter(c => !dutiesAt(c).length), null)
@@ -221,7 +221,7 @@ export default function RosterPage() {
       if (!plannedDates.has(date)) continue
       const key = `${m.id}|${date}`
       const s = cellSummary(idx.cellOf.get(key), idx, board.multiScope)
-      const current = s.label || (s.off === 'COMP_OFF' ? 'FC' : s.off ? 'F' : '')
+      const current = s.label || s.offLabel
       // kept as it is: locked duties, days off already launched
       const proposed = labels.get(key)?.join('+') || (offs.has(key) ? 'F' : s.locked ? s.label : s.off ? current : '')
       if (proposed !== current) out.set(key, { label: proposed, changed: true })

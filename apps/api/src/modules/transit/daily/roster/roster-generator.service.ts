@@ -12,6 +12,7 @@ import type { RosterProposal } from './roster-generator.calc'
 import { daysBetween, loadRosterInput, type RosterContext } from './roster-generator.input'
 import type { RosterMessage, RosterWorkerData } from './roster-generator.types'
 import { assignVehicles } from './roster-vehicles'
+import { systemAbsenceTypeId } from '../../crew/crew-absence-type/system-types'
 
 // "Gerar escala" — the real roster generator of one empresa and role (plan §5). Starting it
 // materializes the missing days of the horizon (Scopes the empresa operates), reads the data and
@@ -231,6 +232,7 @@ export class RosterGeneratorService {
     })).map(d => d.id))
     const assignments = best.assignments.filter(([dutyId]) => plannedDuties.has(dutyId))
 
+    const weeklyOff = await systemAbsenceTypeId(this.prisma, 'DAY_OFF')
     await this.prisma.$transaction(async tx => {
       await tx.rosterEntry.deleteMany({
         where: {
@@ -239,7 +241,8 @@ export class RosterGeneratorService {
           OR:     [{ crewMemberId: { in: memberIds } }, { dailyDutyId: { in: [...plannedDuties] } }],
           AND: [
             { NOT: { kind: 'COMP_OFF' } },
-            { NOT: { kind: 'DAY_OFF', source: 'MANUAL' } },
+            // days off launched by hand or by a request stay
+            { NOT: { kind: 'DAY_OFF', source: { not: 'GENERATED' } } },
             { OR: [{ dailyDutyId: null }, { dailyDuty: { operation: { status: 'PLANNED' } } }] },
           ],
         },
@@ -251,7 +254,7 @@ export class RosterGeneratorService {
             crewMemberId, dailyDutyId, date: toDbDate(dateOf.get(dailyDutyId)!),
             kind: kindOf.get(dailyDutyId) === 'STANDBY' ? 'STANDBY' as const : 'DUTY' as const, source: 'GENERATED',
           })),
-          ...best.dayOffs.map(([day, crewMemberId]) => ({ crewMemberId, date: toDbDate(day), kind: 'DAY_OFF' as const, source: 'GENERATED' })),
+          ...best.dayOffs.map(([day, crewMemberId]) => ({ crewMemberId, date: toDbDate(day), kind: 'DAY_OFF' as const, source: 'GENERATED', absenceTypeId: weeklyOff })),
         ],
       })
     }, { timeout: 60_000 })

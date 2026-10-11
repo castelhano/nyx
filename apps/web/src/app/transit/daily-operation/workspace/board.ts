@@ -60,20 +60,27 @@ export function indexBoard(board: RosterBoard) {
   for (const c of board.cells) cellOf.set(`${c.crewMemberId}|${c.date}`, c)
   const memberById = new Map(board.members.map(m => [m.id, m]))
   const shiftCode = new Map(board.shifts.map(s => [s.id, s.code]))
-  return { dutyById, cellOf, memberById, shiftCode }
+  const offTypeById = new Map(board.offTypes.map(t => [t.id, t]))
+  return { dutyById, cellOf, memberById, shiftCode, offTypeById }
 }
 export type BoardIndex = ReturnType<typeof indexBoard>
 
 // what a crew member has on a date, in one word
 export function cellSummary(cell: RosterBoardCell | undefined, idx: BoardIndex, multiScope: boolean) {
   const duties = (cell?.entries ?? []).filter(e => e.dailyDutyId).map(e => idx.dutyById.get(e.dailyDutyId!)).filter((d): d is RosterBoardDuty => !!d)
-  const off = cell?.entries.find(e => !e.dailyDutyId)?.kind as 'DAY_OFF' | 'COMP_OFF' | undefined
+  const offEntry = cell?.entries.find(e => !e.dailyDutyId)
+  const off = offEntry?.kind as 'DAY_OFF' | 'COMP_OFF' | undefined
+  const offType = offEntry?.absenceTypeId ? idx.offTypeById.get(offEntry.absenceTypeId) : undefined
   const absence = cell?.requests.find(r => r.kind === 'ABSENCE' && r.status === 'APPROVED')
   return {
     duties,
     // a duty held elsewhere (another empresa's / role's duty on the date)
     elsewhere: (cell?.entries ?? []).some(e => e.dailyDutyId && !idx.dutyById.has(e.dailyDutyId)),
     off, absence,
+    // F / FC for the system types, else the type's code
+    offLabel: !off ? '' : offType && !offType.system ? offType.code : off === 'COMP_OFF' ? 'FC' : 'F',
+    offName:  !off ? '' : offType?.name ?? (off === 'COMP_OFF' ? 'Folga compensada' : 'Folga semanal'),
+    offTypeId: offEntry?.absenceTypeId ?? null,
     pending:    (cell?.requests ?? []).filter(r => r.status === 'REQUESTED'),
     window:     cell?.requests.find(r => r.kind === 'TIME_WINDOW' && r.status === 'APPROVED'),
     patternOff: !!cell?.patternOff,
@@ -104,12 +111,12 @@ export function withAssign(board: RosterBoard, dutyId: string, memberId: string 
   if (!duty) return board
   let next: RosterBoard = { ...board, duties: board.duties.map(d => (d.id === dutyId ? { ...d, crewMemberId: memberId, locked: false } : d)) }
   if (duty.crewMemberId) next = withCell(next, duty.crewMemberId, duty.date, es => es.filter(e => e.dailyDutyId !== dutyId))
-  if (memberId) next = withCell(next, memberId, duty.date, es => [...es, { kind: duty.kind === 'STANDBY' ? 'STANDBY' : 'DUTY', dailyDutyId: dutyId, locked: false }])
+  if (memberId) next = withCell(next, memberId, duty.date, es => [...es, { kind: duty.kind === 'STANDBY' ? 'STANDBY' : 'DUTY', dailyDutyId: dutyId, locked: false, absenceTypeId: null }])
   return next
 }
 
-export function withDayOff(board: RosterBoard, items: { memberId: string; date: string }[], kind: 'DAY_OFF' | 'COMP_OFF' | null): RosterBoard {
-  return items.reduce((b, i) => withCell(b, i.memberId, i.date, es => [...es.filter(e => e.dailyDutyId), ...(kind ? [{ kind, dailyDutyId: null, locked: false }] : [])]), board)
+export function withDayOff(board: RosterBoard, items: { memberId: string; date: string }[], kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId: string | null = null): RosterBoard {
+  return items.reduce((b, i) => withCell(b, i.memberId, i.date, es => [...es.filter(e => e.dailyDutyId), ...(kind ? [{ kind, dailyDutyId: null, locked: false, absenceTypeId }] : [])]), board)
 }
 
 export function withSwap(board: RosterBoard, date: string, a: string, b: string): RosterBoard {

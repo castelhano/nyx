@@ -55,7 +55,7 @@ export class RosterBoardService {
     })
     const opById = new Map(operations.map(o => [o.id, o]))
 
-    const [duties, shifts, vehicles] = await Promise.all([
+    const [duties, shifts, vehicles, offTypes] = await Promise.all([
       this.prisma.dailyDuty.findMany({
         where: {
           dailyOperationId: { in: operations.map(o => o.id) }, role,
@@ -73,6 +73,11 @@ export class RosterBoardService {
       }),
       this.prisma.crewShift.findMany({ where: { branches: { some: { branchId } } }, orderBy: { code: 'asc' }, select: { id: true, code: true } }),
       this.prisma.vehicle.findMany({ where: { branchId, status: 'ACTIVE' }, orderBy: { code: 'asc' }, select: { id: true, code: true, vehicleType: true } }),
+      this.prisma.crewAbsenceType.findMany({
+        where:   { isActive: true, effect: { in: ['DAY_OFF', 'COMP_OFF'] } },
+        orderBy: [{ systemKey: { sort: 'asc', nulls: 'last' } }, { name: 'asc' }],
+        select:  { id: true, code: true, name: true, effect: true, systemKey: true },
+      }),
     ])
 
     // the trips of the duties' blocks — each piece's main line
@@ -114,7 +119,7 @@ export class RosterBoardService {
     })
     const memberIds = members.map(m => m.id)
     const [entries, occurrences, holidays] = await Promise.all([
-      this.prisma.rosterEntry.findMany({ where: { crewMemberId: { in: memberIds }, date: range }, select: { crewMemberId: true, date: true, kind: true, dailyDutyId: true, locked: true } }),
+      this.prisma.rosterEntry.findMany({ where: { crewMemberId: { in: memberIds }, date: range }, select: { crewMemberId: true, date: true, kind: true, dailyDutyId: true, locked: true, absenceTypeId: true } }),
       this.prisma.crewOccurrence.findMany({
         where:  { crewMemberId: { in: memberIds }, status: { in: ['REQUESTED', 'APPROVED'] }, startDate: { lte: toDbDate(to) }, endDate: { gte: toDbDate(from) } },
         select: { id: true, crewMemberId: true, kind: true, status: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true, absenceType: { select: { name: true } } },
@@ -138,7 +143,7 @@ export class RosterBoardService {
         if (!patternOff && !holiday && !mine.length && !reqs.length) continue
         cells.push({
           crewMemberId: m.id, date, patternOff, holiday,
-          entries:  mine.map(e => ({ kind: e.kind, dailyDutyId: e.dailyDutyId, locked: e.locked })),
+          entries:  mine.map(e => ({ kind: e.kind, dailyDutyId: e.dailyDutyId, locked: e.locked, absenceTypeId: e.absenceTypeId })),
           requests: reqs.map(o => ({
             id: o.id, kind: o.kind, status: o.status as 'REQUESTED' | 'APPROVED', startNotBefore: o.startNotBefore, endNotAfter: o.endNotAfter,
             label: o.kind === 'ABSENCE' ? o.absenceType?.name ?? 'Ausência'
@@ -202,6 +207,7 @@ export class RosterBoardService {
       }),
       cells,
       vehicles,
+      offTypes: offTypes.map(t => ({ id: t.id, code: t.code, name: t.name, effect: t.effect as 'DAY_OFF' | 'COMP_OFF', system: !!t.systemKey })),
     }
   }
 

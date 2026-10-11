@@ -80,12 +80,14 @@ export class CrewOccurrenceService extends BaseService<CrewOccurrence, CreateCre
     await this.assertNoOverlap(null, dto.crewMemberId, row)
     const request = row.origin === 'STAFF_ON_BEHALF'
     const { requested: _r, createdByUserId: _c, reviewedByUserId: _rb, reviewedAt: _ra, ...data } = row
-    return super.create({
+    const created = await super.create({
       ...data,
       createdByUserId: userId ?? null,
       requested: request ? CrewOccurrenceService.snapshot(row) : null,
       ...(REVIEWED.has(row.status ?? '') ? { reviewedByUserId: userId ?? null, reviewedAt: new Date() } : {}),
     })
+    await this.syncDaysOff(created.id)
+    return created
   }
 
   async updateAs(id: string, dto: UpdateCrewOccurrenceDto, userId: string | undefined): Promise<CrewOccurrence> {
@@ -96,10 +98,36 @@ export class CrewOccurrenceService extends BaseService<CrewOccurrence, CreateCre
     CrewOccurrenceService.assertValid(row)
     await this.assertNoOverlap(id, current.crewMemberId, row)
     const statusChanged = patch.status !== undefined && patch.status !== current.status
-    return super.update(id, {
+    const updated = await super.update(id, {
       ...patch,
       kind: row.kind, absenceTypeId: row.absenceTypeId, startNotBefore: row.startNotBefore, endNotAfter: row.endNotAfter,
       ...(statusChanged && REVIEWED.has(patch.status!) ? { reviewedByUserId: userId ?? null, reviewedAt: new Date() } : {}),
+    })
+    await this.syncDaysOff(id)
+    return updated
+  }
+
+  // An approved absence whose type becomes a day off (effect DAY_OFF / COMP_OFF) puts it on the
+  // roster, on each of its days the crew member has nothing else (a day with a duty keeps it and
+  // shows the absence as a pendência). Rebuilt on every change — not approved: none.
+  private async syncDaysOff(id: string): Promise<void> {
+    await this.prisma.rosterEntry.deleteMany({ where: { crewOccurrenceId: id } })
+    const o = await this.prisma.crewOccurrence.findUnique({
+      where:  { id },
+      select: { crewMemberId: true, kind: true, status: true, startDate: true, endDate: true, absenceType: { select: { id: true, effect: true } } },
+    })
+    const effect = o?.absenceType?.effect
+    if (!o || o.kind !== 'ABSENCE' || o.status !== 'APPROVED' || (effect !== 'DAY_OFF' && effect !== 'COMP_OFF')) return
+    const days: string[] = []
+    for (let d = dayOf(o.startDate); d <= dayOf(o.endDate); d = addDays(d, 1)) days.push(d)
+    const taken = new Set((await this.prisma.rosterEntry.findMany({
+      where:  { crewMemberId: o.crewMemberId, date: { in: days.map(toDbDate) } },
+      select: { date: true },
+    })).map(e => dayOf(e.date)))
+    await this.prisma.rosterEntry.createMany({
+      data: days.filter(d => !taken.has(d)).map(d => ({
+        crewMemberId: o.crewMemberId, date: toDbDate(d), kind: effect, absenceTypeId: o.absenceType!.id, crewOccurrenceId: id, source: 'REQUEST',
+      })),
     })
   }
 

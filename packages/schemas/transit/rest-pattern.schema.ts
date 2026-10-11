@@ -31,7 +31,7 @@ export const restPatternSchema = withMeta(
       row:            'Opções',
       widget:         'switch',
       listVisibility: 'visible',
-      defaultValue:   'false',
+      defaultValue:   false,
     }),
 
     staggered: z.boolean().default(false).meta({
@@ -40,7 +40,7 @@ export const restPatternSchema = withMeta(
       row:            'Opções',
       widget:         'switch',
       listVisibility: 'hidden',
-      defaultValue:   'false',
+      defaultValue:   false,
     }),
 
     // edited as a weekly grid (widget 'rest-cycle'), with the groups' preview and balance

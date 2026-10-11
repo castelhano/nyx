@@ -61,7 +61,7 @@ export const routeSchema = withMeta(
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
-      defaultValue:   'true',
+      defaultValue:   true,
     }),
 
     isPrimary: z.boolean().default(false).meta({
@@ -69,7 +69,7 @@ export const routeSchema = withMeta(
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
-      defaultValue:   'false',
+      defaultValue:   false,
     }),
 
     // null = usa a cor padrão do sentido (DIR_COLOR) — editado via CreateRouteModal,

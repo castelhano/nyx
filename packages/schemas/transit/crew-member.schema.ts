@@ -94,7 +94,7 @@ export const crewMemberSchema = withMeta(
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
-      defaultValue:   'true',
+      defaultValue:   true,
     }),
 
     notBeforeMinutes: z.number().int().min(0).max(2880).optional().nullable().meta({

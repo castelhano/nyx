@@ -62,7 +62,8 @@ export interface RosterBoardCell {
   date:         string
   patternOff:   boolean
   holiday:      boolean
-  entries:      { kind: 'DUTY' | 'STANDBY' | 'DAY_OFF' | 'COMP_OFF'; dailyDutyId: string | null; locked: boolean }[]
+  // absenceTypeId: a day off's type
+  entries:      { kind: 'DUTY' | 'STANDBY' | 'DAY_OFF' | 'COMP_OFF'; dailyDutyId: string | null; locked: boolean; absenceTypeId: string | null }[]
   requests:     { id: string; kind: 'ABSENCE' | 'TIME_WINDOW'; status: 'REQUESTED' | 'APPROVED'; label: string; startNotBefore: number | null; endNotAfter: number | null }[]
 }
 
@@ -77,4 +78,6 @@ export interface RosterBoard {
   members:  RosterBoardMember[]
   cells:    RosterBoardCell[]
   vehicles: { id: string; code: string; vehicleType: string }[]
+  // the absence types that are days off (system ones first) — what a day off can be launched as
+  offTypes: { id: string; code: string; name: string; effect: 'DAY_OFF' | 'COMP_OFF'; system: boolean }[]
 }

@@ -90,7 +90,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
       </div>
 
-      <SectionHeader label="Regras do Gerador" sub="Bloqueia: nunca escala. Permite com pendência: só como último recurso, e o dia mostra a pendência." />
+      <SectionHeader label="Regras do Gerador" sub="Bloqueia: nunca escala. Alerta: só como último recurso, e o dia mostra a pendência." />
       <div className="rounded-lg border border-border divide-y divide-border">
         {(Object.keys(ROSTER_RULE_LABEL) as (keyof RosterSettings['ruleModes'])[]).map(k => (
           <Row

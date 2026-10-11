@@ -93,7 +93,7 @@ export const lineSchema = withMeta(
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
-      defaultValue:   'true',
+      defaultValue:   true,
       keybind:        'a',
     }),
     metrics: z.object({

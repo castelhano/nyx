@@ -49,9 +49,9 @@ export class RosterBoardController {
   // days off for several crew members / dates
   @Put('day-off')
   @HttpCode(204)
-  async dayOff(@Req() req: { user?: AuthUser }, @Body() body: { items: { date: string; crewMemberId: string }[]; kind: 'DAY_OFF' | 'COMP_OFF' | null }) {
+  async dayOff(@Req() req: { user?: AuthUser }, @Body() body: { items: { date: string; crewMemberId: string }[]; kind: 'DAY_OFF' | 'COMP_OFF' | null; absenceTypeId?: string | null }) {
     await this.assert(req.user, 'update')
-    await this.daily.setDayOffMany(Array.isArray(body?.items) ? body.items : [], body?.kind || null, req.user?.id)
+    await this.daily.setDayOffMany(Array.isArray(body?.items) ? body.items : [], body?.kind || null, req.user?.id, body?.absenceTypeId || null)
   }
 
   private async assert(user: AuthUser | undefined, action: string): Promise<void> {

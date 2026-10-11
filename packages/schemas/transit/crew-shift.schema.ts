@@ -60,7 +60,7 @@ export const crewShiftSchema = withMeta(
       row:            'Opções',
       widget:         'switch',
       listVisibility: 'visible',
-      defaultValue:   'false',
+      defaultValue:   false,
     }),
 
     isActive: z.boolean().default(true).meta({
@@ -69,7 +69,7 @@ export const crewShiftSchema = withMeta(
       widget:         'switch',
       listVisibility: 'visible',
       filter:         true,
-      defaultValue:   'true',
+      defaultValue:   true,
     }),
 
     // CrewShiftBranch — the empresas using the shift

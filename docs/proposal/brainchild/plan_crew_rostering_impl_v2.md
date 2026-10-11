@@ -432,6 +432,22 @@ Regras:
   janela do turno (modo `BLOCK`/`WARN`, §5.2). Dia já escalado fora da janela → pendência
   `SHIFT_WINDOW`.
 
+> **Atualização — tipos de ausência e ERP:**
+> - Pedido lançado pelo gestor (`STAFF_ON_BEHALF`) pode ter vários dias; só o portal limita a um dia.
+>   Cotas (Fase 7) passam a contar **dias**.
+> - `CrewAbsenceType.effect` diz o que o tipo vira na escala: `ABSENCE` (indisponível, reduz a
+>   carga), `DAY_OFF` (folga semanal — ocupa o dia, não reduz a carga) ou `COMP_OFF` (folga
+>   compensada, reduz a carga). Aprovar um pedido `DAY_OFF`/`COMP_OFF` cria a folga na escala
+>   (`RosterEntry.crewOccurrenceId`, `source = REQUEST`) nos dias sem tabela; deixar de estar aprovado
+>   a remove. O gerador mantém essas folgas.
+> - Tipos do sistema (`systemKey`): `WEEKLY_OFF` "Folga semanal (DSR)" e `COMP_OFF` "Folga
+>   compensada" — não são excluídos nem mudam de efeito. Toda folga da escala aponta para um tipo
+>   (`RosterEntry.absenceTypeId`; sem escolha, o do sistema), então a empresa pode ter várias
+>   compensações (banco de horas, feriado…).
+> - `CrewAbsenceType.externalCodes` (`{ GLOBUS }`, mesmo padrão de Localidade/Linha): o código de
+>   cada evento no ERP Globus, o mesmo para todas as empresas. Dias trabalhados (normal, feriado,
+>   extra, noturno) ficam para o desenho da integração.
+
 ### 2.6 Regime de folgas
 
 ```prisma
