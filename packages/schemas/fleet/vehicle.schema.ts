@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
+import { vehicleTypeSchema, VEHICLE_TYPE_LABELS } from '../transit/vehicle-type'
 
 export const vehicleSchema = withMeta(
   z.object({
@@ -94,19 +95,14 @@ export const vehicleSchema = withMeta(
       className:      'md:w-36',
     }),
 
-    vehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).meta({
+    vehicleType: vehicleTypeSchema.meta({
       label:          'Tipo',
       listVisibility: 'visible',
       filter:         true,
       defaultValue:   'STANDARD',
       className:      'md:w-48',
       keybind:        'p',
-      optionLabels: {
-        STANDARD:  'Ônibus',
-        MICRO_BUS: 'Micro-ônibus',
-        MINIBUS:   'Miniônibus',
-        VAN:       'Van',
-      },
+      optionLabels:   VEHICLE_TYPE_LABELS,
     }),
 
     color: z.string().optional().meta({

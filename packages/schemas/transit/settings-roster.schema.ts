@@ -64,8 +64,8 @@ export const rosterSettingsSchema = withMeta(z.object({
 export type RosterSettings = z.infer<typeof rosterSettingsSchema>
 
 export const LINE_ACCESS_MODE_LABEL: Record<RosterSettings['lineAccessMode'], string> = {
-  WHITELIST: 'Habilitadas — o operador só opera as linhas habilitadas para ele',
-  BLACKLIST: 'Bloqueadas — o operador opera todas, menos as bloqueadas para ele',
+  WHITELIST: 'WHITELIST • libera todas',
+  BLACKLIST: 'BLACKLIST • bloqueia todos',
 }
 
 export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { label: string; hint: string }> = {
@@ -79,5 +79,5 @@ export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { labe
 
 export const ROSTER_RULE_MODE_LABEL: Record<typeof ROSTER_RULE_MODES[number], string> = {
   BLOCK: 'Bloqueia',
-  WARN:  'Permite com pendência',
+  WARN:  'Alerta',
 }

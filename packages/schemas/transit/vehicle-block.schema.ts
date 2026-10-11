@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
+import { vehicleTypeSchema, VEHICLE_TYPE_LABELS } from './vehicle-type'
 
 // Constraints shape for a generated block
 export interface VehicleBlockConstraints {
@@ -55,18 +56,13 @@ export const vehicleBlockSchema = withMeta(
       keybind:        'g',
     }),
 
-    vehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).meta({
+    vehicleType: vehicleTypeSchema.meta({
       label:          'Tipo de Veículo',
       listVisibility: 'visible',
       filter:         true,
       className:      'md:w-48',
       keybind:        't',
-      optionLabels: {
-        STANDARD:  'Ônibus',
-        MICRO_BUS: 'Micro-ônibus',
-        MINIBUS:   'Miniônibus',
-        VAN:       'Van',
-      },
+      optionLabels:   VEHICLE_TYPE_LABELS,
     }),
 
     isStale: z.boolean().default(false).meta({

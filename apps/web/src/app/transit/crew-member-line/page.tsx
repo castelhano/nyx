@@ -30,8 +30,8 @@ interface Board {
 interface Draft { on: string[]; prefs: string[] }
 
 const MODE_TEXT = {
-  WHITELIST: 'Habilitadas — o operador só opera as linhas marcadas',
-  BLACKLIST: 'Bloqueadas — o operador opera todas, menos as marcadas',
+  WHITELIST: 'WHITELIST • libera todas',
+  BLACKLIST: 'BLACKLIST • bloqueia todos',
 }
 
 async function fetchBoard(crewMemberId: string): Promise<Board> {

@@ -24,9 +24,9 @@ export const lineServiceRequirementSchema = withMeta(
 
     label: z.string().min(2).meta({
       label:          'Descrição',
-      placeholder:    'Ex.: Saída E.E. Fulano',
+      placeholder:    'Descrição do Marco',
       listVisibility: 'visible',
-      className:      'md:w-1/2',
+      className:      'md:w-1/3',
       keybind:        's',
     }),
 
@@ -46,7 +46,7 @@ export const lineServiceRequirementSchema = withMeta(
       label:          'Sentido',
       listVisibility: 'visible',
       filter:         true,
-      className:      'md:w-50',
+      className:      'md:w-1/3',
       keybind:        'd',
       optionLabels:   ROUTE_DIRECTION_LABEL,
     }),

@@ -1,5 +1,5 @@
 import type { GanttView, GanttRow, GanttSegment, GanttFrame } from '../engine/gantt.types'
-import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking, VehicleBlockIssue } from '@nyx/schemas'
+import type { VehicleBlockSummary, VehiclePlanLineSummary, TripMarking, VehicleBlockIssue, VehicleTypeValue } from '@nyx/schemas'
 import { swatchColor, lineIndexByCode } from '@/lib/palette'
 
 // ── API shapes ────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ export function computeHeadway(bt: GanttBlockTrip, blocks: GanttBlock[]): number
   return dep - departures[idx - 1]
 }
 
-export type VehicleType = 'STANDARD' | 'MICRO_BUS' | 'MINIBUS' | 'VAN'
+export type VehicleType = VehicleTypeValue
 
 export interface GanttBlockTrip {
   id:       string

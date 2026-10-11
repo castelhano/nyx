@@ -32,14 +32,14 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
       <div className="rounded-lg border border-border divide-y divide-border">
         <Row
           diff={diff('lineAccessMode')}
-          label="Linhas do Operador"
-          hint="Como ler o acesso cadastrado nas linhas de cada operador"
+          label="Regra de Linhas do Operador"
+          hint="Regra de associação de linhas para operador"
         >
           <Select
             value={value.lineAccessMode}
             onChange={(e) => onChange({ ...value, lineAccessMode: e.target.value as RosterSettings['lineAccessMode'] })}
             size="sm"
-            className="w-96"
+            className="w-70"
           >
             {(Object.keys(LINE_ACCESS_MODE_LABEL) as RosterSettings['lineAccessMode'][]).map(m => (
               <option key={m} value={m}>{LINE_ACCESS_MODE_LABEL[m]}</option>
@@ -49,7 +49,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         <Row
           diff={diff('maxPreferredLines')}
           label="Linhas Preferenciais por Operador"
-          hint="Primária, secundária... — 0 desliga as preferências"
+          hint="Quantidade de linhas aceitas como preferênciais"
         >
           <NumberInput value={value.maxPreferredLines} onChange={(v) => onChange({ ...value, maxPreferredLines: Math.round(v) })} min={0} max={10} />
           <span className="text-sm text-muted-foreground w-6"></span>
@@ -66,7 +66,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
           <Row
             diff={diff('preferredLineGrades')}
             label="Peso das Linhas Preferenciais"
-            hint="Quanto vale cada preferência (primária, secundária...) na pontuação do gerador"
+            hint="Bonificação do gerador no atendimento de linhas preferenciais"
           >
             {grades.map((g, i) => <NumberInput key={i} value={g} onChange={(v) => setGrade(i, v)} min={0} max={100} />)}
             <span className="text-sm text-muted-foreground w-6">%</span>

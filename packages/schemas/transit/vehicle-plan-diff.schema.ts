@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { tripMarkingSchema } from './trip-marking.schema'
+import { vehicleTypeSchema } from './vehicle-type'
 
 // Single transactional diff for the Gantt "Salvar" flow — VehiclePlanService.applyDiff
 // applies all of it inside one prisma.$transaction, closing with recalculate() before
@@ -16,7 +17,7 @@ const pendingAddTripSchema = z.object({
   blockId:             z.string(),   // 'new' | 'pending:<tempId>' | real block id
   departureMinutes:    z.number(),
   arrivalMinutes:      z.number(),
-  requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional(),
+  requiredVehicleType: vehicleTypeSchema.optional(),
   stopPattern:         z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
   access: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
   return: z.object({ localityId: z.string(), travelMinutes: z.number() }).optional(),
@@ -66,7 +67,7 @@ export const vehiclePlanDiffSchema = z.object({
     notes:            z.string().nullable().optional(),
     stopPattern:      z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).optional(),
     // only ever set by "Atualizar da OSO" (OSO → plano) — the Gantt has no editor for it
-    requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).nullable().optional(),
+    requiredVehicleType: vehicleTypeSchema.nullable().optional(),
     // trip group: a new id groups the trips sharing it (validated by applyDiff), null ungroups
     bundleId:         z.string().nullable().optional(),
   })).default([]),

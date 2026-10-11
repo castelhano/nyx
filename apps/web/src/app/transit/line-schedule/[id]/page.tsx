@@ -34,7 +34,7 @@ import { Badge } from '@/components/ui/badge'
 import { vigenceBadge } from '@/lib/plan-vigence'
 import { ActivationModal } from '../../activation-modal'
 import { useScheduleRequirements } from './use-schedule-requirements'
-import { ROUTE_DIRECTION_LABEL, serviceRequirementWindowText } from '@nyx/schemas'
+import { ROUTE_DIRECTION_LABEL, VEHICLE_TYPE_LABELS, serviceRequirementWindowText } from '@nyx/schemas'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'line-schedule'
@@ -72,7 +72,7 @@ interface PendingNew {
 }
 
 const DIRECTION_LABELS: Record<Route['direction'], string>       = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
-const VEHICLE_LABELS:   Record<VehicleType, string>               = { STANDARD: 'Ônibus', MICRO_BUS: 'Micro-ônibus', MINIBUS: 'Miniônibus', VAN: 'Van' }
+const VEHICLE_LABELS:   Record<VehicleType, string>               = VEHICLE_TYPE_LABELS
 const UNSET_VEHICLE_TYPE = '__unset__' // sentinel option value for the bulk-edit "Não especificado" choice
 const STATUS_LABELS:    Record<LineSchedule['status'], string>    = { DRAFT: 'Rascunho', APPROVED: 'Aprovada', SUPERSEDED: 'Substituída', ARCHIVED: 'Arquivada' }
 
@@ -1317,7 +1317,7 @@ export default function LineScheduleDetailPage() {
                                   type="button"
                                   title={q.legendText}
                                   onClick={() => addMarkingToPendingNew(q)}
-                                  className="w-full truncate text-left text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
+                                  className="w-full truncate text-left text-xs px-3 py-2 rounded-md border border-border bg-accent text-accent-foreground hover:bg-accent/70 transition-colors"
                                 >
                                   {q.legendText}
                                 </button>
@@ -1518,7 +1518,7 @@ export default function LineScheduleDetailPage() {
                                   type="button"
                                   title={q.legendText}
                                   onClick={() => addMarkingToFocused(q)}
-                                  className="w-full truncate text-left text-xs px-2 py-1 rounded-full border border-border hover:bg-muted transition-colors"
+                                  className="w-full truncate text-left text-xs px-3 py-2 rounded-md border border-border bg-accent text-accent-foreground hover:bg-accent/70 transition-colors"
                                 >
                                   {q.legendText}
                                 </button>

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 import { tripMarkingSchema } from './trip-marking.schema'
+import { vehicleTypeSchema, VEHICLE_TYPE_LABELS } from './vehicle-type'
 
 // Constraints shape — managed via dedicated UI controls, not raw JSON input
 export interface TripConstraints {
@@ -48,18 +49,13 @@ export const tripSchema = withMeta(
       keybind:        'h',
     }),
 
-    requiredVehicleType: z.enum(['STANDARD', 'MICRO_BUS', 'MINIBUS', 'VAN']).optional().meta({
+    requiredVehicleType: vehicleTypeSchema.optional().meta({
       label:          'Veículo Requerido',
       listVisibility: 'hidden',
       filter:         true,
       className:      'md:w-48',
       keybind:        'v',
-      optionLabels: {
-        STANDARD:  'Ônibus',
-        MICRO_BUS: 'Micro-ônibus',
-        MINIBUS:   'Miniônibus',
-        VAN:       'Van',
-      },
+      optionLabels:   VEHICLE_TYPE_LABELS,
     }),
 
     stopPattern: z.enum(['LOCAL', 'LIMITED', 'EXPRESS']).default('LOCAL').meta({

@@ -11,7 +11,7 @@ import type { UseFormRegisterReturn } from 'react-hook-form'
 import { inputBaseCls, selectBaseCls } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
-import { DurationInput } from '@/components/ui/duration-input'
+import { ClockInput } from '@/components/ui/clock-input'
 import { apiFetch } from '@/lib/auth'
 import { Icons } from '@/lib/icons'
 import { useFieldOptions } from './useFieldOptions'
@@ -189,7 +189,7 @@ function CurrencyInput({
   )
 }
 
-// widget 'time' — minutes since 00:00 typed and shown as H:MM
+// widget 'time' — a clock time, minutes since 00:00 typed and shown as HH:MM
 function TimeInput({
   field, control, autoFocus, className, readonly, containerClassName,
 }: {
@@ -202,7 +202,7 @@ function TimeInput({
       rules={{ required: field.required ? 'Campo obrigatório' : false }}
       render={({ field: ctrl }) => (
         <div className={cn('relative', containerClassName)}>
-          <DurationInput
+          <ClockInput
             id={field.name}
             value={ctrl.value ?? null}
             onChange={ctrl.onChange}
@@ -210,7 +210,7 @@ function TimeInput({
             max={field.max}
             autoFocus={autoFocus}
             readOnly={readonly}
-            placeholder={field.placeholder ?? 'H:MM'}
+            placeholder={field.placeholder ?? 'HH:MM'}
             className={cn(className, 'text-left', field.keybind && 'md:pr-10', readonly && readonlyCls)}
           />
           {field.keybind && <KeyHint k={field.keybind} />}

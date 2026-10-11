@@ -383,7 +383,7 @@ export default function TransitSettingsPage() {
 
       {/* ── Escala ── */}
       <section className="flex flex-col gap-6">
-        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 02 - Escala de operadores</h1>
+        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 02 - Escala lógica</h1>
 
         {/* Transit Scope selector — CCT rules are shared by every operator of the Scope */}
         <div className="flex items-center gap-3">
@@ -430,7 +430,7 @@ export default function TransitSettingsPage() {
 
       {/* ── Escala real ── */}
       <section className="flex flex-col gap-6 mb-20">
-        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 03 - Escala real</h1>
+        <h1 className='text-2xl text-cyan-900 dark:text-cyan-700'>Etapa 03 - Escala diária</h1>
 
         {/* Branch selector — each empresa has its own rules */}
         <div className="flex items-center gap-3">
