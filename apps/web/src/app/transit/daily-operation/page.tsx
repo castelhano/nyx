@@ -28,6 +28,15 @@ import { ContextPanel, RequestRow } from './workspace/ContextPanel'
 const ORIGIN = 'apps/web/src/app/transit/daily-operation/page'
 const LAST_KEY = 'nyx.roster.context'
 
+// a duty's pendências: code → cars hit (1 for the duty's own); DUTY_UNASSIGNED when it has no holder
+function dutyIssues(d: RosterBoardDuty): Map<string, number> {
+  const count = new Map<string, number>()
+  if (!d.crewMemberId) count.set('DUTY_UNASSIGNED', 1)
+  for (const i of d.issues) if (i.code !== 'DUTY_UNASSIGNED') count.set(i.code, 1)
+  for (const b of d.blocks) for (const code of new Set(b.issues.map(i => i.code))) count.set(code, (count.get(code) ?? 0) + 1)
+  return count
+}
+
 // "Escala" — the real roster of one empresa/role, managed in one screen: a period (day, week or
 // month), two views (Operadores: people × days; Escalas: duties), a context panel (the selected
 // crew member / duty / day), the period's pendências and pending requests, and "Gerar".
@@ -107,16 +116,19 @@ export default function RosterPage() {
   }), [board, idx, q])
 
   // a duty's pendências in one line — the same one on several cars counted once ("Sem veículo (2 carros)")
-  const issueText = (d: RosterBoardDuty) => {
+  const issueText = (d: RosterBoardDuty) => [...dutyIssues(d)]
+    .map(([code, n]) => (code === 'DUTY_UNASSIGNED' ? 'sem operador' : `${ISSUE_LABEL[code] ?? code}${n > 1 ? ` (${n} carros)` : ''}`))
+    .join(' · ')
+  const issueDuties = useMemo(() => (board?.duties ?? []).filter(d => dutyIssues(d).size > 0), [board])
+  // the reasons, by the number of duties they hit — a chip filters the list
+  const issueReasons = useMemo(() => {
     const count = new Map<string, number>()
-    for (const i of d.issues) if (i.code !== 'DUTY_UNASSIGNED') count.set(i.code, 1)
-    for (const b of d.blocks) for (const code of new Set(b.issues.map(i => i.code))) count.set(code, (count.get(code) ?? 0) + 1)
-    return [
-      !d.crewMemberId && 'sem operador',
-      ...[...count].map(([code, n]) => `${ISSUE_LABEL[code] ?? code}${n > 1 ? ` (${n} carros)` : ''}`),
-    ].filter(Boolean).join(' · ')
-  }
-  const issueDuties = useMemo(() => (board?.duties ?? []).filter(d => d.issues.length || d.blocks.some(b => b.issues.length) || !d.crewMemberId), [board])
+    for (const d of issueDuties) for (const code of dutyIssues(d).keys()) count.set(code, (count.get(code) ?? 0) + 1)
+    return [...count].sort((a, b) => b[1] - a[1])
+  }, [issueDuties])
+  const [issueFilter, setIssueFilter] = useState<string | null>(null)
+  const filter = issueReasons.some(([code]) => code === issueFilter) ? issueFilter : null
+  const shownIssues = filter ? issueDuties.filter(d => dutyIssues(d).has(filter)) : issueDuties
   const pendingRequests = useMemo(() => {
     const seen = new Map<string, { id: string; label: string; kind: string; status: string; startNotBefore: number | null; endNotAfter: number | null; memberId: string; dates: string[] }>()
     for (const c of board?.cells ?? []) for (const r of c.requests) {
@@ -353,7 +365,20 @@ export default function RosterPage() {
               <section className="rounded-lg border border-border p-3 space-y-1 max-h-80 overflow-y-auto">
                 <p className="text-sm font-medium">Pendências do período</p>
                 {!issueDuties.length && <p className="text-xs text-muted-foreground">Nenhuma.</p>}
-                {issueDuties.map(d => (
+                {issueReasons.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pb-1.5">
+                    {issueReasons.map(([code, n]) => {
+                      const label = code === 'DUTY_UNASSIGNED' ? 'Sem operador' : ISSUE_LABEL[code] ?? code
+                      return (
+                        <button key={code} type="button" title={label} onClick={() => setIssueFilter(filter === code ? null : code)}
+                          className={cn('max-w-full truncate rounded-sm border px-1.5 py-0.5 text-[11px] cursor-pointer', filter === code ? 'border-primary bg-accent text-accent-foreground' : 'border-border hover:bg-muted')}>
+                          {label} <span className="tabular-nums text-muted-foreground">{n}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {shownIssues.map(d => (
                   <button key={d.id} type="button" onClick={() => { setCtx({ visao: 'escalas' }); setDutyId(d.id); setCursor(null) }}
                     className="w-full text-left text-xs rounded-sm px-1.5 py-1 hover:bg-muted cursor-pointer">
                     <span className="tabular-nums text-muted-foreground">{fmtDay(d.date)}</span> <span className="font-medium">{dutyName(d, board.multiScope)}</span>{' '}

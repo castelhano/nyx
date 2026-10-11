@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { useConfirm } from '@/lib/confirm-context'
 import { WEEKDAY, cellSummary, clock, dutyName, fmtDay, hm, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty, type RosterBoardMember } from './board'
 
 // "Operadores" — the roster board: crew members × days. Keyboard first: arrows (shift extends),
 // Enter opens the day's duties, F launches a day off, Del clears, L locks, Ctrl+C / Ctrl+V copy a
 // block (the same duty numbers on the target days); drag a cell onto another crew member's to
-// swap the day. With a generation's proposal, the cells it changes show what it proposes.
+// swap the day. Clearing, a paste over filled days and a swap ask for confirmation (Enter).
+// With a generation's proposal, the cells it changes show what it proposes.
 
 export interface GridPos { memberId: string; date: string }
 
@@ -47,6 +49,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
   const copied = useRef<Copied>([])
   const [picker, setPicker] = useState<{ pos: GridPos; rect: DOMRect } | null>(null)
   const [drag, setDrag] = useState<GridPos | null>(null)
+  const confirm = useConfirm()
   const single = dates.length === 1
 
   // rows grouped by the crew member's shift; other empresas / roles last
@@ -84,6 +87,36 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
     if (!cursor) return
     wrapRef.current?.querySelector(`[data-cell="${cursor.memberId}|${cursor.date}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [cursor])
+
+  // the destructive edits: one more Enter, then the focus back on the grid
+  const summaryAt = (p: GridPos) => cellSummary(idx.cellOf.get(`${p.memberId}|${p.date}`), idx, board.multiScope)
+  const who = (memberId: string) => { const m = idx.memberById.get(memberId); return m ? `${m.code} ${m.name}` : '?' }
+  async function confirmed(title: string, description: string, confirmLabel: string, variant: 'destructive' | 'default' = 'default') {
+    const ok = await confirm({ title, description, confirmLabel, variant })
+    wrapRef.current?.focus()
+    return ok
+  }
+  async function clear(cells: GridPos[]) {
+    const hit = cells.filter(c => { const s = summaryAt(c); return (s.duties.length > 0 && !s.locked) || !!s.off })
+    if (!hit.length) return
+    const s = summaryAt(hit[0])
+    const ok = await confirmed('Limpar', hit.length === 1
+      ? `${who(hit[0].memberId)} · ${fmtDay(hit[0].date)}: ${s.label || s.offName} sai da escala.`
+      : `${hit.length} dias com tabela ou folga serão limpos.`, 'Limpar', 'destructive')
+    if (ok) actions.clear(hit)
+  }
+  async function paste(assign: { duty: RosterBoardDuty; memberId: string }[], off: GridPos[]) {
+    const filled = [...assign.map(a => ({ memberId: a.memberId, date: a.duty.date })), ...off].filter(c => { const s = summaryAt(c); return s.duties.length > 0 || !!s.off }).length
+    const taken = assign.filter(a => a.duty.crewMemberId && a.duty.crewMemberId !== a.memberId).length
+    if (filled || taken) {
+      const lines = [filled && `${filled} dia(s) já preenchido(s) serão substituídos.`, taken && `${taken} tabela(s) saem de outro operador.`].filter(Boolean).join('\n')
+      if (!(await confirmed('Colar', lines, 'Colar'))) return
+    }
+    actions.paste(assign, off)
+  }
+  async function swap(date: string, a: string, b: string) {
+    if (await confirmed('Trocar o dia', `${fmtDay(date)}: ${who(a)} ⇄ ${who(b)}`, 'Trocar')) actions.swap(date, a, b)
+  }
 
   function openPicker(pos: GridPos) {
     const el = wrapRef.current?.querySelector(`[data-cell="${pos.memberId}|${pos.date}"]`)
@@ -131,11 +164,11 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
         const duty = board.duties.find(d => d.date === date && d.scope === scope && d.number === number)
         if (duty && !duty.locked) assign.push({ duty, memberId })
       }
-      return actions.paste(assign, off)
+      return void paste(assign, off)
     }
     if (!canEdit || e.altKey || e.ctrlKey || e.metaKey) return
     if (key === 'f') { e.preventDefault(); actions.dayOff(selected(), 'DAY_OFF') }
-    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); actions.clear(selected()) }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); void clear(selected()) }
     else if (key === 'l') { e.preventDefault(); actions.lock(selected()) }
   }
 
@@ -189,7 +222,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                         onDragStart={() => setDrag(pos)}
                         onDragEnd={() => setDrag(null)}
                         onDragOver={(e) => { if (drag && drag.date === date && drag.memberId !== m.id) e.preventDefault() }}
-                        onDrop={(e) => { e.preventDefault(); if (drag && drag.date === date && drag.memberId !== m.id) actions.swap(date, drag.memberId, m.id); setDrag(null) }}
+                        onDrop={(e) => { e.preventDefault(); if (drag && drag.date === date && drag.memberId !== m.id) void swap(date, drag.memberId, m.id); setDrag(null) }}
                         onMouseDown={(e) => { wrapRef.current?.focus(); onCursor(pos, e.shiftKey) }}
                         onDoubleClick={() => openPicker(pos)}
                         className={cn(
