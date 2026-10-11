@@ -1,13 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import {
   ROSTER_MAX_HORIZON_DAYS, restGroupIndex, restGroupLabel, restPatternWorks, shiftIdealDistance,
-  type CrewRole, type DailyIssue, type DutySummary, type RosterBoard, type RosterBoardCell,
+  type CrewRole, type DailyIssue, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
-import { RosterModel } from './roster-generator.calc'
+import { RosterModel, diagnoseShortage } from './roster-generator.calc'
 import { daysBetween, loadRosterInput } from './roster-generator.input'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -263,6 +263,30 @@ export class RosterBoardService {
       })
     })
     return out.sort((a, b) => a.warns - b.warns || b.points - a.points).slice(0, 8)
+  }
+
+  // Why the period's duties without anyone have none (the generator's diagnosis, on the current
+  // allocation): grouped by reason and shift.
+  async shortage(branchId: string, role: CrewRole, from: Day, to: Day): Promise<RosterShortage[]> {
+    if (!branchId || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) throw new BadRequestException('Período inválido')
+    const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
+      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false,
+    }, { published: true })
+    if (!input.duties.length) return []
+    const model = new RosterModel(input)
+    const dutyIndex = new Map(input.duties.map((d, i) => [d.id, i]))
+    const memberIndex = new Map(input.members.map((m, i) => [m.id, i]))
+    const assign = input.members.map(() => new Int32Array(input.days.length).fill(-1))
+    const holder = new Int32Array(input.duties.length).fill(-1)
+    const entries = await this.prisma.rosterEntry.findMany({ where: { dailyDutyId: { in: input.duties.map(d => d.id) } }, select: { crewMemberId: true, dailyDutyId: true } })
+    for (const e of entries) {
+      const di = dutyIndex.get(e.dailyDutyId!)!
+      const mi = memberIndex.get(e.crewMemberId)
+      // held by someone outside the empresa / role: covered all the same
+      holder[di] = mi ?? input.members.length
+      if (mi != null) assign[mi][input.duties[di].day] = di
+    }
+    return diagnoseShortage(model, assign, holder)
   }
 
   // load, changes and preferred-line share per crew member, as the generator scores them

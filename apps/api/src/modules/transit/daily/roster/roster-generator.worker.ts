@@ -1,5 +1,5 @@
 import { workerData, parentPort, isMainThread } from 'worker_threads'
-import { buildProposal, construct, RosterImprover, RosterModel } from './roster-generator.calc'
+import { buildProposal, construct, coverageBound, RosterImprover, RosterModel } from './roster-generator.calc'
 import type { RosterCommand, RosterMessage, RosterStopReason, RosterWorkerData } from './roster-generator.types'
 
 // Runs the roster generator off the main thread: the construction (first proposal), then the
@@ -14,21 +14,23 @@ const EMIT_MS     = 1000
 const PROGRESS_MS = 500
 
 const post = (msg: RosterMessage) => parentPort!.postMessage(msg)
-const { input, seed, maxMs, idleMs } = workerData as RosterWorkerData
+const { input, seed, maxMs, idleMs, boundIdleMs } = workerData as RosterWorkerData
 const started = Date.now()
 let stopped = false
 parentPort!.on('message', (cmd: RosterCommand) => { if (cmd?.type === 'stop') stopped = true })
 
 try {
   const model = new RosterModel(input)
+  // the most duties the crew can cover — past it only the quality improves
+  const bound = coverageBound(model)
   const initial = construct(model)
-  post({ type: 'proposal', proposal: buildProposal(model, initial.assign, 1) })
+  post({ type: 'proposal', proposal: buildProposal(model, initial.assign, 1, bound) })
 
   const improver = new RosterImprover(model, initial, Math.min(maxMs, idleMs / 2), seed)
   let index = 1, emitted = 0, lastEmit = 0, lastProgress = 0
 
   const emitBest = () => {
-    post({ type: 'proposal', proposal: buildProposal(model, improver.bestAssign(), ++index) })
+    post({ type: 'proposal', proposal: buildProposal(model, improver.bestAssign(), ++index, bound) })
     emitted = improver.improvements
     lastEmit = Date.now()
   }
@@ -54,7 +56,8 @@ try {
       if (improver.improvements !== emitted && now - lastEmit >= EMIT_MS) emitBest()
       if (now - lastProgress >= PROGRESS_MS) progress(now)
       if (now - started >= maxMs) return finish('max_time')
-      if (now - improver.lastImprovementAt >= idleMs) return finish('no_improvement')
+      const atBound = input.duties.length - improver.bestUnassigned >= bound
+      if (now - improver.lastImprovementAt >= (atBound ? boundIdleMs : idleMs)) return finish('no_improvement')
       setImmediate(tick)
     } catch (err) {
       post({ type: 'error', message: err instanceof Error ? err.message : String(err) })

@@ -15,4 +15,6 @@ export type RosterMessage =
 
 export type RosterCommand = { type: 'stop' }
 
-export interface RosterWorkerData { input: RgInput; seed: number; maxMs: number; idleMs: number }
+// idleMs: the run ends this long without improvement; boundIdleMs instead once the coverage
+// reached its bound (only the quality can still improve)
+export interface RosterWorkerData { input: RgInput; seed: number; maxMs: number; idleMs: number; boundIdleMs: number }

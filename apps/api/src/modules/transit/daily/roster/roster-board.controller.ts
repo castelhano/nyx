@@ -23,6 +23,13 @@ export class RosterBoardController {
     return this.boards.board(branchId, role || 'DRIVER', from, to)
   }
 
+  // why the period's duties without anyone have none
+  @Get('shortage')
+  async shortage(@Req() req: { user?: AuthUser }, @Query('branchId') branchId: string, @Query('role') role: CrewRole, @Query('from') from: string, @Query('to') to: string) {
+    await this.assert(req.user, 'read')
+    return { shortage: await this.boards.shortage(branchId, role || 'DRIVER', from, to) }
+  }
+
   // the best crew members for a duty (side panel)
   @Get('suggest')
   async suggest(@Req() req: { user?: AuthUser }, @Query('dutyId') dutyId: string) {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CREW_ROLES, CREW_ROLE_LABEL, type CrewRole } from '@nyx/schemas'
+import { CREW_ROLES, CREW_ROLE_LABEL, type CrewRole, type RosterShortage } from '@nyx/schemas'
 import { Icons }            from '@/lib/icons'
 import { Breadcrumb }       from '@/components/ui/breadcrumb'
 import { Select }           from '@/components/ui/select'
@@ -22,6 +22,7 @@ import {
 } from './workspace/board'
 import { OperatorsGrid, type GridPos, type Overlay } from './workspace/OperatorsGrid'
 import { GeneratePanel, type Proposal } from './workspace/GeneratePanel'
+import { ShortageList } from './workspace/ShortageList'
 import { DutiesView } from './workspace/DutiesView'
 import { ContextPanel, RequestRow } from './workspace/ContextPanel'
 
@@ -119,6 +120,16 @@ export default function RosterPage() {
   const issueText = (d: RosterBoardDuty) => [...dutyIssues(d)]
     .map(([code, n]) => (code === 'DUTY_UNASSIGNED' ? 'sem operador' : `${ISSUE_LABEL[code] ?? code}${n > 1 ? ` (${n} carros)` : ''}`))
     .join(' · ')
+  // why the duties without anyone have none — read while Pendências is open
+  const hasUnassigned = (board?.duties ?? []).some(d => !d.crewMemberId)
+  const { data: shortage } = useQuery<RosterShortage[]>({
+    queryKey: ['transit', 'roster-board', branchId, role, 'shortage', from, to],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/roster-board/shortage?branchId=${branchId}&role=${role}&from=${from}&to=${to}`)
+      return res.ok ? (await res.json()).shortage : []
+    },
+    enabled: drawer === 'issues' && hasUnassigned,
+  })
   const issueDuties = useMemo(() => (board?.duties ?? []).filter(d => dutyIssues(d).size > 0), [board])
   // the reasons, by the number of duties they hit — a chip filters the list
   const issueReasons = useMemo(() => {
@@ -359,12 +370,18 @@ export default function RosterPage() {
                 onProposal={setProposal}
                 onRefresh={() => void queryClient.invalidateQueries({ queryKey: ['transit', 'roster-board', branchId, role] })}
                 onClose={() => setGenOpen(false)}
+                onSelectDuty={(id) => { setCtx({ visao: 'escalas' }); setDutyId(id); setCursor(null) }}
               />
             )}
             {drawer === 'issues' && (
               <section className="rounded-lg border border-border p-3 space-y-1 max-h-80 overflow-y-auto">
                 <p className="text-sm font-medium">Pendências do período</p>
                 {!issueDuties.length && <p className="text-xs text-muted-foreground">Nenhuma.</p>}
+                {shortage && shortage.length > 0 && (
+                  <div className="border-b border-border pb-1.5 mb-1.5">
+                    <ShortageList groups={shortage} onSelectDuty={(id) => { setCtx({ visao: 'escalas' }); setDutyId(id); setCursor(null) }} />
+                  </div>
+                )}
                 {issueReasons.length > 0 && (
                   <div className="flex flex-wrap gap-1 pb-1.5">
                     {issueReasons.map(([code, n]) => {

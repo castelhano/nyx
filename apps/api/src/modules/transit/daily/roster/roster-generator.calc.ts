@@ -1,6 +1,6 @@
 import {
   shiftFits, shiftIdealDistance,
-  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterSettings, type ShiftWindow,
+  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterSettings, type RosterShortage, type ShiftWindow,
 } from '@nyx/schemas'
 import { rangeRaw, SCORE_SCALE } from '../../timetabling/vehicle-plan/scoring/plan-scoring.calc'
 import { hungarian } from './hungarian'
@@ -31,6 +31,8 @@ export interface RgDuty {
   kind:   string
   // (dominant line, shift) — a change = a signature different from the last one worked
   signature: string
+  // the duty's shift code (diagnosis)
+  shift:  string | null
   lineMinutes: { lineId: string; minutes: number }[]
   vehicleTypes: string[]
   // every line operated by the empresa (restrictToBranchLines)
@@ -123,6 +125,87 @@ export function pairRule(input: RgInput, m: RgMember, d: RgDuty): number {
   if (!rule(m.licenseExpired[d.day], input.ruleModes.license)) return -1
   if (!rule(m.courseExpired[d.day], input.ruleModes.course)) return -1
   return warns
+}
+
+// The first fixed rule (BLOCK) that keeps a crew member off a duty, whatever he has that day —
+// null when none does. The diagnosis of the duties left without anyone.
+type Stage = 'window' | 'line' | 'vehicle' | 'license'
+function blockedBy(input: RgInput, m: RgMember, d: RgDuty): Stage | null {
+  const block = (broken: boolean, mode: 'BLOCK' | 'WARN') => broken && mode === 'BLOCK'
+  const window = m.windows[d.day]
+  if (!window || block(!shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return 'window'
+  const lines = d.lineMinutes.map(l => l.lineId)
+  const lineBroken = input.lineAccessMode === 'WHITELIST' ? lines.some(l => m.lineAccess[l] !== 'ENABLED') : lines.some(l => m.lineAccess[l] === 'BLOCKED')
+  if (block(lineBroken, input.ruleModes.lineAccess)) return 'line'
+  if (block(d.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t)), input.ruleModes.vehicleType)) return 'vehicle'
+  if (block(m.licenseExpired[d.day], input.ruleModes.license) || block(m.courseExpired[d.day], input.ruleModes.course)) return 'license'
+  return null
+}
+
+const STAGE_REASON: Record<Stage, string> = {
+  window:  'nenhum operador livre cabe no horário',
+  line:    'os livres do horário não podem operar a linha',
+  vehicle: 'os livres do horário têm o tipo de veículo bloqueado',
+  license: 'os livres do horário estão com CNH ou curso vencido',
+}
+
+// The most duties that can be covered: per day, a maximum matching between the day's duties
+// and the crew members the fixed rules allow (Kuhn) — the rest between days and the change
+// limit aren't counted, so it's an upper bound.
+export function coverageBound(model: RosterModel): number {
+  const { input } = model
+  let total = 0
+  const byDay = new Map<number, number[]>()
+  input.duties.forEach((d, i) => byDay.set(d.day, [...(byDay.get(d.day) ?? []), i]))
+  for (const duties of byDay.values()) {
+    const holder = new Map<number, number>()
+    const tryDuty = (di: number, seen: Set<number>): boolean => {
+      for (const mi of model.candidates[di]) {
+        if (seen.has(mi)) continue
+        seen.add(mi)
+        const other = holder.get(mi)
+        if (other == null || tryDuty(other, seen)) { holder.set(mi, di); return true }
+      }
+      return false
+    }
+    for (const di of duties) if (tryDuty(di, new Set())) total++
+  }
+  return total
+}
+
+// Why each duty left without anyone has none — grouped by reason and shift.
+export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holder: Int32Array): RosterShortage[] {
+  const { input } = model
+  const groups = new Map<string, RosterShortage>()
+  input.duties.forEach((d, di) => {
+    if (holder[di] >= 0) return
+    let reason: string
+    if (!d.operated) reason = 'linha não operada pela empresa'
+    else if (model.candidates[di].length) {
+      // someone could take it: either all of them hold another duty that day, or the rest
+      // between days / the change limit kept the free ones off
+      const idle = [...model.candidates[di]].filter(mi => assign[mi][d.day] < 0).length
+      reason = idle ? 'interjornada ou limite de trocas impede os livres' : `faltam operadores — os ${model.candidates[di].length} que poderiam cobrir já estão em outras tabelas`
+    } else {
+      const free = input.members.filter(m => m.status[d.day] === 'free')
+      const stages = free.map(m => blockedBy(input, m, d))
+      const order: Stage[] = ['window', 'line', 'vehicle', 'license']
+      // the first rule that leaves nobody
+      const stage = order.find((_, k) => stages.every(s => s != null && order.indexOf(s) <= k)) ?? 'window'
+      reason = free.length ? STAGE_REASON[stage] : 'nenhum operador livre no dia'
+    }
+    const key = `${reason}|${d.shift ?? ''}`
+    const g = groups.get(key) ?? { reason, shift: d.shift, dutyIds: [], couldCover: [] }
+    g.dutyIds.push(d.id)
+    groups.set(key, g)
+    // who'd fit but is on his rest pattern's day off
+    for (const m of input.members) {
+      if (g.couldCover.length >= 6 || m.status[d.day] !== 'off' || blockedBy(input, m, d)) continue
+      const label = `${m.code} ${m.name}`
+      if (!g.couldCover.includes(label)) g.couldCover.push(label)
+    }
+  })
+  return [...groups.values()].sort((a, b) => b.dutyIds.length - a.dutyIds.length)
 }
 
 // graded share (0..1) of the duty's trip minutes on the member's preferred lines; null without
@@ -365,6 +448,8 @@ export class RosterImprover {
   improvements = 0
   lastImprovementAt = Date.now()
   bestObjective: number
+  // duties without anyone in the best allocation
+  bestUnassigned: number
 
   private readonly assign: Int32Array[]
   private readonly holder: Int32Array
@@ -388,6 +473,7 @@ export class RosterImprover {
     this.unassigned = this.holder.filter(h => h < 0).length
     this.current = this.objective()
     this.bestObjective = this.current
+    this.bestUnassigned = this.unassigned
     this.best = this.assign.map(r => Int32Array.from(r))
     // ~ a third of one crew member's whole score
     this.t0 = SCORE_SCALE / Math.max(1, model.M) * 0.3
@@ -438,6 +524,7 @@ export class RosterImprover {
     this.current = value
     if (value > this.bestObjective + 1e-9) {
       this.bestObjective = value
+      this.bestUnassigned = this.unassigned
       this.best = this.assign.map(r => Int32Array.from(r))
       this.improvements++
       this.lastImprovementAt = Date.now()
@@ -504,6 +591,12 @@ export class RosterImprover {
 
 // ── proposal ──────────────────────────────────────────────────────────────────
 
+function holderOf(assign: Int32Array[], dutyCount: number): Int32Array {
+  const holder = new Int32Array(dutyCount).fill(-1)
+  assign.forEach((row, mi) => row.forEach(di => { if (di >= 0) holder[di] = mi }))
+  return holder
+}
+
 export interface RosterProposal {
   index:   number
   summary: RosterProposalSummary
@@ -513,7 +606,7 @@ export interface RosterProposal {
   dayOffs: [string, string][]
 }
 
-export function buildProposal(model: RosterModel, assign: Int32Array[], index: number): RosterProposal {
+export function buildProposal(model: RosterModel, assign: Int32Array[], index: number, bound: number): RosterProposal {
   const { input, M, T } = model
   const assignments: [string, string][] = []
   const dayOffs: [string, string][] = []
@@ -554,6 +647,8 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       duties: input.duties.length, assigned, unassigned, warnings: warns, dayOffs: dayOffs.length,
       days: input.days.map((date, t) => ({ date, duties: dutiesByDay[t], assigned: assignedByDay[t], free: freeByDay[t] })),
       members,
+      bound,
+      shortage: diagnoseShortage(model, assign, holderOf(assign, input.duties.length)),
     },
   }
 }

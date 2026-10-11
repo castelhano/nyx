@@ -115,6 +115,10 @@ export async function loadRosterInput(
     return `${dominant?.lineId ?? '-'}|${shiftId ?? '-'}`
   }
 
+  const shiftCodes = new Map((await prisma.crewShift.findMany({
+    where: { id: { in: [...new Set(duties.flatMap(d => d.shiftId ?? []))] } }, select: { id: true, code: true },
+  })).map(s => [s.id, s.code]))
+
   const rgDuties: RgDuty[] = []
   for (const d of duties) {
     const s = d.summary as DutySummary | null
@@ -123,6 +127,7 @@ export async function loadRosterInput(
     rgDuties.push({
       id: d.id, day: dayIndex.get(opDay.get(d.dailyOperationId)!)!, start: s.startMinutes, end: s.endMinutes, paid: s.paidMinutes, kind: d.kind,
       signature: signature(d.id, d.shiftId),
+      shift: d.shiftId ? shiftCodes.get(d.shiftId) ?? null : null,
       lineMinutes: f?.lines ?? [],
       vehicleTypes: f?.vehicleTypes ?? [],
       operated: !params.restrictToBranchLines || (f?.lines ?? []).every(l => {

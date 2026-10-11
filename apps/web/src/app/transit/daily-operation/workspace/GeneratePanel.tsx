@@ -8,6 +8,7 @@ import { Icons } from '@/lib/icons'
 import { apiFetch, getToken } from '@/lib/auth'
 import { cn, extractError } from '@/lib/utils'
 import { fmtDay } from './board'
+import { ShortageList } from './ShortageList'
 
 // "Gerar" inside the Escala screen: the period, empresa and role are the screen's; the run goes
 // on in the server (SSE), and each better proposal is drawn over the board (the parent gets its
@@ -37,9 +38,11 @@ interface Props {
   // the board must be read again (days created, proposal accepted)
   onRefresh:  () => void
   onClose:    () => void
+  // a duty from the "why" list
+  onSelectDuty?: (dutyId: string) => void
 }
 
-export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh, onClose }: Props) {
+export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh, onClose, onSelectDuty }: Props) {
   const [opts, setOpts] = useState({ ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true })
   const [jobId, setJobId]       = useState<string | null>(null)
   const [running, setRunning]   = useState(false)
@@ -168,6 +171,14 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
               <Kpi label="Com pendência" value={summary.warnings} warn={summary.warnings > 0} />
             </div>
           )}
+          {summary && summary.unassigned > 0 && (
+            <p className={cn('text-[11px]', summary.assigned >= summary.bound ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+              {summary.assigned >= summary.bound
+                ? `Cobertura máxima com o quadro atual (${summary.bound}/${summary.duties}) — daqui em diante só a qualidade melhora.`
+                : `O quadro atual permite cobrir até ${summary.bound}/${summary.duties}.`}
+            </p>
+          )}
+          {summary && <ShortageList groups={summary.shortage} onSelectDuty={onSelectDuty} />}
           {summary && <p className="text-[11px] text-muted-foreground">As células com contorno tracejado mostram o que a proposta muda.</p>}
           <div className="flex gap-1.5">
             {running && <Button size="sm" variant="outline" onClick={() => void apiFetch(`${BASE}/stop`, { method: 'POST', body: JSON.stringify({ jobId }) })}>Parar</Button>}

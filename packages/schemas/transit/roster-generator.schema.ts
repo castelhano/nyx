@@ -54,4 +54,17 @@ export interface RosterProposalSummary {
   dayOffs:    number
   days:       { date: string; duties: number; assigned: number; free: number }[]
   members:    RosterMemberStat[]
+  // the most duties the crew can cover (per day, by the fixed rules) — coverage can't go above
+  bound:      number
+  // why the duties without a crew member have none, grouped
+  shortage:   RosterShortage[]
+}
+
+// duties left without a crew member for the same reason (and shift)
+export interface RosterShortage {
+  reason:   string
+  shift:    string | null
+  dutyIds:  string[]
+  // crew members who could take them but are on their rest pattern's day off ("1234 Fulano")
+  couldCover: string[]
 }

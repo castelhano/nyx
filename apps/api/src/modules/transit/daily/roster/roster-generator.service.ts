@@ -26,7 +26,9 @@ import { systemAbsenceTypeId } from '../../crew/crew-absence-type/system-types'
 
 const KEEP_MS = 30 * 60 * 1000
 const MAX_MS  = 3 * 60 * 1000
-const IDLE_MS = 40 * 1000
+const IDLE_MS = 15 * 1000
+// once the coverage reached what the crew allows
+const BOUND_IDLE_MS = 8 * 1000
 
 type End = Extract<RosterMessage, { type: 'done' | 'error' }>
 type Progress = Extract<RosterMessage, { type: 'progress' }>
@@ -127,7 +129,7 @@ export class RosterGeneratorService {
 
     const isTs = __filename.endsWith('.ts')
     const worker = new Worker(path.join(__dirname, `roster-generator.worker${isTs ? '.ts' : '.js'}`), {
-      workerData: { input: context.input, seed: Date.now(), maxMs: MAX_MS, idleMs: IDLE_MS } satisfies RosterWorkerData,
+      workerData: { input: context.input, seed: Date.now(), maxMs: MAX_MS, idleMs: IDLE_MS, boundIdleMs: BOUND_IDLE_MS } satisfies RosterWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
     })
     job.worker = worker
