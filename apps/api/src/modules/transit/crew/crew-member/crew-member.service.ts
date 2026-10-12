@@ -22,12 +22,26 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
     return { employee: { OR: [{ fullName: stringContains(search) }, { code: stringContains(search) }] } }
   }
 
+  // code, fullName and preferredName are the Employee's — AND keeps them clear of the search's `employee`
+  protected override buildFilterWhere(query: Record<string, unknown>) {
+    const { f_code, f_fullName, f_preferredName, ...rest } = query as Record<string, string | undefined>
+    const employee = {
+      ...(f_code          ? { code:          stringContains(f_code) }          : {}),
+      ...(f_fullName      ? { fullName:      stringContains(f_fullName) }      : {}),
+      ...(f_preferredName ? { preferredName: stringContains(f_preferredName) } : {}),
+    }
+    return {
+      ...super.buildFilterWhere(rest),
+      ...(Object.keys(employee).length ? { AND: [{ employee }] } : {}),
+    }
+  }
+
   private async withComputed(rows: CrewMember[]): Promise<CrewMember[]> {
     if (!rows.length) return rows
     const [employees, shifts] = await Promise.all([
       this.prisma.employee.findMany({
         where:  { id: { in: rows.map(r => r.employeeId) } },
-        select: { id: true, code: true, fullName: true, branch: { select: { id: true, name: true } } },
+        select: { id: true, code: true, fullName: true, preferredName: true, branch: { select: { id: true, name: true } } },
       }),
       this.shifts.current(rows.map(r => r.id), localToday()),
     ])
@@ -37,11 +51,13 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
       const shift = shifts.get(r.id) ?? null
       return {
         ...r,
-        code:        e?.code,
-        displayName: e ? `${e.code} — ${e.fullName}` : undefined,
-        branchId:    e?.branch.id,
-        branch:      e?.branch,
-        shiftId:     shift?.id,
+        code:          e?.code,
+        fullName:      e?.fullName,
+        preferredName: e?.preferredName,
+        displayName:   e ? `${e.code} — ${e.fullName}` : undefined,
+        branchId:      e?.branch.id,
+        branch:        e?.branch,
+        shiftId:       shift?.id,
         shift,
       } as CrewMember
     })

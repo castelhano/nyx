@@ -65,7 +65,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const where = {
       ...(query.search ? this.buildSearchWhere(query.search) : {}),
       ...contextFilters,
-      ...buildFilterWhere(this.schema, query),
+      ...this.buildFilterWhere(query),
     }
 
     const include    = this.buildRelationIncludes()
@@ -182,5 +182,10 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
 
   protected buildSearchWhere(_search: string): Record<string, unknown> {
     return {}
+  }
+
+  // override to translate filters on computed fields (f_<field>) into relation conditions
+  protected buildFilterWhere(query: Record<string, unknown>): Record<string, unknown> {
+    return buildFilterWhere(this.schema, query)
   }
 }

@@ -37,16 +37,39 @@ export const crewMemberSchema = withMeta(
     // the Employee's code — the reference (nameField) typed in lookups
     code: z.string().optional().meta({
       label:          'Matrícula',
+      listVisibility: 'visible',
+      showInForm:     false,
+      sortable:       false,
+      computed:       true,
+      filter:         true,
+      keybind:        'c',
+    }),
+
+    // the Employee's fullName / preferredName
+    fullName: z.string().optional().meta({
+      label:          'Nome',
+      listVisibility: 'visible',
+      showInForm:     false,
+      sortable:       false,
+      computed:       true,
+      filter:         true,
+      keybind:        'g',
+    }),
+
+    preferredName: z.string().optional().nullable().meta({
+      label:          'Apelido',
       listVisibility: 'hidden',
       showInForm:     false,
       sortable:       false,
       computed:       true,
+      filter:         true,
+      keybind:        'a',
     }),
 
-    // "1234 — Fulano de Tal"
+    // "1234 — Fulano de Tal" — breadcrumb and lookups; the list shows code / fullName
     displayName: z.string().optional().meta({
       label:          'Operador',
-      listVisibility: 'visible',
+      listVisibility: 'never',
       showInForm:     false,
       sortable:       false,
       computed:       true,
@@ -77,7 +100,7 @@ export const crewMemberSchema = withMeta(
       sortable:       false,
       computed:       true,
       className:      'md:w-1/4',
-      keybind:        't',
+      keybind:        'k',
     }),
 
     role: z.enum(CREW_ROLES).default('DRIVER').meta({
@@ -214,7 +237,7 @@ export const crewMemberSchema = withMeta(
   },
 )
 
-export const createCrewMemberSchema = crewMemberSchema.omit({ id: true, createdAt: true, updatedAt: true, code: true, displayName: true, branchId: true })
+export const createCrewMemberSchema = crewMemberSchema.omit({ id: true, createdAt: true, updatedAt: true, code: true, fullName: true, preferredName: true, displayName: true, branchId: true })
 export const updateCrewMemberSchema  = createCrewMemberSchema.partial()
 
 export type CrewMember          = z.infer<typeof crewMemberSchema>
@@ -237,7 +260,7 @@ export const crewMemberShiftSchema = withMeta(
       labelField:     'code',
       listVisibility: 'visible',
       className:      'md:w-44',
-      keybind:        't',
+      keybind:        'k',
     }),
 
     validFrom: z.date().meta({
@@ -245,7 +268,6 @@ export const crewMemberShiftSchema = withMeta(
       listVisibility: 'visible',
       className:      'md:w-44',
       defaultValue:   '$today',
-      keybind:        'd',
     }),
 
     validTo: z.date().optional().nullable().meta({
@@ -313,7 +335,6 @@ export const crewMemberLineSchema = withMeta(
       helpText:       '1 = primária, 2 = secundária... Só entre as linhas que o operador pode operar.',
       listVisibility: 'visible',
       className:      'md:w-28',
-      keybind:        'p',
     }),
 
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
@@ -368,7 +389,6 @@ export const crewOccurrenceSchema = withMeta(
       filter:         true,
       defaultValue:   'ABSENCE',
       className:      'md:w-1/4',
-      keybind:        't',
       optionLabels:   CREW_OCCURRENCE_KIND_LABEL,
     }),
 
@@ -381,7 +401,7 @@ export const crewOccurrenceSchema = withMeta(
       labelField:     'name',
       listVisibility: 'visible',
       className:      'md:w-1/3',
-      keybind:        'm',
+      keybind:        'o',
     }),
 
     startDate: z.date().meta({
