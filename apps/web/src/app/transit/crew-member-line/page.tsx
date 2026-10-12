@@ -18,16 +18,21 @@ const FORM_ID = 'crew-lines-form'
 
 // The operator's lines (CrewMemberLine) as one board: every line his empresa operates, by line
 // group. One click toggles the state that matters in the empresa's mode (enabled in
-// "habilitadas", blocked in "bloqueadas"); the ★ makes it the next preference. Saved at once.
+// "habilitadas", blocked in "bloqueadas"); the ★ makes it the next preference. The plantão is one
+// more item (STANDBY): allowed unless blocked, whatever the mode, and rankable. Saved at once.
 
 interface Board {
   lineAccessMode:    'WHITELIST' | 'BLACKLIST'
   maxPreferredLines: number
   lines:   { id: string; code: string; name: string; groups: { id: string; name: string }[] }[]
   entries: { lineId: string; access: 'ENABLED' | 'BLOCKED' | null; rank: number | null }[]
+  standby: { blocked: boolean; rank: number | null }
 }
 
-interface Draft { on: string[]; prefs: string[] }
+// prefs may hold STANDBY (the plantão's place among the preferred lines)
+interface Draft { on: string[]; prefs: string[]; standbyBlocked: boolean }
+
+const STANDBY = '__STANDBY__'
 
 const MODE_TEXT = {
   WHITELIST: 'WHITELIST • bloqueia todas',
@@ -42,17 +47,19 @@ async function fetchBoard(crewMemberId: string): Promise<Board> {
 }
 
 // the board's rows as the draft: lines marked in the mode, preferences in rank order
-function draftOf(board: Board, entries = board.entries): Draft {
+function draftOf(board: Board, entries = board.entries, standby = board.standby): Draft {
   const mark = board.lineAccessMode === 'WHITELIST' ? 'ENABLED' : 'BLOCKED'
   const known = new Set(board.lines.map(l => l.id))
   const on = entries.filter(e => e.access === mark && known.has(e.lineId)).map(e => e.lineId)
   const operable = (id: string) => board.lineAccessMode === 'WHITELIST' ? on.includes(id) : !on.includes(id)
-  const prefs = entries
-    .filter(e => e.rank != null && known.has(e.lineId) && operable(e.lineId))
+  const prefs = [
+    ...entries.filter(e => e.rank != null && known.has(e.lineId) && operable(e.lineId)),
+    ...(standby.rank != null && !standby.blocked ? [{ lineId: STANDBY, rank: standby.rank }] : []),
+  ]
     .sort((a, b) => a.rank! - b.rank!)
     .map(e => e.lineId)
     .slice(0, board.maxPreferredLines)
-  return { on, prefs }
+  return { on, prefs, standbyBlocked: standby.blocked }
 }
 
 export default function CrewMemberLinesPage() {
@@ -73,17 +80,25 @@ export default function CrewMemberLinesPage() {
   const [edit, setEdit]     = useState<Draft | null>(null)
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
-  const draft = edit ?? (board ? draftOf(board) : { on: [], prefs: [] })
+  const draft = edit ?? (board ? draftOf(board) : { on: [], prefs: [], standbyBlocked: false })
   const dirty = !!board && !!edit && JSON.stringify(edit) !== JSON.stringify(draftOf(board))
 
   const whitelist = board?.lineAccessMode === 'WHITELIST'
-  const operable  = (id: string, d = draft) => whitelist ? d.on.includes(id) : !d.on.includes(id)
-  const lineById  = useMemo(() => new Map((board?.lines ?? []).map(l => [l.id, l])), [board])
+  const operable  = (id: string, d = draft) => id === STANDBY ? !d.standbyBlocked : whitelist ? d.on.includes(id) : !d.on.includes(id)
+  const lineById  = useMemo(() => new Map([
+    ...(board?.lines ?? []).map(l => [l.id, l] as const),
+    [STANDBY, { id: STANDBY, code: 'Plantão', name: 'Plantão (reserva)', groups: [] }] as const,
+  ]), [board])
+
+  function toggleStandby() {
+    const next = { ...draft, standbyBlocked: !draft.standbyBlocked }
+    setEdit({ ...next, prefs: next.prefs.filter(id => operable(id, next)) })
+  }
 
   function toggle(ids: string[], on: boolean) {
     const set = new Set(draft.on)
     for (const id of ids) { if (on) set.add(id); else set.delete(id) }
-    const next = { on: [...set], prefs: draft.prefs }
+    const next = { ...draft, on: [...set] }
     setEdit({ ...next, prefs: next.prefs.filter(id => operable(id, next)) })
   }
 
@@ -130,13 +145,14 @@ export default function CrewMemberLinesPage() {
     setSaving(true)
     try {
       const mark = whitelist ? 'ENABLED' : 'BLOCKED'
-      const ids = new Set([...draft.on, ...draft.prefs])
+      const ids = new Set([...draft.on, ...draft.prefs.filter(id => id !== STANDBY)])
       const entries = [...ids].map(lineId => ({
         lineId,
         access: draft.on.includes(lineId) ? mark : null,
         rank:   draft.prefs.includes(lineId) ? draft.prefs.indexOf(lineId) + 1 : null,
       }))
-      const res  = await apiFetch(`/transit/crew-member-line/board/${crewMemberId}`, { method: 'PUT', body: JSON.stringify({ entries }) })
+      const standby = { blocked: draft.standbyBlocked, rank: draft.prefs.includes(STANDBY) ? draft.prefs.indexOf(STANDBY) + 1 : null }
+      const res  = await apiFetch(`/transit/crew-member-line/board/${crewMemberId}`, { method: 'PUT', body: JSON.stringify({ entries, standby }) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(extractError(json))
       queryClient.setQueryData(['transit', 'crew-member-line', 'board', crewMemberId], json)
@@ -166,7 +182,7 @@ export default function CrewMemberLinesPage() {
     if (!option || !board) return
     try {
       const other = await fetchBoard(option.id)
-      setEdit(draftOf(board, other.lineAccessMode === board.lineAccessMode ? other.entries : other.entries.filter(e => e.rank != null).map(e => ({ ...e, access: null }))))
+      setEdit(draftOf(board, other.lineAccessMode === board.lineAccessMode ? other.entries : other.entries.filter(e => e.rank != null).map(e => ({ ...e, access: null })), other.standby))
       toast.success(`Linhas copiadas de ${option.label} — grave para confirmar`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao copiar')
@@ -191,7 +207,7 @@ export default function CrewMemberLinesPage() {
       {!board ? <p className="text-sm text-muted-foreground">Carregando…</p> : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-muted-foreground mr-auto">Modo da empresa: <span className="text-foreground">{MODE_TEXT[board.lineAccessMode]}</span></p>
+            <p className="text-sm text-muted-foreground mr-auto">METODOLOGIA: <span className="text-foreground">{MODE_TEXT[board.lineAccessMode]}</span></p>
             <div className="relative">
               <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
@@ -245,7 +261,7 @@ export default function CrewMemberLinesPage() {
                   </span>
                 )
               })}
-              <span className="text-xs text-muted-foreground">★ numa linha a coloca na próxima posição · arraste para reordenar</span>
+              <span className="text-xs text-muted-foreground">★ preferencial · arraste para reordenar</span>
             </div>
           )}
 
@@ -259,6 +275,37 @@ export default function CrewMemberLinesPage() {
               </>
             )}
           </div>
+
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium">Plantão</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {(() => {
+                const rank = draft.prefs.indexOf(STANDBY) + 1
+                const canStar = !draft.standbyBlocked && (rank > 0 || draft.prefs.length < board.maxPreferredLines)
+                return (
+                  <span className={cn(
+                    'inline-flex items-center h-8 rounded-sm border text-sm transition-colors',
+                    draft.standbyBlocked ? 'border-red-500/60 bg-red-500/15 text-muted-foreground line-through' : 'border-cyan-500/60 bg-cyan-500/10',
+                  )}>
+                    <button type="button" disabled={readonly} onClick={toggleStandby} title={draft.standbyBlocked ? 'Não faz plantão — clique para liberar' : 'Faz plantão — clique para bloquear'}
+                      className="h-full pl-2.5 pr-1.5 font-medium disabled:cursor-default">
+                      Plantão
+                    </button>
+                    {board.maxPreferredLines > 0 && (
+                      <button
+                        type="button" disabled={readonly || !canStar} onClick={() => star(STANDBY)}
+                        title={rank ? `${rank}ª preferência — clique para tirar` : 'Tornar preferência'}
+                        className={cn('h-full pr-2 pl-0.5 text-xs disabled:opacity-30 disabled:cursor-default', rank ? 'text-amber-500' : 'text-muted-foreground/60 hover:text-amber-500')}
+                      >
+                        {rank ? `★${rank}` : '☆'}
+                      </button>
+                    )}
+                  </span>
+                )
+              })()}
+              <span className="text-xs text-muted-foreground">Liberado para todos, em qualquer modo — clique para bloquear; ★ coloca o plantão entre as preferências</span>
+            </div>
+          </section>
 
           {sections.length === 0 && <p className="text-sm text-muted-foreground">{board.lines.length ? 'Nenhuma linha na busca.' : 'A empresa do operador não opera nenhuma linha ativa.'}</p>}
 

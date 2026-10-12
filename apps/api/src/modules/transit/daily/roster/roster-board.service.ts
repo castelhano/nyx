@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import {
   ROSTER_MAX_HORIZON_DAYS, restGroupIndex, restGroupLabel, restPatternWorks, shiftIdealDistance,
-  type CrewRole, type DailyIssue, type DailySource, type RosterQuality, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
+  type CrewRole, type DailyIssue, type DailySource, type RosterQuality, type VehiclePlanConstraints, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
@@ -107,6 +107,7 @@ export class RosterBoardService {
             select: { startMinutes: true, endMinutes: true, isStale: true, dailyBlockId: true, block: { select: { blockNumber: true, vehicleId: true, issues: true, vehicle: { select: { code: true } } } } },
           },
           rosterEntries: { select: { crewMemberId: true, locked: true } },
+          sourceDutyId: true,
         },
       }),
       this.prisma.crewShift.findMany({ where: { branches: { some: { branchId } } }, orderBy: { code: 'asc' }, select: { id: true, code: true } }),
@@ -122,7 +123,7 @@ export class RosterBoardService {
     const blockIds = [...new Set(duties.flatMap(d => d.pieces.flatMap(p => p.dailyBlockId ?? [])))]
     const trips = await this.prisma.dailyBlockEvent.findMany({
       where:  { dailyBlockId: { in: blockIds }, kind: 'TRIP', isCancelled: false },
-      select: { dailyBlockId: true, lineId: true, startMinutes: true, endMinutes: true },
+      select: { dailyBlockId: true, lineId: true, startMinutes: true, endMinutes: true, bundleId: true },
     })
     const lines = await this.prisma.transitLine.findMany({ where: { id: { in: [...new Set(trips.flatMap(t => t.lineId ?? []))] } }, select: { id: true, code: true } })
     const lineCode = new Map(lines.map(l => [l.id, l.code]))
@@ -198,6 +199,24 @@ export class RosterBoardService {
       }
     }
 
+    // the preferred crew members (read live): the logical duty's, then its trip groups' (the
+    // days' vehicle plans — VehiclePlan.constraints.bundleCrew)
+    const dutyPins = new Map((await this.prisma.duty.findMany({
+      where:  { id: { in: [...new Set(duties.flatMap(d => d.sourceDutyId ?? []))] } },
+      select: { id: true, constraints: true },
+    })).map(d => [d.id, (d.constraints as { crewMemberIds?: string[] } | null)?.crewMemberIds ?? []]))
+    const bundleCrew = new Map<string, string[]>()
+    for (const p of await this.prisma.vehiclePlan.findMany({
+      where:  { id: { in: [...new Set(operations.flatMap(o => ((o.sources ?? []) as unknown as DailySource[]).map(s => s.vehiclePlanId)))] } },
+      select: { constraints: true },
+    })) {
+      for (const [b, ids] of Object.entries((p.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {})) bundleCrew.set(b, ids)
+    }
+    const preferredOf = (d: (typeof duties)[number]) => {
+      const groups = new Set(d.pieces.flatMap(p => (tripsOf.get(p.dailyBlockId ?? '') ?? [])
+        .filter(t => t.bundleId && Math.min(t.endMinutes, p.endMinutes) > Math.max(t.startMinutes, p.startMinutes)).map(t => t.bundleId!)))
+      return [...new Set([...(dutyPins.get(d.sourceDutyId ?? '') ?? []), ...[...groups].flatMap(b => bundleCrew.get(b) ?? [])])]
+    }
     const boardDuties = duties.map(d => {
       const op = opById.get(d.dailyOperationId)!
       const s = d.summary as DutySummary | null
@@ -218,6 +237,7 @@ export class RosterBoardService {
         issues: (d.issues as DailyIssue[] | null) ?? [],
         crewMemberId: d.rosterEntries[0]?.crewMemberId ?? null,
         locked: d.rosterEntries[0]?.locked ?? false,
+        preferred: preferredOf(d),
         isStale: d.isStale,
       }
     })
@@ -233,7 +253,7 @@ export class RosterBoardService {
           date,
           operations: ops.map(o => ({ id: o.id, scopeId: o.scopeId, scope: scopeName.get(o.scopeId) ?? '', status: o.status, outdated: outdated.get(o.id) ?? null })),
           duties: mine.length, assigned: mine.filter(d => d.crewMemberId).length,
-          issues: mine.filter(d => d.issues.length || d.blocks.some(b => b.issues.length)).length,
+          issues: mine.filter(d => d.issues.some(i => i.severity !== 'info') || d.blocks.some(b => b.issues.length)).length,
         }
       }),
       shifts,
@@ -378,7 +398,28 @@ export class RosterBoardService {
       const ev = model.evaluate(mi, row)
       out.set(m.id, { workedMinutes: ev.worked, targetMinutes: Math.round(m.targetMinutes), changes: ev.changes, prefShare: ev.prefShare == null ? null : Math.round(ev.prefShare) })
     })
-    return { stats: out, quality: input.duties.length ? rosterQuality(model, rows) : null }
+    return { stats: out, quality: input.duties.length ? { ...rosterQuality(model, rows), fixedCar: await this.fixedCar(entries) } : null }
+  }
+
+  // the worked days of crew members with a preferred vehicle, and those driving it on some piece
+  private async fixedCar(entries: { crewMemberId: string; dailyDutyId: string | null }[]) {
+    const preferred = new Map((await this.prisma.crewMember.findMany({
+      where:  { id: { in: [...new Set(entries.map(e => e.crewMemberId))] }, preferredVehicleId: { not: null } },
+      select: { id: true, preferredVehicleId: true },
+    })).map(c => [c.id, c.preferredVehicleId!]))
+    const mine = entries.filter(e => e.dailyDutyId && preferred.has(e.crewMemberId))
+    const cars = new Map((await this.prisma.dailyDuty.findMany({
+      where:  { id: { in: mine.map(e => e.dailyDutyId!) }, kind: { not: 'STANDBY' } },
+      select: { id: true, pieces: { where: { isStale: false }, select: { block: { select: { vehicleId: true } } } } },
+    })).map(d => [d.id, d.pieces.map(p => p.block?.vehicleId)]))
+    let met = 0, days = 0
+    for (const e of mine) {
+      const vs = cars.get(e.dailyDutyId!)
+      if (!vs) continue
+      days++
+      if (vs.includes(preferred.get(e.crewMemberId)!)) met++
+    }
+    return { met, days }
   }
 }
 

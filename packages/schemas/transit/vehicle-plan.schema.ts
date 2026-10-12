@@ -5,6 +5,9 @@ import { withMeta } from '../with-meta'
 // Constraints shape for a generated plan
 export interface VehiclePlanConstraints {
   locked?: true    // entire plan is frozen — solver will not touch it in future runs
+  // trip group (bundleId) → the crew members who should work it, in order: the crew solver builds
+  // its duty within the first one's shift, and the roster generator prefers them on it
+  bundleCrew?: Record<string, string[]>
 }
 
 export const vehiclePlanSummarySchema = z.object({

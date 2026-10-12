@@ -9,7 +9,7 @@ import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
 import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings } from '@nyx/schemas'
 import { generateDraftRef } from '../line-schedule/line-schedule.util'
-import type { VehiclePlanSummary } from '@nyx/schemas'
+import type { VehiclePlanConstraints, VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
 import type { VehiclePlanDiff } from '@nyx/schemas'
@@ -388,6 +388,60 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return computeLineSummary(lineAgg.get(lineId), planningCfg.line)
   }
 
+  // ── trip groups' crew members (constraints.bundleCrew) ───────────────────────
+
+  // bundleId → the crew members, in order and named — groups no longer in the plan left out
+  // each live group's crew members, in order — with a warning when the group can't fit in one's
+  // current shift (no duty holding it could start at or after the shift's floor and end by its
+  // ceiling)
+  async getBundleCrew(id: string): Promise<Record<string, { id: string; code: string; name: string; warning?: string }[]>> {
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id }, select: { constraints: true } })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    const map = (plan.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {}
+    const span = new Map<string, { start: number; end: number }>()
+    for (const t of await this.prisma.transitTrip.findMany({
+      where: { vehiclePlanId: id, bundleId: { in: Object.keys(map) } }, select: { bundleId: true, departureMinutes: true, arrivalMinutes: true },
+    })) {
+      const w = span.get(t.bundleId!)
+      span.set(t.bundleId!, { start: Math.min(w?.start ?? Infinity, t.departureMinutes), end: Math.max(w?.end ?? -Infinity, t.arrivalMinutes) })
+    }
+    const today = new Date(new Date().toISOString().slice(0, 10))
+    const members = new Map((await this.prisma.crewMember.findMany({
+      where:  { id: { in: [...new Set(Object.values(map).flat())] } },
+      select: {
+        id: true, employee: { select: { code: true, fullName: true, preferredName: true } },
+        shifts: {
+          where:  { validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] },
+          select: { shift: { select: { code: true, startFloor: true, endCeiling: true } } }, take: 1,
+        },
+      },
+    })).map(m => [m.id, m]))
+    const clock = (x: number) => `${String(Math.floor(x / 60) % 24).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
+    return Object.fromEntries([...span].map(([b, w]) => [b, (map[b] ?? []).flatMap(x => {
+      const m = members.get(x)
+      if (!m) return []
+      const shift = m.shifts[0]?.shift
+      const warning = !shift ? 'sem turno'
+        : w.start < shift.startFloor || w.end > shift.endCeiling ? `fora do turno ${shift.code} (grupo ${clock(w.start)}–${clock(w.end)})` : undefined
+      return [{ id: m.id, code: m.employee.code, name: m.employee.preferredName || m.employee.fullName, ...(warning ? { warning } : {}) }]
+    })]))
+  }
+
+  // a group's crew members, in order ([] clears) — a preference, so any plan status takes it
+  async setBundleCrew(id: string, bundleId: string, crewMemberIds: string[]): Promise<void> {
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id }, select: { constraints: true } })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (!bundleId || !(await this.prisma.transitTrip.findFirst({ where: { vehiclePlanId: id, bundleId }, select: { id: true } }))) {
+      throw new BadRequestException('Grupo de viagens não encontrado no plano — grave o plano antes')
+    }
+    const ids = [...new Set(crewMemberIds.filter(x => typeof x === 'string' && x))]
+    if (ids.length && (await this.prisma.crewMember.count({ where: { id: { in: ids } } })) !== ids.length) throw new BadRequestException('Operador não encontrado')
+    const constraints = (plan.constraints ?? {}) as VehiclePlanConstraints
+    const { [bundleId]: _old, ...rest } = constraints.bundleCrew ?? {}
+    const bundleCrew = ids.length ? { ...rest, [bundleId]: ids } : rest
+    await this.prisma.vehiclePlan.update({ where: { id }, data: { constraints: { ...constraints, bundleCrew } } })
+  }
+
   async duplicate(planId: string): Promise<VehiclePlan> {
     const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },
@@ -521,6 +575,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             })),
           })
         }
+      }
+
+      // the groups' crew members follow their groups' new ids
+      const bundleCrew = (plan.constraints as VehiclePlanConstraints | null)?.bundleCrew
+      if (bundleCrew) {
+        const remapped = Object.fromEntries(Object.entries(bundleCrew).flatMap(([id, crew]) => (bundleIdMap.has(id) ? [[bundleIdMap.get(id)!, crew]] : [])))
+        await tx.vehiclePlan.update({ where: { id: newPlan.id }, data: { constraints: { ...(plan.constraints as object), bundleCrew: remapped } } })
       }
 
       return newPlan as unknown as VehiclePlan

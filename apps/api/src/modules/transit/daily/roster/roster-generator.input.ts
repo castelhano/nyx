@@ -1,11 +1,11 @@
-import { restPatternWorks, type DutySummary, type RosterGeneratorParams, type ShiftWindow } from '@nyx/schemas'
+import { restPatternWorks, type DutySummary, type RosterGeneratorParams, type ShiftWindow, type VehiclePlanConstraints } from '@nyx/schemas'
 import type { PrismaService } from '../../../../prisma/prisma.service'
 import type { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import { loadCrewBranchRules } from '../../timetabling/crew-plan/crew-branch-rules'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
 import { effectiveWindow } from '../daily-checks'
-import { NOT_PUBLISHED, isChange, signatureGroup, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
+import { NOT_PUBLISHED, STANDBY_LINE, isChange, signatureGroup, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
 
 // Reads everything the generator needs for one empresa/role over [from, to]:
 //  - the duties of the PLANNED days (and PUBLISHED ones, `published`) of the Scopes the empresa
@@ -54,7 +54,7 @@ export async function loadRosterInput(
 
   const operations = await prisma.dailyOperation.findMany({
     where:  { scopeId: { in: scopeIds }, date: { gte: toDbDate(from), lte: toDbDate(to) }, status: { in: options.published ? ['PLANNED', 'PUBLISHED'] : ['PLANNED'] } },
-    select: { id: true, date: true, scopeId: true, status: true },
+    select: { id: true, date: true, scopeId: true, status: true, sources: true },
   })
   const publishedDays = new Set(operations.filter(o => o.status === 'PUBLISHED').map(o => dayOf(o.date)))
 
@@ -64,7 +64,7 @@ export async function loadRosterInput(
     orderBy: { employee: { code: 'asc' } },
     select: {
       id: true, notBeforeMinutes: true, notAfterMinutes: true, restOffset: true, blockedVehicleTypes: true,
-      licenseExpiresAt: true, courseExpiresAt: true, weeklyHours: true, overtimePreference: true,
+      licenseExpiresAt: true, courseExpiresAt: true, weeklyHours: true, overtimePreference: true, standbyRank: true, standbyBlocked: true,
       employee: {
         select: {
           code: true, fullName: true, preferredName: true,
@@ -119,10 +119,28 @@ export async function loadRosterInput(
   // the logical duty each daily duty was copied from, and its crew plan — the duty's identity
   // across days (see RgDuty.signature)
   const sources = await prisma.dailyDuty.findMany({ where: { id: { in: dutyIds } }, select: { id: true, sourceDutyId: true } })
-  const planOf = new Map((await prisma.duty.findMany({
+  const logical = await prisma.duty.findMany({
     where:  { id: { in: [...new Set(sources.flatMap(s => s.sourceDutyId ?? []))] } },
-    select: { id: true, crewPlanId: true },
-  })).map(d => [d.id, d.crewPlanId]))
+    select: { id: true, crewPlanId: true, constraints: true },
+  })
+  const planOf = new Map(logical.map(d => [d.id, d.crewPlanId]))
+  // the preferred crew members of the logical duty (read live — a change in the plan reaches the
+  // days already created), as member indices
+  const memberIndex = new Map(members.map((m, i) => [m.id, i]))
+  const dutyPins = new Map(logical.map(d => [d.id, (d.constraints as { crewMemberIds?: string[] } | null)?.crewMemberIds ?? []]))
+  // the trip groups' crew members (VehiclePlan.constraints.bundleCrew of the days' plans)
+  const bundleCrew = new Map<string, string[]>()
+  for (const p of await prisma.vehiclePlan.findMany({
+    where:  { id: { in: [...new Set(operations.flatMap(o => ((o.sources ?? []) as { vehiclePlanId: string }[]).map(s => s.vehiclePlanId)))] } },
+    select: { constraints: true },
+  })) {
+    for (const [b, ids] of Object.entries((p.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {})) bundleCrew.set(b, ids)
+  }
+  // a daily duty's preferred crew: its logical duty's, then its trip groups' — as member indices
+  const preferredOf = (dutyId: string) => [...new Set([
+    ...(dutyPins.get(sourceOf.get(dutyId) ?? '') ?? []),
+    ...(facts.get(dutyId)?.bundles ?? []).flatMap(b => bundleCrew.get(b) ?? []),
+  ])].flatMap(id => memberIndex.get(id) ?? [])
   const sourceOf = new Map(sources.map(s => [s.id, s.sourceDutyId]))
   const signature = (dutyId: string, shiftId: string | null) => {
     const src = sourceOf.get(dutyId)
@@ -147,9 +165,11 @@ export async function loadRosterInput(
       id: d.id, day: dayIndex.get(opDay.get(d.dailyOperationId)!)!, start: s.startMinutes, end: s.endMinutes, paid: s.paidMinutes, kind: d.kind,
       signature: signature(d.id, d.shiftId),
       shift: d.shiftId ? shiftCodes.get(d.shiftId) ?? null : null,
-      lineMinutes: f?.lines ?? [],
+      // a plantão is worked as one more "line" (STANDBY_LINE) — preferences and access apply to it
+      lineMinutes: d.kind === 'STANDBY' ? [{ lineId: STANDBY_LINE, minutes: s.endMinutes - s.startMinutes }] : f?.lines ?? [],
       vehicleTypes: f?.vehicleTypes ?? [],
       standby: d.kind === 'STANDBY',
+      preferred: preferredOf(d.id),
       operated: !params.restrictToBranchLines || (f?.lines ?? []).every(l => {
         const ops = lineOperators.get(l.lineId)
         return !ops?.length || ops.includes(branchId)
@@ -222,9 +242,13 @@ export async function loadRosterInput(
     for (const l of m.lines) {
       if (l.rank != null && l.rank <= maxPreferred) prefGrade[l.lineId] = (settings.preferredLineGrades[l.rank - 1] ?? 0) / 100
     }
+    if (m.standbyRank != null && m.standbyRank <= maxPreferred && !m.standbyBlocked) {
+      prefGrade[STANDBY_LINE] = (settings.preferredLineGrades[m.standbyRank - 1] ?? 0) / 100
+    }
     return {
       id: m.id, code: m.employee.code, name: m.employee.preferredName || m.employee.fullName,
-      lineAccess: Object.fromEntries(m.lines.filter(l => l.access).map(l => [l.lineId, l.access!])),
+      // the plantão: allowed unless blocked, whatever the empresa's mode
+      lineAccess: { ...Object.fromEntries(m.lines.filter(l => l.access).map(l => [l.lineId, l.access!])), [STANDBY_LINE]: m.standbyBlocked ? 'BLOCKED' : 'ENABLED' },
       prefGrade,
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
@@ -298,7 +322,7 @@ export async function dutyLines(prisma: PrismaService, dutyIds: string[]) {
   const [trips, blocks] = await Promise.all([
     prisma.dailyBlockEvent.findMany({
       where:  { dailyBlockId: { in: blockIds }, kind: 'TRIP', isCancelled: false },
-      select: { dailyBlockId: true, lineId: true, startMinutes: true, endMinutes: true },
+      select: { dailyBlockId: true, lineId: true, startMinutes: true, endMinutes: true, bundleId: true },
     }),
     prisma.dailyBlock.findMany({ where: { id: { in: blockIds } }, select: { id: true, vehicleType: true, vehicle: { select: { vehicleType: true } } } }),
   ])
@@ -306,14 +330,15 @@ export async function dutyLines(prisma: PrismaService, dutyIds: string[]) {
   for (const t of trips) tripsByBlock.set(t.dailyBlockId!, [...(tripsByBlock.get(t.dailyBlockId!) ?? []), t])
   const typeOf = new Map(blocks.map(b => [b.id, b.vehicle?.vehicleType ?? b.vehicleType]))
 
-  const out = new Map<string, { lines: { lineId: string; minutes: number }[]; vehicleTypes: string[] }>()
+  const out = new Map<string, { lines: { lineId: string; minutes: number }[]; vehicleTypes: string[]; bundles: string[] }>()
   for (const p of pieces) {
-    const f = out.get(p.dailyDutyId) ?? { lines: [], vehicleTypes: [] }
+    const f = out.get(p.dailyDutyId) ?? { lines: [], vehicleTypes: [], bundles: [] }
     out.set(p.dailyDutyId, f)
     const type = typeOf.get(p.dailyBlockId!)
     if (type && !f.vehicleTypes.includes(type)) f.vehicleTypes.push(type)
     for (const t of tripsByBlock.get(p.dailyBlockId!) ?? []) {
       const minutes = Math.min(t.endMinutes, p.endMinutes) - Math.max(t.startMinutes, p.startMinutes)
+      if (minutes > 0 && t.bundleId && !f.bundles.includes(t.bundleId)) f.bundles.push(t.bundleId)
       if (minutes <= 0 || !t.lineId) continue
       const l = f.lines.find(x => x.lineId === t.lineId)
       if (l) l.minutes += minutes

@@ -870,6 +870,10 @@ model CrewMember {
   // collective transport course (curso de transporte coletivo)
   courseExpiresAt     DateTime?          @db.Date
   overtimePreference  OvertimePreference @default(NEUTRAL)
+  // the plantão (STANDBY duties) in his preferences, as if a line: its rank among the preferred
+  // lines (null = not preferred) and whether he may not do plantão at all
+  standbyRank         Int?
+  standbyBlocked      Boolean            @default(false)
   notes               String?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt

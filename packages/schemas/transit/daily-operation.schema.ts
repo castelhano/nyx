@@ -104,8 +104,10 @@ export const DAILY_ISSUE_CODES = [
   'SHIFT_WINDOW',          // outside the crew member's window (shift + bounds + time-window request)
   'LINE_NOT_ALLOWED',      // a line he may not operate (branch's line access mode)
   'VEHICLE_TYPE_BLOCKED',  // a vehicle type blocked for him
+  'STANDBY_BLOCKED',       // on a plantão he may not do (CrewMember.standbyBlocked)
   'CREW_BRANCH_MISMATCH',  // crew member of another empresa than the duty's
   'INTER_SHIFT_REST',      // rest from / to the neighboring day's duty below the floor
+  'SHIFT_IDEAL',           // (info) start/end farther from the shift's ideal than shiftFit's ceiling
   'LICENSE_EXPIRED',       // driver's license (CNH) expired
   'COURSE_EXPIRED',        // collective transport course expired
   // block / vehicle
@@ -118,9 +120,12 @@ export const DAILY_ISSUE_CODES = [
 ] as const
 export type DailyIssueCode = typeof DAILY_ISSUE_CODES[number]
 
+// info: an advisory ("atenção") — shown softly with its detail, never a pendência
 export interface DailyIssue {
   code:     DailyIssueCode
-  severity: 'warning' | 'error'
+  severity: 'warning' | 'error' | 'info'
+  // what it is about, in words (info) — e.g. "início 00:25 (ideal 05:30–08:30)"
+  detail?:  string
   // minutes or count, when it has one
   value?:   number
   // the crew member it is about (duty issues)
@@ -138,8 +143,10 @@ export const DAILY_ISSUE_LABEL: Record<DailyIssueCode, string> = {
   SHIFT_WINDOW:            'Fora do horário do operador',
   LINE_NOT_ALLOWED:        'Linha não permitida ao operador',
   VEHICLE_TYPE_BLOCKED:    'Tipo de veículo bloqueado ao operador',
+  STANDBY_BLOCKED:         'Operador não faz plantão',
   CREW_BRANCH_MISMATCH:    'Operador de outra empresa',
   INTER_SHIFT_REST:        'Interjornada abaixo do mínimo',
+  SHIFT_IDEAL:             'Fora do ideal do turno',
   LICENSE_EXPIRED:         'CNH vencida',
   COURSE_EXPIRED:          'Curso de transporte coletivo vencido',
   BLOCK_NO_VEHICLE:        'Sem veículo',

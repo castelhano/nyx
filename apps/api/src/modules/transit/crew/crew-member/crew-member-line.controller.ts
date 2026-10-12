@@ -24,8 +24,8 @@ export class CrewMemberLineController extends BaseController<CrewMemberLine, Cre
   }
 
   @Put('board/:crewMemberId')
-  async replaceAll(@Req() req: { user?: AuthUser }, @Param('crewMemberId') crewMemberId: string, @Body('entries') entries: unknown) {
+  async replaceAll(@Req() req: { user?: AuthUser }, @Param('crewMemberId') crewMemberId: string, @Body('entries') entries: unknown, @Body('standby') standby: unknown) {
     await this.assertAbility(req.user, 'update')
-    return this.lines.replaceAll(crewMemberId, entries)
+    return this.lines.replaceAll(crewMemberId, entries, standby)
   }
 }

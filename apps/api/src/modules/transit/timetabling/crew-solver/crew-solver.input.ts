@@ -1,11 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
-import { mealPolicy, restPatternWorks, type CrewSettings, type DayTypePattern, type ShiftWindow } from '@nyx/schemas'
+import { mealPolicy, restPatternWorks, type CrewSettings, type DayTypePattern, type ShiftWindow, type VehiclePlanConstraints } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { insideBundle, loadBlockRelief } from '../crew-plan/relief-points'
 import { loadCrewWalk } from '../crew-plan/crew-walk'
 import { loadCrewBranchRules } from '../crew-plan/crew-branch-rules'
 import type { CrewCalcDuty } from '../crew-plan/crew-scoring.calc'
-import type { CrewCapacity, CrewSolverInput, SolverBlock } from './crew-solver.calc'
+import type { CrewCapacity, CrewPin, CrewSolverInput, SolverBlock } from './crew-solver.calc'
 
 // Everything solveCrewPlan needs for one crew plan, in a few queries: its VehiclePlan's
 // blocks (relief points, trips, deadruns), its locked duties, the meal break type and meal
@@ -19,7 +19,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     throw new BadRequestException('Defina o tipo de intervalo de refeição nas configurações da escala')
   }
   const [plan, mealType] = await Promise.all([
-    prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true, vehiclePlan: { select: { dayType: { select: { pattern: true } } } } } }),
+    prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true, vehiclePlan: { select: { constraints: true, dayType: { select: { pattern: true } } } } } }),
     mealTypeId
       ? prisma.intervalType.findUnique({ where: { id: mealTypeId }, select: { minMinutes: true, maxMinutes: true, isPaid: true } })
       : Promise.resolve(null),
@@ -50,11 +50,12 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   }))
 
   const localityIds = [...new Set(blocks.flatMap(b => b.points.map(p => p.localityId)))]
-  const [walk, crew] = await Promise.all([
+  const [walk, crew, pins] = await Promise.all([
     loadCrewWalk(prisma, localityIds),
     options.limitToCrew
       ? loadCrewCapacity(prisma, branchRules.shifts, [...new Set(blocks.flatMap(b => b.branchId ?? []))], dayTypeWeekdays(plan.vehiclePlan.dayType.pattern as DayTypePattern | null))
       : undefined,
+    loadCrewPins(prisma, blocks, (plan.vehiclePlan.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {}),
   ])
 
   const locked: CrewCalcDuty[] = lockedRows.map(d => ({
@@ -79,7 +80,28 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     shifts:        branchRules.shifts,
     lineOperators: branchRules.lineOperators,
     crew,
+    pins,
   }
+}
+
+// The trip groups with crew members (VehiclePlan.constraints.bundleCrew) on the plan's blocks,
+// each with its first crew member's shift today — a group whose first one has no shift isn't pinned
+async function loadCrewPins(prisma: PrismaService, blocks: SolverBlock[], bundleCrew: Record<string, string[]>): Promise<CrewPin[]> {
+  const firsts = [...new Set(Object.values(bundleCrew).flatMap(ids => ids.slice(0, 1)))]
+  if (!firsts.length) return []
+  const today = new Date(new Date().toISOString().slice(0, 10))
+  const rows = await prisma.crewMemberShift.findMany({
+    where:  { crewMemberId: { in: firsts }, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] },
+    select: {
+      crewMemberId: true,
+      shift: { select: { id: true, priority: true, allowSplit: true, startFloor: true, startIdealMin: true, startIdealMax: true, startCeiling: true, endFloor: true, endIdealMin: true, endIdealMax: true, endCeiling: true } },
+    },
+  })
+  const windowOf = new Map<string, ShiftWindow>(rows.map(r => [r.crewMemberId, r.shift]))
+  return blocks.flatMap(b => (b.bundles ?? []).flatMap(w => {
+    const window = w.id ? windowOf.get(bundleCrew[w.id]?.[0] ?? '') : undefined
+    return window && w.id ? [{ blockId: b.id, bundleId: w.id, startMinutes: w.startMinutes, endMinutes: w.endMinutes, window }] : []
+  }))
 }
 
 // The ISO weekdays (1–7) a day type runs on — all of them when it has no weekday pattern

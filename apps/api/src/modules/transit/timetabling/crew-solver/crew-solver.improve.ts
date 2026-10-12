@@ -1,6 +1,6 @@
 import type { CrewCalcContext, CrewCalcDuty, DutyEvaluation } from '../crew-plan/crew-scoring.calc'
 import { CrewScoreAggregate, evaluateDuty, solverRank } from '../crew-plan/crew-scoring.calc'
-import { BlockView, CrewCount, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
+import { BlockView, CrewCount, pinCheck, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
 import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 import { mealPolicy } from '@nyx/schemas'
 
@@ -27,7 +27,8 @@ import { mealPolicy } from '@nyx/schemas'
 // cycle, then the search goes back to the best duties found and starts a cooler cycle — so a
 // cycle always ends improving, and "no improvement" means the cycles stopped paying off.
 // With the crew limit (input.crew) a move never raises an empresa's SPLIT duties beyond its crew,
-// and the duties beyond the crew of their shift (crew overflow) rank ahead of the issues.
+// and the duties beyond the crew of their shift (crew overflow) rank ahead of the issues — as do
+// the pinned trip groups (input.pins) whose duty falls outside their crew member's shift.
 
 type Span = { startMinutes: number; endMinutes: number }
 
@@ -55,6 +56,8 @@ interface WorkDuty {
   breaks:   Span[]
   calc:     CrewCalcDuty
   ev:       DutyEvaluation
+  // holds a pinned trip group outside its crew member's shift (CrewSolverInput.pins)
+  pinBad:   boolean
   // position in `duties` (swap-remove)
   idx:      number
 }
@@ -127,13 +130,17 @@ export class CrewImprover {
     this.best = [...this.duties]
   }
 
-  private get overflow(): number { return this.crew?.overflow ?? 0 }
+  // what ranks ahead of the issues: duties beyond the crew, and pinned groups outside their
+  // crew member's shift — a move never raises it, any move lowering it goes through
+  private get overflow(): number { return (this.crew?.overflow ?? 0) + this.pinBad }
+  private pinBad = 0
 
   private counted(w: { calc: CrewCalcDuty; ev: DutyEvaluation }) {
     return { role: w.calc.role, kind: w.calc.kind, branchId: w.calc.branchId, startMinutes: w.ev.summary.startMinutes, endMinutes: w.ev.summary.endMinutes }
   }
 
   private recount(): void {
+    this.pinBad = this.duties.filter(w => w.pinBad).length
     if (!this.input.crew) return
     this.crew = new CrewCount(this.input.crew)
     for (const l of this.locked) this.crew.add(this.counted(l))
@@ -187,6 +194,8 @@ export class CrewImprover {
     if (!move) return
     const overflow = this.overflow
     if (!this.countMove(move)) return
+    const pinDelta = move.added.filter(w => w.pinBad).length - move.removed.filter(w => w.pinBad).length
+    this.pinBad += pinDelta
 
     for (const w of move.removed) this.agg.remove(w.calc, w.ev)
     for (const w of move.added)   this.agg.add(w.calc, w.ev)
@@ -204,6 +213,7 @@ export class CrewImprover {
       for (const w of move.added)   this.agg.remove(w.calc, w.ev)
       for (const w of move.removed) this.agg.add(w.calc, w.ev)
       this.uncountMove(move)
+      this.pinBad -= pinDelta
       return
     }
     for (const w of move.removed) this.drop(w)
@@ -509,6 +519,7 @@ export class CrewImprover {
     return w
   }
 
+
   private make(kind: SolverDuty['kind'], branchId: string | null, pieces: SolverPiece[], breaks: Span[]): WorkDuty {
     const id = `w${this.seq++}`
     const { meal } = this.input
@@ -517,7 +528,11 @@ export class CrewImprover {
       pieces: pieces.map((p, k) => ({ id: `${id}-${k}`, ...p })),
       activities: breaks.map((b, k) => ({ id: `${id}-b${k}`, type: 'BREAK', intervalTypeId: meal!.intervalTypeId, isPaidBreak: meal!.isPaid, ...b })),
     }
-    return { kind, branchId, pieces, breaks, calc, ev: evaluateDuty(calc, this.ctx), idx: -1 }
+    const ev = evaluateDuty(calc, this.ctx)
+    const { startMinutes: start, endMinutes: end } = ev.summary
+    // a pinned trip group's duty must stay within its crew member's shift
+    const pinBad = start != null && end != null && !pinCheck(this.input.pins, pieces, kind, start, end).ok
+    return { kind, branchId, pieces, breaks, calc, ev, pinBad, idx: -1 }
   }
 
   private insert(w: WorkDuty): void {

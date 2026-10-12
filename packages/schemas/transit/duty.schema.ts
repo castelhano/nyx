@@ -78,7 +78,8 @@ export const dutyIssueSchema = z.object({
     'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION', 'IDLE_TIME',
     'BUNDLE_SPLIT', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED',
   ]),
-  severity: z.enum(['warning', 'error']),
+  // info: a note (e.g. a shift set by hand outside its window) — never a pendência
+  severity: z.enum(['warning', 'error', 'info']),
   value:    z.number(),
   limit:    z.number().optional(),
   // when the rule points at a specific piece — lets the Gantt flag that block span
@@ -104,7 +105,7 @@ export const DUTY_ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   MEAL_LOCATION:      'Refeição fora de local permitido',
   BUNDLE_SPLIT:       'Troca de condutor dentro de um grupo de viagens',
   SHIFT_NONE:         'Fora de todos os turnos da empresa',
-  SHIFT_MISMATCH:     'Fora do turno fixado',
+  SHIFT_MISMATCH:     'Turno definido manualmente (fora da janela)',
   LINE_NOT_OPERATED:  'Linha não operada pela empresa',
 }
 
@@ -198,7 +199,9 @@ export const dutySchema = withMeta(
       showInForm:     false,
     }),
 
-    // DutyConstraints — { locked?: true }: the crew solver never changes a locked duty
+    // DutyConstraints — { locked?: true; crewMemberIds?: string[] }: the crew solver never changes
+    // a locked duty; crewMemberIds = the crew members who should work it, in order (the roster
+    // generator prefers them — the first one's shift guides the duty)
     constraints: z.record(z.string(), z.unknown()).optional().meta({
       label:          'Restrições',
       listVisibility: 'never',

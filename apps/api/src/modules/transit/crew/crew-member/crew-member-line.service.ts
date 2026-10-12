@@ -12,6 +12,8 @@ export interface CrewLinesBoard {
   maxPreferredLines: number
   lines:   { id: string; code: string; name: string; groups: { id: string; name: string }[] }[]
   entries: { lineId: string; access: 'ENABLED' | 'BLOCKED' | null; rank: number | null }[]
+  // the plantão as one more item: blocked (never on plantão, whatever the mode) and its rank
+  standby: { blocked: boolean; rank: number | null }
 }
 
 // One row per (crew member, line). What `access` means comes from the crew member's empresa
@@ -67,21 +69,23 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
 
   async board(crewMemberId: string): Promise<CrewLinesBoard> {
     const branchId = await this.branchOf(crewMemberId)
-    const [settings, lines, entries] = await Promise.all([
+    const [settings, lines, entries, member] = await Promise.all([
       this.roster.get(branchId),
       this.operatedLines(branchId),
       this.prisma.crewMemberLine.findMany({ where: { crewMemberId }, select: { lineId: true, access: true, rank: true } }),
+      this.prisma.crewMember.findUnique({ where: { id: crewMemberId }, select: { standbyRank: true, standbyBlocked: true } }),
     ])
     return {
       lineAccessMode:    settings.lineAccessMode,
       maxPreferredLines: settings.maxPreferredLines,
       lines:   lines.map(l => ({ id: l.id, code: l.code, name: l.name, groups: l.lineGroups.map(g => g.lineGroup) })),
       entries: entries.map(e => ({ lineId: e.lineId, access: e.access, rank: e.rank })),
+      standby: { blocked: !!member?.standbyBlocked, rank: member?.standbyRank ?? null },
     }
   }
 
-  // replaces every row of the operator — the screen saves the whole board at once
-  async replaceAll(crewMemberId: string, raw: unknown): Promise<CrewLinesBoard> {
+  // replaces every row of the operator (and his plantão item) — the screen saves the whole board
+  async replaceAll(crewMemberId: string, raw: unknown, rawStandby?: unknown): Promise<CrewLinesBoard> {
     const branchId = await this.branchOf(crewMemberId)
     const [{ lineAccessMode, maxPreferredLines }, lines] = await Promise.all([this.roster.get(branchId), this.operatedLines(branchId)])
     const operated = new Set(lines.map(l => l.id))
@@ -90,7 +94,11 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
       .map(e => ({ lineId: String(e.lineId), access: (e.access || null) as 'ENABLED' | 'BLOCKED' | null, rank: e.rank == null ? null : Number(e.rank) }))
       .filter(e => e.access || e.rank != null)
 
-    const seen = new Set<string>(), ranks = new Set<number>()
+    const sb = (rawStandby ?? {}) as { blocked?: unknown; rank?: unknown }
+    const standby = { blocked: sb.blocked === true, rank: sb.rank == null || sb.rank === '' ? null : Number(sb.rank) }
+    if (standby.blocked && standby.rank != null) throw new BadRequestException('Plantão bloqueado não pode ser preferência')
+    const seen = new Set<string>(), ranks = new Set<number>(standby.rank != null ? [standby.rank] : [])
+    if (standby.rank != null && (standby.rank < 1 || standby.rank > maxPreferredLines)) throw new BadRequestException(`Preferências de 1 a ${maxPreferredLines}, sem repetir`)
     for (const r of rows) {
       if (!operated.has(r.lineId)) throw new BadRequestException('Há linha não operada pela empresa do operador')
       if (seen.has(r.lineId)) throw new BadRequestException('Linha repetida')
@@ -108,6 +116,7 @@ export class CrewMemberLineService extends BaseService<CrewMemberLine, CreateCre
     await this.prisma.$transaction([
       this.prisma.crewMemberLine.deleteMany({ where: { crewMemberId } }),
       this.prisma.crewMemberLine.createMany({ data: rows.map(r => ({ crewMemberId, ...r })) }),
+      this.prisma.crewMember.update({ where: { id: crewMemberId }, data: { standbyRank: standby.rank, standbyBlocked: standby.blocked } }),
     ])
     return this.board(crewMemberId)
   }

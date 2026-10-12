@@ -819,6 +819,7 @@ export default function CrewPlanPage() {
             onDeleteActivity={(aid) => void handleDeleteActivity(aid)}
             onClose={() => setSelectedDutyId(null)}
             onToggleLock={() => void handleToggleLock()}
+            onSetPins={(ids) => void run(() => api(`/transit/duty/${selectedDuty.id}/crew-pins`, { method: 'POST', body: JSON.stringify({ crewMemberIds: ids }) }))}
           />
         ) : (
           <PlanPanel

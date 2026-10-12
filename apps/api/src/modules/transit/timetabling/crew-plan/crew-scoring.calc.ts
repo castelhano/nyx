@@ -52,7 +52,7 @@ export interface CrewCalcBlock {
   trips:    { id: string; departureMinutes: number; arrivalMinutes: number; lineId: string; routeId: string }[]
   deadruns: { departureMinutes: number; arrivalMinutes: number }[]
   // trip groups (see LoadedBlockRelief.bundles) — a driver piece must not start or end inside one
-  bundles?: { startMinutes: number; endMinutes: number }[]
+  bundles?: { startMinutes: number; endMinutes: number; id?: string }[]
 }
 
 // a block's trips + deadruns as spans (where the vehicle moves), cached per block object
@@ -467,7 +467,8 @@ function dutyShift(duty: CrewCalcDuty, summary: DutySummary, ctx: CrewCalcContex
   if (duty.shiftPinned && given) {
     const pinned = shifts.find(s => s.id === given)
     const fits = !!pinned && start != null && end != null && shiftFits(pinned, start, end, duty.kind)
-    return { shiftId: given, issue: fits ? null : { code: 'SHIFT_MISMATCH', severity: 'warning', value: 0 } }
+    // the user's choice: only noted (info), never a pendência
+    return { shiftId: given, issue: fits ? null : { code: 'SHIFT_MISMATCH', severity: 'info', value: 0 } }
   }
   if (start == null || end == null || !shifts.length) return { shiftId: null, issue: null }
   const best = bestShift(shifts, start, end, duty.kind)
@@ -534,7 +535,7 @@ export class CrewScoreAggregate {
     this.byKind.set(duty.kind, (this.byKind.get(duty.kind) ?? 0) + sign)
     this.totalWork     += sign * ev.summary.workMinutes
     this.totalOvertime += sign * ev.summary.overtimeMinutes
-    if (ev.issues.length) this.issueDuties += sign
+    if (ev.issues.some(isPending)) this.issueDuties += sign
     for (const c of ev.criteria) {
       const cur = this.perDuty.get(c.key) ?? { weight: c.weight, sum: 0, raw: 0, n: 0 }
       cur.sum += sign * c.value; cur.raw += sign * c.raw; cur.n += sign
@@ -620,6 +621,9 @@ export class CrewScoreAggregate {
 // equals — an unmet rule is never traded for score.
 // crewOverflow (crew solver, "Limitar turnos ao quadro ativo"): duties beyond what the crew can
 // take — ranks ahead of the issues
+// an issue that counts as a pendência (info is a note)
+export const isPending = (i: { severity: string }) => i.severity !== 'info'
+
 export const solverRank = (rawScore: number, issueDuties: number, crewOverflow = 0) => rawScore - issueDuties * 1e6 - crewOverflow * 1e9
 
 export function computeCrewPlan(input: {
@@ -716,7 +720,7 @@ export function computeCrewPlan(input: {
       uncoveredMinutes: uncovered.reduce((s, u) => s + dur(u), 0),
       uncovered,
       staleDutyCount:   dutyValues.filter(d => d.isStale).length,
-      issueDutyCount:   dutyValues.filter(d => d.issues.length > 0).length,
+      issueDutyCount:   dutyValues.filter(d => d.issues.some(isPending)).length,
       score:            Math.round(agg.score(criteria)),
       rawScore:         Math.round(agg.rawScore(criteria)),
       driversPerVehicle: agg.driversPerVehicle,

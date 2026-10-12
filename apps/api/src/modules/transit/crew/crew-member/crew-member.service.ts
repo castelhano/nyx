@@ -22,10 +22,11 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
     return { employee: { OR: [{ fullName: stringContains(search) }, { code: stringContains(search) }] } }
   }
 
-  // code, fullName and preferredName are the Employee's — AND keeps them clear of the search's `employee`
+  // code, fullName, preferredName and branchId are the Employee's — AND keeps them clear of the search's `employee`
   protected override buildFilterWhere(query: Record<string, unknown>) {
-    const { f_code, f_fullName, f_preferredName, ...rest } = query as Record<string, string | undefined>
+    const { f_code, f_fullName, f_preferredName, f_branchId, ...rest } = query as Record<string, string | undefined>
     const employee = {
+      ...(f_branchId      ? { branchId:      f_branchId }                      : {}),
       ...(f_code          ? { code:          stringContains(f_code) }          : {}),
       ...(f_fullName      ? { fullName:      stringContains(f_fullName) }      : {}),
       ...(f_preferredName ? { preferredName: stringContains(f_preferredName) } : {}),

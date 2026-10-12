@@ -231,6 +231,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   const [depotModal,            setDepotModal]            = useState<DepotModal | null>(null)
   const [addIntervalModal,      setAddIntervalModal]      = useState<AddIntervalModalState | null>(null)
   const [tripDetailsModalTripIds, setTripDetailsModalTripIds] = useState<string[] | null>(null)
+  // the trip group whose crew members are being edited (BundleCrewModal)
+  const [bundleCrewId, setBundleCrewId] = useState<string | null>(null)
   const [moveTargetBlockId,     setMoveTargetBlockId]     = useState<string | null>(null)
   const [pendingMoves,          setPendingMoves]          = useState<PendingMove[]>([])
   const [pendingChanges,        setPendingChanges]        = useState<Map<string, TripPatch>>(new Map())
@@ -2641,6 +2643,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     onConvertToDeadrun:  handleConvertToDeadrun,
     onConvertToTrip:     handleOpenConvertToTrip,
     onGroup:             handleGroup,
+    onBundleCrew:        (bundleId: string) => setBundleCrewId(bundleId),
     onUngroup:           handleUngroup,
   }, canEditGantt)
 
@@ -2654,6 +2657,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
+    bundleCrewId, setBundleCrewId,
     tripDetailsModalTripIds, setTripDetailsModalTripIds, handleUpdateMarkings, handleUpdateNotes, handleUpdateStopPattern,
     handleConvertToDeadrun, convertToTripSeed, setConvertToTripSeed, handleConvertToTripPendingAdd,
     moveTargetBlockId, setMoveTargetBlockId,

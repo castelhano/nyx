@@ -172,6 +172,8 @@ export const crewMemberSchema = withMeta(
       resource:       'vehicle',
       domain:         'fleet',
       labelField:     'code',
+      // only the crew member's empresa's vehicles (branchId is the Employee's, computed)
+      dependsOn:      'branchId',
       listVisibility: 'hidden',
       lazyEdit:       true,
       className:      'md:w-[20.75rem]',
@@ -230,6 +232,7 @@ export const crewMemberSchema = withMeta(
     nameField:     'code',
     nameFirstWord: false,
     icon:          'IdCard',
+    stayOnSave:    true,
     groups: {
       'Escala':     ['notBeforeMinutes', 'notAfterMinutes', 'restPatternId', 'restOffset', 'blockedVehicleTypes', 'preferredVehicleId', 'weeklyHours', 'overtimePreference'],
       'Documentos': ['licenseCategory', 'licenseExpiresAt', 'courseExpiresAt'],

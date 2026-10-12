@@ -124,7 +124,7 @@ export interface LoadedBlockRelief extends BlockReliefData {
   intervals: { departureMinutes: number; arrivalMinutes: number }[]
   // trip groups (bundleId) on this block, first member's departure → last one's arrival — one
   // driver runs each whole, no relief inside
-  bundles:   Span[]
+  bundles:   (Span & { id: string })[]
 }
 
 // Loads everything computeBlockRelief needs for a set of blocks in a few queries — plus the
@@ -208,14 +208,14 @@ export async function loadBlockRelief(prisma: PrismaService, blockIds: string[])
   return result
 }
 
-function bundleWindows(members: { bundleId: string | null; departureMinutes: number; arrivalMinutes: number }[]): Span[] {
-  const windows = new Map<string, Span>()
+function bundleWindows(members: { bundleId: string | null; departureMinutes: number; arrivalMinutes: number }[]): (Span & { id: string })[] {
+  const windows = new Map<string, Span & { id: string }>()
   for (const t of members) {
     if (!t.bundleId) continue
     const w = windows.get(t.bundleId)
     windows.set(t.bundleId, w
-      ? { startMinutes: Math.min(w.startMinutes, t.departureMinutes), endMinutes: Math.max(w.endMinutes, t.arrivalMinutes) }
-      : { startMinutes: t.departureMinutes, endMinutes: t.arrivalMinutes })
+      ? { id: t.bundleId, startMinutes: Math.min(w.startMinutes, t.departureMinutes), endMinutes: Math.max(w.endMinutes, t.arrivalMinutes) }
+      : { id: t.bundleId, startMinutes: t.departureMinutes, endMinutes: t.arrivalMinutes })
   }
   return [...windows.values()].sort((a, b) => a.startMinutes - b.startMinutes)
 }

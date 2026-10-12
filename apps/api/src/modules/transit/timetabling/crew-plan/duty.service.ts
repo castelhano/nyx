@@ -66,6 +66,22 @@ export class DutyService extends BaseService<Duty, CreateDutyDto, UpdateDutyDto>
     return this.findOne(id)
   }
 
+  // { crewMemberIds } — the crew members who should work it, in order (the roster generator's
+  // preference); [] clears it. No derived state changes.
+  async setCrewPins(id: string, crewMemberIds: string[]): Promise<Duty> {
+    const current = await this.prisma.duty.findUnique({ where: { id }, select: { constraints: true, crewPlanId: true } })
+    if (!current) throw new NotFoundException('duty not found')
+    await this.crewPlans.assertEditable(current.crewPlanId)
+    const ids = [...new Set(crewMemberIds.filter(x => typeof x === 'string' && x))]
+    if (ids.length && (await this.prisma.crewMember.count({ where: { id: { in: ids } } })) !== ids.length) {
+      throw new BadRequestException('Operador não encontrado')
+    }
+    const { crewMemberIds: _p, ...rest } = (current.constraints ?? {}) as Prisma.JsonObject
+    const constraints: Prisma.JsonObject = ids.length ? { ...rest, crewMemberIds: ids } : rest
+    await this.prisma.duty.update({ where: { id }, data: { constraints: Object.keys(constraints).length ? constraints : Prisma.DbNull } })
+    return this.findOne(id)
+  }
+
   override async remove(id: string): Promise<void> {
     const current = await this.prisma.duty.findUnique({ where: { id }, select: { crewPlanId: true } })
     if (current) await this.crewPlans.assertEditable(current.crewPlanId)

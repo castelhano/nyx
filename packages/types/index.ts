@@ -242,5 +242,6 @@ export interface ResourceMetadata {
   children?:     ChildResourceDef[]   // derivado automaticamente pelo backend via registry
   rowActions?:   RowActionDef[]
   afterCreate?:      string               // template {fieldName} — redireciona após criação em vez de ir para a lista
+  stayOnSave?:       boolean              // after saving, stay on the record instead of going to the list
   defaultFilters?:   Record<string, string>  // filtros pré-aplicados na lista; o usuário pode modificar/limpar
 }

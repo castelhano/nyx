@@ -37,6 +37,7 @@ import { BACKGROUND_JOBS_KEY } from '@/components/layout/background-jobs'
 import { AccessModal }           from './components/AccessModal'
 import { AddIntervalModal }      from './components/AddIntervalModal'
 import { TripDetailsModal }      from './components/TripDetailsModal'
+import { BundleCrewModal }       from './components/BundleCrewModal'
 import { AddTripModal }          from './components/AddTripModal'
 import { LineScheduleGeneratorModal } from './components/LineScheduleGeneratorModal'
 import { RedistributeModal }          from './components/RedistributeModal'
@@ -118,6 +119,7 @@ export default function VehiclePlanPage() {
     selection, setSelection,
     depotModal, setDepotModal,
     addIntervalModal, setAddIntervalModal,
+    bundleCrewId, setBundleCrewId,
     tripDetailsModalTripIds, setTripDetailsModalTripIds, handleUpdateMarkings, handleUpdateNotes, handleUpdateStopPattern,
     handleConvertToDeadrun, convertToTripSeed, setConvertToTripSeed, handleConvertToTripPendingAdd,
     moveTargetBlockId, setMoveTargetBlockId,
@@ -798,6 +800,14 @@ export default function VehiclePlanPage() {
         <AddIntervalModal
           onConfirm={handleConfirmAddInterval}
           onClose={() => setAddIntervalModal(null)}
+        />
+      )}
+
+      {bundleCrewId && (
+        <BundleCrewModal
+          planId={id} bundleId={bundleCrewId} canEdit={canUpdate}
+          branchId={mergedPlottedData?.blocks.find(b => b.blockTrips.some(bt => bt.trip.bundleId === bundleCrewId))?.branchId ?? null}
+          onClose={() => setBundleCrewId(null)}
         />
       )}
 

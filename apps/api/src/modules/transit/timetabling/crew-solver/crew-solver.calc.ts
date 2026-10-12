@@ -1,5 +1,5 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
-import { bestShift, mealPolicy, shiftFits, type ShiftWindow } from '@nyx/schemas'
+import { bestShift, mealPolicy, shiftFits, shiftIdealDistance, type ShiftWindow } from '@nyx/schemas'
 import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcContext, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
 import { depotStays, subtractSpans } from '../crew-plan/relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
@@ -63,6 +63,26 @@ export interface CrewSolverInput {
   lineOperators?: CrewCalcContext['lineOperators']
   // "Limitar turnos ao quadro ativo" — absent: no limit
   crew?:          CrewCapacity
+  // trip groups with crew members (VehiclePlan.constraints.bundleCrew): the duty holding one must
+  // fit the first crew member's shift window — closer to its ideal is cheaper
+  pins?:          CrewPin[]
+}
+
+export interface CrewPin { blockId: string; bundleId: string; startMinutes: number; endMinutes: number; window: ShiftWindow }
+
+// the pins of the pieces' groups (a piece holds a group when it covers it whole) — and whether a
+// duty with those pieces, from start to end (sign-on/off included), fits them all
+export function pinCheck(pins: CrewPin[] | undefined, pieces: SolverPiece[], kind: string, start: number, end: number): { ok: boolean; ideal: number } {
+  let ok = true, ideal = 0
+  if (!pins?.length) return { ok, ideal }
+  for (const p of pieces) {
+    for (const pin of pins) {
+      if (pin.blockId !== p.vehicleBlockId || p.startMinutes > pin.startMinutes || p.endMinutes < pin.endMinutes) continue
+      if (!shiftFits(pin.window, start, end, kind)) ok = false
+      ideal += shiftIdealDistance(pin.window, start, end)
+    }
+  }
+  return { ok, ideal }
 }
 
 // "Limitar turnos ao quadro ativo": per empresa with an active crew, how many of it work on a
@@ -390,7 +410,13 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         if (memo.has(key)) return memo.get(key)!
         // assigned inside `keep` — typed wide so the return isn't narrowed away
         let best = null as Whole | null
-        const keep = (duty: SolverDuty, w: number, cost: number) => { if (!best || cost < best.cost) best = { duty, cost, work: w } }
+        const keep = (duty: SolverDuty, w: number, cost: number) => {
+          // a pinned trip group: within its crew member's shift, closer to the ideal cheaper
+          const pin = pinCheck(input.pins, duty.pieces, duty.kind, from - settings.signOnMinutes, to + settings.signOffMinutes)
+          if (!pin.ok) return
+          cost += pin.ideal / 60
+          if (!best || cost < best.cost) best = { duty, cost, work: w }
+        }
         const spread   = to - from + signs
         const lineCost = penalty(range.lineChanges, v.lines(from, to).changes)
         if (spread <= maxSpread) {
@@ -449,9 +475,14 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
           const segEnd    = Math.min(seg.endMinutes, to)
           const reachable = cuts.filter(c => c > pos && c <= segEnd && c - pos <= maxDrive)
           const fit       = reachable.filter(c => leavesValidRest(c, segEnd))
-          const cut = segEnd - pos <= maxDrive && segEnd - pos <= pieceTarget * 1.5 ? segEnd
+          let cut = segEnd - pos <= maxDrive && segEnd - pos <= pieceTarget * 1.5 ? segEnd
             : (fit.length ? fit : reachable).reduce<number | undefined>((b, c) => (b == null || Math.abs(c - pos - pieceTarget) < Math.abs(b - pos - pieceTarget) ? c : b), undefined)
               ?? cuts.find(c => c > pos)!
+          // a pinned trip group in the piece: end it right after the group, so the piece can join a
+          // duty within its crew member's shift
+          const pin = input.pins?.find(pn => pn.blockId === v.block.id && pos <= pn.startMinutes && cut >= pn.endMinutes)
+          const after = pin && fit.find(c => c >= pin.endMinutes && c - pos >= minPiece)
+          if (after != null && after < cut) cut = after
           loose.push({ piece: piece(v, pos, cut), branchId: v.block.branchId, lines: v.lines(pos, cut) })
           pos = cut
         }
@@ -542,7 +573,9 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
         + penalty(range.lineChanges, joinLines(linesA, loose[j].lines))
       const consider = (duty: SolverDuty, w: number, kindCost: number) => {
         if (w > maxWork) return
-        const cost = penalty(range.workTime, w) + shared + kindCost
+        const pin = pinCheck(input.pins, duty.pieces, duty.kind, a.startMinutes - settings.signOnMinutes, b.endMinutes + settings.signOffMinutes)
+        if (!pin.ok) return
+        const cost = penalty(range.workTime, w) + shared + kindCost + pin.ideal / 60
         if (!best || cost < best.cost) best = { j, duty, cost }
       }
       // meal between the pieces (the walk after it is worked)

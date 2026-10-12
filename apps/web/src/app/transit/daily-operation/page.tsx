@@ -41,7 +41,8 @@ function dutyIssues(d: RosterBoardDuty): Map<string, number> {
   const count = new Map<string, number>()
   const unassigned = d.kind === 'STANDBY' ? 'RESERVE_SHORT' : 'DUTY_UNASSIGNED'
   if (!d.crewMemberId) count.set(unassigned, 1)
-  for (const i of d.issues) if (i.code !== unassigned) count.set(i.code, 1)
+  // advisories (info) aren't pendências
+  for (const i of d.issues) if (i.code !== unassigned && i.severity !== 'info') count.set(i.code, 1)
   for (const b of d.blocks) for (const code of new Set(b.issues.map(i => i.code))) count.set(code, (count.get(code) ?? 0) + 1)
   return count
 }
@@ -322,12 +323,12 @@ export default function RosterPage() {
           <button type="button" onClick={() => setCtx({ data: shiftPeriod(mode, date, -1) })} className="p-1 rounded hover:bg-muted cursor-pointer"><Icons.ChevronLeft className="w-4 h-4" /></button>
           <span className="text-sm font-medium tabular-nums w-32 text-center">{periodLabel}</span>
           <button type="button" onClick={() => setCtx({ data: shiftPeriod(mode, date, 1) })} className="p-1 rounded hover:bg-muted cursor-pointer"><Icons.ChevronRight className="w-4 h-4" /></button>
-          <button type="button" onClick={() => setCtx({ data: localToday() })} className="text-xs text-muted-foreground hover:text-foreground ml-1 cursor-pointer">hoje</button>
+          <button type="button" onClick={() => setCtx({ data: localToday() })} className="hover:bg-accent hover:text-accent-foreground h-8 px-3 text-sm rounded cursor-pointer">Hoje</button>
         </div>
         <div className="flex rounded-sm border border-border overflow-hidden">
           {(['dia', 'semana', 'mes'] as const).map(m => (
             <button key={m} type="button" onClick={() => setCtx({ modo: m })} className={cn(ctl, 'rounded-none', mode === m ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
-              {m === 'dia' ? 'Dia' : m === 'semana' ? 'Semana' : 'Mês'}
+              {m === 'dia' ? 'Dia' : m === 'semana' ? 'Sem' : 'Mês'}
             </button>
           ))}
         </div>

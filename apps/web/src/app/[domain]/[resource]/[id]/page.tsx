@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Icons } from '@/lib/icons'
 import { AutoForm } from '@/core/AutoForm'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
@@ -27,6 +28,7 @@ export default function ResourceDetailPage() {
   const [isPending,   setIsPending]   = useState(false)
   const [resetSignal, setResetSignal] = useState(0)
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const confirm   = useConfirm()
 
   const contextParams:   Record<string, string>  = {}
@@ -176,6 +178,12 @@ export default function ResourceDetailPage() {
       if (isNew && meta?.afterCreate) {
         const redirect = meta.afterCreate.replace(/\{(\w+)\}/g, (_, key) => String(created[key] ?? ''))
         router.push(redirect)
+      } else if (meta?.stayOnSave) {
+        if (isNew) router.replace(`/${domain}/${resource}/${created.id}${contextQuery}`)
+        else {
+          await queryClient.invalidateQueries({ queryKey: [domain, resource, id] })
+          setIsPending(false)
+        }
       } else {
         router.push(effectiveListPath)
       }

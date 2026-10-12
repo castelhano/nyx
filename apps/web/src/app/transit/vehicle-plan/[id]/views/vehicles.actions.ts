@@ -24,6 +24,8 @@ export interface VehiclesActionDeps {
   // trip groups (TransitTrip.bundleId)
   onGroup:             (tripIds: string[], deadrunIds: string[], breakIds: string[]) => void
   onUngroup:           (bundleIds: string[]) => void
+  // the group's crew members ("Operadores" — VehiclePlan.constraints.bundleCrew)
+  onBundleCrew:        (bundleId: string) => void
 }
 
 export function createVehiclesActionSpec(
@@ -91,7 +93,7 @@ export function createVehiclesActionSpec(
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           makeTripDetailsAction([bt.trip.id], deps),
-          ...(bt.trip.bundleId ? [makeUngroupAction([bt.trip.bundleId], deps, onClose)] : []),
+          ...(bt.trip.bundleId ? [makeUngroupAction([bt.trip.bundleId], deps, onClose), makeBundleCrewAction(bt.trip.bundleId, deps, onClose)] : []),
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddInterval(bt.trip.arrivalMinutes, block) ? [makeAddIntervalAction(bt.trip.arrivalMinutes, block.id, deps)] : []),
@@ -120,7 +122,7 @@ export function createVehiclesActionSpec(
         ...(tripIds.length > 0 ? [makeTripDetailsAction(tripIds, deps)] : []),
         // a range is contiguous by construction — exactly what a group needs; its deadruns and
         // intervals (ACCESS / RETURN included) join the group too
-        ...(bundleIds.length > 0 ? [makeUngroupAction(bundleIds, deps, onClose)]
+        ...(bundleIds.length > 0 ? [makeUngroupAction(bundleIds, deps, onClose), ...(bundleIds.length === 1 ? [makeBundleCrewAction(bundleIds[0], deps, onClose)] : [])]
           : canGroup ? [makeGroupAction(tripIds, deadrunIds, breakIds, deps, onClose)] : []),
         makeDeleteIntervalAction(tripIds, deadrunIds, breakIds, selection.rowId, deps),
       ]
@@ -217,6 +219,16 @@ function makeUngroupAction(bundleIds: string[], deps: VehiclesActionDeps, onClos
     icon:    'Ungroup',
     variant: 'both',
     onClick: () => { deps.onUngroup(bundleIds); onClose() },
+  }
+}
+
+function makeBundleCrewAction(bundleId: string, deps: VehiclesActionDeps, onClose: () => void): ActionItem {
+  return {
+    id:      'bundle-crew',
+    label:   'Operadores',
+    icon:    'Users',
+    variant: 'both',
+    onClick: () => { deps.onBundleCrew(bundleId); onClose() },
   }
 }
 

@@ -11,12 +11,7 @@ export class VehicleService extends BaseService<Vehicle, CreateVehicleDto, Updat
   }
 
   protected buildSearchWhere(search: string) {
-    return {
-      OR: [
-        { plate:   stringContains(search) },
-        { renavam: stringContains(search) },
-        { chassis: stringContains(search) },
-      ],
-    }
+    // users only look vehicles up by their code (prefixo)
+    return { code: stringContains(search) }
   }
 }

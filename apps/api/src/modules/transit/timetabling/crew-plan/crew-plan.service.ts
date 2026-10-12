@@ -11,7 +11,7 @@ import { TransitCrewConfigService } from '../../settings/transit-crew-config.ser
 import { loadBlockRelief } from './relief-points'
 import { planPieceAdjust, resolveAnchor } from './piece-adjust'
 import { loadCrewWalk } from './crew-walk'
-import { computeCrewPlan } from './crew-scoring.calc'
+import { computeCrewPlan, isPending } from './crew-scoring.calc'
 import { loadCrewBranchRules } from './crew-branch-rules'
 import {
   activationEffect, addDays, applyEffect, assertRetroactiveAllowed, dayOf, fmtDay, parseStartDate, toDbDate,
@@ -321,6 +321,12 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
     const localities = await this.prisma.transitLocality.findMany({
       where: { id: { in: [...localityIds] } }, select: { id: true, name: true, abbr: true },
     })
+    // the duties' preferred crew members (constraints.crewMemberIds), named
+    const pinsOf = (d: { constraints: unknown }) => (d.constraints as { crewMemberIds?: string[] } | null)?.crewMemberIds ?? []
+    const pinned = new Map((await this.prisma.crewMember.findMany({
+      where:  { id: { in: [...new Set(duties.flatMap(pinsOf))] } },
+      select: { id: true, employee: { select: { code: true, fullName: true, preferredName: true } } },
+    })).map(m => [m.id, { id: m.id, code: m.employee.code, name: m.employee.preferredName || m.employee.fullName }]))
 
     return {
       plan: {
@@ -370,6 +376,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         shiftId: d.shiftId, shiftPinned: d.shiftPinned,
         summary: d.summary, issues: d.issues ?? [], isStale: d.isStale, hasIssues: d.hasIssues,
         locked: (d.constraints as { locked?: boolean } | null)?.locked === true,
+        crewPins: pinsOf(d).flatMap(id => pinned.get(id) ?? []),
         pieces: d.pieces.map(p => ({
           id: p.id, vehicleBlockId: p.vehicleBlockId, sequence: p.sequence,
           startMinutes: p.startMinutes, endMinutes: p.endMinutes,
@@ -479,7 +486,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
         if (cur.isStale === d.isStale && cur.shiftId === d.shiftId && same(cur.summary, d.summary) && same(cur.issues, d.issues)) continue
         await tx.duty.update({
           where: { id: dutyId },
-          data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.length > 0, isStale: d.isStale, shiftId: d.shiftId },
+          data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.some(isPending), isStale: d.isStale, shiftId: d.shiftId },
         })
       }
       if (!same(plan.summary, result.summary)) await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })

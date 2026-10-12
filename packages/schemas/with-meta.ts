@@ -51,6 +51,7 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   nameFirstWord?:      boolean      // show only first word of record name in breadcrumb; default true
   defaultSort?:        { field: string; order: 'asc' | 'desc' }
   afterCreate?:        string       // template with placeholders {fieldName} — redirects after creation instead of going to the list
+  stayOnSave?:         boolean      // after saving, stay on the record (a new one opens as saved) instead of going to the list
   defaultFilters?:     Record<string, string>  // pre-applied filters on list load; user can clear/modify them
 }
 

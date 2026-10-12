@@ -19,7 +19,7 @@ export const rosterGeneratorParamsSchema = z.object({
   maxChanges:            z.number().int().min(0).max(31).default(4),
   // only duties whose lines the empresa operates
   restrictToBranchLines: z.boolean().default(true),
-  // fills the days' vehicles (blocks still without one) after the crew
+  // redoes the days' vehicles after the crew (every block's car released first)
   vehicles:              z.boolean().default(true),
   // also redo the PUBLISHED days (never the CLOSED ones) — changing as little as it can
   // (range.publishedChanges); each change is logged on the day
@@ -86,6 +86,11 @@ export interface RosterQuality {
   // average minutes away from the shift's ideal start/end
   shiftDev:       number | null
   warnings:       number
+  // duties with preferred crew members: worked by the 1st / by anyone listed
+  pinned:         { duties: number; first: number; listed: number }
+  // worked days of crew members with a preferred vehicle, and those on it — only on the actual
+  // roster (vehicles are assigned on accept, a proposal has none)
+  fixedCar?:      { met: number; days: number }
 }
 
 export interface RosterPublishedChange {

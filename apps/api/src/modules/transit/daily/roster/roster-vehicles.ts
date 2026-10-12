@@ -3,18 +3,22 @@ import type { PrismaService } from '../../../../prisma/prisma.service'
 import { addDays, dayOf, toDbDate } from '../../timetabling/plan-validity'
 import { hungarian } from './hungarian'
 
-// Fills the vehicles of the empresa's blocks still without one on the given (PLANNED) days
-// (plan §5.5 step 5). The block's anchor is the crew member of its earliest DRIVER piece; the
-// car goes, in this order, to: the anchor's preferred vehicle → the anchor's habitual car (most
-// driven in the last `habitualDays`) → another crew member's habitual car → any eligible one.
+// Redoes the vehicles of the empresa's blocks on the given (editable) days (plan §5.5 step 5) —
+// like the crew, a generation starts over: every block's car is released first. The block's anchor is the crew member of its earliest DRIVER piece; the
+// car goes, in this order, to: the anchor's preferred vehicle → another crew member's preferred
+// one → the anchor's habitual car (most driven in the last `habitualDays`) → another crew member's
+// habitual car → any eligible one.
 // Eligible: the empresa's, active, available on the date, of a type every line and trip of the
 // block accepts, not on another block of the date. One minimum-cost matching per date.
+// An explicit preference outranks a habit: another holder's preferred car beats the anchor's
+// habitual one.
 
 const BLOCKED  = 1e9
 const NO_CAR   = 1000
-const COST = { preferred: 0, habitual: 1, otherHabitual: 2, any: 10 }
+const COST = { preferred: 0, otherPreferred: 1, habitual: 2, otherHabitual: 3, any: 10 }
 
 export async function assignVehicles(prisma: PrismaService, branchId: string, operationIds: string[], habitualDays: number): Promise<number> {
+  await prisma.dailyBlock.updateMany({ where: { dailyOperationId: { in: operationIds }, branchId }, data: { vehicleId: null } })
   const blocks = await prisma.dailyBlock.findMany({
     where:  { dailyOperationId: { in: operationIds }, branchId, vehicleId: null },
     select: {
@@ -94,8 +98,9 @@ export async function assignVehicles(prisma: PrismaService, branchId: string, op
           && required.every(t => t === v.vehicleType)
         if (!typeOk) return
         line[c] = anchor && preferred.get(anchor) === v.id ? COST.preferred
+          : holders.some(h => preferred.get(h) === v.id) ? COST.otherPreferred
           : anchor && habitual.get(anchor) === v.id ? COST.habitual
-          : holders.some(h => habitual.get(h) === v.id || preferred.get(h) === v.id) ? COST.otherHabitual
+          : holders.some(h => habitual.get(h) === v.id) ? COST.otherHabitual
           : COST.any
       })
       return line

@@ -15,19 +15,30 @@ import { hungarian } from './hungarian'
 //                 crew member on its day, or two crew members swap a range of days
 //
 // The objective: coverage first (UNASSIGNED per duty without a crew member, UNASSIGNED_STANDBY per
-// plantão — filled with who's left over), then WARN rule
-// violations (WARN each), then the score — the average of each crew member's weighted criteria
-// (roster.range + the crew interShiftRest ideal) on the 0–9999 scale of the other solvers.
+// plantão — filled with who's left over), then WARN rule violations (WARN each), then the
+// preferred crew members (PIN per step down the list), then the score — the average of each crew
+// member's weighted criteria (roster.range + the crew interShiftRest ideal) on the 0–9999 scale
+// of the other solvers. Each level outweighs everything below it.
 // Redoing PUBLISHED days (includePublished), each day whose duty differs from the published one
 // costs range.publishedChanges — the search changes the published roster only where it pays off.
 // BLOCK rules and the always-blocking ones are hard: never assigned.
 
-export const UNASSIGNED = 100_000
+export const UNASSIGNED = 10_000_000
 // a plantão (STANDBY) without anyone — it takes whoever is left once the duties are covered
-export const UNASSIGNED_STANDBY = 10_000
-export const WARN       = 1_000
+export const UNASSIGNED_STANDBY = 1_000_000
+export const WARN       = 100_000
 
 export const missingCost = (d: RgDuty) => (d.standby ? UNASSIGNED_STANDBY : UNASSIGNED)
+
+// a duty with preferred crew members (Duty.constraints.crewMemberIds): each step down the list
+// costs PIN, anyone else the whole list — below a WARN rule, above the whole score (no criterion
+// outweighs a preferred crew member)
+export const PIN = SCORE_SCALE
+export const pinCost = (d: RgDuty, mi: number) => {
+  if (!d.preferred.length) return 0
+  const r = d.preferred.indexOf(mi)
+  return PIN * (r < 0 ? d.preferred.length : r)
+}
 
 export interface RgDuty {
   id:     string
@@ -48,6 +59,8 @@ export interface RgDuty {
   operated: boolean
   // a plantão (kind STANDBY)
   standby: boolean
+  // the crew members (indices) who should work it, in order — none: anyone
+  preferred: number[]
 }
 
 export interface RgFixed { start: number; end: number; paid: number; signature: string }
@@ -89,6 +102,9 @@ export interface RgMember {
 }
 
 export const NOT_PUBLISHED = -2
+
+// the plantão as a line in RgDuty.lineMinutes / RgMember.prefGrade / lineAccess
+export const STANDBY_LINE = '__STANDBY__'
 
 export interface RgInput {
   days:    string[]
@@ -250,6 +266,8 @@ function prefShare(m: RgMember, d: RgDuty): { num: number; den: number } {
 export interface MemberEval {
   score:   number   // weighted criteria average — 1 at best, below -1 only through convexRaw
   warns:   number
+  // Σ pinCost of his duties
+  pin:     number
   hard:    boolean
   worked:  number
   changes: number
@@ -296,7 +314,7 @@ export class RosterModel {
     let worked = m.workedBefore, changes = m.changesBefore
     const last = { ...m.lastSignatures }
     let prevEnd = m.prevEnd, prevFixed = true
-    let warns = 0, hard = false, workedDays = 0
+    let warns = 0, hard = false, workedDays = 0, pin = 0
     let prefNum = 0, prefDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
     let publishedDays = 0, publishedChanged = 0
     for (let t = 0; t < this.T; t++) {
@@ -321,6 +339,7 @@ export class RosterModel {
       } else if (di >= 0) {
         const d = input.duties[di]
         start = d.start; end = d.end; paid = d.paid; sig = d.signature; isFixed = false
+        pin += pinCost(d, mi)
         // a blocked pair (only in an allocation made by hand) counts as one broken rule
         const rule = this.ruleOf(mi, di)
         warns += rule < 0 ? 1 : rule
@@ -361,12 +380,13 @@ export class RosterModel {
     if (restN) add(input.rest, restSum / restN)
     if (r.publishedChanges.active && publishedDays) add(r.publishedChanges, publishedChanged)
 
-    return { score: den ? num / den : 1, warns, hard, worked, changes, prefShare: share, workedDays }
+    return { score: den ? num / den : 1, warns, hard, worked, changes, prefShare: share, workedDays, pin }
   }
 
-  // the objective (higher is better) — missing: Σ missingCost of the duties without anyone
-  objective(scores: number, warns: number, missing: number): number {
-    return SCORE_SCALE * scores / Math.max(1, this.M) - WARN * warns - missing
+  // the objective (higher is better) — missing: Σ missingCost of the duties without anyone; pins:
+  // Σ pinCost
+  objective(scores: number, warns: number, missing: number, pins = 0): number {
+    return SCORE_SCALE * scores / Math.max(1, this.M) - WARN * warns - missing - pins
   }
 }
 
@@ -426,6 +446,7 @@ export function construct(model: RosterModel): RgResult {
           }
           const w = m.windows[t]
           if (r.shiftFit.active && w) x += r.shiftFit.modifier * (1 - rangeRaw(shiftIdealDistance(w, d.start, d.end), r.shiftFit))
+          x += pinCost(d, mi)
           // a published day keeps its duty unless something else pays more
           if (r.publishedChanges.active && m.published[t] !== NOT_PUBLISHED && m.published[t] !== di) x += r.publishedChanges.modifier
           if (m.targetMinutes > 0) {
@@ -495,6 +516,7 @@ export class RosterImprover {
   private readonly evals: MemberEval[]
   private scoreSum = 0
   private warnSum = 0
+  private pinSum = 0
   private unassigned = 0
   // Σ missingCost of the duties without anyone
   private missing = 0
@@ -510,7 +532,7 @@ export class RosterImprover {
     this.holder = new Int32Array(model.input.duties.length).fill(-1)
     this.assign.forEach((row, mi) => row.forEach(di => { if (di >= 0) this.holder[di] = mi }))
     this.evals = this.assign.map((row, mi) => model.evaluate(mi, row))
-    for (const e of this.evals) { this.scoreSum += e.score; this.warnSum += e.warns }
+    for (const e of this.evals) { this.scoreSum += e.score; this.warnSum += e.warns; this.pinSum += e.pin }
     this.unassigned = this.holder.filter(h => h < 0).length
     this.holder.forEach((h, di) => { if (h < 0) this.missing += missingCost(model.input.duties[di]) })
     this.current = this.objective()
@@ -522,7 +544,7 @@ export class RosterImprover {
   }
 
   private objective(): number {
-    return this.model.objective(this.scoreSum, this.warnSum, this.missing)
+    return this.model.objective(this.scoreSum, this.warnSum, this.missing, this.pinSum)
   }
 
   bestAssign(): Int32Array[] { return this.best }
@@ -552,17 +574,19 @@ export class RosterImprover {
   private settle(touched: number[], unassignedDelta: number, missingDelta: number, undo: () => void): void {
     const next = touched.map(mi => this.model.evaluate(mi, this.assign[mi]))
     if (next.some(e => e.hard)) { undo(); return }
-    let scoreSum = this.scoreSum, warnSum = this.warnSum
+    let scoreSum = this.scoreSum, warnSum = this.warnSum, pinSum = this.pinSum
     touched.forEach((mi, i) => {
       scoreSum += next[i].score - this.evals[mi].score
       warnSum  += next[i].warns - this.evals[mi].warns
+      pinSum   += next[i].pin - this.evals[mi].pin
     })
-    const value = this.model.objective(scoreSum, warnSum, this.missing + missingDelta)
+    const value = this.model.objective(scoreSum, warnSum, this.missing + missingDelta, pinSum)
     const delta = value - this.current
     if (delta < 0 && this.random() >= Math.exp(delta / this.temperature())) { undo(); return }
     touched.forEach((mi, i) => { this.evals[mi] = next[i] })
     this.scoreSum = scoreSum
     this.warnSum = warnSum
+    this.pinSum = pinSum
     this.unassigned += unassignedDelta
     this.missing += missingDelta
     this.current = value
@@ -642,6 +666,7 @@ export function rosterQuality(model: RosterModel, assign: Int32Array[]): RosterQ
   const { input, M, T } = model
   let kept = 0, days = 0, changes = 0, changedMembers = 0, prefDen = 0, prefMain = 0, prefAny = 0
   let belowLoad = 0, withLoad = 0, shiftSum = 0, shiftN = 0, warnings = 0
+  const pinned = { duties: 0, first: 0, listed: 0 }
   for (let mi = 0; mi < M; mi++) {
     const m = input.members[mi]
     const e = model.evaluate(mi, assign[mi])
@@ -661,7 +686,14 @@ export function rosterQuality(model: RosterModel, assign: Int32Array[]): RosterQ
         const prev = last[signatureGroup(sig)]
         if (prev != null) { days++; if (prev === sig) kept++ }
         const d = input.duties[di]
-        if (!d.standby && top > 0 && d.lineMinutes.length) {
+        if (d.preferred.length) {
+          const r = d.preferred.indexOf(mi)
+          pinned.duties++
+          if (r === 0) pinned.first++
+          if (r >= 0) pinned.listed++
+        }
+        // a plantão counts as its own line (STANDBY_LINE), so a preferred plantão is a met preference
+        if (top > 0 && d.lineMinutes.length) {
           const main = d.lineMinutes.reduce((a, l) => (l.minutes > a.minutes ? l : a))
           const grade = m.prefGrade[main.lineId] ?? 0
           prefDen++
@@ -680,7 +712,7 @@ export function rosterQuality(model: RosterModel, assign: Int32Array[]): RosterQ
     prefMain: pct(prefMain), prefAny: pct(prefAny),
     belowLoad, withLoad,
     shiftDev: shiftN ? Math.round(shiftSum / shiftN) : null,
-    warnings,
+    warnings, pinned,
   }
 }
 

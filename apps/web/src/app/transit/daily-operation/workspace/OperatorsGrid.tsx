@@ -260,6 +260,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                           'relative border-b border-l border-border/60 px-1 py-1 text-center cursor-pointer select-none',
                           s.standby && !s.issues && 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200',
                           free?.has(`${m.id}|${date}`) && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                          !s.issues && s.notes.length > 0 && !s.standby && 'bg-amber-500/5',
                           s.issues && 'bg-red-500/10 text-red-700 dark:text-red-300',
                           s.off && 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
                           s.absence && 'bg-violet-500/25',
@@ -269,7 +270,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                           drag?.memberId === m.id && drag.date === date && 'opacity-40',
                           proposed?.changed && 'outline outline-2 -outline-offset-2 outline-dashed outline-amber-500',
                         )}
-                        title={proposed?.changed ? `Proposta: ${proposed.label || 'livre'}` : undefined}
+                        title={proposed?.changed ? `Proposta: ${proposed.label || 'livre'}` : s.notes.length ? s.notes.join('\n') : undefined}
                       >
                         {proposed?.changed
                           ? <span className="font-medium italic text-amber-700 dark:text-amber-300">{proposed.label || '·'}</span>
@@ -338,6 +339,7 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
       {s.locked && <Icons.Lock className="absolute left-0.5 top-0.5 w-2.5 h-2.5 text-muted-foreground" />}
       {s.window && <Icons.Clock className="absolute right-0.5 bottom-0.5 w-2.5 h-2.5 text-muted-foreground" />}
       {s.pending.length > 0 && <span className="absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" title="Pedido pendente" />}
+      {s.notes.length > 0 && <span className="absolute right-0.5 bottom-0.5 w-1.5 h-1.5 rounded-full border border-amber-500" />}
       {s.changed && <span className="absolute left-0.5 bottom-0.5 w-1.5 h-1.5 rounded-full bg-sky-500" title="Alterado após a publicação" />}
     </>
   )

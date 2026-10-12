@@ -1,5 +1,5 @@
 import { DAILY_ISSUE_LABEL, DUTY_ISSUE_LABEL, VEHICLE_BLOCK_ISSUE_LABEL } from '@nyx/schemas'
-import type { RosterBoard, RosterBoardCell, RosterBoardDuty, RosterBoardMember } from '@nyx/schemas'
+import type { DailyIssue, RosterBoard, RosterBoardCell, RosterBoardDuty, RosterBoardMember } from '@nyx/schemas'
 import { apiFetch } from '@/lib/auth'
 import { extractError } from '@/lib/utils'
 
@@ -48,6 +48,16 @@ export function shiftPeriod(mode: Mode, date: string, n: number): string {
 // T07 — a plantão (STANDBY) is P07
 export const dutyName = (d: Pick<RosterBoardDuty, 'number' | 'scope' | 'kind'>, multiScope: boolean) =>
   `${multiScope ? `${d.scope.slice(0, 3)} ` : ''}${d.kind === 'STANDBY' ? 'P' : 'T'}${String(d.number).padStart(2, '0')}`
+
+// a name for a tight column — the nickname (the board's name already prefers it) or, without
+// one, the first and last names
+export const shortName = (name: string) => {
+  const w = name.trim().split(/\s+/)
+  return w.length > 2 ? `${w[0]} ${w[w.length - 1]}` : name
+}
+
+// an advisory in one line — "Fora do ideal do turno: início 00:25 (ideal 05:30–08:30)"
+export const noteText = (i: DailyIssue) => `${ISSUE_LABEL[i.code] ?? i.code}${i.detail ? `: ${i.detail}` : ''}`
 
 // The crew left over: `${memberId}|${date}` of the empresa's crew members with nothing on a
 // created day — no duty, day off, absence, rest-pattern day off or duty elsewhere.
@@ -125,7 +135,9 @@ export function cellSummary(cell: RosterBoardCell | undefined, idx: BoardIndex, 
     locked:     (cell?.entries ?? []).some(e => e.locked),
     // changed after the day was published
     changed:    !!cell?.changed,
-    issues:     duties.some(d => d.issues.length > 0),
+    issues:     duties.some(d => d.issues.some(i => i.severity !== 'info')),
+    // advisories ("atenção": e.g. far from the shift's ideal) — soft, with their detail
+    notes:      duties.flatMap(d => d.issues.filter(i => i.severity === 'info').map(noteText)),
     label:      duties.length ? duties.map(d => dutyName(d, multiScope)).join('+') : '',
   }
 }

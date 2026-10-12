@@ -476,7 +476,9 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     // ── write ──
     const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b)
     const counts: Record<string, number> = {}
-    const count = (issues: { code: string }[]) => { for (const i of new Set(issues.map(x => x.code))) counts[i] = (counts[i] ?? 0) + 1 }
+    // advisories (info) aren't pendências
+    const pending = <T extends { severity?: string }>(issues: T[]) => issues.filter(i => i.severity !== 'info')
+    const count = (issues: { code: string; severity?: string }[]) => { for (const i of new Set(pending(issues).map(x => x.code))) counts[i] = (counts[i] ?? 0) + 1 }
 
     await this.prisma.$transaction(async tx => {
       for (const d of duties) {
@@ -492,7 +494,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
         if (d.isStale === r.isStale && d.shiftId === r.shiftId && same(d.summary, r.summary) && same(d.issues, issues)) continue
         await tx.dailyDuty.update({
           where: { id: d.id },
-          data:  { summary: r.summary, issues: issues as unknown as Prisma.InputJsonValue, hasIssues: issues.length > 0, isStale: r.isStale, shiftId: r.shiftId },
+          data:  { summary: r.summary, issues: issues as unknown as Prisma.InputJsonValue, hasIssues: pending(issues).length > 0, isStale: r.isStale, shiftId: r.shiftId },
         })
       }
       for (const b of blocks) {

@@ -199,6 +199,15 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
           placeholder="Sem operador" disabled={!canEdit || duty.locked} className="h-8 text-sm" emptyMessage="Nenhum operador"
         />
       </div>
+      {duty.preferred.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Preferenciais:{' '}
+          {duty.preferred.map((id, i) => {
+            const m = idx.memberById.get(id)
+            return <span key={id} className={cn(id === duty.crewMemberId && 'text-foreground font-medium')}>{i > 0 && ' · '}{i + 1}º {m ? `${m.code} ${m.name}` : 'outra empresa'}</span>
+          })}
+        </p>
+      )}
       {canEdit && !duty.crewMemberId && (
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Sugestões {suggesting && <Icons.Loader2 className="inline w-3 h-3 animate-spin" />}</p>
@@ -244,8 +253,10 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
         <ul className="border-t border-border pt-2 space-y-0.5">
           {issues.map((i, k) => (
             <li key={k} className="flex items-start gap-1 text-xs">
-              <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'warning' ? 'text-amber-500' : 'text-red-600 dark:text-red-400')} />
-              <span>{ISSUE_LABEL[i.code] ?? i.code}{i.cars > 1 && ` (${i.cars} carros)`}</span>
+              {i.severity === 'info'
+                ? <Icons.Info className="w-3.5 h-3.5 shrink-0 mt-px text-amber-500/80" />
+                : <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'warning' ? 'text-amber-500' : 'text-red-600 dark:text-red-400')} />}
+              <span className={cn(i.severity === 'info' && 'text-muted-foreground')}>{ISSUE_LABEL[i.code] ?? i.code}{i.detail && `: ${i.detail}`}{i.cars > 1 && ` (${i.cars} carros)`}</span>
             </li>
           ))}
         </ul>

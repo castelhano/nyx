@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Put, Delete, Patch, Param, Body, Query, Req, UseGuards, HttpCode } from '@nestjs/common'
 import { VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, vehiclePlanDiffSchema, previewLineScoreSchema } from '@nyx/schemas'
+import type { AuthUser } from '@nyx/types'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtOrQueryGuard } from '../../../../auth/policies.guard'
@@ -146,6 +147,21 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     @Body() body: { approvalRef: string; notes?: string },
   ) {
     return this.vehiclePlanService.createLineSchedule(id, lineId, body)
+  }
+
+  // the trip groups' crew members: { bundleId: [{ id, code, name }] }
+  @Get(':id/bundle-crew')
+  async bundleCrew(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
+    await this.assertAbility(req.user, 'read')
+    return this.vehiclePlanService.getBundleCrew(id)
+  }
+
+  // body: { bundleId, crewMemberIds } — in order of preference; [] clears
+  @Put(':id/bundle-crew')
+  @HttpCode(204)
+  async setBundleCrew(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body() body: { bundleId?: string; crewMemberIds?: unknown }) {
+    await this.assertAbility(req.user, 'update')
+    await this.vehiclePlanService.setBundleCrew(id, body?.bundleId ?? '', Array.isArray(body?.crewMemberIds) ? body.crewMemberIds as string[] : [])
   }
 
   @Get(':id/gantt-data')

@@ -1,4 +1,4 @@
-import { lineVehicleTypesSchema, restPatternWorks, shiftFits, type DailyIssue, type DutySummary, type ShiftWindow, type VehicleTypeValue } from '@nyx/schemas'
+import { lineVehicleTypesSchema, restPatternWorks, shiftFits, shiftIdealDistance, type DailyIssue, type DutySummary, type ShiftWindow, type VehicleTypeValue } from '@nyx/schemas'
 import type { PrismaService } from '../../../prisma/prisma.service'
 import type { TransitRosterConfigService } from '../settings/transit-roster-config.service'
 import { addDays, dayOf, toDbDate, type Day } from '../timetabling/plan-validity'
@@ -45,7 +45,7 @@ export async function loadCrewFacts(prisma: PrismaService, roster: TransitRoster
       where:  { id: { in: memberIds } },
       select: {
         id: true, isRosterable: true, notBeforeMinutes: true, notAfterMinutes: true, restOffset: true,
-        blockedVehicleTypes: true, licenseExpiresAt: true, courseExpiresAt: true,
+        blockedVehicleTypes: true, licenseExpiresAt: true, courseExpiresAt: true, standbyBlocked: true,
         employee:    { select: { branchId: true, status: true } },
         restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } },
         lines:       { select: { lineId: true, access: true } },
@@ -114,15 +114,27 @@ export function crewIssues(
 
     const start = duty.summary.startMinutes, end = duty.summary.endMinutes
     const shift = m.shifts[0]?.shift
+    const window = shift ? effectiveWindow(shift, m, facts.occurrences.filter(o => o.crewMemberId === memberId)) : null
     if (!shift) push('NO_SHIFT', 'warning')
-    else if (start != null && end != null && !shiftFits(effectiveWindow(shift, m, facts.occurrences.filter(o => o.crewMemberId === memberId)), start, end, duty.kind)) {
+    else if (start != null && end != null && !shiftFits(window!, start, end, duty.kind)) {
       push('SHIFT_WINDOW')
+    } else if (start != null && end != null && window) {
+      // inside the window but far from its ideal (beyond shiftFit's ceiling): an advisory
+      const limit = facts.settings.get(m.employee.branchId)?.range.shiftFit.ceiling ?? 120
+      const off = shiftIdealDistance(window, start, end)
+      if (off > limit) {
+        const side = (label: string, v: number, lo: number, hi: number) =>
+          v < lo || v > hi ? `${label} ${clock(v)} (ideal ${clock(lo)}–${clock(hi)})` : null
+        const detail = [side('início', start, window.startIdealMin, window.startIdealMax), side('fim', end, window.endIdealMin, window.endIdealMax)].filter(Boolean).join(' · ')
+        issues.push({ code: 'SHIFT_IDEAL', severity: 'info', crewMemberId: memberId, value: off, detail })
+      }
     }
 
     const mode = facts.settings.get(m.employee.branchId)?.lineAccessMode ?? 'BLACKLIST'
     const access = new Map(m.lines.map(l => [l.lineId, l.access]))
     if (duty.lineIds.some(l => mode === 'WHITELIST' ? access.get(l) !== 'ENABLED' : access.get(l) === 'BLOCKED')) push('LINE_NOT_ALLOWED')
     if (duty.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t))) push('VEHICLE_TYPE_BLOCKED')
+    if (duty.kind === 'STANDBY' && m.standbyBlocked) push('STANDBY_BLOCKED')
 
     const expired = (d: Date | null) => !!d && dayOf(d) < day
     if (expired(m.licenseExpiresAt)) push('LICENSE_EXPIRED')
@@ -209,3 +221,6 @@ export async function vehicleIssues(prisma: PrismaService, day: Day, blocks: Blo
   }
   return out
 }
+
+// 05:30 — minutes past midnight, 24h+ wrapped
+const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`

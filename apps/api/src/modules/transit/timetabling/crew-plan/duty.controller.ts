@@ -23,4 +23,12 @@ export class DutyController extends BaseController<Duty, CreateDutyDto, UpdateDu
     await this.assertAbility(req.user, 'update')
     return this.dutyService.setLocked(id, body?.locked === true)
   }
+
+  // body: { crewMemberIds: string[] } — in order of preference; [] clears
+  @Post(':id/crew-pins')
+  @HttpCode(200)
+  async crewPins(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body() body: { crewMemberIds?: unknown }) {
+    await this.assertAbility(req.user, 'update')
+    return this.dutyService.setCrewPins(id, Array.isArray(body?.crewMemberIds) ? body.crewMemberIds as string[] : [])
+  }
 }

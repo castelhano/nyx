@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { CrewPinsEditor } from '../../../crew-pins-editor'
 import { formatDutyNumber, pieceAdjustFailureText, CREW_ROLES, type CrewRole } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -51,6 +52,8 @@ interface Props {
   onDeleteActivity: (activityId: string) => void
   onClose:          () => void
   onToggleLock:     () => void
+  // the preferred crew members, in order ([] clears)
+  onSetPins:        (crewMemberIds: string[]) => void
 }
 
 // Remounted per duty (key={duty.id}) and per reset, so the form's initial state is simply
@@ -61,7 +64,7 @@ export function DutyPanel(props: Props) {
 
 function DutyPanelInner({
   duty, blockById, lineCodes, operators, shifts, localityName, canEdit,
-  onSave, onDelete, onDeletePiece, onAdjustPiece, onAddActivity, onDeleteActivity, onClose, onToggleLock,
+  onSave, onDelete, onDeletePiece, onAdjustPiece, onAddActivity, onDeleteActivity, onClose, onToggleLock, onSetPins,
 }: Props) {
   const flaggedActivityIds = new Set(duty.issues.map(i => i.activityId).filter(Boolean))
   const [role, setRole]         = useState<CrewRole>(duty.role)
@@ -91,6 +94,7 @@ function DutyPanelInner({
           <span className="text-sm text-muted-foreground">{ROLE_LABEL[duty.role]}</span>
           {duty.isStale && <Badge tone="red">Desatualizada</Badge>}
           {duty.hasIssues && <Badge tone="amber">Pendências</Badge>}
+          {duty.shiftPinned && <span className="text-[10px] text-muted-foreground border border-border rounded-sm px-1" title="Turno definido manualmente — o recálculo não o troca">turno manual</span>}
         </div>
         <div className="flex items-center gap-2">
           {canEdit && (
@@ -147,6 +151,9 @@ function DutyPanelInner({
           </Field>
         </form>
 
+        <CrewPinsEditor pins={duty.crewPins} branchId={duty.branchId} canEdit={canEdit} onChange={onSetPins}
+          hint="A escala diária dá a tabela ao 1º livre da lista; se nenhum estiver, a qualquer outro." />
+
         {s && (
           <Section title="Resumo">
             <p className="text-xs">
@@ -172,12 +179,14 @@ function DutyPanelInner({
         )}
 
         {duty.issues.length > 0 && (
-          <Section title="Pendências">
+          <Section title={duty.issues.some(i => i.severity !== 'info') ? 'Pendências' : 'Observações'}>
             <ul className="space-y-1 text-xs">
               {duty.issues.map((i, idx) => (
                 <li key={idx} className="flex items-start gap-2">
-                  <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'error' ? 'text-red-600 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')} />
-                  <span>
+                  {i.severity === 'info'
+                    ? <Icons.Info className="w-3.5 h-3.5 shrink-0 mt-px text-muted-foreground" />
+                    : <Icons.AlertTriangle className={cn('w-3.5 h-3.5 shrink-0 mt-px', i.severity === 'error' ? 'text-red-600 dark:text-red-400' : 'text-amber-500 dark:text-amber-400')} />}
+                  <span className={cn(i.severity === 'info' && 'text-muted-foreground')}>
                     {ISSUE_LABEL[i.code]}
                     {!VALUELESS_ISSUES.has(i.code) && (METER_ISSUES.has(i.code)
                       ? <> — {i.value.toLocaleString('pt-BR')} m{i.limit != null && <> (limite {i.limit.toLocaleString('pt-BR')} m)</>}</>
@@ -344,3 +353,4 @@ function adjustText(p: BoardPiece, a: Extract<NonNullable<BoardPiece['adjust']>,
     end('fim', p.endMinutes, p.endLocalityId, a.endMinutes, a.endLocalityId),
   ].filter(Boolean).join(' · ')
 }
+

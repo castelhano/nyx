@@ -245,6 +245,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const breadcrumb     = schemaMeta.breadcrumb     as import('@nyx/types').BreadcrumbDef[] | undefined
   const nameFirstWord  = schemaMeta.nameFirstWord  as boolean | undefined
   const afterCreate    = schemaMeta.afterCreate    as string | undefined
+  const stayOnSave     = schemaMeta.stayOnSave     as boolean | undefined
   const defaultFilters = schemaMeta.defaultFilters as Record<string, string> | undefined
   const children     = deriveChildren(resource)
   const rowActions   = serializeRowActions(schemaMeta.rowActions)
@@ -269,6 +270,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     ...(children     ? { children }     : {}),
     ...(rowActions   ? { rowActions }   : {}),
     ...(afterCreate     ? { afterCreate }     : {}),
+    ...(stayOnSave      ? { stayOnSave }      : {}),
     ...(defaultFilters  ? { defaultFilters }  : {}),
   }
 }

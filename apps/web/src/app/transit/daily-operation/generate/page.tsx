@@ -235,7 +235,7 @@ export default function RosterGeneratorPage() {
         <ToggleRow label="Consistir Linha da Empresa" checked={params.restrictToBranchLines} onToggle={() => set('restrictToBranchLines', !params.restrictToBranchLines)} disabled={running}
           hint="Só escala tabelas cujas linhas a empresa opera" />
         <ToggleRow label="Alocar Veículos" checked={params.vehicles} onToggle={() => set('vehicles', !params.vehicles)} disabled={running}
-          hint="Ao aceitar, preenche os carros ainda sem veículo — preferido, habitual, depois qualquer elegível" />
+          hint="Ao aceitar, refaz os carros dos dias gerados — preferido, habitual, depois qualquer elegível" />
       </form>
 
       {(jobId || error) && (

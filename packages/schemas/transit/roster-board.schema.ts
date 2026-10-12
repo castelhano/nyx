@@ -44,6 +44,8 @@ export interface RosterBoardDuty {
   crewMemberId: string | null
   locked:      boolean
   isStale:     boolean
+  // who should work it, in order (the logical duty's crewMemberIds)
+  preferred:   string[]
 }
 
 export interface RosterBoardMember {

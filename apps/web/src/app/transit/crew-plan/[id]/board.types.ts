@@ -46,6 +46,8 @@ export interface BoardDuty {
   hasIssues:  boolean
   // Duty.constraints.locked — the crew solver leaves it alone
   locked:     boolean
+  // Duty.constraints.crewMemberIds, named — who should work it, in order (roster generator)
+  crewPins:   { id: string; code: string; name: string }[]
   // CrewShift the duty fits (derived) — or the user's, when shiftPinned
   shiftId:    string | null
   shiftPinned: boolean
