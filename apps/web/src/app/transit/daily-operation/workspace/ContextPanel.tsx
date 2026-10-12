@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
+import { GenerationList } from './GenerationList'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
-import { ISSUE_LABEL, WEEKDAY, cellSummary, clock, dutyName, fmtDay, hm, requestImpact, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
+import { ISSUE_LABEL, WEEKDAY, cellSummary, clock, dutyName, fmtDay, freeCells, hm, requestImpact, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
 
 interface Suggestion { crewMemberId: string; code: string; name: string; points: number; warns: number; reasons: string[] }
 
@@ -110,8 +111,13 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
         <section className="rounded-lg border border-border p-3 space-y-2">
           <p className="font-medium">{WEEKDAY[weekday(day.date)]} {fmtDay(day.date)}</p>
           <p className="text-xs text-muted-foreground">{day.assigned}/{day.duties} tabela(s) com operador · {day.issues} com pendência</p>
+          {day.operations.length > 0 && (() => {
+            const left = [...freeCells(board, idx)].filter(k => k.endsWith(`|${day.date}`)).length
+            return <p className="text-xs text-emerald-600 dark:text-emerald-400">{left ? `${left} operador(es) sem escala no dia` : 'Ninguém sobrando no dia'}</p>
+          })()}
           {!day.operations.length && <p className="text-xs text-muted-foreground">Dia ainda não criado — gere a escala do período.</p>}
           {day.operations.map(o => <OperationRow key={o.id} o={o} canEdit={canEdit} actions={actions} />)}
+          <GenerationList list={board.generations.filter(g => g.from <= day.date && g.to >= day.date).slice(0, 3)} title="Gerado por" />
         </section>
       )}
 

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Worker } from 'worker_threads'
+import { Prisma } from '@prisma/client'
 import * as path from 'path'
 import { Observable, Subject } from 'rxjs'
 import { ROSTER_MAX_HORIZON_DAYS, rosterGeneratorParamsSchema, type RosterGeneratorParams } from '@nyx/schemas'
@@ -291,6 +292,16 @@ export class RosterGeneratorService {
       })
       if (changes.length) await tx.dailyChangeLog.createMany({ data: changes })
     }, { timeout: 60_000 })
+
+    // the record of the generation (the day's panel lists it) — the summary without its long lists
+    const { members: _members, days: _days, shortage: _shortage, publishedChanges, ...summary } = best.summary
+    await this.prisma.rosterGeneration.create({
+      data: {
+        branchId: params.branchId, role: params.role, fromDate: toDbDate(params.from), toDate: toDbDate(params.to),
+        params, summary: { ...summary, publishedChanges: publishedChanges.length } as unknown as Prisma.InputJsonValue,
+        assigned: assignments.length, changed: changes.length, userId: userId ?? null,
+      },
+    })
 
     const operationIds = planned.map(p => p.id)
     const settings = await this.rosterConfig.get(params.branchId)

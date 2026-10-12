@@ -5,14 +5,15 @@ import type { TransitRosterConfigService } from '../../settings/transit-roster-c
 import { loadCrewBranchRules } from '../../timetabling/crew-plan/crew-branch-rules'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
 import { effectiveWindow } from '../daily-checks'
-import { NOT_PUBLISHED, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
+import { NOT_PUBLISHED, isChange, signatureGroup, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
 
 // Reads everything the generator needs for one empresa/role over [from, to]:
 //  - the duties of the PLANNED days (and PUBLISHED ones, `published`) of the Scopes the empresa
 //    operates (its own duties, or the ones without an empresa in a Scope it operates alone) — not
 //    already held by a fixed entry
 //  - its rosterable, active crew members of the role, with what each day means for them
-//  - the load window (load period start .. to): minutes worked and changes before `from`
+//  - the load window (load period start, or the first day with data, .. to): minutes worked and
+//    changes before `from`
 //
 // A fixed entry stays as it is: locked, on a day no longer PLANNED, a compensatory day off or a
 // day off entered by hand.
@@ -46,6 +47,10 @@ export async function loadRosterInput(
   const scopeIds  = operators.map(o => o.scopeId)
   const aloneIn   = operators.filter(o => o.scope._count.operators === 1).map(o => o.scopeId)
   const crewSettings = await crewConfig.get(scopeIds[0])
+  // the load window starts on the period's first day — or on the first day the system has for the
+  // empresa, when later: a day without data isn't a day worked zero
+  const firstDay = await prisma.dailyOperation.findFirst({ where: { scopeId: { in: scopeIds } }, orderBy: { date: 'asc' }, select: { date: true } })
+  const loadStart = firstDay && dayOf(firstDay.date) > periodStart ? [dayOf(firstDay.date), from].sort()[0] : periodStart
 
   const operations = await prisma.dailyOperation.findMany({
     where:  { scopeId: { in: scopeIds }, date: { gte: toDbDate(from), lte: toDbDate(to) }, status: { in: options.published ? ['PLANNED', 'PUBLISHED'] : ['PLANNED'] } },
@@ -111,10 +116,22 @@ export async function loadRosterInput(
   const dutyIds = [...new Set([...duties.map(d => d.id), ...entries.flatMap(e => e.dailyDutyId ?? [])])]
   const facts = await dutyLines(prisma, dutyIds)
   const { lineOperators } = await loadCrewBranchRules(prisma, { lineIds: [...new Set([...facts.values()].flatMap(f => f.lines.map(l => l.lineId)))] })
+  // the logical duty each daily duty was copied from, and its crew plan — the duty's identity
+  // across days (see RgDuty.signature)
+  const sources = await prisma.dailyDuty.findMany({ where: { id: { in: dutyIds } }, select: { id: true, sourceDutyId: true } })
+  const planOf = new Map((await prisma.duty.findMany({
+    where:  { id: { in: [...new Set(sources.flatMap(s => s.sourceDutyId ?? []))] } },
+    select: { id: true, crewPlanId: true },
+  })).map(d => [d.id, d.crewPlanId]))
+  const sourceOf = new Map(sources.map(s => [s.id, s.sourceDutyId]))
   const signature = (dutyId: string, shiftId: string | null) => {
+    const src = sourceOf.get(dutyId)
+    const plan = src ? planOf.get(src) : undefined
+    if (src && plan) return `${plan}#${src}`
+    // no logical duty (made in the day): its dominant line and shift
     const lines = facts.get(dutyId)?.lines ?? []
     const dominant = lines.reduce<{ lineId: string; minutes: number } | null>((a, l) => (!a || l.minutes > a.minutes ? l : a), null)
-    return `${dominant?.lineId ?? '-'}|${shiftId ?? '-'}`
+    return `-#${dominant?.lineId ?? '-'}|${shiftId ?? '-'}`
   }
 
   const shiftCodes = new Map((await prisma.crewShift.findMany({
@@ -174,16 +191,17 @@ export async function loadRosterInput(
     }
 
     // the load window before the horizon
-    let workedBefore = 0, changesBefore = 0, last: string | null = null, prevEnd: number | null = null, nextStart: number | null = null
+    let workedBefore = 0, changesBefore = 0, prevEnd: number | null = null, nextStart: number | null = null
+    const last: Record<string, string> = {}
     const worked = mine.filter(e => e.dailyDuty && dayOf(e.date) < from).sort((a, b) => a.date.getTime() - b.date.getTime())
     for (const e of worked) {
       const s = e.dailyDuty!.summary as DutySummary | null
       const sig = signature(e.dailyDutyId!, e.dailyDuty!.shiftId)
-      if (dayOf(e.date) >= periodStart) {
+      if (dayOf(e.date) >= loadStart) {
         workedBefore += s?.paidMinutes ?? 0
-        if (last != null && sig !== last) changesBefore++
+        if (isChange(last, sig)) changesBefore++
       }
-      last = sig
+      last[signatureGroup(sig)] = sig
       if (dayOf(e.date) === addDays(from, -1) && s?.endMinutes != null) prevEnd = Math.max(prevEnd ?? 0, s.endMinutes)
     }
     for (const e of mine.filter(x => x.dailyDuty && dayOf(x.date) === addDays(to, 1))) {
@@ -193,9 +211,9 @@ export async function loadRosterInput(
 
     // the target: monthly load pro rata over the load window, minus absences / compensatory days off
     const weekly  = m.weeklyHours ?? m.employee.contracts[0]?.weeklyHours ?? settings.defaultWeeklyHours
-    const window  = daysBetween(periodStart, addDays(to, 1))
+    const window  = daysBetween(loadStart, addDays(to, 1))
     const reduced = new Set<Day>()
-    for (let d = periodStart; d <= to; d = addDays(d, 1)) {
+    for (let d = loadStart; d <= to; d = addDays(d, 1)) {
       if (reducesLoad(d) || mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d)) reduced.add(d)
     }
     const targetMinutes = weekly * 5 * 60 * Math.max(0, window - reduced.size) / periodDays
@@ -211,7 +229,11 @@ export async function loadRosterInput(
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
       status, windows, fixed, licenseExpired, courseExpired,
-      targetMinutes, workedBefore, changesBefore, lastSignature: last, prevEnd, nextStart,
+      targetMinutes, workedBefore, changesBefore, lastSignatures: last, prevEnd, nextStart,
+      current: days.map(day => {
+        const held = mine.find(e => dayOf(e.date) === day && e.dailyDutyId && dutyIndex.has(e.dailyDutyId))
+        return held ? dutyIndex.get(held.dailyDutyId!)! : -1
+      }),
       published: days.map(day => {
         if (!publishedDays.has(day)) return NOT_PUBLISHED
         const held = mine.find(e => dayOf(e.date) === day && e.dailyDutyId && dutyIndex.has(e.dailyDutyId))
@@ -225,7 +247,7 @@ export async function loadRosterInput(
     operationIds: operations.map(o => o.id),
     input: {
       days, duties: rgDuties, members: rgMembers,
-      loadDaysBefore: daysBetween(periodStart, from),
+      loadDaysBefore: daysBetween(loadStart, from),
       ensureMonthlyLoad: params.ensureMonthlyLoad,
       maxChanges: params.maxChanges,
       lineAccessMode: settings.lineAccessMode,

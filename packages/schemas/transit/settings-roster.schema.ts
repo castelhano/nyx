@@ -32,8 +32,8 @@ const rosterRangeDefault = {
   loadDeficit:    { active: true, modifier: 30, floor: 0, idealMin: 0,  idealMax: 3,   ceiling: 20  },
   // minutes above the period load, for whoever avoids overtime (load off)
   overtimePref:   { active: true, modifier: 10, floor: 0, idealMin: 0,  idealMax: 120, ceiling: 1200 },
-  // duty signature changes in the load period
-  tableChanges:   { active: true, modifier: 20, floor: 0, idealMin: 0,  idealMax: 1,   ceiling: 6   },
+  // duty changes (a different table than the last one under the same crew plan) in the load period
+  tableChanges:   { active: true, modifier: 20, floor: 0, idealMin: 0,  idealMax: 0,   ceiling: 6   },
   // days whose duty changes on a PUBLISHED day the generator redoes (includePublished)
   publishedChanges: { active: true, modifier: 60, floor: 0, idealMin: 0, idealMax: 0, ceiling: 2 },
 }

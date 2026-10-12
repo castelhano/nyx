@@ -14,7 +14,7 @@ const ROSTER_RANGE_META: Record<keyof RosterSettings['range'], { label: string; 
   shiftFit:       { label: 'Ajuste ao Turno',       unit: DURATION_UNIT, hint: 'Média por jornada de quanto o início/fim fica fora do ideal do turno.' },
   loadDeficit:    { label: 'Déficit de Carga',      unit: '%',          hint: 'Quanto falta para a carga do período (com "Garantir carga").' },
   overtimePref:   { label: 'Horas Extras',          unit: DURATION_UNIT, hint: 'Minutos acima da carga para quem evita extras (sem "Garantir carga").' },
-  tableChanges:   { label: 'Trocas de Tabela',      unit: 'trocas',     hint: 'Trocas de linha principal ou turno no período da carga.' },
+  tableChanges:   { label: 'Trocas de Tabela',      unit: 'trocas',     hint: 'Trocas de tabela no período da carga (comparando com a última tabela da mesma escala). Ideal 0 = mantém a tabela.' },
   publishedChanges: { label: 'Mudanças em Publicados', unit: 'dias',     hint: 'Dias do operador cuja tabela muda ao gerar sobre dias já publicados (por operador).' },
 }
 

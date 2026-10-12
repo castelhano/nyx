@@ -16,12 +16,14 @@ import { useConfirm }       from '@/lib/confirm-context'
 import { cn, extractError } from '@/lib/utils'
 import { localToday }       from '@/lib/plan-vigence'
 import {
-  ISSUE_LABEL, WEEKDAY, call, cellSummary, dutyName, fmtDay, indexBoard, periodOf, requestImpact, shiftPeriod, weekday,
+  ISSUE_LABEL, WEEKDAY, call, cellSummary, dutyName, fmtDay, freeCells, indexBoard, periodOf, requestImpact, shiftPeriod, weekday,
   withAssign, withDayOff, withLock, withSwap,
   type Mode, type RosterBoard, type RosterBoardDuty, type View,
 } from './workspace/board'
 import { OperatorsGrid, type GridPos, type Overlay } from './workspace/OperatorsGrid'
 import { GeneratePanel, type Proposal } from './workspace/GeneratePanel'
+import { QualityTable } from './workspace/QualityTable'
+import { GenerationList } from './workspace/GenerationList'
 import { ShortageList } from './workspace/ShortageList'
 import { DutiesView } from './workspace/DutiesView'
 import { ContextPanel, RequestRow } from './workspace/ContextPanel'
@@ -29,8 +31,9 @@ import { ContextPanel, RequestRow } from './workspace/ContextPanel'
 const ORIGIN = 'apps/web/src/app/transit/daily-operation/page'
 const LAST_KEY = 'nyx.roster.context'
 
-// the Tudo / Tabelas / Plantões filter
-const isKind = (d: RosterBoardDuty, kind: 'tudo' | 'tabelas' | 'plantoes') => kind === 'tudo' || (kind === 'plantoes') === (d.kind === 'STANDBY')
+// the Tudo / Tabelas / Plantões / Sobra filter
+type Kind = 'tudo' | 'tabelas' | 'plantoes' | 'sobra'
+const isKind = (d: RosterBoardDuty, kind: Kind) => kind === 'tudo' || kind === 'sobra' || (kind === 'plantoes') === (d.kind === 'STANDBY')
 
 // a duty's pendências: code → cars hit (1 for the duty's own); DUTY_UNASSIGNED (RESERVE_SHORT for
 // a plantão) when it has no holder
@@ -63,8 +66,8 @@ export default function RosterPage() {
   const date     = searchParams.get('data') ?? localToday()
   const mode     = (searchParams.get('modo') ?? 'semana') as Mode
   const view     = (searchParams.get('visao') ?? 'operadores') as View
-  // tabelas / plantões only (both views)
-  const kind     = (searchParams.get('tipo') ?? 'tudo') as 'tudo' | 'tabelas' | 'plantoes'
+  // tabelas / plantões only (both views); sobra: the crew left over (Operadores)
+  const kind     = (searchParams.get('tipo') ?? 'tudo') as Kind
   const setCtx = (patch: Record<string, string>) => {
     const { tipo, ...base } = { empresa: branchId, funcao: role, data: date, modo: mode, visao: view, tipo: kind as string, ...patch }
     const next: Record<string, string> = tipo === 'tudo' ? base : { ...base, tipo }
@@ -114,12 +117,16 @@ export default function RosterPage() {
   const [anchor, setAnchor] = useState<GridPos | null>(null)
   const [dutyId, setDutyId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [drawer, setDrawer] = useState<'issues' | 'requests' | null>(null)
+  const [drawer, setDrawer] = useState<'issues' | 'requests' | 'quality' | null>(null)
 
   const q = search.trim().toLowerCase()
   // (memoized by the React Compiler)
-  // the crew members holding a duty of the kind in the period
-  const holders = new Set((board?.duties ?? []).filter(d => isKind(d, kind)).flatMap(d => d.crewMemberId ?? []))
+  // the crew left over on the created days (`${memberId}|${date}`)
+  const free = board && idx ? freeCells(board, idx) : new Set<string>()
+  // the crew members holding a duty of the kind in the period — or left over some day (sobra)
+  const holders = kind === 'sobra'
+    ? new Set([...free].map(k => k.slice(0, k.indexOf('|'))))
+    : new Set((board?.duties ?? []).filter(d => isKind(d, kind)).flatMap(d => d.crewMemberId ?? []))
   const members = (board?.members ?? []).filter(m =>
     (kind === 'tudo' || holders.has(m.id)) && (!q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)))
   const duties = (board?.duties ?? []).filter(d => {
@@ -362,12 +369,20 @@ export default function RosterPage() {
             </button>
           ))}
         </div>
-        {(standby.length > 0 || kind !== 'tudo') && (
+        {board && (
           <div className="flex rounded-sm border border-border overflow-hidden">
-            {(['tudo', 'tabelas', 'plantoes'] as const).map(k => (
-              <button key={k} type="button" onClick={() => setCtx({ tipo: k })} className={cn(ctl, 'rounded-none', kind === k ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
-                {k === 'tudo' ? 'Tudo' : k === 'tabelas' ? 'Tabelas' : (
+            {(['tudo', 'tabelas', 'plantoes', 'sobra'] as const).filter(k => k !== 'plantoes' || standby.length > 0 || kind === k).map(k => (
+              <button
+                key={k} type="button"
+                // the crew left over shows on the Operadores view
+                onClick={() => setCtx(k === 'sobra' ? { tipo: k, visao: 'operadores' } : { tipo: k })}
+                title={k === 'sobra' ? (mode === 'dia' ? 'Operadores sem tabela, folga ou ausência no dia' : 'Dias de operador sem tabela, folga ou ausência no período') : undefined}
+                className={cn(ctl, 'rounded-none', kind === k ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}
+              >
+                {k === 'tudo' ? 'Tudo' : k === 'tabelas' ? 'Tabelas' : k === 'plantoes' ? (
                   <>Plantões <span className={cn('tabular-nums', standby.some(d => !d.crewMemberId) ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>{standby.filter(d => d.crewMemberId).length}/{standby.length}</span></>
+                ) : (
+                  <>Sobra <span className={cn('tabular-nums', free.size ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>{free.size}</span></>
                 )}
               </button>
             ))}
@@ -384,6 +399,9 @@ export default function RosterPage() {
         <button type="button" onClick={() => setDrawer(d => (d === 'requests' ? null : 'requests'))} className={cn(ctl, 'border border-border', drawer === 'requests' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
           <Icons.Mail className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Pedidos {pendingRequests.length > 0 && <span className="text-amber-600 dark:text-amber-400">{pendingRequests.length}</span>}
         </button>
+        <button type="button" onClick={() => setDrawer(d => (d === 'quality' ? null : 'quality'))} className={cn(ctl, 'border border-border', drawer === 'quality' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
+          <Icons.Gauge className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Qualidade
+        </button>
         {canUpdate && toPublish.length > 0 && (
           <button type="button" onClick={() => void publishPeriod()} className={cn(ctl, 'border border-border hover:bg-muted')}>
             <Icons.Send className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Publicar período <span className="text-muted-foreground">{toPublish.length}</span>
@@ -399,7 +417,7 @@ export default function RosterPage() {
             {view === 'operadores' ? (
               <OperatorsGrid
                 board={board} idx={idx} dates={dates} members={members} cursor={cursor} anchor={anchor}
-                canEdit={canUpdate} busy={busy > 0} overlay={overlay}
+                canEdit={canUpdate} busy={busy > 0} overlay={overlay} free={kind === 'sobra' ? free : undefined}
                 onCursor={(pos, extend) => { setAnchor(extend ? anchor ?? cursor : null); setCursor(pos); setDutyId(null) }}
                 actions={gridActions}
               />
@@ -449,6 +467,15 @@ export default function RosterPage() {
                     </span>
                   </button>
                 ))}
+              </section>
+            )}
+            {drawer === 'quality' && board && (
+              <section className="rounded-lg border border-border p-3 space-y-2">
+                <p className="text-sm font-medium">Qualidade da escala · {fmtDay(from)}–{fmtDay(to)}</p>
+                {board.quality
+                  ? <QualityTable columns={[{ label: 'Atual', q: board.quality }]} />
+                  : <p className="text-xs text-muted-foreground">Nenhuma tabela no período.</p>}
+                <GenerationList list={board.generations} />
               </section>
             )}
             {drawer === 'requests' && (

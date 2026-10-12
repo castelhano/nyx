@@ -65,6 +65,27 @@ export interface RosterProposalSummary {
   publishedChanges: RosterPublishedChange[]
   // the plantões among the duties (reserveTargets) — filled with who's left over
   standby:    { duties: number; assigned: number }
+  // how good the proposal is, and the same for the current allocation (null: nothing allocated)
+  quality:    RosterQuality
+  current:    RosterQuality | null
+}
+
+// what measures a roster's quality over the horizon
+export interface RosterQuality {
+  // worked days whose previous duty (same crew plan) is known, and those keeping it
+  keptTable:      { kept: number; days: number }
+  // table changes inside the horizon, and the crew members with any
+  changes:        number
+  changedMembers: number
+  // % of the duties (crew members with preferred lines) on the main preferred line / on any — null: none has
+  prefMain:       number | null
+  prefAny:        number | null
+  // crew members below 97% of their load (load window), of those with one
+  belowLoad:      number
+  withLoad:       number
+  // average minutes away from the shift's ideal start/end
+  shiftDev:       number | null
+  warnings:       number
 }
 
 export interface RosterPublishedChange {

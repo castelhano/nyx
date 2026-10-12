@@ -40,13 +40,15 @@ interface Props {
   busy:      boolean
   onCursor:  (pos: GridPos, extend: boolean) => void
   actions:   GridActions
+  // the cells left over (`${memberId}|${date}`) — marked while the Sobra filter is on
+  free?:     Set<string>
   overlay?:  Overlay | null
 }
 
 // src: the cell it was copied from (a paste on the same day swaps with it)
 type Copied = { dr: number; dc: number; src: GridPos; value: { type: 'duty'; scope: string; number: number } | { type: 'off' } }[]
 
-export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canEdit, busy, onCursor, actions, overlay }: Props) {
+export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canEdit, busy, onCursor, actions, overlay, free }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const copied = useRef<Copied>([])
   const [picker, setPicker] = useState<{ pos: GridPos; rect: DOMRect } | null>(null)
@@ -257,6 +259,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                         className={cn(
                           'relative border-b border-l border-border/60 px-1 py-1 text-center cursor-pointer select-none',
                           s.standby && !s.issues && 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200',
+                          free?.has(`${m.id}|${date}`) && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
                           s.issues && 'bg-red-500/10 text-red-700 dark:text-red-300',
                           s.off && 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
                           s.absence && 'bg-violet-500/25',
@@ -270,6 +273,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                       >
                         {proposed?.changed
                           ? <span className="font-medium italic text-amber-700 dark:text-amber-300">{proposed.label || '·'}</span>
+                          : free?.has(`${m.id}|${date}`) ? <span className="text-[10px]">livre</span>
                           : <CellContent s={s} single={single} />}
                       </td>
                     )

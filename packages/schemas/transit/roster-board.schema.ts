@@ -1,4 +1,5 @@
 import type { DailyIssue } from './daily-operation.schema'
+import type { RosterQuality } from './roster-generator.schema'
 
 // The "Escala" screen's data for one empresa/role over a period — GET /transit/roster-board
 // (one request: days, duties, operators, their days, requests and pendências).
@@ -71,11 +72,28 @@ export interface RosterBoardCell {
   requests:     { id: string; kind: 'ABSENCE' | 'TIME_WINDOW'; status: 'REQUESTED' | 'APPROVED'; label: string; startNotBefore: number | null; endNotAfter: number | null }[]
 }
 
+export interface RosterBoardGeneration {
+  id:         string
+  from:       string
+  to:         string
+  acceptedAt: string
+  user:       string | null
+  assigned:   number
+  duties:     number
+  // published-day changes logged
+  changed:    number
+  quality:    RosterQuality | null
+}
+
 export interface RosterBoard {
   from:     string
   to:       string
   // more than one Scope: duties carry their Scope name
   multiScope: boolean
+  // the current allocation's quality over the period (null: no duty)
+  quality:  RosterQuality | null
+  // the accepted generations covering the period, newest first
+  generations: RosterBoardGeneration[]
   days:     RosterBoardDay[]
   shifts:   { id: string; code: string }[]
   duties:   RosterBoardDuty[]

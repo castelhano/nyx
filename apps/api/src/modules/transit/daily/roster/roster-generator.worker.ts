@@ -1,5 +1,5 @@
 import { workerData, parentPort, isMainThread } from 'worker_threads'
-import { buildProposal, construct, coverageBound, RosterImprover, RosterModel } from './roster-generator.calc'
+import { buildProposal, construct, coverageBound, currentAssign, RosterImprover, RosterModel } from './roster-generator.calc'
 import type { RosterCommand, RosterMessage, RosterStopReason, RosterWorkerData } from './roster-generator.types'
 
 // Runs the roster generator off the main thread: the construction (first proposal), then the
@@ -23,14 +23,15 @@ try {
   const model = new RosterModel(input)
   // the most duties the crew can cover — past it only the quality improves
   const bound = coverageBound(model)
+  const current = currentAssign(model)
   const initial = construct(model)
-  post({ type: 'proposal', proposal: buildProposal(model, initial.assign, 1, bound) })
+  post({ type: 'proposal', proposal: buildProposal(model, initial.assign, 1, bound, current) })
 
   const improver = new RosterImprover(model, initial, Math.min(maxMs, idleMs / 2), seed)
   let index = 1, emitted = 0, lastEmit = 0, lastProgress = 0
 
   const emitBest = () => {
-    post({ type: 'proposal', proposal: buildProposal(model, improver.bestAssign(), ++index, bound) })
+    post({ type: 'proposal', proposal: buildProposal(model, improver.bestAssign(), ++index, bound, current) })
     emitted = improver.improvements
     lastEmit = Date.now()
   }

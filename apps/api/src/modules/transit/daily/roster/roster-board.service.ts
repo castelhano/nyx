@@ -1,13 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import {
   ROSTER_MAX_HORIZON_DAYS, restGroupIndex, restGroupLabel, restPatternWorks, shiftIdealDistance,
-  type CrewRole, type DailyIssue, type DailySource, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
+  type CrewRole, type DailyIssue, type DailySource, type RosterQuality, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import { addDays, dayOf, inForceOn, toDbDate, type Day } from '../../timetabling/plan-validity'
-import { RosterModel, diagnoseShortage } from './roster-generator.calc'
+import { RosterModel, diagnoseShortage, rosterQuality, signatureGroup } from './roster-generator.calc'
 import { daysBetween, loadRosterInput } from './roster-generator.input'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -173,7 +173,7 @@ export class RosterBoardService {
     const holidaySet = new Set(holidays.map(h => dayOf(h.date)))
 
     // the generator's figures for the current allocation
-    const stats = await this.stats(branchId, role, from, to, entries)
+    const [{ stats, quality }, generations] = await Promise.all([this.stats(branchId, role, from, to, entries), this.generations(branchId, role, from, to)])
 
     const cells: RosterBoardCell[] = []
     for (const m of members) {
@@ -224,6 +224,7 @@ export class RosterBoardService {
 
     return {
       from, to,
+      quality, generations,
       multiScope: scopeIds.length > 1,
       days: dates.map(date => {
         const ops = operations.filter(o => dayOf(o.date) === date)
@@ -300,7 +301,8 @@ export class RosterBoardService {
       if (grade > 0) reasons.push(grade >= 1 ? 'linha preferida principal' : 'linha preferida')
       const gap = m.targetMinutes - without.worked
       if (Math.abs(gap) >= 60) reasons.push(gap > 0 ? `${hm(Math.round(gap))} abaixo da carga` : `${hm(Math.round(-gap))} acima da carga`)
-      if (m.lastSignature) reasons.push(m.lastSignature === d.signature ? 'mesma tabela dos últimos dias' : 'troca de tabela')
+      const prev = m.lastSignatures[signatureGroup(d.signature)]
+      if (prev) reasons.push(prev === d.signature ? 'mesma tabela dos últimos dias' : 'troca de tabela')
       if (withIt.warns > 0) reasons.push('fere uma regra (permitida com pendência)')
       out.push({
         crewMemberId: m.id, code: m.code, name: m.name,
@@ -334,14 +336,36 @@ export class RosterBoardService {
     return diagnoseShortage(model, assign, holder)
   }
 
-  // load, changes and preferred-line share per crew member, as the generator scores them
+  // the accepted generations overlapping [from, to], newest first
+  private async generations(branchId: string, role: CrewRole, from: Day, to: Day): Promise<RosterBoard['generations']> {
+    const rows = await this.prisma.rosterGeneration.findMany({
+      where:   { branchId, role, fromDate: { lte: toDbDate(to) }, toDate: { gte: toDbDate(from) } },
+      orderBy: { acceptedAt: 'desc' },
+      take:    50,
+    })
+    const users = new Map((await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(rows.flatMap(r => r.userId ?? []))] } }, select: { id: true, name: true },
+    })).map(u => [u.id, u.name]))
+    return rows.map(r => {
+      const s = r.summary as { duties?: number; quality?: RosterQuality }
+      return {
+        id: r.id, from: dayOf(r.fromDate), to: dayOf(r.toDate), acceptedAt: r.acceptedAt.toISOString(),
+        user: r.userId ? users.get(r.userId) ?? null : null, assigned: r.assigned, duties: s.duties ?? r.assigned, changed: r.changed,
+        quality: s.quality ?? null,
+      }
+    })
+  }
+
+  // load, changes and preferred-line share per crew member, as the generator scores them, and the
+  // allocation's quality over the period (the PUBLISHED days included)
   private async stats(branchId: string, role: CrewRole, from: Day, to: Day, entries: { crewMemberId: string; dailyDutyId: string | null }[]) {
     const out = new Map<string, NonNullable<RosterBoard['members'][number]['stats']>>()
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
       branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
-    })
-    if (!input.members.length) return out
+    }, { published: true })
+    if (!input.members.length) return { stats: out, quality: null }
     const model = new RosterModel(input)
+    const rows: Int32Array[] = []
     const dutyIndex = new Map(input.duties.map((d, i) => [d.id, i]))
     input.members.forEach((m, mi) => {
       const row = new Int32Array(input.days.length).fill(-1)
@@ -350,10 +374,11 @@ export class RosterBoardService {
         const di = dutyIndex.get(e.dailyDutyId)
         if (di != null && m.status[input.duties[di].day] === 'free') row[input.duties[di].day] = di
       }
+      rows.push(row)
       const ev = model.evaluate(mi, row)
       out.set(m.id, { workedMinutes: ev.worked, targetMinutes: Math.round(m.targetMinutes), changes: ev.changes, prefShare: ev.prefShare == null ? null : Math.round(ev.prefShare) })
     })
-    return out
+    return { stats: out, quality: input.duties.length ? rosterQuality(model, rows) : null }
   }
 }
 

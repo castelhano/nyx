@@ -1359,6 +1359,29 @@ model RosterEntry {
   @@map("transit_roster_entries")
 }
 
+// A roster generation accepted ("Gerar" on the Escala screen): who, when, over which days and
+// with which options, and the proposal's figures then (RosterProposalSummary minus the per-member
+// and per-day lists) — the day's panel lists the ones covering it
+model RosterGeneration {
+  id         String   @id @default(uuid())
+  branchId   String
+  role       CrewRole
+  fromDate   DateTime @db.Date
+  toDate     DateTime @db.Date
+  // RosterGeneratorParams
+  params     Json
+  // { score, duties, assigned, warnings, dayOffs, bound, standby, quality, current, publishedChanges }
+  summary    Json
+  // duties written, published-day changes logged
+  assigned   Int
+  changed    Int      @default(0)
+  userId     String?
+  acceptedAt DateTime @default(now())
+
+  @@index([branchId, role, fromDate, toDate])
+  @@map("transit_roster_generations")
+}
+
 // What changed in a PUBLISHED day — the source of crew notifications (crew portal)
 model DailyChangeLog {
   id               String   @id @default(uuid())

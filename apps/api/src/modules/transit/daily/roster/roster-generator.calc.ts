@@ -1,6 +1,6 @@
 import {
   shiftFits, shiftIdealDistance,
-  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterPublishedChange, type RosterSettings, type RosterShortage, type ShiftWindow,
+  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterPublishedChange, type RosterQuality, type RosterSettings, type RosterShortage, type ShiftWindow,
 } from '@nyx/schemas'
 import { rangeRaw, SCORE_SCALE } from '../../timetabling/vehicle-plan/scoring/plan-scoring.calc'
 import { hungarian } from './hungarian'
@@ -10,7 +10,7 @@ import { hungarian } from './hungarian'
 //
 //   construction  day by day, a minimum-cost assignment (Hungarian) of the day's duties to the
 //                 crew members free that day, with the state carried from the days before
-//                 (signature, changes, worked minutes, last sign-off)
+//                 (last duty per plan, changes, worked minutes, last sign-off)
 //   improvement   simulated annealing over the horizon — a duty moves to / swaps with another
 //                 crew member on its day, or two crew members swap a range of days
 //
@@ -36,7 +36,9 @@ export interface RgDuty {
   end:    number
   paid:   number
   kind:   string
-  // (dominant line, shift) — a change = a signature different from the last one worked
+  // `${crewPlanId}#${logical duty}` (the duty's identity across days; made in the day: its
+  // dominant line and shift under '-') — a change = a different one than the last worked under
+  // the same crew plan (a Saturday plan keeps the weekday sequence apart)
   signature: string
   // the duty's shift code (diagnosis)
   shift:  string | null
@@ -75,12 +77,15 @@ export interface RgMember {
   // before the horizon, inside the load window
   workedBefore:  number
   changesBefore: number
-  lastSignature: string | null
+  // the last duty worked per crew plan (signatureGroup)
+  lastSignatures: Record<string, string>
   // sign-off the day before the horizon / sign-on the day after it
   prevEnd:   number | null
   nextStart: number | null
   // per day: the duty index held on a PUBLISHED day (-1 none), NOT_PUBLISHED otherwise
   published: number[]
+  // per day: the duty index held now (-1 none) — the current allocation's quality
+  current:   number[]
 }
 
 export const NOT_PUBLISHED = -2
@@ -112,6 +117,13 @@ function convexRaw(value: number, c: RangeCriterion): number {
   if (value <= c.idealMax) return 1
   const x = (value - c.idealMax) / Math.max(1, c.ceiling - c.idealMax)
   return Math.max(-30, 1 - x * x)
+}
+
+export const signatureGroup = (sig: string) => sig.slice(0, sig.indexOf('#'))
+// sig worked after `last` (per crew plan) changes the duty
+export const isChange = (last: Record<string, string>, sig: string) => {
+  const prev = last[signatureGroup(sig)]
+  return prev != null && prev !== sig
 }
 
 // ── pair rules ────────────────────────────────────────────────────────────────
@@ -281,7 +293,8 @@ export class RosterModel {
     const { input } = this
     const m = input.members[mi]
     const restMode = input.ruleModes.interShiftRest
-    let worked = m.workedBefore, changes = m.changesBefore, last = m.lastSignature
+    let worked = m.workedBefore, changes = m.changesBefore
+    const last = { ...m.lastSignatures }
     let prevEnd = m.prevEnd, prevFixed = true
     let warns = 0, hard = false, workedDays = 0
     let prefNum = 0, prefDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
@@ -308,7 +321,9 @@ export class RosterModel {
       } else if (di >= 0) {
         const d = input.duties[di]
         start = d.start; end = d.end; paid = d.paid; sig = d.signature; isFixed = false
-        warns += this.ruleOf(mi, di)
+        // a blocked pair (only in an allocation made by hand) counts as one broken rule
+        const rule = this.ruleOf(mi, di)
+        warns += rule < 0 ? 1 : rule
         const p = prefShare(m, d)
         prefNum += p.num; prefDen += p.den
         const w = m.windows[t]
@@ -320,8 +335,8 @@ export class RosterModel {
       workedDays++
       if (prevEnd != null) restCheck(1440 + start - prevEnd, isFixed && prevFixed)
       worked += paid
-      if (last != null && sig !== last) { changes++; if (!isFixed) newChanges++ }
-      last = sig
+      if (isChange(last, sig)) { changes++; if (!isFixed) newChanges++ }
+      last[signatureGroup(sig)] = sig
       prevEnd = end
       prevFixed = isFixed
     }
@@ -366,7 +381,7 @@ export function construct(model: RosterModel): RgResult {
   // carried state
   const worked  = input.members.map(m => m.workedBefore)
   const changes = input.members.map(m => m.changesBefore)
-  const last    = input.members.map(m => m.lastSignature)
+  const last    = input.members.map(m => ({ ...m.lastSignatures }))
   const prevEnd = input.members.map(m => m.prevEnd)
   const r = input.range
   const totalDays = input.loadDaysBefore + T
@@ -402,7 +417,7 @@ export function construct(model: RosterModel): RgResult {
             if (input.ruleModes.interShiftRest === 'BLOCK') return
             x += WARN
           }
-          const change = last[mi] != null && last[mi] !== d.signature
+          const change = isChange(last[mi], d.signature)
           if (change && changes[mi] >= input.maxChanges) return
           if (change && r.tableChanges.active) x += r.tableChanges.modifier
           if (r.driverPrefLine.active && model.hasPrefs[mi]) {
@@ -444,8 +459,8 @@ export function construct(model: RosterModel): RgResult {
       const cur = f ?? (di >= 0 ? { start: input.duties[di].start, end: input.duties[di].end, paid: input.duties[di].paid, signature: input.duties[di].signature } : null)
       if (!cur) { prevEnd[mi] = null; continue }
       worked[mi] += cur.paid
-      if (last[mi] != null && last[mi] !== cur.signature) changes[mi]++
-      last[mi] = cur.signature
+      if (isChange(last[mi], cur.signature)) changes[mi]++
+      last[mi][signatureGroup(cur.signature)] = cur.signature
       prevEnd[mi] = cur.end
     }
   }
@@ -619,6 +634,62 @@ export class RosterImprover {
   }
 }
 
+// ── quality ──
+
+// What measures an allocation over the horizon (RosterQuality): table continuity, changes,
+// preferred lines, load and shift fit.
+export function rosterQuality(model: RosterModel, assign: Int32Array[]): RosterQuality {
+  const { input, M, T } = model
+  let kept = 0, days = 0, changes = 0, changedMembers = 0, prefDen = 0, prefMain = 0, prefAny = 0
+  let belowLoad = 0, withLoad = 0, shiftSum = 0, shiftN = 0, warnings = 0
+  for (let mi = 0; mi < M; mi++) {
+    const m = input.members[mi]
+    const e = model.evaluate(mi, assign[mi])
+    warnings += e.warns
+    const mine = e.changes - m.changesBefore
+    changes += mine
+    if (mine > 0) changedMembers++
+    if (m.targetMinutes > 0) { withLoad++; if (e.worked < m.targetMinutes * 0.97) belowLoad++ }
+    const top = Math.max(0, ...Object.values(m.prefGrade))
+    const last = { ...m.lastSignatures }
+    for (let t = 0; t < T; t++) {
+      const f = m.status[t] === 'fixed' ? m.fixed[t] : null
+      const di = assign[mi][t]
+      const sig = f ? f.signature : di >= 0 ? input.duties[di].signature : null
+      if (!sig) continue
+      if (!f) {
+        const prev = last[signatureGroup(sig)]
+        if (prev != null) { days++; if (prev === sig) kept++ }
+        const d = input.duties[di]
+        if (!d.standby && top > 0 && d.lineMinutes.length) {
+          const main = d.lineMinutes.reduce((a, l) => (l.minutes > a.minutes ? l : a))
+          const grade = m.prefGrade[main.lineId] ?? 0
+          prefDen++
+          if (grade > 0) prefAny++
+          if (grade >= top) prefMain++
+        }
+        const w = m.windows[t]
+        if (w) { shiftSum += shiftIdealDistance(w, d.start, d.end); shiftN++ }
+      }
+      last[signatureGroup(sig)] = sig
+    }
+  }
+  const pct = (n: number) => (prefDen ? Math.round(n / prefDen * 100) : null)
+  return {
+    keptTable: { kept, days }, changes, changedMembers,
+    prefMain: pct(prefMain), prefAny: pct(prefAny),
+    belowLoad, withLoad,
+    shiftDev: shiftN ? Math.round(shiftSum / shiftN) : null,
+    warnings,
+  }
+}
+
+// the current allocation as the search sees it — null when nothing in the horizon is allocated
+export function currentAssign(model: RosterModel): Int32Array[] | null {
+  const rows = model.input.members.map(m => Int32Array.from(m.current))
+  return rows.some(r => r.some(di => di >= 0)) ? rows : null
+}
+
 // ── proposal ──────────────────────────────────────────────────────────────────
 
 function holderOf(assign: Int32Array[], dutyCount: number): Int32Array {
@@ -636,7 +707,8 @@ export interface RosterProposal {
   dayOffs: [string, string][]
 }
 
-export function buildProposal(model: RosterModel, assign: Int32Array[], index: number, bound: number): RosterProposal {
+// current: the allocation in place (currentAssign) — its quality goes alongside
+export function buildProposal(model: RosterModel, assign: Int32Array[], index: number, bound: number, current: Int32Array[] | null = null): RosterProposal {
   const { input, M, T } = model
   const assignments: [string, string][] = []
   const dayOffs: [string, string][] = []
@@ -685,6 +757,8 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       bound,
       shortage: diagnoseShortage(model, assign, holderOf(assign, input.duties.length)),
       publishedChanges,
+      quality: rosterQuality(model, assign),
+      current: current ? rosterQuality(model, current) : null,
       standby: { duties: standbyIds.size, assigned: assignments.filter(([id]) => standbyIds.has(id)).length },
     },
   }

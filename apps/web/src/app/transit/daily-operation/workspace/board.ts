@@ -49,6 +49,21 @@ export function shiftPeriod(mode: Mode, date: string, n: number): string {
 export const dutyName = (d: Pick<RosterBoardDuty, 'number' | 'scope' | 'kind'>, multiScope: boolean) =>
   `${multiScope ? `${d.scope.slice(0, 3)} ` : ''}${d.kind === 'STANDBY' ? 'P' : 'T'}${String(d.number).padStart(2, '0')}`
 
+// The crew left over: `${memberId}|${date}` of the empresa's crew members with nothing on a
+// created day — no duty, day off, absence, rest-pattern day off or duty elsewhere.
+export function freeCells(board: RosterBoard, idx: BoardIndex): Set<string> {
+  const out = new Set<string>()
+  const created = board.days.filter(d => d.operations.length).map(d => d.date)
+  for (const m of board.members) {
+    if (m.foreign) continue
+    for (const date of created) {
+      const s = cellSummary(idx.cellOf.get(`${m.id}|${date}`), idx, board.multiScope)
+      if (!s.duties.length && !s.off && !s.absence && !s.patternOff && !s.elsewhere) out.add(`${m.id}|${date}`)
+    }
+  }
+  return out
+}
+
 // Scrolls `scroller` (only it — never the page) just enough to show `el` clear of its sticky
 // header ([data-sticky-top]) and sticky first column ([data-sticky-left]); scrollIntoView would
 // leave it under them.

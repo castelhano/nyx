@@ -9,6 +9,7 @@ import { apiFetch, getToken } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { cn, extractError } from '@/lib/utils'
 import { fmtDay } from './board'
+import { QualityTable } from './QualityTable'
 import { ShortageList } from './ShortageList'
 
 // "Gerar" inside the Escala screen: the period, empresa and role are the screen's; the run goes
@@ -190,6 +191,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
               <Kpi label="Com pendência" value={summary.warnings} warn={summary.warnings > 0} />
             </div>
           )}
+          {summary?.quality && <QualityTable columns={[...(summary.current ? [{ label: 'Atual', q: summary.current }] : []), { label: 'Proposta', q: summary.quality }]} />}
           {summary && summary.standby?.duties > 0 && (
             <p className={cn('text-[11px]', summary.standby.assigned < summary.standby.duties ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
               Plantões preenchidos com quem sobrou: {summary.standby.assigned}/{summary.standby.duties}
