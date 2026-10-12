@@ -70,6 +70,25 @@ export class HourBankService {
     return new Map([...results].map(([id, r]) => [id, r.months.at(-1)?.balance ?? 0]))
   }
 
+  // Each crew member's position at the start of `day` (the movements before it) — what the roster
+  // generator compensates by: the previous month's credit still unused (it expires at the end of
+  // the day's month), the month's own, the negative carried; null without an hour bank
+  async positionsAt(branchId: string, day: Day): Promise<Map<string, BankPosition> | null> {
+    const start = await this.start(branchId)
+    const month = monthOf(day)
+    if (!start || month < start) return null
+    const members = await this.members(branchId)
+    const results = await this.run(members, start, month, new Set(await this.closings(branchId)))
+    const out = new Map<string, BankPosition>()
+    for (const m of members) {
+      const r = results.get(m.crewMemberId)!
+      const months = r.months.map(x => ({ month: x.month, closed: x.closed, moves: r.movements.filter(v => monthOf(v.date) === x.month && v.date < day) }))
+      const at = runBank(months).at(-1)!
+      out.set(m.crewMemberId, { expiring: at.expiring, lot: at.lot, negative: at.negative, journey: m.journey })
+    }
+    return out
+  }
+
   // Closes the month: its days frozen (as read now), each crew member's lot kept. The months
   // before it (from the start) must be closed, and the month over.
   async close(branchId: string, month: string, userId?: string): Promise<void> {
@@ -321,6 +340,8 @@ export function parseOpeningCsv(text: string): { code: string; minutes: number }
   }
   return out
 }
+
+export interface BankPosition { expiring: number; lot: number; negative: number; journey: number }
 
 type LiveDay = Pick<HourBankMovement, 'minutes' | 'payMinutes' | 'holidayMinutes' | 'occurrence'> & { date: Day; source: 'IMPORT' | 'FORECAST' }
 

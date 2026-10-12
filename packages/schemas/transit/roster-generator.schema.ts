@@ -8,6 +8,20 @@ const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
 
 export const ROSTER_MAX_HORIZON_DAYS = 31
 
+// a plantão asked for the generation: `count` of them on `date` (null: every day of the period),
+// from start to end (minutes, past 24h allowed) at the locality
+export const rosterExtraStandbySchema = z.object({
+  date:         isoDay.nullable().default(null),
+  startMinutes: z.number().int().min(0).max(1439),
+  endMinutes:   z.number().int().min(1).max(2879),
+  localityId:   z.uuid().nullable().default(null),
+  count:        z.number().int().min(1).max(99),
+}).refine(t => t.endMinutes > t.startMinutes, { message: 'O fim do plantão deve ser depois do início', path: ['endMinutes'] })
+export type RosterExtraStandby = z.infer<typeof rosterExtraStandbySchema>
+
+// a compensation that left the crew member this far below zero is flagged
+export const ROSTER_COMP_TOLERANCE = 180
+
 export const rosterGeneratorParamsSchema = z.object({
   branchId: z.uuid(),
   role:     z.enum(CREW_ROLES).default('DRIVER'),
@@ -24,6 +38,11 @@ export const rosterGeneratorParamsSchema = z.object({
   // also redo the PUBLISHED days (never the CLOSED ones) — changing as little as it can
   // (range.publishedChanges); each change is logged on the day
   includePublished:      z.boolean().default(false),
+  // plantões beyond the reserve targets, for this generation — filled like the others
+  extraStandby:          z.array(rosterExtraStandbySchema).default([]),
+  // whoever is left over on a day gets a folga compensada — the crew members with the most hours
+  // in the hour bank are the ones left over (the previous month's balance first)
+  compensate:            z.boolean().default(false),
 }).refine(p => p.from <= p.to, { message: 'O fim do período deve ser depois do início', path: ['to'] })
 
 export type RosterGeneratorParams = z.infer<typeof rosterGeneratorParamsSchema>
@@ -65,6 +84,9 @@ export interface RosterProposalSummary {
   publishedChanges: RosterPublishedChange[]
   // the plantões among the duties (reserveTargets) — filled with who's left over
   standby:    { duties: number; assigned: number }
+  // compensate: the folgas compensadas given, the hours they take off the bank, and those that
+  // left the crew member more than ROSTER_COMP_TOLERANCE below zero
+  compensation: RosterCompensation | null
   // how good the proposal is, and the same for the current allocation (null: nothing allocated)
   quality:    RosterQuality
   current:    RosterQuality | null
@@ -91,6 +113,14 @@ export interface RosterQuality {
   // worked days of crew members with a preferred vehicle, and those on it — only on the actual
   // roster (vehicles are assigned on accept, a proposal has none)
   fixedCar?:      { met: number; days: number }
+}
+
+export interface RosterCompensation {
+  days:    number
+  minutes: number
+  // free days left without one (a holiday, a crew member outside the hour bank)
+  idle:    number
+  alerts:  { crewMemberId: string; code: string; name: string; date: string; before: number; after: number }[]
 }
 
 export interface RosterPublishedChange {

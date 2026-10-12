@@ -2,6 +2,7 @@ import { restPatternWorks, type DutySummary, type RosterGeneratorParams, type Sh
 import type { PrismaService } from '../../../../prisma/prisma.service'
 import type { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
+import type { BankPosition } from '../../hour-bank/hour-bank.service'
 import { loadCrewBranchRules } from '../../timetabling/crew-plan/crew-branch-rules'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
 import { effectiveWindow } from '../daily-checks'
@@ -32,9 +33,12 @@ const HISTORY_DAYS = 45
 
 // `published`: also the duties of PUBLISHED days (the roster screen's suggestions, and the
 // generator's includePublished) — what each crew member holds on them goes in RgMember.published
+// `extraJob`: the generation running — the plantões extras of other generations on PLANNED days
+// are left out (the accepted one replaces them)
+// `bank`: the crew members' hour bank at `from` (params.compensate)
 export async function loadRosterInput(
   prisma: PrismaService, rosterConfig: TransitRosterConfigService, crewConfig: TransitCrewConfigService, params: RosterGeneratorParams,
-  options: { published?: boolean } = {},
+  options: { published?: boolean; extraJob?: string; bank?: Map<string, BankPosition> | null } = {},
 ): Promise<RosterContext> {
   const { branchId, role, from, to } = params
   const days: Day[] = []
@@ -117,6 +121,7 @@ export async function loadRosterInput(
         dailyOperationId: { in: operations.map(o => o.id) },
         role,
         OR: [{ branchId }, { branchId: null, operation: { scopeId: { in: aloneIn } } }],
+        ...(options.extraJob ? { AND: [{ OR: [{ standbyExtra: null }, { standbyExtra: options.extraJob }, { operation: { status: 'PUBLISHED' as const } }] }] } : {}),
       },
       orderBy: [{ dailyOperationId: 'asc' }, { dutyNumber: 'asc' }],
       select: {
@@ -232,8 +237,9 @@ export async function loadRosterInput(
     const absentOn = (day: Day) => occ.some(o => o.kind === 'ABSENCE' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
     // a requested weekly day off (effect DAY_OFF) takes the day but not the load
     const reducesLoad = (day: Day) => occ.some(o => o.kind === 'ABSENCE' && o.absenceType?.effect !== 'DAY_OFF' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
+    // a folga compensada given by a generation is redone; one launched (by hand, by a request) stays
     const isFixed = (e: typeof mine[number]) =>
-      e.locked || e.kind === 'COMP_OFF' || (e.kind === 'DAY_OFF' && e.source !== 'GENERATED')
+      e.locked || (e.kind !== 'DUTY' && e.kind !== 'STANDBY' && e.source !== 'GENERATED')
       || (!!e.dailyDuty && !(e.dailyDuty.operation.status === 'PLANNED' || (options.published && e.dailyDuty.operation.status === 'PUBLISHED')))
 
     const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = [], courseExpired: boolean[] = []
@@ -296,9 +302,10 @@ export async function loadRosterInput(
     const window  = daysBetween(loadStart, addDays(to, 1))
     const reduced = new Set<Day>()
     for (let d = loadStart; d <= to; d = addDays(d, 1)) {
-      if (reducesLoad(d) || mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d)) reduced.add(d)
+      if (reducesLoad(d) || mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d && !(e.source === 'GENERATED' && d >= from))) reduced.add(d)
     }
-    const targetMinutes = weekly * 5 * 60 * Math.max(0, window - reduced.size) / periodDays
+    const dayLoad = weekly * 5 * 60 / periodDays
+    const targetMinutes = dayLoad * Math.max(0, window - reduced.size)
 
     const prefGrade: Record<string, number> = {}
     for (const l of m.lines) {
@@ -315,7 +322,7 @@ export async function loadRosterInput(
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
       status, windows, fixed, licenseExpired, courseExpired,
-      targetMinutes, workedBefore, changesBefore, lastSignatures: last, lastSwaps, prevEnd, nextStart,
+      targetMinutes, dayLoad, bank: options.bank?.get(m.id), workedBefore, changesBefore, lastSignatures: last, lastSwaps, prevEnd, nextStart,
       current: days.map(day => {
         const held = mine.find(e => dayOf(e.date) === day && e.dailyDutyId && dutyIndex.has(e.dailyDutyId))
         return held ? dutyIndex.get(held.dailyDutyId!)! : -1
@@ -340,6 +347,8 @@ export async function loadRosterInput(
       ruleModes: settings.ruleModes,
       range: settings.range,
       rest: crewSettings.range.interShiftRest,
+      compensate: params.compensate && !!options.bank,
+      noComp: days.map((day, t) => holidays.some(h => dayOf(h.date) === day && (!h.branchId || h.branchId === branchId)) || !rgDuties.some(d => d.day === t)),
     },
   }
 }

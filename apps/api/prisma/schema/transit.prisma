@@ -1287,6 +1287,10 @@ model DailyDuty {
   issues           Json?
   hasIssues        Boolean    @default(false)
   isStale          Boolean    @default(false)
+  // a plantão asked at a roster generation (plantão extra): the generation's job id — null: a
+  // reserve target's plantão or a plan's duty. Reserve sync leaves it alone; the next accepted
+  // generation replaces it on a PLANNED day.
+  standbyExtra     String?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 

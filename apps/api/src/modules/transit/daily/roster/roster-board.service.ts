@@ -319,7 +319,7 @@ export class RosterBoardService {
     if (!branchId) return []
     const date = dayOf(duty.operation.date)
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-      branchId, role: duty.role, from: date, to: date, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
+      branchId, role: duty.role, from: date, to: date, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true, extraStandby: [], compensate: false,
     }, { published: true })
     const di = input.duties.findIndex(d => d.id === dutyId)
     if (di < 0) return []
@@ -366,7 +366,7 @@ export class RosterBoardService {
   async shortage(branchId: string, role: CrewRole, from: Day, to: Day): Promise<RosterShortage[]> {
     if (!branchId || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) throw new BadRequestException('Período inválido')
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
+      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true, extraStandby: [], compensate: false,
     }, { published: true })
     if (!input.duties.length) return []
     const model = new RosterModel(input)
@@ -410,7 +410,7 @@ export class RosterBoardService {
   private async stats(branchId: string, role: CrewRole, from: Day, to: Day, entries: { crewMemberId: string; dailyDutyId: string | null }[]) {
     const out = new Map<string, NonNullable<RosterBoard['members'][number]['stats']>>()
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
+      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true, extraStandby: [], compensate: false,
     }, { published: true })
     if (!input.members.length) return { stats: out, quality: null }
     const model = new RosterModel(input)

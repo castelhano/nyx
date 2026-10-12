@@ -1,5 +1,5 @@
 import {
-  shiftFits, shiftIdealDistance,
+  ROSTER_COMP_TOLERANCE, shiftFits, shiftIdealDistance,
   type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterPublishedChange, type RosterQuality, type RosterSettings, type RosterShortage, type ShiftWindow,
 } from '@nyx/schemas'
 import { rangeRaw, SCORE_SCALE } from '../../timetabling/vehicle-plan/scoring/plan-scoring.calc'
@@ -16,28 +16,65 @@ import { hungarian } from './hungarian'
 //
 // The objective: coverage first (UNASSIGNED per duty without a crew member, UNASSIGNED_STANDBY per
 // plantão — filled with who's left over), then WARN rule violations (WARN each), then the
-// preferred crew members (PIN per step down the list), then the score — the average of each crew
-// member's weighted criteria (roster.range + the crew interShiftRest ideal) on the 0–9999 scale
-// of the other solvers. Each level outweighs everything below it.
+// preferred crew members (PIN per step down the list, PIN_OUT for someone off it), then — with
+// `compensate` — the hour bank (BANK × priority per crew member left free for a folga
+// compensada), then the score — the average of each crew member's weighted criteria
+// (roster.range + the crew interShiftRest ideal) on the 0–9999 scale of the other solvers. Each
+// level outweighs everything below it, but the bank sits between a step down a preferred list
+// and leaving it: a preferred crew member with more hours gives way to the next one listed,
+// never to someone off the list.
 // Redoing PUBLISHED days (includePublished), each day whose duty differs from the published one
 // costs range.publishedChanges — the search changes the published roster only where it pays off.
 // BLOCK rules and the always-blocking ones are hard: never assigned.
 
-export const UNASSIGNED = 10_000_000
+export const UNASSIGNED = 100_000_000
 // a plantão (STANDBY) without anyone — it takes whoever is left once the duties are covered
-export const UNASSIGNED_STANDBY = 1_000_000
-export const WARN       = 100_000
+export const UNASSIGNED_STANDBY = 10_000_000
+export const WARN       = 1_000_000
 
 export const missingCost = (d: RgDuty) => (d.standby ? UNASSIGNED_STANDBY : UNASSIGNED)
 
 // a duty with preferred crew members (Duty.constraints.crewMemberIds): each step down the list
-// costs PIN, anyone else the whole list — below a WARN rule, above the whole score (no criterion
-// outweighs a preferred crew member)
+// costs PIN, anyone else PIN_OUT on top of the whole list — below a WARN rule, above the whole
+// score (no criterion outweighs a preferred crew member)
 export const PIN = SCORE_SCALE
+// a crew member left free for a folga compensada: up to BANK by his priority (bankPriority)
+export const BANK = 6 * SCORE_SCALE
+const PIN_OUT = 8 * SCORE_SCALE
 export const pinCost = (d: RgDuty, mi: number) => {
   if (!d.preferred.length) return 0
   const r = d.preferred.indexOf(mi)
-  return PIN * (r < 0 ? d.preferred.length : r)
+  return r < 0 ? PIN_OUT + PIN * d.preferred.length : PIN * r
+}
+
+// The priority of a folga compensada (0..1): the previous month's balance first while it's 5h or
+// more — it's what expires —, then the previous month's and the month's together
+export function bankPriority(expiring: number, lot: number): number {
+  if (expiring >= 300) return 0.6 + 0.4 * Math.min(1, expiring / 3000)
+  return 0.4 * Math.min(1, Math.max(0, expiring + lot) / 3000)
+}
+
+// The folgas compensadas of a crew member's row (compensate): each free day he's left without a
+// duty, but a holiday or a day the generation doesn't write (noComp) — in order, each one taking a journey off his balance (the previous
+// month's first; a new month makes the month's the previous one). `each` gets the day and the
+// balance before / after.
+export function walkComps(input: RgInput, m: RgMember, row: Int32Array, each?: (t: number, before: number, after: number) => void): { days: number; reward: number } {
+  if (!input.compensate || !m.bank) return { days: 0, reward: 0 }
+  let { expiring, lot, negative } = m.bank
+  let days = 0, reward = 0
+  for (let t = 0; t < input.days.length; t++) {
+    if (t > 0 && input.days[t].endsWith('-01')) { expiring = lot; lot = 0 }
+    if (m.status[t] !== 'free' || row[t] >= 0 || input.noComp[t]) continue
+    reward += BANK * bankPriority(expiring, lot)
+    const before = expiring + lot + negative
+    let d = m.bank.journey
+    const a = Math.min(expiring, d); expiring -= a; d -= a
+    const b = Math.min(lot, d); lot -= b; d -= b
+    negative -= d
+    days++
+    each?.(t, before, expiring + lot + negative)
+  }
+  return { days, reward }
 }
 
 export interface RgDuty {
@@ -87,6 +124,10 @@ export interface RgMember {
   courseExpired:  boolean[]
   // load window = load period start .. horizon end, reduced by absences / compensatory days off
   targetMinutes: number
+  // the target of one day — a folga compensada given by the generator takes it off
+  dayLoad: number
+  // the hour bank at the horizon's start (compensate) — none: outside the bank
+  bank?: { expiring: number; lot: number; negative: number; journey: number }
   // before the horizon, inside the load window
   workedBefore:  number
   changesBefore: number
@@ -122,6 +163,10 @@ export interface RgInput {
   ruleModes: RosterSettings['ruleModes']
   range:     RosterSettings['range']
   rest:      RangeCriterion
+  // leave the crew members with the most hours free, for a folga compensada (walkComps)
+  compensate: boolean
+  // per day: no folga compensada — a holiday of the empresa, or a day without duties to write
+  noComp:    boolean[]
 }
 
 export interface RgResult {
@@ -282,6 +327,8 @@ export interface MemberEval {
   changes: number
   prefShare: number | null
   workedDays: number
+  // the folgas compensadas' worth (walkComps)
+  bank:    number
 }
 
 export class RosterModel {
@@ -326,6 +373,9 @@ export class RosterModel {
     let warns = 0, hard = false, workedDays = 0, pin = 0
     let prefNum = 0, prefDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
     let publishedDays = 0, publishedChanged = 0
+    // compensate: a one-off substitution (a different duty, back to the usual one the next worked
+    // day) doesn't count against maxChanges — its two changes still weigh in the score
+    let exempt = 0, subFrom: string | null = null
     for (let t = 0; t < this.T; t++) {
       if (m.published[t] === NOT_PUBLISHED || m.status[t] !== 'free') continue
       publishedDays++
@@ -364,25 +414,35 @@ export class RosterModel {
       workedDays++
       if (prevEnd != null) restCheck(1440 + start - prevEnd, isFixed && prevFixed)
       worked += paid
-      if (isChange(last, sig)) { changes++; if (!isFixed) newChanges++ }
-      last[signatureGroup(sig)] = sig
+      const group = signatureGroup(sig)
+      const change = isChange(last, sig)
+      if (change) {
+        changes++
+        if (!isFixed) newChanges++
+        if (input.compensate && subFrom === sig) exempt += 2
+      }
+      subFrom = change && !isFixed ? last[group] : null
+      last[group] = sig
       prevEnd = end
       prevFixed = isFixed
     }
     if (prevEnd != null && m.nextStart != null) restCheck(1440 + m.nextStart - prevEnd, prevFixed)
-    if (newChanges > 0 && changes > input.maxChanges) hard = true
+    if (newChanges > 0 && changes - exempt > input.maxChanges) hard = true
 
+    // the folgas compensadas take their days off the target
+    const comp = walkComps(input, m, row)
+    const target = m.targetMinutes - comp.days * m.dayLoad
     const r = input.range
     let num = 0, den = 0
     const add = (c: RangeCriterion, value: number, raw = rangeRaw) => { num += c.modifier * raw(value, c); den += c.modifier }
     const share = this.hasPrefs[mi] && prefDen > 0 ? prefNum / prefDen * 100 : null
     if (r.driverPrefLine.active && share != null) add(r.driverPrefLine, share)
     if (r.shiftFit.active && shiftN) add(r.shiftFit, shiftSum / shiftN)
-    if (m.targetMinutes > 0) {
+    if (target > 0) {
       if (input.ensureMonthlyLoad) {
-        if (r.loadDeficit.active) add(r.loadDeficit, Math.max(0, m.targetMinutes - worked) / m.targetMinutes * 100, convexRaw)
+        if (r.loadDeficit.active) add(r.loadDeficit, Math.max(0, target - worked) / target * 100, convexRaw)
       } else if (r.overtimePref.active && m.overtimePreference !== 'LIKES') {
-        const over = Math.max(0, worked - m.targetMinutes)
+        const over = Math.max(0, worked - target)
         add(r.overtimePref, m.overtimePreference === 'AVOIDS' ? over : over / 2, convexRaw)
       }
     }
@@ -390,13 +450,13 @@ export class RosterModel {
     if (restN) add(input.rest, restSum / restN)
     if (r.publishedChanges.active && publishedDays) add(r.publishedChanges, publishedChanged)
 
-    return { score: den ? num / den : 1, warns, hard, worked, changes, prefShare: share, workedDays, pin }
+    return { score: den ? num / den : 1, warns, hard, worked, changes, prefShare: share, workedDays, pin, bank: comp.reward }
   }
 
   // the objective (higher is better) — missing: Σ missingCost of the duties without anyone; pins:
-  // Σ pinCost
-  objective(scores: number, warns: number, missing: number, pins = 0): number {
-    return SCORE_SCALE * scores / Math.max(1, this.M) - WARN * warns - missing - pins
+  // Σ pinCost; bank: Σ the folgas compensadas' worth
+  objective(scores: number, warns: number, missing: number, pins = 0, bank = 0): number {
+    return SCORE_SCALE * scores / Math.max(1, this.M) - WARN * warns - missing - pins + bank
   }
 }
 
@@ -528,6 +588,7 @@ export class RosterImprover {
   private scoreSum = 0
   private warnSum = 0
   private pinSum = 0
+  private bankSum = 0
   private unassigned = 0
   // Σ missingCost of the duties without anyone
   private missing = 0
@@ -543,7 +604,7 @@ export class RosterImprover {
     this.holder = new Int32Array(model.input.duties.length).fill(-1)
     this.assign.forEach((row, mi) => row.forEach(di => { if (di >= 0) this.holder[di] = mi }))
     this.evals = this.assign.map((row, mi) => model.evaluate(mi, row))
-    for (const e of this.evals) { this.scoreSum += e.score; this.warnSum += e.warns; this.pinSum += e.pin }
+    for (const e of this.evals) { this.scoreSum += e.score; this.warnSum += e.warns; this.pinSum += e.pin; this.bankSum += e.bank }
     this.unassigned = this.holder.filter(h => h < 0).length
     this.holder.forEach((h, di) => { if (h < 0) this.missing += missingCost(model.input.duties[di]) })
     this.current = this.objective()
@@ -555,7 +616,7 @@ export class RosterImprover {
   }
 
   private objective(): number {
-    return this.model.objective(this.scoreSum, this.warnSum, this.missing, this.pinSum)
+    return this.model.objective(this.scoreSum, this.warnSum, this.missing, this.pinSum, this.bankSum)
   }
 
   bestAssign(): Int32Array[] { return this.best }
@@ -585,19 +646,21 @@ export class RosterImprover {
   private settle(touched: number[], unassignedDelta: number, missingDelta: number, undo: () => void): void {
     const next = touched.map(mi => this.model.evaluate(mi, this.assign[mi]))
     if (next.some(e => e.hard)) { undo(); return }
-    let scoreSum = this.scoreSum, warnSum = this.warnSum, pinSum = this.pinSum
+    let scoreSum = this.scoreSum, warnSum = this.warnSum, pinSum = this.pinSum, bankSum = this.bankSum
     touched.forEach((mi, i) => {
       scoreSum += next[i].score - this.evals[mi].score
       warnSum  += next[i].warns - this.evals[mi].warns
       pinSum   += next[i].pin - this.evals[mi].pin
+      bankSum  += next[i].bank - this.evals[mi].bank
     })
-    const value = this.model.objective(scoreSum, warnSum, this.missing + missingDelta, pinSum)
+    const value = this.model.objective(scoreSum, warnSum, this.missing + missingDelta, pinSum, bankSum)
     const delta = value - this.current
     if (delta < 0 && this.random() >= Math.exp(delta / this.temperature())) { undo(); return }
     touched.forEach((mi, i) => { this.evals[mi] = next[i] })
     this.scoreSum = scoreSum
     this.warnSum = warnSum
     this.pinSum = pinSum
+    this.bankSum = bankSum
     this.unassigned += unassignedDelta
     this.missing += missingDelta
     this.current = value
@@ -749,6 +812,8 @@ export interface RosterProposal {
   assignments: [string, string][]
   // [day, crewMemberId] — the rest pattern's days off
   dayOffs: [string, string][]
+  // [day, crewMemberId] — the folgas compensadas (compensate)
+  compOffs: [string, string][]
 }
 
 // current: the allocation in place (currentAssign) — its quality goes alongside
@@ -764,6 +829,8 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
   for (const d of input.duties) dutiesByDay[d.day]++
   const publishedChanges: RosterPublishedChange[] = []
   const standbyIds = new Set(input.duties.filter(d => d.standby).map(d => d.id))
+  const compOffs: [string, string][] = []
+  const compensation = { days: 0, minutes: 0, idle: 0, alerts: [] as NonNullable<RosterProposalSummary['compensation']>['alerts'] }
 
   for (let mi = 0; mi < M; mi++) {
     const m = input.members[mi]
@@ -771,10 +838,16 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
     scoreSum += e.score
     warns += e.warns
     let offs = 0
+    walkComps(input, m, assign[mi], (t, before, after) => {
+      compOffs.push([input.days[t], m.id])
+      compensation.days++
+      compensation.minutes += m.bank!.journey
+      if (after < -ROSTER_COMP_TOLERANCE) compensation.alerts.push({ crewMemberId: m.id, code: m.code, name: m.name, date: input.days[t], before, after })
+    })
     for (let t = 0; t < T; t++) {
       const di = assign[mi][t]
       if (di >= 0) { assignments.push([input.duties[di].id, m.id]); assignedByDay[t]++ }
-      else if (m.status[t] === 'free') freeByDay[t]++
+      else if (m.status[t] === 'free') { freeByDay[t]++; if (input.compensate) compensation.idle++ }
       if (m.status[t] === 'off') { dayOffs.push([input.days[t], m.id]); offs++ }
       if (m.status[t] === 'free' && m.published[t] !== NOT_PUBLISHED && m.published[t] !== di) {
         publishedChanges.push({ crewMemberId: m.id, code: m.code, name: m.name, date: input.days[t] })
@@ -786,6 +859,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       prefShare: e.prefShare == null ? null : Math.round(e.prefShare), warnings: e.warns,
     })
   }
+  compensation.idle -= compensation.days
   const assigned = assignments.length
   const unassigned = input.duties.length - assigned
   const rawScore = SCORE_SCALE * scoreSum / Math.max(1, M)
@@ -793,6 +867,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
     index,
     assignments,
     dayOffs,
+    compOffs,
     summary: {
       score: Math.max(0, Math.round(rawScore)), rawScore,
       duties: input.duties.length, assigned, unassigned, warnings: warns, dayOffs: dayOffs.length,
@@ -804,6 +879,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       quality: rosterQuality(model, assign),
       current: current ? rosterQuality(model, current) : null,
       standby: { duties: standbyIds.size, assigned: assignments.filter(([id]) => standbyIds.has(id)).length },
+      compensation: input.compensate ? compensation : null,
     },
   }
 }

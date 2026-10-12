@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { CrewRole, RosterProposalSummary } from '@nyx/schemas'
+import type { CrewRole, RosterExtraStandby, RosterProposalSummary } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Icons } from '@/lib/icons'
@@ -11,6 +11,7 @@ import { cn, extractError } from '@/lib/utils'
 import { fmtDay } from './board'
 import { QualityTable } from './QualityTable'
 import { ShortageList } from './ShortageList'
+import { CompensationSummary, ExtraStandbyEditor } from './ExtraStandby'
 
 // "Gerar" inside the Escala screen: the period, empresa and role are the screen's; the run goes
 // on in the server (SSE), and each better proposal is drawn over the board (the parent gets its
@@ -29,7 +30,7 @@ type Message =
   | { type: 'error'; message: string }
 
 // includePublished: the run may change the PUBLISHED days too
-export interface Proposal { assignments: [string, string][]; dayOffs: [string, string][]; summary: RosterProposalSummary; includePublished: boolean }
+export interface Proposal { assignments: [string, string][]; dayOffs: [string, string][]; compOffs: [string, string][]; summary: RosterProposalSummary; includePublished: boolean }
 
 const STOP_LABEL: Record<StopReason, string> = { finished: 'Concluída', user_stopped: 'Interrompida', max_time: 'Tempo máximo', no_improvement: 'Sem melhora' }
 
@@ -49,7 +50,10 @@ interface Props {
 
 export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh, onClose, onSelectDuty }: Props) {
   const confirm = useConfirm()
-  const [opts, setOpts] = useState({ ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false })
+  const [opts, setOpts] = useState({
+    ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false,
+    extraStandby: [] as RosterExtraStandby[], compensate: false,
+  })
   // the run's own — a run picked up from the server keeps what it was started with
   const runPublished = useRef(false)
   const [jobId, setJobId]       = useState<string | null>(null)
@@ -136,7 +140,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(extractError(json))
       reset()
-      setEnd(`Gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s), ${json.vehicles} veículo(s)${json.changed ? ` · ${json.changed} alteração(ões) em dias publicados` : ''}`)
+      setEnd(`Gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s)${json.compOffs ? `, ${json.compOffs} folga(s) compensada(s)` : ''}, ${json.vehicles} veículo(s)${json.changed ? ` · ${json.changed} alteração(ões) em dias publicados` : ''}`)
       onRefresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao aceitar')
@@ -164,6 +168,14 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
           <Toggle label="Consistir linha da empresa" on={opts.restrictToBranchLines} set={v => setOpts(o => ({ ...o, restrictToBranchLines: v }))} />
           <Toggle label="Alocar veículos" on={opts.vehicles} set={v => setOpts(o => ({ ...o, vehicles: v }))} />
           <Toggle label="Incluir dias publicados" on={opts.includePublished} set={v => setOpts(o => ({ ...o, includePublished: v }))} />
+          <Toggle label="Compensar banco com a sobra" on={opts.compensate} set={v => setOpts(o => ({ ...o, compensate: v }))} />
+          {opts.compensate && (
+            <p className="text-[11px] text-muted-foreground">
+              Quem sobrar no dia recebe folga compensada — fica livre quem tem mais horas no banco (saldo do mês anterior primeiro).
+              Um preferencial só cede a tabela ao próximo da lista.
+            </p>
+          )}
+          <ExtraStandbyEditor value={opts.extraStandby} from={from} to={to} onChange={extraStandby => setOpts(o => ({ ...o, extraStandby }))} />
           <label className="flex items-center gap-2">
             <input type="number" min={0} max={31} value={opts.maxChanges} className={num}
               onChange={e => setOpts(o => ({ ...o, maxChanges: Math.max(0, Math.min(31, Math.round(Number(e.target.value) || 0))) }))} />
@@ -204,6 +216,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
                 : `O quadro atual permite cobrir até ${summary.bound}/${summary.duties}.`}
             </p>
           )}
+          {summary?.compensation && <CompensationSummary c={summary.compensation} />}
           {summary && <ShortageList groups={summary.shortage} onSelectDuty={onSelectDuty} />}
           {summary && summary.publishedChanges?.length > 0 && <PublishedChanges list={summary.publishedChanges} />}
           {summary && <p className="text-[11px] text-muted-foreground">As células com contorno tracejado mostram o que a proposta muda.</p>}

@@ -34,8 +34,9 @@ const ORIGIN = 'apps/web/src/app/transit/daily-operation/page'
 const LAST_KEY = 'nyx.roster.context'
 
 // the Tudo / Tabelas / Plantões / Sobra filter
-type Kind = 'tudo' | 'tabelas' | 'plantoes' | 'sobra'
-const isKind = (d: RosterBoardDuty, kind: Kind) => kind === 'tudo' || kind === 'sobra' || (kind === 'plantoes') === (d.kind === 'STANDBY')
+type Kind = 'tudo' | 'tabelas' | 'plantoes' | 'sobra' | 'compensacao'
+// sobra / compensação filter crew members (the Operadores view), not duties
+const isKind = (d: RosterBoardDuty, kind: Kind) => kind === 'tudo' || kind === 'sobra' || kind === 'compensacao' || (kind === 'plantoes') === (d.kind === 'STANDBY')
 
 // a duty's pendências: code → cars hit (1 for the duty's own); DUTY_UNASSIGNED (RESERVE_SHORT for
 // a plantão) when it has no holder
@@ -127,9 +128,11 @@ export default function RosterPage() {
   // (memoized by the React Compiler)
   // the crew left over on the created days (`${memberId}|${date}`)
   const free = board && idx ? freeCells(board, idx) : new Set<string>()
-  // the crew members holding a duty of the kind in the period — or left over some day (sobra)
-  const holders = kind === 'sobra'
-    ? new Set([...free].map(k => k.slice(0, k.indexOf('|'))))
+  // the folgas compensadas of the period (`${memberId}|${date}`)
+  const comps = new Set((board?.cells ?? []).filter(c => c.entries.some(e => e.kind === 'COMP_OFF')).map(c => `${c.crewMemberId}|${c.date}`))
+  // the crew members holding a duty of the kind in the period — or left over / compensating some day
+  const holders = kind === 'sobra' || kind === 'compensacao'
+    ? new Set([...(kind === 'sobra' ? free : comps)].map(k => k.slice(0, k.indexOf('|'))))
     : new Set((board?.duties ?? []).filter(d => isKind(d, kind)).flatMap(d => d.crewMemberId ?? []))
   const members = (board?.members ?? []).filter(m =>
     (kind === 'tudo' || holders.has(m.id)) && (!q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)))
@@ -283,6 +286,7 @@ export default function RosterPage() {
       if (d) labels.set(`${memberId}|${d.date}`, [...(labels.get(`${memberId}|${d.date}`) ?? []), dutyName(d, board.multiScope)])
     }
     const offs = new Set(proposal.dayOffs.map(([date, memberId]) => `${memberId}|${date}`))
+    const comps = new Set((proposal.compOffs ?? []).map(([date, memberId]) => `${memberId}|${date}`))
     const out: Overlay = new Map()
     for (const m of board.members) for (const date of dates) {
       if (!plannedDates.has(date)) continue
@@ -290,7 +294,7 @@ export default function RosterPage() {
       const s = cellSummary(idx.cellOf.get(key), idx, board.multiScope)
       const current = s.label || s.offLabel
       // kept as it is: locked duties, days off already launched
-      const proposed = labels.get(key)?.join('+') || (offs.has(key) ? 'F' : s.locked ? s.label : s.off ? current : '')
+      const proposed = labels.get(key)?.join('+') || (offs.has(key) ? 'F' : comps.has(key) ? 'FC' : s.locked ? s.label : s.off ? current : '')
       if (proposed !== current) out.set(key, { label: proposed, changed: true })
     }
     return out
@@ -375,23 +379,19 @@ export default function RosterPage() {
           ))}
         </div>
         {board && (
-          <div className="flex rounded-sm border border-border overflow-hidden">
-            {(['tudo', 'tabelas', 'plantoes', 'sobra'] as const).filter(k => k !== 'plantoes' || standby.length > 0 || kind === k).map(k => (
-              <button
-                key={k} type="button"
-                // the crew left over shows on the Operadores view
-                onClick={() => setCtx(k === 'sobra' ? { tipo: k, visao: 'operadores' } : { tipo: k })}
-                title={k === 'sobra' ? (mode === 'dia' ? 'Operadores sem tabela, folga ou ausência no dia' : 'Dias de operador sem tabela, folga ou ausência no período') : undefined}
-                className={cn(ctl, 'rounded-none', kind === k ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}
-              >
-                {k === 'tudo' ? 'Tudo' : k === 'tabelas' ? 'Tabelas' : k === 'plantoes' ? (
-                  <>Plantões <span className={cn('tabular-nums', standby.some(d => !d.crewMemberId) ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>{standby.filter(d => d.crewMemberId).length}/{standby.length}</span></>
-                ) : (
-                  <>Sobra <span className={cn('tabular-nums', free.size ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>{free.size}</span></>
-                )}
-              </button>
-            ))}
-          </div>
+          // what to show — the crew left over / compensating shows on the Operadores view
+          <Select
+            value={kind} size="sm" wrapperClassName="w-52"
+            onChange={e => { const k = e.target.value as Kind; setCtx(k === 'sobra' || k === 'compensacao' ? { tipo: k, visao: 'operadores' } : { tipo: k }) }}
+            title={kind === 'sobra' ? (mode === 'dia' ? 'Operadores sem tabela, folga ou ausência no dia' : 'Dias de operador sem tabela, folga ou ausência no período') : kind === 'compensacao' ? 'Operadores com folga compensada no período' : undefined}
+            className={cn(kind !== 'tudo' && 'text-primary font-medium')}
+          >
+            <option value="tudo">Mostrar: tudo</option>
+            <option value="tabelas">Tabelas</option>
+            {(standby.length > 0 || kind === 'plantoes') && <option value="plantoes">Plantões ({standby.filter(d => d.crewMemberId).length}/{standby.length})</option>}
+            <option value="sobra">Sobra ({free.size})</option>
+            {(comps.size > 0 || kind === 'compensacao') && <option value="compensacao">Compensação ({comps.size})</option>}
+          </Select>
         )}
         <div className="relative">
           <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

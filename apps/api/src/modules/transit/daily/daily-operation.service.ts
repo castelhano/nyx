@@ -62,7 +62,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     if (!op || op.status !== 'PLANNED') return false
     const branches = await this.prisma.scopeOperator.findMany({ where: { scopeId: op.scopeId }, select: { branchId: true } })
     const existing = await this.prisma.dailyDuty.findMany({
-      where:  { dailyOperationId: id, kind: 'STANDBY', sourceDutyId: null },
+      where:  { dailyOperationId: id, kind: 'STANDBY', sourceDutyId: null, standbyExtra: null },
       select: {
         id: true, role: true, branchId: true, _count: { select: { rosterEntries: true } },
         activities: { where: { type: 'STANDBY' }, select: { startMinutes: true, endMinutes: true, originLocalityId: true }, take: 1 },
@@ -112,6 +112,25 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       }
     })
     return true
+  }
+
+  // Plantões extras asked at a roster generation (`tag` = its job): `count` STANDBY duties of the
+  // empresa after the day's last duty number. The caller recalculates.
+  async createExtraStandby(
+    id: string, role: CrewRole, branchId: string, t: { startMinutes: number; endMinutes: number; localityId: string | null; count: number }, tag: string,
+  ): Promise<void> {
+    const last = await this.prisma.dailyDuty.aggregate({ where: { dailyOperationId: id, role }, _max: { dutyNumber: true } })
+    let dutyNumber = last._max.dutyNumber ?? 0
+    await this.prisma.$transaction(async tx => {
+      for (let i = 0; i < t.count; i++) {
+        await tx.dailyDuty.create({
+          data: {
+            dailyOperationId: id, role, dutyNumber: ++dutyNumber, kind: 'STANDBY', branchId, standbyExtra: tag,
+            activities: { create: { type: 'STANDBY', startMinutes: t.startMinutes, endMinutes: t.endMinutes, originLocalityId: t.localityId, destinationLocalityId: t.localityId } },
+          },
+        })
+      }
+    })
   }
 
   override update(): Promise<DailyOperation> {

@@ -1,6 +1,6 @@
 # Plano — Férias de condutor e banco de horas
 
-**Status: Fases 1–3 implementadas (migration `20261013090000_vacation_hour_bank`); Fase 4 pendente.**
+**Status: Fases 1–4 implementadas (migrations `20261013090000_vacation_hour_bank`, `20261013150000_standby_extra`).**
 Ver [Implementação](#implementação) para o que mudou em relação ao plano.
 
 Convenções:
@@ -241,11 +241,33 @@ model CrewTimesheetDay {
 
 ---
 
-## Fase 4 — Gerador usando o banco (depois)
+## Fase 4 — Gerador usando o banco
 
-- Sugerir **folga compensada** para quem tem lote vencendo (respeitando feriado e cobertura).
-- Evitar hora extra para quem tem saldo alto; preferência de carga para quem tem negativo.
-- Critério novo nos `RosterSettings` (peso configurável), abaixo dos preferenciais.
+Na geração, a seção **"Sobra de condutores"**:
+
+- **Plantões extras** (além das metas da empresa): linhas de dia (ou todos os dias do período),
+  início–fim, local de apresentação e quantidade. Criados ao iniciar a geração
+  (`DailyDuty.standbyExtra` = a geração); o aceite substitui os das gerações anteriores nos dias
+  planejados; descartar remove os da própria geração.
+- **Compensar banco com a sobra:** quem fica livre num dia (sem tabela nem plantão, fora de
+  feriado) recebe **folga compensada** (`RosterEntry COMP_OFF`, `source GENERATED` — refeita a
+  cada geração). A sobra não é escolhida só entre quem já sobraria: o gerador decide junto quem
+  trabalha e quem compensa, deixando livres os de mais saldo.
+
+Prioridade de quem compensa (`bankPriority`): saldo do mês anterior ≥ 5h primeiro (maior
+primeiro); abaixo disso, a soma do mês anterior com o corrente. O saldo é abatido a cada
+compensação dada no período (uma jornada, mais antigo primeiro).
+
+Ordem do objetivo: regras rígidas > cobertura das tabelas > plantões > WARN > preferencial
+(descer um na lista < **banco** < sair da lista) > demais critérios. Ou seja:
+- linha com poucos habilitados: ninguém sai se a tabela ficaria descoberta;
+- preferencial único: mantém; com outro listado que caiba no dia, o 1º pode compensar.
+
+Com a compensação ligada, a troca de tabela de uma substituição pontual (outra tabela e volta
+à de antes no dia trabalhado seguinte) não conta no limite de trocas — só no score.
+
+Após gerar: folgas dadas, horas abatidas e **alerta** de quem ficou mais de 3h negativo
+(`ROSTER_COMP_TOLERANCE`).
 
 ---
 

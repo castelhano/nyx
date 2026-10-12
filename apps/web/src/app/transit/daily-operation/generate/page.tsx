@@ -15,6 +15,7 @@ import { useToast }         from '@/lib/toast-context'
 import { useConfirm }       from '@/lib/confirm-context'
 import { cn, extractError } from '@/lib/utils'
 import { localToday }       from '@/lib/plan-vigence'
+import { CompensationSummary, ExtraStandbyEditor } from '../workspace/ExtraStandby'
 
 const ORIGIN  = 'apps/web/src/app/transit/daily-operation/generate/page'
 const FORM_ID = 'roster-generator-form'
@@ -55,7 +56,7 @@ const fmtClock = (ms: number) => {
 
 const defaults = (): RosterGeneratorParams => {
   const from = addDays(localToday(), 1)
-  return { branchId: '', role: 'DRIVER', from, to: addDays(from, 6), ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false }
+  return { branchId: '', role: 'DRIVER', from, to: addDays(from, 6), ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false, extraStandby: [], compensate: false }
 }
 
 export default function RosterGeneratorPage() {
@@ -168,7 +169,7 @@ export default function RosterGeneratorPage() {
       const res  = await apiFetch(`${BASE}/accept`, { method: 'POST', body: JSON.stringify({ jobId }) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(extractError(json))
-      toast.success(`Escala gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s), ${json.vehicles} veículo(s)`)
+      toast.success(`Escala gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s)${json.compOffs ? `, ${json.compOffs} folga(s) compensada(s)` : ''}, ${json.vehicles} veículo(s)`)
       clear()
       router.push(`/transit/daily-operation?empresa=${params.branchId}&funcao=${params.role}&data=${params.from}`)
     } catch (err) {
@@ -236,6 +237,11 @@ export default function RosterGeneratorPage() {
           hint="Só escala tabelas cujas linhas a empresa opera" />
         <ToggleRow label="Alocar Veículos" checked={params.vehicles} onToggle={() => set('vehicles', !params.vehicles)} disabled={running}
           hint="Ao aceitar, refaz os carros dos dias gerados — preferido, habitual, depois qualquer elegível" />
+        <ToggleRow label="Compensar Banco com a Sobra" checked={params.compensate} onToggle={() => set('compensate', !params.compensate)} disabled={running}
+          hint="Quem sobrar no dia recebe folga compensada — fica livre quem tem mais horas no banco (saldo do mês anterior primeiro)" />
+        <div className="max-w-2xl text-sm">
+          <ExtraStandbyEditor value={params.extraStandby} from={params.from} to={params.to} disabled={running} onChange={v => set('extraStandby', v)} />
+        </div>
       </form>
 
       {(jobId || error) && (
@@ -297,6 +303,7 @@ function ProposalView({ summary }: { summary: RosterProposalSummary }) {
           </div>
         ))}
       </div>
+      {summary.compensation && <CompensationSummary c={summary.compensation} />}
 
       <div className="grid gap-4 lg:grid-cols-[16rem_1fr] items-start">
         <div className="rounded-lg border border-border overflow-hidden">

@@ -10,13 +10,14 @@ const duty = (id: string, day: number, signature: string): RgDuty => ({
 const member = (over: Partial<RgMember> = {}): RgMember => ({
   id: 'm', code: '1', name: 'M', lineAccess: {}, prefGrade: {}, blockedVehicleTypes: [], overtimePreference: 'NEUTRAL',
   status: ['free', 'free'], windows: [null, null], fixed: [null, null], licenseExpired: [false, false], courseExpired: [false, false],
-  targetMinutes: 0, workedBefore: 0, changesBefore: 0, lastSignatures: { P: 'P#A' }, prevEnd: null, nextStart: null,
+  targetMinutes: 0, dayLoad: 420, workedBefore: 0, changesBefore: 0, lastSignatures: { P: 'P#A' }, prevEnd: null, nextStart: null,
   published: [-2, -2], current: [-1, -1], ...over,
 })
 const input = (m: RgMember): RgInput => ({
   days: ['2026-10-01', '2026-10-02'], duties: [duty('a', 0, 'P#A'), duty('b', 1, 'P#B')], members: [m],
   loadDaysBefore: 0, ensureMonthlyLoad: false, maxChanges: 0, lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes, range: settings.range,
   rest: { active: false, modifier: 1, floor: 600, idealMin: 660, idealMax: 960, ceiling: 960 },
+  compensate: false, noComp: [false, false],
 })
 
 describe('ferista last duties (lastSwaps)', () => {
@@ -29,5 +30,43 @@ describe('ferista last duties (lastSwaps)', () => {
     const e = new RosterModel(input(member({ lastSwaps: { 1: { P: 'P#B' } } }))).evaluate(0, Int32Array.from([0, 1]))
     expect(e.changes).toBe(0)
     expect(e.hard).toBe(false)
+  })
+})
+
+describe('compensate — the hour bank decides who is left free', () => {
+  const bank = (expiring: number, lot = 0) => ({ expiring, lot, negative: 0, journey: 420 })
+  const one = (preferred: number[], a = member({ id: 'a', bank: bank(600) }), b = member({ id: 'b', bank: bank(0) })): RgInput => ({
+    ...input(a), members: [a, b], days: ['2026-10-01'], duties: [{ ...duty('d', 0, 'P#A'), preferred }],
+    compensate: true, noComp: [false],
+  })
+  // the objective of a whole allocation (row per member)
+  const value = (inp: RgInput, rows: number[][]) => {
+    const model = new RosterModel(inp)
+    const e = rows.map((r, mi) => model.evaluate(mi, Int32Array.from(r)))
+    return model.objective(e.reduce((n, x) => n + x.score, 0), e.reduce((n, x) => n + x.warns, 0), 0, e.reduce((n, x) => n + x.pin, 0), e.reduce((n, x) => n + x.bank, 0))
+  }
+  const withStatus = (m: RgMember) => ({ ...m, status: ['free'] as RgMember['status'], windows: [null], fixed: [null], licenseExpired: [false], courseExpired: [false], published: [-2], current: [-1] })
+
+  it('leaves the one with the most hours free', () => {
+    const inp = one([])
+    inp.members = inp.members.map(withStatus)
+    expect(value(inp, [[-1], [0]])).toBeGreaterThan(value(inp, [[0], [-1]]))
+  })
+  it('keeps a lone preferred crew member, even with more hours', () => {
+    const inp = one([0])
+    inp.members = inp.members.map(withStatus)
+    expect(value(inp, [[0], [-1]])).toBeGreaterThan(value(inp, [[-1], [0]]))
+  })
+  it('lets the first preferred go when the next one listed takes it', () => {
+    const inp = one([0, 1])
+    inp.members = inp.members.map(withStatus)
+    expect(value(inp, [[-1], [0]])).toBeGreaterThan(value(inp, [[0], [-1]]))
+  })
+  it("doesn't count a one-off substitution against maxChanges", () => {
+    const days = ['2026-10-01', '2026-10-02', '2026-10-03']
+    const m = member({ status: ['free', 'free', 'free'], windows: [null, null, null], fixed: [null, null, null], licenseExpired: [false, false, false], courseExpired: [false, false, false], published: [-2, -2, -2], current: [-1, -1, -1] })
+    const base = { ...input(m), days, duties: [duty('a', 0, 'P#A'), duty('b', 1, 'P#B'), duty('c', 2, 'P#A')], noComp: [false, false, false] }
+    expect(new RosterModel(base).evaluate(0, Int32Array.from([0, 1, 2])).hard).toBe(true)
+    expect(new RosterModel({ ...base, compensate: true }).evaluate(0, Int32Array.from([0, 1, 2])).hard).toBe(false)
   })
 })
