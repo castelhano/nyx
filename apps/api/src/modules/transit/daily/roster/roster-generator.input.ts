@@ -5,11 +5,12 @@ import type { TransitRosterConfigService } from '../../settings/transit-roster-c
 import { loadCrewBranchRules } from '../../timetabling/crew-plan/crew-branch-rules'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
 import { effectiveWindow } from '../daily-checks'
-import type { RgDuty, RgFixed, RgInput, RgMember, RgStatus } from './roster-generator.calc'
+import { NOT_PUBLISHED, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
 
 // Reads everything the generator needs for one empresa/role over [from, to]:
-//  - the duties of the PLANNED days of the Scopes the empresa operates (its own duties, or the
-//    ones without an empresa in a Scope it operates alone) — not already held by a fixed entry
+//  - the duties of the PLANNED days (and PUBLISHED ones, `published`) of the Scopes the empresa
+//    operates (its own duties, or the ones without an empresa in a Scope it operates alone) — not
+//    already held by a fixed entry
 //  - its rosterable, active crew members of the role, with what each day means for them
 //  - the load window (load period start .. to): minutes worked and changes before `from`
 //
@@ -19,14 +20,14 @@ import type { RgDuty, RgFixed, RgInput, RgMember, RgStatus } from './roster-gene
 export interface RosterContext {
   input:      RgInput
   scopeIds:   string[]
-  // the PLANNED days in the horizon
+  // the days in the horizon it may change (PLANNED, and PUBLISHED with `published`)
   operationIds: string[]
 }
 
 const HISTORY_DAYS = 45
 
-// `published`: also the duties of PUBLISHED days (the roster screen's suggestions — the generator
-// itself only touches PLANNED days)
+// `published`: also the duties of PUBLISHED days (the roster screen's suggestions, and the
+// generator's includePublished) — what each crew member holds on them goes in RgMember.published
 export async function loadRosterInput(
   prisma: PrismaService, rosterConfig: TransitRosterConfigService, crewConfig: TransitCrewConfigService, params: RosterGeneratorParams,
   options: { published?: boolean } = {},
@@ -48,8 +49,9 @@ export async function loadRosterInput(
 
   const operations = await prisma.dailyOperation.findMany({
     where:  { scopeId: { in: scopeIds }, date: { gte: toDbDate(from), lte: toDbDate(to) }, status: { in: options.published ? ['PLANNED', 'PUBLISHED'] : ['PLANNED'] } },
-    select: { id: true, date: true, scopeId: true },
+    select: { id: true, date: true, scopeId: true, status: true },
   })
+  const publishedDays = new Set(operations.filter(o => o.status === 'PUBLISHED').map(o => dayOf(o.date)))
 
   // ── crew members ──
   const members = await prisma.crewMember.findMany({
@@ -138,6 +140,7 @@ export async function loadRosterInput(
   }
 
   // ── each crew member's days ──
+  const dutyIndex = new Map(rgDuties.map((d, i) => [d.id, i]))
   const maxPreferred = settings.maxPreferredLines
   const rgMembers: RgMember[] = members.map(m => {
     const mine = entries.filter(e => e.crewMemberId === m.id)
@@ -208,6 +211,11 @@ export async function loadRosterInput(
       overtimePreference: m.overtimePreference,
       status, windows, fixed, licenseExpired, courseExpired,
       targetMinutes, workedBefore, changesBefore, lastSignature: last, prevEnd, nextStart,
+      published: days.map(day => {
+        if (!publishedDays.has(day)) return NOT_PUBLISHED
+        const held = mine.find(e => dayOf(e.date) === day && e.dailyDutyId && dutyIndex.has(e.dailyDutyId))
+        return held ? dutyIndex.get(held.dailyDutyId!)! : -1
+      }),
     }
   })
 

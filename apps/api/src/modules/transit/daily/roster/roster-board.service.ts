@@ -1,12 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import {
   ROSTER_MAX_HORIZON_DAYS, restGroupIndex, restGroupLabel, restPatternWorks, shiftIdealDistance,
-  type CrewRole, type DailyIssue, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
+  type CrewRole, type DailyIssue, type DailySource, type DutySummary, type RosterBoard, type RosterBoardCell, type RosterShortage,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
-import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
+import { addDays, dayOf, inForceOn, toDbDate, type Day } from '../../timetabling/plan-validity'
 import { RosterModel, diagnoseShortage } from './roster-generator.calc'
 import { daysBetween, loadRosterInput } from './roster-generator.input'
 
@@ -34,6 +34,43 @@ export class RosterBoardService {
     private readonly crewConfig:   TransitCrewConfigService,
   ) {}
 
+  // Days whose copy is no longer what's in force on their date: a source vehicle plan out of its
+  // validity (superseded), or a crew plan other than the one now in force for it — a plan
+  // activated after the day was created. Recreating the day (rematerialize) picks the new one.
+  private async outdatedDays(operations: { id: string; date: Date; sources: unknown }[]): Promise<Map<string, string>> {
+    const sourcesOf = (o: { sources: unknown }) => (o.sources ?? []) as DailySource[]
+    const plans = await this.prisma.vehiclePlan.findMany({
+      where:  { id: { in: [...new Set(operations.flatMap(o => sourcesOf(o).map(s => s.vehiclePlanId)))] } },
+      select: {
+        id: true, description: true, validFrom: true, validTo: true,
+        crewPlans: { where: { status: { in: ['ACTIVE', 'SUPERSEDED'] } }, select: { id: true, description: true, validFrom: true, validTo: true } },
+      },
+    })
+    const crewNames = new Map((await this.prisma.crewPlan.findMany({
+      where:  { id: { in: [...new Set(operations.flatMap(o => sourcesOf(o).flatMap(s => s.crewPlanId ?? [])))] } },
+      select: { id: true, description: true },
+    })).map(c => [c.id, c.description || 'Escala']))
+    const byId = new Map(plans.map(p => [p.id, p]))
+    const out = new Map<string, string>()
+    for (const o of operations) {
+      const day = dayOf(o.date)
+      for (const s of sourcesOf(o)) {
+        const vp = byId.get(s.vehiclePlanId)
+        if (!vp || !inForceOn(vp, day)) {
+          out.set(o.id, `Copiado do planejamento de veículos "${vp?.description || 'sem descrição'}", que não está mais em vigor`)
+          break
+        }
+        const now = vp.crewPlans.find(c => inForceOn(c, day)) ?? null
+        if ((now?.id ?? null) !== s.crewPlanId) {
+          const was = s.crewPlanId ? `"${crewNames.get(s.crewPlanId) ?? 'Escala'}"` : 'sem escala'
+          out.set(o.id, `Copiado de ${was} — em vigor agora: ${now ? `"${now.description || 'Escala'}"` : 'nenhuma escala'}`)
+          break
+        }
+      }
+    }
+    return out
+  }
+
   async board(branchId: string, role: CrewRole, from: Day, to: Day): Promise<RosterBoard> {
     if (!branchId || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) throw new BadRequestException('Período inválido')
     if (daysBetween(from, to) + 1 > ROSTER_MAX_HORIZON_DAYS) throw new BadRequestException(`O período pode ter no máximo ${ROSTER_MAX_HORIZON_DAYS} dias`)
@@ -51,9 +88,10 @@ export class RosterBoardService {
 
     const operations = await this.prisma.dailyOperation.findMany({
       where:  { scopeId: { in: scopeIds }, date: range },
-      select: { id: true, scopeId: true, date: true, status: true },
+      select: { id: true, scopeId: true, date: true, status: true, sources: true },
     })
     const opById = new Map(operations.map(o => [o.id, o]))
+    const outdated = await this.outdatedDays(operations)
 
     const [duties, shifts, vehicles, offTypes] = await Promise.all([
       this.prisma.dailyDuty.findMany({
@@ -118,14 +156,20 @@ export class RosterBoardService {
       },
     })
     const memberIds = members.map(m => m.id)
-    const [entries, occurrences, holidays] = await Promise.all([
+    const [entries, occurrences, holidays, changeLogs] = await Promise.all([
       this.prisma.rosterEntry.findMany({ where: { crewMemberId: { in: memberIds }, date: range }, select: { crewMemberId: true, date: true, kind: true, dailyDutyId: true, locked: true, absenceTypeId: true } }),
       this.prisma.crewOccurrence.findMany({
         where:  { crewMemberId: { in: memberIds }, status: { in: ['REQUESTED', 'APPROVED'] }, startDate: { lte: toDbDate(to) }, endDate: { gte: toDbDate(from) } },
         select: { id: true, crewMemberId: true, kind: true, status: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true, absenceType: { select: { name: true } } },
       }),
       this.prisma.holiday.findMany({ where: { date: range, OR: [{ branchId: null }, { branchId }] }, select: { date: true } }),
+      this.prisma.dailyChangeLog.findMany({
+        where:  { dailyOperationId: { in: operations.filter(o => o.status !== 'PLANNED').map(o => o.id) }, crewMemberIds: { hasSome: memberIds } },
+        select: { dailyOperationId: true, crewMemberIds: true },
+      }),
     ])
+    // `${crewMemberId}|${date}` changed after the day was published
+    const changed = new Set(changeLogs.flatMap(l => l.crewMemberIds.map(id => `${id}|${dayOf(opById.get(l.dailyOperationId)!.date)}`)))
     const holidaySet = new Set(holidays.map(h => dayOf(h.date)))
 
     // the generator's figures for the current allocation
@@ -140,9 +184,10 @@ export class RosterBoardService {
         const patternOff = !!p && !restPatternWorks(p, m.restOffset, date, holiday)
         const mine = entries.filter(e => e.crewMemberId === m.id && dayOf(e.date) === date)
         const reqs = occurrences.filter(o => o.crewMemberId === m.id && dayOf(o.startDate) <= date && dayOf(o.endDate) >= date)
-        if (!patternOff && !holiday && !mine.length && !reqs.length) continue
+        const wasChanged = changed.has(`${m.id}|${date}`)
+        if (!patternOff && !holiday && !mine.length && !reqs.length && !wasChanged) continue
         cells.push({
-          crewMemberId: m.id, date, patternOff, holiday,
+          crewMemberId: m.id, date, patternOff, holiday, changed: wasChanged,
           entries:  mine.map(e => ({ kind: e.kind, dailyDutyId: e.dailyDutyId, locked: e.locked, absenceTypeId: e.absenceTypeId })),
           requests: reqs.map(o => ({
             id: o.id, kind: o.kind, status: o.status as 'REQUESTED' | 'APPROVED', startNotBefore: o.startNotBefore, endNotAfter: o.endNotAfter,
@@ -185,7 +230,7 @@ export class RosterBoardService {
         const mine = boardDuties.filter(d => d.date === date)
         return {
           date,
-          operations: ops.map(o => ({ id: o.id, scopeId: o.scopeId, scope: scopeName.get(o.scopeId) ?? '', status: o.status })),
+          operations: ops.map(o => ({ id: o.id, scopeId: o.scopeId, scope: scopeName.get(o.scopeId) ?? '', status: o.status, outdated: outdated.get(o.id) ?? null })),
           duties: mine.length, assigned: mine.filter(d => d.crewMemberId).length,
           issues: mine.filter(d => d.issues.length || d.blocks.some(b => b.issues.length)).length,
         }
@@ -224,7 +269,7 @@ export class RosterBoardService {
     if (!branchId) return []
     const date = dayOf(duty.operation.date)
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-      branchId, role: duty.role, from: date, to: date, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false,
+      branchId, role: duty.role, from: date, to: date, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
     }, { published: true })
     const di = input.duties.findIndex(d => d.id === dutyId)
     if (di < 0) return []
@@ -270,7 +315,7 @@ export class RosterBoardService {
   async shortage(branchId: string, role: CrewRole, from: Day, to: Day): Promise<RosterShortage[]> {
     if (!branchId || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) throw new BadRequestException('Período inválido')
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false,
+      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
     }, { published: true })
     if (!input.duties.length) return []
     const model = new RosterModel(input)
@@ -293,7 +338,7 @@ export class RosterBoardService {
   private async stats(branchId: string, role: CrewRole, from: Day, to: Day, entries: { crewMemberId: string; dailyDutyId: string | null }[]) {
     const out = new Map<string, NonNullable<RosterBoard['members'][number]['stats']>>()
     const { input } = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false,
+      branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, restrictToBranchLines: false, vehicles: false, includePublished: true,
     })
     if (!input.members.length) return out
     const model = new RosterModel(input)

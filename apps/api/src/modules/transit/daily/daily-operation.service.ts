@@ -22,7 +22,7 @@ import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
 import { crewIssues, loadCrewFacts, vehicleIssues, type BlockFacts, type DutyFacts } from './daily-checks'
 
-type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'SWAP_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL_TRIP' | 'RESTORE_TRIP' | 'DAY_OFF'
+type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'SWAP_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL_TRIP' | 'RESTORE_TRIP' | 'DAY_OFF' | 'UNPUBLISH' | 'REOPEN'
 
 // The day's real operation (DailyOperation). Creating one materializes the plans in force on the
 // date; every edit recalculates the day (duty summaries/issues through the crew calculation,
@@ -79,6 +79,28 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       where: { id },
       data:  status === 'PUBLISHED' ? { status, publishedAt: new Date() } : { status, closedAt: new Date() },
     })
+  }
+
+  // Back one status, for a mistake (admins only — the controller checks): a PUBLISHED day back to
+  // PLANNED (unpublish — the generator may redo it from scratch), a CLOSED one back to PUBLISHED
+  // (reopen — to fix what was done). The allocation stays; the reason goes to the day's log.
+  async revertStatus(id: string, reason: string, userId: string | undefined): Promise<void> {
+    if (!reason?.trim()) throw new BadRequestException('Informe o motivo')
+    const op = await this.operation(id)
+    if (op.status === 'PLANNED') throw new BadRequestException('O dia já está planejado')
+    const unpublish = op.status === 'PUBLISHED'
+    await this.prisma.$transaction([
+      this.prisma.dailyOperation.update({
+        where: { id },
+        data:  unpublish ? { status: 'PLANNED', publishedAt: null } : { status: 'PUBLISHED', closedAt: null },
+      }),
+      this.prisma.dailyChangeLog.create({
+        data: {
+          dailyOperationId: id, userId: userId ?? null, action: unpublish ? 'UNPUBLISH' : 'REOPEN', entityType: 'DailyOperation', entityId: id,
+          crewMemberIds: [], before: { status: op.status }, after: { status: unpublish ? 'PLANNED' : 'PUBLISHED', reason: reason.trim() },
+        },
+      }),
+    ])
   }
 
   // ── allocation ──────────────────────────────────────────────────────────────

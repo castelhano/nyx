@@ -58,7 +58,7 @@ export class RosterGeneratorController {
   @HttpCode(200)
   async accept(@Req() req: { user?: AuthUser }, @Body('jobId') jobId: string) {
     await this.assert(req.user, 'update')
-    return this.generator.accept(jobId)
+    return this.generator.accept(jobId, req.user?.id)
   }
 
   private async assert(user: AuthUser | undefined, action: string): Promise<void> {

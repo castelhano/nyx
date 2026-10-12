@@ -6,7 +6,9 @@ import type { DailyIssue } from './daily-operation.schema'
 export interface RosterBoardDay {
   date:       string
   // one per Scope the empresa operates that has the day — none: not created yet
-  operations: { id: string; scopeId: string; scope: string; status: 'PLANNED' | 'PUBLISHED' | 'CLOSED' }[]
+  // outdated: why the copy is no longer what's in force on the date (a plan activated after the
+  // day was created) — null when it is
+  operations: { id: string; scopeId: string; scope: string; status: 'PLANNED' | 'PUBLISHED' | 'CLOSED'; outdated: string | null }[]
   duties:     number
   assigned:   number
   // duties with a pendência
@@ -62,6 +64,8 @@ export interface RosterBoardCell {
   date:         string
   patternOff:   boolean
   holiday:      boolean
+  // changed after the day was published (DailyChangeLog) — who gets notified
+  changed:      boolean
   // absenceTypeId: a day off's type
   entries:      { kind: 'DUTY' | 'STANDBY' | 'DAY_OFF' | 'COMP_OFF'; dailyDutyId: string | null; locked: boolean; absenceTypeId: string | null }[]
   requests:     { id: string; kind: 'ABSENCE' | 'TIME_WINDOW'; status: 'REQUESTED' | 'APPROVED'; label: string; startNotBefore: number | null; endNotAfter: number | null }[]

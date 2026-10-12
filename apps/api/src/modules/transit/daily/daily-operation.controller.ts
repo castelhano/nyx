@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Put, Req, UseGuards } from '@nestjs/common'
 import { DailyOperation, CreateDailyOperationDto, UpdateDailyOperationDto } from '@nyx/schemas'
 import type { AuthUser } from '@nyx/types'
 import { BaseController } from '../../../core/base.controller'
@@ -49,6 +49,14 @@ export class DailyOperationController extends BaseController<DailyOperation, Cre
   async close(@Req() req: Req, @Param('id') id: string) {
     await this.assertAbility(req.user, 'update')
     await this.daily.setStatus(id, 'CLOSED')
+  }
+
+  // unpublish / reopen — admins only, with a reason
+  @Post(':id/revert')
+  @HttpCode(204)
+  async revert(@Req() req: Req, @Param('id') id: string, @Body('reason') reason: string) {
+    if (req.user?.role !== 'admin') throw new ForbiddenException('Somente administradores podem voltar o status do dia')
+    await this.daily.revertStatus(id, reason, req.user?.id)
   }
 
   @Put(':id/duty/:dutyId/crew')

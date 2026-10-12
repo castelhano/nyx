@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Icons } from '@/lib/icons'
 import { apiFetch, getToken } from '@/lib/auth'
+import { useConfirm } from '@/lib/confirm-context'
 import { cn, extractError } from '@/lib/utils'
 import { fmtDay } from './board'
 import { ShortageList } from './ShortageList'
@@ -13,6 +14,8 @@ import { ShortageList } from './ShortageList'
 // "Gerar" inside the Escala screen: the period, empresa and role are the screen's; the run goes
 // on in the server (SSE), and each better proposal is drawn over the board (the parent gets its
 // allocation) until it is accepted or discarded. The days missing are created by the run.
+// "Incluir dias publicados" redoes the PUBLISHED days too, changing as little as it can; who
+// changes is listed, accepting asks first and each change goes to the day's log.
 
 const BASE = '/transit/roster-generator'
 
@@ -24,7 +27,8 @@ type Message =
   | { type: 'done'; stopReason: StopReason }
   | { type: 'error'; message: string }
 
-export interface Proposal { assignments: [string, string][]; dayOffs: [string, string][]; summary: RosterProposalSummary }
+// includePublished: the run may change the PUBLISHED days too
+export interface Proposal { assignments: [string, string][]; dayOffs: [string, string][]; summary: RosterProposalSummary; includePublished: boolean }
 
 const STOP_LABEL: Record<StopReason, string> = { finished: 'Concluída', user_stopped: 'Interrompida', max_time: 'Tempo máximo', no_improvement: 'Sem melhora' }
 
@@ -43,7 +47,10 @@ interface Props {
 }
 
 export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh, onClose, onSelectDuty }: Props) {
-  const [opts, setOpts] = useState({ ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true })
+  const confirm = useConfirm()
+  const [opts, setOpts] = useState({ ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false })
+  // the run's own — a run picked up from the server keeps what it was started with
+  const runPublished = useRef(false)
   const [jobId, setJobId]       = useState<string | null>(null)
   const [running, setRunning]   = useState(false)
   const [stage, setStage]       = useState<string | null>(null)
@@ -59,7 +66,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
   async function loadProposal(id: string) {
     const res = await apiFetch(`${BASE}/proposal?jobId=${id}`)
     const json = await res.json().catch(() => ({}))
-    if (res.ok && json.proposal) onProposal(json.proposal)
+    if (res.ok && json.proposal) onProposal({ ...json.proposal, includePublished: runPublished.current })
   }
 
   function attach(id: string) {
@@ -88,8 +95,9 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
   useEffect(() => {
     let cancelled = false
     void apiFetch(`${BASE}/current?branchId=${branchId}&role=${role}`).then(r => r.json()).then(json => {
-      const job = json.job as { jobId: string; running: boolean; params: { from: string; to: string } } | null
+      const job = json.job as { jobId: string; running: boolean; params: { from: string; to: string; includePublished?: boolean } } | null
       if (cancelled || !job || job.params.from !== from || job.params.to !== to) return
+      runPublished.current = !!job.params.includePublished
       setJobId(job.jobId); setRunning(job.running)
       attach(job.jobId)
     }).catch(() => null)
@@ -106,6 +114,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
   async function start() {
     reset()
     const id = crypto.randomUUID()
+    runPublished.current = opts.includePublished
     const res = await apiFetch(`${BASE}/start`, { method: 'POST', body: JSON.stringify({ jobId: id, params: { branchId, role, from, to, ...opts } }) })
     if (!res.ok) { setError(extractError(await res.json().catch(() => ({})))); return }
     setJobId(id); setRunning(true)
@@ -114,13 +123,19 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
 
   async function accept() {
     if (!jobId) return
+    const changed = summary?.publishedChanges ?? []
+    if (changed.length && !(await confirm({
+      title: 'Alterar dias publicados',
+      description: `${changed.length} dia(s) de ${new Set(changed.map(c => c.crewMemberId)).size} operador(es) mudam em dias já publicados. Cada mudança fica no histórico do dia e o operador aparece como alterado após a publicação.`,
+      confirmLabel: 'Aceitar',
+    }))) return
     setAccepting(true)
     try {
       const res = await apiFetch(`${BASE}/accept`, { method: 'POST', body: JSON.stringify({ jobId }) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(extractError(json))
       reset()
-      setEnd(`Gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s), ${json.vehicles} veículo(s)`)
+      setEnd(`Gravada: ${json.assigned} tabela(s), ${json.dayOffs} folga(s), ${json.vehicles} veículo(s)${json.changed ? ` · ${json.changed} alteração(ões) em dias publicados` : ''}`)
       onRefresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao aceitar')
@@ -147,12 +162,16 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
           <Toggle label="Garantir carga" on={opts.ensureMonthlyLoad} set={v => setOpts(o => ({ ...o, ensureMonthlyLoad: v }))} />
           <Toggle label="Consistir linha da empresa" on={opts.restrictToBranchLines} set={v => setOpts(o => ({ ...o, restrictToBranchLines: v }))} />
           <Toggle label="Alocar veículos" on={opts.vehicles} set={v => setOpts(o => ({ ...o, vehicles: v }))} />
+          <Toggle label="Incluir dias publicados" on={opts.includePublished} set={v => setOpts(o => ({ ...o, includePublished: v }))} />
           <label className="flex items-center gap-2">
             <input type="number" min={0} max={31} value={opts.maxChanges} className={num}
               onChange={e => setOpts(o => ({ ...o, maxChanges: Math.max(0, Math.min(31, Math.round(Number(e.target.value) || 0))) }))} />
             máx. de trocas de tabela por operador no período da carga
           </label>
-          <p className="text-muted-foreground">Cria os dias que faltam. Alocações travadas, dias publicados, folgas compensadas e folgas lançadas à mão ficam como estão.</p>
+          <p className="text-muted-foreground">
+            Cria os dias que faltam. Alocações travadas, {opts.includePublished ? '' : 'dias publicados, '}dias encerrados, folgas compensadas e folgas lançadas à mão ficam como estão.
+            {opts.includePublished && ' Nos dias publicados muda o mínimo possível — cada mudança fica registrada.'}
+          </p>
           <Button size="sm" onClick={() => void start()}><Icons.Sparkles className="w-3.5 h-3.5" />Gerar</Button>
         </div>
       )}
@@ -179,6 +198,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
             </p>
           )}
           {summary && <ShortageList groups={summary.shortage} onSelectDuty={onSelectDuty} />}
+          {summary && summary.publishedChanges?.length > 0 && <PublishedChanges list={summary.publishedChanges} />}
           {summary && <p className="text-[11px] text-muted-foreground">As células com contorno tracejado mostram o que a proposta muda.</p>}
           <div className="flex gap-1.5">
             {running && <Button size="sm" variant="outline" onClick={() => void apiFetch(`${BASE}/stop`, { method: 'POST', body: JSON.stringify({ jobId }) })}>Parar</Button>}
@@ -190,6 +210,24 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
       {!jobId && end && <p className="text-xs text-emerald-600 dark:text-emerald-400">{end}</p>}
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
     </section>
+  )
+}
+
+// who changes on a PUBLISHED day — grouped by crew member
+function PublishedChanges({ list }: { list: RosterProposalSummary['publishedChanges'] }) {
+  const byMember = new Map<string, { label: string; dates: string[] }>()
+  for (const c of list) {
+    const m = byMember.get(c.crewMemberId) ?? { label: `${c.code} ${c.name}`, dates: [] }
+    m.dates.push(c.date)
+    byMember.set(c.crewMemberId, m)
+  }
+  return (
+    <div className="space-y-1 text-xs">
+      <p className="font-medium text-amber-600 dark:text-amber-400">{list.length} dia(s) publicado(s) mudam · {byMember.size} operador(es)</p>
+      <ul className="max-h-32 overflow-y-auto space-y-0.5 text-[11px] text-muted-foreground">
+        {[...byMember.values()].map(m => <li key={m.label}>{m.label} — {m.dates.map(fmtDay).join(', ')}</li>)}
+      </ul>
+    </div>
   )
 }
 

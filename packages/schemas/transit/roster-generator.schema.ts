@@ -21,6 +21,9 @@ export const rosterGeneratorParamsSchema = z.object({
   restrictToBranchLines: z.boolean().default(true),
   // fills the days' vehicles (blocks still without one) after the crew
   vehicles:              z.boolean().default(true),
+  // also redo the PUBLISHED days (never the CLOSED ones) — changing as little as it can
+  // (range.publishedChanges); each change is logged on the day
+  includePublished:      z.boolean().default(false),
 }).refine(p => p.from <= p.to, { message: 'O fim do período deve ser depois do início', path: ['to'] })
 
 export type RosterGeneratorParams = z.infer<typeof rosterGeneratorParamsSchema>
@@ -58,6 +61,15 @@ export interface RosterProposalSummary {
   bound:      number
   // why the duties without a crew member have none, grouped
   shortage:   RosterShortage[]
+  // includePublished: the crew members whose duty changes on a PUBLISHED day
+  publishedChanges: RosterPublishedChange[]
+}
+
+export interface RosterPublishedChange {
+  crewMemberId: string
+  code:         string
+  name:         string
+  date:         string
 }
 
 // duties left without a crew member for the same reason (and shift)

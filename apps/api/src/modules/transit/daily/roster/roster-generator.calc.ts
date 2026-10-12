@@ -1,6 +1,6 @@
 import {
   shiftFits, shiftIdealDistance,
-  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterSettings, type RosterShortage, type ShiftWindow,
+  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterPublishedChange, type RosterSettings, type RosterShortage, type ShiftWindow,
 } from '@nyx/schemas'
 import { rangeRaw, SCORE_SCALE } from '../../timetabling/vehicle-plan/scoring/plan-scoring.calc'
 import { hungarian } from './hungarian'
@@ -17,6 +17,8 @@ import { hungarian } from './hungarian'
 // The objective: coverage first (UNASSIGNED per duty without a crew member), then WARN rule
 // violations (WARN each), then the score — the average of each crew member's weighted criteria
 // (roster.range + the crew interShiftRest ideal) on the 0–9999 scale of the other solvers.
+// Redoing PUBLISHED days (includePublished), each day whose duty differs from the published one
+// costs range.publishedChanges — the search changes the published roster only where it pays off.
 // BLOCK rules and the always-blocking ones are hard: never assigned.
 
 export const UNASSIGNED = 100_000
@@ -70,7 +72,11 @@ export interface RgMember {
   // sign-off the day before the horizon / sign-on the day after it
   prevEnd:   number | null
   nextStart: number | null
+  // per day: the duty index held on a PUBLISHED day (-1 none), NOT_PUBLISHED otherwise
+  published: number[]
 }
+
+export const NOT_PUBLISHED = -2
 
 export interface RgInput {
   days:    string[]
@@ -270,6 +276,12 @@ export class RosterModel {
     let prevEnd = m.prevEnd, prevFixed = true
     let warns = 0, hard = false, workedDays = 0
     let prefNum = 0, prefDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
+    let publishedDays = 0, publishedChanged = 0
+    for (let t = 0; t < this.T; t++) {
+      if (m.published[t] === NOT_PUBLISHED || m.status[t] !== 'free') continue
+      publishedDays++
+      if (row[t] !== m.published[t]) publishedChanged++
+    }
 
     const restCheck = (rest: number, bothFixed: boolean) => {
       if (input.rest.active) { restSum += rangeRaw(rest, input.rest); restN++ }
@@ -323,6 +335,7 @@ export class RosterModel {
     }
     if (r.tableChanges.active) add(r.tableChanges, changes)
     if (restN) add(input.rest, restSum / restN)
+    if (r.publishedChanges.active && publishedDays) add(r.publishedChanges, publishedChanged)
 
     return { score: den ? num / den : 1, warns, hard, worked, changes, prefShare: share, workedDays }
   }
@@ -389,6 +402,8 @@ export function construct(model: RosterModel): RgResult {
           }
           const w = m.windows[t]
           if (r.shiftFit.active && w) x += r.shiftFit.modifier * (1 - rangeRaw(shiftIdealDistance(w, d.start, d.end), r.shiftFit))
+          // a published day keeps its duty unless something else pays more
+          if (r.publishedChanges.active && m.published[t] !== NOT_PUBLISHED && m.published[t] !== di) x += r.publishedChanges.modifier
           if (m.targetMinutes > 0) {
             // the load due by this day
             const expected = m.targetMinutes * (input.loadDaysBefore + t + 1) / totalDays
@@ -616,6 +631,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
   const dutiesByDay = new Array<number>(T).fill(0)
   const freeByDay = new Array<number>(T).fill(0)
   for (const d of input.duties) dutiesByDay[d.day]++
+  const publishedChanges: RosterPublishedChange[] = []
 
   for (let mi = 0; mi < M; mi++) {
     const m = input.members[mi]
@@ -628,6 +644,9 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       if (di >= 0) { assignments.push([input.duties[di].id, m.id]); assignedByDay[t]++ }
       else if (m.status[t] === 'free') freeByDay[t]++
       if (m.status[t] === 'off') { dayOffs.push([input.days[t], m.id]); offs++ }
+      if (m.status[t] === 'free' && m.published[t] !== NOT_PUBLISHED && m.published[t] !== di) {
+        publishedChanges.push({ crewMemberId: m.id, code: m.code, name: m.name, date: input.days[t] })
+      }
     }
     members.push({
       crewMemberId: m.id, code: m.code, name: m.name, workedDays: e.workedDays, dayOffs: offs,
@@ -649,6 +668,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       members,
       bound,
       shortage: diagnoseShortage(model, assign, holderOf(assign, input.duties.length)),
+      publishedChanges,
     },
   }
 }

@@ -55,7 +55,7 @@ const fmtClock = (ms: number) => {
 
 const defaults = (): RosterGeneratorParams => {
   const from = addDays(localToday(), 1)
-  return { branchId: '', role: 'DRIVER', from, to: addDays(from, 6), ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true }
+  return { branchId: '', role: 'DRIVER', from, to: addDays(from, 6), ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false }
 }
 
 export default function RosterGeneratorPage() {

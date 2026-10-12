@@ -206,8 +206,24 @@ export default function RosterPage() {
   }
   const panelActions = {
     assign, lock, vehicle, dayOff, review,
-    status: (operationId: string, to: 'PUBLISHED' | 'CLOSED') =>
-      run(() => call(`/transit/daily-operation/${operationId}/${to === 'PUBLISHED' ? 'publish' : 'close'}`, 'POST', {}), undefined, to === 'PUBLISHED' ? 'Dia publicado' : 'Dia encerrado'),
+    status: async (operationId: string, to: 'PUBLISHED' | 'CLOSED') => {
+      if (to === 'CLOSED' && !(await confirm({
+        title: 'Encerrar o dia',
+        description: 'Encerrar é para depois que o dia aconteceu: ele fica somente leitura, como registro do realizado, e a geração não o refaz mais. Só um administrador consegue reabri-lo.',
+        confirmLabel: 'Encerrar',
+      }))) return
+      void run(() => call(`/transit/daily-operation/${operationId}/${to === 'PUBLISHED' ? 'publish' : 'close'}`, 'POST', {}), undefined, to === 'PUBLISHED' ? 'Dia publicado' : 'Dia encerrado')
+    },
+    remake: async (operationId: string) => {
+      if (!(await confirm({
+        title: 'Refazer o dia',
+        description: 'O dia é descartado e copiado de novo dos planejamentos em vigor — operadores e veículos alocados são perdidos (folgas lançadas ficam).',
+        confirmLabel: 'Refazer', variant: 'destructive',
+      }))) return
+      void run(() => call(`/transit/daily-operation/${operationId}/rematerialize`, 'POST', {}), undefined, 'Dia refeito')
+    },
+    revert: (operationId: string, reason: string) =>
+      run(() => call(`/transit/daily-operation/${operationId}/revert`, 'POST', { reason }), undefined, 'Status do dia revertido'),
   }
 
   const panelDate = cursor?.date ?? (dutyId ? idx?.dutyById.get(dutyId)?.date : null) ?? (dates.includes(localToday()) ? localToday() : dates[0] ?? null)
@@ -232,7 +248,9 @@ export default function RosterPage() {
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const overlay = useMemo((): Overlay | null => {
     if (!proposal || !board || !idx) return null
-    const plannedDates = new Set(board.days.filter(d => !d.operations.length || d.operations.some(o => o.status === 'PLANNED')).map(d => d.date))
+    // the days the run may change: PLANNED (or not created yet), and PUBLISHED when it includes them
+    const editable = (st: string) => st === 'PLANNED' || (proposal.includePublished && st === 'PUBLISHED')
+    const plannedDates = new Set(board.days.filter(d => !d.operations.length || d.operations.some(o => editable(o.status))).map(d => d.date))
     const labels = new Map<string, string[]>()
     for (const [dutyId, memberId] of proposal.assignments) {
       const d = idx.dutyById.get(dutyId)
@@ -307,6 +325,7 @@ export default function RosterPage() {
               >
                 <span className={cn(weekday(d.date) % 6 === 0 && 'font-medium')}>{WEEKDAY[weekday(d.date)]} {fmtDay(d.date)}</span>
                 <span className="block text-[10px]">
+                  {d.operations.some(o => o.outdated) && <span className="text-amber-600 dark:text-amber-400" title={d.operations.find(o => o.outdated)!.outdated!}>⚠ </span>}
                   {status === 'none' ? <span className="text-muted-foreground">— não criado</span>
                     : d.issues ? <span className="text-red-600 dark:text-red-400">● {d.issues} pend.</span>
                     : status === 'published' ? <span className="text-emerald-600 dark:text-emerald-400">✓ publicada</span>

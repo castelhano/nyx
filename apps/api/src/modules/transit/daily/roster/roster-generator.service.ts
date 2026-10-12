@@ -18,8 +18,9 @@ import { systemAbsenceTypeId } from '../../crew/crew-absence-type/system-types'
 // materializes the missing days of the horizon (Scopes the empresa operates), reads the data and
 // runs the search in a worker thread, streaming progress over SSE. Accepting writes the best
 // proposal: RosterEntry (GENERATED) per duty and rest-pattern day off, replacing every entry
-// that isn't fixed (locked, day not PLANNED, compensatory day off, day off entered by hand),
-// then the vehicles and the days' recalculation.
+// that isn't fixed (locked, day not PLANNED — or PUBLISHED with includePublished —, compensatory
+// day off, day off entered by hand), then the vehicles and the days' recalculation. On a
+// PUBLISHED day each duty that changes hands is logged (DailyChangeLog) — the crew notified.
 //
 // Like the crew solver, a generation lives in memory — one per empresa/role, a new start
 // replaces it; kept until accepted, discarded or 30 min after it ends.
@@ -120,9 +121,11 @@ export class RosterGeneratorService {
     if (this.jobs.get(job.id) !== job) return
 
     this.stage(job, 'Lendo operadores e tabelas')
-    const context = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, params)
+    const context = await loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, params, { published: params.includePublished })
     job.context = context
-    if (!context.input.duties.length) throw new BadRequestException('Nenhuma tabela a escalar no período (dias planejados da empresa)')
+    if (!context.input.duties.length) {
+      throw new BadRequestException(`Nenhuma tabela a escalar no período (dias ${params.includePublished ? 'planejados ou publicados' : 'planejados'} da empresa)`)
+    }
     if (!context.input.members.length) throw new BadRequestException('Nenhum operador escalável da empresa nessa função')
     this.stage(job, `${context.input.duties.length} tabela(s), ${context.input.members.length} operador(es)`)
     if (this.jobs.get(job.id) !== job) return
@@ -215,7 +218,7 @@ export class RosterGeneratorService {
     return best ? { index: best.index, summary: best.summary, assignments: best.assignments, dayOffs: best.dayOffs } : null
   }
 
-  async accept(jobId: string): Promise<{ assigned: number; dayOffs: number; vehicles: number }> {
+  async accept(jobId: string, userId?: string): Promise<{ assigned: number; dayOffs: number; vehicles: number; changed: number }> {
     const job = this.jobs.get(jobId)
     if (!job) throw new NotFoundException('Geração não encontrada ou expirada')
     if (!job.best || !job.context) throw new BadRequestException('Nenhuma proposta disponível ainda')
@@ -227,12 +230,31 @@ export class RosterGeneratorService {
     const memberIds = input.members.map(m => m.id)
     const dutyIds   = input.duties.map(d => d.id)
     const kindOf    = new Map(input.duties.map(d => [d.id, d.kind]))
-    // a day that left PLANNED meanwhile keeps what it has
-    const planned = await this.prisma.dailyOperation.findMany({ where: { id: { in: context.operationIds }, status: 'PLANNED' }, select: { id: true } })
-    const plannedDuties = new Set((await this.prisma.dailyDuty.findMany({
-      where: { id: { in: dutyIds }, dailyOperationId: { in: planned.map(p => p.id) } }, select: { id: true },
-    })).map(d => d.id))
+    // a day that left the editable statuses meanwhile keeps what it has
+    const editable: ('PLANNED' | 'PUBLISHED')[] = params.includePublished ? ['PLANNED', 'PUBLISHED'] : ['PLANNED']
+    const planned = await this.prisma.dailyOperation.findMany({ where: { id: { in: context.operationIds }, status: { in: editable } }, select: { id: true, status: true } })
+    const published = new Set(planned.filter(p => p.status === 'PUBLISHED').map(p => p.id))
+    const openDuties = await this.prisma.dailyDuty.findMany({
+      where: { id: { in: dutyIds }, dailyOperationId: { in: planned.map(p => p.id) } }, select: { id: true, dailyOperationId: true },
+    })
+    const plannedDuties = new Set(openDuties.map(d => d.id))
     const assignments = best.assignments.filter(([dutyId]) => plannedDuties.has(dutyId))
+
+    // a PUBLISHED day's duties: who holds them now, to log what changes hands
+    const publishedDuties = openDuties.filter(d => published.has(d.dailyOperationId))
+    const before = new Map((await this.prisma.rosterEntry.findMany({
+      where:  { dailyDutyId: { in: publishedDuties.map(d => d.id) } },
+      select: { dailyDutyId: true, crewMemberId: true },
+    })).map(e => [e.dailyDutyId!, e.crewMemberId]))
+    const after = new Map(assignments)
+    const changes = publishedDuties.flatMap(d => {
+      const was = before.get(d.id) ?? null, now = after.get(d.id) ?? null
+      return was === now ? [] : [{
+        dailyOperationId: d.dailyOperationId, userId: userId ?? null, action: now ? 'ASSIGN_CREW' : 'UNASSIGN_CREW',
+        entityType: 'DailyDuty', entityId: d.id, crewMemberIds: [was, now].filter((x): x is string => !!x),
+        before: { crewMemberId: was }, after: { crewMemberId: now, source: 'GENERATOR' },
+      }]
+    })
 
     const weeklyOff = await systemAbsenceTypeId(this.prisma, 'DAY_OFF')
     await this.prisma.$transaction(async tx => {
@@ -245,7 +267,7 @@ export class RosterGeneratorService {
             { NOT: { kind: 'COMP_OFF' } },
             // days off launched by hand or by a request stay
             { NOT: { kind: 'DAY_OFF', source: { not: 'GENERATED' } } },
-            { OR: [{ dailyDutyId: null }, { dailyDuty: { operation: { status: 'PLANNED' } } }] },
+            { OR: [{ dailyDutyId: null }, { dailyDuty: { operation: { status: { in: editable } } } }] },
           ],
         },
       })
@@ -259,6 +281,7 @@ export class RosterGeneratorService {
           ...best.dayOffs.map(([day, crewMemberId]) => ({ crewMemberId, date: toDbDate(day), kind: 'DAY_OFF' as const, source: 'GENERATED', absenceTypeId: weeklyOff })),
         ],
       })
+      if (changes.length) await tx.dailyChangeLog.createMany({ data: changes })
     }, { timeout: 60_000 })
 
     const operationIds = planned.map(p => p.id)
@@ -271,7 +294,7 @@ export class RosterGeneratorService {
       select: { id: true },
     })
     for (const id of [...operationIds, ...neighbors.map(n => n.id)]) await this.daily.recalculate(id)
-    return { assigned: assignments.length, dayOffs: best.dayOffs.length, vehicles }
+    return { assigned: assignments.length, dayOffs: best.dayOffs.length, vehicles, changed: changes.length }
   }
 }
 

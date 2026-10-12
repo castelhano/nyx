@@ -86,6 +86,8 @@ export function cellSummary(cell: RosterBoardCell | undefined, idx: BoardIndex, 
     patternOff: !!cell?.patternOff,
     holiday:    !!cell?.holiday,
     locked:     (cell?.entries ?? []).some(e => e.locked),
+    // changed after the day was published
+    changed:    !!cell?.changed,
     issues:     duties.some(d => d.issues.length > 0),
     label:      duties.length ? duties.map(d => dutyName(d, multiScope)).join('+') : '',
   }
@@ -102,7 +104,7 @@ function withCell(board: RosterBoard, memberId: string, date: string, fn: (entri
     found = true
     return { ...c, entries: fn(c.entries) }
   })
-  if (!found) cells.push({ crewMemberId: memberId, date, patternOff: false, holiday: false, entries: fn([]), requests: [] })
+  if (!found) cells.push({ crewMemberId: memberId, date, patternOff: false, holiday: false, changed: false, entries: fn([]), requests: [] })
   return { ...board, cells }
 }
 

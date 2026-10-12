@@ -22,6 +22,8 @@ const rosterRangeDefault = {
   overtimePref:   { active: true, modifier: 10, floor: 0, idealMin: 0,  idealMax: 120, ceiling: 1200 },
   // duty signature changes in the load period
   tableChanges:   { active: true, modifier: 20, floor: 0, idealMin: 0,  idealMax: 1,   ceiling: 6   },
+  // days whose duty changes on a PUBLISHED day the generator redoes (includePublished)
+  publishedChanges: { active: true, modifier: 60, floor: 0, idealMin: 0, idealMax: 0, ceiling: 2 },
 }
 
 export const rosterSettingsSchema = withMeta(z.object({
@@ -53,6 +55,7 @@ export const rosterSettingsSchema = withMeta(z.object({
     loadDeficit:    rangeCriterionSchema.default(rosterRangeDefault.loadDeficit),
     overtimePref:   rangeCriterionSchema.default(rosterRangeDefault.overtimePref),
     tableChanges:   rangeCriterionSchema.default(rosterRangeDefault.tableChanges),
+    publishedChanges: rangeCriterionSchema.default(rosterRangeDefault.publishedChanges),
   }).default(rosterRangeDefault),
 }), {
   // Served by the custom `transit/settings` page — must not show up as its own resource in the

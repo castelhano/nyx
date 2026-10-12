@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
+import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 import { ISSUE_LABEL, WEEKDAY, cellSummary, clock, dutyName, fmtDay, hm, requestImpact, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
 
@@ -14,7 +15,8 @@ interface Suggestion { crewMemberId: string; code: string; name: string; points:
 
 // The side panel: what is selected — a crew member on a date (his figures, the day, his requests
 // with approve / refuse), a duty (operator, cars, lock, pendências) — and the date's days with
-// publish / close.
+// publish / close / remake (copied again from the plans in force — flagged when outdated), and
+// (admins) unpublish / reopen with a reason.
 
 export interface PanelActions {
   assign:   (duty: RosterBoardDuty, memberId: string | null) => void
@@ -23,6 +25,10 @@ export interface PanelActions {
   dayOff:   (memberId: string, date: string, kind: 'DAY_OFF' | 'COMP_OFF' | null, absenceTypeId?: string | null) => void
   review:   (requestId: string, status: 'APPROVED' | 'REJECTED', answer?: string) => void
   status:   (operationId: string, to: 'PUBLISHED' | 'CLOSED') => void
+  // one status back (PUBLISHED → PLANNED, CLOSED → PUBLISHED) — admins
+  revert:   (operationId: string, reason: string) => void
+  // a PLANNED day copied again from the plans in force (its allocation goes)
+  remake:   (operationId: string) => void
 }
 
 interface Props {
@@ -105,14 +111,7 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
           <p className="font-medium">{WEEKDAY[weekday(day.date)]} {fmtDay(day.date)}</p>
           <p className="text-xs text-muted-foreground">{day.assigned}/{day.duties} tabela(s) com operador · {day.issues} com pendência</p>
           {!day.operations.length && <p className="text-xs text-muted-foreground">Dia ainda não criado — gere a escala do período.</p>}
-          {day.operations.map(o => (
-            <div key={o.id} className="flex items-center gap-2 text-xs">
-              <span className="truncate">{o.scope}</span>
-              <span className={cn('ml-auto', o.status === 'PUBLISHED' && 'text-emerald-600 dark:text-emerald-400', o.status === 'CLOSED' && 'text-muted-foreground')}>{STATUS_LABEL[o.status]}</span>
-              {canEdit && o.status === 'PLANNED'   && <Button size="sm" variant="outline" className="h-6" onClick={() => actions.status(o.id, 'PUBLISHED')}>Publicar</Button>}
-              {canEdit && o.status === 'PUBLISHED' && <Button size="sm" variant="outline" className="h-6" onClick={() => actions.status(o.id, 'CLOSED')}>Encerrar</Button>}
-            </div>
-          ))}
+          {day.operations.map(o => <OperationRow key={o.id} o={o} canEdit={canEdit} actions={actions} />)}
         </section>
       )}
 
@@ -246,6 +245,55 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
         </ul>
       )}
     </section>
+  )
+}
+
+// one Scope's day: its status, publish / close, and one status back for admins — with a reason
+// (Enter confirms, Esc goes back)
+function OperationRow({ o, canEdit, actions }: { o: RosterBoard['days'][number]['operations'][number]; canEdit: boolean; actions: PanelActions }) {
+  const isAdmin = useAuth().user?.role === 'admin'
+  const [reverting, setReverting] = useState(false)
+  const [reason, setReason] = useState('')
+  const back = o.status === 'PUBLISHED' ? 'Despublicar' : 'Reabrir'
+  const submit = () => { if (reason.trim()) { actions.revert(o.id, reason.trim()); setReverting(false); setReason('') } }
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="truncate">{o.scope}</span>
+        <span className={cn('ml-auto', o.status === 'PUBLISHED' && 'text-emerald-600 dark:text-emerald-400', o.status === 'CLOSED' && 'text-muted-foreground')}>{STATUS_LABEL[o.status]}</span>
+        {canEdit && o.status === 'PLANNED'   && <Button size="sm" variant="outline" className="h-6" onClick={() => actions.status(o.id, 'PUBLISHED')}>Publicar</Button>}
+        {canEdit && o.status === 'PUBLISHED' && <Button size="sm" variant="outline" className="h-6" onClick={() => actions.status(o.id, 'CLOSED')}>Encerrar</Button>}
+        {canEdit && o.status === 'PLANNED' && <Button size="sm" variant="ghost" className="h-6" onClick={() => actions.remake(o.id)}>Refazer</Button>}
+        {isAdmin && o.status !== 'PLANNED' && !reverting && <Button size="sm" variant="ghost" className="h-6" onClick={() => setReverting(true)}>{back}</Button>}
+      </div>
+      {o.outdated && (
+        <p className="flex items-start gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+          <Icons.AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+          <span>{o.outdated}.{o.status === 'PLANNED' ? ' Refazer copia o dia de novo.' : ' Só um dia planejado pode ser refeito.'}</span>
+        </p>
+      )}
+      {reverting && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground">
+            {o.status === 'PUBLISHED'
+              ? 'Volta a planejada — vale para todas as empresas deste escopo no dia. As alocações ficam.'
+              : 'Volta a publicada para corrigir o realizado. As alocações ficam.'}
+          </p>
+          <div className="flex gap-1">
+            <input
+              value={reason} onChange={e => setReason(e.target.value)} placeholder="Motivo" autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); submit() }
+                if (e.key === 'Escape') { e.stopPropagation(); setReverting(false) }
+              }}
+              className="h-8 flex-1 min-w-0 border border-input rounded-sm text-xs bg-input-bg px-2"
+            />
+            <Button size="sm" variant="destructive" disabled={!reason.trim()} onClick={submit}>{back}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setReverting(false)}>Voltar</Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

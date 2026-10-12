@@ -304,6 +304,7 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
       {s.locked && <Icons.Lock className="absolute left-0.5 top-0.5 w-2.5 h-2.5 text-muted-foreground" />}
       {s.window && <Icons.Clock className="absolute right-0.5 bottom-0.5 w-2.5 h-2.5 text-muted-foreground" />}
       {s.pending.length > 0 && <span className="absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" title="Pedido pendente" />}
+      {s.changed && <span className="absolute left-0.5 bottom-0.5 w-1.5 h-1.5 rounded-full bg-sky-500" title="Alterado após a publicação" />}
     </>
   )
 }
