@@ -80,6 +80,15 @@ export const contractSchema = withMeta(
       className: 'md:w-1/4',
     }),
 
+    // the daily journey (hour bank) = weeklyHours / workDaysPerWeek
+    workDaysPerWeek: z.number().int().min(1).max(7).default(6).meta({
+      label: 'Dias Trabalhados/Semana',
+      helpText: 'Jornada diária = horas semanais ÷ dias (banco de horas).',
+      listVisibility: 'hidden',
+      defaultValue: 6,
+      className: 'md:w-1/4',
+    }),
+
     notes: z.string().optional().meta({
       label: 'Observações',
       widget: 'textarea',

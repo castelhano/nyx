@@ -883,8 +883,13 @@ model CrewMember {
   preferredVehicle Vehicle?          @relation(fields: [preferredVehicleId], references: [id])
   shifts           CrewMemberShift[]
   lines            CrewMemberLine[]
-  occurrences      CrewOccurrence[]
+  occurrences      CrewOccurrence[]  @relation("CrewOccurrences")
+  // vacations this crew member covers (CrewOccurrence.coverCrewMemberId)
+  covering         CrewOccurrence[]  @relation("OccurrenceCover")
   rosterEntries    RosterEntry[]
+  hourBankEntries  HourBankEntry[]
+  hourBankLots     HourBankLot[]
+  timesheetDays    CrewTimesheetDay[]
 
   @@map("transit_crew_members")
 }
@@ -953,7 +958,7 @@ model CrewAbsenceType {
   isActive      Boolean           @default(true)
   effect        CrewAbsenceEffect @default(ABSENCE)
   // created by the system and never deleted — WEEKLY_OFF (folga semanal) / COMP_OFF (folga
-  // compensada): the types of the roster's own days off
+  // compensada): the types of the roster's own days off; VACATION (férias): may name a ferista
   systemKey     String?           @unique
   // ExternalCodes (packages/schemas/transit/plan-export/external-system.ts) — the event's code
   // per external system ({ GLOBUS?: string }); blank falls back to `code`
@@ -1010,15 +1015,19 @@ model CrewOccurrence {
   reviewedAt       DateTime?
   notes            String?
   reviewNotes      String?
+  // VACATION only — who covers the crew member's duties in the period (the ferista)
+  coverCrewMemberId String?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
-  crewMember  CrewMember       @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  crewMember  CrewMember       @relation("CrewOccurrences", fields: [crewMemberId], references: [id], onDelete: Cascade)
   absenceType CrewAbsenceType? @relation(fields: [absenceTypeId], references: [id])
+  coverCrewMember CrewMember?  @relation("OccurrenceCover", fields: [coverCrewMemberId], references: [id], onDelete: SetNull)
   // the days off its approval put on the roster (types with effect DAY_OFF / COMP_OFF)
   rosterEntries RosterEntry[]
 
   @@index([crewMemberId, startDate])
+  @@index([coverCrewMemberId, startDate])
   @@map("transit_crew_occurrences")
 }
 
@@ -1405,4 +1414,123 @@ model DailyChangeLog {
 
   @@index([dailyOperationId, createdAt])
   @@map("transit_daily_change_logs")
+}
+
+// ── hour bank ─────────────────────────────────────────────────────────────────
+// docs/proposal/brainchild/plan_vacation_hour_bank_v1.md (Fase 2/3). The days of an open month
+// are read live (the imported frequency, else the roster's forecast); closing the month freezes
+// them as DAY entries and keeps each crew member's result in an HourBankLot.
+
+enum HourBankEntryKind {
+  OPENING // the balance brought in at the cutover month (its date = the lot's month)
+  ADJUST  // a manual credit / debit
+  DAY     // a day's movement, frozen when its month closed
+}
+
+model HourBankEntry {
+  id           String            @id @default(uuid())
+  crewMemberId String
+  date         DateTime          @db.Date
+  kind         HourBankEntryKind
+  // signed, into the bank
+  minutes      Int
+  // paid apart, not banked — the extra's paid half (×1.5) / a worked holiday's extra (×2)
+  payMinutes     Int             @default(0)
+  holidayMinutes Int             @default(0)
+  // FORECAST | IMPORT | MANUAL
+  source       String
+  // DAY: what the day was (NOR, F TRB, COMPENSACAO B, DUTY...)
+  occurrence   String?
+  notes        String?
+  userId       String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+
+  @@index([crewMemberId, date])
+  @@map("transit_hour_bank_entries")
+}
+
+// A closed month of an empresa — reopening deletes it (and its frozen days / lots)
+model HourBankClosing {
+  id       String   @id @default(uuid())
+  branchId String
+  // first day of the month
+  month    DateTime @db.Date
+  userId   String?
+  closedAt DateTime @default(now())
+
+  @@unique([branchId, month])
+  @@map("transit_hour_bank_closings")
+}
+
+// A crew member's month as it was closed
+model HourBankLot {
+  id           String   @id @default(uuid())
+  crewMemberId String
+  // first day of the month of origin
+  month        DateTime @db.Date
+  // the month's positive / negative movements (debit ≤ 0)
+  credit       Int
+  debit        Int
+  // what's left of the month's credit at its closing — expires at the end of the next month
+  minutes      Int
+  // the previous month's credit that expired at this closing — a pagar
+  payout       Int
+  // paid apart during the month — the extras' paid half / worked holidays
+  pay          Int
+  holiday      Int
+  // the negative balance forgiven at this closing (even months)
+  forgiven     Int
+  // the negative balance carried after the closing (≤ 0)
+  negative     Int
+  createdAt    DateTime @default(now())
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([crewMemberId, month])
+  @@map("transit_hour_bank_lots")
+}
+
+// One import of the frequency file ("Listagem de Movimentos da Frequência") of an empresa
+model CrewTimesheetImport {
+  id        String   @id @default(uuid())
+  branchId  String
+  fromDate  DateTime @db.Date
+  toDate    DateTime @db.Date
+  fileName  String
+  userId    String?
+  // TimesheetImportSummary — counts, unknown matrículas, divergences
+  summary   Json
+  createdAt DateTime @default(now())
+
+  @@index([branchId, fromDate])
+  @@map("transit_crew_timesheet_imports")
+}
+
+// One day of the frequency file — the actual hours, replacing the forecast for the day
+model CrewTimesheetDay {
+  id           String   @id @default(uuid())
+  crewMemberId String
+  date         DateTime @db.Date
+  // the day's occurrence as the file says it — NOR, F TRB, COMPENSACAO B, FOLGA, FERIAS...
+  occurrence   String
+  // EXTRA + EXCES
+  extraMinutes Int
+  // INCOM
+  shortMinutes Int
+  // TOTAL — the minutes worked on the day (the generator's load)
+  workedMinutes Int
+  // the day's parsed content — a re-import skips unchanged days
+  hash         String
+  importId     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([crewMemberId, date])
+  @@index([date])
+  @@map("transit_crew_timesheet_days")
 }

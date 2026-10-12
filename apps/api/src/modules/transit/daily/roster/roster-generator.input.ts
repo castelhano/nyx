@@ -13,7 +13,10 @@ import { NOT_PUBLISHED, STANDBY_LINE, isChange, signatureGroup, type RgDuty, typ
 //    already held by a fixed entry
 //  - its rosterable, active crew members of the role, with what each day means for them
 //  - the load window (load period start, or the first day with data, .. to): minutes worked and
-//    changes before `from`
+//    changes before `from` — the imported frequency's hours on the days it has (CrewTimesheetDay)
+//  - férias with a ferista: on their days he takes the titular's place — his position in the
+//    preferred lists, his last duties (the table continuity pulls the same one) and his rest
+//    pattern; the change of table on entering / leaving doesn't count
 //
 // A fixed entry stays as it is: locked, on a day no longer PLANNED, a compensatory day off or a
 // day off entered by hand.
@@ -84,7 +87,31 @@ export async function loadRosterInput(
   })
   const memberIds = members.map(m => m.id)
 
-  const [duties, entries, occurrences, holidays] = await Promise.all([
+  // ── férias with a ferista ──
+  const covers = (await prisma.crewOccurrence.findMany({
+    where: {
+      kind: 'ABSENCE', status: 'APPROVED', coverCrewMemberId: { not: null },
+      startDate: { lte: toDbDate(to) }, endDate: { gte: toDbDate(historyFrom) },
+      OR: [{ crewMemberId: { in: memberIds } }, { coverCrewMemberId: { in: memberIds } }],
+    },
+    select: { crewMemberId: true, coverCrewMemberId: true, startDate: true, endDate: true },
+  })).map(c => ({ titular: c.crewMemberId, cover: c.coverCrewMemberId!, start: dayOf(c.startDate), end: dayOf(c.endDate) }))
+  const coverOn    = (titular: string, day: Day) => covers.find(c => c.titular === titular && c.start <= day && c.end >= day)?.cover
+  const coveringOn = (cover: string, day: Day) => covers.find(c => c.cover === cover && c.start <= day && c.end >= day)
+  const titularIds = [...new Set(covers.map(c => c.titular))]
+  const titulars = new Map((await prisma.crewMember.findMany({
+    where:  { id: { in: titularIds } },
+    select: {
+      id: true, restOffset: true,
+      restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } },
+      shifts: {
+        where:  { validFrom: { lte: toDbDate(to) }, OR: [{ validTo: null }, { validTo: { gte: toDbDate(from) } }] },
+        select: { validFrom: true, validTo: true, shift: { select: { restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } } } } },
+      },
+    },
+  })).map(t => [t.id, t]))
+
+  const [duties, entries, occurrences, holidays, timesheet] = await Promise.all([
     prisma.dailyDuty.findMany({
       where: {
         dailyOperationId: { in: operations.map(o => o.id) },
@@ -98,7 +125,7 @@ export async function loadRosterInput(
       },
     }),
     prisma.rosterEntry.findMany({
-      where:  { crewMemberId: { in: memberIds }, date: { gte: toDbDate(historyFrom), lte: toDbDate(addDays(to, 1)) } },
+      where:  { crewMemberId: { in: [...memberIds, ...titularIds] }, date: { gte: toDbDate(historyFrom), lte: toDbDate(addDays(to, 1)) } },
       select: {
         crewMemberId: true, date: true, kind: true, locked: true, source: true, dailyDutyId: true,
         dailyDuty: { select: { shiftId: true, summary: true, operation: { select: { status: true } } } },
@@ -109,6 +136,11 @@ export async function loadRosterInput(
       select: { crewMemberId: true, kind: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true, absenceType: { select: { effect: true } } },
     }),
     prisma.holiday.findMany({ where: { date: { gte: toDbDate(from), lte: toDbDate(to) } }, select: { date: true, branchId: true } }),
+    // the frequency's real hours before the horizon
+    prisma.crewTimesheetDay.findMany({
+      where:  { crewMemberId: { in: memberIds }, date: { gte: toDbDate(loadStart), lt: toDbDate(from) } },
+      select: { crewMemberId: true, date: true, workedMinutes: true },
+    }),
   ])
 
   // lines/vehicle types of every duty read (horizon + history), from its live pieces
@@ -136,11 +168,12 @@ export async function loadRosterInput(
   })) {
     for (const [b, ids] of Object.entries((p.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {})) bundleCrew.set(b, ids)
   }
-  // a daily duty's preferred crew: its logical duty's, then its trip groups' — as member indices
-  const preferredOf = (dutyId: string) => [...new Set([
+  // a daily duty's preferred crew: its logical duty's, then its trip groups' — as member indices;
+  // a titular on férias gives his place to his ferista
+  const preferredOf = (dutyId: string, day: Day) => [...new Set([
     ...(dutyPins.get(sourceOf.get(dutyId) ?? '') ?? []),
     ...(facts.get(dutyId)?.bundles ?? []).flatMap(b => bundleCrew.get(b) ?? []),
-  ])].flatMap(id => memberIndex.get(id) ?? [])
+  ].map(id => coverOn(id, day) ?? id))].flatMap(id => memberIndex.get(id) ?? [])
   const sourceOf = new Map(sources.map(s => [s.id, s.sourceDutyId]))
   const signature = (dutyId: string, shiftId: string | null) => {
     const src = sourceOf.get(dutyId)
@@ -169,12 +202,25 @@ export async function loadRosterInput(
       lineMinutes: d.kind === 'STANDBY' ? [{ lineId: STANDBY_LINE, minutes: s.endMinutes - s.startMinutes }] : f?.lines ?? [],
       vehicleTypes: f?.vehicleTypes ?? [],
       standby: d.kind === 'STANDBY',
-      preferred: preferredOf(d.id),
+      preferred: preferredOf(d.id, opDay.get(d.dailyOperationId)!),
       operated: !params.restrictToBranchLines || (f?.lines ?? []).every(l => {
         const ops = lineOperators.get(l.lineId)
         return !ops?.length || ops.includes(branchId)
       }),
     })
+  }
+
+  // the duties a crew member worked before `day`, in order — and the last one per crew plan
+  const workedOf = (crewMemberId: string, day: Day) => entries
+    .filter(e => e.crewMemberId === crewMemberId && e.dailyDuty && dayOf(e.date) < day)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+  const lastOf = (list: typeof entries) => {
+    const last: Record<string, string> = {}
+    for (const e of list) {
+      const sig = signature(e.dailyDutyId!, e.dailyDuty!.shiftId)
+      last[signatureGroup(sig)] = sig
+    }
+    return last
   }
 
   // ── each crew member's days ──
@@ -204,26 +250,42 @@ export async function loadRosterInput(
       if (works.length) status.push('fixed')
       else if (onDay.length || absentOn(day) || !bound) status.push('away')
       else {
-        const pattern = m.restPattern ?? bound.restPattern
+        // covering a titular: his days off
+        const cov = coveringOn(m.id, day)
+        const t = cov ? titulars.get(cov.titular) : undefined
+        const tPattern = t ? t.restPattern ?? t.shifts.find(s => dayOf(s.validFrom) <= day && (!s.validTo || dayOf(s.validTo) >= day))?.shift.restPattern ?? null : null
+        const pattern = tPattern ?? m.restPattern ?? bound.restPattern
+        const offset  = tPattern ? t!.restOffset : m.restOffset
         const isHoliday = holidays.some(h => dayOf(h.date) === day && (!h.branchId || h.branchId === branchId))
-        status.push(pattern && !restPatternWorks(pattern, m.restOffset, day, isHoliday) ? 'off' : 'free')
+        status.push(pattern && !restPatternWorks(pattern, offset, day, isHoliday) ? 'off' : 'free')
       }
     }
 
     // the load window before the horizon
     let workedBefore = 0, changesBefore = 0, prevEnd: number | null = null, nextStart: number | null = null
-    const last: Record<string, string> = {}
-    const worked = mine.filter(e => e.dailyDuty && dayOf(e.date) < from).sort((a, b) => a.date.getTime() - b.date.getTime())
+    let last: Record<string, string> = {}
+    const worked = workedOf(m.id, from)
+    // covering a titular: his last duties on the first day, back to his own the day after
+    const swaps = covers.filter(c => c.cover === m.id).flatMap(c => [
+      { day: c.start, last: lastOf([...workedOf(c.titular, c.start)]) },
+      { day: addDays(c.end, 1), last: lastOf(workedOf(m.id, c.start)) },
+    ]).sort((a, b) => a.day.localeCompare(b.day))
+    const pending = swaps.filter(w => w.day < from)
+    const real = new Map(timesheet.filter(t => t.crewMemberId === m.id).map(t => [dayOf(t.date), t.workedMinutes]))
     for (const e of worked) {
+      while (pending.length && pending[0].day <= dayOf(e.date)) last = { ...pending.shift()!.last }
       const s = e.dailyDuty!.summary as DutySummary | null
       const sig = signature(e.dailyDutyId!, e.dailyDuty!.shiftId)
       if (dayOf(e.date) >= loadStart) {
-        workedBefore += s?.paidMinutes ?? 0
+        if (!real.has(dayOf(e.date))) workedBefore += s?.paidMinutes ?? 0
         if (isChange(last, sig)) changesBefore++
       }
       last[signatureGroup(sig)] = sig
       if (dayOf(e.date) === addDays(from, -1) && s?.endMinutes != null) prevEnd = Math.max(prevEnd ?? 0, s.endMinutes)
     }
+    while (pending.length) last = { ...pending.shift()!.last }
+    for (const minutes of real.values()) workedBefore += minutes
+    const lastSwaps = Object.fromEntries(swaps.filter(w => w.day >= from && w.day <= to).map(w => [dayIndex.get(w.day)!, w.last]))
     for (const e of mine.filter(x => x.dailyDuty && dayOf(x.date) === addDays(to, 1))) {
       const s = e.dailyDuty!.summary as DutySummary | null
       if (s?.startMinutes != null) nextStart = Math.min(nextStart ?? Infinity, s.startMinutes)
@@ -253,7 +315,7 @@ export async function loadRosterInput(
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
       status, windows, fixed, licenseExpired, courseExpired,
-      targetMinutes, workedBefore, changesBefore, lastSignatures: last, prevEnd, nextStart,
+      targetMinutes, workedBefore, changesBefore, lastSignatures: last, lastSwaps, prevEnd, nextStart,
       current: days.map(day => {
         const held = mine.find(e => dayOf(e.date) === day && e.dailyDutyId && dutyIndex.has(e.dailyDutyId))
         return held ? dutyIndex.get(held.dailyDutyId!)! : -1

@@ -267,6 +267,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     const op = await this.editable(id)
     const entries = await this.prisma.rosterEntry.findMany({ where: { crewMemberId, date: op.date }, select: { id: true, kind: true, dailyDutyId: true, absenceTypeId: true } })
     if (kind && entries.some(e => e.dailyDutyId)) throw new BadRequestException('O operador está escalado no dia — tire-o da tabela antes')
+    if (kind === 'COMP_OFF') await this.assertNotHoliday(dayOf(op.date), crewMemberId)
     const typeId = kind ? absenceTypeId ?? await systemAbsenceTypeId(this.prisma, kind) : null
     const before = entries.find(e => !e.dailyDutyId)
     if ((before?.kind ?? null) === kind && (before?.absenceTypeId ?? null) === typeId) return
@@ -316,11 +317,22 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     })
     const opId = entries.find(e => e.dailyDuty)?.dailyDuty?.dailyOperationId
     if (opId) return this.setDayOff(opId, crewMemberId, kind, userId, absenceTypeId)
+    if (kind === 'COMP_OFF') await this.assertNotHoliday(date, crewMemberId)
     const typeId = kind ? absenceTypeId ?? await systemAbsenceTypeId(this.prisma, kind) : null
     await this.prisma.$transaction(async tx => {
       await tx.rosterEntry.deleteMany({ where: { crewMemberId, date: toDbDate(date), dailyDutyId: null } })
       if (kind) await tx.rosterEntry.create({ data: { crewMemberId, date: toDbDate(date), kind, absenceTypeId: typeId } })
     })
+  }
+
+  // no compensatory day off on a holiday (hour bank: a holiday worked is paid, never compensated)
+  private async assertNotHoliday(date: Day, crewMemberId: string): Promise<void> {
+    const m = await this.prisma.crewMember.findUnique({ where: { id: crewMemberId }, select: { employee: { select: { branchId: true } } } })
+    const holiday = await this.prisma.holiday.findFirst({
+      where:  { date: toDbDate(date), OR: [{ branchId: null }, ...(m ? [{ branchId: m.employee.branchId }] : [])] },
+      select: { name: true },
+    })
+    if (holiday) throw new BadRequestException(`Folga compensada não pode ser em feriado (${holiday.name})`)
   }
 
   private async crewOfBlock(blockId: string): Promise<string[]> {

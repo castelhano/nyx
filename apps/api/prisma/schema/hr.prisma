@@ -96,6 +96,8 @@ model Contract {
   endDate     DateTime?
   salary      Decimal
   weeklyHours Int            @default(44)
+  // worked days per week — the daily journey is weeklyHours / workDaysPerWeek (42h / 6 = 7h)
+  workDaysPerWeek Int        @default(6)
   status      ContractStatus @default(ACTIVE)
   notes       String?
 

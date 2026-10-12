@@ -10,6 +10,7 @@ import { usePageGuard }     from '@/core/usePageGuard'
 import { Button }           from '@/components/ui/button'
 import { Select }           from '@/components/ui/select'
 import { DurationInput }    from '@/components/ui/duration-input'
+import { Combobox }         from '@/components/ui/combobox'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut }      from '@/lib/keywatch'
 import { apiFetch }         from '@/lib/auth'
@@ -33,15 +34,20 @@ interface Occurrence {
   startDate: string; endDate: string; startNotBefore: number | null; endNotAfter: number | null
   status: Status; origin: string; requested: Record<string, unknown> | null
   notes: string | null; reviewNotes: string | null
+  // férias: the ferista
+  coverCrewMemberId: string | null; cover: CrewRef | null
 }
+type CrewRef = { id: string; code: string; name: string }
 interface Calendar {
   days: { date: string; patternOff: boolean; holiday: string | null; entry: 'DUTY' | 'STANDBY' | 'DAY_OFF' | 'COMP_OFF' | null }[]
   occurrences: Occurrence[]
-  absenceTypes: { id: string; name: string }[]
+  covering: { id: string; startDate: string; endDate: string; crewMember: CrewRef }[]
+  absenceTypes: { id: string; name: string; systemKey: string | null }[]
 }
 interface Form {
   id: string | null; kind: Kind; absenceTypeId: string; startDate: string; endDate: string
   startNotBefore: number | null; endNotAfter: number | null; origin: string; notes: string
+  cover: CrewRef | null
 }
 
 const WEEK = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
@@ -61,8 +67,9 @@ const windowText = (a: number | null, b: number | null) =>
   [a != null && `após ${hm(a)}`, b != null && `até ${hm(b)}`].filter(Boolean).join(', ')
 
 // what an occurrence says, in one line
-function describe(o: Pick<Occurrence, 'kind' | 'absenceType' | 'startNotBefore' | 'endNotAfter'>) {
-  return o.kind === 'ABSENCE' ? (o.absenceType?.name ?? 'Ausência') : `Restrição: ${windowText(o.startNotBefore, o.endNotAfter)}`
+function describe(o: Pick<Occurrence, 'kind' | 'absenceType' | 'startNotBefore' | 'endNotAfter' | 'cover'>) {
+  if (o.kind !== 'ABSENCE') return `Restrição: ${windowText(o.startNotBefore, o.endNotAfter)}`
+  return `${o.absenceType?.name ?? 'Ausência'}${o.cover ? ` · ferista ${o.cover.code}` : ''}`
 }
 
 const STATUS_CLS: Record<Status, string> = {
@@ -125,13 +132,25 @@ export default function CrewOccurrencesPage() {
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(f => (f ? { ...f, [k]: v } : f))
   const blank = (from: string, to: string): Form => ({
     id: null, kind: 'ABSENCE', absenceTypeId: '', startDate: from, endDate: to,
-    startNotBefore: null, endNotAfter: null, origin: 'STAFF', notes: '',
+    startNotBefore: null, endNotAfter: null, origin: 'STAFF', notes: '', cover: null,
   })
   const open = (o: Occurrence) => setForm({
     id: o.id, kind: o.kind, absenceTypeId: o.absenceTypeId ?? '', startDate: dayStr(o.startDate), endDate: dayStr(o.endDate),
-    startNotBefore: o.startNotBefore, endNotAfter: o.endNotAfter, origin: o.origin, notes: o.notes ?? '',
+    startNotBefore: o.startNotBefore, endNotAfter: o.endNotAfter, origin: o.origin, notes: o.notes ?? '', cover: o.cover,
   })
   const editing = form?.id ? cal?.occurrences.find(o => o.id === form.id) ?? null : null
+  // férias name a ferista
+  const isVacation = !!form && form.kind === 'ABSENCE' && cal?.absenceTypes.find(t => t.id === form.absenceTypeId)?.systemKey === 'VACATION'
+  const [coverSearch, setCoverSearch] = useState('')
+  const { data: coverFound = [], isFetching: coverLoading } = useQuery({
+    queryKey: ['transit', 'crew-member', 'cover-search', coverSearch.trim()],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/crew-member?${new URLSearchParams({ search: coverSearch.trim(), pageSize: '20' })}`)
+      const json = await res.json().catch(() => ({}))
+      return (json.data ?? []) as { id: string; code: string; displayName: string }[]
+    },
+    enabled: isVacation && coverSearch.trim().length > 0,
+  })
   const readonly = form?.id ? !canUpdate : !canCreate
 
   // the launch panel over the selected days (or the cursor's)
@@ -204,6 +223,7 @@ export default function CrewOccurrencesPage() {
     const body = {
       kind: form.kind, startDate: form.startDate, endDate: form.endDate, notes: form.notes,
       absenceTypeId: form.kind === 'ABSENCE' ? form.absenceTypeId || null : null,
+      coverCrewMemberId: isVacation ? form.cover?.id ?? null : null,
       startNotBefore: form.kind === 'TIME_WINDOW' ? form.startNotBefore : null,
       endNotAfter:    form.kind === 'TIME_WINDOW' ? form.endNotAfter : null,
     }
@@ -341,7 +361,30 @@ export default function CrewOccurrencesPage() {
                     {cal.absenceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </Select>
                 </label>
-              ) : (
+              ) : null}
+              {isVacation && (
+                <label className="block space-y-1">
+                  <span className="text-xs text-muted-foreground">Ferista (opcional)</span>
+                  <div className="flex items-center gap-1">
+                    <Combobox
+                      value={form.cover?.id ?? null} displayValue={form.cover ? `${form.cover.code} — ${form.cover.name}` : ''}
+                      search={coverSearch} onSearchChange={setCoverSearch} isLoading={coverLoading} disabled={readonly}
+                      options={coverFound.filter(m => m.id !== crewMemberId).map(m => ({ id: m.id, label: m.displayName, raw: m }))}
+                      onSelect={o => {
+                        setCoverSearch('')
+                        const m = o?.raw as { id: string; code: string; displayName: string } | undefined
+                        set('cover', m ? { id: m.id, code: m.code, name: m.displayName.split(' — ')[1] ?? m.code } : null)
+                      }}
+                      containerClassName="flex-1" className="h-8 text-sm" placeholder="Matrícula ou nome…"
+                      emptyMessage={coverSearch.trim() ? 'Nenhum operador' : 'Digite para buscar'}
+                    />
+                    {form.cover && !readonly && (
+                      <button type="button" onClick={() => set('cover', null)} className="text-muted-foreground hover:text-foreground" title="Sem ferista"><Icons.X className="w-3.5 h-3.5" /></button>
+                    )}
+                  </div>
+                </label>
+              )}
+              {form.kind === 'TIME_WINDOW' && (
                 <div className="grid grid-cols-2 gap-2">
                   {([['startNotBefore', 'Não inicia antes de'], ['endNotAfter', 'Não termina depois de']] as const).map(([k, label]) => (
                     <label key={k} className="space-y-1">
@@ -391,6 +434,19 @@ export default function CrewOccurrencesPage() {
             {pending.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma solicitação pendente.</p>}
             {pending.map(o => <PendingRow key={o.id} o={o} canUpdate={canUpdate} onOpen={() => open(o)} onReview={review} />)}
           </section>
+
+          {(cal?.covering ?? []).length > 0 && (
+            <section className="space-y-1">
+              <h2 className="text-sm font-medium">Ferista de</h2>
+              {cal!.covering.map(c => (
+                <button key={c.id} type="button" onClick={() => router.push(`/transit/crew-occurrence?crewMemberId=${c.crewMember.id}`)}
+                  className="w-full flex items-baseline gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-muted">
+                  <span className="tabular-nums text-muted-foreground w-24 shrink-0">{fmtSpan(c)}</span>
+                  <span className="truncate">Férias de {c.crewMember.code} {c.crewMember.name}</span>
+                </button>
+              ))}
+            </section>
+          )}
 
           <section className="space-y-1">
             <h2 className="text-sm font-medium">Histórico</h2>

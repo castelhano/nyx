@@ -483,6 +483,9 @@ export const crewOccurrenceSchema = withMeta(
       listVisibility: 'never',
     }),
 
+    // férias only — who covers the crew member's duties in the period
+    coverCrewMemberId: z.uuid().optional().nullable().meta({ label: 'Ferista', showInForm: false, listVisibility: 'never' }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'hidden' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

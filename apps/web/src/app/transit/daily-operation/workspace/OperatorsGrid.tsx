@@ -263,14 +263,14 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                           !s.issues && s.notes.length > 0 && !s.standby && 'bg-amber-500/5',
                           s.issues && 'bg-red-500/10 text-red-700 dark:text-red-300',
                           s.off && 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
-                          s.absence && 'bg-violet-500/25',
+                          s.absence && (s.absence.vacation ? 'bg-teal-500/25 text-teal-800 dark:text-teal-200' : 'bg-violet-500/25'),
                           !hasContent && !s.absence && s.patternOff && 'text-amber-700/70 dark:text-amber-300/70',
                           inSel(m.id, date) && 'bg-accent/40',
                           isCursor && 'ring-2 ring-inset ring-primary',
                           drag?.memberId === m.id && drag.date === date && 'opacity-40',
                           proposed?.changed && 'outline outline-2 -outline-offset-2 outline-dashed outline-amber-500',
                         )}
-                        title={proposed?.changed ? `Proposta: ${proposed.label || 'livre'}` : s.notes.length ? s.notes.join('\n') : undefined}
+                        title={proposed?.changed ? `Proposta: ${proposed.label || 'livre'}` : [s.covering && `Cobrindo as férias de ${s.covering}`, ...s.notes].filter(Boolean).join('\n') || undefined}
                       >
                         {proposed?.changed
                           ? <span className="font-medium italic text-amber-700 dark:text-amber-300">{proposed.label || '·'}</span>
@@ -279,7 +279,9 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                       </td>
                     )
                   })}
-                  <td className={cn('border-b border-l border-border/60 px-2 py-1 text-right tabular-nums whitespace-nowrap', m.stats && m.stats.workedMinutes < m.stats.targetMinutes * 0.97 && 'text-amber-600 dark:text-amber-400')}>
+                  <td
+                    title={m.bank != null ? `Banco de horas: ${m.bank < 0 ? '−' : '+'}${hm(Math.abs(m.bank))}` : undefined}
+                    className={cn('border-b border-l border-border/60 px-2 py-1 text-right tabular-nums whitespace-nowrap', m.stats && m.stats.workedMinutes < m.stats.targetMinutes * 0.97 && 'text-amber-600 dark:text-amber-400')}>
                     {m.stats ? `${hm(m.stats.workedMinutes)} / ${hm(m.stats.targetMinutes)}` : '—'}
                   </td>
                   <td className="border-b border-l border-border/60 px-2 py-1 text-center tabular-nums">{m.stats?.changes ?? '—'}</td>
@@ -330,7 +332,7 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
       ) : s.off ? (
         <span className="font-medium" title={s.offName}>{s.offLabel}</span>
       ) : s.absence ? (
-        <span className="truncate block max-w-16 mx-auto" title={s.absence.label}>{s.absence.label.slice(0, single ? 30 : 5)}</span>
+        <span className="truncate block max-w-16 mx-auto" title={s.absence.label}>{s.absence.vacation && !single ? 'Fér' : s.absence.label.slice(0, single ? 30 : 5)}</span>
       ) : s.elsewhere ? (
         <span className="text-muted-foreground" title="Escalado em outra empresa ou função">⋯</span>
       ) : s.patternOff ? (
@@ -341,6 +343,7 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
       {s.pending.length > 0 && <span className="absolute right-0.5 top-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" title="Pedido pendente" />}
       {s.notes.length > 0 && <span className="absolute right-0.5 bottom-0.5 w-1.5 h-1.5 rounded-full border border-amber-500" />}
       {s.changed && <span className="absolute left-0.5 bottom-0.5 w-1.5 h-1.5 rounded-full bg-sky-500" title="Alterado após a publicação" />}
+      {s.covering && <span className="absolute inset-x-1 bottom-0 h-0.5 rounded-full bg-teal-500" />}
     </>
   )
 }

@@ -6,8 +6,9 @@ import {
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
+import { HourBankService } from '../../hour-bank/hour-bank.service'
 import { addDays, dayOf, inForceOn, toDbDate, type Day } from '../../timetabling/plan-validity'
-import { RosterModel, diagnoseShortage, rosterQuality, signatureGroup } from './roster-generator.calc'
+import { RosterModel, diagnoseShortage, lastOn, rosterQuality, signatureGroup } from './roster-generator.calc'
 import { daysBetween, loadRosterInput } from './roster-generator.input'
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -32,6 +33,7 @@ export class RosterBoardService {
     private readonly prisma:       PrismaService,
     private readonly rosterConfig: TransitRosterConfigService,
     private readonly crewConfig:   TransitCrewConfigService,
+    private readonly hourBank:     HourBankService,
   ) {}
 
   // Days whose copy is no longer what's in force on their date: a source vehicle plan out of its
@@ -157,16 +159,35 @@ export class RosterBoardService {
       },
     })
     const memberIds = members.map(m => m.id)
-    const [entries, occurrences, holidays, changeLogs] = await Promise.all([
+    const [entries, occurrences, holidays, changeLogs, covers] = await Promise.all([
       this.prisma.rosterEntry.findMany({ where: { crewMemberId: { in: memberIds }, date: range }, select: { crewMemberId: true, date: true, kind: true, dailyDutyId: true, locked: true, absenceTypeId: true } }),
       this.prisma.crewOccurrence.findMany({
         where:  { crewMemberId: { in: memberIds }, status: { in: ['REQUESTED', 'APPROVED'] }, startDate: { lte: toDbDate(to) }, endDate: { gte: toDbDate(from) } },
-        select: { id: true, crewMemberId: true, kind: true, status: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true, absenceType: { select: { name: true } } },
+        select: {
+          id: true, crewMemberId: true, kind: true, status: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true,
+          absenceType: { select: { name: true, systemKey: true } }, coverCrewMember: { select: { employee: { select: { code: true } } } },
+        },
       }),
       this.prisma.holiday.findMany({ where: { date: range, OR: [{ branchId: null }, { branchId }] }, select: { date: true } }),
       this.prisma.dailyChangeLog.findMany({
         where:  { dailyOperationId: { in: operations.filter(o => o.status !== 'PLANNED').map(o => o.id) }, crewMemberIds: { hasSome: memberIds } },
         select: { dailyOperationId: true, crewMemberIds: true },
+      }),
+      // férias the crew members cover as ferista — on their days, the titular's rest pattern
+      this.prisma.crewOccurrence.findMany({
+        where:  { coverCrewMemberId: { in: memberIds }, status: 'APPROVED', startDate: { lte: toDbDate(to) }, endDate: { gte: toDbDate(from) } },
+        select: {
+          coverCrewMemberId: true, startDate: true, endDate: true,
+          crewMember: {
+            select: {
+              restOffset: true, restPattern: pattern, employee: { select: { code: true } },
+              shifts: {
+                where:  { validFrom: { lte: toDbDate(to) }, OR: [{ validTo: null }, { validTo: { gte: toDbDate(from) } }] },
+                select: { validFrom: true, validTo: true, shift: { select: { restPattern: pattern } } },
+              },
+            },
+          },
+        },
       }),
     ])
     // `${crewMemberId}|${date}` changed after the day was published
@@ -174,25 +195,32 @@ export class RosterBoardService {
     const holidaySet = new Set(holidays.map(h => dayOf(h.date)))
 
     // the generator's figures for the current allocation
-    const [{ stats, quality }, generations] = await Promise.all([this.stats(branchId, role, from, to, entries), this.generations(branchId, role, from, to)])
+    const [{ stats, quality }, generations, bank] = await Promise.all([
+      this.stats(branchId, role, from, to, entries), this.generations(branchId, role, from, to), this.hourBank.balances(branchId),
+    ])
 
     const cells: RosterBoardCell[] = []
     for (const m of members) {
       for (const date of dates) {
         const bound = m.shifts.find(s => dayOf(s.validFrom) <= date && (!s.validTo || dayOf(s.validTo) >= date))?.shift
-        const p = m.restPattern ?? bound?.restPattern ?? null
+        // covering a titular on férias: his rest pattern
+        const cover = covers.find(c => c.coverCrewMemberId === m.id && dayOf(c.startDate) <= date && dayOf(c.endDate) >= date)?.crewMember
+        const tp = cover ? cover.restPattern ?? cover.shifts.find(s => dayOf(s.validFrom) <= date && (!s.validTo || dayOf(s.validTo) >= date))?.shift.restPattern ?? null : null
+        const p = tp ?? m.restPattern ?? bound?.restPattern ?? null
         const holiday = holidaySet.has(date)
-        const patternOff = !!p && !restPatternWorks(p, m.restOffset, date, holiday)
+        const patternOff = !!p && !restPatternWorks(p, tp ? cover!.restOffset : m.restOffset, date, holiday)
         const mine = entries.filter(e => e.crewMemberId === m.id && dayOf(e.date) === date)
         const reqs = occurrences.filter(o => o.crewMemberId === m.id && dayOf(o.startDate) <= date && dayOf(o.endDate) >= date)
         const wasChanged = changed.has(`${m.id}|${date}`)
-        if (!patternOff && !holiday && !mine.length && !reqs.length && !wasChanged) continue
+        if (!patternOff && !holiday && !mine.length && !reqs.length && !wasChanged && !cover) continue
         cells.push({
-          crewMemberId: m.id, date, patternOff, holiday, changed: wasChanged,
+          crewMemberId: m.id, date, patternOff, holiday, changed: wasChanged, covering: cover?.employee.code ?? null,
           entries:  mine.map(e => ({ kind: e.kind, dailyDutyId: e.dailyDutyId, locked: e.locked, absenceTypeId: e.absenceTypeId })),
           requests: reqs.map(o => ({
             id: o.id, kind: o.kind, status: o.status as 'REQUESTED' | 'APPROVED', startNotBefore: o.startNotBefore, endNotAfter: o.endNotAfter,
-            label: o.kind === 'ABSENCE' ? o.absenceType?.name ?? 'Ausência'
+            vacation: o.absenceType?.systemKey === 'VACATION',
+            label: o.kind === 'ABSENCE'
+              ? `${o.absenceType?.name ?? 'Ausência'}${o.coverCrewMember ? ` · ferista ${o.coverCrewMember.employee.code}` : ''}`
               : [o.startNotBefore != null && `após ${hm(o.startNotBefore)}`, o.endNotAfter != null && `até ${hm(o.endNotAfter)}`].filter(Boolean).join(', '),
           })),
         })
@@ -269,6 +297,7 @@ export class RosterBoardService {
           rosterable: m.isRosterable,
           foreign: m.role !== role || m.employee.branchId !== branchId,
           stats: stats.get(m.id) ?? null,
+          bank:  bank.get(m.id) ?? null,
         }
       }),
       cells,
@@ -321,7 +350,7 @@ export class RosterBoardService {
       if (grade > 0) reasons.push(grade >= 1 ? 'linha preferida principal' : 'linha preferida')
       const gap = m.targetMinutes - without.worked
       if (Math.abs(gap) >= 60) reasons.push(gap > 0 ? `${hm(Math.round(gap))} abaixo da carga` : `${hm(Math.round(-gap))} acima da carga`)
-      const prev = m.lastSignatures[signatureGroup(d.signature)]
+      const prev = lastOn(m, 0, m.lastSignatures)[signatureGroup(d.signature)]
       if (prev) reasons.push(prev === d.signature ? 'mesma tabela dos últimos dias' : 'troca de tabela')
       if (withIt.warns > 0) reasons.push('fere uma regra (permitida com pendência)')
       out.push({
@@ -417,7 +446,7 @@ export class RosterBoardService {
       const vs = cars.get(e.dailyDutyId!)
       if (!vs) continue
       days++
-      if (vs.includes(preferred.get(e.crewMemberId)!)) met++
+      if (vs.includes(preferred.get(e.crewMemberId))) met++
     }
     return { met, days }
   }

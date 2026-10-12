@@ -12,8 +12,8 @@ export const CREW_ABSENCE_EFFECT_LABEL: Record<CrewAbsenceEffect, string> = {
   COMP_OFF: 'Folga compensada — reduz a carga',
 }
 
-// the system types (systemKey) — the roster's own days off
-export const CREW_ABSENCE_SYSTEM_KEYS = ['WEEKLY_OFF', 'COMP_OFF'] as const
+// the system types (systemKey) — the roster's own days off, and férias (which may name a ferista)
+export const CREW_ABSENCE_SYSTEM_KEYS = ['WEEKLY_OFF', 'COMP_OFF', 'VACATION'] as const
 export type CrewAbsenceSystemKey = typeof CREW_ABSENCE_SYSTEM_KEYS[number]
 
 // Kind of absence or day off — see CrewAbsenceType in transit.prisma. Its effect says what it

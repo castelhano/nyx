@@ -92,6 +92,10 @@ export interface RgMember {
   changesBefore: number
   // the last duty worked per crew plan (signatureGroup)
   lastSignatures: Record<string, string>
+  // day index → the last duties from that day on, replacing the carried ones: a ferista takes the
+  // titular's on the first day of the férias, and gets his own back the day after — the table
+  // change of either day doesn't count
+  lastSwaps?: Record<number, Record<string, string>>
   // sign-off the day before the horizon / sign-on the day after it
   prevEnd:   number | null
   nextStart: number | null
@@ -136,6 +140,11 @@ function convexRaw(value: number, c: RangeCriterion): number {
 }
 
 export const signatureGroup = (sig: string) => sig.slice(0, sig.indexOf('#'))
+// the member's last duties on day t (a swap of the day replaces them)
+export const lastOn = (m: RgMember, t: number, last: Record<string, string>): Record<string, string> => {
+  const swap = m.lastSwaps?.[t]
+  return swap ? { ...swap } : last
+}
 // sig worked after `last` (per crew plan) changes the duty
 export const isChange = (last: Record<string, string>, sig: string) => {
   const prev = last[signatureGroup(sig)]
@@ -312,7 +321,7 @@ export class RosterModel {
     const m = input.members[mi]
     const restMode = input.ruleModes.interShiftRest
     let worked = m.workedBefore, changes = m.changesBefore
-    const last = { ...m.lastSignatures }
+    let last = { ...m.lastSignatures }
     let prevEnd = m.prevEnd, prevFixed = true
     let warns = 0, hard = false, workedDays = 0, pin = 0
     let prefNum = 0, prefDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
@@ -332,6 +341,7 @@ export class RosterModel {
 
     for (let t = 0; t < this.T; t++) {
       let start: number, end: number, paid: number, sig: string, isFixed: boolean
+      last = lastOn(m, t, last)
       const f = m.status[t] === 'fixed' ? m.fixed[t] : null
       const di = row[t]
       if (f) {
@@ -408,6 +418,7 @@ export function construct(model: RosterModel): RgResult {
 
   for (let t = 0; t < T; t++) {
     const duties = byDay[t]
+    for (let mi = 0; mi < M; mi++) last[mi] = lastOn(input.members[mi], t, last[mi])
     const free = [] as number[]
     for (let mi = 0; mi < M; mi++) if (input.members[mi].status[t] === 'free') free.push(mi)
 
@@ -676,8 +687,9 @@ export function rosterQuality(model: RosterModel, assign: Int32Array[]): RosterQ
     if (mine > 0) changedMembers++
     if (m.targetMinutes > 0) { withLoad++; if (e.worked < m.targetMinutes * 0.97) belowLoad++ }
     const top = Math.max(0, ...Object.values(m.prefGrade))
-    const last = { ...m.lastSignatures }
+    let last = { ...m.lastSignatures }
     for (let t = 0; t < T; t++) {
+      last = lastOn(m, t, last)
       const f = m.status[t] === 'fixed' ? m.fixed[t] : null
       const di = assign[mi][t]
       const sig = f ? f.signature : di >= 0 ? input.duties[di].signature : null

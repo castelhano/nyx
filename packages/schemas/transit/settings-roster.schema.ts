@@ -52,6 +52,9 @@ export const rosterSettingsSchema = withMeta(z.object({
   loadPeriodStartDay:  z.number().int().min(1).max(28).default(1),
   // the habitual car = the one most driven in these last days
   habitualVehicleDays: z.number().int().min(1).max(90).default(14),
+  // the hour bank's first month (mês de corte, 'YYYY-MM') — its opening balances are launched
+  // in it; null = no hour bank
+  hourBankStart: z.string().regex(/^\d{4}-\d{2}$/).nullable().default(null),
   // plantões (reserve): on each day of the day type, `count` STANDBY duties of the empresa from
   // start to end (minutes, end past 24h allowed) at the locality — created with the day and
   // filled by the generator with whoever is left over

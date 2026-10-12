@@ -131,6 +131,8 @@ export function cellSummary(cell: RosterBoardCell | undefined, idx: BoardIndex, 
     pending:    (cell?.requests ?? []).filter(r => r.status === 'REQUESTED'),
     window:     cell?.requests.find(r => r.kind === 'TIME_WINDOW' && r.status === 'APPROVED'),
     patternOff: !!cell?.patternOff,
+    // the ferista's day: whom he covers
+    covering:   cell?.covering ?? null,
     holiday:    !!cell?.holiday,
     locked:     (cell?.entries ?? []).some(e => e.locked),
     // changed after the day was published
@@ -153,7 +155,7 @@ function withCell(board: RosterBoard, memberId: string, date: string, fn: (entri
     found = true
     return { ...c, entries: fn(c.entries) }
   })
-  if (!found) cells.push({ crewMemberId: memberId, date, patternOff: false, holiday: false, changed: false, entries: fn([]), requests: [] })
+  if (!found) cells.push({ crewMemberId: memberId, date, patternOff: false, holiday: false, changed: false, covering: null, entries: fn([]), requests: [] })
   return { ...board, cells }
 }
 

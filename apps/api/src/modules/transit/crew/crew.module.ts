@@ -13,12 +13,16 @@ import { CrewMemberLineController } from './crew-member/crew-member-line.control
 import { CrewMemberLineService } from './crew-member/crew-member-line.service'
 import { CrewOccurrenceController } from './crew-member/crew-occurrence.controller'
 import { CrewOccurrenceService } from './crew-member/crew-occurrence.service'
+import { DailyModule } from '../daily/daily.module'
+import { VacationController } from './vacation/vacation.controller'
+import { VacationService } from './vacation/vacation.service'
+import { VacationReleaseService } from './vacation/vacation-release.service'
 
 // Crew members' operational profile — the real roster's master data
 @Module({
-  imports:     [CaslModule, TransitSettingsModule],
-  controllers: [RestPatternController, CrewAbsenceTypeController, CrewMemberController, CrewMemberShiftController, CrewMemberLineController, CrewOccurrenceController],
-  providers:   [RestPatternService, CrewAbsenceTypeService, CrewMemberService, CrewMemberShiftService, CrewMemberLineService, CrewOccurrenceService],
+  imports:     [CaslModule, TransitSettingsModule, DailyModule],
+  controllers: [RestPatternController, CrewAbsenceTypeController, CrewMemberController, CrewMemberShiftController, CrewMemberLineController, CrewOccurrenceController, VacationController],
+  providers:   [RestPatternService, CrewAbsenceTypeService, CrewMemberService, CrewMemberShiftService, CrewMemberLineService, CrewOccurrenceService, VacationReleaseService, VacationService],
   exports:     [CrewMemberService, CrewMemberShiftService],
 })
 export class CrewModule {}

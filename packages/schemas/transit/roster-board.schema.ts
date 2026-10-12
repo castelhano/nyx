@@ -60,6 +60,8 @@ export interface RosterBoardMember {
   foreign:   boolean
   // the load window (load period start .. period end), as the generator counts it
   stats:     { workedMinutes: number; targetMinutes: number; changes: number; prefShare: number | null } | null
+  // the hour bank's balance now (minutes) — null: no hour bank
+  bank:      number | null
 }
 
 export interface RosterBoardCell {
@@ -69,9 +71,12 @@ export interface RosterBoardCell {
   holiday:      boolean
   // changed after the day was published (DailyChangeLog) — who gets notified
   changed:      boolean
+  // the ferista's day: the code of the crew member on férias he covers
+  covering:     string | null
   // absenceTypeId: a day off's type
   entries:      { kind: 'DUTY' | 'STANDBY' | 'DAY_OFF' | 'COMP_OFF'; dailyDutyId: string | null; locked: boolean; absenceTypeId: string | null }[]
-  requests:     { id: string; kind: 'ABSENCE' | 'TIME_WINDOW'; status: 'REQUESTED' | 'APPROVED'; label: string; startNotBefore: number | null; endNotAfter: number | null }[]
+  // vacation: férias (the label names the ferista)
+  requests:     { id: string; kind: 'ABSENCE' | 'TIME_WINDOW'; status: 'REQUESTED' | 'APPROVED'; label: string; startNotBefore: number | null; endNotAfter: number | null; vacation: boolean }[]
 }
 
 export interface RosterBoardGeneration {

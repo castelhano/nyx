@@ -94,6 +94,17 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
           <NumberInput value={value.habitualVehicleDays} onChange={(v) => onChange({ ...value, habitualVehicleDays: Math.round(v) })} min={1} max={90} />
           <span className="text-sm text-muted-foreground w-6">dias</span>
         </Row>
+        <Row
+          diff={diff('hourBankStart')}
+          label="Banco de Horas — Início"
+          hint="Mês de corte: a partir dele o banco é calculado e os saldos iniciais são lançados. Vazio = sem banco de horas"
+        >
+          <input
+            type="month" value={value.hourBankStart ?? ''} onChange={(e) => onChange({ ...value, hourBankStart: e.target.value || null })}
+            className="h-8 w-40 border border-input rounded-sm text-sm bg-input-bg px-2"
+          />
+          <span className="text-sm text-muted-foreground w-6"></span>
+        </Row>
       </div>
 
       <SectionHeader label="Plantões" sub="Reserva da empresa por tipo de dia — os plantões são criados com o dia e o gerador os preenche com quem sobra depois das tabelas." />

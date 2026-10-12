@@ -13,3 +13,11 @@ export async function systemAbsenceTypeId(prisma: PrismaService, kind: 'DAY_OFF'
   if (t) ids.set(key, t.id)
   return t?.id ?? null
 }
+
+// the férias type (systemKey VACATION) — the only absence that names a ferista
+export async function vacationTypeId(prisma: PrismaService): Promise<string | null> {
+  if (ids.has('VACATION')) return ids.get('VACATION')!
+  const t = await prisma.crewAbsenceType.findUnique({ where: { systemKey: 'VACATION' }, select: { id: true } })
+  if (t) ids.set('VACATION', t.id)
+  return t?.id ?? null
+}
