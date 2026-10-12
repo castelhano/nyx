@@ -98,7 +98,7 @@ export class CrewSolverService {
     if (!jobId) throw new BadRequestException('jobId obrigatório')
     const params = { ...DEFAULT_CREW_SOLVER_PARAMS, ...rawParams }
     const { settings } = await this.crewPlans.resolveSettings(crewPlanId)
-    const input = await loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction))
+    const input = await loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction), { limitToCrew: params.limitToCrew })
     if (params.base === 'scratch') input.locked = []
 
     const isTs    = __filename.endsWith('.ts')
@@ -358,8 +358,8 @@ export class CrewSolverService {
   }
 }
 
-// what the searches optimize — fewer duties with an issue, then the unfloored score
-const rankOf = (p: CrewSolverProposal) => solverRank(p.summary.rawScore ?? p.summary.score, p.summary.issueDutyCount)
+// what the searches optimize — less crew overflow, fewer duties with an issue, then the unfloored score
+const rankOf = (p: CrewSolverProposal) => solverRank(p.summary.rawScore ?? p.summary.score, p.summary.issueDutyCount, p.crew?.overflow)
 
 // the searches' progress as one: attempts and improvements add up, the best score is the best
 // one, the time since an improvement is the most recent search's

@@ -618,7 +618,9 @@ export class CrewScoreAggregate {
 
 // What the crew solver ranks plans by: fewer duties with an issue first, the raw score among
 // equals — an unmet rule is never traded for score.
-export const solverRank = (rawScore: number, issueDuties: number) => rawScore - issueDuties * 1e6
+// crewOverflow (crew solver, "Limitar turnos ao quadro ativo"): duties beyond what the crew can
+// take — ranks ahead of the issues
+export const solverRank = (rawScore: number, issueDuties: number, crewOverflow = 0) => rawScore - issueDuties * 1e6 - crewOverflow * 1e9
 
 export function computeCrewPlan(input: {
   duties:        CrewCalcDuty[]

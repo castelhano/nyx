@@ -1,5 +1,5 @@
 import type { CrewPlanSummary } from '@nyx/schemas'
-import type { CrewSolverInput, SolverDuty } from './crew-solver.calc'
+import type { CrewSolverInput, CrewUsage, SolverDuty } from './crew-solver.calc'
 
 // Shared by CrewSolverService and the worker — see docs/architecture/transit/crew-solver.md.
 
@@ -11,16 +11,20 @@ export interface CrewSolverParams {
   assistant:     boolean
   // false: only the construction — the run ends with proposal 1
   optimize:      boolean
+  // duties per shift (and SPLIT duties) up to the empresa's active crew — see CrewCapacity
+  limitToCrew:   boolean
 }
 
 export const DEFAULT_CREW_SOLVER_PARAMS: CrewSolverParams = {
-  base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true,
+  base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, limitToCrew: true,
 }
 
 export interface CrewSolverProposal {
   index:   number
   summary: CrewPlanSummary
   duties:  SolverDuty[]
+  // the duties against the active crew — null without limitToCrew
+  crew:    CrewUsage | null
 }
 
 // worker → host; the host forwards everything but the proposal's duties over SSE

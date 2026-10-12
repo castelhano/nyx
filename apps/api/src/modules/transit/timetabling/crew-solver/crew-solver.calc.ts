@@ -1,5 +1,5 @@
 import type { CrewSettings, RangeCriterion, ReliefPoint } from '@nyx/schemas'
-import { mealPolicy } from '@nyx/schemas'
+import { bestShift, mealPolicy, shiftFits, type ShiftWindow } from '@nyx/schemas'
 import { computeCrewPlan, mealStopAt, type CrewCalcBlock, type CrewCalcContext, type CrewCalcDuty, type CrewCalcResult } from '../crew-plan/crew-scoring.calc'
 import { depotStays, subtractSpans } from '../crew-plan/relief-points'
 import { walkMeters, walkMinutes, type CrewWalk } from '../crew-plan/crew-walk'
@@ -37,6 +37,8 @@ import { rangeV } from '../vehicle-plan/scoring/plan-scoring.calc'
 // costs what it would take off the score (modifier × (1 − rangeV)). A SPLIT also costs the
 // splitRatio modifier, so a STRAIGHT wins when everything else ties. Pieces at different
 // places pair only within walking distance (crew-walk.ts), the walk costing range.walkDistance.
+// With the crew limit (input.crew) a SPLIT is placed only while the empresa's crew that takes
+// one has room — past it the chain is covered as if splits were off.
 
 type Span = { startMinutes: number; endMinutes: number }
 
@@ -59,6 +61,143 @@ export interface CrewSolverInput {
   // operators' shifts and line operators — the same issues the screen flags (crew-branch-rules.ts)
   shifts?:        CrewCalcContext['shifts']
   lineOperators?: CrewCalcContext['lineOperators']
+  // "Limitar turnos ao quadro ativo" — absent: no limit
+  crew?:          CrewCapacity
+}
+
+// "Limitar turnos ao quadro ativo": per empresa with an active crew, how many of it work on a
+// day of the plan, per shift (each crew member counts the share of worked days of its rest
+// pattern). A DRIVER duty can be taken by the crew of any shift it fits (shiftFits) — the duties
+// the crew can't take that way (a matching of duties to shifts, the same the roster generator
+// bounds its coverage with) overflow, which the search ranks ahead of everything else (a soft
+// limit: trips can't go uncovered). SPLIT duties never go beyond the crew of the shifts that
+// take them (a hard one: a STRAIGHT does instead). Empresas with no crew member bound to one of
+// their shifts aren't limited.
+export interface CrewCapacity {
+  shifts: (ShiftWindow & { branchId: string; branchName: string; code: string; capacity: number })[]
+}
+
+// the duties against the crew (CrewSolverProposal.crew) — limited empresas only
+export interface CrewUsage {
+  overflow: number
+  branches: {
+    branchId: string; branchName: string
+    // DRIVER duties, the ones the crew can take, SPLIT duties and the crew that takes them
+    duties: number; covered: number; split: number; splitCapacity: number
+    // per shift: the duties it got (best fit) and its crew
+    shifts: { code: string; duties: number; capacity: number }[]
+  }[]
+}
+
+type Counted = { role: string; kind: string; branchId: string | null; startMinutes: number | null; endMinutes: number | null }
+
+interface CrewBranch {
+  name:     string
+  shifts:   CrewCapacity['shifts']
+  splitCap: number
+  // duties per mask of the shifts they fit (bit i = shifts[i])
+  masks:    Map<number, number>
+  // duties per best-fit shift (index; -1 none) — reported only
+  best:     number[]
+  split:    number
+  overflow: number
+  dirty:    boolean
+}
+
+// running count of an empresa's DRIVER duties by the shifts they fit, with the overflow kept up
+// to date — the construction and the improvement add and remove duties as they go
+export class CrewCount {
+  private readonly branches = new Map<string, CrewBranch>()
+
+  constructor(capacity: CrewCapacity) {
+    for (const s of capacity.shifts) {
+      let b = this.branches.get(s.branchId)
+      if (!b) this.branches.set(s.branchId, b = { name: s.branchName, shifts: [], splitCap: 0, masks: new Map(), best: [], split: 0, overflow: 0, dirty: false })
+      b.shifts.push(s)
+      b.best.push(0)
+      if (s.allowSplit) b.splitCap += s.capacity
+    }
+  }
+
+  // sign -1 removes
+  add(d: Counted, sign = 1): void {
+    const b = d.role === 'DRIVER' && d.branchId ? this.branches.get(d.branchId) : undefined
+    if (!b) return
+    let mask = 0
+    if (d.startMinutes != null && d.endMinutes != null) {
+      b.shifts.forEach((s, i) => { if (shiftFits(s, d.startMinutes!, d.endMinutes!, d.kind)) mask |= 1 << i })
+    }
+    b.masks.set(mask, (b.masks.get(mask) ?? 0) + sign)
+    const best = mask && d.startMinutes != null && d.endMinutes != null ? bestShift(b.shifts, d.startMinutes, d.endMinutes, d.kind) : null
+    if (best) b.best[b.shifts.indexOf(best)] += sign
+    if (d.kind === 'SPLIT') b.split += sign
+    b.dirty = true
+  }
+
+  get overflow(): number {
+    let n = 0
+    for (const b of this.branches.values()) n += this.branchOverflow(b)
+    return n
+  }
+
+  // the duties no crew can take: total − max matching. With a handful of shifts per empresa the
+  // matching is the min cut over the shift subsets T: crew(T) + duties fitting some shift out of T
+  private branchOverflow(b: CrewBranch): number {
+    if (!b.dirty) return b.overflow
+    let total = 0
+    for (const n of b.masks.values()) total += n
+    let flow = total
+    for (let t = 0; t < 1 << b.shifts.length; t++) {
+      let cut = 0
+      b.shifts.forEach((s, i) => { if (t & (1 << i)) cut += s.capacity })
+      for (const [mask, n] of b.masks) if (mask & ~t) cut += n
+      if (cut < flow) flow = cut
+    }
+    // (mask 0 — no shift fits — is inside every T: never matched)
+    b.overflow = total - flow
+    b.dirty = false
+    return b.overflow
+  }
+
+  // one more SPLIT duty of the empresa fits its crew
+  splitFits(branchId: string | null): boolean {
+    const b = branchId ? this.branches.get(branchId) : undefined
+    return !b || b.split < b.splitCap
+  }
+
+  // SPLIT duties beyond the crew — a move may not raise it
+  splitExcess(branchId: string): number {
+    const b = this.branches.get(branchId)
+    return b ? Math.max(0, b.split - b.splitCap) : 0
+  }
+
+  usage(): CrewUsage {
+    return {
+      overflow: this.overflow,
+      branches: [...this.branches].map(([branchId, b]) => {
+        const duties = [...b.masks.values()].reduce((s, n) => s + n, 0)
+        return {
+          branchId, branchName: b.name, duties, covered: duties - this.branchOverflow(b), split: b.split, splitCapacity: b.splitCap,
+          shifts: b.shifts.map((s, i) => ({ code: s.code, duties: b.best[i], capacity: s.capacity })),
+        }
+      }),
+    }
+  }
+}
+
+// the usage of a proposal: its locked and solver duties
+export function crewUsage(input: CrewSolverInput, result: CrewSolverResult): CrewUsage | null {
+  if (!input.crew) return null
+  const count = new CrewCount(input.crew)
+  for (const d of input.locked) {
+    const s = result.evaluation.duties.get(d.id)?.summary
+    count.add({ ...d, startMinutes: s?.startMinutes ?? null, endMinutes: s?.endMinutes ?? null })
+  }
+  result.duties.forEach((d, i) => {
+    const s = result.evaluation.duties.get(`solver-${i}`)?.summary
+    count.add({ role: 'DRIVER', kind: d.kind, branchId: d.branchId, startMinutes: s?.startMinutes ?? null, endMinutes: s?.endMinutes ?? null })
+  })
+  return count.usage()
 }
 
 export interface SolverPiece {
@@ -186,7 +325,17 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
     for (const p of d.pieces) if (p.vehicleBlockId) lockedCover.set(p.vehicleBlockId, [...(lockedCover.get(p.vehicleBlockId) ?? []), p])
   }
 
+  // SPLIT duties up to the crew that takes them (input.crew) — the locked ones count
+  const crew = input.crew ? new CrewCount(input.crew) : null
+  for (const d of input.locked) if (d.kind === 'SPLIT') crew?.add({ ...d, startMinutes: null, endMinutes: null })
+  const canSplit = (branchId: string | null) => !crew || crew.splitFits(branchId)
   const duties: SolverDuty[] = []
+  const push = (...ds: SolverDuty[]) => {
+    for (const d of ds) {
+      duties.push(d)
+      if (d.kind === 'SPLIT') crew?.add({ role: 'DRIVER', kind: d.kind, branchId: d.branchId, startMinutes: null, endMinutes: null })
+    }
+  }
   const loose: { piece: SolverPiece; branchId: string | null; lines: LineSeq }[] = []
   const piece = (v: BlockView, from: number, to: number): SolverPiece => ({
     vehicleBlockId: v.block.id, startMinutes: from, endMinutes: to,
@@ -236,7 +385,8 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       // or a single piece meeting the rule without a meal break; null when there's none
       const memo = new Map<string, Whole | null>()
       const dutyAt = (from: number, to: number): Whole | null => {
-        const key = `${from}:${to}`
+        const splitOk = canSplit(v.block.branchId)
+        const key = `${from}:${to}:${splitOk}`
         if (memo.has(key)) return memo.get(key)!
         // assigned inside `keep` — typed wide so the return isn't narrowed away
         let best = null as Whole | null
@@ -247,6 +397,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
           for (const g of gaps) {
             const before = g.startMinutes - from, after = to - g.endMinutes
             if (before < minPiece || before > maxDrive || after < minPiece || after > maxDrive) continue
+            if (g.split && !splitOk) continue
             // a split: the driver leaves and comes back to the vehicle — on foot if it moved
             // (no deadrun recorded); the pieces themselves stay in service
             if (g.split) {
@@ -316,7 +467,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       //    e. loose pieces only.
       const cover = (from: number, to: number): void => {
         const one = dutyAt(from, to)
-        if (one) { duties.push(one.duty); return }
+        if (one) { push(one.duty); return }
 
         const bs = bounds(from, to)
         let two = null as { a: Whole; b: Whole; cost: number; skew: number } | null
@@ -326,7 +477,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
           const cost = a.cost + b.cost, skew = Math.abs(a.work - b.work)
           if (!two || cost < two.cost - EPS || (cost < two.cost + EPS && skew < two.skew)) two = { a, b, cost, skew }
         }
-        if (two) { duties.push(two.a.duty, two.b.duty); return }
+        if (two) { push(two.a.duty, two.b.duty); return }
 
         const lefts  = bs.flatMap(([x, y]) => { const d = dutyAt(from, x); return d ? [{ d, next: y }] : [] })
         const rights = bs.flatMap(([x, y]) => { const d = dutyAt(y, to); return d ? [{ d, prev: x }] : [] })
@@ -339,7 +490,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
           }
         }
         if (ends) {
-          duties.push(ends.l.d.duty, ends.r.d.duty)
+          push(ends.l.d.duty, ends.r.d.duty)
           cover(ends.l.next, ends.r.prev)
           return
         }
@@ -353,7 +504,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
           }
         }
         if (single) {
-          duties.push(single.d.duty)
+          push(single.d.duty)
           loosen(...single.rest)
           return
         }
@@ -402,7 +553,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       // split: the gap is off the clock — a gap that fits the split interval is always one, never
       // worked (same as the improvement's classification)
       if (splitFits(gap)) {
-        consider({ kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }, work(len(a) + len(b), 0), splitCost + penalty(range.splitInterval, gap))
+        if (canSplit(branchId)) consider({ kind: 'SPLIT', branchId, pieces: [a, b], breaks: [] }, work(len(a) + len(b), 0), splitCost + penalty(range.splitInterval, gap))
         continue
       }
       // no meal break: the gap is worked (paid idle, never beyond its ceiling) — a STRAIGHT, when
@@ -423,9 +574,9 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
     used.add(i)
     if (best) {
       used.add(best.j)
-      duties.push(best.duty)
+      push(best.duty)
     } else {
-      duties.push({ kind: 'STRAIGHT', branchId, pieces: [a], breaks: [] })
+      push({ kind: 'STRAIGHT', branchId, pieces: [a], breaks: [] })
     }
   }
 

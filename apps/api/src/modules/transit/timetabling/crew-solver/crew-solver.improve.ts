@@ -1,6 +1,6 @@
 import type { CrewCalcContext, CrewCalcDuty, DutyEvaluation } from '../crew-plan/crew-scoring.calc'
 import { CrewScoreAggregate, evaluateDuty, solverRank } from '../crew-plan/crew-scoring.calc'
-import { BlockView, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
+import { BlockView, CrewCount, type CrewSolverInput, type SolverDuty, type SolverPiece } from './crew-solver.calc'
 import { walkMeters, walkMinutes } from '../crew-plan/crew-walk'
 import { mealPolicy } from '@nyx/schemas'
 
@@ -26,6 +26,8 @@ import { mealPolicy } from '@nyx/schemas'
 // T calibrated on the first worsening moves. The search runs in cycles: T cools down over a
 // cycle, then the search goes back to the best duties found and starts a cooler cycle — so a
 // cycle always ends improving, and "no improvement" means the cycles stopped paying off.
+// With the crew limit (input.crew) a move never raises an empresa's SPLIT duties beyond its crew,
+// and the duties beyond the crew of their shift (crew overflow) rank ahead of the issues.
 
 type Span = { startMinutes: number; endMinutes: number }
 
@@ -84,6 +86,8 @@ export class CrewImprover {
   private current: number
   // duties with an issue in the current duties
   private issues = 0
+  // the current duties against the crew — null without the crew limit
+  private crew: CrewCount | null = null
   private temperature: number | null = null
   private cycleStart = this.startedAt
   private readonly worsening: number[] = []
@@ -118,8 +122,41 @@ export class CrewImprover {
     }
     this.current = this.agg.rawScore()
     this.issues  = this.agg.issueDutyCount
-    this.bestScore = solverRank(this.current, this.issues)
+    this.recount()
+    this.bestScore = solverRank(this.current, this.issues, this.overflow)
     this.best = [...this.duties]
+  }
+
+  private get overflow(): number { return this.crew?.overflow ?? 0 }
+
+  private counted(w: { calc: CrewCalcDuty; ev: DutyEvaluation }) {
+    return { role: w.calc.role, kind: w.calc.kind, branchId: w.calc.branchId, startMinutes: w.ev.summary.startMinutes, endMinutes: w.ev.summary.endMinutes }
+  }
+
+  private recount(): void {
+    if (!this.input.crew) return
+    this.crew = new CrewCount(this.input.crew)
+    for (const l of this.locked) this.crew.add(this.counted(l))
+    for (const w of this.duties) this.crew.add(this.counted(w))
+  }
+
+  // the move on the crew count; false (count restored) when it raises an empresa's SPLIT duties
+  // beyond its crew
+  private countMove(move: Move): boolean {
+    const crew = this.crew
+    if (!crew) return true
+    const branches = new Set([...move.removed, ...move.added].flatMap(w => (w.kind === 'SPLIT' && w.branchId ? [w.branchId] : [])))
+    const before = new Map([...branches].map(b => [b, crew.splitExcess(b)]))
+    for (const w of move.removed) crew.add(this.counted(w), -1)
+    for (const w of move.added)   crew.add(this.counted(w))
+    if ([...branches].every(b => crew.splitExcess(b) <= before.get(b)!)) return true
+    this.uncountMove(move)
+    return false
+  }
+
+  private uncountMove(move: Move): void {
+    for (const w of move.added)   this.crew?.add(this.counted(w), -1)
+    for (const w of move.removed) this.crew?.add(this.counted(w))
   }
 
   // runs moves for about `sliceMs`; the caller decides when to stop
@@ -148,6 +185,8 @@ export class CrewImprover {
       : r < ELIMINATE_SHARE + 0.6 ? this.swap()
       : this.transfer()
     if (!move) return
+    const overflow = this.overflow
+    if (!this.countMove(move)) return
 
     for (const w of move.removed) this.agg.remove(w.calc, w.ev)
     for (const w of move.added)   this.agg.add(w.calc, w.ev)
@@ -155,13 +194,16 @@ export class CrewImprover {
     const issues = this.agg.issueDutyCount
     const delta  = score - this.current
 
-    // fewer duties with an issue always goes through, more never does; among equals an
-    // elimination goes through only when it pays off (its worsenings are much larger than the
-    // other moves' and would heat the annealing up into a random walk), the rest anneal
-    const ok = issues !== this.issues ? issues < this.issues : eliminating ? delta >= 0 : this.accept(delta)
+    // less crew overflow, then fewer duties with an issue always goes through, more never does;
+    // among equals an elimination goes through only when it pays off (its worsenings are much
+    // larger than the other moves' and would heat the annealing up into a random walk), the rest
+    // anneal
+    const ok = this.overflow !== overflow ? this.overflow < overflow
+      : issues !== this.issues ? issues < this.issues : eliminating ? delta >= 0 : this.accept(delta)
     if (!ok) {
       for (const w of move.added)   this.agg.remove(w.calc, w.ev)
       for (const w of move.removed) this.agg.add(w.calc, w.ev)
+      this.uncountMove(move)
       return
     }
     for (const w of move.removed) this.drop(w)
@@ -169,7 +211,7 @@ export class CrewImprover {
     this.current = score
     this.issues  = issues
     if (++this.accepted % RESYNC_EVERY === 0) this.resync()
-    const rank = solverRank(this.current, this.issues)
+    const rank = solverRank(this.current, this.issues, this.overflow)
     if (rank > this.bestScore + 1e-9) {
       this.bestScore = rank
       this.best = [...this.duties]
@@ -211,6 +253,7 @@ export class CrewImprover {
     this.agg = agg
     this.current = agg.rawScore()
     this.issues  = agg.issueDutyCount
+    this.recount()
   }
 
   // ── moves ────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { workerData, parentPort, isMainThread } from 'worker_threads'
-import { solveCrewPlan, evaluateSolverDuties, type SolverDuty } from './crew-solver.calc'
+import { solveCrewPlan, evaluateSolverDuties, crewUsage, type SolverDuty } from './crew-solver.calc'
 import { CrewImprover } from './crew-solver.improve'
 import type { CrewSolverCommand, CrewSolverMessage, CrewSolverWorkerData } from './crew-solver.types'
 
@@ -24,7 +24,7 @@ parentPort!.on('message', (cmd: CrewSolverCommand) => { if (cmd?.type === 'stop'
 
 try {
   const construction = solveCrewPlan(input)
-  post({ type: 'proposal', proposal: { index: 1, summary: construction.evaluation.summary, duties: construction.duties } })
+  post({ type: 'proposal', proposal: { index: 1, summary: construction.evaluation.summary, duties: construction.duties, crew: crewUsage(input, construction) } })
   if (optimize) improve(construction.duties)
   else post({ type: 'done', stopReason: 'finished', elapsed: Date.now() - started, attempts: 0 })
 } catch (err) {
@@ -41,7 +41,7 @@ function improve(initial: SolverDuty[]) {
 
   const emitBest = () => {
     const best = evaluateSolverDuties(input, improver.bestDuties())
-    post({ type: 'proposal', proposal: { index: ++index, summary: best.evaluation.summary, duties: best.duties } })
+    post({ type: 'proposal', proposal: { index: ++index, summary: best.evaluation.summary, duties: best.duties, crew: crewUsage(input, best) } })
     emitted = improver.improvements
     lastEmit = Date.now()
   }

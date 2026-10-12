@@ -46,7 +46,20 @@ interface Params {
   fareCollector: boolean
   assistant:     boolean
   optimize:      boolean
+  limitToCrew:   boolean
 }
+
+// the proposal's duties against the empresas' active crew (CrewUsage) — null when not limited
+interface CrewUsage {
+  overflow: number
+  branches: {
+    branchId: string; branchName: string
+    duties: number; covered: number; split: number; splitCapacity: number
+    shifts: { code: string; duties: number; capacity: number }[]
+  }[]
+}
+
+type Proposal = { index: number; summary: CrewPlanSummary; crew?: CrewUsage | null }
 
 type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'
 
@@ -55,7 +68,7 @@ type Progress = { elapsed: number; attempts: number; improvements: number; bestS
 
 type Message =
   | ({ type: 'progress' } & Progress)
-  | { type: 'proposal'; proposal: { index: number; summary: CrewPlanSummary } }
+  | { type: 'proposal'; proposal: Proposal }
   | { type: 'done'; stopReason: StopReason; elapsed: number; attempts: number }
   | { type: 'error'; message: string }
 
@@ -143,10 +156,10 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
   const isCustom = !!settingsView?.isCustom
 
   // ── generation ──
-  const [params, setParams]           = useState<Params>({ base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, ...job?.params })
+  const [params, setParams]           = useState<Params>({ base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, limitToCrew: true, ...job?.params })
   const [jobId, setJobId]             = useState<string | null>(job?.jobId ?? null)
   const [running, setRunning]         = useState(job?.running ?? false)
-  const [proposal, setProposal]       = useState<{ index: number; summary: CrewPlanSummary } | null>(null)
+  const [proposal, setProposal]       = useState<Proposal | null>(null)
   const [error, setError]             = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [accepting, setAccepting]     = useState(false)
@@ -389,6 +402,10 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
                 <input type="checkbox" checked={params.optimize} onChange={e => setParams(p => ({ ...p, optimize: e.target.checked }))} />
                 Otimizar após o corte inicial
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={params.limitToCrew} onChange={e => setParams(p => ({ ...p, limitToCrew: e.target.checked }))} />
+                Limitar turnos ao quadro ativo
+              </label>
               <p className="text-xs text-muted-foreground">
                 A escala é montada para motorista e replicada para os papéis marcados, com as regras da aba Config. {inPlace ? 'O resultado substitui as jornadas desta escala (rascunho) — as travadas são mantidas em "Completar".' : 'O resultado vira uma nova versão em rascunho — esta escala não é alterada.'}
                 {jobId && ' Gerar novamente descarta o cenário atual.'}
@@ -434,6 +451,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
                   {(Object.entries(s.byKind) as [keyof typeof KIND_LABEL, number][]).map(([k, n]) => `${KIND_LABEL[k]} ${n}`).join(' · ')}
                 </p>
               )}
+              {proposal?.crew && <CrewUsageView crew={proposal.crew} />}
               {s && !running && !inPlace && (
                 <input
                   value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição da nova versão (opcional)"
@@ -495,6 +513,34 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// per empresa: duties the crew can take, SPLIT duties and each shift's duties (best fit) / crew
+function CrewUsageView({ crew }: { crew: CrewUsage }) {
+  if (!crew.branches.length) return null
+  const warn = 'text-amber-600 dark:text-amber-400'
+  return (
+    <div className="space-y-1.5 text-xs">
+      <p className="font-medium">
+        Quadro ativo
+        {crew.overflow > 0 && <span className={cn('font-normal', warn)}> · {crew.overflow} tabela(s) além do quadro — sem operador na escala diária</span>}
+      </p>
+      {crew.branches.map(b => (
+        <div key={b.branchId} className="rounded-sm bg-muted/40 px-2 py-1.5 space-y-0.5">
+          <p>
+            <span className="font-medium">{b.branchName}</span>
+            <span className={cn('tabular-nums', b.covered < b.duties && warn)}> · {b.covered}/{b.duties} tabelas cobertas pelo quadro</span>
+            <span className="tabular-nums text-muted-foreground"> · dupla pegada {b.split}/{b.splitCapacity}</span>
+          </p>
+          <p className="text-muted-foreground tabular-nums">
+            {b.shifts.map((sh, i) => (
+              <span key={i} className={cn('me-3', sh.duties > sh.capacity && warn)}>{sh.code} {sh.duties}/{sh.capacity}</span>
+            ))}
+          </p>
+        </div>
+      ))}
     </div>
   )
 }

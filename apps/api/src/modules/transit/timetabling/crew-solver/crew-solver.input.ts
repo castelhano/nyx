@@ -1,16 +1,17 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common'
-import { mealPolicy, type CrewSettings } from '@nyx/schemas'
+import { mealPolicy, restPatternWorks, type CrewSettings, type DayTypePattern, type ShiftWindow } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { insideBundle, loadBlockRelief } from '../crew-plan/relief-points'
 import { loadCrewWalk } from '../crew-plan/crew-walk'
 import { loadCrewBranchRules } from '../crew-plan/crew-branch-rules'
 import type { CrewCalcDuty } from '../crew-plan/crew-scoring.calc'
-import type { CrewSolverInput, SolverBlock } from './crew-solver.calc'
+import type { CrewCapacity, CrewSolverInput, SolverBlock } from './crew-solver.calc'
 
 // Everything solveCrewPlan needs for one crew plan, in a few queries: its VehiclePlan's
 // blocks (relief points, trips, deadruns), its locked duties, the meal break type and meal
-// stops, and the crew walking distances among the relief points' localities.
-export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings): Promise<CrewSolverInput> {
+// stops, and the crew walking distances among the relief points' localities. limitToCrew: also
+// the empresas' active crew per shift (CrewCapacity).
+export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings, options: { limitToCrew?: boolean } = {}): Promise<CrewSolverInput> {
   // the meal type only matters when meal breaks are placed (continuous form, allowed or required)
   const breaks = mealPolicy(settings.mealRule).breaks
   const mealTypeId = breaks ? settings.mealBreakIntervalTypeId : null
@@ -18,7 +19,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     throw new BadRequestException('Defina o tipo de intervalo de refeição nas configurações da escala')
   }
   const [plan, mealType] = await Promise.all([
-    prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true } }),
+    prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true, vehiclePlan: { select: { dayType: { select: { pattern: true } } } } } }),
     mealTypeId
       ? prisma.intervalType.findUnique({ where: { id: mealTypeId }, select: { minMinutes: true, maxMinutes: true, isPaid: true } })
       : Promise.resolve(null),
@@ -49,7 +50,12 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   }))
 
   const localityIds = [...new Set(blocks.flatMap(b => b.points.map(p => p.localityId)))]
-  const walk = await loadCrewWalk(prisma, localityIds)
+  const [walk, crew] = await Promise.all([
+    loadCrewWalk(prisma, localityIds),
+    options.limitToCrew
+      ? loadCrewCapacity(prisma, branchRules.shifts, [...new Set(blocks.flatMap(b => b.branchId ?? []))], dayTypeWeekdays(plan.vehiclePlan.dayType.pattern as DayTypePattern | null))
+      : undefined,
+  ])
 
   const locked: CrewCalcDuty[] = lockedRows.map(d => ({
     id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, shiftId: d.shiftId, shiftPinned: d.shiftPinned, pieces: d.pieces,
@@ -72,5 +78,73 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     walk,
     shifts:        branchRules.shifts,
     lineOperators: branchRules.lineOperators,
+    crew,
+  }
+}
+
+// The ISO weekdays (1–7) a day type runs on — all of them when it has no weekday pattern
+function dayTypeWeekdays(pattern: DayTypePattern | null): number[] {
+  const days = pattern?.type === 'weekdays' ? pattern.days : pattern?.type === 'month_window' ? pattern.baseWeekdays : undefined
+  return days?.length ? days : [1, 2, 3, 4, 5, 6, 7]
+}
+
+// The empresas' active crew (DRIVER, rosterable, employee ACTIVE) on a day of the plan, per
+// shift: each crew member bound to one of the empresa's shifts today counts the share of the
+// weekday it works over its rest cycle (its own pattern and group, else the shift's pattern;
+// none: every day) — on the day type's worst weekday (a weekday plan doesn't lose the crew off
+// on weekends). An empresa without one is left out (not limited); the others list all their
+// shifts, empty ones at 0.
+// TODO: crew members on vacation in the plan's validity are out too, once vacations exist.
+async function loadCrewCapacity(prisma: PrismaService, shifts: Map<string, ShiftWindow[]>, branchIds: string[], weekdays: number[]): Promise<CrewCapacity> {
+  const today = new Date(new Date().toISOString().slice(0, 10))
+  const [members, shiftRows, branches] = await Promise.all([
+    prisma.crewMember.findMany({
+      where:  { role: 'DRIVER', isRosterable: true, employee: { status: 'ACTIVE', branchId: { in: branchIds } } },
+      select: {
+        employee:    { select: { branchId: true } },
+        restOffset:  true,
+        restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } },
+        shifts: {
+          where:  { validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] },
+          select: { shiftId: true, shift: { select: { restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } } } } },
+          take:   1,
+        },
+      },
+    }),
+    prisma.crewShift.findMany({ where: { isActive: true }, select: { id: true, code: true } }),
+    prisma.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } }),
+  ])
+  const code = new Map(shiftRows.map(s => [s.id, s.code]))
+  // per weekday, the share of those days the crew member works over a whole cycle × week
+  type Cycle = { pattern: string; anchorDate: Date; offOnHolidays: boolean }
+  const shares = (cycle: Cycle | null, offset: number): number[] => {
+    if (!cycle?.pattern.length) return weekdays.map(() => 1)
+    const worked = new Map<number, [number, number]>()
+    const start = Date.parse(today.toISOString().slice(0, 10))
+    for (let i = 0; i < cycle.pattern.length * 7; i++) {
+      const date = new Date(start + i * 86_400_000)
+      const wd = date.getUTCDay() || 7
+      const [t, n] = worked.get(wd) ?? [0, 0]
+      worked.set(wd, [t + (restPatternWorks(cycle, offset, date.toISOString().slice(0, 10)) ? 1 : 0), n + 1])
+    }
+    return weekdays.map(wd => { const [t, n] = worked.get(wd)!; return t / n })
+  }
+
+  // `${branchId}|${shiftId}` → crew working on each of the day type's weekdays
+  const crew = new Map<string, number[]>()
+  for (const m of members) {
+    const bound = m.shifts[0]
+    const { branchId } = m.employee
+    if (!bound || !(shifts.get(branchId) ?? []).some(s => s.id === bound.shiftId)) continue
+    const key = `${branchId}|${bound.shiftId}`
+    const mine = shares(m.restPattern ?? bound.shift.restPattern, m.restOffset)
+    crew.set(key, (crew.get(key) ?? weekdays.map(() => 0)).map((n, i) => n + mine[i]))
+  }
+  const limited = new Set([...crew.keys()].map(k => k.split('|')[0]))
+  return {
+    shifts: branches.filter(b => limited.has(b.id)).flatMap(b => (shifts.get(b.id) ?? []).map(s => ({
+      ...s, branchId: b.id, branchName: b.name, code: code.get(s.id) ?? '',
+      capacity: Math.floor(Math.min(...(crew.get(`${b.id}|${s.id}`) ?? [0])) + 1e-9),
+    }))),
   }
 }
