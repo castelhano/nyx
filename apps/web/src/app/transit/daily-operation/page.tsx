@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CREW_ROLES, CREW_ROLE_LABEL, type CrewRole, type RosterShortage } from '@nyx/schemas'
@@ -23,6 +23,8 @@ import {
 import { OperatorsGrid, type GridPos, type Overlay } from './workspace/OperatorsGrid'
 import { GeneratePanel, type Proposal } from './workspace/GeneratePanel'
 import { QualityTable } from './workspace/QualityTable'
+import { PeriodPicker } from './workspace/PeriodPicker'
+import { KeyHint } from '@/core/FieldRenderer'
 import { GenerationList } from './workspace/GenerationList'
 import { ShortageList } from './workspace/ShortageList'
 import { DutiesView } from './workspace/DutiesView'
@@ -118,6 +120,7 @@ export default function RosterPage() {
   const [anchor, setAnchor] = useState<GridPos | null>(null)
   const [dutyId, setDutyId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
   const [drawer, setDrawer] = useState<'issues' | 'requests' | 'quality' | null>(null)
 
   const q = search.trim().toLowerCase()
@@ -298,6 +301,7 @@ export default function RosterPage() {
     { label: 'Recalcular dia', icon: Icons.RefreshCw, onClick: recalcDay, variant: 'ghost' as const, keybind: 'ALT+G', disabled: busy > 0 },
   ], [canUpdate, panelDate, busy, board])
   useShortcut('alt+g', recalcDay, { desc: 'Recalcular o dia selecionado', icon: Icons.RefreshCw, origin: ORIGIN })
+  useShortcut('ctrl+shift+f', () => { searchRef.current?.focus(); searchRef.current?.select() }, { desc: 'Buscar', icon: Icons.Search, origin: ORIGIN })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: ORIGIN })
   useShortcut('alt+l', () => void queryClient.invalidateQueries({ queryKey: boardKey }), { display: false, origin: ORIGIN })
 
@@ -321,7 +325,7 @@ export default function RosterPage() {
         </Select>
         <div className="flex items-center gap-1 ml-2">
           <button type="button" onClick={() => setCtx({ data: shiftPeriod(mode, date, -1) })} className="p-1 rounded hover:bg-muted cursor-pointer"><Icons.ChevronLeft className="w-4 h-4" /></button>
-          <span className="text-sm font-medium tabular-nums w-32 text-center">{periodLabel}</span>
+          <PeriodPicker mode={mode} date={date} label={periodLabel} onPick={d => setCtx({ data: d })} />
           <button type="button" onClick={() => setCtx({ data: shiftPeriod(mode, date, 1) })} className="p-1 rounded hover:bg-muted cursor-pointer"><Icons.ChevronRight className="w-4 h-4" /></button>
           <button type="button" onClick={() => setCtx({ data: localToday() })} className="hover:bg-accent hover:text-accent-foreground h-8 px-3 text-sm rounded cursor-pointer">Hoje</button>
         </div>
@@ -391,8 +395,9 @@ export default function RosterPage() {
         )}
         <div className="relative">
           <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={view === 'escalas' ? 'Tabela, linha ou operador…' : 'Matrícula ou nome…'}
-            className="h-8 w-60 pl-8 pr-2 border border-input rounded-sm text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring" />
+          <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder={view === 'escalas' ? 'Tabela, linha ou operador…' : 'Matrícula ou nome…'}
+            className="h-8 w-60 pl-8 pr-2 md:pr-10 border border-input rounded-sm text-sm bg-input-bg focus:outline-none focus:ring-1 focus:ring-ring" />
+          <KeyHint k="f" className="right-2" />
         </div>
         <button type="button" onClick={() => setDrawer(d => (d === 'issues' ? null : 'issues'))} className={cn(ctl, 'border border-border ml-auto', drawer === 'issues' ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
           <Icons.AlertTriangle className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />Pendências {issueDuties.length > 0 && <span className="text-red-600 dark:text-red-400">{issueDuties.length}</span>}

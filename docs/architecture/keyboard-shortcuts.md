@@ -177,6 +177,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 |--------|---------------|
 | `C` | Code, unique identifier |
 | `G` | Name, main descriptive identifier |
+| `F` | Find, search input or similar |
 
 
 ---
