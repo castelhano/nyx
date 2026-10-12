@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { withMeta } from '../with-meta'
 import { rangeCriterionSchema } from './settings-planning.schema'
+import { CREW_ROLES } from './duty.schema'
 
 // The real roster's rules of one empresa (Settings scope 'branch', falling back to global).
 // The rest between duties is a CCT rule — it lives in the crew settings (per transit Scope).
@@ -10,6 +11,17 @@ import { rangeCriterionSchema } from './settings-planning.schema'
 // cost) and the day shows the issue
 export const ROSTER_RULE_MODES = ['BLOCK', 'WARN'] as const
 const ruleMode = z.enum(ROSTER_RULE_MODES)
+
+function rosterReserveTargetSchema() {
+  return z.object({
+    role:         z.enum(CREW_ROLES).default('DRIVER'),
+    dayTypeId:    z.uuid('Informe o tipo de dia'),
+    startMinutes: z.number().int().min(0).max(1439),
+    endMinutes:   z.number().int().min(1).max(2879),
+    localityId:   z.uuid().nullable().default(null),
+    count:        z.number().int().min(1).max(99),
+  }).refine(t => t.endMinutes > t.startMinutes, { message: 'O fim do plantão deve ser depois do início', path: ['endMinutes'] })
+}
 
 const rosterRangeDefault = {
   // % of the trip minutes on preferred lines, each rank weighted by its grade
@@ -40,6 +52,10 @@ export const rosterSettingsSchema = withMeta(z.object({
   loadPeriodStartDay:  z.number().int().min(1).max(28).default(1),
   // the habitual car = the one most driven in these last days
   habitualVehicleDays: z.number().int().min(1).max(90).default(14),
+  // plantões (reserve): on each day of the day type, `count` STANDBY duties of the empresa from
+  // start to end (minutes, end past 24h allowed) at the locality — created with the day and
+  // filled by the generator with whoever is left over
+  reserveTargets: z.array(rosterReserveTargetSchema()).default([]),
   ruleModes: z.object({
     lineAccess:     ruleMode.default('BLOCK'),
     vehicleType:    ruleMode.default('BLOCK'),
@@ -65,6 +81,7 @@ export const rosterSettingsSchema = withMeta(z.object({
 })
 
 export type RosterSettings = z.infer<typeof rosterSettingsSchema>
+export type RosterReserveTarget = RosterSettings['reserveTargets'][number]
 
 export const LINE_ACCESS_MODE_LABEL: Record<RosterSettings['lineAccessMode'], string> = {
   WHITELIST: 'WHITELIST • bloqueia todas',

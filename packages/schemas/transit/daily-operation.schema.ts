@@ -95,6 +95,7 @@ export interface DailySource {
 export const DAILY_ISSUE_CODES = [
   // duty / crew
   'DUTY_UNASSIGNED',       // a DRIVER duty with nobody
+  'RESERVE_SHORT',         // a plantão (STANDBY duty) with nobody — the reserve below its target
   'CREW_ABSENT',           // approved absence on the date
   'CREW_ON_DAY_OFF',       // day off of the rest pattern (or a DAY_OFF/COMP_OFF entry)
   'CREW_MULTIPLE_DUTIES',  // more than one duty on the day
@@ -128,6 +129,7 @@ export interface DailyIssue {
 
 export const DAILY_ISSUE_LABEL: Record<DailyIssueCode, string> = {
   DUTY_UNASSIGNED:         'Tabela sem operador',
+  RESERVE_SHORT:           'Plantão sem operador',
   CREW_ABSENT:             'Operador com ausência aprovada',
   CREW_ON_DAY_OFF:         'Operador de folga',
   CREW_MULTIPLE_DUTIES:    'Operador em mais de uma tabela',

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import { WEEKDAY, clock, dutyName, fmtDay, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
+import { WEEKDAY, clock, dutyName, fmtDay, reveal, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
 
 // "Escalas" — the duties: one day as a timeline (pieces as bars, operator and car per row),
 // several days as a duty × day matrix (who holds each duty each day). A click selects the duty
@@ -33,14 +33,16 @@ export function DutiesView(props: Props) {
 
 function useArrowKeys(ref: React.RefObject<HTMLDivElement | null>, selectedId: string | null) {
   useEffect(() => {
-    if (selectedId) ref.current?.querySelector(`[data-duty="${selectedId}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    if (selectedId) reveal(ref.current, ref.current?.querySelector(`[data-duty="${selectedId}"]`))
   }, [ref, selectedId])
 }
 
 function Timeline({ board, idx, duties, selectedId, onSelect }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   useArrowKeys(ref, selectedId)
-  const rows = useMemo(() => [...duties].sort((a, b) => Number(!!a.crewMemberId) - Number(!!b.crewMemberId) || (a.start ?? 0) - (b.start ?? 0)), [duties])
+  // duties first (without anyone on top), then the plantões
+  const rows = useMemo(() => [...duties].sort((a, b) =>
+    Number(a.kind === 'STANDBY') - Number(b.kind === 'STANDBY') || Number(!!a.crewMemberId) - Number(!!b.crewMemberId) || (a.start ?? 0) - (b.start ?? 0)), [duties])
   const lo = Math.floor(Math.min(...rows.map(d => d.start ?? 1440), 300) / 60) * 60
   const hi = Math.ceil(Math.max(...rows.map(d => d.end ?? 0), lo + 600) / 60) * 60
   const pct = (m: number) => `${((m - lo) / (hi - lo)) * 100}%`
@@ -57,7 +59,7 @@ function Timeline({ board, idx, duties, selectedId, onSelect }: Props) {
   return (
     <div ref={ref} tabIndex={0} onKeyDown={onKeyDown} className="overflow-auto rounded-lg border border-border max-h-[calc(100vh-15rem)] focus:outline-none focus:ring-1 focus:ring-ring">
       <div className="min-w-[56rem]">
-        <div className="sticky top-0 z-10 grid grid-cols-[16rem_1fr] bg-background border-b border-border text-[10px] text-muted-foreground">
+        <div data-sticky-top className="sticky top-0 z-10 grid grid-cols-[16rem_1fr] bg-background border-b border-border text-[10px] text-muted-foreground">
           <div className="px-2 py-1">Tabela · operador · carro</div>
           <div className="relative h-6">
             {hours.map(h => <span key={h} className="absolute -translate-x-1/2 top-1 tabular-nums" style={{ left: pct(h) }}>{clock(h).slice(0, 2)}</span>)}
@@ -68,10 +70,10 @@ function Timeline({ board, idx, duties, selectedId, onSelect }: Props) {
           return (
             <div
               key={d.id} data-duty={d.id} onClick={() => onSelect(d.id)}
-              className={cn('grid grid-cols-[16rem_1fr] border-b border-border/60 cursor-pointer hover:bg-muted/40', selectedId === d.id && 'bg-accent/40')}
+              className={cn('grid grid-cols-[16rem_1fr] border-b border-border/60 cursor-pointer hover:bg-muted/40', d.kind === 'STANDBY' && 'bg-cyan-500/5', selectedId === d.id && 'bg-accent/40')}
             >
               <div className="flex items-center gap-1.5 px-2 py-1 text-xs min-w-0">
-                <span className="font-medium tabular-nums w-14 shrink-0">{dutyName(d, board.multiScope)}</span>
+                <span className={cn('font-medium tabular-nums w-14 shrink-0', d.kind === 'STANDBY' && 'text-cyan-700 dark:text-cyan-300')}>{dutyName(d, board.multiScope)}</span>
                 <span className="text-muted-foreground w-7 shrink-0">{d.shiftId ? idx.shiftCode.get(d.shiftId) : '—'}</span>
                 {member
                   ? <span className="truncate"><span className="tabular-nums text-muted-foreground">{member.code}</span> {member.name}</span>
@@ -88,6 +90,15 @@ function Timeline({ board, idx, duties, selectedId, onSelect }: Props) {
               </div>
               <div className="relative h-7">
                 {hours.map(h => <span key={h} className="absolute top-0 bottom-0 border-l border-border/40" style={{ left: pct(h) }} />)}
+                {d.kind === 'STANDBY' && d.start != null && d.end != null && (
+                  <span
+                    className="absolute top-1.5 bottom-1.5 rounded-sm px-1 text-[10px] leading-4 truncate border border-dashed border-cyan-600/70 bg-cyan-500/20 text-cyan-800 dark:text-cyan-200"
+                    style={{ left: pct(d.start), width: `calc(${pct(d.end)} - ${pct(d.start)})` }}
+                    title={`Plantão ${clock(d.start)}–${clock(d.end)}`}
+                  >
+                    Plantão
+                  </span>
+                )}
                 {d.pieces.map((p, i) => (
                   <span
                     key={i}
@@ -113,10 +124,10 @@ function Matrix({ board, idx, dates, duties, selectedId, onSelect }: Props) {
   useArrowKeys(ref, selectedId)
   // rows = duty numbers (per Scope); each day's duty of that number in the cells
   const rows = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; byDate: Map<string, RosterBoardDuty> }>()
+    const map = new Map<string, { key: string; label: string; standby: boolean; byDate: Map<string, RosterBoardDuty> }>()
     for (const d of duties) {
       const key = `${d.scope}|${String(d.number).padStart(4, '0')}`
-      const r = map.get(key) ?? { key, label: dutyName(d, board.multiScope), byDate: new Map() }
+      const r = map.get(key) ?? { key, label: dutyName(d, board.multiScope), standby: d.kind === 'STANDBY', byDate: new Map() }
       r.byDate.set(d.date, d)
       map.set(key, r)
     }
@@ -142,9 +153,9 @@ function Matrix({ board, idx, dates, duties, selectedId, onSelect }: Props) {
   return (
     <div ref={ref} tabIndex={0} onKeyDown={onKeyDown} className="overflow-auto rounded-lg border border-border max-h-[calc(100vh-15rem)] focus:outline-none focus:ring-1 focus:ring-ring">
       <table className="text-xs border-separate border-spacing-0">
-        <thead className="sticky top-0 z-20 bg-background">
+        <thead data-sticky-top className="sticky top-0 z-20 bg-background">
           <tr>
-            <th className="sticky left-0 z-30 bg-background border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground">Tabela</th>
+            <th data-sticky-left className="sticky left-0 z-30 bg-background border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground">Tabela</th>
             {dates.map(d => (
               <th key={d} className={cn('border-b border-border px-1 py-1 font-medium min-w-[3.25rem]', weekday(d) % 6 === 0 ? 'text-foreground' : 'text-muted-foreground')}>
                 <div>{WEEKDAY[weekday(d)]}</div>
@@ -156,7 +167,7 @@ function Matrix({ board, idx, dates, duties, selectedId, onSelect }: Props) {
         <tbody>
           {rows.map(r => (
             <tr key={r.key}>
-              <td className="sticky left-0 z-10 bg-background border-b border-border/60 px-2 py-1 font-medium tabular-nums whitespace-nowrap">{r.label}</td>
+              <td className={cn('sticky left-0 z-10 bg-background border-b border-border/60 px-2 py-1 font-medium tabular-nums whitespace-nowrap', r.standby && 'text-cyan-700 dark:text-cyan-300')}>{r.label}</td>
               {dates.map(date => {
                 const d = r.byDate.get(date)
                 const m = d?.crewMemberId ? idx.memberById.get(d.crewMemberId) : null
@@ -168,6 +179,7 @@ function Matrix({ board, idx, dates, duties, selectedId, onSelect }: Props) {
                     className={cn(
                       'relative border-b border-l border-border/60 px-1 py-1 text-center tabular-nums',
                       d ? 'cursor-pointer' : 'bg-muted/20',
+                      d?.kind === 'STANDBY' && m && 'bg-cyan-500/10 text-cyan-800 dark:text-cyan-200',
                       bad && 'bg-red-500/10',
                       d && !m && 'text-red-600 dark:text-red-400',
                       selectedId === d?.id && d && 'ring-2 ring-inset ring-primary',

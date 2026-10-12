@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import {
   dailyOperationSchema, restPatternWorks, validateBlock,
   type CreateDailyOperationDto, type DailyIssue, type DailyOperation, type DailySource, type DailySummary,
-  type DutySummary, type UpdateDailyOperationDto, type VehicleTypeValue,
+  type CrewRole, type DutySummary, type UpdateDailyOperationDto, type VehicleTypeValue,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
@@ -48,8 +48,70 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     const existing = await this.prisma.dailyOperation.findUnique({ where: { scopeId_date: { scopeId: dto.scopeId, date: toDbDate(day) } }, select: { id: true } })
     if (existing) return this.findOne(existing.id)
     const id = await materializeDay(this.prisma, this.dayTypes, dto.scopeId, day)
+    await this.syncReserves(id)
     await this.recalculate(id)
     return this.findOne(id)
+  }
+
+  // The empresas' plantões on a PLANNED day (RosterSettings.reserveTargets of its day type): one
+  // STANDBY duty (STANDBY activity, no pieces, sourceDutyId null) per unit of each target. Missing
+  // ones are created after the day's last duty number; ones beyond the target — or of a target
+  // gone — are removed while nobody holds them. The caller recalculates when it returns true.
+  async syncReserves(id: string): Promise<boolean> {
+    const op = await this.prisma.dailyOperation.findUnique({ where: { id }, select: { id: true, scopeId: true, dayTypeId: true, status: true } })
+    if (!op || op.status !== 'PLANNED') return false
+    const branches = await this.prisma.scopeOperator.findMany({ where: { scopeId: op.scopeId }, select: { branchId: true } })
+    const existing = await this.prisma.dailyDuty.findMany({
+      where:  { dailyOperationId: id, kind: 'STANDBY', sourceDutyId: null },
+      select: {
+        id: true, role: true, branchId: true, _count: { select: { rosterEntries: true } },
+        activities: { where: { type: 'STANDBY' }, select: { startMinutes: true, endMinutes: true, originLocalityId: true }, take: 1 },
+      },
+    })
+    const keyOf = (role: string, branchId: string | null, start: number, end: number, localityId: string | null) => `${role}|${branchId}|${start}|${end}|${localityId ?? ''}`
+    const have = new Map<string, typeof existing>()
+    for (const d of existing) {
+      const a = d.activities[0]
+      const key = a ? keyOf(d.role, d.branchId, a.startMinutes, a.endMinutes, a.originLocalityId) : `?${d.id}`
+      have.set(key, [...(have.get(key) ?? []), d])
+    }
+
+    const create: { role: CrewRole; branchId: string; startMinutes: number; endMinutes: number; localityId: string | null }[] = []
+    const remove: string[] = []
+    for (const { branchId } of branches) {
+      const settings = await this.rosterConfig.get(branchId)
+      for (const t of settings.reserveTargets.filter(t => t.dayTypeId === op.dayTypeId)) {
+        for (let i = 0; i < t.count; i++) create.push({ role: t.role, branchId, startMinutes: t.startMinutes, endMinutes: t.endMinutes, localityId: t.localityId })
+      }
+    }
+    // what exists already counts toward its target; the rest of a target is created
+    const missing = create.filter(c => {
+      const key = keyOf(c.role, c.branchId, c.startMinutes, c.endMinutes, c.localityId)
+      const list = have.get(key) ?? []
+      if (!list.length) return true
+      list.shift()
+      return false
+    })
+    // what's left over (beyond the target, or no target) goes while unheld
+    for (const list of have.values()) for (const d of list) if (!d._count.rosterEntries) remove.push(d.id)
+    if (!missing.length && !remove.length) return false
+
+    const numbers = await this.prisma.dailyDuty.groupBy({ by: ['role'], where: { dailyOperationId: id }, _max: { dutyNumber: true } })
+    const next = new Map(numbers.map(n => [n.role, n._max.dutyNumber ?? 0]))
+    await this.prisma.$transaction(async tx => {
+      if (remove.length) await tx.dailyDuty.deleteMany({ where: { id: { in: remove } } })
+      for (const c of missing) {
+        const dutyNumber = (next.get(c.role) ?? 0) + 1
+        next.set(c.role, dutyNumber)
+        await tx.dailyDuty.create({
+          data: {
+            dailyOperationId: id, role: c.role, dutyNumber, kind: 'STANDBY', branchId: c.branchId,
+            activities: { create: { type: 'STANDBY', startMinutes: c.startMinutes, endMinutes: c.endMinutes, originLocalityId: c.localityId, destinationLocalityId: c.localityId } },
+          },
+        })
+      }
+    })
+    return true
   }
 
   override update(): Promise<DailyOperation> {

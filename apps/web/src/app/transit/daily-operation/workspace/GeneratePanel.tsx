@@ -190,6 +190,11 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
               <Kpi label="Com pendência" value={summary.warnings} warn={summary.warnings > 0} />
             </div>
           )}
+          {summary && summary.standby?.duties > 0 && (
+            <p className={cn('text-[11px]', summary.standby.assigned < summary.standby.duties ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+              Plantões preenchidos com quem sobrou: {summary.standby.assigned}/{summary.standby.duties}
+            </p>
+          )}
           {summary && summary.unassigned > 0 && (
             <p className={cn('text-[11px]', summary.assigned >= summary.bound ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
               {summary.assigned >= summary.bound

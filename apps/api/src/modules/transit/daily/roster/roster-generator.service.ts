@@ -103,9 +103,17 @@ export class RosterGeneratorService {
     if (!scopes.length) throw new BadRequestException('A empresa não opera nenhum escopo')
     const existing = await this.prisma.dailyOperation.findMany({
       where:  { scopeId: { in: scopes.map(s => s.scopeId) }, date: { gte: toDbDate(params.from), lte: toDbDate(params.to) } },
-      select: { scopeId: true, date: true },
+      select: { id: true, scopeId: true, date: true },
     })
     const have = new Set(existing.map(e => `${e.scopeId}:${e.date.toISOString().slice(0, 10)}`))
+    // the plantões of the days that exist (reserveTargets may have changed since they were created)
+    for (const e of existing) {
+      if (this.jobs.get(job.id) !== job) return
+      if (await this.daily.syncReserves(e.id)) {
+        this.stage(job, `Plantões de ${fmt(e.date.toISOString().slice(0, 10))} atualizados`)
+        await this.daily.recalculate(e.id)
+      }
+    }
     for (let day = params.from; day <= params.to; day = addDays(day, 1)) {
       for (const s of scopes) {
         if (this.jobs.get(job.id) !== job) return

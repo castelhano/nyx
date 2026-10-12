@@ -906,8 +906,12 @@ model DailyChangeLog {
 > - Regra "empresa" (`ruleModes.branch`) não entrou: o gerador só usa condutores da própria empresa.
 > - Veículos: ao aceitar, preenche só carros ainda sem veículo; carro habitual = mais dirigido nos
 >   `habitualVehicleDays` antes do início do horizonte.
-> - Ficou para depois: meta de reserva (`reserveTargets`, passo 4 do algoritmo) e `RESERVE_SHORT` —
->   falta definir em qual escopo/dia nasce o plantão quando a empresa opera mais de um escopo.
+> - Meta de reserva (`reserveTargets`, por tipo de dia, início–fim, garagem e quantidade): o plantão
+>   pertence à empresa — uma empresa opera um único escopo, então ele nasce como `DailyDuty` STANDBY
+>   (atividade STANDBY, sem pegadas, `sourceDutyId` nulo) no dia desse escopo, ao criar o dia e a
+>   cada geração (`syncReserves`: cria o que falta, remove o excedente que ninguém ocupa). O gerador
+>   pesa o plantão vazio menos que a tabela vazia (`UNASSIGNED_STANDBY`), então ele recebe quem sobra;
+>   sem ninguém, a pendência é `RESERVE_SHORT` (alerta).
 
 ### 5.1 Parâmetros (tela → `Job.input`)
 

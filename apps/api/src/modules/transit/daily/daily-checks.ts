@@ -94,7 +94,8 @@ export function crewIssues(
     out.set(duty.id, issues)
     const memberId = holderOf.get(duty.id)
     if (!memberId) {
-      if (duty.role === 'DRIVER' && duty.kind !== 'STANDBY') issues.push({ code: 'DUTY_UNASSIGNED', severity: 'error' })
+      if (duty.kind === 'STANDBY') issues.push({ code: 'RESERVE_SHORT', severity: 'warning' })
+      else if (duty.role === 'DRIVER') issues.push({ code: 'DUTY_UNASSIGNED', severity: 'error' })
       continue
     }
     const m = memberById.get(memberId)

@@ -63,6 +63,8 @@ export interface RosterProposalSummary {
   shortage:   RosterShortage[]
   // includePublished: the crew members whose duty changes on a PUBLISHED day
   publishedChanges: RosterPublishedChange[]
+  // the plantões among the duties (reserveTargets) — filled with who's left over
+  standby:    { duties: number; assigned: number }
 }
 
 export interface RosterPublishedChange {

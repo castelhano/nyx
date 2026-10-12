@@ -14,7 +14,8 @@ import { hungarian } from './hungarian'
 //   improvement   simulated annealing over the horizon — a duty moves to / swaps with another
 //                 crew member on its day, or two crew members swap a range of days
 //
-// The objective: coverage first (UNASSIGNED per duty without a crew member), then WARN rule
+// The objective: coverage first (UNASSIGNED per duty without a crew member, UNASSIGNED_STANDBY per
+// plantão — filled with who's left over), then WARN rule
 // violations (WARN each), then the score — the average of each crew member's weighted criteria
 // (roster.range + the crew interShiftRest ideal) on the 0–9999 scale of the other solvers.
 // Redoing PUBLISHED days (includePublished), each day whose duty differs from the published one
@@ -22,7 +23,11 @@ import { hungarian } from './hungarian'
 // BLOCK rules and the always-blocking ones are hard: never assigned.
 
 export const UNASSIGNED = 100_000
+// a plantão (STANDBY) without anyone — it takes whoever is left once the duties are covered
+export const UNASSIGNED_STANDBY = 10_000
 export const WARN       = 1_000
+
+export const missingCost = (d: RgDuty) => (d.standby ? UNASSIGNED_STANDBY : UNASSIGNED)
 
 export interface RgDuty {
   id:     string
@@ -39,6 +44,8 @@ export interface RgDuty {
   vehicleTypes: string[]
   // every line operated by the empresa (restrictToBranchLines)
   operated: boolean
+  // a plantão (kind STANDBY)
+  standby: boolean
 }
 
 export interface RgFixed { start: number; end: number; paid: number; signature: string }
@@ -191,7 +198,9 @@ export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holde
       // someone could take it: either all of them hold another duty that day, or the rest
       // between days / the change limit kept the free ones off
       const idle = [...model.candidates[di]].filter(mi => assign[mi][d.day] < 0).length
-      reason = idle ? 'interjornada ou limite de trocas impede os livres' : `faltam operadores — os ${model.candidates[di].length} que poderiam cobrir já estão em outras tabelas`
+      reason = idle ? 'interjornada ou limite de trocas impede os livres'
+        : d.standby ? 'plantão — ninguém sobrou depois das tabelas'
+        : `faltam operadores — os ${model.candidates[di].length} que poderiam cobrir já estão em outras tabelas`
     } else {
       const free = input.members.filter(m => m.status[d.day] === 'free')
       const stages = free.map(m => blockedBy(input, m, d))
@@ -340,9 +349,9 @@ export class RosterModel {
     return { score: den ? num / den : 1, warns, hard, worked, changes, prefShare: share, workedDays }
   }
 
-  // the objective (higher is better)
-  objective(scores: number, warns: number, unassigned: number): number {
-    return SCORE_SCALE * scores / Math.max(1, this.M) - WARN * warns - UNASSIGNED * unassigned
+  // the objective (higher is better) — missing: Σ missingCost of the duties without anyone
+  objective(scores: number, warns: number, missing: number): number {
+    return SCORE_SCALE * scores / Math.max(1, this.M) - WARN * warns - missing
   }
 }
 
@@ -373,7 +382,7 @@ export function construct(model: RosterModel): RgResult {
       const cost = duties.map((di, row) => {
         const d = input.duties[di]
         const line = new Array<number>(cols).fill(UNASSIGNED * 10)
-        line[free.length + row] = UNASSIGNED
+        line[free.length + row] = missingCost(d)
         free.forEach((mi, c) => {
           const m = input.members[mi]
           const rule = model.ruleOf(mi, di)
@@ -472,6 +481,8 @@ export class RosterImprover {
   private scoreSum = 0
   private warnSum = 0
   private unassigned = 0
+  // Σ missingCost of the duties without anyone
+  private missing = 0
   private current: number
   private best: Int32Array[]
   private readonly random: () => number
@@ -486,6 +497,7 @@ export class RosterImprover {
     this.evals = this.assign.map((row, mi) => model.evaluate(mi, row))
     for (const e of this.evals) { this.scoreSum += e.score; this.warnSum += e.warns }
     this.unassigned = this.holder.filter(h => h < 0).length
+    this.holder.forEach((h, di) => { if (h < 0) this.missing += missingCost(model.input.duties[di]) })
     this.current = this.objective()
     this.bestObjective = this.current
     this.bestUnassigned = this.unassigned
@@ -495,7 +507,7 @@ export class RosterImprover {
   }
 
   private objective(): number {
-    return this.model.objective(this.scoreSum, this.warnSum, this.unassigned)
+    return this.model.objective(this.scoreSum, this.warnSum, this.missing)
   }
 
   bestAssign(): Int32Array[] { return this.best }
@@ -520,8 +532,9 @@ export class RosterImprover {
     return this.t0 * Math.pow(0.001, f)
   }
 
-  // accept/reject a change touching the members in `touched` (their rows already changed)
-  private settle(touched: number[], unassignedDelta: number, undo: () => void): void {
+  // accept/reject a change touching the members in `touched` (their rows already changed);
+  // unassignedDelta / missingDelta: duties without anyone, and their missingCost
+  private settle(touched: number[], unassignedDelta: number, missingDelta: number, undo: () => void): void {
     const next = touched.map(mi => this.model.evaluate(mi, this.assign[mi]))
     if (next.some(e => e.hard)) { undo(); return }
     let scoreSum = this.scoreSum, warnSum = this.warnSum
@@ -529,13 +542,14 @@ export class RosterImprover {
       scoreSum += next[i].score - this.evals[mi].score
       warnSum  += next[i].warns - this.evals[mi].warns
     })
-    const value = this.model.objective(scoreSum, warnSum, this.unassigned + unassignedDelta)
+    const value = this.model.objective(scoreSum, warnSum, this.missing + missingDelta)
     const delta = value - this.current
     if (delta < 0 && this.random() >= Math.exp(delta / this.temperature())) { undo(); return }
     touched.forEach((mi, i) => { this.evals[mi] = next[i] })
     this.scoreSum = scoreSum
     this.warnSum = warnSum
     this.unassigned += unassignedDelta
+    this.missing += missingDelta
     this.current = value
     if (value > this.bestObjective + 1e-9) {
       this.bestObjective = value
@@ -564,7 +578,8 @@ export class RosterImprover {
     if (a >= 0) { this.assign[a][t] = e; if (e >= 0) this.holder[e] = a }
     else if (e >= 0) this.holder[e] = -1
     const unassignedDelta = (a < 0 ? -1 : 0) + (a < 0 && e >= 0 ? 1 : 0)
-    this.settle(a >= 0 ? [a, b] : [b], unassignedDelta, () => {
+    const missingDelta = a < 0 ? -missingCost(input.duties[di]) + (e >= 0 ? missingCost(input.duties[e]) : 0) : 0
+    this.settle(a >= 0 ? [a, b] : [b], unassignedDelta, missingDelta, () => {
       this.assign[b][t] = e
       if (e >= 0) this.holder[e] = b
       this.holder[di] = a
@@ -600,7 +615,7 @@ export class RosterImprover {
       }
     }
     swap()
-    this.settle([a, b], 0, swap)
+    this.settle([a, b], 0, 0, swap)
   }
 }
 
@@ -632,6 +647,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
   const freeByDay = new Array<number>(T).fill(0)
   for (const d of input.duties) dutiesByDay[d.day]++
   const publishedChanges: RosterPublishedChange[] = []
+  const standbyIds = new Set(input.duties.filter(d => d.standby).map(d => d.id))
 
   for (let mi = 0; mi < M; mi++) {
     const m = input.members[mi]
@@ -669,6 +685,7 @@ export function buildProposal(model: RosterModel, assign: Int32Array[], index: n
       bound,
       shortage: diagnoseShortage(model, assign, holderOf(assign, input.duties.length)),
       publishedChanges,
+      standby: { duties: standbyIds.size, assigned: assignments.filter(([id]) => standbyIds.has(id)).length },
     },
   }
 }

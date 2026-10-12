@@ -29,11 +29,16 @@ import { ContextPanel, RequestRow } from './workspace/ContextPanel'
 const ORIGIN = 'apps/web/src/app/transit/daily-operation/page'
 const LAST_KEY = 'nyx.roster.context'
 
-// a duty's pendências: code → cars hit (1 for the duty's own); DUTY_UNASSIGNED when it has no holder
+// the Tudo / Tabelas / Plantões filter
+const isKind = (d: RosterBoardDuty, kind: 'tudo' | 'tabelas' | 'plantoes') => kind === 'tudo' || (kind === 'plantoes') === (d.kind === 'STANDBY')
+
+// a duty's pendências: code → cars hit (1 for the duty's own); DUTY_UNASSIGNED (RESERVE_SHORT for
+// a plantão) when it has no holder
 function dutyIssues(d: RosterBoardDuty): Map<string, number> {
   const count = new Map<string, number>()
-  if (!d.crewMemberId) count.set('DUTY_UNASSIGNED', 1)
-  for (const i of d.issues) if (i.code !== 'DUTY_UNASSIGNED') count.set(i.code, 1)
+  const unassigned = d.kind === 'STANDBY' ? 'RESERVE_SHORT' : 'DUTY_UNASSIGNED'
+  if (!d.crewMemberId) count.set(unassigned, 1)
+  for (const i of d.issues) if (i.code !== unassigned) count.set(i.code, 1)
   for (const b of d.blocks) for (const code of new Set(b.issues.map(i => i.code))) count.set(code, (count.get(code) ?? 0) + 1)
   return count
 }
@@ -58,8 +63,11 @@ export default function RosterPage() {
   const date     = searchParams.get('data') ?? localToday()
   const mode     = (searchParams.get('modo') ?? 'semana') as Mode
   const view     = (searchParams.get('visao') ?? 'operadores') as View
+  // tabelas / plantões only (both views)
+  const kind     = (searchParams.get('tipo') ?? 'tudo') as 'tudo' | 'tabelas' | 'plantoes'
   const setCtx = (patch: Record<string, string>) => {
-    const next = { empresa: branchId, funcao: role, data: date, modo: mode, visao: view, ...patch }
+    const { tipo, ...base } = { empresa: branchId, funcao: role, data: date, modo: mode, visao: view, tipo: kind as string, ...patch }
+    const next: Record<string, string> = tipo === 'tudo' ? base : { ...base, tipo }
     try { localStorage.setItem(LAST_KEY, JSON.stringify({ empresa: next.empresa, funcao: next.funcao, modo: next.modo, visao: next.visao })) } catch { /* private mode */ }
     router.replace(`/transit/daily-operation?${new URLSearchParams(next)}`)
   }
@@ -109,12 +117,19 @@ export default function RosterPage() {
   const [drawer, setDrawer] = useState<'issues' | 'requests' | null>(null)
 
   const q = search.trim().toLowerCase()
-  const members = useMemo(() => (board?.members ?? []).filter(m => !q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)), [board, q])
-  const duties = useMemo(() => (board?.duties ?? []).filter(d => {
+  // (memoized by the React Compiler)
+  // the crew members holding a duty of the kind in the period
+  const holders = new Set((board?.duties ?? []).filter(d => isKind(d, kind)).flatMap(d => d.crewMemberId ?? []))
+  const members = (board?.members ?? []).filter(m =>
+    (kind === 'tudo' || holders.has(m.id)) && (!q || m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)))
+  const duties = (board?.duties ?? []).filter(d => {
+    if (!isKind(d, kind)) return false
     if (!q) return true
     const holder = d.crewMemberId ? idx?.memberById.get(d.crewMemberId) : null
     return `${dutyName(d, !!board?.multiScope)} ${d.lines.join(' ')} ${holder?.code ?? ''} ${holder?.name ?? ''}`.toLowerCase().includes(q)
-  }), [board, idx, q])
+  })
+  // the period's plantões: held / all
+  const standby = (board?.duties ?? []).filter(d => d.kind === 'STANDBY')
 
   // a duty's pendências in one line — the same one on several cars counted once ("Sem veículo (2 carros)")
   const issueText = (d: RosterBoardDuty) => [...dutyIssues(d)]
@@ -347,6 +362,17 @@ export default function RosterPage() {
             </button>
           ))}
         </div>
+        {(standby.length > 0 || kind !== 'tudo') && (
+          <div className="flex rounded-sm border border-border overflow-hidden">
+            {(['tudo', 'tabelas', 'plantoes'] as const).map(k => (
+              <button key={k} type="button" onClick={() => setCtx({ tipo: k })} className={cn(ctl, 'rounded-none', kind === k ? 'bg-accent text-accent-foreground' : 'hover:bg-muted')}>
+                {k === 'tudo' ? 'Tudo' : k === 'tabelas' ? 'Tabelas' : (
+                  <>Plantões <span className={cn('tabular-nums', standby.some(d => !d.crewMemberId) ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>{standby.filter(d => d.crewMemberId).length}/{standby.length}</span></>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="relative">
           <Icons.Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={view === 'escalas' ? 'Tabela, linha ou operador…' : 'Matrícula ou nome…'}

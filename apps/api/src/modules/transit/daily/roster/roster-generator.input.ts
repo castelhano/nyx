@@ -132,6 +132,7 @@ export async function loadRosterInput(
       shift: d.shiftId ? shiftCodes.get(d.shiftId) ?? null : null,
       lineMinutes: f?.lines ?? [],
       vehicleTypes: f?.vehicleTypes ?? [],
+      standby: d.kind === 'STANDBY',
       operated: !params.restrictToBranchLines || (f?.lines ?? []).every(l => {
         const ops = lineOperators.get(l.lineId)
         return !ops?.length || ops.includes(branchId)

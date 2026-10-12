@@ -45,8 +45,28 @@ export function shiftPeriod(mode: Mode, date: string, n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-export const dutyName = (d: Pick<RosterBoardDuty, 'number' | 'scope'>, multiScope: boolean) =>
-  `${multiScope ? `${d.scope.slice(0, 3)} ` : ''}T${String(d.number).padStart(2, '0')}`
+// T07 — a plantão (STANDBY) is P07
+export const dutyName = (d: Pick<RosterBoardDuty, 'number' | 'scope' | 'kind'>, multiScope: boolean) =>
+  `${multiScope ? `${d.scope.slice(0, 3)} ` : ''}${d.kind === 'STANDBY' ? 'P' : 'T'}${String(d.number).padStart(2, '0')}`
+
+// Scrolls `scroller` (only it — never the page) just enough to show `el` clear of its sticky
+// header ([data-sticky-top]) and sticky first column ([data-sticky-left]); scrollIntoView would
+// leave it under them.
+export function reveal(scroller: HTMLElement | null, el: Element | null | undefined): void {
+  if (!scroller || !el) return
+  const box  = scroller.getBoundingClientRect()
+  const r    = el.getBoundingClientRect()
+  const top  = box.top + scroller.clientTop + (scroller.querySelector<HTMLElement>('[data-sticky-top]')?.offsetHeight ?? 0)
+  const left = box.left + scroller.clientLeft + (scroller.querySelector<HTMLElement>('[data-sticky-left]')?.offsetWidth ?? 0)
+  const bottom = box.top + scroller.clientTop + scroller.clientHeight
+  const right  = box.left + scroller.clientLeft + scroller.clientWidth
+  if (r.top < top) scroller.scrollTop -= top - r.top
+  else if (r.bottom > bottom) scroller.scrollTop += r.bottom - bottom
+  // a row wider than the view (the timeline's) keeps the horizontal scroll as it is
+  if (r.width > right - left) return
+  if (r.left < left) scroller.scrollLeft -= left - r.left
+  else if (r.right > right) scroller.scrollLeft += r.right - right
+}
 
 export async function call(path: string, method: 'POST' | 'PUT' | 'PATCH', body: unknown): Promise<void> {
   const res = await apiFetch(path, { method, body: JSON.stringify(body) })
@@ -74,6 +94,8 @@ export function cellSummary(cell: RosterBoardCell | undefined, idx: BoardIndex, 
   const absence = cell?.requests.find(r => r.kind === 'ABSENCE' && r.status === 'APPROVED')
   return {
     duties,
+    // holds a plantão (STANDBY) — styled apart from the duties
+    standby: duties.some(d => d.kind === 'STANDBY'),
     // a duty held elsewhere (another empresa's / role's duty on the date)
     elsewhere: (cell?.entries ?? []).some(e => e.dailyDutyId && !idx.dutyById.has(e.dailyDutyId)),
     off, absence,

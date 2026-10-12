@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { useConfirm } from '@/lib/confirm-context'
-import { WEEKDAY, cellSummary, clock, dutyName, fmtDay, hm, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty, type RosterBoardMember } from './board'
+import { WEEKDAY, cellSummary, clock, dutyName, fmtDay, hm, reveal, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty, type RosterBoardMember } from './board'
 
 // "Operadores" — the roster board: crew members × days. Keyboard first: arrows (shift extends),
 // Enter opens the day's duties, F launches a day off, Del clears, L locks, Ctrl+C / Ctrl+V copy a
-// block (the same duty numbers on the target days); drag a cell onto another crew member's to
+// block (the same duty numbers on the target days) — pasted on the same days onto other crew
+// members, an empty day moves and a filled one swaps; drag a cell onto another crew member's to
 // swap the day. Clearing, a paste over filled days and a swap ask for confirmation (Enter).
 // With a generation's proposal, the cells it changes show what it proposes.
 
@@ -42,7 +43,8 @@ interface Props {
   overlay?:  Overlay | null
 }
 
-type Copied = { dr: number; dc: number; value: { type: 'duty'; scope: string; number: number } | { type: 'off' } }[]
+// src: the cell it was copied from (a paste on the same day swaps with it)
+type Copied = { dr: number; dc: number; src: GridPos; value: { type: 'duty'; scope: string; number: number } | { type: 'off' } }[]
 
 export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canEdit, busy, onCursor, actions, overlay }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -85,7 +87,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
   // keep the cursor's cell in view
   useEffect(() => {
     if (!cursor) return
-    wrapRef.current?.querySelector(`[data-cell="${cursor.memberId}|${cursor.date}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    reveal(wrapRef.current, wrapRef.current?.querySelector(`[data-cell="${cursor.memberId}|${cursor.date}"]`))
   }, [cursor])
 
   // the destructive edits: one more Enter, then the focus back on the grid
@@ -113,6 +115,19 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
       if (!(await confirmed('Colar', lines, 'Colar'))) return
     }
     actions.paste(assign, off)
+  }
+  // Ctrl+V on the same days: filled days swap with their source, empty ones take its duty
+  async function moveOrSwap(swaps: { date: string; a: string; b: string }[], lockedOut: number, moves: { duty: RosterBoardDuty; memberId: string }[]) {
+    if (!swaps.length && !moves.length) return actions.notice(lockedOut ? 'Os dias têm tabela travada — destrave antes de trocar' : 'Nada a trocar')
+    const lines = [
+      ...(lockedOut ? [`${lockedOut} dia(s) com tabela travada ficam de fora.`] : []),
+      ...swaps.map(x => `${fmtDay(x.date)}: ${who(x.a)} ⇄ ${who(x.b)}`),
+      ...moves.map(m => `${fmtDay(m.duty.date)}: ${dutyName(m.duty, board.multiScope)} → ${who(m.memberId)}`),
+    ]
+    const title = swaps.length && moves.length ? `Trocar ${swaps.length} e mover ${moves.length} dia(s)` : swaps.length ? `Trocar ${swaps.length} dia(s)` : `Mover ${moves.length} dia(s)`
+    if (!(await confirmed(title, lines.slice(0, 8).join('\n') + (lines.length > 8 ? `\n… e mais ${lines.length - 8}` : ''), swaps.length ? 'Trocar' : 'Mover'))) return
+    for (const x of swaps) actions.swap(x.date, x.a, x.b)
+    if (moves.length) actions.paste(moves, [])
   }
   async function swap(date: string, a: string, b: string) {
     if (await confirmed('Trocar o dia', `${fmtDay(date)}: ${who(a)} ⇄ ${who(b)}`, 'Trocar')) actions.swap(date, a, b)
@@ -148,16 +163,30 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
         const s = cellSummary(idx.cellOf.get(`${c.memberId}|${c.date}`), idx, board.multiScope)
         const d = s.duties[0]
         const value = d ? { type: 'duty' as const, scope: d.scope, number: d.number } : s.off === 'DAY_OFF' ? { type: 'off' as const } : null
-        return value ? [{ dr: order.indexOf(c.memberId) - r0, dc: dates.indexOf(c.date) - c0, value }] : []
+        return value ? [{ dr: order.indexOf(c.memberId) - r0, dc: dates.indexOf(c.date) - c0, src: c, value }] : []
       })
       return actions.notice(`${copied.current.length} célula(s) copiada(s)`)
     }
     if ((e.ctrlKey || e.metaKey) && key === 'v' && canEdit && copied.current.length) {
       e.preventDefault()
       const r0 = order.indexOf(cur.memberId), c0 = dates.indexOf(cur.date)
+      const targets = copied.current.map(c => ({ c, memberId: order[r0 + c.dr], date: dates[c0 + c.dc] }))
+      // the same days onto other crew members: an empty day moves, a filled one swaps
+      if (targets.every(t => t.date === t.c.src.date) && targets.every(t => t.memberId && t.memberId !== t.c.src.memberId)) {
+        const sources = new Set(copied.current.map(c => c.src.memberId))
+        if (targets.some(t => sources.has(t.memberId))) return actions.notice('A troca não pode cair sobre o próprio bloco copiado')
+        const filled = targets.filter(t => { const s = summaryAt(t); return s.duties.length > 0 || !!s.off })
+        const moves = targets.filter(t => !filled.includes(t))
+        // a locked duty on either side keeps the day out (the swap would be refused)
+        const swappable = filled.filter(t => !summaryAt(t).locked && !summaryAt(t.c.src).locked)
+        return void moveOrSwap(swappable.map(t => ({ date: t.date, a: t.c.src.memberId, b: t.memberId })), filled.length - swappable.length, moves.flatMap(t => {
+          const v = t.c.value
+          const duty = v.type === 'duty' ? board.duties.find(d => d.date === t.date && d.scope === v.scope && d.number === v.number) : null
+          return duty && !duty.locked ? [{ duty, memberId: t.memberId }] : []
+        }))
+      }
       const assign: { duty: RosterBoardDuty; memberId: string }[] = [], off: GridPos[] = []
-      for (const c of copied.current) {
-        const memberId = order[r0 + c.dr], date = dates[c0 + c.dc]
+      for (const { c, memberId, date } of targets) {
         if (!memberId || !date) continue
         if (c.value.type === 'off') { off.push({ memberId, date }); continue }
         const { scope, number } = c.value
@@ -181,9 +210,9 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
       className={cn('relative overflow-auto rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-ring max-h-[calc(100vh-15rem)]', busy && 'opacity-80')}
     >
       <table className="text-xs border-separate border-spacing-0">
-        <thead className="sticky top-0 z-20 bg-background">
+        <thead data-sticky-top className="sticky top-0 z-20 bg-background">
           <tr>
-            <th className="sticky left-0 z-30 bg-background border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground min-w-56">Operador</th>
+            <th data-sticky-left className="sticky left-0 z-30 bg-background border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground min-w-56">Operador</th>
             {dates.map(d => {
               const holiday = board.cells.some(c => c.date === d && c.holiday)
               return (
@@ -227,6 +256,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                         onDoubleClick={() => openPicker(pos)}
                         className={cn(
                           'relative border-b border-l border-border/60 px-1 py-1 text-center cursor-pointer select-none',
+                          s.standby && !s.issues && 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200',
                           s.issues && 'bg-red-500/10 text-red-700 dark:text-red-300',
                           s.off && 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
                           s.absence && 'bg-violet-500/25',

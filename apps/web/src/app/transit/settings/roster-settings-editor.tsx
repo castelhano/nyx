@@ -1,7 +1,12 @@
 'use client'
 
-import { LINE_ACCESS_MODE_LABEL, ROSTER_RULE_LABEL, ROSTER_RULE_MODE_LABEL, type RangeCriterion, type RosterSettings } from '@nyx/schemas'
+import { useQuery } from '@tanstack/react-query'
+import { LINE_ACCESS_MODE_LABEL, ROSTER_RULE_LABEL, ROSTER_RULE_MODE_LABEL, type RangeCriterion, type RosterReserveTarget, type RosterSettings } from '@nyx/schemas'
+import { Button } from '@/components/ui/button'
+import { ClockInput } from '@/components/ui/clock-input'
 import { Select } from '@/components/ui/select'
+import { apiFetch } from '@/lib/auth'
+import { Icons } from '@/lib/icons'
 import { SectionHeader, DiffDot, NumberInput, RangeTable, DURATION_UNIT } from './criteria-tables'
 
 const ROSTER_RANGE_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
@@ -91,6 +96,9 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
       </div>
 
+      <SectionHeader label="Plantões" sub="Reserva da empresa por tipo de dia — os plantões são criados com o dia e o gerador os preenche com quem sobra depois das tabelas." />
+      <ReserveTargets value={value.reserveTargets} diff={diff('reserveTargets')} onChange={reserveTargets => onChange({ ...value, reserveTargets })} />
+
       <SectionHeader label="Regras do Gerador" sub="Bloqueia: nunca escala. Alerta: só como último recurso, e o dia mostra a pendência." />
       <div className="rounded-lg border border-border divide-y divide-border">
         {(Object.keys(ROSTER_RULE_LABEL) as (keyof RosterSettings['ruleModes'])[]).map(k => (
@@ -119,6 +127,61 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         meta={ROSTER_RANGE_META}
         onChange={updateRange}
       />
+    </div>
+  )
+}
+
+async function fetchList<T>(path: string): Promise<T[]> {
+  const res = await apiFetch(path)
+  if (!res.ok) return []
+  const json = await res.json()
+  return json.data ?? json
+}
+
+// one row per target: day type, start–end, garage, how many
+function ReserveTargets({ value, diff, onChange }: { value: RosterReserveTarget[]; diff: boolean; onChange: (next: RosterReserveTarget[]) => void }) {
+  const { data: dayTypes = [] } = useQuery({
+    queryKey: ['transit', 'day-type', 'list'],
+    queryFn:  () => fetchList<{ id: string; code: string; name: string }>('/transit/day-type'),
+    staleTime: 60_000,
+  })
+  const { data: depots = [] } = useQuery({
+    queryKey: ['transit', 'transit-locality', 'depots'],
+    queryFn:  () => fetchList<{ id: string; name: string }>('/transit/transit-locality?f_isDepot=true&pageSize=100'),
+    staleTime: 60_000,
+  })
+  const set = (i: number, patch: Partial<RosterReserveTarget>) => onChange(value.map((t, k) => (k === i ? { ...t, ...patch } : t)))
+  const add = () => dayTypes[0] && onChange([...value, { role: 'DRIVER', dayTypeId: dayTypes[0].id, startMinutes: 300, endMinutes: 780, localityId: depots[0]?.id ?? null, count: 1 }])
+  const clock = 'h-8 w-16 border border-input rounded-sm text-sm bg-input-bg px-2 text-center'
+  return (
+    <div className="rounded-lg border border-border">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <DiffDot show={diff} />
+        <p className="text-sm text-muted-foreground">{value.length ? `${value.reduce((n, t) => n + t.count, 0)} plantão(ões) em ${value.length} meta(s)` : 'Nenhuma meta de plantão'}</p>
+        <Button type="button" size="sm" variant="outline" className="ml-auto" disabled={!dayTypes.length} onClick={add}>
+          <Icons.Plus className="w-3.5 h-3.5" />Adicionar
+        </Button>
+      </div>
+      {value.map((t, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2 px-4 py-2 border-t border-border">
+          <Select value={t.dayTypeId} onChange={e => set(i, { dayTypeId: e.target.value })} size="sm" className="w-40">
+            {dayTypes.map(d => <option key={d.id} value={d.id}>{d.code} · {d.name}</option>)}
+          </Select>
+          <ClockInput value={t.startMinutes} onChange={v => set(i, { startMinutes: v })} max={1439} className={clock} />
+          <span className="text-muted-foreground">–</span>
+          <ClockInput value={t.endMinutes} onChange={v => set(i, { endMinutes: v })} max={2879} className={clock} />
+          <Select value={t.localityId ?? ''} onChange={e => set(i, { localityId: e.target.value || null })} size="sm" className="w-48">
+            <option value="">— sem local</option>
+            {depots.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </Select>
+          <NumberInput value={t.count} onChange={v => set(i, { count: Math.max(1, Math.round(v)) })} min={1} max={99} />
+          <span className="text-sm text-muted-foreground">plantão(ões)</span>
+          {t.endMinutes <= t.startMinutes && <span className="text-xs text-red-600 dark:text-red-400">fim antes do início</span>}
+          <button type="button" title="Remover" onClick={() => onChange(value.filter((_, k) => k !== i))} className="ml-auto text-muted-foreground hover:text-foreground cursor-pointer">
+            <Icons.Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
     </div>
   )
 }
