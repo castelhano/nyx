@@ -146,6 +146,12 @@ export default function VehiclePlanPage() {
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
   const [blockFilterOpen,   setBlockFilterOpen]   = useState(false)
+  // the empresas of the plan's blocks — BlockFilterBar's empresa list
+  const filterBranches = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const b of mergedPlottedData?.blocks ?? []) if (b.branch) byId.set(b.branch.id, b.branch.name)
+    return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  }, [mergedPlottedData])
   const [gotoBlockOpen,     setGotoBlockOpen]     = useState(false)
   const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
@@ -929,6 +935,7 @@ export default function VehiclePlanPage() {
                     filter={blockFilter}
                     onChange={setBlockFilter}
                     matchCount={filterMatchCount}
+                    branches={filterBranches}
                     onClose={() => { setBlockFilterOpen(false); setBlockFilter(null); clearPinnedBlocks() }}
                   />
                 )}

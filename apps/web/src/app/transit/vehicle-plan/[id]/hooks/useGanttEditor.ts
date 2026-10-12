@@ -107,10 +107,12 @@ export function findAnchoredDeadrunIds(block: GanttBlock, tripIds: string[]): st
 // "does any trip match" — a block runs trips all day, so that reading matched
 // almost every block and never actually narrowed anything down.
 // minutes null = no time criterion; issuesOnly = only blocks with VehicleBlock.issues
-export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean }
+// branchId: only that empresa's blocks (null: any)
+export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean; branchId: string | null }
 
 function blockMatchesFilter(block: GanttBlock, filter: BlockFilter): boolean {
   if (filter.issuesOnly && !block.hasIssues) return false
+  if (filter.branchId && block.branchId !== filter.branchId) return false
   if (filter.minutes == null) return true
   const trips = block.blockTrips
   if (trips.length === 0) return false

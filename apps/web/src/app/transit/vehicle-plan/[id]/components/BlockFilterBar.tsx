@@ -9,24 +9,27 @@ interface Props {
   filter:     BlockFilter | null
   onChange:   (next: BlockFilter | null) => void
   matchCount: number
+  // the empresas the plan's blocks belong to
+  branches:   { id: string; name: string }[]
   // "X" — closes the bar entirely; a deliberate full reset (criteria + pins),
   // handled by the caller alongside unmounting this component.
   onClose:    () => void
 }
 
-export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props) {
+export function BlockFilterBar({ filter, onChange, matchCount, branches, onClose }: Props) {
   const [field,     setField]     = useState<BlockFilter['field']>(filter?.field ?? 'start')
   const [relation,  setRelation]  = useState<BlockFilter['relation']>(filter?.relation ?? 'after')
   const [timeLabel, setTimeLabel] = useState(filter?.minutes != null ? minutesToLabel(filter.minutes) : '')
   const [issuesOnly, setIssuesOnly] = useState(filter?.issuesOnly ?? false)
+  const [branchId,  setBranchId]  = useState(filter?.branchId ?? '')
 
   // The time criterion only kicks in once all three fields have a value — field/relation
-  // always do (defaults above), so the time input is the actual gate. "Com pendências"
-  // works alone or combined with it.
-  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly) {
-    setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel); setIssuesOnly(nextIssuesOnly)
-    onChange(nextTimeLabel || nextIssuesOnly
-      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly }
+  // always do (defaults above), so the time input is the actual gate. "Com pendências" and
+  // the empresa work alone or combined with it.
+  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly, nextBranchId = branchId) {
+    setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel); setIssuesOnly(nextIssuesOnly); setBranchId(nextBranchId)
+    onChange(nextTimeLabel || nextIssuesOnly || nextBranchId
+      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly, branchId: nextBranchId || null }
       : null)
   }
 
@@ -44,7 +47,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
   // keep. The local field/relation/time selections need an explicit reset
   // back to defaults since the component doesn't unmount here.
   function handleClear() {
-    setField('start'); setRelation('after'); setTimeLabel(''); setIssuesOnly(false)
+    setField('start'); setRelation('after'); setTimeLabel(''); setIssuesOnly(false); setBranchId('')
     onChange(null)
   }
 
@@ -57,6 +60,17 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
       // selection/editing there.
       className="absolute top-1 inset-x-0 mx-auto w-fit z-20 flex items-center gap-2 px-2.5 py-1 bg-background border border-border rounded-lg shadow-lg text-xs"
     >
+      {branches.length > 1 && (
+        <select
+          value={branchId}
+          onChange={e => { commit(field, relation, timeLabel, issuesOnly, e.target.value); release(e) }}
+          className="h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">Todas as empresas</option>
+          {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      )}
+
       <select
         value={field}
         onChange={e => { commit(e.target.value as BlockFilter['field'], relation, timeLabel); release(e) }}
@@ -100,7 +114,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, onClose }: Props)
       <div className="w-px h-4 bg-border shrink-0" />
 
       <span className="font-medium text-foreground whitespace-nowrap select-none">
-        {filter ? `${matchCount} ${matchCount === 1 ? 'bloco' : 'blocos'}` : 'Selecione um horário'}
+        {filter ? `${matchCount} ${matchCount === 1 ? 'bloco' : 'blocos'}` : 'Selecione um filtro'}
       </span>
 
       <button
