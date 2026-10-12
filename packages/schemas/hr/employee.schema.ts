@@ -36,20 +36,21 @@ export const employeeSchema = withMeta(
       listVisibility: 'visible',
       className: 'md:w-1/3',
       filter: true,
-      keybind: 'm',
+      keybind: 'c',
     }),
 
     fullName: z.string().min(2).meta({
       label: 'Nome Completo',
       listVisibility: 'visible',
       filter: true,
+      keybind: 'g',
     }),
 
     preferredName: z.string().optional().meta({
       label: 'Nome Preferido',
       listVisibility: 'hidden',
       className: 'md:w-1/3',
-      keybind: 'p',
+      keybind: 'm',
     }),
 
     taxId: z.string().meta({

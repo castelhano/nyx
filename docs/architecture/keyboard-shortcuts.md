@@ -168,7 +168,7 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 |--------|------|
 | `M` | Guest profile switcher in some Chrome versions |
 
-**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `O` `S` `U` `V` `X` `Y`
+**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `M` `O` `S` `U` `V` `X` `Y`
 
 ---
 ### Standard combinations
