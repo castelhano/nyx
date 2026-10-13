@@ -154,11 +154,12 @@ export function Sidebar() {
                         </button>
                       </div>
 
-                      {/* Collapsible — CSS transition, sem Radix */}
+                      {/* Collapsible — animates grid rows 0fr→1fr so it fits any content height */}
                       <div className={cn(
-                        'overflow-hidden transition-all duration-200',
-                        isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0',
+                        'grid transition-all duration-200',
+                        isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
                       )}>
+                        <div className="min-h-0 overflow-hidden">
                         <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3">
                           {mod.resources.filter((item) => !item.privatePermissions).map((item) => {
                             const ItemIcon = resolveIcon(item.icon)
@@ -181,6 +182,7 @@ export function Sidebar() {
                               </Link>
                             )
                           })}
+                        </div>
                         </div>
                       </div>
                     </div>
