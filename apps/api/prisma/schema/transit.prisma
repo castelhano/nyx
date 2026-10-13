@@ -1421,9 +1421,9 @@ model DailyChangeLog {
 }
 
 // ── hour bank ─────────────────────────────────────────────────────────────────
-// docs/proposal/brainchild/plan_vacation_hour_bank_v1.md (Fase 2/3). The days of an open month
-// are read live (the imported frequency, else the roster's forecast); closing the month freezes
-// them as DAY entries and keeps each crew member's result in an HourBankLot.
+// The days of an open month are read live (the imported frequency, else the roster's forecast);
+// closing the month freezes them as DAY entries and keeps each crew member's result in an
+// HourBankLot.
 
 enum HourBankEntryKind {
   OPENING // the balance brought in at the cutover month (its date = the lot's month)

@@ -52,7 +52,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
   const confirm = useConfirm()
   const [opts, setOpts] = useState({
     ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false,
-    extraStandby: [] as RosterExtraStandby[], compensate: false,
+    extraStandby: [] as RosterExtraStandby[], compensate: true,
   })
   // the run's own — a run picked up from the server keeps what it was started with
   const runPublished = useRef(false)

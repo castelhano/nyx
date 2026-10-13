@@ -2,8 +2,7 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 
-// Banco de horas — docs/proposal/brainchild/plan_vacation_hour_bank_v1.md (Fase 2/3). Served by
-// the custom transit/hour-bank page; registered only for discovery / CASL, like the DOP.
+// Banco de horas — served by the custom transit/hour-bank page; registered only for discovery / CASL, like the DOP.
 export const hourBankSchema = withMeta(
   z.object({
     id: z.uuid(),
@@ -93,6 +92,9 @@ export interface HourBankStatement {
   member:    HourBankMember
   months:    HourBankMonth[]
   movements: HourBankMovement[]
+  // per month since the start: the net the roster's forecast gives (every day, imported or not) and the net
+  // of the days as read (the frequency where imported) — previsto × realizado
+  compare:   { month: HourBankMonthKey; forecast: number; actual: number }[]
 }
 
 // a manual launch: OPENING (saldo inicial, dated in its lot's month) or ADJUST

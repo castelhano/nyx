@@ -55,8 +55,17 @@ export class HourBankService {
     if (!start) throw new BadRequestException('A empresa não tem banco de horas — defina o mês de início nas configurações da escala')
     const member = (await this.members(branchId, [crewMemberId]))[0]
     if (!member) throw new NotFoundException('Operador não encontrado')
-    const r = (await this.run([member], start, month, new Set(await this.closings(branchId)))).get(crewMemberId)!
-    return { member: publicMember(member), months: r.months, movements: r.movements }
+    const closed = new Set(await this.closings(branchId))
+    const r = (await this.run([member], start, month, closed)).get(crewMemberId)!
+    // previsto × realizado of the months since the start (a closed one: its frozen days)
+    const since = r.months.map(x => x.month).filter(x => x >= start)
+    const forecast = since.length ? (await this.liveDays([member], since[0], since.at(-1)!, true)).get(crewMemberId) ?? [] : []
+    const compare = since.map(x => ({
+      month:    x,
+      forecast: forecast.filter(d => monthOf(d.date) === x).reduce((n, d) => n + d.minutes, 0),
+      actual:   r.movements.filter(d => d.kind === 'DAY' && monthOf(d.date) === x).reduce((n, d) => n + d.minutes, 0),
+    }))
+    return { member: publicMember(member), months: r.months, movements: r.movements, compare }
   }
 
   // the current balance of each crew member of the empresa — the roster screen's column
@@ -249,10 +258,11 @@ export class HourBankService {
     const open = months.filter(m => m >= start && !closed.has(m))
     const live = open.length ? await this.liveDays(members, open[0], open.at(-1)!) : new Map<string, LiveDay[]>()
 
+    const entriesOf = groupBy(entries, e => e.crewMemberId)
     const out = new Map<string, { months: HourBankMonth[]; movements: HourBankMovement[] }>()
     for (const m of members) {
       const movements: HourBankMovement[] = [
-        ...entries.filter(e => e.crewMemberId === m.crewMemberId).map(e => ({
+        ...(entriesOf.get(m.crewMemberId) ?? []).map(e => ({
           id: e.id, date: dayOf(e.date), kind: e.kind, source: e.source as HourBankMovement['source'],
           minutes: e.minutes, payMinutes: e.payMinutes, holidayMinutes: e.holidayMinutes, occurrence: e.occurrence, notes: e.notes,
         })),
@@ -261,8 +271,9 @@ export class HourBankService {
           minutes: x.minutes, payMinutes: x.payMinutes, holidayMinutes: x.holidayMinutes, occurrence: x.occurrence, notes: null,
         })),
       ].sort((a, b) => a.date.localeCompare(b.date) || Number(b.kind === 'OPENING') - Number(a.kind === 'OPENING'))
+      const byMonth = groupBy(movements, x => monthOf(x.date))
       out.set(m.crewMemberId, {
-        months:    runBank(months.map(month => ({ month, closed: closed.has(month), moves: movements.filter(x => monthOf(x.date) === month) }))),
+        months:    runBank(months.map(month => ({ month, closed: closed.has(month), moves: byMonth.get(month) ?? [] }))),
         movements,
       })
     }
@@ -270,33 +281,35 @@ export class HourBankService {
   }
 
   // The live days of [fromMonth, toMonth] per member — the imported frequency where it has the
-  // day (a compensation there is real even on a day the roster had work), else the roster.
-  private async liveDays(members: Member[], fromMonth: string, toMonth: string): Promise<Map<string, LiveDay[]>> {
+  // day (a compensation there is real even on a day the roster had work), else the roster;
+  // `forecastOnly`: the roster on every day
+  private async liveDays(members: Member[], fromMonth: string, toMonth: string, forecastOnly = false): Promise<Map<string, LiveDay[]>> {
     const ids = members.map(m => m.crewMemberId)
     const from = `${fromMonth}-01`, to = lastDayOf(toMonth)
     const range = { gte: toDbDate(from), lte: toDbDate(to) }
     const branchIds = [...new Set(members.map(m => m.branchId))]
     const [sheet, roster, holidays] = await Promise.all([
-      this.prisma.crewTimesheetDay.findMany({ where: { crewMemberId: { in: ids }, date: range }, select: { crewMemberId: true, date: true, occurrence: true, extraMinutes: true, shortMinutes: true } }),
+      forecastOnly ? [] : this.prisma.crewTimesheetDay.findMany({ where: { crewMemberId: { in: ids }, date: range }, select: { crewMemberId: true, date: true, occurrence: true, extraMinutes: true, shortMinutes: true } }),
       this.prisma.rosterEntry.findMany({
         where:  { crewMemberId: { in: ids }, date: range, kind: { in: ['DUTY', 'STANDBY', 'COMP_OFF'] } },
         select: { crewMemberId: true, date: true, kind: true, dailyDuty: { select: { summary: true } } },
       }),
       this.prisma.holiday.findMany({ where: { date: range, OR: [{ branchId: null }, { branchId: { in: branchIds } }] }, select: { date: true, branchId: true } }),
     ])
+    // by `${crewMemberId}|${day}`
+    const sheetOf  = new Map(sheet.map(s => [`${s.crewMemberId}|${dayOf(s.date)}`, s]))
+    const rosterOf = groupBy(roster, e => `${e.crewMemberId}|${dayOf(e.date)}`)
     const out = new Map<string, LiveDay[]>()
     for (const m of members) {
       const days: LiveDay[] = []
-      const mySheet = new Map(sheet.filter(s => s.crewMemberId === m.crewMemberId).map(s => [dayOf(s.date), s]))
-      const myRoster = roster.filter(e => e.crewMemberId === m.crewMemberId)
       for (let d: Day = from; d <= to; d = addDays(d, 1)) {
-        const s = mySheet.get(d)
+        const s = sheetOf.get(`${m.crewMemberId}|${d}`)
         if (s) {
           const x = importedDay(s, m.journey)
           if (x.minutes || x.payMinutes || x.holidayMinutes) days.push({ ...x, date: d, source: 'IMPORT' })
           continue
         }
-        const held = myRoster.filter(e => dayOf(e.date) === d).map(e => ({ kind: e.kind, paid: (e.dailyDuty?.summary as DutySummary | null)?.paidMinutes ?? 0 }))
+        const held = (rosterOf.get(`${m.crewMemberId}|${d}`) ?? []).map(e => ({ kind: e.kind, paid: (e.dailyDuty?.summary as DutySummary | null)?.paidMinutes ?? 0 }))
         if (!held.length) continue
         const holiday = holidays.some(h => dayOf(h.date) === d && (!h.branchId || h.branchId === m.branchId))
         const x = forecastDay(held, m.journey, holiday)
@@ -344,6 +357,17 @@ export function parseOpeningCsv(text: string): { code: string; minutes: number }
 export interface BankPosition { expiring: number; lot: number; negative: number; journey: number }
 
 type LiveDay = Pick<HourBankMovement, 'minutes' | 'payMinutes' | 'holidayMinutes' | 'occurrence'> & { date: Day; source: 'IMPORT' | 'FORECAST' }
+
+function groupBy<T>(list: T[], key: (x: T) => string): Map<string, T[]> {
+  const out = new Map<string, T[]>()
+  for (const x of list) {
+    const k = key(x)
+    const g = out.get(k)
+    if (g) g.push(x)
+    else out.set(k, [x])
+  }
+  return out
+}
 
 const publicMember = ({ branchId: _b, ...m }: Member): HourBankMember => m
 const emptyMonth = (month: string): HourBankMonth => ({

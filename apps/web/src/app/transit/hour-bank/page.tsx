@@ -404,6 +404,14 @@ function Statement({ crewMemberId, month, closed, canCreate, canDelete, onClose,
         </table>
       )}
 
+      {data?.compare.filter(c => c.month === month).map(c => (
+        <p key={c.month} className="text-xs text-muted-foreground" title="Saldo líquido do mês: o que a escala previa × os dias como lidos (frequência onde importada)">
+          {fmtMonth(c.month)}: previsto <span className="tabular-nums text-foreground">{hm(c.forecast)}</span> · realizado{' '}
+          <span className="tabular-nums text-foreground">{hm(c.actual)}</span>
+          {c.forecast !== c.actual && <span className={cn('tabular-nums ml-1', c.actual < c.forecast ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400')}>({hm(c.actual - c.forecast)})</span>}
+        </p>
+      ))}
+
       <div className="space-y-0.5 max-h-80 overflow-y-auto pr-2">
         <p className="text-xs font-medium text-muted-foreground">Movimentos de {fmtMonth(month)}</p>
         {!moves.length && <p className="text-xs text-muted-foreground">Nenhum.</p>}

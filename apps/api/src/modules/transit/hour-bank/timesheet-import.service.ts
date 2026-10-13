@@ -44,6 +44,7 @@ export class TimesheetImportService {
       this.prisma.rosterEntry.findMany({ where: { crewMemberId: { in: ids }, date: range, kind: 'DUTY' }, select: { crewMemberId: true, date: true } }),
     ])
     const hashOf = new Map(existing.map(e => [`${e.crewMemberId}|${dayOf(e.date)}`, e.hash]))
+    const scheduled = new Set(roster.map(r => `${r.crewMemberId}|${dayOf(r.date)}`))
 
     const imp = await this.prisma.crewTimesheetImport.create({
       data: { branchId, fromDate: toDbDate(sheet.from), toDate: toDbDate(sheet.to), fileName: file.originalname, userId: userId ?? null, summary: {} },
@@ -61,7 +62,7 @@ export class TimesheetImportService {
         const hash = createHash('sha1').update(`${d.occurrence}|${d.extra}|${d.short}|${d.worked}`).digest('hex')
         if (hashOf.get(`${id}|${d.date}`) === hash) continue
         write.push({ crewMemberId: id, date: toDbDate(d.date), occurrence: d.occurrence, extraMinutes: d.extra, shortMinutes: d.short, workedMinutes: d.worked, hash, importId: imp.id })
-        if (d.occurrence.startsWith('COMPENSACAO') && roster.some(r => r.crewMemberId === id && dayOf(r.date) === d.date)) {
+        if (d.occurrence.startsWith('COMPENSACAO') && scheduled.has(`${id}|${d.date}`)) {
           divergences.push(`${e.code} ${fmt(d.date)}: compensação no arquivo, mas escalado — vale a compensação`)
         }
       }
@@ -86,14 +87,4 @@ export class TimesheetImportService {
     await this.prisma.crewTimesheetImport.update({ where: { id: imp.id }, data: { summary: summary as unknown as Prisma.InputJsonValue } })
     return summary
   }
-
-  // the empresa's last imports
-  async history(branchId: string) {
-    const rows = await this.prisma.crewTimesheetImport.findMany({
-      where: { branchId }, orderBy: { createdAt: 'desc' }, take: 20,
-      select: { id: true, fromDate: true, toDate: true, fileName: true, createdAt: true, summary: true },
-    })
-    return rows.map(r => ({ ...r, fromDate: dayOf(r.fromDate), toDate: dayOf(r.toDate) }))
-  }
 }
-

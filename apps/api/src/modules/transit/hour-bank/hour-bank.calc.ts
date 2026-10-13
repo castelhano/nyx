@@ -1,7 +1,7 @@
 import type { HourBankMonth, HourBankMovement } from '@nyx/schemas'
 import { normalizeOccurrence } from './timesheet-parser'
 
-// The hour bank's rules (docs/proposal/brainchild/plan_vacation_hour_bank_v1.md §2) — pure.
+// The hour bank's rules — pure.
 //
 // A day into the bank:
 //   worked more than the journey   50% of the extra banked, 50% paid apart
@@ -96,7 +96,7 @@ export function runBank(months: { month: string; closed: boolean; moves: { minut
     // month shows what the crew member has now (and what its closing would do).
     const expiring = old, before = negative
     const even = Number(month.slice(5, 7)) % 2 === 0
-    const forgiven = even ? -negative : 0
+    const forgiven = even ? Math.max(0, -negative) : 0
     if (even) negative = 0
     out.push({
       month, closed, opening, credit, debit, pay, holiday, expiring, lot, payout: expiring, forgiven,

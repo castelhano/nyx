@@ -42,7 +42,7 @@ export const rosterGeneratorParamsSchema = z.object({
   extraStandby:          z.array(rosterExtraStandbySchema).default([]),
   // whoever is left over on a day gets a folga compensada — the crew members with the most hours
   // in the hour bank are the ones left over (the previous month's balance first)
-  compensate:            z.boolean().default(false),
+  compensate:            z.boolean().default(true),
 }).refine(p => p.from <= p.to, { message: 'O fim do período deve ser depois do início', path: ['to'] })
 
 export type RosterGeneratorParams = z.infer<typeof rosterGeneratorParamsSchema>

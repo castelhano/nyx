@@ -93,12 +93,6 @@ export class HourBankController {
     return this.bank.importOpening(branchId, decodeTimesheet(file.buffer), req.user?.id)
   }
 
-  @Get('imports')
-  async history(@Req() req: Req, @Query('branchId') branchId: string) {
-    await this.assert(req.user, 'read')
-    return this.imports.history(branchId)
-  }
-
   @Post('import')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }))
   async import(@Req() req: Req, @UploadedFile() file: Express.Multer.File, @Body('branchId') branchId: string) {
