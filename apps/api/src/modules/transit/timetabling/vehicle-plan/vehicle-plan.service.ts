@@ -842,6 +842,11 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         }
       }
 
+      // Access/return anchored to a trip that only reaches its block through a move in
+      // this same diff (trip moved to another block, then a return added to it) —
+      // applied after step 8, once the trip is actually there.
+      const deferredAnchored: { type: 'ACCESS' | 'RETURN'; blockId: string; blockTripId: string; depotLocalityId: string }[] = []
+
       // 7. adds — walked in order so a 'new' entry's server-assigned block id is
       // available to any later 'pending:<tempId>' entry in the same batch that
       // references it (mirrors the old client-side newBlockIds map).
@@ -920,8 +925,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           if (entry.type === 'ACCESS' || entry.type === 'RETURN') {
             if (!entry.blockTripId) throw new BadRequestException('Acesso/recolhida pendente sem viagem associada')
             const depotLocalityId = entry.type === 'ACCESS' ? entry.originLocality.id : entry.destinationLocality.id
-            if (entry.type === 'ACCESS') await applyAddAccess(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
-            else                          await applyAddReturn(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
+            const anchor = await tx.blockTrip.findUnique({ where: { id: entry.blockTripId }, select: { vehicleBlockId: true } })
+            if (anchor && anchor.vehicleBlockId !== resolvedBlockId) deferredAnchored.push({ type: entry.type, blockId: resolvedBlockId, blockTripId: entry.blockTripId, depotLocalityId })
+            else if (entry.type === 'ACCESS') await applyAddAccess(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
+            else                              await applyAddReturn(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
           } else {
             await tx.blockDeadrun.create({
               data: {
@@ -954,6 +961,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         const fromBlockId = await resolveBlockRef(move.fromBlockId)
         const toBlockId    = await resolveBlockRef(move.toBlockId, fromBlockId)
         await applyMoveTrip(tx, fromBlockId, blockTripIds, toBlockId, move.breakIds, deadrunIds)
+      }
+
+      // 8a. access/return deferred from step 7
+      for (const d of deferredAnchored) {
+        if (d.type === 'ACCESS') await applyAddAccess(tx, d.blockId, d.blockTripId, d.depotLocalityId)
+        else                     await applyAddReturn(tx, d.blockId, d.blockTripId, d.depotLocalityId)
       }
 
       // 8b. block-level patches ("Modificar depósito") — after adds/moves, so a
