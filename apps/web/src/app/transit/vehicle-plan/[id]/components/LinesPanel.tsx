@@ -96,9 +96,15 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
     staleTime: 60_000,
   })
 
-  const q            = search.toLowerCase()
-  const visibleLines = q
-    ? planLines.filter(l => l.line.code.toLowerCase().includes(q) || l.line.name.toLowerCase().includes(q))
+  // ';' splits the search into several terms ("206;a15") — a line is visible
+  // when it matches any of them, so Enter can select multiple lines at once.
+  const terms        = search.toLowerCase().split(';').map(t => t.trim()).filter(Boolean)
+  const visibleLines = terms.length
+    ? planLines.filter(l => {
+        const code = l.line.code.toLowerCase()
+        const name = l.line.name.toLowerCase()
+        return terms.some(t => code.includes(t) || name.includes(t))
+      })
     : planLines
 
   const allChecked  = planLines.length > 0 && planLines.every(l => selectedLineIds.has(l.lineId))
@@ -170,7 +176,7 @@ export function LinesPanel({ planId, planLines, selectedLineIds, onSelectionChan
           value={search}
           onChange={e => setSearch(e.target.value)}
           onKeyDown={handleSearchKeyDown}
-          placeholder="Buscar linha…"
+          placeholder="Buscar linha… (ex: 206;a15)"
           className="w-full text-xs rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring mb-2"
         />
 
