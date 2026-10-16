@@ -1666,7 +1666,6 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
         // Only the end retreats, with nothing carried along — the gap after it
         // only ever grows, and the start never moves. Safe on both sides.
         if (marked.arr - marked.dep <= 1) return
-        if (prevProd && marked.dep - prevProd.arr <= 1) return
         setMarked(marked.dep, marked.arr - 1)
         break
       }
