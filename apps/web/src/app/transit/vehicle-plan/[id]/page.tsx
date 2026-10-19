@@ -114,7 +114,8 @@ export default function VehiclePlanPage() {
   // useGanttEditor; useVehiclePlanShortcuts below just binds keys to its handlers,
   // so it must run after this call — it destructures values (selection,
   // focusedSegId, mergedPlottedData, ...) straight out of `editor`.
-  const editor = useGanttEditor({ id, canEditGantt, canEditStructural: canEdit, isActivePlan: status === 'ACTIVE', ganttData, refetchGantt, setIsPending })
+  const [blockFilterOpen,   setBlockFilterOpen]   = useState(false)
+  const editor = useGanttEditor({ id, canEditGantt, canEditStructural: canEdit, isActivePlan: status === 'ACTIVE', onOpenBlockFilter: () => setBlockFilterOpen(true), ganttData, refetchGantt, setIsPending })
   const {
     selection, setSelection,
     depotModal, setDepotModal,
@@ -147,7 +148,6 @@ export default function VehiclePlanPage() {
   } = editor
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
-  const [blockFilterOpen,   setBlockFilterOpen]   = useState(false)
   // the empresas of the plan's blocks — BlockFilterBar's empresa list
   const filterBranches = useMemo(() => {
     const byId = new Map<string, string>()

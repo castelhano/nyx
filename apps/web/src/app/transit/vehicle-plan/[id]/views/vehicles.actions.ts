@@ -26,6 +26,8 @@ export interface VehiclesActionDeps {
   onUngroup:           (bundleIds: string[]) => void
   // the group's crew members ("Operadores" — VehiclePlan.constraints.bundleCrew)
   onBundleCrew:        (bundleId: string) => void
+  // block filter: the blocks with no trip over these trips' span ("Filtrar encaixes")
+  onFilterFit:         (tripIds: string[]) => void
 }
 
 export function createVehiclesActionSpec(
@@ -93,6 +95,7 @@ export function createVehiclesActionSpec(
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           makeTripDetailsAction([bt.trip.id], deps),
+          makeFilterFitAction([bt.trip.id], deps),
           ...(bt.trip.bundleId ? [makeUngroupAction([bt.trip.bundleId], deps, onClose), makeBundleCrewAction(bt.trip.bundleId, deps, onClose)]
             : [makeGroupAction([bt.trip.id], [], [], deps, onClose)]),
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
@@ -120,7 +123,7 @@ export function createVehiclesActionSpec(
 
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
-        ...(tripIds.length > 0 ? [makeTripDetailsAction(tripIds, deps)] : []),
+        ...(tripIds.length > 0 ? [makeTripDetailsAction(tripIds, deps), makeFilterFitAction(tripIds, deps)] : []),
         // a range is contiguous by construction — exactly what a group needs; its deadruns and
         // intervals (ACCESS / RETURN included) join the group too
         ...(bundleIds.length > 0 ? [makeUngroupAction(bundleIds, deps, onClose), ...(bundleIds.length === 1 ? [makeBundleCrewAction(bundleIds[0], deps, onClose)] : [])]
@@ -198,6 +201,16 @@ function makeTripDetailsAction(tripIds: string[], deps: VehiclesActionDeps): Act
     variant: 'icon',
     label:   'Detalhes',
     onClick: () => deps.onOpenTripDetails(tripIds),
+  }
+}
+
+function makeFilterFitAction(tripIds: string[], deps: VehiclesActionDeps): ActionItem {
+  return {
+    id:      'filter-fit',
+    label:   'Filtrar encaixes',
+    icon:    'Filter',
+    variant: 'icon',
+    onClick: () => deps.onFilterFit(tripIds),
   }
 }
 

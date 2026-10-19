@@ -25,11 +25,12 @@ export function BlockFilterBar({ filter, onChange, matchCount, branches, onClose
 
   // The time criterion only kicks in once all three fields have a value — field/relation
   // always do (defaults above), so the time input is the actual gate. "Com pendências" and
-  // the empresa work alone or combined with it.
-  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly, nextBranchId = branchId) {
+  // the empresa work alone or combined with it. The encaixe window (fit) is set from the Gantt
+  // selection ("Filtrar encaixes"), never here — only kept or removed.
+  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly, nextBranchId = branchId, nextFit = filter?.fit ?? null) {
     setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel); setIssuesOnly(nextIssuesOnly); setBranchId(nextBranchId)
-    onChange(nextTimeLabel || nextIssuesOnly || nextBranchId
-      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly, branchId: nextBranchId || null }
+    onChange(nextTimeLabel || nextIssuesOnly || nextBranchId || nextFit
+      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly, branchId: nextBranchId || null, fit: nextFit }
       : null)
   }
 
@@ -110,6 +111,22 @@ export function BlockFilterBar({ filter, onChange, matchCount, branches, onClose
         <Icons.AlertTriangle className="w-3.5 h-3.5" />
         Com pendências
       </button>
+
+      {filter?.fit && (
+        <span
+          title="Carros sem viagem produtiva neste horário — onde a seleção cabe"
+          className="flex items-center gap-1 h-6 rounded pl-2 pr-1 font-medium bg-primary/10 text-primary ring-1 ring-primary/30 whitespace-nowrap"
+        >
+          Encaixe {minutesToLabel(filter.fit.start)}–{minutesToLabel(filter.fit.end)}
+          <button
+            onClick={() => commit(field, relation, timeLabel, issuesOnly, branchId, null)}
+            title="Remover encaixe"
+            className="flex items-center justify-center w-4 h-4 rounded hover:bg-primary/20"
+          >
+            <Icons.X className="w-3 h-3" />
+          </button>
+        </span>
+      )}
 
       <div className="w-px h-4 bg-border shrink-0" />
 

@@ -108,11 +108,14 @@ export function findAnchoredDeadrunIds(block: GanttBlock, tripIds: string[]): st
 // almost every block and never actually narrowed anything down.
 // minutes null = no time criterion; issuesOnly = only blocks with VehicleBlock.issues
 // branchId: only that empresa's blocks (null: any)
-export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean; branchId: string | null }
+// fit: only blocks with no productive trip overlapping [start, end] — where a selection could be
+// slotted in ("Filtrar encaixes"); deadruns/breaks never count
+export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean; branchId: string | null; fit: { start: number; end: number } | null }
 
 function blockMatchesFilter(block: GanttBlock, filter: BlockFilter): boolean {
   if (filter.issuesOnly && !block.hasIssues) return false
   if (filter.branchId && block.branchId !== filter.branchId) return false
+  if (filter.fit && block.blockTrips.some(bt => bt.trip.departureMinutes < filter.fit!.end && bt.trip.arrivalMinutes > filter.fit!.start)) return false
   if (filter.minutes == null) return true
   const trips = block.blockTrips
   if (trips.length === 0) return false
@@ -218,12 +221,14 @@ interface UseGanttEditorParams {
   // edits on an ACTIVE plan take effect immediately on operação corrente, with no
   // DRAFT review step in between.
   isActivePlan: boolean
+  // opens BlockFilterBar (its open state lives in page.tsx) — "Filtrar encaixes" sets a filter
+  onOpenBlockFilter: () => void
   ganttData:    VehiclePlanGanttData | undefined
   refetchGantt: () => Promise<unknown>
   setIsPending: (v: boolean) => void
 }
 
-export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePlan, ganttData, refetchGantt, setIsPending }: UseGanttEditorParams) {
+export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePlan, onOpenBlockFilter, ganttData, refetchGantt, setIsPending }: UseGanttEditorParams) {
   const { toast } = useToast()
   const confirm    = useConfirm()
 
@@ -660,6 +665,23 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       if (owner) setPinnedBlockIds(prev => prev.has(owner.id) ? prev : new Set(prev).add(owner.id))
     }
     setBlockFilterState(next)
+  }
+
+  // "Filtrar encaixes" — the blocks free over the trips' span (first departure → last arrival),
+  // on top of the other criteria. The trips' own block never matches (it holds them) but stays
+  // pinned, so the selection can be moved straight to a block found.
+  function handleFilterFit(tripIds: string[]) {
+    if (!mergedPlottedData) return
+    const ids = new Set(tripIds)
+    const owned = mergedPlottedData.blocks.flatMap(b => b.blockTrips.filter(bt => ids.has(bt.trip.id)).map(bt => ({ blockId: b.id, trip: bt.trip })))
+    if (!owned.length) return
+    const fit = {
+      start: Math.min(...owned.map(o => o.trip.departureMinutes)),
+      end:   Math.max(...owned.map(o => o.trip.arrivalMinutes)),
+    }
+    setPinnedBlockIds(prev => owned.every(o => prev.has(o.blockId)) ? prev : new Set([...prev, ...owned.map(o => o.blockId)]))
+    setBlockFilterState(prev => ({ ...(prev ?? { field: 'start', relation: 'after', minutes: null, issuesOnly: false, branchId: null }), fit }))
+    onOpenBlockFilter()
   }
 
   // shift+pagedown/pageup range: window [anchor, focus] over allTrips,
@@ -2644,6 +2666,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     onGroup:             handleGroup,
     onBundleCrew:        (bundleId: string) => setBundleCrewId(bundleId),
     onUngroup:           handleUngroup,
+    onFilterFit:         handleFilterFit,
   }, canEditGantt)
 
   // onAddAccess/onAddReturn/onAddInterval/onAddDisplacement/onDeleteTrips/onDeleteDeadruns/onDeleteBreaks/
