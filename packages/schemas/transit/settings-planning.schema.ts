@@ -36,9 +36,10 @@ const rangeDefault = {
   // in another type — the required type is a hard rule of the solver, not a criterion
   preferredVehicleType: { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 0,   ceiling: 30  },
   // largest gap (p.p.) between an operator's share of the fleet and its ScopeOperator.share,
-  // among the operators with a share (normalized over them) — docs/architecture/transit/solver.md
+  // among the operators with a share (normalized over them), the share taken as the closest split
+  // in whole vehicles — docs/architecture/transit/solver.md
   operatorShareFleet:   { active: true, modifier: 20, floor: 0,   idealMin: 0,   idealMax: 2,   ceiling: 10  },
-  // same, over total km
+  // same, over productive km (deadrun km would otherwise buy a closer split)
   operatorShareKm:      { active: true, modifier: 10, floor: 0,   idealMin: 0,   idealMax: 3,   ceiling: 15  },
 }
 

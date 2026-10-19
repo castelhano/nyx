@@ -228,7 +228,8 @@ export class PlanScoreState {
   private productiveMinutes = 0
   private preferredTrips    = 0
   private preferredMisses   = 0
-  // fleet / total km of the operators with a share
+  // fleet / productive km of the operators with a share — productive, so deadrun km can't buy
+  // a closer split
   private readonly branchFleet = new Map<string, number>()
   private readonly branchKm    = new Map<string, number>()
 
@@ -273,20 +274,36 @@ export class PlanScoreState {
 
     if (agg.branchId && this.shareTarget.has(agg.branchId)) {
       this.branchFleet.set(agg.branchId, (this.branchFleet.get(agg.branchId) ?? 0) + sign)
-      this.branchKm.set(agg.branchId, (this.branchKm.get(agg.branchId) ?? 0) + sign * totalKm)
+      this.branchKm.set(agg.branchId, (this.branchKm.get(agg.branchId) ?? 0) + sign * agg.productiveKm)
     }
   }
 
-  // largest gap (p.p.) between each operator's part of `by` and its target share
-  private shareDeviation(by: Map<string, number>): number {
+  // largest gap (p.p.) between each operator's part of `by` and its target share. `whole`: `by`
+  // counts vehicles — the target is then the closest split in whole vehicles (largest remainder),
+  // not the exact percentage: a gap no split of this fleet can close isn't a gap, or adding a
+  // vehicle just to round the split better would pay off
+  private shareDeviation(by: Map<string, number>, whole = false): number {
     let total = 0
     for (const id of this.shareTarget.keys()) total += Math.max(0, by.get(id) ?? 0)
     if (total <= 0) return 0
+    const target = whole ? this.wholeSplit(Math.round(total)) : this.shareTarget
     let worst = 0
-    for (const [id, target] of this.shareTarget) {
-      worst = Math.max(worst, Math.abs((Math.max(0, by.get(id) ?? 0) / total) * 100 - target))
+    for (const [id, t] of target) {
+      worst = Math.max(worst, Math.abs((Math.max(0, by.get(id) ?? 0) / total) * 100 - t))
     }
     return worst
+  }
+
+  // the target shares (%) as the closest split of `n` vehicles — largest remainder
+  private wholeSplit(n: number): Map<string, number> {
+    const exact  = [...this.shareTarget].map(([id, t]) => ({ id, exact: (t / 100) * n }))
+    const counts = new Map(exact.map(e => [e.id, Math.floor(e.exact)]))
+    let left = n - [...counts.values()].reduce((s, c) => s + c, 0)
+    for (const e of [...exact].sort((a, b) => (b.exact % 1) - (a.exact % 1))) {
+      if (left-- <= 0) break
+      counts.set(e.id, counts.get(e.id)! + 1)
+    }
+    return new Map([...counts].map(([id, c]) => [id, (c / n) * 100]))
   }
 
   // every active criterion: its weight, its value in [0,1] and its raw value (no floor at 0)
@@ -309,7 +326,7 @@ export class PlanScoreState {
       plan('preferredVehicleType', (this.preferredMisses / this.preferredTrips) * 100)
     // shares only mean something with at least two operators to split between
     if (this.shareTarget.size > 1) {
-      if (range.operatorShareFleet.active) plan('operatorShareFleet', this.shareDeviation(this.branchFleet))
+      if (range.operatorShareFleet.active) plan('operatorShareFleet', this.shareDeviation(this.branchFleet, true))
       if (range.operatorShareKm.active)    plan('operatorShareKm',    this.shareDeviation(this.branchKm))
     }
     if (anchored.totalKm.active) {

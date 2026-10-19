@@ -15,8 +15,8 @@ const RANGE_META: Record<keyof PlanningSettings['range'], { label: string; unit:
   minBlockDuration:     { label: 'Duração Mínima Bloco',    unit: DURATION_UNIT,    hint: 'Duração total do bloco (minutos). Blocos abaixo do idealMin são candidatos a fusão.' },
   distributionVariance: { label: 'Variância de Distribuição', unit: '% CV', hint: 'Coeficiente de variação (desvio padrão / média) da duração dos blocos do plano.' },
   preferredVehicleType: { label: 'Tipo Preferencial',       unit: '% viagens', hint: 'Viagens de linhas com tipo de veículo preferencial rodando em outro tipo.' },
-  operatorShareFleet:   { label: 'Participação — Frota',    unit: 'p.p.',   hint: 'Maior desvio entre a participação de cada empresa na frota e a definida no escopo (entre as empresas com participação).' },
-  operatorShareKm:      { label: 'Participação — Km',       unit: 'p.p.',   hint: 'Maior desvio entre a participação de cada empresa no km total e a definida no escopo.' },
+  operatorShareFleet:   { label: 'Participação — Frota',    unit: 'p.p.',   hint: 'Maior desvio entre a participação de cada empresa na frota e a definida no escopo (entre as empresas com participação), arredondada para carros inteiros — a melhor divisão possível da frota conta como desvio zero.' },
+  operatorShareKm:      { label: 'Participação — Km',       unit: 'p.p.',   hint: 'Maior desvio entre a participação de cada empresa no km produtivo e a definida no escopo — o km ocioso não conta.' },
 }
 
 const ANCHORED_META: Record<keyof PlanningSettings['anchored'], { label: string; unit: string; hint: string }> = {

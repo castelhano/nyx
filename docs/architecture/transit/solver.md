@@ -126,7 +126,7 @@ Groups are created and removed on the Gantt (see `gantt-interaction.md`); `apply
 `PlanScoreState` (`plan-scoring.calc.ts`) — an incremental sum over block aggregates (`add` / `remove`), shared by `recalculate()` and the solver:
 
 - **every active criterion enters once with its weight**: a per-block one (`lineTransfer`, `deadrunRatio`, `minBlockDuration`) with its `modifier` and the **mean** of its value over the blocks; a plan one with its value — same rule as the crew score;
-- plan criteria: `distributionVariance` (CV of block duration), `preferredVehicleType` (% of preferred-type trips running in another type), `operatorShareFleet` / `operatorShareKm` (largest gap, in p.p., between an operator's part and its share normalized over the operators with a share — only with 2+ such operators), anchored `totalKm` and `fleetUsage`;
+- plan criteria: `distributionVariance` (CV of block duration), `preferredVehicleType` (% of preferred-type trips running in another type), `operatorShareFleet` / `operatorShareKm` (largest gap, in p.p., between an operator's part and its share normalized over the operators with a share — only with 2+ such operators; the fleet one against the closest split in whole vehicles, so a rounding gap never pays for an extra vehicle; the km one over productive km, so deadrun km can't buy a closer split), anchored `totalKm` and `fleetUsage`;
 - `score = round(weighted average × 9999)`;
 - the solver optimizes the **raw** average: past floor/ceiling a criterion keeps falling with its band's slope, down to −1 — getting closer to the ceiling still counts, but a criterion no solution can meet doesn't outweigh the rest.
 
