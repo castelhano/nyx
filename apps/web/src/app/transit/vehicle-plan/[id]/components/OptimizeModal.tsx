@@ -431,7 +431,7 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    <Row label="Nota"           current={baseline?.score}       next={s?.score} />
+                    <Row label="Nota"           current={baseline?.score}       next={s?.score} better="higher" />
                     <Row label="Frota"          current={baseline?.fleetCount}  next={s?.fleetCount} />
                     <Row label="Km ocioso"      current={baseline?.deadrunKm}   next={s?.deadrunKm} fmt={fmtKm} />
                     <Row label="Km total"       current={baseline?.totalKm}     next={s?.totalKm}   fmt={fmtKm} />
@@ -548,16 +548,29 @@ function Section({ label }: { label: string }) {
   )
 }
 
-function Row({ label, current, next, fmt = (n: number) => n.toLocaleString('pt-BR'), detail }: {
+function Row({ label, current, next, fmt = (n: number) => n.toLocaleString('pt-BR'), detail, better }: {
   label: string; current: number | undefined; next: number | undefined; fmt?: (n: number) => string
   // a second line under each value (e.g. km)
   detail?: (string | undefined)[]
+  // which way is an improvement — marks the proposal better / worse than the current plan
+  better?: 'higher' | 'lower'
 }) {
+  const delta = better && current != null && next != null ? next - current : null
+  const gain  = delta != null && (better === 'higher' ? delta > 0 : delta < 0)
   return (
     <tr>
       <td className="py-2 text-muted-foreground">{label}</td>
       {[current, next].map((v, i) => (
         <td key={i} className="py-2 text-right font-mono tabular-nums">
+          {i === 1 && delta != null && (
+            <span
+              title={delta === 0 ? 'Igual ao planejamento atual' : gain ? 'Melhor que o planejamento atual' : 'Pior que o planejamento atual'}
+              className={cn('inline-flex items-center gap-0.5 mr-2 text-xs', delta === 0 ? 'text-muted-foreground' : gain ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive')}
+            >
+              {delta === 0 ? '=' : delta > 0 ? <Icons.ArrowUp className="w-3 h-3" /> : <Icons.ArrowDown className="w-3 h-3" />}
+              {delta !== 0 && `${delta > 0 ? '+' : '−'}${fmt(Math.abs(delta))}`}
+            </span>
+          )}
           {v != null ? fmt(v) : '—'}
           {detail?.[i] && <span className="block text-xs text-muted-foreground">{detail[i]}</span>}
         </td>
