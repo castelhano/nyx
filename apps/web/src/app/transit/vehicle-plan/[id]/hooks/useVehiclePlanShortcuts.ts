@@ -8,6 +8,7 @@ import type { ShortcutSection } from '@/lib/keywatch'
 import { useConfirm } from '@/lib/confirm-context'
 import { findAnchoredBreakIds, type TripPatch, type DeadrunPatch, type BlockFilter } from './useGanttEditor'
 import type { GanttBoardHandle } from '../components/GanttBoard'
+import type { GotoMode } from '../components/GotoBlockInput'
 import type { PendingAddEntry } from '../components/AddTripModal'
 import type { VehiclePlanGanttData } from '../views/vehicles.view'
 import type { Selection, GanttActionSpec } from '../engine/gantt.types'
@@ -89,7 +90,7 @@ interface UseVehiclePlanShortcutsParams {
 
   blockFilterOpen:      boolean
   setBlockFilterOpen:   Dispatch<SetStateAction<boolean>>
-  setGotoBlockOpen:     Dispatch<SetStateAction<boolean>>
+  setGotoMode:          (mode: GotoMode | null) => void
   setBlockFilter:       (next: BlockFilter | null) => void
   clearPinnedBlocks:    () => void
 
@@ -117,7 +118,7 @@ export function useVehiclePlanShortcuts({
   pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
   setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
   summaryLineIds, setSummaryLineIds, setRedistributeModal,
-  blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoBlockOpen,
+  blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
   handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -247,8 +248,16 @@ export function useVehiclePlanShortcuts({
     section: SEC_PAINEIS,
   })
 
-  useShortcut('ctrl+g', () => setGotoBlockOpen(true), {
+  useShortcut('ctrl+g', () => setGotoMode('block'), {
     desc:    'Ir para bloco',
+    icon:    Icons.Search,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: !isNew,
+    section: SEC_GERAL,
+  })
+
+  useShortcut('ctrl+shift+g', () => setGotoMode('line'), {
+    desc:    'Ir para linha',
     icon:    Icons.Search,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: !isNew,

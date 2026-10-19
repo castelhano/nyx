@@ -24,7 +24,7 @@ import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
 import { HeadwayRangeBar }   from './components/HeadwayRangeBar'
 import { BlockFilterBar }    from './components/BlockFilterBar'
-import { GotoBlockInput }    from './components/GotoBlockInput'
+import { GotoBlockInput, type GotoMode } from './components/GotoBlockInput'
 import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './components/LineFreqPanel'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
@@ -154,7 +154,8 @@ export default function VehiclePlanPage() {
     for (const b of mergedPlottedData?.blocks ?? []) if (b.branch) byId.set(b.branch.id, b.branch.name)
     return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   }, [mergedPlottedData])
-  const [gotoBlockOpen,     setGotoBlockOpen]     = useState(false)
+  // "Ir para" input — by block number (ctrl+g) or line code (ctrl+shift+g); null: closed
+  const [gotoMode,          setGotoMode]          = useState<GotoMode | null>(null)
   const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
   const [freqPanelOpen,     setFreqPanelOpen]     = useState(false)
   // Fase 4 — FrequencyPanel can plot the delta-crossing instant instead of the
@@ -190,7 +191,7 @@ export default function VehiclePlanPage() {
     pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
     setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
     summaryLineIds, setSummaryLineIds, setRedistributeModal,
-    blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoBlockOpen,
+    blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
@@ -229,7 +230,34 @@ export default function VehiclePlanPage() {
       setEditBarOpen(true)
     }
     setCenterBlockId(block.id)
-    setGotoBlockOpen(false)
+    setGotoMode(null)
+    return null
+  }
+
+  // The line's next trip after the focus (any direction) — its first one when none comes after.
+  // From there pagedown/pageup walk the line. Only lines plotted ("Linhas") and blocks the filter
+  // shows are searched.
+  function handleGotoLine(code: string): string | null {
+    const line = mergedPlottedData?.plan.lines.find(l => l.line.code.toLowerCase() === code.toLowerCase())
+    if (!line) return `Linha ${code} não encontrada no plano`
+    if (!selectedLineIds.has(line.lineId)) return `Linha ${line.line.code} não está na seleção`
+    const trips = visibleAllTrips.filter(t => t.lineId === line.lineId)
+    if (!trips.length) return visibleBlockIds ? `Linha ${line.line.code} oculta pelo filtro` : `Linha ${line.line.code} sem viagens`
+
+    const focusIdx = focusedSegId ? visibleAllTrips.findIndex(t => t.segId === focusedSegId) : -1
+    const focusDep = focusedSegId ? navBlocks.flat().find(s => s.segId === focusedSegId)?.dep : undefined
+    const next = focusIdx >= 0
+      ? visibleAllTrips.slice(focusIdx + 1).find(t => t.lineId === line.lineId)
+      : focusDep != null ? trips.find(t => t.dep >= focusDep) : undefined
+    const target = next ?? trips[0]
+
+    const block = mergedPlottedData!.blocks.find(b => b.blockTrips.some(bt => bt.id === target.segId))
+    setSelection(null)
+    setTripSeqAnchor(null)
+    setFocusedSegId(target.segId)
+    setEditBarOpen(true)
+    if (block) setCenterBlockId(block.id)
+    setGotoMode(null)
     return null
   }
 
@@ -936,8 +964,12 @@ export default function VehiclePlanPage() {
                   </div>
                 )}
 
-                {gotoBlockOpen && (
-                  <GotoBlockInput onGoto={handleGotoBlock} onClose={() => setGotoBlockOpen(false)} />
+                {gotoMode && (
+                  <GotoBlockInput
+                    initialMode={gotoMode}
+                    onGoto={(mode, value) => mode === 'block' ? handleGotoBlock(Number(value)) : handleGotoLine(value)}
+                    onClose={() => setGotoMode(null)}
+                  />
                 )}
 
                 {blockFilterOpen && (
