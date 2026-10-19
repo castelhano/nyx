@@ -297,7 +297,8 @@ export class VehicleModel {
     const deadrun = (type: DeadrunKind, from: string, to: string, dep: number, arr: number) =>
       deadruns.push({ type, originLocalityId: from, destinationLocalityId: to, departureMinutes: dep, arrivalMinutes: arr })
 
-    if (!ownAccess) deadrun('ACCESS', depotId, first.origin, first.dep - DEADRUN_GAP - access!.minutes, first.dep - DEADRUN_GAP)
+    // a trip from / to the depot itself is the block's way out / in — no ACCESS / RETURN of its own
+    if (!ownAccess && first.origin !== depotId) deadrun('ACCESS', depotId, first.origin, first.dep - DEADRUN_GAP - access!.minutes, first.dep - DEADRUN_GAP)
     for (const t of trips) {
       if (!t.bundle) continue
       deadruns.push(...t.bundle.rows.deadruns)
@@ -307,6 +308,14 @@ export class VehicleModel {
       const prev = trips[i - 1], cur = trips[i]
       const stand = this.standMinutes(prev, cur)!
       const long  = stand >= this.input.standThreshold
+      // a trip ending / starting at the depot: the vehicle waits parked there — it leaves through
+      // an ACCESS (not a displacement) and comes back through a RETURN, no interval
+      const fromDepot = prev.dest === depotId, toDepot = cur.origin === depotId
+      if (fromDepot || toDepot) {
+        if (fromDepot && !toDepot) deadrun('ACCESS', depotId, cur.origin, cur.dep - DEADRUN_GAP - this.edge(depotId, cur.origin)!.minutes, cur.dep - DEADRUN_GAP)
+        if (toDepot && !fromDepot) deadrun('RETURN', prev.dest, depotId, prev.arr + DEADRUN_GAP, prev.arr + DEADRUN_GAP + this.edge(prev.dest, depotId)!.minutes)
+        continue
+      }
       if (long && !prev.standAtDest && !cur.standAtOrigin) {
         const rt = this.depotRoundTrip(prev, cur, depotId)
         if (!rt) return null
@@ -330,7 +339,7 @@ export class VehicleModel {
       const interval = this.input.interval
       if (interval && standTo - standFrom >= interval.min) intervals.push({ departureMinutes: standFrom, arrivalMinutes: standTo })
     }
-    if (!ownReturn) deadrun('RETURN', last.dest, depotId, last.arr + DEADRUN_GAP, last.arr + DEADRUN_GAP + back!.minutes)
+    if (!ownReturn && last.dest !== depotId) deadrun('RETURN', last.dest, depotId, last.arr + DEADRUN_GAP, last.arr + DEADRUN_GAP + back!.minutes)
     return { deadruns, intervals }
   }
 
