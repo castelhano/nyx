@@ -13,3 +13,8 @@
 [ ] Separar conceito de preparo e conclusao de servico
 [-] Converter exports para GTFS format (plano em docs/proposal/plan_gtfs_export_v1.md)
 [ ] Unificar metodo de geração de CSV entre listpages (fragmentado em cada pagina hoje)
+
+
+## Pendencias
+- VehiclePlan, menu Gerar > item Ajustar Ciclo : no caso de ciclo maior (que não cabe nas viagens) sistema esta tratando correto? avisando corretamente os casos?
+- VehiclePlan, menu Gerar > item Redistribuir  : avaliar se recurso eh valido (talvez valha remover), ideia era redistribuir viagens de uma linha ao carregar uma oso adicionando margem de manobra, mais fica confuso e hoje quase nunca mostra enable (se tiver bloco com outras linhas ja nao ativa)
