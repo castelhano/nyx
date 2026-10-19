@@ -19,7 +19,8 @@ export interface BundleLimits {
 
 type Span = { departureMinutes: number; arrivalMinutes: number }
 
-// The groups the diff creates: at least one trip and two members, all in one block, nothing
+// The groups the diff creates: at least one trip (a lone trip is a group too — it carries its
+// crew members, VehiclePlan.constraints.bundleCrew), all in one block, nothing
 // else between them, a vehicle type every trip accepts, and within the block and continuous
 // driving limits.
 export async function validateNewBundles(db: any, planId: string, bundleIds: string[], limits: BundleLimits): Promise<void> {
@@ -55,7 +56,6 @@ export async function validateNewBundles(db: any, planId: string, bundleIds: str
     const group = trips.filter(t => t.bundleId === bundleId).sort((a, b) => a.departureMinutes - b.departureMinutes)
     const rows  = [...deadruns, ...intervals].filter(r => r.bundleId === bundleId)
     if (group.length === 0) throw new BadRequestException('Um grupo precisa de pelo menos uma viagem')
-    if (group.length + rows.length < 2) throw new BadRequestException('Um grupo precisa de pelo menos dois elementos')
     const members = [...group, ...rows]
     const start = Math.min(...members.map(m => m.departureMinutes))
     const end   = Math.max(...members.map(m => m.arrivalMinutes))

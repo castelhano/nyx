@@ -93,7 +93,8 @@ export function createVehiclesActionSpec(
         return [
           makeLockAction([selection.segment], selection.segment.rowId, deps, onClose),
           makeTripDetailsAction([bt.trip.id], deps),
-          ...(bt.trip.bundleId ? [makeUngroupAction([bt.trip.bundleId], deps, onClose), makeBundleCrewAction(bt.trip.bundleId, deps, onClose)] : []),
+          ...(bt.trip.bundleId ? [makeUngroupAction([bt.trip.bundleId], deps, onClose), makeBundleCrewAction(bt.trip.bundleId, deps, onClose)]
+            : [makeGroupAction([bt.trip.id], [], [], deps, onClose)]),
           ...(block && canAddAccess(bt, block)   ? [makeAccessAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddReturn(bt, block)   ? [makeReturnAction(bt.id, block.id, deps)]   : []),
           ...(block && canAddInterval(bt.trip.arrivalMinutes, block) ? [makeAddIntervalAction(bt.trip.arrivalMinutes, block.id, deps)] : []),
@@ -115,7 +116,7 @@ export function createVehiclesActionSpec(
         ...drSegs.flatMap(s => (s.data as GanttBlockDeadrun).bundleId ?? []),
         ...bkSegs.flatMap(s => (s.data as GanttBlockInterval).bundleId ?? []),
       ])]
-      const canGroup = tripIds.length > 0 && tripIds.length + deadrunIds.length + breakIds.length > 1
+      const canGroup = tripIds.length > 0
 
       return [
         makeLockAction(tripSegs, selection.rowId, deps, onClose),
