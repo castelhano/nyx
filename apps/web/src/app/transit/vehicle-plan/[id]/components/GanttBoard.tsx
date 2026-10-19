@@ -102,6 +102,8 @@ export const GanttBoard = memo(forwardRef<GanttBoardHandle, Props>(function Gant
       const row    = engine?.getLayoutRows().find(r => r.id === rowId)
       if (!engine || !row) return
       engine.viewport.scrollTo(row.y + row.height / 2 - engine.viewport.height / 2)
+      // notify only re-renders the React side (RowList) — the canvas needs its own redraw
+      engine.requestDraw()
       engine.notify()
     },
     revealTime: (from, to) => {
