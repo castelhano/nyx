@@ -287,7 +287,8 @@ export function useVehiclePlanShortcuts({
     desc:    'Fecha e limpa o filtro de blocos',
     icon:    Icons.X,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: blockFilterOpen,
+    // a selection (or sequence range) takes the first esc — the filter only goes on the next one
+    enabled: blockFilterOpen && !(editBarOpen && (selection || tripSeqAnchor != null)),
     section: SEC_PAINEIS,
   })
 
