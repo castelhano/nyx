@@ -2,8 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { vehicleBlockSchema, VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
-import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
-import { refreshBlockIssues } from './block-issues.utils'
+import { VehiclePlanService } from './vehicle-plan.service'
 
 // Block-level mutations that used to live here (addAccess, addReturn, updateDeadruns,
 // deleteDeadruns, updateIntervals, deleteIntervals, moveTrip) moved to
@@ -12,7 +11,7 @@ import { refreshBlockIssues } from './block-issues.utils'
 // vehicle-plan-summary-score-consolidation.md §2.4/§2.5.
 @Injectable()
 export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicleBlockDto, UpdateVehicleBlockDto> {
-  constructor(prisma: PrismaService, private readonly generalConfig: TransitGeneralConfigService) {
+  constructor(prisma: PrismaService, private readonly plans: VehiclePlanService) {
     super(prisma, 'vehicleBlock', vehicleBlockSchema, 'transit')
   }
 
@@ -26,8 +25,9 @@ export class VehicleBlockService extends BaseService<VehicleBlock, CreateVehicle
   override async update(id: string, dto: UpdateVehicleBlockDto): Promise<VehicleBlock> {
     const { summary: _summary, constraints: _constraints, issues: _issues, hasIssues: _hasIssues, ...rest } = dto as any
     const updated = await super.update(id, rest)
-    // DEPOT_MISMATCH / NO_COMPANY depend on them — `in`, since clearing the empresa sends null
-    if ('depotId' in rest || 'branchId' in rest) await refreshBlockIssues(this.prisma, id, this.generalConfig)
+    // the plan's score and the blocks' issues depend on them (operator shares, preferred type,
+    // DEPOT_MISMATCH / NO_COMPANY / LINE_NOT_OPERATED) — `in`, since clearing the empresa sends null
+    if ('depotId' in rest || 'branchId' in rest || 'vehicleType' in rest) await this.plans.recalculate((updated as any).vehiclePlanId)
     return updated
   }
 

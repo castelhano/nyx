@@ -2,8 +2,7 @@ import { validateBlock, type VehicleBlockIssue } from '@nyx/schemas'
 import type { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 
 // VehicleBlock.issues (packages/schemas/transit/block-validation.ts) — computed by
-// VehiclePlanService.recalculate for the whole plan, and here for one block when a PATCH
-// changes something they depend on (depot, empresa) without going through recalculate.
+// VehiclePlanService.recalculate for the whole plan.
 
 // LONG_STAND threshold: the default IntervalType's max — the same one Finalizar Plano/import use
 // to turn gaps into intervals; longer gaps are left for review
@@ -63,25 +62,4 @@ export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null
     bundleSizes,
     lineOperators,
   })
-}
-
-export async function refreshBlockIssues(db: any, blockId: string, generalConfig: TransitGeneralConfigService): Promise<void> {
-  const [block, maxStand] = await Promise.all([
-    db.vehicleBlock.findUnique({
-      where:  { id: blockId },
-      select: {
-        vehiclePlanId:  true,
-        depotId:        true,
-        branchId:       true,
-        blockTrips:     { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true, route: { select: { lineId: true, originLocalityId: true, destinationLocalityId: true } } } } } },
-        blockDeadruns:  { select: { type: true, departureMinutes: true, arrivalMinutes: true, originLocalityId: true, destinationLocalityId: true, bundleId: true } },
-        blockIntervals: { select: { departureMinutes: true, arrivalMinutes: true, bundleId: true } },
-      },
-    }),
-    defaultIntervalMaxMinutes(db, generalConfig),
-  ])
-  if (!block) return
-  const [bundleSizes, lineOperators] = await Promise.all([planBundleSizes(db, block.vehiclePlanId), planLineOperators(db, block.vehiclePlanId)])
-  const issues = blockIssues(block, maxStand, bundleSizes, lineOperators)
-  await db.vehicleBlock.update({ where: { id: blockId }, data: { issues, hasIssues: issues.length > 0 } })
 }
