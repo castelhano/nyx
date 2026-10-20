@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, Fragment } from 'react'
+import { useEffect, useState, useMemo, Fragment, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   ResponsiveContainer, ComposedChart, BarChart, Bar, Line, XAxis, YAxis,
@@ -38,7 +38,7 @@ interface LineComparisonSide {
   summary:            LineComparisonSummary | null
 }
 
-interface PeakBands {
+export interface PeakBands {
   morning:   [number, number]
   afternoon: [number, number]
   offPeak:   [number, number]
@@ -104,6 +104,8 @@ interface Props {
   lineIds: string[]
   lines:   LineOption[]
   onClose: () => void
+  // rendered first in the status bar — the Plano/Linhas switcher (SummaryView)
+  switcher?: ReactNode
   // persisted blocks merged with whatever pending changes/deletes/moves/adds are held
   // in the Gantt editor (useGanttEditor's mergedPlottedData) — used to preview a line's
   // score with its current in-progress edits before persisting them. See
@@ -123,18 +125,18 @@ function rowValues(operation: LineComparisonResponse['operation'], summary: Line
   return { ...operation, ...(summary ?? NULL_SUMMARY) }
 }
 
-function pctChange(a: number, b: number): number {
+export function pctChange(a: number, b: number): number {
   if (a === 0) return b === 0 ? 0 : 100
   return ((b - a) / a) * 100
 }
 
-function fmtPct(v: number): string {
+export function fmtPct(v: number): string {
   return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 }
 
 // Display only — the score/summary calc still cuts bands at the precise (possibly
 // half-hour) boundary; the label is intentionally rounded down to the whole hour.
-function fmtBand([from, to]: [number, number]): string {
+export function fmtBand([from, to]: [number, number]): string {
   return `${String(Math.floor(from)).padStart(2, '0')}h–${String(Math.floor(to)).padStart(2, '0')}h`
 }
 
@@ -176,7 +178,7 @@ const METRIC_INVERSE: Partial<Record<keyof RowValues, boolean>> = Object.fromEnt
   METRICS.map(m => [m.key, !!m.inverse]),
 )
 
-interface Goodness {
+export interface Goodness {
   delta:   number
   neutral: boolean
   good:    boolean
@@ -306,9 +308,9 @@ interface MarkingGroup {
 }
 
 
-const PLAN_STATUS_LABEL = { DRAFT: 'Rascunho', ACTIVE: 'Ativo', SUPERSEDED: 'Substituído' } as const
+export const PLAN_STATUS_LABEL = { DRAFT: 'Rascunho', ACTIVE: 'Ativo', SUPERSEDED: 'Substituído' } as const
 
-export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlottedData, hasPendingChanges }: Props) {
+export function LineSummaryView({ planId, lineIds, lines, onClose, switcher, mergedPlottedData, hasPendingChanges }: Props) {
   useShortcutContext('summary')
 
   const [activeLineId, setActiveLineId] = useState(lineIds[0])
@@ -461,6 +463,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
 
         {/* status bar: line selector + status badge + back */}
         <div className="flex items-center gap-2 px-5 pt-3 border-b border-border shrink-0 pb-3">
+          {switcher}
           <Select
             size="sm"
             value={activeLineId}
@@ -888,7 +891,7 @@ export function LineSummaryView({ planId, lineIds, lines, onClose, mergedPlotted
   )
 }
 
-function Stat({ label, value, goodness }: { label: string; value: string; goodness?: Goodness | null }) {
+export function Stat({ label, value, goodness }: { label: string; value: string; goodness?: Goodness | null }) {
   const worse = !!goodness && !goodness.neutral && !goodness.good
   return (
     <div className={cn('rounded-lg px-3 py-2.5', worse ? 'bg-red-500/[0.07] border border-red-500/15' : 'bg-muted/50')}>

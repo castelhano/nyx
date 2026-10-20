@@ -67,10 +67,9 @@ const PEAK_HOURS: [number, number][] = [[5.5, 8], [15.5, 18]]
 const isPeakHour = (hour: number) => PEAK_HOURS.some(([from, to]) => hour >= from && hour < to)
 
 // A block with a single trip inside [bandFrom, bandTo) doesn't represent the line's
-// steady-state service in that band — a lone reinforcement run would otherwise skew both
-// the average headway and the peak-fleet count for the whole band. A round trip is not a
-// reinforcement: in a 2h30 peak a regular vehicle of a long line makes just that (one trip
-// per direction used to count as isolated, which dropped half the fleet out of the peaks).
+// steady-state service in that band — a lone reinforcement run would otherwise skew the
+// average headway for the whole band. A round trip is not a reinforcement: in a 2h30 peak
+// a regular vehicle of a long line makes just that.
 function excludeIsolatedReinforcement(
   tripsByDirection: Record<string, { departureMinutes: number; arrivalMinutes: number; blockId: string }[]>,
   bandFrom: number,
@@ -121,35 +120,87 @@ function bandHeadway(bandTrips: Record<string, { departureMinutes: number }[]>):
   return Math.round(perDirection.reduce((s, v) => s + v, 0) / perDirection.length)
 }
 
-// Peak concurrent fleet within a band — same sweep-line as peakVehicleRequirement,
-// applied to the band's own (reinforcement-excluded) trips across every direction.
-function peakFleetBand(bandTrips: Record<string, { departureMinutes: number; arrivalMinutes: number }[]>): number {
-  return peakVehicleRequirement(Object.values(bandTrips).flat())
-}
+// ── fleet in service per band ────────────────────────────────────────────────────
+// A vehicle is in service from leaving the depot until it's back, minus its planned pauses —
+// layovers at the terminals count (the vehicle is tied to the service), a mid-day return to
+// the depot or a pause doesn't. Peaks (morning/afternoon) take the most vehicles in service at
+// any minute of the band; the off-peak takes the fewest (the valley between the peaks — its
+// max would just catch the tail of the morning peak at the band's edge).
 
-// One vehicle, for the plan's peak fleet: its trips.
-export interface PeakFleetBlockInput {
-  trips: { departureMinutes: number; arrivalMinutes: number; direction: string }[]
-}
+type Span = [number, number]
 
-// The whole plan's peak fleet per band — the most vehicles running a trip at once, every line
-// together: a vehicle is never in two trips at once, so one running two lines in the band counts
-// once (summing the lines' peak fleets would count it once per line). Same measure as the lines'
-// peakFleetBand and the same isolated-reinforcement rule, judged on the vehicle's trips in the
-// band. What DOP sums up for a Scope.
-export function planPeakFleets(blocks: PeakFleetBlockInput[]): { peakFleetMorning: number; peakFleetAfternoon: number; peakFleetOffPeak: number } {
-  const band = (fromHour: number, toHour: number): number => {
-    const tripsByDirection: Record<string, { departureMinutes: number; arrivalMinutes: number; blockId: string }[]> = {}
-    blocks.forEach((block, i) => {
-      for (const t of block.trips) (tripsByDirection[t.direction] ??= []).push({ ...t, blockId: String(i) })
+// spans minus the cuts (pauses), [start, end) in minutes
+function subtractSpans(spans: Span[], cuts: Span[]): Span[] {
+  let out = spans
+  for (const [cs, ce] of cuts) {
+    out = out.flatMap(([s, e]): Span[] => {
+      if (ce <= s || cs >= e) return [[s, e]]
+      return ([[s, cs], [ce, e]] as Span[]).filter(([a, b]) => b > a)
     })
-    return peakFleetBand(excludeIsolatedReinforcement(tripsByDirection, fromHour, toHour))
   }
+  return out
+}
+
+// vehicles in service at each minute of [fromHour, toHour) → max (peak) or min (valley)
+function bandFleet(spans: Span[], fromHour: number, toHour: number, mode: 'max' | 'min'): number {
+  const from = Math.round(fromHour * 60)
+  const to   = Math.round(toHour * 60)
+  const diff = new Array(to - from + 1).fill(0)
+  for (const [s, e] of spans) {
+    const a = Math.max(s, from), b = Math.min(e, to)
+    if (b <= a) continue
+    diff[a - from]++
+    diff[b - from]--
+  }
+  let current = 0
+  let result  = mode === 'max' ? 0 : Infinity
+  for (let i = 0; i < to - from; i++) {
+    current += diff[i]
+    result = mode === 'max' ? Math.max(result, current) : Math.min(result, current)
+  }
+  return result === Infinity ? 0 : result
+}
+
+function bandFleets(spans: Span[]): { peakFleetMorning: number; peakFleetAfternoon: number; peakFleetOffPeak: number } {
   return {
-    peakFleetMorning:   band(PEAK_HOURS[0][0], PEAK_HOURS[0][1]),
-    peakFleetAfternoon: band(PEAK_HOURS[1][0], PEAK_HOURS[1][1]),
-    peakFleetOffPeak:   band(PEAK_HOURS[0][1], PEAK_HOURS[1][0]),
+    peakFleetMorning:   bandFleet(spans, PEAK_HOURS[0][0], PEAK_HOURS[0][1], 'max'),
+    peakFleetAfternoon: bandFleet(spans, PEAK_HOURS[1][0], PEAK_HOURS[1][1], 'max'),
+    peakFleetOffPeak:   bandFleet(spans, PEAK_HOURS[0][1], PEAK_HOURS[1][0], 'min'),
   }
+}
+
+// One vehicle, for the plan's fleet per band: its trips, deadruns and planned pauses.
+export interface PeakFleetBlockInput {
+  trips:     { departureMinutes: number; arrivalMinutes: number }[]
+  deadruns:  { type: string; departureMinutes: number; arrivalMinutes: number }[]
+  intervals: { departureMinutes: number; arrivalMinutes: number }[]
+}
+
+// A vehicle's time out of the depot: from each ACCESS (or its first movement) until the
+// following RETURN (or its last movement), minus its pauses.
+function blockServiceSpans(block: PeakFleetBlockInput): Span[] {
+  const events = [
+    ...block.trips.map(t => ({ kind: 'TRIP', ...t })),
+    ...block.deadruns.map(d => ({ kind: d.type, departureMinutes: d.departureMinutes, arrivalMinutes: d.arrivalMinutes })),
+    ...block.intervals.map(i => ({ kind: 'PAUSE', ...i })),
+  ].sort((a, b) => a.departureMinutes - b.departureMinutes || (a.kind === 'ACCESS' ? -1 : b.kind === 'ACCESS' ? 1 : 0))
+
+  const spans: Span[] = []
+  let start: number | null = null
+  let last  = 0
+  for (const e of events) {
+    if (start === null) start = e.departureMinutes
+    last = Math.max(last, e.arrivalMinutes)
+    if (e.kind === 'RETURN') { spans.push([start, e.arrivalMinutes]); start = null }
+  }
+  if (start !== null) spans.push([start, last])
+  return subtractSpans(spans, block.intervals.map(i => [i.departureMinutes, i.arrivalMinutes] as Span))
+}
+
+// The whole plan's fleet per band — every line together, each vehicle once however many lines
+// it runs (summing the lines' fleets would count it once per line). What DOP sums up for a Scope.
+export function planPeakFleets(blocks: PeakFleetBlockInput[]): { peakFleetMorning: number; peakFleetAfternoon: number; peakFleetOffPeak: number } {
+  return bandFleets(blocks.flatMap(blockServiceSpans))
 }
 
 export interface AggregateScoreResult {
@@ -393,6 +444,8 @@ export interface LineAggregate {
   // blockId is only needed by excludeIsolatedReinforcement (per-band reinforcement
   // detection) — everything else here ignores it.
   tripsByDirection:  Record<string, { departureMinutes: number; arrivalMinutes: number; supply: number; blockId: string }[]>
+  // time the vehicles are in service on this line (see lineServiceSpans) — the line's fleet per band
+  serviceSpans:      Span[]
 }
 
 export interface LineAggregateBlockInput {
@@ -411,6 +464,26 @@ export interface LineAggregateBlockInput {
       }
     }
   }[]
+  // planned pauses — absent on the preview, whose blocks carry only the line's own trips
+  blockIntervals?: { departureMinutes: number; arrivalMinutes: number }[]
+}
+
+// A vehicle's time in service on one line: each trip of the line, plus the layover up to the
+// vehicle's next trip when that one is of the same line too (a trip of another line in between
+// ends it), minus the vehicle's pauses.
+function lineServiceSpans(block: LineAggregateBlockInput): Map<string, Span[]> {
+  const trips = block.blockTrips.map(bt => bt.trip).sort((a, b) => a.departureMinutes - b.departureMinutes)
+  const byLine = new Map<string, Span[]>()
+  trips.forEach((t, i) => {
+    const next = trips[i + 1]
+    const end  = next && next.route.lineId === t.route.lineId ? next.departureMinutes : t.arrivalMinutes
+    const list = byLine.get(t.route.lineId) ?? []
+    list.push([t.departureMinutes, Math.max(end, t.arrivalMinutes)])
+    byLine.set(t.route.lineId, list)
+  })
+  const pauses = (block.blockIntervals ?? []).map(i => [i.departureMinutes, i.arrivalMinutes] as Span)
+  for (const [lineId, spans] of byLine) byLine.set(lineId, subtractSpans(spans, pauses))
+  return byLine
 }
 
 // vehicleTypeCapacity/renewal-adjusted supply per trip needs the caller's capacity
@@ -439,6 +512,7 @@ export function buildLineAggregates(
           minDeparture: Infinity, maxArrival: -Infinity, totalSupply: 0,
           demand: dayTypeCode ? lineMetrics?.demand?.[dayTypeCode] : undefined,
           tripsByDirection: {},
+          serviceSpans: [],
         }
         lineAgg.set(lineId, agg)
       }
@@ -463,6 +537,8 @@ export function buildLineAggregates(
       const list = agg.tripsByDirection[route.direction] ?? (agg.tripsByDirection[route.direction] = [])
       list.push({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes, supply, blockId: block.id })
     }
+
+    for (const [lineId, spans] of lineServiceSpans(block)) lineAgg.get(lineId)!.serviceSpans.push(...spans)
   }
 
   return lineAgg
@@ -600,9 +676,7 @@ export function computeLineSummary(
     peakMorningInterval:   bandHeadway(morningTrips),
     peakAfternoonInterval: bandHeadway(afternoonTrips),
     offPeakInterval:       bandHeadway(offPeakTrips),
-    peakFleetMorning:      peakFleetBand(morningTrips),
-    peakFleetAfternoon:    peakFleetBand(afternoonTrips),
-    peakFleetOffPeak:      peakFleetBand(offPeakTrips),
+    ...bandFleets(agg.serviceSpans),
     idleKm:                r2(idleKm),
     idlePct:               (idleKm + agg.productiveKm) > 0 ? r2(idleKm / (idleKm + agg.productiveKm)) : 0,
     byBranch:              byBranch.map(b => ({ ...b, kmProdutiva: r2(b.kmProdutiva), kmOciosa: r2(b.kmOciosa) })),

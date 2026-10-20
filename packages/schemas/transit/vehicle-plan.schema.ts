@@ -19,9 +19,9 @@ export const vehiclePlanSummarySchema = z.object({
   deadrunMinutes:    z.number(),
   productiveMinutes: z.number(),
   totalMinutes:      z.number(),
-  // the whole plan's peak fleet per band — the most vehicles in a trip at once, each once however
-  // many lines it runs, isolated reinforcements left out (planPeakFleets). Missing until the
-  // plan is recalculated
+  // the whole plan's fleet per band — vehicles in service (out of the depot, not in a planned
+  // pause), each once however many lines it runs: the most at once in the peaks, the fewest in
+  // the off-peak (planPeakFleets). Missing until the plan is recalculated
   peakFleetMorning:   z.number().optional(),
   peakFleetAfternoon: z.number().optional(),
   peakFleetOffPeak:   z.number().optional(),
@@ -47,9 +47,9 @@ export const vehiclePlanLineSummarySchema = z.object({
   peakMorningInterval:   z.number().nullable(),
   peakAfternoonInterval: z.number().nullable(),
   offPeakInterval:       z.number().nullable(),
-  // Peak concurrent fleet within each band (same reinforcement-exclusion rule as
-  // the *Interval fields above — a block with a single trip in the band doesn't
-  // count) — DOP's "frota por pico".
+  // Vehicles in service on the line within each band — in its trips or in the layover
+  // between two of them, pauses left out: the most at once in the peaks, the fewest in
+  // the off-peak (bandFleets in plan-scoring.calc.ts) — DOP's "frota por pico".
   peakFleetMorning:      z.number(),
   peakFleetAfternoon:    z.number(),
   peakFleetOffPeak:      z.number(),

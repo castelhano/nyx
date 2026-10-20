@@ -175,6 +175,11 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.getOsoDepartures(id, lineIds ? lineIds.split(',') : undefined)
   }
 
+  @Get(':id/comparison')
+  getPlanComparison(@Param('id') id: string) {
+    return this.vehiclePlanService.getPlanComparison(id)
+  }
+
   @Get(':id/lines/:lineId/comparison')
   getLineComparison(@Param('id') id: string, @Param('lineId') lineId: string) {
     return this.vehiclePlanService.getLineComparison(id, lineId)

@@ -7,7 +7,7 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { TransitCrewConfigService }     from '../../settings/transit-crew-config.service'
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
-import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings } from '@nyx/schemas'
+import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings, VEHICLE_TYPE_LABELS } from '@nyx/schemas'
 import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { VehiclePlanConstraints, VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
@@ -280,7 +280,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const scored      = scoreFromAggregates(aggregates, planTrips, resolvedCfg, operatorShares(plan.scope.operators))
 
     const peakFleets = planPeakFleets(blocksWithTrips.map((b: any) => ({
-      trips: b.blockTrips.map((bt: any) => ({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes, direction: bt.trip.route.direction })),
+      trips:     b.blockTrips.map((bt: any) => ({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes })),
+      deadruns:  b.blockDeadruns,
+      intervals: b.blockIntervals,
     })))
     const planSummary: VehiclePlanSummary = { ...scored, fleetCount: blocksWithTrips.length, ...peakFleets }
 
@@ -1604,6 +1606,127 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       },
       draft,
       active,
+    }
+  }
+
+  // The plan-level comparativo: this plan's overview next to the ACTIVE plan's for the
+  // same scope+dayType (none when this plan IS the active one). Reads only persisted
+  // data — VehiclePlan.summary/VehicleBlock.summary are written by recalculate(), so
+  // unsaved Gantt edits aren't reflected (the client flags that).
+  async getPlanComparison(planId: string) {
+    const plan = await this.prisma.vehiclePlan.findUnique({
+      where:  { id: planId },
+      select: { status: true, scopeId: true, dayTypeId: true },
+    })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    const activePlan = plan.status === 'ACTIVE' ? null : await this.prisma.vehiclePlan.findFirst({
+      where:  { status: 'ACTIVE', scopeId: plan.scopeId, dayTypeId: plan.dayTypeId },
+      select: { id: true, description: true, validFrom: true },
+    })
+
+    const [draft, active] = await Promise.all([
+      this.planOverview(planId),
+      activePlan ? this.planOverview(activePlan.id) : null,
+    ])
+
+    return {
+      peakBands: {
+        morning:   this.PEAK_MORNING,
+        afternoon: this.PEAK_AFTERNOON,
+        offPeak:   [this.PEAK_MORNING[1], this.PEAK_AFTERNOON[0]] as [number, number],
+      },
+      draft:  { planId, planStatus: plan.status, ...draft },
+      active: activePlan && active ? { planId: activePlan.id, description: activePlan.description, validFrom: activePlan.validFrom, ...active } : null,
+    }
+  }
+
+  // One side of getPlanComparison: the persisted plan summary plus the breakdowns the
+  // summary doesn't carry (fleet/km by depot, vehicle type and empresa, vehicles in a
+  // trip per hour, pending counts).
+  private async planOverview(planId: string) {
+    const [plan, blocks] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: {
+          summary: true,
+          dayType: { select: { code: true } },
+          lines:   { select: { lineId: true, isDrifted: true, hasAttributeDrift: true, line: { select: { metrics: true } } } },
+        },
+      }),
+      this.prisma.vehicleBlock.findMany({
+        where:  { vehiclePlanId: planId },
+        select: {
+          vehicleType: true,
+          summary:     true,
+          hasIssues:   true,
+          isStale:     true,
+          depot:       { select: { id: true, name: true } },
+          branch:      { select: { id: true, name: true } },
+          blockTrips:  { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, route: { select: { lineId: true, direction: true } } } } } },
+        },
+      }),
+    ])
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    const withTrips = blocks.filter(b => b.blockTrips.length > 0)
+
+    type Bucket = { key: string; label: string; fleet: number; km: number }
+    const group = (keyOf: (b: typeof withTrips[number]) => { key: string; label: string }): Bucket[] => {
+      const map = new Map<string, Bucket>()
+      for (const b of withTrips) {
+        const { key, label } = keyOf(b)
+        const entry = map.get(key) ?? { key, label, fleet: 0, km: 0 }
+        entry.fleet++
+        entry.km += (b.summary as VehicleBlockSummary | null)?.totalKm ?? 0
+        map.set(key, entry)
+      }
+      return [...map.values()].sort((a, b) => b.fleet - a.fleet)
+    }
+
+    // vehicles with a trip overlapping each hour — hours past 24 stay as-is (next-day service)
+    const fleetByHour = new Map<number, number>()
+    for (const b of withTrips) {
+      const hours = new Set<number>()
+      for (const { trip } of b.blockTrips) {
+        for (let h = Math.floor(trip.departureMinutes / 60); h * 60 < trip.arrivalMinutes; h++) hours.add(h)
+      }
+      for (const h of hours) fleetByHour.set(h, (fleetByHour.get(h) ?? 0) + 1)
+    }
+
+    // supply × demand per hour over the lines with demand recorded for the day type — a line
+    // without it would add supply only and make the plan look over-served
+    const dayTypeCode = plan.dayType?.code
+    const supplyDemand = Array.from({ length: 24 }, (_, hour) => ({ hour, demand: 0, supply: 0 }))
+    let demandLines = 0
+    for (const pl of plan.lines) {
+      const demand = dayTypeCode ? (pl.line.metrics as { demand?: Record<string, unknown> } | null)?.demand?.[dayTypeCode] : undefined
+      if (!demand || Object.keys(demand).length === 0) continue
+      const lineBlocks = withTrips.filter(b => b.blockTrips.some(bt => bt.trip.route.lineId === pl.lineId))
+      const trips = lineBlocks.flatMap(b => b.blockTrips
+        .filter(bt => bt.trip.route.lineId === pl.lineId)
+        .map(bt => ({ departureMinutes: bt.trip.departureMinutes, vehicleType: b.vehicleType as string, direction: bt.trip.route.direction as string })))
+      const series = this.computeHourlySeries(dayTypeCode, pl.line.metrics, trips, lineBlocks.map(b => b.vehicleType))
+      for (const h of series.hours) {
+        supplyDemand[h.hour].demand += h.demand
+        supplyDemand[h.hour].supply += h.supply
+      }
+      demandLines++
+    }
+
+    return {
+      summary:             (plan.summary as VehiclePlanSummary | null) ?? null,
+      lineCount:           plan.lines.length,
+      tripCount:           withTrips.reduce((sum, b) => sum + b.blockTrips.length, 0),
+      issueBlocks:         withTrips.filter(b => b.hasIssues).length,
+      staleBlocks:         withTrips.filter(b => b.isStale).length,
+      driftedLines:        plan.lines.filter(l => l.isDrifted || l.hasAttributeDrift).length,
+      byDepot:             group(b => ({ key: b.depot.id, label: b.depot.name })),
+      byVehicleType:       group(b => ({ key: b.vehicleType, label: VEHICLE_TYPE_LABELS[b.vehicleType] ?? b.vehicleType })),
+      byBranch:            group(b => ({ key: b.branch?.id ?? 'unassigned', label: b.branch?.name ?? 'Sem empresa' })),
+      fleetByHour:         [...fleetByHour.entries()].sort((a, b) => a[0] - b[0]).map(([hour, fleet]) => ({ hour, fleet })),
+      supplyDemandByHour:  supplyDemand,
+      demandLines,
     }
   }
 

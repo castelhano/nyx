@@ -44,7 +44,7 @@ import { RedistributeModal }          from './components/RedistributeModal'
 import { OsoCoverageModal }           from './components/OsoCoverageModal'
 import { SyncFromOsoModal }           from './components/SyncFromOsoModal'
 import { OsoSavePromptModal }         from './components/OsoSavePromptModal'
-import { LineSummaryView }            from './components/LineSummaryView'
+import { SummaryView }                from './components/SummaryView'
 import type { VehiclePlanGanttData, GanttBlockTrip, GanttBlockDeadrun, GanttBlockInterval } from './views/vehicles.view'
 import { computeHeadway } from './views/vehicles.view'
 import { BusyOverlay } from '@/components/ui/busy-overlay'
@@ -190,7 +190,7 @@ export default function VehiclePlanPage() {
     setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
     pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
     setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
-    summaryLineIds, setSummaryLineIds, setRedistributeModal,
+    setSummaryLineIds, setRedistributeModal,
     blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
@@ -492,19 +492,20 @@ export default function VehiclePlanPage() {
       position: 'start' as const,
     }] : []),
 
+    // summary — both modes; the plan view needs no selected line (SummaryView)
+    ...(!isNew ? [{
+      label:    'Resumo',
+      icon:     Icons.BarChart2,
+      size:     'sm' as const,
+      variant:  (summaryLineIds ? 'default' : 'ghost') as 'default' | 'ghost',
+      onClick:  () => setSummaryLineIds(v => v ? null : [...selectedLineIds]),
+    }] : []),
+
     // ── edit mode ──────────────────────────────────────────────────────────────
     // Navigation/inspection stays available even on active plans. Punctual edits
     // (trip, save, clear) require canEditGantt (DRAFT or ACTIVE); bulk/structural
     // flows (Gerar and its submenu) require canEdit (DRAFT only).
     ...(editBarOpen ? [
-      {
-        label:    'Resumo',
-        icon:     Icons.BarChart2,
-        size:     'sm' as const,
-        variant:  (summaryLineIds ? 'default' : 'ghost') as 'default' | 'ghost',
-        onClick:  () => setSummaryLineIds(v => v ? null : [...selectedLineIds]),
-        disabled: !summaryLineIds && selectedLineIds.size === 0,
-      },
       { label: '', separator: true },
       ...(canEditGantt ? [
         {
@@ -919,7 +920,7 @@ export default function VehiclePlanPage() {
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           <div className="flex-1 min-h-0 relative">
             {summaryLineIds ? (
-              <LineSummaryView
+              <SummaryView
                 planId={id}
                 lineIds={summaryLineIds}
                 lines={planLines

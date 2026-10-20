@@ -84,7 +84,6 @@ interface UseVehiclePlanShortcutsParams {
   setAddTripOpen:       Dispatch<SetStateAction<boolean>>
   setLineFreqOpen:      Dispatch<SetStateAction<boolean>>
   setLinesPanelOpen:    Dispatch<SetStateAction<boolean>>
-  summaryLineIds:       string[] | null
   setSummaryLineIds:    Dispatch<SetStateAction<string[] | null>>
   setRedistributeModal: Dispatch<SetStateAction<{ lineId: string } | null>>
 
@@ -117,7 +116,7 @@ export function useVehiclePlanShortcuts({
   setPendingAdds, setPendingDeletes, setPendingChanges, setPendingDeadrunDeletes, setPendingDeadrunChanges,
   pendingCount, freqPanelOpen, setFreqPanelOpen, setFreqDeltaView, deltaGroups,
   setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
-  summaryLineIds, setSummaryLineIds, setRedistributeModal,
+  setSummaryLineIds, setRedistributeModal,
   blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
@@ -302,10 +301,10 @@ export function useVehiclePlanShortcuts({
   })
 
   useShortcut('alt+;', () => setSummaryLineIds(v => v ? null : [...selectedLineIds]), {
-    desc:    'Resumo comparativo da linha',
+    desc:    'Resumo comparativo do plano / linhas',
     icon:    Icons.BarChart2,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
-    enabled: !isNew && (summaryLineIds != null || selectedLineIds.size > 0),
+    enabled: !isNew,
     section: SEC_PAINEIS,
   })
 
