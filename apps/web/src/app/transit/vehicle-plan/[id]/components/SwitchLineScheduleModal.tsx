@@ -186,6 +186,8 @@ export function SwitchLineScheduleModal({
       await queryClient.invalidateQueries({ queryKey: ['transit', 'line-schedule', 'history', lineId, dayTypeId] })
       cancelCreating(lineId)
       toast.success(`OSO ${approvalRef} criada`)
+      // the new OSO is pinned to the line — refresh its status in the panel
+      await onApplied()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao criar OSO')
     } finally {

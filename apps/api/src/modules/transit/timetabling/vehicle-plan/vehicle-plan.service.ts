@@ -1173,6 +1173,13 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         })
       }
 
+      // copied from this plan's own trips, so the line is pinned to it with nothing diverging
+      await (tx as any).vehiclePlanLine.upsert({
+        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+        create: { vehiclePlanId: planId, lineId, lineScheduleId: schedule.id, isDrifted: false, hasAttributeDrift: false },
+        update: { lineScheduleId: schedule.id, isDrifted: false, hasAttributeDrift: false },
+      })
+
       return { id: schedule.id }
     })
   }
