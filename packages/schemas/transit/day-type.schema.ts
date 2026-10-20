@@ -68,6 +68,13 @@ export const dayTypeSchema = withMeta(
       helpText:    'Ordem de exibição em selects e relatórios',
     }),
 
+    // edited with a ColorPicker on the day type page, not by the generic form
+    color: z.string().regex(/^#[0-9a-f]{6}$/i).nullable().optional().meta({
+      label:          'Cor',
+      showInForm:     false,
+      listVisibility: 'hidden',
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

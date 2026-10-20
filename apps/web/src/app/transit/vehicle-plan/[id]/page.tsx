@@ -905,7 +905,19 @@ export default function VehiclePlanPage() {
                   await queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
                 }}
               />
-              <Badge {...vigenceBadge(status, record.validFrom as string | null, record.validTo as string | null)} />
+              <span className="flex items-center gap-1.5">
+                <Badge {...vigenceBadge(status, record.validFrom as string | null, record.validTo as string | null)} />
+                {ganttData?.plan?.dayType && (ganttData.plan.dayType.color ? (
+                  <span
+                    className="inline-flex items-center justify-center rounded-sm px-2 py-0.5 text-xs font-medium"
+                    style={{ background: `${ganttData.plan.dayType.color}26`, color: ganttData.plan.dayType.color }}
+                  >
+                    {ganttData.plan.dayType.name.toUpperCase()}
+                  </span>
+                ) : (
+                  <Badge label={ganttData.plan.dayType.name.toUpperCase()} />
+                ))}
+              </span>
             </div>
           )}
         </div>

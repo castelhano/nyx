@@ -172,7 +172,7 @@ export interface VehiclePlanGanttData {
     id:      string
     status:  string
     summary: unknown
-    dayType: { id: string; name: string; code: string } | null
+    dayType: { id: string; name: string; code: string; color: string | null } | null
     lines:   Array<{
       lineId:         string
       inPlan:         boolean

@@ -18,9 +18,13 @@ import { useConfirm } from '@/lib/confirm-context'
 import { msgs } from '@/lib/messages'
 import { cn, extractError } from '@/lib/utils'
 import { DayPatternInput } from '@/components/ui/day-pattern-input'
+import { ColorPicker } from '@/components/ui/color-picker'
+import { ROUTE_COLOR_PALETTE } from '../../transit-route/types'
 import type { DayTypePattern } from '@nyx/schemas'
 
 const FORM_ID  = 'day-type-form'
+// the "Sem cor" swatch — the badge falls back to the neutral muted style
+const NEUTRAL_COLOR = '#71717a'
 const labelCls = 'text-sm font-medium pt-2'
 const gridCls  = 'grid gap-x-6 gap-y-3 md:grid-cols-[minmax(140px,max-content)_1fr] md:items-start'
 
@@ -30,6 +34,7 @@ interface FormValues {
   description: string
   sortOrder:   number
   pattern:     DayTypePattern | null
+  color:       string | null
 }
 
 export default function DayTypeDetailPage() {
@@ -73,7 +78,7 @@ export default function DayTypeDetailPage() {
     formState: { errors },
   } = useForm<FormValues>({
     defaultValues: {
-      code: '', name: '', description: '', sortOrder: 0, pattern: null,
+      code: '', name: '', description: '', sortOrder: 0, pattern: null, color: null,
     },
   })
 
@@ -87,6 +92,7 @@ export default function DayTypeDetailPage() {
       description: String(record.description ?? ''),
       sortOrder:   Number(record.sortOrder   ?? 0),
       pattern:     (record.pattern as DayTypePattern | null) ?? null,
+      color:       (record.color as string | null) ?? null,
     })
     formInit.current = true
   }, [record, reset]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -129,6 +135,7 @@ export default function DayTypeDetailPage() {
         description: String(record.description ?? ''),
         sortOrder:   Number(record.sortOrder   ?? 0),
         pattern:     (record.pattern as DayTypePattern | null) ?? null,
+        color:       (record.color as string | null) ?? null,
       })
     }
   }, { display: false, origin: 'apps/web/src/app/transit/day-type/[id]/page' })
@@ -156,6 +163,7 @@ export default function DayTypeDetailPage() {
         description: data.description || null,
         sortOrder:   data.sortOrder,
         pattern:     data.pattern ?? null,
+        color:       data.color,
       }
       const path = isNew ? '/transit/day-type' : `/transit/day-type/${id}`
       const res  = await apiFetch(path, {
@@ -263,6 +271,22 @@ export default function DayTypeDetailPage() {
             />
             {hlp('pattern') && <p className="text-xs text-muted-foreground">{hlp('pattern')}</p>}
           </div>
+
+          <label className={labelCls}>{lbl('color')}</label>
+          <Controller
+            name="color"
+            control={control}
+            render={({ field }) => (
+              <ColorPicker
+                value={field.value}
+                onChange={field.onChange}
+                palette={ROUTE_COLOR_PALETTE.map(c => c.value)}
+                autoColor={NEUTRAL_COLOR}
+                autoLabel="Sem cor"
+                disabled={!isNew && !canUpdate}
+              />
+            )}
+          />
 
         </div>
       </form>
