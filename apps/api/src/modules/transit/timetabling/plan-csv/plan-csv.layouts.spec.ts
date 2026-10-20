@@ -92,10 +92,12 @@ describe('vehicle CSV', () => {
     const { rows } = vehicleDetailed([allDay], duties)
     const change = rows.find(r => r[2] === 'TROCA_CONDUTOR')!
     expect([change[3], change[12]]).toEqual(['09:30', 'D10 → D25'])
-    // after the interval that ends at 09:30, before the trip that starts at it
-    expect(rows.map(r => r[2])).toEqual(['ACESSO', 'VIAGEM', 'OCIOSO', 'VIAGEM', 'INTERVALO', 'TROCA_CONDUTOR', 'VIAGEM', 'RECOLHE'])
+    // after the interval that ends at 09:30, before the trip that starts at it; the 10 min
+    // OCIOSO between the first two trips isn't a row (the summary still counts it)
+    expect(rows.map(r => r[2])).toEqual(['ACESSO', 'VIAGEM', 'VIAGEM', 'INTERVALO', 'TROCA_CONDUTOR', 'VIAGEM', 'RECOLHE'])
+    expect(rows.map(r => r[1])).toEqual([1, 2, 3, 4, 5, 6, 7])
     expect(rows[1][11]).toBe('D10')
-    expect(rows[6][11]).toBe('D25')
+    expect(rows[5][11]).toBe('D25')
   })
 })
 

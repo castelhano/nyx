@@ -76,6 +76,10 @@ export function clock(m: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
 
+// an OCIOSO this short isn't a row of the detailed files — the summaries still count it
+const MIN_IDLE_ROW_MINUTES = 10
+const listedIdle = (event: string, start: number, end: number) => event !== 'OCIOSO' || end - start > MIN_IDLE_ROW_MINUTES
+
 const opt  = (m: number | null | undefined) => m == null ? '' : clock(m)
 const km   = (v: number | null | undefined) => v == null ? '' : v.toFixed(1).replace('.', ',')
 const list = (items: (string | number)[]) => [...new Set(items)].join('/')
@@ -223,7 +227,7 @@ export function vehicleDetailed(blocks: CsvBlock[], duties: CsvDuty[]): Omit<Pla
     // stable: an instant row goes after what ends at its time, before what starts at it
     timeline.sort((x, y) => x.start - y.start || Number(x.start !== x.end) - Number(y.start !== y.end))
 
-    timeline.forEach((r, i) => rows.push([
+    timeline.filter(r => listedIdle(r.event, r.start, r.end)).forEach((r, i) => rows.push([
       b.blockNumber, i + 1, r.event, clock(r.start), clock(r.end), clock(r.end - r.start),
       r.from, r.to, r.line, r.direction, km(r.km),
       r.event === 'TROCA_CONDUTOR' ? '' : covering(cov, r.start, r.end),
@@ -367,6 +371,7 @@ export function dutyDetailed(duties: CsvDuty[], blocks: CsvBlock[]): Omit<PlanCs
       const prev = live[i - 1], next = live[i]
       for (const gap of subtract({ start: prev.end, end: next.start }, busy)) {
         const isSplit = splitAt === prev.end
+        if (!isSplit && !listedIdle('OCIOSO', gap.start, gap.end)) continue
         out.push({
           event: isSplit ? 'INTERVALO_DUPLA' : 'OCIOSO', start: gap.start, end: gap.end,
           from: prev.to, to: next.from, carro: '', line: '', direction: '', km: null,
