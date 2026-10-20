@@ -7,6 +7,7 @@ import { activationEffect, applyEffect, localToday, toDbDate } from '../plan-val
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
+import { VEHICLE_BLOCK_ISSUE_LABEL, type VehicleBlockIssue } from '@nyx/schemas'
 
 interface ImportOutput {
   created: number  // VehicleBlock records created
@@ -248,6 +249,8 @@ export class VehiclePlanImportService {
 
     let plan: { id: string }
     let blockNumber = 1
+    // the block's first row in the file — where the plan validation rows point
+    const blockFirstLine = new Map<number, number>()
 
     if (planId) {
       await this.vehiclePlanSvc.clearLinesFromPlan(planId, validLineIds, dayTypeId)
@@ -445,6 +448,7 @@ export class VehiclePlanImportService {
       // Errors reference the blockNumber shown on the Gantt, not the file's vehicle key
       const thisBlockNumber = blockNumber++
       const record = `Bloco ${thisBlockNumber}`
+      blockFirstLine.set(thisBlockNumber, Math.min(...tabRows.map(r => r._lineNum)))
 
       // Reclassify deadruns by position relative to productive trips:
       // before first trip → ACCESS, after last trip → RETURN. The file only gives a
@@ -598,6 +602,26 @@ export class VehiclePlanImportService {
     await (this.prisma as any).blockInterval.createMany({ data: blockIntervalRows })
 
     await this.vehiclePlanSvc.recalculate(plan.id)
+
+    // the plan's own validation (blockIssues, run by recalculate) catches what the file
+    // reading above doesn't, e.g. a movement leaving from somewhere other than where the
+    // vehicle was — one row per block and kind of problem
+    const flagged = await this.prisma.vehicleBlock.findMany({
+      where:   { vehiclePlanId: plan.id, hasIssues: true },
+      select:  { blockNumber: true, issues: true },
+      orderBy: { blockNumber: 'asc' },
+    })
+    for (const b of flagged) {
+      const byCode = new Map<string, number[]>()
+      for (const i of (b.issues as VehicleBlockIssue[] | null) ?? []) byCode.set(i.code, [...(byCode.get(i.code) ?? []), i.minutes])
+      for (const [code, minutes] of byCode) {
+        const label = VEHICLE_BLOCK_ISSUE_LABEL[code as VehicleBlockIssue['code']] ?? code
+        const when  = minutes.length === 1 ? `às ${toHHMM(minutes[0])}` : `${minutes.length}× a partir de ${toHHMM(Math.min(...minutes))}`
+        errors.push({ line: blockFirstLine.get(b.blockNumber) ?? 0, record: `Bloco ${b.blockNumber}`, message: `Validação do plano — ${label} ${when}` })
+      }
+    }
+    // stable: each block's validation rows land after its reading warnings
+    errors.sort((a, b) => a.line - b.line)
 
     return { created: blockRows.length, trips: tripRows.length, errors }
   }
