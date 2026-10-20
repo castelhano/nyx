@@ -11,7 +11,11 @@ import { bundleRowsOf } from './trip-bundle.utils'
 // consolidation.md §2.4. Plain functions (not a service) so VehiclePlanService can
 // call them directly without a circular DI edge back through VehicleBlockService.
 
-export async function applyAddAccess(tx: any, blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
+// A deadrun's window as the user left it on the Gantt (e.g. hand-shortened) — when given,
+// it's kept as is; the matrix only times one that comes without it.
+export interface DeadrunWindow { departureMinutes: number; arrivalMinutes: number }
+
+export async function applyAddAccess(tx: any, blockId: string, blockTripId: string, depotLocalityId: string, window?: DeadrunWindow): Promise<void> {
   const target = await tx.blockTrip.findUnique({
     where:  { id: blockTripId },
     select: {
@@ -22,12 +26,15 @@ export async function applyAddAccess(tx: any, blockId: string, blockTripId: stri
   if (!target || target.vehicleBlockId !== blockId) throw new NotFoundException('Viagem não encontrada neste bloco')
 
   const originLocalityId = target.trip.route.originLocality.id
-  const travelTime = await tx.travelTimeMatrix.findUnique({
-    where: { originId_destinationId: { originId: depotLocalityId, destinationId: originLocalityId } },
-  })
-  if (!travelTime) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-
-  const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
+  let times = window
+  if (!times) {
+    const travelTime = await tx.travelTimeMatrix.findUnique({
+      where: { originId_destinationId: { originId: depotLocalityId, destinationId: originLocalityId } },
+    })
+    if (!travelTime) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
+    const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
+    times = { departureMinutes: target.trip.departureMinutes - deadheadMinutes - 1, arrivalMinutes: target.trip.departureMinutes - 1 }
+  }
 
   await tx.blockDeadrun.create({
     data: {
@@ -35,14 +42,14 @@ export async function applyAddAccess(tx: any, blockId: string, blockTripId: stri
       type:                  'ACCESS',
       originLocalityId:      depotLocalityId,
       destinationLocalityId: originLocalityId,
-      departureMinutes:      target.trip.departureMinutes - deadheadMinutes - 1,
-      arrivalMinutes:        target.trip.departureMinutes - 1,
+      departureMinutes:      times.departureMinutes,
+      arrivalMinutes:        times.arrivalMinutes,
     },
   })
   await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })
 }
 
-export async function applyAddReturn(tx: any, blockId: string, blockTripId: string, depotLocalityId: string): Promise<void> {
+export async function applyAddReturn(tx: any, blockId: string, blockTripId: string, depotLocalityId: string, window?: DeadrunWindow): Promise<void> {
   const target = await tx.blockTrip.findUnique({
     where:  { id: blockTripId },
     select: {
@@ -53,12 +60,15 @@ export async function applyAddReturn(tx: any, blockId: string, blockTripId: stri
   if (!target || target.vehicleBlockId !== blockId) throw new NotFoundException('Viagem não encontrada neste bloco')
 
   const destinationLocalityId = target.trip.route.destinationLocality.id
-  const travelTime = await tx.travelTimeMatrix.findUnique({
-    where: { originId_destinationId: { originId: destinationLocalityId, destinationId: depotLocalityId } },
-  })
-  if (!travelTime) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-
-  const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
+  let times = window
+  if (!times) {
+    const travelTime = await tx.travelTimeMatrix.findUnique({
+      where: { originId_destinationId: { originId: destinationLocalityId, destinationId: depotLocalityId } },
+    })
+    if (!travelTime) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
+    const deadheadMinutes = Math.round(travelTime.baseMinutes * travelTime.speedRatio)
+    times = { departureMinutes: target.trip.arrivalMinutes + 1, arrivalMinutes: target.trip.arrivalMinutes + 1 + deadheadMinutes }
+  }
 
   await tx.blockDeadrun.create({
     data: {
@@ -66,8 +76,8 @@ export async function applyAddReturn(tx: any, blockId: string, blockTripId: stri
       type:                  'RETURN',
       originLocalityId:      destinationLocalityId,
       destinationLocalityId: depotLocalityId,
-      departureMinutes:      target.trip.arrivalMinutes + 1,
-      arrivalMinutes:        target.trip.arrivalMinutes + 1 + deadheadMinutes,
+      departureMinutes:      times.departureMinutes,
+      arrivalMinutes:        times.arrivalMinutes,
     },
   })
   await tx.vehicleBlock.update({ where: { id: blockId }, data: { isStale: true } })

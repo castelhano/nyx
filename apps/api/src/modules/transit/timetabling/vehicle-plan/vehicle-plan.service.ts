@@ -18,7 +18,7 @@ import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
-import { applyAddAccess, applyAddReturn, applyMoveTrip } from './block-mutation.utils'
+import { applyAddAccess, applyAddReturn, applyMoveTrip, type DeadrunWindow } from './block-mutation.utils'
 import { blockIssues, defaultIntervalMaxMinutes, planBundleSizes, planLineOperators } from './block-issues.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, dissolveBundlesOf, recomputeLineDrift, recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
@@ -847,7 +847,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // Access/return anchored to a trip that only reaches its block through a move in
       // this same diff (trip moved to another block, then a return added to it) —
       // applied after step 8, once the trip is actually there.
-      const deferredAnchored: { type: 'ACCESS' | 'RETURN'; blockId: string; blockTripId: string; depotLocalityId: string }[] = []
+      const deferredAnchored: { type: 'ACCESS' | 'RETURN'; blockId: string; blockTripId: string; depotLocalityId: string; window: DeadrunWindow }[] = []
 
       // 7. adds — walked in order so a 'new' entry's server-assigned block id is
       // available to any later 'pending:<tempId>' entry in the same batch that
@@ -890,34 +890,23 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           const maxSeq = await tx.blockTrip.aggregate({ where: { vehicleBlockId: resolvedBlockId }, _max: { sequence: true } })
           await tx.blockTrip.create({ data: { vehicleBlockId: resolvedBlockId, tripId: trip.id, sequence: (maxSeq._max.sequence ?? -1) + 1 } })
 
-          // Deadrun timing is always re-derived server-side from the matrix — the
-          // client's precomputed travelMinutes (used for its own optimistic render)
-          // is display-only and never trusted for what gets persisted.
+          // the access/return travel time the user saw on the Gantt — the travelMinutes the
+          // client sends — is what gets persisted, same as a pending access/return deadrun
           if (entry.access) {
-            const tt = await tx.travelTimeMatrix.findUnique({
-              where: { originId_destinationId: { originId: entry.access.localityId, destinationId: route.originLocalityId } },
-            })
-            if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-            const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
             await tx.blockDeadrun.create({
               data: {
                 vehicleBlockId: resolvedBlockId, type: 'ACCESS',
                 originLocalityId: entry.access.localityId, destinationLocalityId: route.originLocalityId,
-                departureMinutes: entry.departureMinutes - minutes - 1, arrivalMinutes: entry.departureMinutes - 1,
+                departureMinutes: entry.departureMinutes - entry.access.travelMinutes - 1, arrivalMinutes: entry.departureMinutes - 1,
               },
             })
           }
           if (entry.return) {
-            const tt = await tx.travelTimeMatrix.findUnique({
-              where: { originId_destinationId: { originId: route.destinationLocalityId, destinationId: entry.return.localityId } },
-            })
-            if (!tt) throw new NotFoundException('Mapeamento não localizado na matriz entre os pontos informados')
-            const minutes = Math.round(tt.baseMinutes * tt.speedRatio)
             await tx.blockDeadrun.create({
               data: {
                 vehicleBlockId: resolvedBlockId, type: 'RETURN',
                 originLocalityId: route.destinationLocalityId, destinationLocalityId: entry.return.localityId,
-                departureMinutes: entry.arrivalMinutes + 1, arrivalMinutes: entry.arrivalMinutes + minutes + 1,
+                departureMinutes: entry.arrivalMinutes + 1, arrivalMinutes: entry.arrivalMinutes + entry.return.travelMinutes + 1,
               },
             })
           }
@@ -927,10 +916,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           if (entry.type === 'ACCESS' || entry.type === 'RETURN') {
             if (!entry.blockTripId) throw new BadRequestException('Acesso/recolhida pendente sem viagem associada')
             const depotLocalityId = entry.type === 'ACCESS' ? entry.originLocality.id : entry.destinationLocality.id
+            // the window as left on the Gantt (the user may have resized it off the matrix time)
+            const window = { departureMinutes: entry.departureMinutes, arrivalMinutes: entry.arrivalMinutes }
             const anchor = await tx.blockTrip.findUnique({ where: { id: entry.blockTripId }, select: { vehicleBlockId: true } })
-            if (anchor && anchor.vehicleBlockId !== resolvedBlockId) deferredAnchored.push({ type: entry.type, blockId: resolvedBlockId, blockTripId: entry.blockTripId, depotLocalityId })
-            else if (entry.type === 'ACCESS') await applyAddAccess(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
-            else                              await applyAddReturn(tx, resolvedBlockId, entry.blockTripId, depotLocalityId)
+            if (anchor && anchor.vehicleBlockId !== resolvedBlockId) deferredAnchored.push({ type: entry.type, blockId: resolvedBlockId, blockTripId: entry.blockTripId, depotLocalityId, window })
+            else if (entry.type === 'ACCESS') await applyAddAccess(tx, resolvedBlockId, entry.blockTripId, depotLocalityId, window)
+            else                              await applyAddReturn(tx, resolvedBlockId, entry.blockTripId, depotLocalityId, window)
           } else {
             await tx.blockDeadrun.create({
               data: {
@@ -967,8 +958,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       // 8a. access/return deferred from step 7
       for (const d of deferredAnchored) {
-        if (d.type === 'ACCESS') await applyAddAccess(tx, d.blockId, d.blockTripId, d.depotLocalityId)
-        else                     await applyAddReturn(tx, d.blockId, d.blockTripId, d.depotLocalityId)
+        if (d.type === 'ACCESS') await applyAddAccess(tx, d.blockId, d.blockTripId, d.depotLocalityId, d.window)
+        else                     await applyAddReturn(tx, d.blockId, d.blockTripId, d.depotLocalityId, d.window)
       }
 
       // 8b. block-level patches ("Modificar depósito") — after adds/moves, so a
