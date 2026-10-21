@@ -149,6 +149,26 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     return this.vehiclePlanService.createLineSchedule(id, lineId, body)
   }
 
+  // the same scope's plans (and their lines) a line can be copied from
+  @Get(':id/copy-sources')
+  async copySources(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
+    await this.assertAbility(req.user, 'read')
+    return this.vehiclePlanService.getCopySources(id)
+  }
+
+  // body: { sourcePlanId, lineScheduleId } or { sourcePlanId, newSchedule: { approvalRef? } }
+  @Post(':id/lines/:lineId/copy-from')
+  @HttpCode(200)
+  async copyLineFrom(
+    @Req()           req:    { user?: AuthUser },
+    @Param('id')     id:     string,
+    @Param('lineId') lineId: string,
+    @Body() body: { sourcePlanId?: string; lineScheduleId?: string; newSchedule?: { approvalRef?: string } },
+  ) {
+    await this.assertAbility(req.user, 'update')
+    return this.vehiclePlanService.copyLineFrom(id, lineId, body ?? {})
+  }
+
   // the trip groups' crew members: { bundleId: [{ id, code, name }] }
   @Get(':id/bundle-crew')
   async bundleCrew(@Req() req: { user?: AuthUser }, @Param('id') id: string) {

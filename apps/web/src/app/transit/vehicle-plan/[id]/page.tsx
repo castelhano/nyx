@@ -28,6 +28,7 @@ import { GotoBlockInput, type GotoMode } from './components/GotoBlockInput'
 import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './components/LineFreqPanel'
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
+import { CopyLineModal } from './components/CopyLineModal'
 import { ExportOsoModal } from './components/ExportOsoModal'
 import { PlanExportModal } from './components/PlanExportModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
@@ -168,6 +169,7 @@ export default function VehiclePlanPage() {
   const [planExportOpen, setPlanExportOpen] = useState(false)
   const [csvExportOpen,  setCsvExportOpen]  = useState(false)
   const [syncFromOsoOpen,    setSyncFromOsoOpen]    = useState(false)
+  const [copyLineOpen,       setCopyLineOpen]       = useState(false)
   const [generateLineModal, setGenerateLineModal] = useState<{ lineIds: string[] } | null>(null)
   const [redistributeModal, setRedistributeModal] = useState<{ lineId: string } | null>(null)
   const [addTripOpen,       setAddTripOpen]       = useState(false)
@@ -602,6 +604,11 @@ export default function VehiclePlanPage() {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
             setSyncFromOsoOpen(true)
           } }] : []),
+          // replaces the line's blocks here, so not with pending Gantt edits
+          ...(canEdit ? [{ label: 'Copiar de outro planejamento', icon: Icons.Copy, onClick: () => {
+            if (pendingCount > 0) { toast.error('Salve ou descarte as alterações pendentes antes de copiar'); return }
+            setCopyLineOpen(true)
+          } }] : []),
         ],
       }] : []),
       // optimize — the solver reads the saved blocks, so not with pending Gantt edits
@@ -762,6 +769,21 @@ export default function VehiclePlanPage() {
             setEditBarOpen(true)
           }}
           onClose={() => setVersionsModalOpen(false)}
+        />
+      )}
+
+      {copyLineOpen && ganttData?.plan?.dayType && (
+        <CopyLineModal
+          planId={id}
+          dayTypeId={ganttData.plan.dayType.id}
+          dayTypeName={ganttData.plan.dayType.name}
+          initialLineId={selectedLineIds.size === 1 ? [...selectedLineIds][0] : undefined}
+          planLineIds={new Set(planLines.map(l => l.lineId))}
+          onCopied={async () => {
+            void queryClient.invalidateQueries({ queryKey: ['transit', 'vehicle-plan', id] })
+            await refetchGantt()
+          }}
+          onClose={() => setCopyLineOpen(false)}
         />
       )}
 

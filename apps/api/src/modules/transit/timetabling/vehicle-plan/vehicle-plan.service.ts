@@ -24,6 +24,7 @@ import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, dissolveBundlesOf,
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { validateNewBundles } from './trip-bundle.utils'
+import { selectLineCopy } from './line-copy.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, parseStartDate, toDbDate } from '../plan-validity'
 import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
@@ -588,6 +589,196 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       return newPlan as unknown as VehiclePlan
     })
+  }
+
+  // "Copiar de outro planejamento" — the plans of the same scope a line can be copied from
+  async getCopySources(planId: string) {
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { scopeId: true } })
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    const plans = await this.prisma.vehiclePlan.findMany({
+      where:   { scopeId: plan.scopeId, id: { not: planId }, lines: { some: {} } },
+      orderBy: { createdAt: 'desc' },
+      select:  {
+        id: true, description: true, status: true, validFrom: true,
+        dayType: { select: { id: true, name: true } },
+        lines:   { select: { lineId: true, line: { select: { code: true, name: true } } } },
+      },
+    })
+    return plans.map(p => ({
+      ...p,
+      lines: p.lines.map(l => ({ lineId: l.lineId, code: l.line.code, name: l.line.name })).sort((a, b) => a.code.localeCompare(b.code, 'pt-BR')),
+    }))
+  }
+
+  // Copies one line's blocks from another plan of the same scope (any day type) into this one,
+  // replacing what the line has here — its trips only, with the deadruns, intervals and trip
+  // groups (and their crew members) that still make sense without the other lines' trips (see
+  // line-copy.utils.ts). The line is pinned to the chosen OSO of this plan's day type, or to a
+  // new DRAFT one seeded from the copied trips.
+  async copyLineFrom(
+    planId: string,
+    lineId: string,
+    dto:    { sourcePlanId?: string; lineScheduleId?: string; newSchedule?: { approvalRef?: string } },
+  ): Promise<{ blocks: number; trips: number; dissolvedBundles: { blockNumber: number; start: number }[]; lineScheduleId: string }> {
+    const [plan, source] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { id: true, scopeId: true, dayTypeId: true, status: true, constraints: true } }),
+      dto.sourcePlanId ? this.prisma.vehiclePlan.findUnique({ where: { id: dto.sourcePlanId }, select: { id: true, scopeId: true, constraints: true } }) : null,
+    ])
+    if (!plan) throw new NotFoundException('VehiclePlan not found')
+    if (plan.status !== 'DRAFT') throw new BadRequestException('Only DRAFT plans can be modified')
+    if (!source || source.id === planId) throw new BadRequestException('Planejamento de origem inválido')
+    if (source.scopeId !== plan.scopeId) throw new BadRequestException('O planejamento de origem é de outro escopo')
+
+    const approvalRef = dto.newSchedule?.approvalRef?.trim()
+    if (dto.lineScheduleId) {
+      const schedule = await this.prisma.lineSchedule.findUnique({ where: { id: dto.lineScheduleId }, select: { lineId: true, dayTypeId: true, status: true } })
+      if (!schedule || schedule.lineId !== lineId || schedule.dayTypeId !== plan.dayTypeId) throw new BadRequestException('OSO não é desta linha e tipo de dia')
+      if (schedule.status !== 'DRAFT' && schedule.status !== 'APPROVED') throw new BadRequestException('OSO substituída ou arquivada')
+    } else if (!dto.newSchedule) {
+      throw new BadRequestException('Escolha a OSO a vincular')
+    } else if (approvalRef && await this.prisma.lineSchedule.findFirst({ where: { lineId, dayTypeId: plan.dayTypeId, approvalRef }, select: { id: true } })) {
+      throw new BadRequestException(`OSO ${approvalRef} já existe para esta linha e tipo de dia`)
+    }
+
+    const sourceBlocks = await this.prisma.vehicleBlock.findMany({
+      where:   { vehiclePlanId: source.id, blockTrips: { some: { trip: { route: { lineId } } } } },
+      orderBy: { blockNumber: 'asc' },
+      include: {
+        blockTrips: {
+          orderBy: { sequence: 'asc' },
+          select:  {
+            sequence: true,
+            trip: {
+              select: {
+                id: true, routeId: true, departureMinutes: true, arrivalMinutes: true,
+                requiredVehicleType: true, stopPattern: true, constraints: true, notes: true, markings: true, bundleId: true,
+                route: { select: { lineId: true } },
+              },
+            },
+          },
+        },
+        blockDeadruns:  { select: { id: true, type: true, originLocalityId: true, destinationLocalityId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
+        blockIntervals: { select: { id: true, intervalTypeId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true } },
+      },
+    })
+    if (sourceBlocks.length === 0) throw new BadRequestException('A linha não tem carros no planejamento de origem')
+
+    const sourceCrew = (source.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {}
+    let trips = 0
+    const dissolvedBundles: { blockNumber: number; start: number }[] = []
+
+    await this.prisma.$transaction(async tx => {
+      const current = await tx.transitTrip.findMany({ where: { vehiclePlanId: planId, route: { lineId } }, select: { id: true } })
+      await this.removeTripsFromPlan(planId, current.map(t => t.id), tx)
+
+      // numbered on from the plan's highest, in the source's order
+      const numbers = (await tx.vehicleBlock.findMany({ where: { vehiclePlanId: planId }, select: { blockNumber: true } })).map(b => b.blockNumber)
+      let nextNumber = Math.max(0, ...numbers) + 1
+      const tripIdMap   = new Map<string, string>()
+      const bundleIdMap = new Map<string, string>()
+      const copyBundle  = (id: string | null, kept: Set<string>) => {
+        if (!id || !kept.has(id)) return undefined
+        if (!bundleIdMap.has(id)) bundleIdMap.set(id, randomUUID())
+        return bundleIdMap.get(id)
+      }
+
+      for (const block of sourceBlocks) {
+        const sel = selectLineCopy({
+          trips:     block.blockTrips.map(bt => ({ ...bt.trip, lineId: bt.trip.route.lineId })),
+          deadruns:  block.blockDeadruns,
+          intervals: block.blockIntervals,
+        }, lineId)
+
+        const blockNumber = nextNumber++
+        for (const d of sel.dissolved) dissolvedBundles.push({ blockNumber, start: d.start })
+
+        const newBlock = await tx.vehicleBlock.create({
+          data: {
+            vehiclePlanId: planId,
+            branchId:      block.branchId ?? undefined,
+            blockNumber,
+            depotId:       block.depotId,
+            vehicleType:   block.vehicleType,
+            constraints:   block.constraints ?? undefined,
+          },
+        })
+
+        const blockTrips: { vehicleBlockId: string; tripId: string; sequence: number }[] = []
+        // numbered by time — the source's sequence isn't always chronological
+        const copied = block.blockTrips.filter(bt => sel.tripIds.has(bt.trip.id)).sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+        for (const { trip } of copied) {
+          if (!tripIdMap.has(trip.id)) {
+            const created = await tx.transitTrip.create({
+              data: {
+                vehiclePlanId:       planId,
+                routeId:             trip.routeId,
+                dayTypeId:           plan.dayTypeId,
+                departureMinutes:    trip.departureMinutes,
+                arrivalMinutes:      trip.arrivalMinutes,
+                requiredVehicleType: trip.requiredVehicleType ?? undefined,
+                stopPattern:         trip.stopPattern,
+                constraints:         trip.constraints ?? undefined,
+                notes:               trip.notes ?? undefined,
+                markings:            trip.markings ?? undefined,
+                bundleId:            copyBundle(trip.bundleId, sel.keptBundleIds),
+              },
+            })
+            tripIdMap.set(trip.id, created.id)
+            trips++
+          }
+          blockTrips.push({ vehicleBlockId: newBlock.id, tripId: tripIdMap.get(trip.id)!, sequence: blockTrips.length + 1 })
+        }
+        await tx.blockTrip.createMany({ data: blockTrips })
+
+        const deadruns = block.blockDeadruns.filter(d => sel.deadrunIds.has(d.id))
+        if (deadruns.length > 0) {
+          await tx.blockDeadrun.createMany({
+            data: deadruns.map(d => ({
+              vehicleBlockId:        newBlock.id,
+              type:                  d.type,
+              originLocalityId:      d.originLocalityId,
+              destinationLocalityId: d.destinationLocalityId,
+              departureMinutes:      d.departureMinutes,
+              arrivalMinutes:        d.arrivalMinutes,
+              bundleId:              copyBundle(d.bundleId, sel.keptBundleIds),
+            })),
+          })
+        }
+
+        const intervals = block.blockIntervals.filter(i => sel.intervalIds.has(i.id))
+        if (intervals.length > 0) {
+          await tx.blockInterval.createMany({
+            data: intervals.map(i => ({
+              vehicleBlockId:   newBlock.id,
+              intervalTypeId:   i.intervalTypeId,
+              departureMinutes: i.departureMinutes,
+              arrivalMinutes:   i.arrivalMinutes,
+              bundleId:         copyBundle(i.bundleId, sel.keptBundleIds),
+            })),
+          })
+        }
+      }
+
+      // the copied groups' crew members follow their new ids, next to this plan's own
+      const copiedCrew = Object.fromEntries([...bundleIdMap].flatMap(([from, to]) => (sourceCrew[from] ? [[to, sourceCrew[from]]] : [])))
+      if (Object.keys(copiedCrew).length > 0) {
+        const constraints = (plan.constraints ?? {}) as VehiclePlanConstraints
+        await tx.vehiclePlan.update({ where: { id: planId }, data: { constraints: { ...constraints, bundleCrew: { ...constraints.bundleCrew, ...copiedCrew } } } })
+      }
+
+      const pin = { lineScheduleId: dto.lineScheduleId ?? null, isDrifted: false, hasAttributeDrift: false }
+      await tx.vehiclePlanLine.upsert({
+        where:  { vehiclePlanId_lineId: { vehiclePlanId: planId, lineId } },
+        create: { vehiclePlanId: planId, lineId, ...pin },
+        update: pin,
+      })
+      await recomputeLineDrift(tx, planId, lineId)
+    }, { timeout: 60_000 })
+
+    const lineScheduleId = dto.lineScheduleId ?? (await this.activateNewLineSchedule(planId, lineId, approvalRef)).id
+    await this.recalculate(planId)
+
+    return { blocks: sourceBlocks.length, trips, dissolvedBundles, lineScheduleId }
   }
 
   async remove(id: string): Promise<void> {
