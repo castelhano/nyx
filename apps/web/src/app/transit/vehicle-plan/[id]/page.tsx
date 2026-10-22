@@ -511,12 +511,16 @@ export default function VehiclePlanPage() {
       { label: '', separator: true },
       ...(canEditGantt ? [
         {
-          label:    'Viagem',
+          label:    'Novo',
           icon:     Icons.Plus,
           size:     'sm' as const,
           variant:  'ghost' as const,
-          onClick:  () => setAddTripOpen(true),
-          keybind:  'q+n',
+          menuOnly: true,
+          iconOnly: true,
+          menu: [
+            { label: 'Viagem', icon: Icons.Route, onClick: () => setAddTripOpen(true) },
+            { label: 'Bloco',  icon: Icons.Bus,   onClick: handleCreateEmptyBlock },
+          ],
         },
         { label: '', separator: true },
       ] : []),
@@ -593,19 +597,21 @@ export default function VehiclePlanPage() {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
             setVersionsModalOpen(true)
           } },
-          { label: 'OSO', icon: Icons.FileSpreadsheet, onClick: () => setExportOsoModalOpen(true) },
+          { separator: true as const },
+          { label: 'Exportar OSO', icon: Icons.FileSpreadsheet, onClick: () => setExportOsoModalOpen(true) },
           // reads the saved plan — pending Gantt edits wouldn't be in the file
           { label: 'Exportar Planejamento', icon: Icons.Upload, onClick: () => {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
             if (pendingCount > 0) { toast.error('Salve ou descarte as alterações pendentes antes de exportar'); return }
             setPlanExportOpen(true)
           } },
+          ...(canEditGantt || canEdit ? [{ separator: true as const }] : []),
           ...(canEditGantt ? [{ label: 'Atualizar da OSO', icon: Icons.RefreshCw, onClick: () => {
             if (selectedLineIds.size === 0) { toast.error('Selecione ao menos uma linha em "Linhas" primeiro'); return }
             setSyncFromOsoOpen(true)
           } }] : []),
           // replaces the line's blocks here, so not with pending Gantt edits
-          ...(canEdit ? [{ label: 'Copiar de outro planejamento', icon: Icons.Copy, onClick: () => {
+          ...(canEdit ? [{ label: 'Copiar linha', icon: Icons.Copy, onClick: () => {
             if (pendingCount > 0) { toast.error('Salve ou descarte as alterações pendentes antes de copiar'); return }
             setCopyLineOpen(true)
           } }] : []),

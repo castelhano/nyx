@@ -48,6 +48,8 @@ export interface TopbarAction {
   menu?: TopbarMenuItem[]
   // menuOnly: the whole button opens the menu (no main action; onClick is ignored)
   menuOnly?: boolean
+  // iconOnly: hides the label on the button (still used as its title and in the ⋯ menu)
+  iconOnly?: boolean
   // className: extra classes on the button itself (e.g. a fixed width for a toggle whose
   // label changes, so the topbar doesn't reflow)
   className?: string

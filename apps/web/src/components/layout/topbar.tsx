@@ -95,7 +95,7 @@ function MenuActionButton({ action }: { action: TopbarAction }) {
           className={action.className}
         >
           {Icon && <Icon className="w-3.5 h-3.5" />}
-          <span className="hidden md:inline">{action.label}</span>
+          {!action.iconOnly && <span className="hidden md:inline">{action.label}</span>}
           <Icons.ChevronDown className="w-3.5 h-3.5" />
         </Button>
       }
