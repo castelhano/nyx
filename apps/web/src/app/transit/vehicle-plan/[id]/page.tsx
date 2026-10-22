@@ -155,6 +155,12 @@ export default function VehiclePlanPage() {
     for (const b of mergedPlottedData?.blocks ?? []) if (b.branch) byId.set(b.branch.id, b.branch.name)
     return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   }, [mergedPlottedData])
+  // the depots of the plan's blocks — BlockFilterBar's depot list
+  const filterDepots = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const b of mergedPlottedData?.blocks ?? []) byId.set(b.depot.id, b.depot.name)
+    return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  }, [mergedPlottedData])
   // "Ir para" input — by block number (ctrl+g) or line code (ctrl+shift+g); null: closed
   const [gotoMode,          setGotoMode]          = useState<GotoMode | null>(null)
   const [summaryLineIds,   setSummaryLineIds]     = useState<string[] | null>(null)
@@ -1020,6 +1026,7 @@ export default function VehiclePlanPage() {
                     onChange={setBlockFilter}
                     matchCount={filterMatchCount}
                     branches={filterBranches}
+                    depots={filterDepots}
                     onClose={() => { setBlockFilterOpen(false); setBlockFilter(null); clearPinnedBlocks() }}
                   />
                 )}

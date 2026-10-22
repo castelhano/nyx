@@ -11,26 +11,29 @@ interface Props {
   matchCount: number
   // the empresas the plan's blocks belong to
   branches:   { id: string; name: string }[]
+  // the depots the plan's blocks belong to
+  depots:     { id: string; name: string }[]
   // "X" — closes the bar entirely; a deliberate full reset (criteria + pins),
   // handled by the caller alongside unmounting this component.
   onClose:    () => void
 }
 
-export function BlockFilterBar({ filter, onChange, matchCount, branches, onClose }: Props) {
+export function BlockFilterBar({ filter, onChange, matchCount, branches, depots, onClose }: Props) {
   const [field,     setField]     = useState<BlockFilter['field']>(filter?.field ?? 'start')
   const [relation,  setRelation]  = useState<BlockFilter['relation']>(filter?.relation ?? 'after')
   const [timeLabel, setTimeLabel] = useState(filter?.minutes != null ? minutesToLabel(filter.minutes) : '')
   const [issuesOnly, setIssuesOnly] = useState(filter?.issuesOnly ?? false)
   const [branchId,  setBranchId]  = useState(filter?.branchId ?? '')
+  const [depotId,   setDepotId]   = useState(filter?.depotId ?? '')
 
   // The time criterion only kicks in once all three fields have a value — field/relation
-  // always do (defaults above), so the time input is the actual gate. "Com pendências" and
-  // the empresa work alone or combined with it. The encaixe window (fit) is set from the Gantt
+  // always do (defaults above), so the time input is the actual gate. "Com pendências",
+  // the empresa and the depot work alone or combined with it. The encaixe window (fit) is set from the Gantt
   // selection ("Filtrar encaixes"), never here — only kept or removed.
-  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly, nextBranchId = branchId, nextFit = filter?.fit ?? null) {
-    setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel); setIssuesOnly(nextIssuesOnly); setBranchId(nextBranchId)
-    onChange(nextTimeLabel || nextIssuesOnly || nextBranchId || nextFit
-      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly, branchId: nextBranchId || null, fit: nextFit }
+  function commit(nextField: BlockFilter['field'], nextRelation: BlockFilter['relation'], nextTimeLabel: string, nextIssuesOnly = issuesOnly, nextBranchId = branchId, nextFit = filter?.fit ?? null, nextDepotId = depotId) {
+    setField(nextField); setRelation(nextRelation); setTimeLabel(nextTimeLabel); setIssuesOnly(nextIssuesOnly); setBranchId(nextBranchId); setDepotId(nextDepotId)
+    onChange(nextTimeLabel || nextIssuesOnly || nextBranchId || nextDepotId || nextFit
+      ? { field: nextField, relation: nextRelation, minutes: nextTimeLabel ? labelToMinutes(nextTimeLabel) : null, issuesOnly: nextIssuesOnly, branchId: nextBranchId || null, depotId: nextDepotId || null, fit: nextFit }
       : null)
   }
 
@@ -48,7 +51,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, branches, onClose
   // keep. The local field/relation/time selections need an explicit reset
   // back to defaults since the component doesn't unmount here.
   function handleClear() {
-    setField('start'); setRelation('after'); setTimeLabel(''); setIssuesOnly(false); setBranchId('')
+    setField('start'); setRelation('after'); setTimeLabel(''); setIssuesOnly(false); setBranchId(''); setDepotId('')
     onChange(null)
   }
 
@@ -69,6 +72,17 @@ export function BlockFilterBar({ filter, onChange, matchCount, branches, onClose
         >
           <option value="">Todas as empresas</option>
           {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      )}
+
+      {depots.length > 1 && (
+        <select
+          value={depotId}
+          onChange={e => { commit(field, relation, timeLabel, issuesOnly, branchId, filter?.fit ?? null, e.target.value); release(e) }}
+          className="h-6 rounded-sm border border-input bg-input-bg px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">Todos os depósitos</option>
+          {depots.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
       )}
 

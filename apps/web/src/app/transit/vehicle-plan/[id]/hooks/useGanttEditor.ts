@@ -107,14 +107,15 @@ export function findAnchoredDeadrunIds(block: GanttBlock, tripIds: string[]): st
 // "does any trip match" — a block runs trips all day, so that reading matched
 // almost every block and never actually narrowed anything down.
 // minutes null = no time criterion; issuesOnly = only blocks with VehicleBlock.issues
-// branchId: only that empresa's blocks (null: any)
+// branchId: only that empresa's blocks (null: any); depotId: same, for the depot
 // fit: only blocks with no productive trip overlapping [start, end] — where a selection could be
 // slotted in ("Filtrar encaixes"); deadruns/breaks never count
-export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean; branchId: string | null; fit: { start: number; end: number } | null }
+export type BlockFilter = { field: 'start' | 'end'; relation: 'after' | 'before'; minutes: number | null; issuesOnly: boolean; branchId: string | null; depotId: string | null; fit: { start: number; end: number } | null }
 
 function blockMatchesFilter(block: GanttBlock, filter: BlockFilter): boolean {
   if (filter.issuesOnly && !block.hasIssues) return false
   if (filter.branchId && block.branchId !== filter.branchId) return false
+  if (filter.depotId && block.depotId !== filter.depotId) return false
   if (filter.fit && block.blockTrips.some(bt => bt.trip.departureMinutes < filter.fit!.end && bt.trip.arrivalMinutes > filter.fit!.start)) return false
   if (filter.minutes == null) return true
   const trips = block.blockTrips
@@ -680,7 +681,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       end:   Math.max(...owned.map(o => o.trip.arrivalMinutes)),
     }
     setPinnedBlockIds(prev => owned.every(o => prev.has(o.blockId)) ? prev : new Set([...prev, ...owned.map(o => o.blockId)]))
-    setBlockFilterState(prev => ({ ...(prev ?? { field: 'start', relation: 'after', minutes: null, issuesOnly: false, branchId: null }), fit }))
+    setBlockFilterState(prev => ({ ...(prev ?? { field: 'start', relation: 'after', minutes: null, issuesOnly: false, branchId: null, depotId: null }), fit }))
     onOpenBlockFilter()
   }
 
