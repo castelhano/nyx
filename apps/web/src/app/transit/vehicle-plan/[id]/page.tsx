@@ -848,6 +848,7 @@ export default function VehiclePlanPage() {
         <AccessModal
           title="Modificar depósito"
           confirmLabel="Aplicar"
+          notice="A mudança se aplica a todos blocos das linhas selecionadas, filtros adicionais são ignorados neste processo."
           onConfirm={depot => { setChangeDepotOpen(false); handleChangeDepot(depot) }}
           onClose={() => setChangeDepotOpen(false)}
         />

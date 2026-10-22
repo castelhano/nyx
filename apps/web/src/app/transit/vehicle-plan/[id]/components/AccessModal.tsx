@@ -16,11 +16,12 @@ interface Depot {
 interface Props {
   title:         string
   confirmLabel?: string
+  notice?:       string
   onConfirm: (depot: { id: string; name: string }) => void
   onClose:   () => void
 }
 
-export function AccessModal({ title, confirmLabel = 'Adicionar', onConfirm, onClose }: Props) {
+export function AccessModal({ title, confirmLabel = 'Adicionar', notice, onConfirm, onClose }: Props) {
   const [depotId, setDepotId] = useState('')
   const selectRef = useRef<HTMLSelectElement>(null)
   useShortcutContext('access_md')
@@ -64,6 +65,13 @@ export function AccessModal({ title, confirmLabel = 'Adicionar', onConfirm, onCl
         className="relative z-10 bg-card border border-border rounded-lg shadow-xl w-full max-w-sm mx-4 p-6 space-y-4"
       >
         <h2 className="text-base font-semibold">{title}</h2>
+
+        {notice && (
+          <div className="flex items-start gap-2 rounded-sm border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <Icons.Info className="w-4 h-4 mt-0.5 shrink-0" />
+            {notice}
+          </div>
+        )}
 
         <div>
           <label htmlFor="depotId" className="text-sm font-medium">
