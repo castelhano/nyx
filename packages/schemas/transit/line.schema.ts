@@ -109,7 +109,7 @@ export const lineSchema = withMeta(
         OUTBOUND: z.array(windowEntrySchema).optional().meta({ label: 'Ida' }),
         INBOUND:  z.array(windowEntrySchema).optional().meta({ label: 'Volta' }),
         CIRCULAR: z.array(windowEntrySchema).optional().meta({ label: 'Circular' }),
-      })).optional().meta({ label: 'Janelas de Ciclo' }),
+      })).optional().meta({ label: 'Janelas de Ciclo', resource: 'day-type', domain: 'transit', keyField: 'code', labelField: 'name' }),
       // used for supply calculation; the breakdown by direction is for informational purposes only
       // and is not currently being used
       renewalIndex: z.object({

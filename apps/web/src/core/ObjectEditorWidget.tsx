@@ -14,6 +14,7 @@ import type { MetadataField } from '@nyx/types'
 import { inputBaseCls } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
+import { useFieldOptions } from './useFieldOptions'
 
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
 const fieldInputCls = `${inputBaseCls} w-full`
@@ -239,6 +240,31 @@ function RecordValueEditor({
     return next
   })
 
+  // keys can only be added/removed when the field names the resource they come from
+  const { options } = useFieldOptions(field)
+  const keyOf      = (o: Record<string, unknown>) => String(o[field.keyField ?? 'id'])
+  const labelOf    = (key: string) => {
+    const opt = options.find((o) => keyOf(o) === key)
+    return opt && field.labelField ? `${key} — ${String(opt[field.labelField])}` : key
+  }
+  const available  = options.filter((o) => !(keyOf(o) in value))
+  const [newKey,  setNewKey]  = useState('')
+  const [copyKey, setCopyKey] = useState('')
+  const canEditKeys = !readonly && !!field.resource
+
+  function addKey() {
+    if (!newKey) return
+    onChange({ ...value, [newKey]: copyKey ? structuredClone(value[copyKey]) : {} })
+    setOpenKeys(prev => new Set(prev).add(newKey))
+    setNewKey('')
+    setCopyKey('')
+  }
+
+  function removeKey(key: string) {
+    const { [key]: _removed, ...rest } = value
+    onChange(rest)
+  }
+
   return (
     <div className="space-y-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
@@ -249,14 +275,26 @@ function RecordValueEditor({
         const isOpen = openKeys.has(key)
         return (
           <div key={key} className="pl-3 border-l-2 border-border space-y-3">
-            <button
-              type="button"
-              onClick={() => toggle(key)}
-              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              <Icons.ChevronDown className={cn('w-3.5 h-3.5 transition-transform', isOpen && 'rotate-180')} />
-              Tipo de dia: {key}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => toggle(key)}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                <Icons.ChevronDown className={cn('w-3.5 h-3.5 transition-transform', isOpen && 'rotate-180')} />
+                Tipo de dia: {labelOf(key)}
+              </button>
+              {canEditKeys && (
+                <button
+                  type="button"
+                  onClick={() => removeKey(key)}
+                  title="Remover"
+                  className="p-1 rounded-sm text-muted-foreground hover:text-destructive hover:bg-accent cursor-pointer"
+                >
+                  <Icons.Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             {isOpen && (
               <ObjectValueEditor
                 field={{ ...field, type: 'object' }}
@@ -269,6 +307,33 @@ function RecordValueEditor({
           </div>
         )
       })}
+      {canEditKeys && available.length > 0 && (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Tipo de dia</label>
+            <select value={newKey} onChange={(e) => setNewKey(e.target.value)} className={cn(fieldInputCls, 'w-48')}>
+              <option value="">Selecione…</option>
+              {available.map((o) => {
+                const key = keyOf(o)
+                return <option key={key} value={key}>{field.labelField ? `${key} — ${String(o[field.labelField])}` : key}</option>
+              })}
+            </select>
+          </div>
+          {keys.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Copiar de</label>
+              <select value={copyKey} onChange={(e) => setCopyKey(e.target.value)} className={cn(fieldInputCls, 'w-48')}>
+                <option value="">Vazio</option>
+                {keys.map((key) => <option key={key} value={key}>{labelOf(key)}</option>)}
+              </select>
+            </div>
+          )}
+          <Button type="button" variant="ghost" size="sm" onClick={addKey} disabled={!newKey}>
+            <Icons.Plus className="w-3.5 h-3.5" />
+            Adicionar
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

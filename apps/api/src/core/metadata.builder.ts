@@ -110,6 +110,8 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
           ? { fields: buildNestedFields((valueInner as ZodObject<any>).shape) }
           : {}),
         ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
+        // resource whose rows are the allowed keys — lets the editor add/remove them
+        ...(meta.resource ? { resource: meta.resource, domain: meta.domain, keyField: meta.keyField ?? 'id', labelField: meta.labelField } : {}),
       }
     }
 

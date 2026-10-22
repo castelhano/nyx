@@ -43,6 +43,8 @@ export interface FieldMeta {
   resource?: string
   domain?: string
   labelField?: string
+  /** record fields: the field of `resource` whose value is used as the record key */
+  keyField?: string
   relatedDisplayFields?: string[]
   relatedWhere?: Record<string, unknown>
   keybind?: string
@@ -96,6 +98,7 @@ export interface MetadataField {
   resource?: string
   domain?: string
   labelField?: string
+  keyField?: string
   relatedDisplayFields?: string[]
   relatedWhere?: Record<string, unknown>
   keybind?: string
