@@ -341,7 +341,7 @@ export function useVehiclePlanShortcuts({
       if (idx === 0) break
     }
   }, {
-    desc:    'Viagem anterior no bloco',
+    desc:    'Viagem anterior',
     icon:    Icons.ArrowLeft,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -361,7 +361,7 @@ export function useVehiclePlanShortcuts({
       if (idx === block.length - 1) break
     }
   }, {
-    desc:    'Próxima viagem no bloco',
+    desc:    'Próxima viagem',
     icon:    Icons.ArrowRight,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -384,7 +384,7 @@ export function useVehiclePlanShortcuts({
       break
     }
   }, {
-    desc:    'Bloco anterior (mesmo horário aproximado)',
+    desc:    'Bloco anterior',
     icon:    Icons.ArrowUp,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
@@ -407,7 +407,7 @@ export function useVehiclePlanShortcuts({
       break
     }
   }, {
-    desc:    'Próximo bloco (mesmo horário aproximado)',
+    desc:    'Próximo bloco',
     icon:    Icons.ArrowDown,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && !selection,
