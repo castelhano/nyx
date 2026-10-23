@@ -119,6 +119,10 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
   // the importable fields only — no object-level refinements, which the writes still meet
   const createSchema = z.object(Object.fromEntries(columns.map(c => [c.field, schema.shape[c.field]])))
   const updateSchema = createSchema.partial()
+  // like the form: a field with a meta defaultValue takes it when a new record leaves it out
+  const createDefaults = Object.fromEntries(columns
+    .map(c => [c.field, fieldMeta(schema, c.field).defaultValue] as const)
+    .filter(([, v]) => v !== undefined))
 
   const scoped = !!opts.scopeField && !!user && user.role !== 'admin'
   const outOfScope = (branchId: unknown) => typeof branchId === 'string' && !user!.branchIds.includes(branchId)
@@ -126,7 +130,8 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
   const refCache = new Map<string, CellResult>()
   async function resolveRef(col: ImportColumn, raw: string, data: Record<string, unknown>, row: ImportRow): Promise<CellResult | null> {
     const meta   = fieldMeta(schema, col.field)
-    const parent = meta.dependsOn as string | undefined
+    // narrowed only by a sibling that is itself a column (not e.g. the form's virtual company)
+    const parent = columns.some(c => c.field === meta.dependsOn) ? meta.dependsOn as string : undefined
     if (parent && data[parent] == null) {
       // the parent's own error already explains the row
       if (row.errors.some(e => e.column === columnOf(parent))) return null
@@ -196,7 +201,7 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
       row.errors.push({ column: columnOf(opts.scopeField!), message: 'Filial fora do seu acesso' })
     }
 
-    const validation = (existing ? updateSchema : createSchema).safeParse(data)
+    const validation = existing ? updateSchema.safeParse(data) : createSchema.safeParse({ ...createDefaults, ...data })
     if (!validation.success) {
       for (const issue of validation.error.issues) {
         const field = String(issue.path[0] ?? '')

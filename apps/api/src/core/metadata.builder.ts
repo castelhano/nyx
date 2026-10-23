@@ -181,7 +181,7 @@ export function buildImportColumns(schema: ZodObject<any>): ImportColumn[] | und
       label:    meta.label ?? toTitleCase(name),
       type:     type as ImportColumn['type'],
       key:      keys.includes(name),
-      required: isRequired(field),
+      required: isRequired(field) && meta.defaultValue === undefined,
       ...(type === 'enum' ? { options: Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {}) } : {}),
       ...(isRelation ? { ref: meta.importRef ?? meta.labelField } : {}),
     })

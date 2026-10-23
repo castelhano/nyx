@@ -41,7 +41,7 @@ export const vehicleSchema = withMeta(
 
     plate: z.string().min(7).max(8).meta({
       label:          'Placa',
-      listVisibility: 'hidden',
+      listVisibility: 'visible',
       className:      'md:w-36',
       placeholder:    'AAA-0A00'
     }),
@@ -201,6 +201,23 @@ export const vehicleSchema = withMeta(
     nameField:   'code',
     icon:        'Bus',
     defaultSort: { field: 'code', order: 'asc' },
+    importKey:   'code',
+    // every enum value appears at least once — the file is how users learn the accepted values
+    importExamples: [
+      {
+        code: '1001', branch: 'Filial Centro', plate: 'ABC1D23', renavam: '12345678901', chassis: '9BWZZZ377VT004251',
+        brand: 'Volvo', model: 'B270F', year: '2022', modelYear: '2023', vehicleType: 'STANDARD', color: 'Branco',
+        fuelType: 'DIESEL', transmission: 'AUTOMATIC', seatedCapacity: '40', totalCapacity: '80', odometer: '125430,5',
+        status: 'ACTIVE', acquisitionDate: '15/03/2022', acquisitionValue: '850000,00', notes: 'Exemplo completo',
+      },
+      { code: '1003', branch: 'Filial Centro', plate: 'DEF2G34', vehicleType: 'ARTICULATED',    fuelType: 'GNV',      transmission: 'SEMI_AUTOMATIC', status: 'MAINTENANCE' },
+      { code: '1004', branch: 'Filial Centro', plate: 'GHI3J45', vehicleType: 'BI_ARTICULATED', fuelType: 'ELECTRIC', transmission: 'AUTOMATIC',      status: 'INACTIVE' },
+      { code: '1005', branch: 'Filial Centro', plate: 'JKL4M56', vehicleType: 'MICRO_BUS',      fuelType: 'HYBRID',   transmission: 'MANUAL',         status: 'DECOMMISSIONED' },
+      { code: '1006', branch: 'Filial Centro', plate: 'MNO5P67', vehicleType: 'MINIBUS',        fuelType: 'ETHANOL',  transmission: 'MANUAL',         status: 'ACTIVE' },
+      { code: '1007', branch: 'Filial Centro', plate: 'PQR6S78', vehicleType: 'VAN',            fuelType: 'GASOLINE', transmission: 'MANUAL',         status: 'ACTIVE' },
+      { code: '1002', branch: 'Filial Centro', plate: 'XYZ9K87', notes: 'Mínimo para criar: os demais assumem o padrão' },
+      { code: '0950', odometer: '130000', notes: 'Prefixo já cadastrado: atualiza só as células preenchidas' },
+    ],
     groups: {
       'Características': ['vehicleType', 'color', 'fuelType', 'transmission', 'seatedCapacity', 'totalCapacity'],
       'Operacional':     ['odometer', 'status', 'acquisitionDate', 'acquisitionValue', 'notes'],

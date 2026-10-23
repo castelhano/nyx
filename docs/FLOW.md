@@ -62,7 +62,7 @@ Layout elegante, sem exageros, seguindo os componentes existentes (hand-rolled, 
 Seguindo o princípio de que o schema Zod é a fonte única de verdade, o import é configurado no próprio schema:
 
 - `withMeta(schema, { ..., importKey: 'code' })`: chave de sincronização (string ou array para chave composta). Resource sem `importKey` não tem import.
-- `withMeta(schema, { ..., importExamples: [{ ... }] })`: linhas fictícias do CSV de modelo, por nome de coluna e já no formato do arquivo (datas dd/mm/aaaa, SIM/NAO). Todo resource com import deve declarar exemplos que mostrem os casos de uso (ex.: feriado geral e de filial).
+- `withMeta(schema, { ..., importExamples: [{ ... }] })`: linhas fictícias do CSV de modelo, por nome de coluna e já no formato do arquivo (datas dd/mm/aaaa, SIM/NAO). Todo resource com import deve declarar exemplos que mostrem os casos de uso (ex.: feriado geral e de filial) e **todos os valores de cada enum** — é assim que o usuário descobre os valores aceitos. O teste `import.examples.spec.ts` falha se faltar algum.
 - `.meta({ importRef: 'name' })` nos campos de relação: campo do resource relacionado usado como referência no CSV.
 - Colunas importáveis, modelo de CSV e o popover de campos são derivados desses metadados. Nenhuma configuração por resource no frontend.
 
@@ -173,7 +173,7 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 ### 5. Piloto: Core e Fleet simples ✅
 - Holiday, VehicleBrand e VehicleModel: validam o fluxo inteiro com chaves simples, compostas e com nulo.
 
-### 6. Vehicle
+### 6. Vehicle ✅
 - Primeira referência composta (`brand` + `model`) e referência a `branch`.
 
 ### 7. Employee + Contract
@@ -193,6 +193,8 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 
 - `importRef` é opcional: sem ele, a referência usa o `labelField` da relação. Relação com `dependsOn` (ex.: modelo dentro da marca) busca restrita ao registro que a coluna irmã resolveu.
 - Coluna de chave anulável (ex.: `branch` do Holiday) pode ser omitida do arquivo — vale como vazia.
+- Campo com `defaultValue` no `.meta()` não é obrigatório no arquivo: na criação, recebe o padrão, como no form (ex.: `vehicleType`, `fuelType` e `status` do Vehicle).
+- `dependsOn` só restringe a referência quando o campo pai também é coluna do import — o `companyId` virtual do form de Vehicle é ignorado (`Branch.name` é único).
 - Chave comparada exatamente como no banco (maiúsculas importam); só as referências ignoram maiúsculas.
 - `scopeField`: para não-admins, o import rejeita linhas de filiais fora do `branchIds`, com a mesma regra do CRUD do `BaseService`.
 
