@@ -3,7 +3,8 @@
 ---
 # Outros
 ## Alto
-
+[ ] Dashboard de escala
+[ ] Alternar List de feriados para layout de calendario (similar as ferias de condutores)
 ## Medio
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações) (q+backspace)
 [ ] Adição de ponto / waypoint no cadastro da rota, permitir remover um ponto ainda nao persistido (pending), e alt+l deve descartar pendencias (q+backspace)
