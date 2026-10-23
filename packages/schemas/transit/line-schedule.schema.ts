@@ -92,15 +92,6 @@ export const lineScheduleSchema = withMeta(
         method:     'POST',
         endpoint:   (row) => `/transit/line-schedule/${row.id}/duplicate`,
       },
-      {
-        action:      'approve',
-        label:       'Aprovar',
-        icon:        'Check',
-        permission:  'update',
-        method:      'POST',
-        endpoint:    (row) => `/transit/line-schedule/${row.id}/approve`,
-        visibleWhen: { field: 'status', value: 'DRAFT' },
-      },
     ],
   },
 )
