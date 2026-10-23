@@ -2,11 +2,11 @@ import {
   ZodType, ZodObject, ZodString, ZodNumber, ZodBoolean,
   ZodDate, ZodEnum, ZodOptional, ZodNullable, ZodDefault, ZodArray, ZodRecord,
 } from 'zod'
-import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef, RowActionDef } from '@nyx/types'
+import type { ResourceMetadata, MetadataField, TabGroup, ChildResourceDef, RowActionDef, ImportColumn } from '@nyx/types'
 import { resourceRegistry } from './resource-registry'
 import { resolveFilterDef } from './filter.builder'
 
-function unwrap(field: ZodType): ZodType {
+export function unwrap(field: ZodType): ZodType {
   if (field instanceof ZodOptional || field instanceof ZodNullable || field instanceof ZodDefault) {
     return unwrap((field as any)._def.innerType)
   }
@@ -63,6 +63,7 @@ function deriveChildren(resource: string): ChildResourceDef[] | undefined {
       ...(breadcrumbEntry.keybind  ? { keybind:            breadcrumbEntry.keybind } : {}),
       ...(breadcrumbEntry.overflow ? { overflow:           true }                    : {}),
       ...(m.privatePermissions     ? { privatePermissions: true }                    : {}),
+      ...(m.importKey              ? { importable:         true }                    : {}),
       order:        breadcrumbEntry.order ?? 0,
     })
   }
@@ -153,6 +154,45 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
 function arrayEnumOptions(inner: ZodType): string[] | undefined {
   const element = unwrap((inner as any)._def.element as ZodType)
   return element instanceof ZodEnum ? Object.keys((element as ZodEnum<any>)._def.entries ?? {}) : undefined
+}
+
+const NOT_IMPORTABLE = new Set(['id', 'createdAt', 'updatedAt', 'passwordHash'])
+
+// Columns of the standard CSV import (docs/FLOW.md) — undefined when the schema has no
+// importKey. Scalar fields and relations only; virtual, computed and form-hidden fields are out.
+export function buildImportColumns(schema: ZodObject<any>): ImportColumn[] | undefined {
+  const importKey = (schema as any)._schemaMeta?.importKey as string | string[] | undefined
+  if (!importKey) return undefined
+  const keys = Array.isArray(importKey) ? importKey : [importKey]
+
+  const columns: ImportColumn[] = []
+  for (const [name, rawField] of Object.entries(schema.shape)) {
+    const field = rawField as ZodType
+    const meta  = (field as any).meta?.() ?? {}
+    if (NOT_IMPORTABLE.has(name) || meta.virtual || meta.computed || meta.showInForm === false) continue
+
+    const isRelation = (meta.widget === 'select' || meta.widget === 'combobox') && !!meta.resource
+    const type = isRelation ? 'relation' : getType(field)
+    if (type === 'array') continue
+
+    columns.push({
+      name:     isRelation ? name.replace(/Id$/, '') : name,
+      field:    name,
+      label:    meta.label ?? toTitleCase(name),
+      type:     type as ImportColumn['type'],
+      key:      keys.includes(name),
+      required: isRequired(field),
+      ...(type === 'enum' ? { options: Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {}) } : {}),
+      ...(isRelation ? { ref: meta.importRef ?? meta.labelField } : {}),
+    })
+  }
+
+  const missing = keys.filter(k => !columns.some(c => c.field === k))
+  if (missing.length) throw new Error(`importKey fields not importable: ${missing.join(', ')}`)
+  return [
+    ...keys.map(k => columns.find(c => c.field === k)!),
+    ...columns.filter(c => !c.key),
+  ]
 }
 
 export function buildMetadata(resource: string, schema: ZodObject<any>): ResourceMetadata {
@@ -251,6 +291,7 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
   const defaultFilters = schemaMeta.defaultFilters as Record<string, string> | undefined
   const children     = deriveChildren(resource)
   const rowActions   = serializeRowActions(schemaMeta.rowActions)
+  const importColumns = buildImportColumns(schema)
 
   const groups: TabGroup[] | undefined = rawGroups
     ? Object.keys(rawGroups).map((tabLabel) => ({ label: tabLabel, fields: rawGroups[tabLabel] }))
@@ -274,5 +315,6 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     ...(afterCreate     ? { afterCreate }     : {}),
     ...(stayOnSave      ? { stayOnSave }      : {}),
     ...(defaultFilters  ? { defaultFilters }  : {}),
+    ...(importColumns   ? { import: { columns: importColumns } } : {}),
   }
 }

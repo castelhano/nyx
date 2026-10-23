@@ -20,6 +20,12 @@ export const vehicleBrandSchema = withMeta(
     nameField:   'name',
     icon:        'Tag',
     defaultSort: { field: 'name', order: 'asc' },
+    importKey:   'name',
+    importExamples: [
+      { name: 'Volvo' },
+      { name: 'Mercedes-Benz' },
+      { name: 'Scania' },
+    ],
   },
 )
 

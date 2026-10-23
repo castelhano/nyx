@@ -71,6 +71,10 @@ export interface FieldMeta {
   suggestEndpoint?: string
   /** Names of sibling fields to send as query params to `suggestEndpoint`. When set, the suggestion also re-fetches whenever these fields change (not just once on mount), as long as the field itself hasn't been edited by hand. */
   suggestParams?: string[]
+  /** Relation fields in a CSV import: the field of `resource` the CSV value is matched against
+   *  (case-insensitive). Defaults to `labelField`. With `dependsOn`, the match is narrowed to the
+   *  record the sibling column resolved to (e.g. a model's name within its brand). */
+  importRef?: string
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -175,6 +179,7 @@ export interface ChildResourceDef {
   keybind?:            string
   overflow?:           boolean
   privatePermissions?: boolean
+  importable?:         boolean  // has the CSV import — the parent's list offers it too
 }
 
 export interface BreadcrumbDef {
@@ -229,6 +234,45 @@ export interface RowActionDef {
   visibleWhen?:      { field: string; value: unknown }
 }
 
+// CSV import (see docs/FLOW.md) — a column of the import file
+export interface ImportColumn {
+  name:     string    // CSV header: the field key, without the `Id` suffix on relations
+  field:    string    // schema field it fills
+  label:    string
+  type:     'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation'
+  key:      boolean   // part of the sync key (importKey)
+  required: boolean   // required when the row creates a record
+  options?: string[]  // enum values
+  ref?:     string    // relation: the related resource's field matched against
+}
+
+export interface ImportMeta {
+  columns: ImportColumn[]   // key columns first
+}
+
+export interface ImportIssue {
+  column?: string
+  message: string
+}
+
+export interface ImportRow {
+  line:   number                   // line in the CSV (header is line 1)
+  action: 'create' | 'update' | null
+  values: Record<string, string>   // raw cells, by column
+  errors: ImportIssue[]
+}
+
+export interface ImportResult {
+  dryRun:  boolean
+  columns: string[]                // headers in file order
+  errors:  ImportIssue[]           // file-level (encoding, header, size) — no rows when present
+  rows:    ImportRow[]
+  total:   number
+  invalid: number
+  created: number
+  updated: number
+}
+
 export interface ResourceMetadata {
   resource:      string
   label:         string
@@ -247,4 +291,5 @@ export interface ResourceMetadata {
   afterCreate?:      string               // template {fieldName} — redireciona após criação em vez de ir para a lista
   stayOnSave?:       boolean              // after saving, stay on the record instead of going to the list
   defaultFilters?:   Record<string, string>  // filtros pré-aplicados na lista; o usuário pode modificar/limpar
+  import?:           ImportMeta           // present when the schema declares importKey
 }

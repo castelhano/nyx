@@ -58,7 +58,7 @@ model Company {
 model Branch {
   id        String   @id @default(uuid())
   companyId String
-  name      String   // ex: "Filial São Paulo", "CD Sul"
+  name      String   @unique // ex: "Filial São Paulo", "CD Sul" — import reference, "|" not allowed
   taxId     String?  @unique // CNPJ da filial (opcional — pode usar o da matriz)
   phone     String?
   email     String?

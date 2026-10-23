@@ -32,6 +32,12 @@ export const vehicleModelSchema = withMeta(
     labelPlural: 'Modelos',
     nameField:   'name',
     defaultSort: { field: 'name', order: 'asc' },
+    importKey:   ['brandId', 'name'],
+    importExamples: [
+      { brand: 'Volvo',         name: 'B270F' },
+      { brand: 'Mercedes-Benz', name: 'O-500U' },
+      { brand: 'Scania',        name: 'K310' },
+    ],
     breadcrumb: [
       { resource: 'vehicle-brand', contextField: 'brandId', listLabel: 'Marcas', nameField: 'name', keybind: 'f9' },
     ],

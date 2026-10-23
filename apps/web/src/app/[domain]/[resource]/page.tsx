@@ -1,10 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
 import { SettingsPanel } from '@/core/SettingsPanel'
+import { ImportModal } from '@/core/ImportModal'
 import { usePageGuard } from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -24,6 +26,11 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
 }) {
   const router  = useRouter()
   const newPath = `/${domain}/${resource}/new${contextQuery}`
+  // the resource's own import, plus its children's (e.g. a brand's list also imports models)
+  const [importing, setImporting] = useState<{ domain: string; resource: string } | null>(null)
+  const canImport      = !!meta?.import && meta.permissions?.update !== false
+  const childImports   = (meta?.children ?? []).filter(c => c.importable && !c.privatePermissions)
+  const childImportKey = childImports.map(c => c.resource).join(',')
 
   const bc       = meta?.breadcrumb?.[meta.breadcrumb.length - 1]
   const parentId = bc ? filters[bc.contextField] : undefined
@@ -42,8 +49,23 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
 
   useTopbarActions([
     ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push(newPath), primary: true }] : []),
+    ...(canImport || childImports.length ? [{
+      label:    'Importar',
+      icon:     Icons.Upload,
+      onClick:  () => setImporting({ domain, resource }),
+      variant:  'ghost' as const,
+      primary:  false,
+      ...(childImports.length ? {
+        menu: childImports.map(c => ({
+          label:   `Importar ${c.label}`,
+          icon:    Icons.Upload,
+          onClick: () => setImporting({ domain: c.domain ?? domain, resource: c.resource }),
+        })),
+        menuOnly: !canImport,
+      } : {}),
+    }] : []),
     ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: handleDownloadCsv, variant: 'ghost' as const, primary: false }] : []),
-  ], [meta?.allowCsv, meta?.permissions?.create, newPath])
+  ], [meta?.allowCsv, meta?.permissions?.create, newPath, canImport, childImportKey])
 
   useShortcut('alt+n', () => { if (meta?.permissions?.create !== false) router.push(newPath) }, {
     desc:   'Novo registro',
@@ -73,6 +95,9 @@ function ResourceListContent({ domain, resource, meta, filters, contextQuery }: 
         filters={Object.keys(filters).length ? filters : undefined}
         onEdit={(id) => router.push(`/${domain}/${resource}/${id}${contextQuery}`)}
       />
+      {importing && (
+        <ImportModal domain={importing.domain} resource={importing.resource} onClose={() => setImporting(null)} />
+      )}
     </div>
   )
 }

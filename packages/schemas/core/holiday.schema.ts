@@ -44,6 +44,12 @@ export const holidaySchema = withMeta(
     nameField:   'name',
     icon:        'CalendarDays',
     defaultSort: { field: 'date', order: 'desc' },
+    importKey:   ['date', 'branchId'],
+    importExamples: [
+      { date: '25/12/2026', branch: '',              name: 'Natal' },
+      { date: '01/01/2027', branch: '',              name: 'Confraternização Universal' },
+      { date: '20/01/2027', branch: 'Filial Centro', name: 'Aniversário da cidade' },
+    ],
   },
 )
 

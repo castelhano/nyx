@@ -1,6 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { ZodObject, ZodType, ZodDate, ZodNumber, ZodBoolean, ZodOptional, ZodNullable, ZodDefault } from 'zod'
-import type { PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
+import type { AuthUser, ImportResult, PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
 import { buildFilterWhere } from './filter.builder'
@@ -8,6 +9,7 @@ import { stringEquals } from './db.utils'
 import { resourceRegistry } from './resource-registry'
 import { settingsRegistry } from './settings-registry'
 import { getResourcePointerFields } from './settings-reference.utils'
+import { buildImportTemplate, runImport, type ImportOp } from './import/import.engine'
 
 @Injectable()
 export abstract class BaseService<T, CreateDTO, UpdateDTO> {
@@ -46,7 +48,27 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     return include
   }
 
-  async findAll(query: PaginationQuery): Promise<PaginatedResult<T>> {
+  // Branch scoping: with a scopeField, non-admins only reach records of their own branches.
+  // No user (internal calls) means no scoping.
+  private scopeWhere(user?: AuthUser): Record<string, unknown> | null {
+    if (!this.scopeField || !user || user.role === 'admin') return null
+    return { [this.scopeField]: { in: user.branchIds } }
+  }
+
+  private withScope(where: Record<string, unknown>, user?: AuthUser): Record<string, unknown> {
+    const scope = this.scopeWhere(user)
+    return scope ? { AND: [where, scope] } : where
+  }
+
+  private assertInScope(dto: unknown, user?: AuthUser): void {
+    if (!this.scopeWhere(user)) return
+    const branchId = (dto as Record<string, unknown>)[this.scopeField!]
+    if (typeof branchId === 'string' && !user!.branchIds.includes(branchId)) {
+      throw new ForbiddenException('Filial fora do seu acesso')
+    }
+  }
+
+  async findAll(query: PaginationQuery, user?: AuthUser): Promise<PaginatedResult<T>> {
     const page     = Number(query.page)     || 1
     const pageSize = Number(query.pageSize) || 20
     const defaultSort = (this.schema as any)._schemaMeta?.defaultSort
@@ -62,11 +84,11 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
       if (!KNOWN_KEYS.has(k) && !k.startsWith('f_') && v !== undefined) contextFilters[k] = v
     }
 
-    const where = {
+    const where = this.withScope({
       ...(query.search ? this.buildSearchWhere(query.search) : {}),
       ...contextFilters,
       ...this.buildFilterWhere(query),
-    }
+    }, user)
 
     const include    = this.buildRelationIncludes()
     const includeOpt = Object.keys(include).length ? { include } : {}
@@ -79,7 +101,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     return { data, total, page, pageSize }
   }
 
-  async lookupByNameField(value: string): Promise<T | null> {
+  async lookupByNameField(value: string, user?: AuthUser): Promise<T | null> {
     const nameField   = (this.schema as any)._schemaMeta?.nameField ?? 'name'
     const fieldSchema = this.unwrapField(this.schema.shape[nameField] as ZodType)
     const include      = this.buildRelationIncludes()
@@ -89,20 +111,23 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
       if (fieldSchema instanceof ZodNumber) {
         const num = Number(value)
         if (Number.isNaN(num)) return null
-        return await this.model.findFirst({ where: { [nameField]: num }, ...includeOpt })
+        return await this.model.findFirst({ where: this.withScope({ [nameField]: num }, user), ...includeOpt })
       }
 
-      return await this.model.findFirst({ where: { [nameField]: stringEquals(value) }, ...includeOpt })
+      return await this.model.findFirst({ where: this.withScope({ [nameField]: stringEquals(value) }, user), ...includeOpt })
     } catch {
       // nameField pode não suportar o filtro (ex.: enum) — trata como "não encontrado"
       return null
     }
   }
 
-  async findOne(id: string): Promise<T> {
+  async findOne(id: string, user?: AuthUser): Promise<T> {
     const include    = this.buildRelationIncludes()
     const includeOpt = Object.keys(include).length ? { include } : {}
-    const item = await this.model.findUnique({ where: { id }, ...includeOpt })
+    // out of the user's branches reads as not found, not as forbidden
+    const item = this.scopeWhere(user)
+      ? await this.model.findFirst({ where: this.withScope({ id }, user), ...includeOpt })
+      : await this.model.findUnique({ where: { id }, ...includeOpt })
     if (!item) throw new NotFoundException(`${this.modelName} not found`)
     return item
   }
@@ -141,17 +166,19 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     return result
   }
 
-  create(dto: CreateDTO): Promise<T> {
+  create(dto: CreateDTO, user?: AuthUser): Promise<T> {
+    this.assertInScope(dto, user)
     return this.model.create({ data: this.sanitizeDto(dto as Record<string, unknown>) })
   }
 
-  async update(id: string, dto: UpdateDTO): Promise<T> {
-    await this.findOne(id)
+  async update(id: string, dto: UpdateDTO, user?: AuthUser): Promise<T> {
+    await this.findOne(id, user)
+    this.assertInScope(dto, user)
     return this.model.update({ where: { id }, data: this.sanitizeDto(dto as Record<string, unknown>) })
   }
 
-  async remove(id: string): Promise<void> {
-    await this.findOne(id)
+  async remove(id: string, user?: AuthUser): Promise<void> {
+    await this.findOne(id, user)
     await this.assertNotReferencedBySettings(id)
     await this.model.delete({ where: { id } })
   }
@@ -174,6 +201,37 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
         if (hit) throw new ConflictException(`Não é possível excluir: em uso em Configurações (${hit.label ?? hit.fieldName})`)
       }
     }
+  }
+
+  // CSV import (docs/FLOW.md) — available when the schema declares importKey
+  private assertImportable(): void {
+    if (!(this.schema as any)._schemaMeta?.importKey) throw new NotFoundException('Importação não disponível para este recurso')
+  }
+
+  async importCsv(buffer: Uint8Array, dryRun: boolean, user?: AuthUser): Promise<ImportResult> {
+    this.assertImportable()
+    return runImport(buffer, {
+      prisma:     this.prisma,
+      modelName:  this.modelName,
+      schema:     this.schema,
+      scopeField: this.scopeField,
+      user,
+      dryRun,
+      write:      (tx, op) => this.importWrite(tx, op),
+    })
+  }
+
+  importTemplate(): { headers: string[]; rows: string[][] } {
+    this.assertImportable()
+    return buildImportTemplate(this.schema)
+  }
+
+  // one validated row of an import, inside its transaction — override for resources whose
+  // writes carry more than their own columns (e.g. Employee + Contract)
+  protected async importWrite(tx: Prisma.TransactionClient, op: ImportOp): Promise<void> {
+    const model = (tx as any)[this.modelName]
+    if (op.action === 'create') await model.create({ data: op.data })
+    else await model.update({ where: { id: op.id }, data: op.data })
   }
 
   getMetadata(): ResourceMetadata {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { employeeSchema, Employee, CreateEmployeeDto, UpdateEmployeeDto } from '@nyx/schemas'
+import type { AuthUser } from '@nyx/types'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
 import { stringContains } from '../../../core/db.utils'
@@ -22,9 +23,9 @@ export class EmployeeService extends BaseService<Employee, CreateEmployeeDto, Up
     }
   }
 
-  async update(id: string, dto: UpdateEmployeeDto): Promise<Employee> {
-    const current = await this.findOne(id)
-    const result  = await super.update(id, dto)
+  async update(id: string, dto: UpdateEmployeeDto, user?: AuthUser): Promise<Employee> {
+    const current = await this.findOne(id, user)
+    const result  = await super.update(id, dto, user)
 
     const oldUrl = current.photoUrl
     const newUrl = result.photoUrl
