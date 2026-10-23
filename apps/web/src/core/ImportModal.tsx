@@ -34,11 +34,13 @@ const TYPE_HINT: Record<ImportColumn['type'], string> = {
   date:     'dd/mm/aaaa',
   enum:     'lista',
   relation: 'referência',
+  list:     'vários, separados por |',
 }
 
 function columnHint(c: ImportColumn): string {
   if (c.type === 'enum') return c.options?.join(' · ') ?? ''
   if (c.type === 'relation') return `${c.label} (${c.ref})`
+  if (c.type === 'list') return `${c.item === 'enum' ? c.options?.join(' · ') : c.item === 'relation' ? `${c.label} (${c.ref})` : c.label} — ${TYPE_HINT.list}`
   return TYPE_HINT[c.type]
 }
 
@@ -68,7 +70,22 @@ export function ImportModal({ domain, resource, onClose }: Props) {
   const [filter,     setFilter]     = useState<Filter>('all')
   const [page,       setPage]       = useState(0)
   const [showFields, setShowFields] = useState(false)
+  const [valuesOf,   setValuesOf]   = useState<string | null>(null)
+  const [valueQuery, setValueQuery] = useState('')
   const [dragging,   setDragging]   = useState(false)
+
+  const valuesColumn = columns.find(c => c.name === valuesOf)
+  const valueGroups  = useMemo(() => {
+    const q = valueQuery.trim().toLowerCase()
+    const groups: { group: string; values: NonNullable<ImportColumn['values']> }[] = []
+    for (const v of valuesColumn?.values ?? []) {
+      if (q && !`${v.value} ${v.label} ${v.group ?? ''}`.toLowerCase().includes(q)) continue
+      let g = groups.find(x => x.group === (v.group ?? ''))
+      if (!g) groups.push(g = { group: v.group ?? '', values: [] })
+      g.values.push(v)
+    }
+    return groups
+  }, [valuesColumn, valueQuery])
 
   const canSave = !!result && !busy && !result.errors.length && !result.invalid && result.total > 0
 
@@ -193,6 +210,12 @@ export function ImportModal({ domain, resource, onClose }: Props) {
               CSV separado por <code className="font-mono">;</code> · datas dd/mm/aaaa · decimais com vírgula · SIM / NAO.
               Célula vazia mantém o valor atual.
             </p>
+            {meta?.import?.notice && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                <Icons.AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" />
+                {meta.import.notice}
+              </p>
+            )}
           </div>
           <button type="button" onClick={onClose} disabled={!!busy} className="text-muted-foreground hover:text-foreground transition-colors">
             <Icons.X className="w-4 h-4" />
@@ -241,7 +264,7 @@ export function ImportModal({ domain, resource, onClose }: Props) {
           <div className="px-5 py-3 border-b border-border bg-muted/20 shrink-0 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
-                Clique para copiar · <Icons.KeyRound className="inline w-3 h-3" /> chave · <span className="text-foreground font-medium">negrito</span> obrigatório na criação
+                Clique para copiar · <Icons.KeyRound className="inline w-3 h-3" /> chave · <span className="text-foreground font-medium">negrito</span> obrigatório na criação · <Icons.List className="inline w-3 h-3" /> valores aceitos
               </span>
               <button
                 type="button"
@@ -262,25 +285,90 @@ export function ImportModal({ domain, resource, onClose }: Props) {
                   )}
                   <div className="flex flex-wrap gap-1.5">
                     {g.columns.map(c => (
-                      <button
+                      <span
                         key={c.name}
-                        type="button"
-                        onClick={() => copy(c.name, c.name)}
-                        title={`${c.label} — ${columnHint(c)}`}
                         className={cn(
-                          'flex items-center gap-1 px-2 h-6 rounded-sm border text-xs font-mono transition-colors cursor-pointer',
-                          c.key ? 'border-primary/50 bg-primary/10' : 'border-border bg-background hover:bg-muted',
-                          c.required ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                          'flex items-center h-6 rounded-sm border text-xs font-mono overflow-hidden',
+                          c.key ? 'border-primary/50 bg-primary/10' : 'border-border bg-background',
+                          valuesOf === c.name && 'ring-1 ring-ring',
                         )}
                       >
-                        {c.key && <Icons.KeyRound className="w-3 h-3" />}
-                        {c.name}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => copy(c.name, c.name)}
+                          title={`${c.label} — ${columnHint(c)}`}
+                          className={cn(
+                            'flex items-center gap-1 px-2 h-full transition-colors cursor-pointer hover:bg-muted',
+                            c.required ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                          )}
+                        >
+                          {c.key && <Icons.KeyRound className="w-3 h-3" />}
+                          {c.name}
+                        </button>
+                        {!!c.values?.length && (
+                          <button
+                            type="button"
+                            onClick={() => { setValuesOf(v => (v === c.name ? null : c.name)); setValueQuery('') }}
+                            title="Valores aceitos"
+                            className="px-1.5 h-full border-l border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                          >
+                            <Icons.List className="w-3 h-3" />
+                          </button>
+                        )}
+                      </span>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Accepted values of the selected column — click one to copy it */}
+            {valuesColumn && (
+              <div className="rounded-sm border border-border bg-background">
+                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border">
+                  <span className="text-xs text-muted-foreground">
+                    Valores aceitos em <code className="font-mono text-foreground">{valuesColumn.name}</code>
+                    {valuesColumn.type === 'list' && ' — vários separados por |'}
+                  </span>
+                  {(valuesColumn.values?.length ?? 0) > 12 && (
+                    <input
+                      value={valueQuery}
+                      onChange={(e) => setValueQuery(e.target.value)}
+                      placeholder="Filtrar…"
+                      className="ml-auto h-6 w-40 rounded-sm border border-input bg-input-bg px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setValuesOf(null)}
+                    className={cn('text-muted-foreground hover:text-foreground transition-colors cursor-pointer', (valuesColumn.values?.length ?? 0) <= 12 && 'ml-auto')}
+                  >
+                    <Icons.X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="max-h-44 overflow-y-auto px-3 py-2 space-y-2">
+                  {valueGroups.map(g => (
+                    <div key={g.group} className="space-y-1">
+                      {g.group && <div className="text-[11px] font-medium text-muted-foreground">{g.group}</div>}
+                      <div className="flex flex-wrap gap-1.5">
+                        {g.values.map(v => (
+                          <button
+                            key={v.value}
+                            type="button"
+                            onClick={() => copy(v.value, v.value)}
+                            className="flex items-center gap-1.5 px-2 h-6 rounded-sm border border-border text-xs hover:bg-muted transition-colors cursor-pointer"
+                          >
+                            <span className="font-mono">{v.value}</span>
+                            {v.label !== v.value && <span className="text-muted-foreground">{v.label}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {!valueGroups.length && <div className="text-xs text-muted-foreground py-2">Nenhum valor encontrado</div>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

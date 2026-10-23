@@ -20,8 +20,8 @@ describe('importExamples', () => {
     expect(rows.length).toBeGreaterThan(0)
 
     const examples = (schema as any)._schemaMeta.importExamples as Record<string, string>[]
-    for (const column of buildImportColumns(schema)!.filter(c => c.type === 'enum')) {
-      const used = new Set(examples.map(e => e[column.name]).filter(Boolean))
+    for (const column of buildImportColumns(schema)!.filter(c => c.type === 'enum' || c.item === 'enum')) {
+      const used = new Set(examples.flatMap(e => (e[column.name] ?? '').split('|')).filter(Boolean))
       expect(column.options!.filter(o => !used.has(o)), `${column.name} values missing from the examples`).toEqual([])
     }
   })

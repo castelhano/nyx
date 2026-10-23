@@ -57,6 +57,10 @@ export type SchemaMeta<T extends z.ZodRawShape> = {
   // CSV import: a related record filled from the same row (e.g. an employee's new contract),
   // its columns named by the map (column → field of `schema`); the service writes it (importWrite)
   importNested?:       Record<string, { schema: z.ZodObject<any>; columns: Record<string, string> }>
+  // CSV import-only columns, not fields of the record (e.g. a user's temporary password) —
+  // validated with the row and handed to the service apart (ImportOp.extra)
+  importFields?:       z.ZodRawShape
+  importNotice?:       string    // shown in the import modal
   importExamples?:     Record<string, string>[]  // fictitious rows of the import's "Modelo" CSV, by column name (relations without `Id`), as typed in the file
 }
 

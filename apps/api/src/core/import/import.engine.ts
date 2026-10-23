@@ -21,6 +21,7 @@ export interface ImportOp {
   id?:    string                     // the existing record, on update
   data:   Record<string, unknown>    // only the columns the row filled (plus defaults, on create)
   nested: Record<string, Record<string, unknown>>  // importNested groups the row filled, validated, with defaults
+  extra:  Record<string, unknown>    // importFields the row filled (import-only columns, not record fields)
 }
 
 export interface ImportOptions {
@@ -34,8 +35,6 @@ export interface ImportOptions {
 }
 
 class Rollback extends Error {}
-
-const fieldMeta = (schema: ZodObject<any>, field: string) => schema.shape[field]?.meta?.() ?? {}
 
 function checkHeaders(headers: string[], columns: ImportColumn[]): ImportIssue[] {
   const issues: ImportIssue[] = []
@@ -110,23 +109,23 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
   if (result.errors.length) return result
 
   const nestedDefs = ((schema as any)._schemaMeta?.importNested ?? {}) as Record<string, { schema: ZodObject<any> }>
-  const schemaOf = (c: ImportColumn) => (c.group ? nestedDefs[c.group].schema : schema)
-  const metaOf   = (c: ImportColumn) => fieldMeta(schemaOf(c), c.field)
+  const extraShape = ((schema as any)._schemaMeta?.importFields ?? {}) as Record<string, ZodType>
+  const fieldOf  = (c: ImportColumn): ZodType => (c.group ? nestedDefs[c.group].schema.shape[c.field] : extraShape[c.field] ?? schema.shape[c.field])
+  const metaOf   = (c: ImportColumn) => (fieldOf(c) as any).meta?.() ?? {}
   const columnOf = (field: string, group?: string) => columns.find(c => c.field === field && c.group === group)?.name ?? field
   const byName   = new Map(columns.map(c => [c.name, c]))
   // relations narrowed by a sibling (dependsOn) resolve after it
   const present  = parsed.headers.map(h => byName.get(h)!)
     .sort((a, b) => Number(!!metaOf(a).dependsOn) - Number(!!metaOf(b).dependsOn))
   const keyColumns = columns.filter(c => c.key)
-  const isInt = (c: ImportColumn) => !!(unwrap(schemaOf(c).shape[c.field] as ZodType) as any).isInt
+  const isInt = (c: ImportColumn) => !!(unwrap(fieldOf(c)) as any).isInt
 
   // the importable fields only — no object-level refinements, which the writes still meet;
   // like the form, a field with a meta defaultValue takes it when a new record leaves it out
   const validatorOf = (group?: string) => {
     const own = columns.filter(c => c.group === group)
-    const s   = group ? nestedDefs[group].schema : schema
     return {
-      create:   z.object(Object.fromEntries(own.map(c => [c.field, s.shape[c.field]]))),
+      create:   z.object(Object.fromEntries(own.map(c => [c.field, fieldOf(c)]))),
       defaults: Object.fromEntries(own.map(c => [c.field, importDefault(metaOf(c))] as const).filter(([, v]) => v !== undefined)),
     }
   }
@@ -165,6 +164,20 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
     return res
   }
 
+  // a list cell: `|`-separated values, each an enum value, a relation (by its ref) or a string
+  async function parseList(col: ImportColumn, raw: string, data: Record<string, unknown>, row: ImportRow): Promise<CellResult> {
+    const values: unknown[] = []
+    const errors: string[]  = []
+    for (const item of raw.split('|').map(v => v.trim()).filter(Boolean)) {
+      const res = col.item === 'relation' ? await resolveRef(col, item, data, row)
+        : col.item === 'enum' ? parseCell(item, { ...col, type: 'enum' })
+        : { ok: true as const, value: item }
+      if (res?.ok) values.push(res.value)
+      else if (res) errors.push(col.item === 'enum' ? `"${item}": ${res.message}` : res.message)
+    }
+    return errors.length ? { ok: false, message: errors.join('; ') } : { ok: true, value: [...new Set(values)] }
+  }
+
   const ops: ImportOp[] = []
   const rowByLine = new Map<number, ImportRow>()
   const seenKeys  = new Map<string, number>()
@@ -189,7 +202,9 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
         continue
       }
       const target = col.group ? (nestedData[col.group] ??= {}) : data
-      const res = col.type === 'relation' ? await resolveRef(col, raw, target, row) : parseCell(raw, col, isInt(col))
+      const res = col.type === 'relation' ? await resolveRef(col, raw, target, row)
+        : col.type === 'list' ? await parseList(col, raw, target, row)
+        : parseCell(raw, col, isInt(col))
       if (!res) continue
       if (res.ok) target[col.field] = res.value
       else row.errors.push({ column: col.name, message: res.message })
@@ -213,11 +228,13 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
       row.errors.push({ column: columnOf(opts.scopeField!), message: 'Filial fora do seu acesso' })
     }
 
+    // a column whose cell already failed to convert isn't reported again as missing
+    const failed = new Set(row.errors.map(e => e.column))
     const validation = existing ? updateSchema.safeParse(data) : main.create.safeParse({ ...main.defaults, ...data })
     if (!validation.success) {
       for (const issue of validation.error.issues) {
         const field = String(issue.path[0] ?? '')
-        row.errors.push({ column: columnOf(field), message: issueMessage(issue, data[field]) })
+        if (!failed.has(columnOf(field))) row.errors.push({ column: columnOf(field), message: issueMessage(issue, data[field]) })
       }
     }
 
@@ -230,15 +247,23 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
       else for (const issue of res.error.issues) {
         const field   = String(issue.path[0] ?? '')
         const missing = `Obrigatório para incluir ${(nestedDefs[group].schema as any)._schemaMeta?.label ?? group}`
-        row.errors.push({ column: columnOf(field, group), message: issueMessage(issue, values[field], missing) })
+        if (!failed.has(columnOf(field, group))) row.errors.push({ column: columnOf(field, group), message: issueMessage(issue, values[field], missing) })
       }
     }
     if (row.errors.length) continue
 
+    // import-only columns go apart from the record's own fields
+    const values = existing ? data : validation.data as Record<string, unknown>
+    const extra: Record<string, unknown> = {}
+    for (const k of Object.keys(extraShape)) {
+      if (k in values) extra[k] = values[k]
+      delete values[k]
+    }
+
     row.action = existing ? 'update' : 'create'
     ops.push(existing
-      ? { line: rec.line, action: 'update', id: existing.id, data, nested }
-      : { line: rec.line, action: 'create', data: validation.data as Record<string, unknown>, nested })
+      ? { line: rec.line, action: 'update', id: existing.id, data: values, nested, extra }
+      : { line: rec.line, action: 'create', data: values, nested, extra })
   }
 
   const countInvalid = () => result.rows.filter(r => r.errors.length).length

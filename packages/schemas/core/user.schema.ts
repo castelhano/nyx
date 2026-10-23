@@ -19,6 +19,25 @@ export const userSchema = withMeta(
     label:       'Usuário',
     labelPlural: 'Usuários',
     icon:        'Users',
+    importKey:   'username',
+    // only on create: an existing user's password and permissions are never touched by the import
+    importFields: {
+      password: z.string().min(1).meta({ label: 'Senha temporária' }),
+      branches: z.array(z.uuid()).optional().meta({
+        label: 'Filiais', widget: 'multi-select', resource: 'branch', domain: 'core', labelField: 'name',
+      }),
+      permissionsFrom: z.uuid().optional().meta({
+        label: 'Copiar permissões de', widget: 'select', resource: 'user', domain: 'core', labelField: 'name', importRef: 'username',
+      }),
+    },
+    importNotice: 'O arquivo contém senhas temporárias em texto puro — descarte-o após a importação. A troca de senha é exigida no primeiro acesso. Senha e permissões de usuários já cadastrados não são alteradas.',
+    // every enum value appears at least once — the file is how users learn the accepted values
+    importExamples: [
+      { username: 'ana.souza',   name: 'Ana Souza',   email: 'ana.souza@email.com', role: 'operator', isActive: 'SIM', password: 'Troca@123', branches: 'Filial Centro|Filial Norte', permissionsFrom: 'carlos.dias' },
+      { username: 'bruno.lima',  name: 'Bruno Lima',  role: 'admin',    password: 'Troca@123' },
+      { username: 'carla.mendes', name: 'Carla Mendes', role: 'operator', isActive: 'NAO', password: 'Troca@123', branches: 'Filial Centro' },
+      { username: 'diego.rocha', email: 'diego.rocha@email.com', branches: 'Filial Norte', password: 'ignorada para usuário existente' },
+    ],
   },
 )
 

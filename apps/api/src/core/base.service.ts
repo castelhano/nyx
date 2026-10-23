@@ -1,7 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { ZodObject, ZodType, ZodDate, ZodNumber, ZodBoolean, ZodOptional, ZodNullable, ZodDefault } from 'zod'
-import type { AuthUser, ImportResult, PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
+import type { AuthUser, ImportResult, ImportValue, PaginatedResult, PaginationQuery, ResourceMetadata } from '@nyx/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { buildMetadata } from './metadata.builder'
 import { buildFilterWhere } from './filter.builder'
@@ -229,14 +229,25 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
   // one validated row of an import, inside its transaction — override for resources whose
   // writes carry more than their own columns (e.g. Employee + Contract)
   protected async importWrite(tx: Prisma.TransactionClient, op: ImportOp): Promise<void> {
-    if (Object.keys(op.nested).length) throw new Error(`${this.modelName}: importNested needs an importWrite override`)
+    if (Object.keys(op.nested).length || Object.keys(op.extra).length) throw new Error(`${this.modelName}: importNested/importFields need an importWrite override`)
     const model = (tx as any)[this.modelName]
     if (op.action === 'create') await model.create({ data: op.data })
     else await model.update({ where: { id: op.id }, data: op.data })
   }
 
+  // accepted values of import columns that the schema can't list (e.g. the registered resources),
+  // by column name — the import modal shows them; validation stays in importWrite
+  protected importValues(): Record<string, ImportValue[]> {
+    return {}
+  }
+
   getMetadata(): ResourceMetadata {
-    return buildMetadata(this.resourceKey, this.schema)
+    const meta   = buildMetadata(this.resourceKey, this.schema)
+    const values = meta.import ? this.importValues() : {}
+    if (meta.import && Object.keys(values).length) {
+      meta.import.columns = meta.import.columns.map(c => (values[c.name] ? { ...c, values: values[c.name] } : c))
+    }
+    return meta
   }
 
   protected buildSearchWhere(_search: string): Record<string, unknown> {

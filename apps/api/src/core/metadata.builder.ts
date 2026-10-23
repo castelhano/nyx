@@ -167,21 +167,35 @@ export function importDefault(meta: { defaultValue?: unknown }): unknown {
 // one import column for a schema field — undefined when the field can't be imported (uploads included)
 function importColumn(name: string, field: ZodType, column?: string): ImportColumn | undefined {
   const meta = (field as any).meta?.() ?? {}
-  if (NOT_IMPORTABLE.has(name) || meta.virtual || meta.computed || meta.showInForm === false || meta.widget === 'avatar') return undefined
+  if (NOT_IMPORTABLE.has(name) || meta.importable === false || meta.virtual || meta.computed || meta.showInForm === false || meta.widget === 'avatar') return undefined
 
-  const isRelation = (meta.widget === 'select' || meta.widget === 'combobox') && !!meta.resource
-  const type = isRelation ? 'relation' : getType(field)
-  if (type === 'array') return undefined
-
+  const isRelation = (meta.widget === 'select' || meta.widget === 'combobox' || meta.widget === 'multi-select') && !!meta.resource
+  if (unwrap(field) instanceof ZodObject || unwrap(field) instanceof ZodRecord) return undefined
+  let type = getType(field) as ImportColumn['type'] | 'array'
+  let item: ImportColumn['item']
+  let options: string[] | undefined
+  // a list column holds `|`-separated values: enums, relations (by their ref) or plain strings
+  if (type === 'array') {
+    const element = unwrap((unwrap(field) as any)._def.element as ZodType)
+    item    = isRelation ? 'relation' : element instanceof ZodEnum ? 'enum' : element instanceof ZodString ? 'string' : undefined
+    if (!item) return undefined
+    options = item === 'enum' ? Object.keys((element as ZodEnum<any>)._def.entries ?? {}) : undefined
+    type    = 'list'
+  } else if (isRelation) {
+    type = 'relation'
+  } else if (type === 'enum') {
+    options = Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {})
+  }
   return {
-    name:     column ?? (isRelation ? name.replace(/Id$/, '') : name),
+    name:     column ?? (type === 'relation' ? name.replace(/Id$/, '') : name),
     field:    name,
     label:    meta.label ?? toTitleCase(name),
-    type:     type as ImportColumn['type'],
+    type,
+    ...(item ? { item } : {}),
     key:      false,
     required: isRequired(field) && importDefault(meta) === undefined,
     ...(meta.mask ? { mask: meta.mask } : {}),
-    ...(type === 'enum' ? { options: Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {}) } : {}),
+    ...(options ? { options, values: options.map(o => ({ value: o, label: meta.optionLabels?.[o] ?? o })) } : {}),
     ...(isRelation ? { ref: meta.importRef ?? meta.labelField } : {}),
   }
 }
@@ -196,7 +210,7 @@ export function buildImportColumns(schema: ZodObject<any>): ImportColumn[] | und
   const keys = Array.isArray(importKey) ? importKey : [importKey]
 
   const columns: ImportColumn[] = []
-  for (const [name, field] of Object.entries(schema.shape)) {
+  for (const [name, field] of Object.entries({ ...schema.shape, ...(schemaMeta.importFields ?? {}) })) {
     const column = importColumn(name, field as ZodType)
     if (column) columns.push({ ...column, key: keys.includes(name) })
   }
@@ -340,6 +354,6 @@ export function buildMetadata(resource: string, schema: ZodObject<any>): Resourc
     ...(afterCreate     ? { afterCreate }     : {}),
     ...(stayOnSave      ? { stayOnSave }      : {}),
     ...(defaultFilters  ? { defaultFilters }  : {}),
-    ...(importColumns   ? { import: { columns: importColumns } } : {}),
+    ...(importColumns   ? { import: { columns: importColumns, ...(schemaMeta.importNotice ? { notice: schemaMeta.importNotice } : {}) } } : {}),
   }
 }

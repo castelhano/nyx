@@ -75,6 +75,8 @@ export interface FieldMeta {
    *  (case-insensitive). Defaults to `labelField`. With `dependsOn`, the match is narrowed to the
    *  record the sibling column resolved to (e.g. a model's name within its brand). */
   importRef?: string
+  /** false keeps a field out of the CSV import */
+  importable?: boolean
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -234,15 +236,24 @@ export interface RowActionDef {
   visibleWhen?:      { field: string; value: unknown }
 }
 
+// CSV import: an accepted value of a column, as the import modal lists it
+export interface ImportValue {
+  value:  string
+  label:  string
+  group?: string
+}
+
 // CSV import (see docs/FLOW.md) — a column of the import file
 export interface ImportColumn {
   name:     string    // CSV header: the field key, without the `Id` suffix on relations
   field:    string    // schema field it fills
   label:    string
-  type:     'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation'
+  type:     'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation' | 'list'
+  item?:    'string' | 'enum' | 'relation'  // list: what each `|`-separated value is (options / ref apply to it)
   key:      boolean   // part of the sync key (importKey)
   required: boolean   // required when the row creates a record
   options?: string[]  // enum values
+  values?:  ImportValue[]  // accepted values to show the user (enums with their labels, or a service's list)
   mask?:    string    // cpf, cnpj, cep, phone — digits or formatted in the file, stored formatted
   ref?:     string    // relation: the related resource's field matched against
   group?:   string    // importNested: the related record this column fills (required = when the group is filled)
@@ -251,6 +262,7 @@ export interface ImportColumn {
 
 export interface ImportMeta {
   columns: ImportColumn[]   // key columns first
+  notice?: string           // shown in the import modal (e.g. the file holds passwords)
 }
 
 export interface ImportIssue {

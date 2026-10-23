@@ -63,6 +63,9 @@ Seguindo o princípio de que o schema Zod é a fonte única de verdade, o import
 
 - `withMeta(schema, { ..., importKey: 'code' })`: chave de sincronização (string ou array para chave composta). Resource sem `importKey` não tem import.
 - `withMeta(schema, { ..., importNested: { contract: { schema, columns } } })`: um registro relacionado preenchido na mesma linha (ex.: o contrato do funcionário), com as colunas nomeadas pelo mapa. O grupo só conta se a linha preencher alguma coluna dele — aí os obrigatórios do grupo passam a valer. O service grava via `importWrite`.
+- `withMeta(schema, { ..., importFields: { ... } })`: colunas só de import, que não são campos do registro (ex.: senha temporária do usuário). Validadas com a linha e entregues ao service em `ImportOp.extra`.
+- `withMeta(schema, { ..., importNotice: '...' })`: aviso exibido no modal (ex.: o arquivo contém senhas).
+- `.meta({ importable: false })`: tira um campo do import (ex.: `action` da permissão, importada em conjunto por `actions`).
 - `withMeta(schema, { ..., importExamples: [{ ... }] })`: linhas fictícias do CSV de modelo, por nome de coluna e já no formato do arquivo (datas dd/mm/aaaa, SIM/NAO). Todo resource com import deve declarar exemplos que mostrem os casos de uso (ex.: feriado geral e de filial) e **todos os valores de cada enum** — é assim que o usuário descobre os valores aceitos. O teste `import.examples.spec.ts` falha se faltar algum.
 - `.meta({ importRef: 'name' })` nos campos de relação: campo do resource relacionado usado como referência no CSV.
 - Colunas importáveis, modelo de CSV e o popover de campos são derivados desses metadados. Nenhuma configuração por resource no frontend.
@@ -98,7 +101,7 @@ Resources com regras próprias (Employee + Contract, User) estendem o comportame
 - Colunas: `username;resource;actions` (ex.: `joao;Vehicle;read|update`).
 - Chave: `username` + `resource`. A linha **substitui** as ações daquele recurso para aquele usuário. Recursos ausentes no arquivo ficam intactos.
 - `actions` vazio é linha inválida. A remoção total de um recurso é feita pela tela.
-- Validação contra o registro de resources: o resource precisa existir e a ação precisa ser válida para ele (settings não têm `create`/`delete`).
+- Validação contra o registro de resources: o resource precisa ser um dos que a matriz de permissões oferece; as quatro ações valem para qualquer um, como na matriz.
 - Uso típico: a carga inicial usa `permissionsFrom`, e os ajustes em lote posteriores usam este import.
 
 ---
@@ -183,9 +186,13 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 - Regras de contrato extraídas para `contract.rules.ts`, usadas pelo CRUD e pelo import (dentro da transação).
 - `employee-sync` removido; a página de Funcionários usa o Importar padrão.
 
-### 8. User + UserPermission
+### 8. User + UserPermission ✅
 - Hook de senha temporária, `branches` e `permissionsFrom`.
 - Import de permissões e split button na lista de User.
+- `password`, `branches` e `permissionsFrom` são colunas só de import (`importFields`), entregues ao service à parte.
+- Usuário existente: senha, `permissionsFrom` e permissões não mudam; `branches` preenchido define as filiais, mantendo o papel das que já existiam.
+- Permissões: a linha substitui as ações do recurso; recurso validado contra os mesmos da matriz de permissões, com as mesmas quatro ações.
+- O split button de User sai sozinho: Permissões é filho de User com import (ver etapa 4).
 
 ### 9. Transit
 - Fechar as regras por modelo e a ordem de carga.
@@ -202,6 +209,9 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 - Marcadores de padrão do form (`$today`) não valem no import: o campo fica obrigatório no arquivo (ex.: `hireDate`).
 - Campos com máscara (CPF, CNPJ, CEP, telefone) aceitam só dígitos ou já formatados, e são gravados formatados como no form.
 - Uploads (`widget: 'avatar'`, ex.: foto) não são importáveis.
+- Campos de lista (`z.array` de enum, de relação ou de texto) viram uma coluna com valores separados por `|`.
+- Coluna cuja célula já falhou na conversão não recebe também o erro de obrigatório.
+- Painel **Campos**: colunas com valores fixos têm um botão que lista os valores aceitos, com rótulo e agrupados, e um clique copia o valor. Enums usam os `optionLabels` do schema; o service pode fornecer listas próprias via `importValues()` (ex.: os recursos válidos da permissão, por domínio).
 - A prévia mostra todos os erros de uma vez: mesmo com linhas inválidas, as válidas executam a gravação (desfeita no fim) para revelar erros do banco e de regra de negócio.
 - Chave comparada exatamente como no banco (maiúsculas importam); só as referências ignoram maiúsculas.
 - `scopeField`: para não-admins, o import rejeita linhas de filiais fora do `branchIds`, com a mesma regra do CRUD do `BaseService`.
