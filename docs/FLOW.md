@@ -65,7 +65,9 @@ Seguindo o princípio de que o schema Zod é a fonte única de verdade, o import
 - `withMeta(schema, { ..., importNested: { contract: { schema, columns } } })`: um registro relacionado preenchido na mesma linha (ex.: o contrato do funcionário), com as colunas nomeadas pelo mapa. O grupo só conta se a linha preencher alguma coluna dele — aí os obrigatórios do grupo passam a valer. O service grava via `importWrite`.
 - `withMeta(schema, { ..., importFields: { ... } })`: colunas só de import, que não são campos do registro (ex.: senha temporária do usuário). Validadas com a linha e entregues ao service em `ImportOp.extra`.
 - `withMeta(schema, { ..., importNotice: '...' })`: aviso exibido no modal (ex.: o arquivo contém senhas).
-- `.meta({ importable: false })`: tira um campo do import (ex.: `action` da permissão, importada em conjunto por `actions`).
+- `.meta({ importable: false })`: tira um campo do import (ex.: `action` da permissão, importada em conjunto por `actions`). `importable: true` traz um campo que o form esconde (ex.: `lng` da localidade, preenchido pelo mapa).
+- `.meta({ importName: '...' })`: nome da coluna quando o padrão fica ruim (ex.: `operatorBranchIds` → `operatorBranches`).
+- `afterImport()` no service: roda uma vez depois de um import que gravou algo (ex.: recálculo da matriz de tempos das localidades).
 - `withMeta(schema, { ..., importExamples: [{ ... }] })`: linhas fictícias do CSV de modelo, por nome de coluna e já no formato do arquivo (datas dd/mm/aaaa, SIM/NAO). Todo resource com import deve declarar exemplos que mostrem os casos de uso (ex.: feriado geral e de filial) e **todos os valores de cada enum** — é assim que o usuário descobre os valores aceitos. O teste `import.examples.spec.ts` falha se faltar algum.
 - `.meta({ importRef: 'name' })` nos campos de relação: campo do resource relacionado usado como referência no CSV.
 - Colunas importáveis, modelo de CSV e o popover de campos são derivados desses metadados. Nenhuma configuração por resource no frontend.
@@ -136,16 +138,31 @@ Resources com regras próprias (Employee + Contract, User) estendem o comportame
 
 ## DOMAIN Transit
 
-Domínio mais complexo. As regras por modelo serão fechadas antes da implementação dele.
+Domínio mais complexo. Os modelos foram separados por complexidade nas etapas 9 a 11.
 
-1. Line
-2. CrewMember
-3. VehiclePlan: o topbar vira um split button, com **Importar** (padrão deste documento) e **Importar Globus** (fluxo existente).
-4. Locality
-5. HourBank
-6. Vacation
+**Ordem de carga:** fica com o usuário. As referências são resolvidas contra o banco, então quem depende de outro modelo é importado depois dele (ex.: Line antes de CrewMember, linha-base antes das derivadas).
 
-Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: VehiclePlan depende de Line e CrewMember). A ordem de carga para bases novas será documentada.
+### Locality
+- Chave: `code`. Sem relações.
+- `lng` está oculto no form (preenchido pelo mapa junto com `lat`): precisa poder ser importável mesmo fora do form.
+- Criar/editar uma localidade dispara o recálculo da matriz de tempos (OSRM): no import, rodar uma vez ao final, não por linha — gancho genérico "depois do import".
+
+### Line
+- Chave: `code`.
+- `scope` por nome; `operatorBranches` como lista de filiais (`|`), gravada com as regras do service (a operadora precisa operar o escopo).
+- `parentLine` pela linha-base (código): a linha-base precisa já existir — vem em arquivo anterior.
+- `metrics` e `vehicleTypes` (estruturas editadas em telas próprias) ficam fora.
+
+### CrewMember
+- Chave: o funcionário, pela matrícula.
+- Listas (`blockedVehicleTypes`) e referências (regime de folga, carro preferido pelo prefixo) já suportadas.
+- Novo: `notBeforeMinutes` / `notAfterMinutes` são minutos no banco — no CSV como `H:MM` (conversor novo).
+- Novo: turno obrigatório na criação — não é campo do operador, gera o histórico de turno (`CrewMemberShiftService`); coluna só de import (`shift`) e o service adaptado para rodar na transação.
+
+### VehiclePlan, HourBank, Vacation — a definir
+- **VehiclePlan:** é o planejamento inteiro (blocos, viagens, deslocamentos), não um cadastro. Topbar com split button **Importar** / **Importar Globus** (fluxo existente) — falta definir o que o arquivo padrão representaria.
+- **HourBank:** página única (sem lista), lançamentos e saldos por operador e mês. Import Globus existente vira **Importar Globus**; falta definir o conteúdo do CSV padrão (lançamentos manuais? saldo inicial?).
+- **Vacation:** página única; o lançamento de férias é uma ação sobre vários operadores com período, não um registro simples — falta definir o formato.
 
 ---
 
@@ -194,9 +211,29 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 - Permissões: a linha substitui as ações do recurso; recurso validado contra os mesmos da matriz de permissões, com as mesmas quatro ações.
 - O split button de User sai sozinho: Permissões é filho de User com import (ver etapa 4).
 
-### 9. Transit
-- Fechar as regras por modelo e a ordem de carga.
-- Implementar seguindo a ordem da lista, com o split button do VehiclePlan.
+### 9. Transit simples: Locality e Line ✅
+- Locality: `lng` importável fora do form; gancho "depois do import" para o recálculo OSRM.
+- Line: `operatorBranches` com as regras do service; `parentLine` pela linha-base já existente.
+
+### 9b. Melhorias de Locality e Line (a implementar)
+- **Objetos simples achatados em colunas:** campo objeto cujos subcampos são texto, número, enum ou lista vira uma coluna por subcampo, nomeada `campo.subcampo`:
+  - `externalCodes.GLOBUS` (Locality e Line) — códigos de integração; um sistema novo em `EXTERNAL_SYSTEMS` gera sua coluna sozinho.
+  - `vehicleTypes.allowed` (lista com `|`) e `vehicleTypes.preferred` (Line).
+  - Na atualização, só os subcampos preenchidos mudam — o resto do objeto é mantido (merge); célula vazia não apaga o valor.
+  - Os valores aceitos (tipos de veículo) aparecem no painel Campos e entram no teste de exemplos.
+- **Referência ao próprio recurso no mesmo arquivo** (ex.: `parentLine` de uma linha-base criada no mesmo CSV):
+  - Hoje as referências são resolvidas contra o banco na fase de validação, antes de qualquer gravação — por isso a linha-base nova não é encontrada.
+  - Quando a referência é ao próprio recurso pela chave do import e não existe no banco, procurar uma linha **anterior** do arquivo com essa chave; a referência fica pendente e é ligada ao id dela na gravação (que segue a ordem do arquivo).
+  - Linha-base depois da derivada: erro "a linha base X precisa vir antes no arquivo (linha N)". Linha-base que falhou ao gravar: a derivada recebe "linha base com erro (linha N)".
+  - A regra de não encadear segue valendo (roda na transação e enxerga a linha-base recém-criada); a prévia mostra o resultado completo, pois também grava antes de desfazer.
+- **Janelas de ciclo** (`metrics.windows`) ficam fora: são listas de faixas por tipo de dia e sentido, que não cabem em uma linha por linha de ônibus. Se necessário, um import próprio com uma linha por janela (`line;dayType;direction;from;to;minutes;intervalMinutes`).
+
+### 10. Transit médio: CrewMember
+- Conversor `H:MM` para os campos de horário.
+- Coluna `shift` (só de import) e `CrewMemberShiftService` rodando na transação.
+
+### 11. Transit a definir: VehiclePlan, HourBank, Vacation
+- Definir o que o CSV padrão de cada um contém antes de implementar.
 
 ---
 
@@ -223,5 +260,5 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 >> employee-sync: REMOVER, manter somente o padrão definido ✅ (removido na etapa 7)
 >> hour-bank: manter como Importar Globus no split button
 
-- Regras específicas de cada modelo do Transit (etapa 9).
-> Tratadas individualmente quando for implementar
+- Regras específicas de cada modelo do Transit.
+> Levantadas por modelo na seção DOMAIN Transit (etapas 9 a 11); VehiclePlan, HourBank e Vacation ainda precisam de definição.

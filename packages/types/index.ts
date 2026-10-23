@@ -75,8 +75,10 @@ export interface FieldMeta {
    *  (case-insensitive). Defaults to `labelField`. With `dependsOn`, the match is narrowed to the
    *  record the sibling column resolved to (e.g. a model's name within its brand). */
   importRef?: string
-  /** false keeps a field out of the CSV import */
+  /** false keeps a field out of the CSV import; true brings in one the form hides (e.g. a map's lng) */
   importable?: boolean
+  /** the field's CSV column name, when the default (the key, `Id` dropped on relations) reads badly */
+  importName?: string
   // schema-level only
   labelPlural?: string
   nameField?: string

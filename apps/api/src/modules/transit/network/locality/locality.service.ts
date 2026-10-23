@@ -35,6 +35,12 @@ export class LocalityService extends BaseService<Locality, CreateLocalityDto, Up
     return result
   }
 
+  // the CSV import regenerates the matrix once, not per row
+  protected override afterImport(): Promise<void> {
+    this.osrm.generateMatrix().catch(() => {})
+    return Promise.resolve()
+  }
+
   // Prefix = macro-region letter + quadrant row/col (or letter + "0000" for points
   // outside the core box). The sequence within a quadrant needs a DB round-trip (count
   // of codes already using this prefix), so it can't be computed on the frontend alone.

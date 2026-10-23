@@ -210,7 +210,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
 
   async importCsv(buffer: Uint8Array, dryRun: boolean, user?: AuthUser): Promise<ImportResult> {
     this.assertImportable()
-    return runImport(buffer, {
+    const result = await runImport(buffer, {
       prisma:     this.prisma,
       modelName:  this.modelName,
       schema:     this.schema,
@@ -219,7 +219,13 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
       dryRun,
       write:      (tx, op) => this.importWrite(tx, op),
     })
+    if (!dryRun && !result.errors.length && !result.invalid && result.created + result.updated > 0) await this.afterImport()
+    return result
   }
+
+  // once after an import that wrote something — for work a resource does on each save that
+  // shouldn't run per row (e.g. the localities' travel-time matrix)
+  protected async afterImport(): Promise<void> {}
 
   importTemplate(): { headers: string[]; rows: string[][] } {
     this.assertImportable()

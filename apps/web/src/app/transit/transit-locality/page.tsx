@@ -12,6 +12,7 @@ import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { downloadCsv } from '@/lib/csv'
 import { SnapSyncModal } from './SnapSyncModal'
+import { ImportModal } from '@/core/ImportModal'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'transit-locality'
@@ -22,6 +23,7 @@ export default function TransitLocalityPage() {
   const { guardNode, meta } = usePageGuard(DOMAIN, RESOURCE)
 
   const [snapOpen, setSnapOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   async function handleDownloadCsv() {
     if (!meta) return
@@ -46,13 +48,20 @@ export default function TransitLocalityPage() {
       onClick: () => router.push(`/${DOMAIN}/${RESOURCE}/new`),
       primary: true,
     }] : []),
+    ...(meta?.import && meta.permissions?.update !== false ? [{
+      label:   'Importar',
+      icon:    Icons.Upload,
+      onClick: () => setImporting(true),
+      variant: 'ghost' as const,
+      primary: false,
+    }] : []),
     ...(meta?.allowCsv ? [{
       label:   'CSV',
       icon:    Icons.Download,
       onClick: handleDownloadCsv,
       variant: 'ghost' as const,
     }] : []),
-  ], [meta?.permissions?.create, meta?.allowCsv])
+  ], [meta?.permissions?.create, meta?.permissions?.update, meta?.allowCsv, !!meta?.import])
 
   useShortcut('alt+n', () => {
     if (meta?.permissions?.create !== false) router.push(`/${DOMAIN}/${RESOURCE}/new`)
@@ -83,6 +92,7 @@ export default function TransitLocalityPage() {
           onApplied={() => queryClient.invalidateQueries({ queryKey: [DOMAIN, RESOURCE] })}
         />
       )}
+      {importing && <ImportModal domain={DOMAIN} resource={RESOURCE} onClose={() => setImporting(false)} />}
     </div>
   )
 }

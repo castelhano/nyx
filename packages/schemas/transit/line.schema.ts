@@ -86,6 +86,7 @@ export const lineSchema = withMeta(
       domain:         'core',
       labelField:     'name',
       listVisibility: 'hidden',
+      importName:     'operatorBranches',
     }),
 
     isActive: z.boolean().default(true).meta({
@@ -153,6 +154,16 @@ export const lineSchema = withMeta(
     icon:        'Route',
     afterCreate: '/transit/transit-route?lineId={id}',
     defaultSort: { field: 'code', order: 'asc' },
+    importKey:   'code',
+    // every enum value appears at least once — the file is how users learn the accepted values;
+    // a line-base (parentLine) must already exist — import it in an earlier file
+    importExamples: [
+      { code: '308',  name: 'Centro / Bairro Norte',     type: 'URBAN',        scope: 'Escopo Urbano', operatorBranches: 'Filial Centro|Filial Norte', isActive: 'SIM' },
+      { code: '308B', name: 'Centro / Bairro Norte (B)', type: 'URBAN',        scope: 'Escopo Urbano', parentLine: '308', notes: 'Variante: a linha base precisa já existir' },
+      { code: '501',  name: 'Cuiabá / Várzea Grande',    type: 'METROPOLITAN', scope: 'Escopo Metropolitano' },
+      { code: '701',  name: 'Distrito Rural',            type: 'RURAL',        isActive: 'NAO' },
+      { code: '900',  name: 'Linha Especial Evento',     type: 'SPECIAL' },
+    ],
     groups: {
       'Metricas':   ['metrics'],
     },

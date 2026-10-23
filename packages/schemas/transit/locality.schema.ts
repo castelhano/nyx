@@ -71,6 +71,7 @@ export const localitySchema = withMeta(
       label:          'Longitude',
       listVisibility: 'hidden',
       showInForm:     false,
+      importable:     true,   // the form fills it from the map, with lat
     }),
 
     isDepot: z.boolean().default(false).meta({
@@ -106,6 +107,12 @@ export const localitySchema = withMeta(
     nameField:   'code',
     icon:        'MapPin',
     defaultSort: { field: 'name', order: 'asc' },
+    importKey:   'code',
+    importExamples: [
+      { code: 'C0101', abbr: 'TERM CENTRO', name: 'Terminal Centro', lat: '-15,601234', lng: '-56,097891', isDepot: 'NAO', notes: 'Coordenadas com vírgula decimal' },
+      { code: 'G0001', abbr: 'GAR NORTE',   name: 'Garagem Norte',   lat: '-15,552210', lng: '-56,071045', isDepot: 'SIM' },
+      { code: 'C0102', name: 'Ponto sem coordenadas' },
+    ],
   },
 )
 

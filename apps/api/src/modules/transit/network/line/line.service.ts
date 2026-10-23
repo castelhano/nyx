@@ -1,9 +1,11 @@
 import { Injectable, BadRequestException } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { lineSchema, Line, CreateLineDto, UpdateLineDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { stringContains } from '../../../../core/db.utils'
 import type { PaginatedResult, PaginationQuery } from '@nyx/types'
+import type { ImportOp } from '../../../../core/import/import.engine'
 
 // Pure-numeric codes sort as numbers; mixed/alpha codes sort after, then localeCompare.
 // e.g. 31 < 105 < 301 < 800 < A02 < A22B < C01 < R03
@@ -51,10 +53,7 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     const current = await this.findOne(id)
 
     if (dto.scopeId !== undefined && (dto.scopeId ?? null) !== ((current as any).scopeId ?? null)) {
-      const materialized = await this.prisma.vehiclePlanLine.count({ where: { lineId: id } })
-      if (materialized > 0) {
-        throw new BadRequestException('Linha possui planejamento(s) com viagens materializadas — não é possível alterar o escopo')
-      }
+      await this.assertScopeChangeAllowed(id)
     }
 
     if (dto.metrics === undefined) return super.update(id, dto)
@@ -66,21 +65,31 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     }) as Promise<Line>
   }
 
+  private async assertScopeChangeAllowed(id: string, db: Prisma.TransactionClient = this.prisma): Promise<void> {
+    const materialized = await db.vehiclePlanLine.count({ where: { lineId: id } })
+    if (materialized > 0) {
+      throw new BadRequestException('Linha possui planejamento(s) com viagens materializadas — não é possível alterar o escopo')
+    }
+  }
+
   // every operator of a line must operate in its Scope (ScopeOperator)
-  private async validateOperators(scopeId: string | null, branchIds: string[]): Promise<void> {
+  private async validateOperators(scopeId: string | null, branchIds: string[], db: Prisma.TransactionClient = this.prisma): Promise<void> {
     if (!branchIds.length) return
     if (!scopeId) throw new BadRequestException('Defina o escopo da linha antes das empresas operadoras')
-    const ops = await this.prisma.scopeOperator.findMany({ where: { scopeId, branchId: { in: branchIds } }, select: { branchId: true } })
+    const ops = await db.scopeOperator.findMany({ where: { scopeId, branchId: { in: branchIds } }, select: { branchId: true } })
     if (ops.length !== new Set(branchIds).size) {
       throw new BadRequestException('Toda empresa operadora da linha precisa ser operadora do escopo dela')
     }
   }
 
-  private async setOperators(lineId: string, branchIds: string[]): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.lineOperator.deleteMany({ where: { lineId } }),
-      this.prisma.lineOperator.createMany({ data: [...new Set(branchIds)].map(branchId => ({ lineId, branchId })) }),
-    ])
+  // inside a caller's transaction (tx) the two writes join it; otherwise they get their own
+  private async setOperators(lineId: string, branchIds: string[], tx?: Prisma.TransactionClient): Promise<void> {
+    const write = (db: Prisma.TransactionClient) => [
+      db.lineOperator.deleteMany({ where: { lineId } }),
+      db.lineOperator.createMany({ data: [...new Set(branchIds)].map(branchId => ({ lineId, branchId })) }),
+    ]
+    if (tx) for (const w of write(tx)) await w
+    else await this.prisma.$transaction(write(this.prisma))
   }
 
   private async operatorsByLine(lineIds: string[]): Promise<Map<string, string[]>> {
@@ -99,12 +108,12 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
 
   // enforces max chain depth of 1: a line can only derive from a line that is itself
   // not derived, and a line that already has children cannot become a child
-  private async validateParentLine(id: string | null, parentLineId: string): Promise<void> {
+  private async validateParentLine(id: string | null, parentLineId: string, db: Prisma.TransactionClient = this.prisma): Promise<void> {
     if (parentLineId === id) {
       throw new BadRequestException('Uma linha não pode ser derivada de si mesma')
     }
 
-    const parent = await this.prisma.transitLine.findUnique({
+    const parent = await db.transitLine.findUnique({
       where:  { id: parentLineId },
       select: { parentLineId: true },
     })
@@ -114,7 +123,7 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
     }
 
     if (id) {
-      const hasChildren = await this.prisma.transitLine.findFirst({
+      const hasChildren = await db.transitLine.findFirst({
         where:  { parentLineId: id },
         select: { id: true },
       })
@@ -122,6 +131,30 @@ export class LineService extends BaseService<Line, CreateLineDto, UpdateLineDto>
         throw new BadRequestException('Esta linha já é linha base de outra(s) linha(s) — encadeamento não é permitido')
       }
     }
+  }
+
+  // CSV import row — the form's rules: no chains of line-bases, operators within the line's
+  // scope, no scope change once the line has materialized plans
+  protected override async importWrite(tx: Prisma.TransactionClient, op: ImportOp): Promise<void> {
+    const { operatorBranchIds, ...data } = op.data as Record<string, unknown> & { operatorBranchIds?: string[] }
+    if (data.parentLineId) await this.validateParentLine(op.id ?? null, data.parentLineId as string, tx)
+
+    let id = op.id
+    if (op.action === 'create') {
+      await this.validateOperators((data.scopeId as string | undefined) ?? null, operatorBranchIds ?? [], tx)
+      id = (await tx.transitLine.create({ data: data as Prisma.TransitLineUncheckedCreateInput })).id
+    } else {
+      const current = await tx.transitLine.findUniqueOrThrow({ where: { id }, select: { scopeId: true } })
+      const scopeId = data.scopeId !== undefined ? (data.scopeId as string | null) : current.scopeId
+      if (scopeId !== current.scopeId) await this.assertScopeChangeAllowed(id!, tx)
+      if (operatorBranchIds !== undefined || data.scopeId !== undefined) {
+        const operators = operatorBranchIds
+          ?? (await tx.lineOperator.findMany({ where: { lineId: id }, select: { branchId: true } })).map(o => o.branchId)
+        await this.validateOperators(scopeId, operators, tx)
+      }
+      await tx.transitLine.update({ where: { id }, data })
+    }
+    if (operatorBranchIds !== undefined) await this.setOperators(id!, operatorBranchIds, tx)
   }
 
   protected buildSearchWhere(search: string) {

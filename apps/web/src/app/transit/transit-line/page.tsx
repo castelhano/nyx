@@ -11,11 +11,13 @@ import { Icons }                from '@/lib/icons'
 import { apiFetch }             from '@/lib/auth'
 import { downloadCsv }          from '@/lib/csv'
 import { DemandImportModal }    from './DemandImportModal'
+import { ImportModal }          from '@/core/ImportModal'
 
 export default function TransitLineListPage() {
   const router              = useRouter()
   const { guardNode, meta } = usePageGuard('transit', 'transit-line')
   const [showDemandModal, setShowDemandModal] = useState(false)
+  const [importing,       setImporting]       = useState(false)
 
   async function handleDownloadCsv() {
     if (!meta) return
@@ -32,6 +34,13 @@ export default function TransitLineListPage() {
       icon:    Icons.Plus,
       onClick: () => router.push('/transit/transit-line/new'),
       primary: true,
+    }] : []),
+    ...(meta?.import && meta.permissions?.update !== false ? [{
+      label:   'Importar',
+      icon:    Icons.Upload,
+      onClick: () => setImporting(true),
+      variant: 'ghost' as const,
+      primary: false,
     }] : []),
     {
       label:   'Revisar Demanda',
@@ -55,7 +64,7 @@ export default function TransitLineListPage() {
       onClick: handleDownloadCsv,
       variant: 'ghost' as const,
     }] : []),
-  ], [meta?.permissions?.create, meta?.allowCsv])
+  ], [meta?.permissions?.create, meta?.permissions?.update, meta?.allowCsv, !!meta?.import])
 
   useShortcut('alt+n', () => {
     if (meta?.permissions?.create !== false) router.push('/transit/transit-line/new')
@@ -86,6 +95,7 @@ export default function TransitLineListPage() {
           onApplied={() => setShowDemandModal(false)}
         />
       )}
+      {importing && <ImportModal domain="transit" resource="transit-line" onClose={() => setImporting(false)} />}
     </div>
   )
 }

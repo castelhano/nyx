@@ -167,7 +167,8 @@ export function importDefault(meta: { defaultValue?: unknown }): unknown {
 // one import column for a schema field — undefined when the field can't be imported (uploads included)
 function importColumn(name: string, field: ZodType, column?: string): ImportColumn | undefined {
   const meta = (field as any).meta?.() ?? {}
-  if (NOT_IMPORTABLE.has(name) || meta.importable === false || meta.virtual || meta.computed || meta.showInForm === false || meta.widget === 'avatar') return undefined
+  if (NOT_IMPORTABLE.has(name) || meta.importable === false || meta.virtual || meta.computed || meta.widget === 'avatar') return undefined
+  if (meta.showInForm === false && meta.importable !== true) return undefined
 
   const isRelation = (meta.widget === 'select' || meta.widget === 'combobox' || meta.widget === 'multi-select') && !!meta.resource
   if (unwrap(field) instanceof ZodObject || unwrap(field) instanceof ZodRecord) return undefined
@@ -187,7 +188,7 @@ function importColumn(name: string, field: ZodType, column?: string): ImportColu
     options = Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {})
   }
   return {
-    name:     column ?? (type === 'relation' ? name.replace(/Id$/, '') : name),
+    name:     column ?? meta.importName ?? (type === 'relation' ? name.replace(/Id$/, '') : name),
     field:    name,
     label:    meta.label ?? toTitleCase(name),
     type,
