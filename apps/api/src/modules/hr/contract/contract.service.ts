@@ -3,6 +3,7 @@ import { contractSchema, Contract, CreateContractDto, UpdateContractDto } from '
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
 import { stringContains } from '../../../core/db.utils'
+import { assertNoConflict, assertSingleActive, closeOpenContract } from './contract.rules'
 
 @Injectable()
 export class ContractService extends BaseService<Contract, CreateContractDto, UpdateContractDto> {
@@ -27,9 +28,9 @@ export class ContractService extends BaseService<Contract, CreateContractDto, Up
       throw new BadRequestException('A data de término deve ser posterior à data de início.')
     }
 
-    await this.assertNoConflict(dto.employeeId, start, end)
-    await this.closeOpenContract(dto.employeeId, start)
-    await this.assertSingleActive(dto.employeeId, dto.status)
+    await assertNoConflict(this.prisma, dto.employeeId, start, end)
+    await closeOpenContract(this.prisma, dto.employeeId, start)
+    await assertSingleActive(this.prisma, dto.employeeId, dto.status)
 
     return super.create(dto)
   }
@@ -47,76 +48,9 @@ export class ContractService extends BaseService<Contract, CreateContractDto, Up
     }
 
     const employeeId = dto.employeeId ?? (existing as any).employeeId
-    await this.assertNoConflict(employeeId, start, end, id)
-    await this.assertSingleActive(employeeId, dto.status, id)
+    await assertNoConflict(this.prisma, employeeId, start, end, id)
+    await assertSingleActive(this.prisma, employeeId, dto.status, id)
 
     return super.update(id, dto)
-  }
-
-  // Close open contract that predates the new start (startDate < newStart)
-  private async closeOpenContract(employeeId: string, newStart: Date): Promise<void> {
-    const open = await this.prisma.contract.findFirst({
-      where: { employeeId, endDate: null, startDate: { lt: newStart } },
-    })
-    if (!open) return
-
-    const closeDate = new Date(newStart)
-    closeDate.setDate(closeDate.getDate() - 1)
-
-    const engineNote = '--\nFinalizado automaticamente pelo engine.'
-    const notes = open.notes ? `${open.notes}\n${engineNote}` : engineNote
-
-    await this.prisma.contract.update({
-      where: { id: open.id },
-      data:  { endDate: closeDate, status: 'EXPIRED', notes },
-    })
-  }
-
-  private async assertSingleActive(employeeId: string, status: string | undefined, excludeId?: string): Promise<void> {
-    if (status !== 'ACTIVE') return
-    const existing = await this.prisma.contract.findFirst({
-      where: {
-        employeeId,
-        status: 'ACTIVE',
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-    })
-    if (existing) {
-      throw new BadRequestException('Já existe um contrato ativo para este funcionário. Finalize-o antes de ativar outro.')
-    }
-  }
-
-  // Conflict rules:
-  // - open contract with startDate >= newStart (can't auto-close, periods overlap)
-  // - closed contract where existingStart <= newEnd AND existingEnd >= newStart
-  private async assertNoConflict(
-    employeeId: string,
-    start: Date,
-    end: Date | null,
-    excludeId?: string,
-  ): Promise<void> {
-    const base = excludeId ? { id: { not: excludeId } } : {}
-
-    const conflict = await this.prisma.contract.findFirst({
-      where: {
-        employeeId,
-        ...base,
-        OR: [
-          // open contract that starts AT or AFTER newStart — can't be auto-closed, real overlap
-          { endDate: null, startDate: { gte: start } },
-          // open contract that starts BEFORE newStart but newEnd exists — overlaps if openStart <= newEnd
-          ...(end ? [{ endDate: null, startDate: { lt: start, lte: end } }] : []),
-          // closed contract: existingStart <= newEnd AND existingEnd >= newStart
-          {
-            endDate:   { not: null, gte: start },
-            startDate: end ? { lte: end } : undefined,
-          },
-        ],
-      },
-    })
-
-    if (conflict) {
-      throw new BadRequestException('O período informado conflita com outro contrato existente.')
-    }
   }
 }

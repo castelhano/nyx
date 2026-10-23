@@ -62,6 +62,7 @@ Layout elegante, sem exageros, seguindo os componentes existentes (hand-rolled, 
 Seguindo o princípio de que o schema Zod é a fonte única de verdade, o import é configurado no próprio schema:
 
 - `withMeta(schema, { ..., importKey: 'code' })`: chave de sincronização (string ou array para chave composta). Resource sem `importKey` não tem import.
+- `withMeta(schema, { ..., importNested: { contract: { schema, columns } } })`: um registro relacionado preenchido na mesma linha (ex.: o contrato do funcionário), com as colunas nomeadas pelo mapa. O grupo só conta se a linha preencher alguma coluna dele — aí os obrigatórios do grupo passam a valer. O service grava via `importWrite`.
 - `withMeta(schema, { ..., importExamples: [{ ... }] })`: linhas fictícias do CSV de modelo, por nome de coluna e já no formato do arquivo (datas dd/mm/aaaa, SIM/NAO). Todo resource com import deve declarar exemplos que mostrem os casos de uso (ex.: feriado geral e de filial) e **todos os valores de cada enum** — é assim que o usuário descobre os valores aceitos. O teste `import.examples.spec.ts` falha se faltar algum.
 - `.meta({ importRef: 'name' })` nos campos de relação: campo do resource relacionado usado como referência no CSV.
 - Colunas importáveis, modelo de CSV e o popover de campos são derivados desses metadados. Nenhuma configuração por resource no frontend.
@@ -176,8 +177,11 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 ### 6. Vehicle ✅
 - Primeira referência composta (`brand` + `model`) e referência a `branch`.
 
-### 7. Employee + Contract
+### 7. Employee + Contract ✅
 - Hook de contrato novo (finalizar o vigente, erro em contrato futuro, ignorar mesmo `startDate`).
+- Colunas do contrato: `contractStart`, `jobTitle`, `contractType`, `salary`, `contractEnd`, `weeklyHours`, `workDaysPerWeek` — todo contrato importado nasce `ACTIVE`.
+- Regras de contrato extraídas para `contract.rules.ts`, usadas pelo CRUD e pelo import (dentro da transação).
+- `employee-sync` removido; a página de Funcionários usa o Importar padrão.
 
 ### 8. User + UserPermission
 - Hook de senha temporária, `branches` e `permissionsFrom`.
@@ -195,6 +199,10 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 - Coluna de chave anulável (ex.: `branch` do Holiday) pode ser omitida do arquivo — vale como vazia.
 - Campo com `defaultValue` no `.meta()` não é obrigatório no arquivo: na criação, recebe o padrão, como no form (ex.: `vehicleType`, `fuelType` e `status` do Vehicle).
 - `dependsOn` só restringe a referência quando o campo pai também é coluna do import — o `companyId` virtual do form de Vehicle é ignorado (`Branch.name` é único).
+- Marcadores de padrão do form (`$today`) não valem no import: o campo fica obrigatório no arquivo (ex.: `hireDate`).
+- Campos com máscara (CPF, CNPJ, CEP, telefone) aceitam só dígitos ou já formatados, e são gravados formatados como no form.
+- Uploads (`widget: 'avatar'`, ex.: foto) não são importáveis.
+- A prévia mostra todos os erros de uma vez: mesmo com linhas inválidas, as válidas executam a gravação (desfeita no fim) para revelar erros do banco e de regra de negócio.
 - Chave comparada exatamente como no banco (maiúsculas importam); só as referências ignoram maiúsculas.
 - `scopeField`: para não-admins, o import rejeita linhas de filiais fora do `branchIds`, com a mesma regra do CRUD do `BaseService`.
 
@@ -202,7 +210,7 @@ Como as relações são resolvidas pelo banco, a ordem de carga importa (ex.: Ve
 
 - Destino dos fragmentos existentes (`employee-sync` e import de `hour-bank`): substituir pelo import padrão ou manter como variante "Importar Globus" no split button. Decidir na etapa de cada resource.
 > RESPOSTA:
->> employee-sync: REMOVER, manter somente o padrão definido
+>> employee-sync: REMOVER, manter somente o padrão definido ✅ (removido na etapa 7)
 >> hour-bank: manter como Importar Globus no split button
 
 - Regras específicas de cada modelo do Transit (etapa 9).

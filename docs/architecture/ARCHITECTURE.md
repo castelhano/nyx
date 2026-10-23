@@ -979,7 +979,7 @@ Long-running operations (ERP sync, PDF generation, etc.) run as background jobs 
 // apps/api/prisma/schema/core.prisma
 model Job {
   id          String    @id @default(uuid())
-  type        String    // e.g. 'employee-sync', 'pdf-report'
+  type        String    // e.g. 'vehicle-plan-import', 'pdf-report'
   domain      String
   resource    String
   status      JobStatus @default(PENDING)
@@ -1024,27 +1024,20 @@ run(jobId: string, handler: () => Promise<unknown>): Promise<void>
 Each domain implements its own handler. The handler owns all business logic — parsing, upsert strategy, and what to do with records absent from the file.
 
 ```typescript
-// apps/api/src/modules/hr/employee/employee-sync.service.ts
-async sync(file: Buffer, userId: string): Promise<{ jobId: string }> {
+// apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan-import.service.ts
+async import(file: Express.Multer.File, /* ...plan params */ userId: string): Promise<{ jobId: string }> {
   const job = await this.jobService.createJob({
-    type: 'employee-sync', domain: 'hr', resource: 'employee', createdById: userId,
+    type: 'vehicle-plan-import', domain: 'transit', resource: 'vehicle-plan', createdById: userId,
   })
   // intentional fire-and-forget
-  this.jobService.run(job.id, () => this.execute(file))
+  this.jobService.run(job.id, () => this.execute(file.buffer /* , ... */))
   return { jobId: job.id }
-}
-
-private async execute(file: Buffer) {
-  const rows   = parseEmployeeTxt(file)   // format-specific parser
-  const errors = []
-  // upsert present records; soft-delete absent ones
-  return { created, updated, deactivated, errors }
 }
 ```
 
-**ERP sync rule:** the ERP is always the source of truth for synced models. All fields are overwritten on upsert. Records absent from the file receive domain-specific treatment (e.g. `status: INACTIVE` for employees) — this logic is hardcoded per model, not abstracted.
+**ERP sync rule:** the ERP is always the source of truth for synced models. Records absent from the file receive domain-specific treatment — this logic is hardcoded per model, not abstracted.
 
-**Identifier field:** each synced model has a natural unique identifier that serves as the upsert key (e.g. `Employee.code` for matricula, `Vehicle.plate` for plate number). No generic `erpCode` field is added — the existing field is used directly.
+**Standard CSV import:** plain create/update of a resource from a file is not a job — it is the synchronous, schema-driven import (`POST /:domain/:resource/import`, see `docs/FLOW.md`), with a dry-run preview and all-or-nothing writes.
 
 #### Frontend
 

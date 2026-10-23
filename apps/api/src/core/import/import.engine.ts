@@ -3,15 +3,15 @@ import type { Prisma } from '@prisma/client'
 import { z, ZodObject, ZodType } from 'zod'
 import type { AuthUser, ImportColumn, ImportIssue, ImportResult, ImportRow } from '@nyx/types'
 import type { PrismaService } from '../../prisma/prisma.service'
-import { buildImportColumns, unwrap } from '../metadata.builder'
+import { buildImportColumns, importDefault, unwrap } from '../metadata.builder'
 import { resourceRegistry } from '../resource-registry'
 import { stringEquals } from '../db.utils'
 import { decodeCsv, parseCsv, type ParsedCsv } from './csv.parser'
 import { parseCell, type CellResult } from './import.values'
 
 // Standard CSV import (docs/FLOW.md): every row is converted, resolved and validated first;
-// then all writes run in one transaction, each under a savepoint so a database error marks its
-// row and the rest still run. Any invalid row — or a dry run — rolls the whole thing back.
+// then the valid rows' writes run in one transaction, each under a savepoint so a database error
+// marks its row and the rest still run. Any invalid row — or a dry run — rolls the whole thing back.
 
 export const IMPORT_MAX_ROWS = 5000
 
@@ -20,6 +20,7 @@ export interface ImportOp {
   action: 'create' | 'update'
   id?:    string                     // the existing record, on update
   data:   Record<string, unknown>    // only the columns the row filled (plus defaults, on create)
+  nested: Record<string, Record<string, unknown>>  // importNested groups the row filled, validated, with defaults
 }
 
 export interface ImportOptions {
@@ -51,10 +52,10 @@ function checkHeaders(headers: string[], columns: ImportColumn[]): ImportIssue[]
   return issues
 }
 
-function issueMessage(issue: z.core.$ZodIssue, value: unknown): string {
+function issueMessage(issue: z.core.$ZodIssue, value: unknown, missing = 'Obrigatório na criação'): string {
+  // an absent value fails as invalid_type, or invalid_value on enums
+  if (value === undefined) return missing
   switch (issue.code) {
-    case 'invalid_type':
-      return value === undefined ? 'Obrigatório na criação' : 'Valor inválido'
     case 'too_small':
       return issue.origin === 'string' ? `Mínimo de ${issue.minimum} caracteres` : `Mínimo ${issue.minimum}`
     case 'too_big':
@@ -108,34 +109,43 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
   }
   if (result.errors.length) return result
 
-  const columnOf = (field: string) => columns.find(c => c.field === field)?.name ?? field
+  const nestedDefs = ((schema as any)._schemaMeta?.importNested ?? {}) as Record<string, { schema: ZodObject<any> }>
+  const schemaOf = (c: ImportColumn) => (c.group ? nestedDefs[c.group].schema : schema)
+  const metaOf   = (c: ImportColumn) => fieldMeta(schemaOf(c), c.field)
+  const columnOf = (field: string, group?: string) => columns.find(c => c.field === field && c.group === group)?.name ?? field
   const byName   = new Map(columns.map(c => [c.name, c]))
   // relations narrowed by a sibling (dependsOn) resolve after it
   const present  = parsed.headers.map(h => byName.get(h)!)
-    .sort((a, b) => Number(!!fieldMeta(schema, a.field).dependsOn) - Number(!!fieldMeta(schema, b.field).dependsOn))
+    .sort((a, b) => Number(!!metaOf(a).dependsOn) - Number(!!metaOf(b).dependsOn))
   const keyColumns = columns.filter(c => c.key)
-  const isInt = (c: ImportColumn) => !!(unwrap(schema.shape[c.field] as ZodType) as any).isInt
+  const isInt = (c: ImportColumn) => !!(unwrap(schemaOf(c).shape[c.field] as ZodType) as any).isInt
 
-  // the importable fields only — no object-level refinements, which the writes still meet
-  const createSchema = z.object(Object.fromEntries(columns.map(c => [c.field, schema.shape[c.field]])))
-  const updateSchema = createSchema.partial()
-  // like the form: a field with a meta defaultValue takes it when a new record leaves it out
-  const createDefaults = Object.fromEntries(columns
-    .map(c => [c.field, fieldMeta(schema, c.field).defaultValue] as const)
-    .filter(([, v]) => v !== undefined))
+  // the importable fields only — no object-level refinements, which the writes still meet;
+  // like the form, a field with a meta defaultValue takes it when a new record leaves it out
+  const validatorOf = (group?: string) => {
+    const own = columns.filter(c => c.group === group)
+    const s   = group ? nestedDefs[group].schema : schema
+    return {
+      create:   z.object(Object.fromEntries(own.map(c => [c.field, s.shape[c.field]]))),
+      defaults: Object.fromEntries(own.map(c => [c.field, importDefault(metaOf(c))] as const).filter(([, v]) => v !== undefined)),
+    }
+  }
+  const main         = validatorOf()
+  const updateSchema = main.create.partial()
+  const nestedValidators = Object.fromEntries(Object.keys(nestedDefs).map(g => [g, validatorOf(g)]))
 
   const scoped = !!opts.scopeField && !!user && user.role !== 'admin'
   const outOfScope = (branchId: unknown) => typeof branchId === 'string' && !user!.branchIds.includes(branchId)
 
   const refCache = new Map<string, CellResult>()
   async function resolveRef(col: ImportColumn, raw: string, data: Record<string, unknown>, row: ImportRow): Promise<CellResult | null> {
-    const meta   = fieldMeta(schema, col.field)
+    const meta   = metaOf(col)
     // narrowed only by a sibling that is itself a column (not e.g. the form's virtual company)
-    const parent = columns.some(c => c.field === meta.dependsOn) ? meta.dependsOn as string : undefined
+    const parent = columns.some(c => c.field === meta.dependsOn && c.group === col.group) ? meta.dependsOn as string : undefined
     if (parent && data[parent] == null) {
       // the parent's own error already explains the row
-      if (row.errors.some(e => e.column === columnOf(parent))) return null
-      return { ok: false, message: `Informe também ${columnOf(parent)}` }
+      if (row.errors.some(e => e.column === columnOf(parent, col.group))) return null
+      return { ok: false, message: `Informe também ${columnOf(parent, col.group)}` }
     }
     const cacheKey = `${col.field}|${parent ? String(data[parent]) : ''}|${raw.toLowerCase()}`
     const cached = refCache.get(cacheKey)
@@ -170,6 +180,7 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
     const data: Record<string, unknown> = Object.fromEntries(keyColumns
       .filter(c => !parsed.headers.includes(c.name))
       .map(c => [c.field, null]))
+    const nestedData: Record<string, Record<string, unknown>> = {}
     for (const col of present) {
       const raw = row.values[col.name]
       if (raw === '') {
@@ -177,9 +188,10 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
         else if (col.key) data[col.field] = null
         continue
       }
-      const res = col.type === 'relation' ? await resolveRef(col, raw, data, row) : parseCell(raw, col, isInt(col))
+      const target = col.group ? (nestedData[col.group] ??= {}) : data
+      const res = col.type === 'relation' ? await resolveRef(col, raw, target, row) : parseCell(raw, col, isInt(col))
       if (!res) continue
-      if (res.ok) data[col.field] = res.value
+      if (res.ok) target[col.field] = res.value
       else row.errors.push({ column: col.name, message: res.message })
     }
     if (keyColumns.some(c => !(c.field in data))) continue
@@ -201,19 +213,32 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
       row.errors.push({ column: columnOf(opts.scopeField!), message: 'Filial fora do seu acesso' })
     }
 
-    const validation = existing ? updateSchema.safeParse(data) : createSchema.safeParse({ ...createDefaults, ...data })
+    const validation = existing ? updateSchema.safeParse(data) : main.create.safeParse({ ...main.defaults, ...data })
     if (!validation.success) {
       for (const issue of validation.error.issues) {
         const field = String(issue.path[0] ?? '')
         row.errors.push({ column: columnOf(field), message: issueMessage(issue, data[field]) })
       }
     }
+
+    // a nested group counts only when the row filled one of its columns — then it's complete
+    const nested: Record<string, Record<string, unknown>> = {}
+    for (const [group, values] of Object.entries(nestedData)) {
+      const v = nestedValidators[group]
+      const res = v.create.safeParse({ ...v.defaults, ...values })
+      if (res.success) nested[group] = res.data
+      else for (const issue of res.error.issues) {
+        const field   = String(issue.path[0] ?? '')
+        const missing = `Obrigatório para incluir ${(nestedDefs[group].schema as any)._schemaMeta?.label ?? group}`
+        row.errors.push({ column: columnOf(field, group), message: issueMessage(issue, values[field], missing) })
+      }
+    }
     if (row.errors.length) continue
 
     row.action = existing ? 'update' : 'create'
     ops.push(existing
-      ? { line: rec.line, action: 'update', id: existing.id, data }
-      : { line: rec.line, action: 'create', data: validation.data as Record<string, unknown> })
+      ? { line: rec.line, action: 'update', id: existing.id, data, nested }
+      : { line: rec.line, action: 'create', data: validation.data as Record<string, unknown>, nested })
   }
 
   const countInvalid = () => result.rows.filter(r => r.errors.length).length
@@ -223,9 +248,8 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
     result.created = result.rows.filter(r => r.action === 'create' && !r.errors.length).length
     result.updated = result.rows.filter(r => r.action === 'update' && !r.errors.length).length
   }
-  tally()
-  if (result.invalid) return result
-
+  // the valid rows still run their writes (rolled back below) so the preview shows every
+  // database and business error at once, not only after the other rows are fixed
   try {
     await prisma.$transaction(async (tx) => {
       for (const op of ops) {

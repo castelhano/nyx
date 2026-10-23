@@ -25,6 +25,16 @@ describe('parseCell', () => {
     expect(parseCell('NÃO', col('boolean')).ok).toBe(false)
   })
 
+  it('masked strings: digits or formatted, stored formatted', () => {
+    const cpf = { ...col('string'), mask: 'cpf' }
+    expect(parseCell('12345678901', cpf)).toEqual({ ok: true, value: '123.456.789-01' })
+    expect(parseCell('123.456.789-01', cpf)).toEqual({ ok: true, value: '123.456.789-01' })
+    expect(parseCell('1234', cpf)).toEqual({ ok: false, message: 'CPF inválido (11 dígitos)' })
+    const phone = { ...col('string'), mask: 'phone' }
+    expect(parseCell('11987654321', phone)).toEqual({ ok: true, value: '(11) 98765-4321' })
+    expect(parseCell('(11) 3456-7890', phone)).toEqual({ ok: true, value: '(11) 3456-7890' })
+  })
+
   it('enums: matched case-insensitively, stored as declared', () => {
     expect(parseCell('active', col('enum', ['ACTIVE', 'INACTIVE']))).toEqual({ ok: true, value: 'ACTIVE' })
     expect(parseCell('OTHER', col('enum', ['ACTIVE', 'INACTIVE']))).toEqual({ ok: false, message: 'Valor inválido (aceitos: ACTIVE, INACTIVE)' })

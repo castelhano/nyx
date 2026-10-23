@@ -229,6 +229,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
   // one validated row of an import, inside its transaction — override for resources whose
   // writes carry more than their own columns (e.g. Employee + Contract)
   protected async importWrite(tx: Prisma.TransactionClient, op: ImportOp): Promise<void> {
+    if (Object.keys(op.nested).length) throw new Error(`${this.modelName}: importNested needs an importWrite override`)
     const model = (tx as any)[this.modelName]
     if (op.action === 'create') await model.create({ data: op.data })
     else await model.update({ where: { id: op.id }, data: op.data })

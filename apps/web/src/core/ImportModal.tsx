@@ -49,6 +49,17 @@ export function ImportModal({ domain, resource, onClose }: Props) {
   const fileRef     = useRef<HTMLInputElement>(null)
   const { data: meta } = useMetadata(domain, resource)
   const columns     = meta?.import?.columns ?? []
+  // the record's own columns, then each importNested group (e.g. the employee's contract)
+  const columnGroups = useMemo(() => {
+    const groups: { key: string; label?: string; columns: ImportColumn[] }[] = []
+    for (const c of meta?.import?.columns ?? []) {
+      const key = c.group ?? ''
+      let g = groups.find(x => x.key === key)
+      if (!g) groups.push(g = { key, label: c.groupLabel, columns: [] })
+      g.columns.push(c)
+    }
+    return groups
+  }, [meta])
 
   const [file,       setFile]       = useState<File | null>(null)
   const [result,     setResult]     = useState<ImportResult | null>(null)
@@ -241,22 +252,33 @@ export function ImportModal({ domain, resource, onClose }: Props) {
                 Copiar cabeçalho
               </button>
             </div>
-            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-              {columns.map(c => (
-                <button
-                  key={c.name}
-                  type="button"
-                  onClick={() => copy(c.name, c.name)}
-                  title={`${c.label} — ${columnHint(c)}`}
-                  className={cn(
-                    'flex items-center gap-1 px-2 h-6 rounded-sm border text-xs font-mono transition-colors cursor-pointer',
-                    c.key ? 'border-primary/50 bg-primary/10' : 'border-border bg-background hover:bg-muted',
-                    c.required ? 'font-semibold text-foreground' : 'text-muted-foreground',
+            <div className="max-h-40 overflow-y-auto space-y-2">
+              {columnGroups.map(g => (
+                <div key={g.key} className="space-y-1">
+                  {g.label && (
+                    <div className="text-xs text-muted-foreground">
+                      {g.label} <span className="opacity-70">— opcional; se informado, os em negrito são obrigatórios</span>
+                    </div>
                   )}
-                >
-                  {c.key && <Icons.KeyRound className="w-3 h-3" />}
-                  {c.name}
-                </button>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.columns.map(c => (
+                      <button
+                        key={c.name}
+                        type="button"
+                        onClick={() => copy(c.name, c.name)}
+                        title={`${c.label} — ${columnHint(c)}`}
+                        className={cn(
+                          'flex items-center gap-1 px-2 h-6 rounded-sm border text-xs font-mono transition-colors cursor-pointer',
+                          c.key ? 'border-primary/50 bg-primary/10' : 'border-border bg-background hover:bg-muted',
+                          c.required ? 'font-semibold text-foreground' : 'text-muted-foreground',
+                        )}
+                      >
+                        {c.key && <Icons.KeyRound className="w-3 h-3" />}
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>

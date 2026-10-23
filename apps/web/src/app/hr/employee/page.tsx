@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AutoList } from '@/core/AutoList'
 import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
-import { SyncModal } from '@/core/SyncModal'
+import { ImportModal } from '@/core/ImportModal'
 import { usePageGuard } from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
@@ -15,7 +15,7 @@ import { downloadCsv } from '@/lib/csv'
 export default function EmployeeListPage() {
   const router      = useRouter()
   const searchParams = useSearchParams()
-  const [syncOpen, setSyncOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   const { guardNode, meta } = usePageGuard('hr', 'employee')
 
@@ -42,9 +42,9 @@ export default function EmployeeListPage() {
 
   useTopbarActions([
     ...(meta?.permissions?.create !== false ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => router.push('/hr/employee/new'), primary: true }] : []),
-    ...(meta?.permissions?.create !== false ? [{ label: 'Sincronizar', icon: Icons.Upload, onClick: () => setSyncOpen(true), variant: 'ghost' as const }] : []),
+    ...(meta?.import && meta.permissions?.update !== false ? [{ label: 'Importar', icon: Icons.Upload, onClick: () => setImporting(true), variant: 'ghost' as const, primary: false }] : []),
     ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: handleDownloadCsv, variant: 'ghost' as const }] : []),
-  ], [meta?.permissions?.create, meta?.allowCsv])
+  ], [meta?.permissions?.create, meta?.permissions?.update, meta?.allowCsv, !!meta?.import])
 
   useShortcut('alt+v', () => router.push(backPath), {
     desc:   'Voltar',
@@ -76,14 +76,7 @@ export default function EmployeeListPage() {
         filters={Object.keys(filters).length ? filters : undefined}
         onEdit={(id) => router.push(`/hr/employee/${id}`)}
       />
-      {syncOpen && (
-        <SyncModal
-          domain="hr"
-          resource="employee"
-          label={meta?.labelPlural ?? 'Funcionários'}
-          onClose={() => setSyncOpen(false)}
-        />
-      )}
+      {importing && <ImportModal domain="hr" resource="employee" onClose={() => setImporting(false)} />}
     </div>
   )
 }

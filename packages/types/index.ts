@@ -243,7 +243,10 @@ export interface ImportColumn {
   key:      boolean   // part of the sync key (importKey)
   required: boolean   // required when the row creates a record
   options?: string[]  // enum values
+  mask?:    string    // cpf, cnpj, cep, phone — digits or formatted in the file, stored formatted
   ref?:     string    // relation: the related resource's field matched against
+  group?:   string    // importNested: the related record this column fills (required = when the group is filled)
+  groupLabel?: string
 }
 
 export interface ImportMeta {

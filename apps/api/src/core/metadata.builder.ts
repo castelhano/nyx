@@ -158,40 +158,65 @@ function arrayEnumOptions(inner: ZodType): string[] | undefined {
 
 const NOT_IMPORTABLE = new Set(['id', 'createdAt', 'updatedAt', 'passwordHash'])
 
+// a field's meta defaultValue as the import applies it — form-only placeholders ($today) don't count
+export function importDefault(meta: { defaultValue?: unknown }): unknown {
+  const v = meta.defaultValue
+  return typeof v === 'string' && v.startsWith('$') ? undefined : v
+}
+
+// one import column for a schema field — undefined when the field can't be imported (uploads included)
+function importColumn(name: string, field: ZodType, column?: string): ImportColumn | undefined {
+  const meta = (field as any).meta?.() ?? {}
+  if (NOT_IMPORTABLE.has(name) || meta.virtual || meta.computed || meta.showInForm === false || meta.widget === 'avatar') return undefined
+
+  const isRelation = (meta.widget === 'select' || meta.widget === 'combobox') && !!meta.resource
+  const type = isRelation ? 'relation' : getType(field)
+  if (type === 'array') return undefined
+
+  return {
+    name:     column ?? (isRelation ? name.replace(/Id$/, '') : name),
+    field:    name,
+    label:    meta.label ?? toTitleCase(name),
+    type:     type as ImportColumn['type'],
+    key:      false,
+    required: isRequired(field) && importDefault(meta) === undefined,
+    ...(meta.mask ? { mask: meta.mask } : {}),
+    ...(type === 'enum' ? { options: Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {}) } : {}),
+    ...(isRelation ? { ref: meta.importRef ?? meta.labelField } : {}),
+  }
+}
+
 // Columns of the standard CSV import (docs/FLOW.md) — undefined when the schema has no
 // importKey. Scalar fields and relations only; virtual, computed and form-hidden fields are out.
+// importNested adds a related record's columns (e.g. an employee's new contract), named by the map.
 export function buildImportColumns(schema: ZodObject<any>): ImportColumn[] | undefined {
-  const importKey = (schema as any)._schemaMeta?.importKey as string | string[] | undefined
+  const schemaMeta = (schema as any)._schemaMeta ?? {}
+  const importKey  = schemaMeta.importKey as string | string[] | undefined
   if (!importKey) return undefined
   const keys = Array.isArray(importKey) ? importKey : [importKey]
 
   const columns: ImportColumn[] = []
-  for (const [name, rawField] of Object.entries(schema.shape)) {
-    const field = rawField as ZodType
-    const meta  = (field as any).meta?.() ?? {}
-    if (NOT_IMPORTABLE.has(name) || meta.virtual || meta.computed || meta.showInForm === false) continue
-
-    const isRelation = (meta.widget === 'select' || meta.widget === 'combobox') && !!meta.resource
-    const type = isRelation ? 'relation' : getType(field)
-    if (type === 'array') continue
-
-    columns.push({
-      name:     isRelation ? name.replace(/Id$/, '') : name,
-      field:    name,
-      label:    meta.label ?? toTitleCase(name),
-      type:     type as ImportColumn['type'],
-      key:      keys.includes(name),
-      required: isRequired(field) && meta.defaultValue === undefined,
-      ...(type === 'enum' ? { options: Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {}) } : {}),
-      ...(isRelation ? { ref: meta.importRef ?? meta.labelField } : {}),
-    })
+  for (const [name, field] of Object.entries(schema.shape)) {
+    const column = importColumn(name, field as ZodType)
+    if (column) columns.push({ ...column, key: keys.includes(name) })
   }
 
   const missing = keys.filter(k => !columns.some(c => c.field === k))
   if (missing.length) throw new Error(`importKey fields not importable: ${missing.join(', ')}`)
+
+  const nested: ImportColumn[] = []
+  for (const [group, def] of Object.entries((schemaMeta.importNested ?? {}) as Record<string, { schema: ZodObject<any>; columns: Record<string, string> }>)) {
+    for (const [name, field] of Object.entries(def.columns)) {
+      const column = def.schema.shape[field] && importColumn(field, def.schema.shape[field] as ZodType, name)
+      if (!column) throw new Error(`importNested ${group}.${field} is not importable`)
+      nested.push({ ...column, group, groupLabel: (def.schema as any)._schemaMeta?.label ?? group })
+    }
+  }
+
   return [
     ...keys.map(k => columns.find(c => c.field === k)!),
     ...columns.filter(c => !c.key),
+    ...nested,
   ]
 }
 

@@ -5,6 +5,28 @@ import type { ImportColumn } from '@nyx/types'
 
 export type CellResult = { ok: true; value: unknown } | { ok: false; message: string }
 
+// the form's masks (FieldRenderer) — a masked field is stored formatted, so the import formats it too
+const MASKS: Record<string, { label: string; patterns: string[] }> = {
+  'cpf':       { label: 'CPF',      patterns: ['000.000.000-00'] },
+  'cnpj':      { label: 'CNPJ',     patterns: ['00.000.000/0000-00'] },
+  'cnpj-base': { label: 'CNPJ',     patterns: ['00.000.000'] },
+  'cep':       { label: 'CEP',      patterns: ['00000-000'] },
+  'phone':     { label: 'Telefone', patterns: ['(00) 0000-0000', '(00) 00000-0000'] },
+}
+
+function applyMask(raw: string, mask: string): CellResult {
+  const def = MASKS[mask]
+  if (!def) return { ok: true, value: raw }
+  const digits  = raw.replace(/\D/g, '')
+  const pattern = def.patterns.find(p => (p.match(/0/g) ?? []).length === digits.length)
+  if (!pattern) {
+    const sizes = def.patterns.map(p => (p.match(/0/g) ?? []).length).join(' ou ')
+    return { ok: false, message: `${def.label} inválido (${sizes} dígitos)` }
+  }
+  let i = 0
+  return { ok: true, value: pattern.replace(/0/g, () => digits[i++]) }
+}
+
 const DATE = /^(\d{2})\/(\d{2})\/(\d{4})$/
 const NUMBER = /^-?\d+(,\d+)?$/
 
@@ -35,6 +57,6 @@ export function parseCell(raw: string, column: ImportColumn, isInt = false): Cel
       return match ? { ok: true, value: match } : { ok: false, message: `Valor inválido (aceitos: ${column.options?.join(', ')})` }
     }
     default:
-      return { ok: true, value: raw }
+      return column.mask ? applyMask(raw, column.mask) : { ok: true, value: raw }
   }
 }
