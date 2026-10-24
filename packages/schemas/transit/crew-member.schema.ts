@@ -28,6 +28,7 @@ export const crewMemberSchema = withMeta(
       domain:               'hr',
       labelField:           'fullName',
       relatedDisplayFields: ['code'],
+      importRef:            'code',
       listVisibility:       'hidden',
       lazyEdit:             true,
       className:            'md:w-1/2',
@@ -153,6 +154,8 @@ export const crewMemberSchema = withMeta(
       label:          'Grupo no regime',
       helpText:       'Grupos do mesmo regime revezam as folgas.',
       widget:         'rest-group',
+      // imported as the group's letter (restGroup), converted by CrewMemberService
+      importable:     false,
       listVisibility: 'hidden',
       className:      'md:w-[20.75rem]',
     }),
@@ -237,6 +240,31 @@ export const crewMemberSchema = withMeta(
       'Escala':     ['notBeforeMinutes', 'notAfterMinutes', 'restPatternId', 'restOffset', 'blockedVehicleTypes', 'preferredVehicleId', 'weeklyHours', 'overtimePreference'],
       'Documentos': ['licenseCategory', 'licenseExpiresAt', 'courseExpiresAt'],
     },
+    importKey: 'employeeId',
+    // like the form: the shift starts today (on create, or when it differs from the current one)
+    importFields: {
+      shift: z.uuid().meta({
+        label: 'Turno', widget: 'select', resource: 'crew-shift', domain: 'transit', labelField: 'code',
+      }),
+      restGroup: z.string().regex(/^[A-Za-z]+$/).optional().meta({ label: 'Grupo no regime (A, B…)' }),
+    },
+    // every enum value appears at least once — the file is how users learn the accepted values
+    importExamples: [
+      {
+        employee: '1001', shift: 'MANHA', role: 'DRIVER', isRosterable: 'SIM', notBeforeMinutes: '5:00', notAfterMinutes: '14:30',
+        restPattern: 'Escala 6x1', restGroup: 'A', blockedVehicleTypes: 'ARTICULATED|BI_ARTICULATED', preferredVehicle: '2045',
+        weeklyHours: '44', overtimePreference: 'LIKES', licenseCategory: 'D', licenseExpiresAt: '15/08/2028', courseExpiresAt: '10/03/2027',
+      },
+      {
+        employee: '1002', shift: 'TARDE', role: 'FARE_COLLECTOR', isRosterable: 'NAO', notAfterMinutes: '25:30',
+        restGroup: 'B', overtimePreference: 'AVOIDS',
+      },
+      {
+        employee: '1003', shift: 'MANHA', role: 'ASSISTANT', blockedVehicleTypes: 'STANDARD|MICRO_BUS|MINIBUS|VAN',
+        overtimePreference: 'NEUTRAL', notes: 'Somente linhas do centro',
+      },
+      { employee: '1004', licenseExpiresAt: '20/01/2029' },
+    ],
   },
 )
 

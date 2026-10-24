@@ -252,7 +252,7 @@ export interface ImportColumn {
   name:     string    // CSV header: the field key, without the `Id` suffix on relations
   field:    string    // schema field it fills
   label:    string
-  type:     'string' | 'number' | 'boolean' | 'date' | 'enum' | 'relation' | 'list'
+  type:     'string' | 'number' | 'boolean' | 'date' | 'time' | 'enum' | 'relation' | 'list'
   item?:    'string' | 'enum' | 'relation'  // list: what each `|`-separated value is (options / ref apply to it)
   key:      boolean   // part of the sync key (importKey)
   required: boolean   // required when the row creates a record

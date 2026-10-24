@@ -54,14 +54,18 @@ function checkHeaders(headers: string[], columns: ImportColumn[]): ImportIssue[]
   return issues
 }
 
-function issueMessage(issue: z.core.$ZodIssue, value: unknown, missing = 'Obrigatório na criação'): string {
+// a time column's bounds are minutes — shown as H:MM, as the file writes them
+const asTime = (minutes: number) => `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
+
+function issueMessage(issue: z.core.$ZodIssue, value: unknown, missing = 'Obrigatório na criação', column?: ImportColumn): string {
   // an absent value fails as invalid_type, or invalid_value on enums
   if (value === undefined) return missing
+  const bound = (n: number | bigint) => (column?.type === 'time' ? asTime(Number(n)) : String(n))
   switch (issue.code) {
     case 'too_small':
-      return issue.origin === 'string' ? `Mínimo de ${issue.minimum} caracteres` : `Mínimo ${issue.minimum}`
+      return issue.origin === 'string' ? `Mínimo de ${issue.minimum} caracteres` : `Mínimo ${bound(issue.minimum)}`
     case 'too_big':
-      return issue.origin === 'string' ? `Máximo de ${issue.maximum} caracteres` : `Máximo ${issue.maximum}`
+      return issue.origin === 'string' ? `Máximo de ${issue.maximum} caracteres` : `Máximo ${bound(issue.maximum)}`
     case 'invalid_format':
       return issue.format === 'email' ? 'E-mail inválido' : 'Formato inválido'
     case 'custom':
@@ -280,7 +284,7 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
     if (!validation.success) {
       for (const issue of validation.error.issues) {
         const column = issueColumn(issue.path)
-        if (!failed.has(column)) row.errors.push({ column, message: issueMessage(issue, issueValue(data, issue.path)) })
+        if (!failed.has(column)) row.errors.push({ column, message: issueMessage(issue, issueValue(data, issue.path), undefined, byName.get(column)) })
       }
     }
 

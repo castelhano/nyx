@@ -112,6 +112,12 @@ export function restGroupLabel(index: number): string {
   return s
 }
 
+// restGroupLabel's inverse: A → 0, Z → 25, AA → 26… null when not letters
+export function restGroupFromLabel(label: string): number | null {
+  if (!/^[A-Z]+$/i.test(label)) return null
+  return [...label.toUpperCase()].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1
+}
+
 // the group index of an offset — null when it falls between groups (set by hand)
 export function restGroupIndex(p: Pick<RestPattern, 'pattern' | 'staggered'>, offset: number): number | null {
   const n = p.pattern.length, step = restGroupStep(p)

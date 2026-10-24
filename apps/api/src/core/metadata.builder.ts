@@ -184,6 +184,9 @@ function importColumn(name: string, field: ZodType, column?: string): ImportColu
     type    = 'list'
   } else if (isRelation) {
     type = 'relation'
+  } else if (meta.widget === 'time' && type === 'number') {
+    // minutes in the database, H:MM in the file
+    type = 'time'
   } else if (type === 'enum') {
     options = Object.keys((unwrap(field) as ZodEnum<any>)._def.entries ?? {})
   }

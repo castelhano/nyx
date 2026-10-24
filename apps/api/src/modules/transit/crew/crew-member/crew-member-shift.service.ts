@@ -1,11 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { crewMemberShiftSchema, CrewMemberShift, CreateCrewMemberShiftDto, UpdateCrewMemberShiftDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
 
 // A crew member's shifts over time — no two at once. A shift starting after the open one closes
-// it the day before; anything else overlapping is refused.
+// it the day before; anything else overlapping is refused. `db` is the Prisma client or, from the
+// crew member import, its transaction's.
+type Db = Prisma.TransactionClient
+
 @Injectable()
 export class CrewMemberShiftService extends BaseService<CrewMemberShift, CreateCrewMemberShiftDto, UpdateCrewMemberShiftDto> {
   constructor(prisma: PrismaService) {
@@ -30,32 +34,35 @@ export class CrewMemberShiftService extends BaseService<CrewMemberShift, CreateC
     return super.update(id, dto)
   }
 
-  // the crew member's shift from `from` on (CrewMember form): the open one is closed the day
-  // before; the same shift already open is left as it is
-  async startShift(crewMemberId: string, shiftId: string, from: Day): Promise<void> {
-    const open = await this.prisma.crewMemberShift.findFirst({ where: { crewMemberId, validTo: null }, select: { shiftId: true } })
+  // the crew member's shift from `from` on (CrewMember form and import): the open one is closed
+  // the day before; the same shift already open is left as it is
+  async startShift(crewMemberId: string, shiftId: string, from: Day, db: Db = this.prisma): Promise<void> {
+    const open = await db.crewMemberShift.findFirst({ where: { crewMemberId, validTo: null }, select: { shiftId: true } })
     if (open?.shiftId === shiftId) return
-    await this.create({ crewMemberId, shiftId, validFrom: toDbDate(from), validTo: null })
+    await this.assertShiftOfBranch(crewMemberId, shiftId, db)
+    await this.closeOpenBefore(crewMemberId, from, db)
+    await this.assertNoOverlap(crewMemberId, null, from, null, db)
+    await db.crewMemberShift.create({ data: { crewMemberId, shiftId, validFrom: toDbDate(from), validTo: null } })
   }
 
   // the shift in force on `day`
-  async current(crewMemberIds: string[], day: Day): Promise<Map<string, { id: string; code: string }>> {
-    const rows = await this.prisma.crewMemberShift.findMany({
+  async current(crewMemberIds: string[], day: Day, db: Db = this.prisma): Promise<Map<string, { id: string; code: string }>> {
+    const rows = await db.crewMemberShift.findMany({
       where:  { crewMemberId: { in: crewMemberIds }, validFrom: { lte: toDbDate(day) }, OR: [{ validTo: null }, { validTo: { gte: toDbDate(day) } }] },
       select: { crewMemberId: true, shift: { select: { id: true, code: true } } },
     })
     return new Map(rows.map(r => [r.crewMemberId, r.shift]))
   }
 
-  private async closeOpenBefore(crewMemberId: string, from: Day): Promise<void> {
-    const open = await this.prisma.crewMemberShift.findFirst({ where: { crewMemberId, validTo: null }, select: { id: true, validFrom: true } })
+  private async closeOpenBefore(crewMemberId: string, from: Day, db: Db = this.prisma): Promise<void> {
+    const open = await db.crewMemberShift.findFirst({ where: { crewMemberId, validTo: null }, select: { id: true, validFrom: true } })
     if (!open || dayOf(open.validFrom) >= from) return
-    await this.prisma.crewMemberShift.update({ where: { id: open.id }, data: { validTo: toDbDate(addDays(from, -1)) } })
+    await db.crewMemberShift.update({ where: { id: open.id }, data: { validTo: toDbDate(addDays(from, -1)) } })
   }
 
-  private async assertNoOverlap(crewMemberId: string, id: string | null, from: Day, to: Day | null): Promise<void> {
+  private async assertNoOverlap(crewMemberId: string, id: string | null, from: Day, to: Day | null, db: Db = this.prisma): Promise<void> {
     if (to && to < from) throw new BadRequestException('O fim não pode ser antes do início')
-    const others = await this.prisma.crewMemberShift.findMany({
+    const others = await db.crewMemberShift.findMany({
       where:  { crewMemberId, ...(id ? { id: { not: id } } : {}) },
       select: { validFrom: true, validTo: true },
     })
@@ -66,10 +73,10 @@ export class CrewMemberShiftService extends BaseService<CrewMemberShift, CreateC
   }
 
   // the shift must be one of the crew member's empresa (CrewShiftBranch)
-  private async assertShiftOfBranch(crewMemberId: string, shiftId: string): Promise<void> {
-    const member = await this.prisma.crewMember.findUnique({ where: { id: crewMemberId }, select: { employee: { select: { branchId: true } } } })
+  private async assertShiftOfBranch(crewMemberId: string, shiftId: string, db: Db = this.prisma): Promise<void> {
+    const member = await db.crewMember.findUnique({ where: { id: crewMemberId }, select: { employee: { select: { branchId: true } } } })
     if (!member) throw new BadRequestException('Operador não encontrado')
-    const link = await this.prisma.crewShiftBranch.findUnique({ where: { shiftId_branchId: { shiftId, branchId: member.employee.branchId } } })
+    const link = await db.crewShiftBranch.findUnique({ where: { shiftId_branchId: { shiftId, branchId: member.employee.branchId } } })
     if (!link) throw new BadRequestException('O turno não é da empresa do operador')
   }
 }

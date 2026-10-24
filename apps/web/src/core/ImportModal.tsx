@@ -32,6 +32,7 @@ const TYPE_HINT: Record<ImportColumn['type'], string> = {
   number:   'número (vírgula decimal)',
   boolean:  'SIM / NAO',
   date:     'dd/mm/aaaa',
+  time:     'H:MM',
   enum:     'lista',
   relation: 'referência',
   list:     'vários, separados por |',

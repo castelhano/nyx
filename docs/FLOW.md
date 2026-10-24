@@ -156,8 +156,10 @@ Domínio mais complexo. Os modelos foram separados por complexidade nas etapas 9
 ### CrewMember
 - Chave: o funcionário, pela matrícula.
 - Listas (`blockedVehicleTypes`) e referências (regime de folga, carro preferido pelo prefixo) já suportadas.
-- Novo: `notBeforeMinutes` / `notAfterMinutes` são minutos no banco — no CSV como `H:MM` (conversor novo).
-- Novo: turno obrigatório na criação — não é campo do operador, gera o histórico de turno (`CrewMemberShiftService`); coluna só de import (`shift`) e o service adaptado para rodar na transação.
+- Novo: `notBeforeMinutes` / `notAfterMinutes` são minutos no banco — no CSV como `H:MM` (conversor novo; passa da meia-noite, ex.: `25:30`, até o limite do campo, `48:00`).
+- Novo: turno obrigatório na criação — não é campo do operador, gera o histórico de turno (`CrewMemberShiftService`); coluna só de import (`shift`, pelo código) e o service adaptado para rodar na transação. Como no form, o turno inicia hoje (na criação, ou quando difere do vigente) — sem coluna de data.
+- Grupo no regime: coluna só de import `restGroup` com a letra do grupo (A, B…), como o form mostra; vira o `restOffset` pelo regime da linha, o do operador ou, sem ele, o do turno. Vazio na criação = grupo A.
+- Carro fixo precisa ser da empresa do funcionário (o form só filtra a lista; o import valida).
 
 ### VehiclePlan, HourBank, Vacation — a definir
 - **VehiclePlan:** é o planejamento inteiro (blocos, viagens, deslocamentos), não um cadastro. Topbar com split button **Importar** / **Importar Globus** (fluxo existente) — falta definir o que o arquivo padrão representaria.
@@ -231,8 +233,9 @@ Domínio mais complexo. Os modelos foram separados por complexidade nas etapas 9
   - A regra de não encadear segue valendo (roda na transação e enxerga a linha-base recém-criada); a prévia mostra o resultado completo, pois também grava antes de desfazer.
 - **Janelas de ciclo** (`metrics.windows`) ficam fora: são listas de faixas por tipo de dia e sentido, que não cabem em uma linha por linha de ônibus. Se necessário, um import próprio com uma linha por janela (`line;dayType;direction;from;to;minutes;intervalMinutes`).
 
-### 10. Transit médio: CrewMember
-- Conversor `H:MM` para os campos de horário.
+### 10. Transit médio: CrewMember ✅
+- Conversor `H:MM` para os campos de horário (`widget: 'time'` → coluna `time`).
+- Grupo no regime pela letra (`restGroup`).
 - Coluna `shift` (só de import) e `CrewMemberShiftService` rodando na transação.
 
 ### 11. Transit a definir: VehiclePlan, HourBank, Vacation

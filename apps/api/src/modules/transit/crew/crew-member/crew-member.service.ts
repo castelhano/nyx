@@ -1,9 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
-import { crewMemberSchema, CrewMember, CreateCrewMemberDto, UpdateCrewMemberDto } from '@nyx/schemas'
+import type { Prisma } from '@prisma/client'
+import {
+  crewMemberSchema, CrewMember, CreateCrewMemberDto, UpdateCrewMemberDto,
+  restGroupFromLabel, restGroupLabel, restGroupOffsets,
+} from '@nyx/schemas'
 import type { PaginatedResult, PaginationQuery } from '@nyx/types'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { stringContains } from '../../../../core/db.utils'
+import type { ImportOp } from '../../../../core/import/import.engine'
 import { localToday } from '../../timetabling/plan-validity'
 import { CrewMemberShiftService } from './crew-member-shift.service'
 
@@ -100,5 +105,44 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
     await super.update(id, rest)
     if (dto.shiftId) await this.shifts.startShift(id, dto.shiftId, localToday())
     return this.findOne(id)
+  }
+
+  // the import's shift starts today, as in the form; restGroup is the group's letter in the rest
+  // pattern — the row's, the crew member's own, or else his shift's
+  protected override async importWrite(tx: Prisma.TransactionClient, op: ImportOp): Promise<void> {
+    const { shift, restGroup } = op.extra as { shift?: string; restGroup?: string }
+    const data    = op.data as Prisma.CrewMemberUncheckedCreateInput
+    const current = op.id
+      ? await tx.crewMember.findUniqueOrThrow({ where: { id: op.id }, select: { employeeId: true, restPatternId: true } })
+      : null
+
+    // the form only offers the empresa's vehicles
+    if (data.preferredVehicleId) {
+      const employee = await tx.employee.findUniqueOrThrow({ where: { id: current?.employeeId ?? data.employeeId }, select: { branchId: true } })
+      const vehicle  = await tx.vehicle.findUniqueOrThrow({ where: { id: data.preferredVehicleId }, select: { branchId: true } })
+      if (vehicle.branchId !== employee.branchId) throw new BadRequestException('O carro fixo não é da empresa do operador')
+    }
+    if (restGroup) {
+      const shiftId = shift ?? (op.id ? (await this.shifts.current([op.id], localToday(), tx)).get(op.id)?.id : undefined)
+      data.restOffset = await this.restOffsetOf(tx, restGroup, data.restPatternId ?? current?.restPatternId ?? null, shiftId)
+    }
+
+    const id = op.id ?? (await tx.crewMember.create({ data, select: { id: true } })).id
+    if (op.id) await tx.crewMember.update({ where: { id }, data })
+    if (shift) await this.shifts.startShift(id, shift, localToday(), tx)
+  }
+
+  private async restOffsetOf(tx: Prisma.TransactionClient, label: string, restPatternId: string | null, shiftId?: string): Promise<number> {
+    const patternId = restPatternId
+      ?? (shiftId ? (await tx.crewShift.findUnique({ where: { id: shiftId }, select: { restPatternId: true } }))?.restPatternId : null)
+    if (!patternId) throw new BadRequestException('Grupo sem regime de folga — informe restPattern ou um turno com regime')
+    const pattern = await tx.restPattern.findUniqueOrThrow({ where: { id: patternId }, select: { name: true, pattern: true, staggered: true } })
+    const offsets = restGroupOffsets(pattern)
+    const index   = restGroupFromLabel(label)
+    if (index == null || index >= offsets.length) {
+      const range = offsets.length > 1 ? `grupos ${restGroupLabel(0)} a ${restGroupLabel(offsets.length - 1)}` : `só o grupo ${restGroupLabel(0)}`
+      throw new BadRequestException(`O regime ${pattern.name} não tem o grupo ${label.toUpperCase()} (${range})`)
+    }
+    return offsets[index]
   }
 }

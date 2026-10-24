@@ -1,7 +1,7 @@
 import type { ImportColumn } from '@nyx/types'
 
-// Cell → value conversion of the standard import (docs/FLOW.md): dates dd/mm/aaaa, decimal
-// comma, booleans SIM/NAO, enums by their stored value. Relations are resolved by the engine.
+// Cell → value conversion of the standard import (docs/FLOW.md): dates dd/mm/aaaa, times H:MM
+// (stored as minutes), decimal comma, booleans SIM/NAO, enums by their stored value. Relations are resolved by the engine.
 
 export type CellResult = { ok: true; value: unknown } | { ok: false; message: string }
 
@@ -28,6 +28,7 @@ function applyMask(raw: string, mask: string): CellResult {
 }
 
 const DATE = /^(\d{2})\/(\d{2})\/(\d{4})$/
+const TIME = /^(\d{1,2}):(\d{2})$/
 const NUMBER = /^-?\d+(,\d+)?$/
 
 export function parseCell(raw: string, column: ImportColumn, isInt = false): CellResult {
@@ -40,6 +41,12 @@ export function parseCell(raw: string, column: ImportColumn, isInt = false): Cel
       // rejects 31/02 and the like, which Date would roll over
       if (date.getUTCDate() !== d || date.getUTCMonth() !== mo - 1) return { ok: false, message: 'Data inválida' }
       return { ok: true, value: date }
+    }
+    case 'time': {
+      // past midnight goes on counting (25:10) — the field's own bounds are checked by validation
+      const m = TIME.exec(raw)
+      if (!m || Number(m[2]) > 59) return { ok: false, message: 'Horário inválido (use H:MM)' }
+      return { ok: true, value: Number(m[1]) * 60 + Number(m[2]) }
     }
     case 'number': {
       if (!NUMBER.test(raw)) return { ok: false, message: 'Número inválido (use vírgula para decimais)' }

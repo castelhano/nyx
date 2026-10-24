@@ -19,6 +19,13 @@ describe('parseCell', () => {
     expect(parseCell('1.5', col('number')).ok).toBe(false)
   })
 
+  it('times: H:MM as minutes, past midnight included', () => {
+    expect(parseCell('5:30', col('time'))).toEqual({ ok: true, value: 330 })
+    expect(parseCell('25:10', col('time'))).toEqual({ ok: true, value: 1510 })
+    expect(parseCell('5:75', col('time')).ok).toBe(false)
+    expect(parseCell('530', col('time')).ok).toBe(false)
+  })
+
   it('booleans: SIM / NAO, any case', () => {
     expect(parseCell('sim', col('boolean'))).toEqual({ ok: true, value: true })
     expect(parseCell('NAO', col('boolean'))).toEqual({ ok: true, value: false })
