@@ -109,8 +109,8 @@ export const localitySchema = withMeta(
     defaultSort: { field: 'name', order: 'asc' },
     importKey:   'code',
     importExamples: [
-      { code: 'C0101', abbr: 'TERM CENTRO', name: 'Terminal Centro', lat: '-15,601234', lng: '-56,097891', isDepot: 'NAO', notes: 'Coordenadas com vírgula decimal' },
-      { code: 'G0001', abbr: 'GAR NORTE',   name: 'Garagem Norte',   lat: '-15,552210', lng: '-56,071045', isDepot: 'SIM' },
+      { code: 'C0101', abbr: 'TERM CENTRO', name: 'Terminal Centro', lat: '-15,601234', lng: '-56,097891', isDepot: 'NAO', 'externalCodes.GLOBUS': '1001', notes: 'Coordenadas com vírgula decimal' },
+      { code: 'G0001', abbr: 'GAR NORTE',   name: 'Garagem Norte',   lat: '-15,552210', lng: '-56,071045', isDepot: 'SIM', 'externalCodes.GLOBUS': '9001' },
       { code: 'C0102', name: 'Ponto sem coordenadas' },
     ],
   },

@@ -79,6 +79,8 @@ export interface FieldMeta {
   importable?: boolean
   /** the field's CSV column name, when the default (the key, `Id` dropped on relations) reads badly */
   importName?: string
+  /** an object field imported as one column per property (`field.property`), merged on update */
+  importFlatten?: boolean
   // schema-level only
   labelPlural?: string
   nameField?: string
@@ -259,6 +261,7 @@ export interface ImportColumn {
   mask?:    string    // cpf, cnpj, cep, phone — digits or formatted in the file, stored formatted
   ref?:     string    // relation: the related resource's field matched against
   group?:   string    // importNested: the related record this column fills (required = when the group is filled)
+  object?:  string    // importFlatten: the object field this column is a property of
   groupLabel?: string
 }
 

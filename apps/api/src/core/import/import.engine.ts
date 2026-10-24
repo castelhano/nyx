@@ -36,6 +36,9 @@ export interface ImportOptions {
 
 class Rollback extends Error {}
 
+// stands in, through validation, for the id of a record created earlier in the same file
+const PENDING_ID = '00000000-0000-4000-8000-000000000000'
+
 function checkHeaders(headers: string[], columns: ImportColumn[]): ImportIssue[] {
   const issues: ImportIssue[] = []
   const known = new Set(columns.map(c => c.name))
@@ -110,9 +113,19 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
 
   const nestedDefs = ((schema as any)._schemaMeta?.importNested ?? {}) as Record<string, { schema: ZodObject<any> }>
   const extraShape = ((schema as any)._schemaMeta?.importFields ?? {}) as Record<string, ZodType>
-  const fieldOf  = (c: ImportColumn): ZodType => (c.group ? nestedDefs[c.group].schema.shape[c.field] : extraShape[c.field] ?? schema.shape[c.field])
+  const fieldOf  = (c: ImportColumn): ZodType => (
+    c.group  ? nestedDefs[c.group].schema.shape[c.field]
+    : c.object ? (unwrap(schema.shape[c.object] as ZodType) as ZodObject<any>).shape[c.field]
+    : extraShape[c.field] ?? schema.shape[c.field])
   const metaOf   = (c: ImportColumn) => (fieldOf(c) as any).meta?.() ?? {}
-  const columnOf = (field: string, group?: string) => columns.find(c => c.field === field && c.group === group)?.name ?? field
+  const columnOf = (field: string, group?: string) => columns.find(c => c.field === field && c.group === group && !c.object)?.name ?? field
+  // a validation issue's column — a flattened object's issue points at its property
+  const issueColumn = (path: PropertyKey[], group?: string) =>
+    (path.length > 1 && columns.find(c => c.object === String(path[0]) && c.field === String(path[1]))?.name) || columnOf(String(path[0] ?? ''), group)
+  const issueValue = (data: Record<string, unknown>, path: PropertyKey[]) =>
+    path.length > 1 && columns.some(c => c.object === String(path[0]))
+      ? (data[String(path[0])] as Record<string, unknown> | undefined)?.[String(path[1])]
+      : data[String(path[0] ?? '')]
   const byName   = new Map(columns.map(c => [c.name, c]))
   // relations narrowed by a sibling (dependsOn) resolve after it
   const present  = parsed.headers.map(h => byName.get(h)!)
@@ -125,13 +138,27 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
   const validatorOf = (group?: string) => {
     const own = columns.filter(c => c.group === group)
     return {
-      create:   z.object(Object.fromEntries(own.map(c => [c.field, fieldOf(c)]))),
-      defaults: Object.fromEntries(own.map(c => [c.field, importDefault(metaOf(c))] as const).filter(([, v]) => v !== undefined)),
+      // a flattened object is validated whole, by its own schema (which fills its defaults)
+      create:   z.object(Object.fromEntries(own.map(c => (c.object ? [c.object, schema.shape[c.object]] : [c.field, fieldOf(c)])))),
+      defaults: Object.fromEntries(own.filter(c => !c.object).map(c => [c.field, importDefault(metaOf(c))] as const).filter(([, v]) => v !== undefined)),
     }
   }
   const main         = validatorOf()
   const updateSchema = main.create.partial()
   const nestedValidators = Object.fromEntries(Object.keys(nestedDefs).map(g => [g, validatorOf(g)]))
+  const objectFields = [...new Set(present.filter(c => c.object).map(c => c.object!))]
+
+  // a reference to the resource itself by its (single) import key may point at a record created
+  // earlier in the same file — the key of every row, to find it
+  const keyLines = new Map<string, number>()
+  if (keyColumns.length === 1 && parsed.headers.includes(keyColumns[0].name)) {
+    const at = parsed.headers.indexOf(keyColumns[0].name)
+    for (const rec of parsed.records) {
+      const key = (rec.cells[at] ?? '').trim().toLowerCase()
+      if (key && !keyLines.has(key)) keyLines.set(key, rec.line)
+    }
+  }
+  const pendingByLine = new Map<number, { field: string; line: number }[]>()
 
   const scoped = !!opts.scopeField && !!user && user.role !== 'admin'
   const outOfScope = (branchId: unknown) => typeof branchId === 'string' && !user!.branchIds.includes(branchId)
@@ -146,21 +173,31 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
       if (row.errors.some(e => e.column === columnOf(parent, col.group))) return null
       return { ok: false, message: `Informe também ${columnOf(parent, col.group)}` }
     }
-    const cacheKey = `${col.field}|${parent ? String(data[parent]) : ''}|${raw.toLowerCase()}`
-    const cached = refCache.get(cacheKey)
-    if (cached) return cached
-
     const target = resourceRegistry.find(e => e.resource === meta.resource && (!meta.domain || e.domain === meta.domain) && e.modelName)
     if (!target) throw new Error(`import: no model registered for ${meta.domain}/${meta.resource}`)
-    const hits: { id: string }[] = await (prisma as any)[target.modelName!].findMany({
-      where:  { [col.ref!]: stringEquals(raw), ...(parent ? { [parent]: data[parent] } : {}) },
-      select: { id: true },
-      take:   2,
-    })
-    const res: CellResult = hits.length === 1
-      ? { ok: true, value: hits[0].id }
-      : { ok: false, message: hits.length ? `"${raw}" corresponde a mais de um registro` : `Não encontrado: ${raw}` }
-    refCache.set(cacheKey, res)
+
+    const cacheKey = `${col.field}|${parent ? String(data[parent]) : ''}|${raw.toLowerCase()}`
+    let res = refCache.get(cacheKey)
+    if (!res) {
+      const hits: { id: string }[] = await (prisma as any)[target.modelName!].findMany({
+        where:  { [col.ref!]: stringEquals(raw), ...(parent ? { [parent]: data[parent] } : {}) },
+        select: { id: true },
+        take:   2,
+      })
+      res = hits.length === 1
+        ? { ok: true, value: hits[0].id }
+        : { ok: false, message: hits.length ? `"${raw}" corresponde a mais de um registro` : `Não encontrado: ${raw}` }
+      refCache.set(cacheKey, res)
+    }
+
+    // not in the database: a record of this same resource may be created earlier in the file
+    const selfRef = !res.ok && !col.group && target.modelName === opts.modelName && keyColumns.length === 1 && keyColumns[0].field === col.ref
+    const line    = selfRef ? keyLines.get(raw.toLowerCase()) : undefined
+    if (line && line < row.line) {
+      pendingByLine.set(row.line, [...(pendingByLine.get(row.line) ?? []), { field: col.field, line }])
+      return { ok: true, value: PENDING_ID }
+    }
+    if (line && line > row.line) return { ok: false, message: `"${raw}" precisa vir antes no arquivo (linha ${line})` }
     return res
   }
 
@@ -194,6 +231,7 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
       .filter(c => !parsed.headers.includes(c.name))
       .map(c => [c.field, null]))
     const nestedData: Record<string, Record<string, unknown>> = {}
+    const objectData: Record<string, Record<string, unknown>> = {}
     for (const col of present) {
       const raw = row.values[col.name]
       if (raw === '') {
@@ -201,7 +239,7 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
         else if (col.key) data[col.field] = null
         continue
       }
-      const target = col.group ? (nestedData[col.group] ??= {}) : data
+      const target = col.group ? (nestedData[col.group] ??= {}) : col.object ? (objectData[col.object] ??= {}) : data
       const res = col.type === 'relation' ? await resolveRef(col, raw, target, row)
         : col.type === 'list' ? await parseList(col, raw, target, row)
         : parseCell(raw, col, isInt(col))
@@ -222,8 +260,16 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
 
     const existing = await (prisma as any)[opts.modelName].findFirst({
       where:  keyWhere,
-      select: { id: true, ...(opts.scopeField ? { [opts.scopeField]: true } : {}) },
+      select: {
+        id: true,
+        ...(opts.scopeField ? { [opts.scopeField]: true } : {}),
+        ...Object.fromEntries(objectFields.map(f => [f, true])),
+      },
     })
+    // a flattened object: the filled properties over the current value — the rest is kept
+    for (const [field, props] of Object.entries(objectData)) {
+      data[field] = { ...((existing?.[field] as Record<string, unknown> | null) ?? {}), ...props }
+    }
     if (scoped && (outOfScope(data[opts.scopeField!]) || outOfScope(existing?.[opts.scopeField!]))) {
       row.errors.push({ column: columnOf(opts.scopeField!), message: 'Filial fora do seu acesso' })
     }
@@ -233,8 +279,8 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
     const validation = existing ? updateSchema.safeParse(data) : main.create.safeParse({ ...main.defaults, ...data })
     if (!validation.success) {
       for (const issue of validation.error.issues) {
-        const field = String(issue.path[0] ?? '')
-        if (!failed.has(columnOf(field))) row.errors.push({ column: columnOf(field), message: issueMessage(issue, data[field]) })
+        const column = issueColumn(issue.path)
+        if (!failed.has(column)) row.errors.push({ column, message: issueMessage(issue, issueValue(data, issue.path)) })
       }
     }
 
@@ -252,8 +298,10 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
     }
     if (row.errors.length) continue
 
-    // import-only columns go apart from the record's own fields
+    // import-only columns go apart from the record's own fields; a merged object goes as
+    // validated, its schema's defaults filled
     const values = existing ? data : validation.data as Record<string, unknown>
+    if (existing) for (const field of Object.keys(objectData)) values[field] = (validation.data as Record<string, unknown>)[field]
     const extra: Record<string, unknown> = {}
     for (const k of Object.keys(extraShape)) {
       if (k in values) extra[k] = values[k]
@@ -277,11 +325,27 @@ export async function runImport(buffer: Uint8Array, opts: ImportOptions): Promis
   // database and business error at once, not only after the other rows are fixed
   try {
     await prisma.$transaction(async (tx) => {
+      const referenced = new Set([...pendingByLine.values()].flat().map(p => p.line))
+      const createdIds = new Map<number, string>()
       for (const op of ops) {
+        // a reference to a record created earlier in the file gets its id — unless it failed
+        const pending = pendingByLine.get(op.line) ?? []
+        const missing = pending.find(p => !createdIds.has(p.line))
+        if (missing) {
+          rowByLine.get(op.line)!.errors.push({ column: columnOf(missing.field), message: `A linha ${missing.line} do arquivo, referenciada aqui, não foi gravada` })
+          continue
+        }
+        for (const p of pending) op.data[p.field] = createdIds.get(p.line)
+
         await tx.$executeRawUnsafe('SAVEPOINT import_row')
         try {
           await opts.write(tx, op)
           await tx.$executeRawUnsafe('RELEASE SAVEPOINT import_row')
+          if (op.action === 'create' && referenced.has(op.line)) {
+            const key = keyColumns[0].field
+            const created = await (tx as any)[opts.modelName].findFirst({ where: { [key]: op.data[key] }, select: { id: true } })
+            createdIds.set(op.line, created.id)
+          }
         } catch (err) {
           await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT import_row')
           rowByLine.get(op.line)!.errors.push(writeIssue(err, columnOf))

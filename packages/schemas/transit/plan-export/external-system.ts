@@ -18,6 +18,7 @@ export const externalCodesSchema = z.object({
 }).optional().meta({
   label:          'Códigos Externos',
   widget:         'object-editor',
+  importFlatten:  true,   // CSV import: one column per system (externalCodes.GLOBUS)
   showInForm:     true,
   listVisibility: 'never',
 })

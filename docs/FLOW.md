@@ -215,15 +215,18 @@ Domínio mais complexo. Os modelos foram separados por complexidade nas etapas 9
 - Locality: `lng` importável fora do form; gancho "depois do import" para o recálculo OSRM.
 - Line: `operatorBranches` com as regras do service; `parentLine` pela linha-base já existente.
 
-### 9b. Melhorias de Locality e Line (a implementar)
-- **Objetos simples achatados em colunas:** campo objeto cujos subcampos são texto, número, enum ou lista vira uma coluna por subcampo, nomeada `campo.subcampo`:
+### 9b. Melhorias de Locality e Line ✅
+- **Objetos simples achatados em colunas:** campo objeto marcado com `.meta({ importFlatten: true })` vira uma coluna por subcampo (texto, número, enum ou lista), nomeada `campo.subcampo`. É opcional por campo — sem a marca, objetos continuam fora (ex.: `depot` da Locality, `metrics` da Line):
   - `externalCodes.GLOBUS` (Locality e Line) — códigos de integração; um sistema novo em `EXTERNAL_SYSTEMS` gera sua coluna sozinho.
   - `vehicleTypes.allowed` (lista com `|`) e `vehicleTypes.preferred` (Line).
-  - Na atualização, só os subcampos preenchidos mudam — o resto do objeto é mantido (merge); célula vazia não apaga o valor.
+  - Na atualização, só os subcampos preenchidos mudam — o resto do objeto é mantido (merge); célula vazia não apaga o valor. O motor traz o valor atual junto com a busca pela chave, faz o merge na validação e entrega o objeto completo à gravação (o `importWrite` não precisa saber do achatamento).
+  - Na criação, o objeto é montado com os subcampos preenchidos mais os padrões do schema (ex.: `allowed: []`, `preferred: null`).
+  - `vehicleTypes.preferred` não precisa estar em `allowed` — mesma regra do form.
   - Os valores aceitos (tipos de veículo) aparecem no painel Campos e entram no teste de exemplos.
 - **Referência ao próprio recurso no mesmo arquivo** (ex.: `parentLine` de uma linha-base criada no mesmo CSV):
   - Hoje as referências são resolvidas contra o banco na fase de validação, antes de qualquer gravação — por isso a linha-base nova não é encontrada.
-  - Quando a referência é ao próprio recurso pela chave do import e não existe no banco, procurar uma linha **anterior** do arquivo com essa chave; a referência fica pendente e é ligada ao id dela na gravação (que segue a ordem do arquivo).
+  - Vale só quando a referência aponta para o próprio recurso e o campo comparado é a chave (simples) do import — na Line, chave `code` e `parentLine` pelo `code`. Nos demais casos, a resolução segue só contra o banco.
+  - Quando não existe no banco, procurar uma linha **anterior** do arquivo com essa chave; a referência fica pendente e é ligada ao id dela na gravação (que segue a ordem do arquivo).
   - Linha-base depois da derivada: erro "a linha base X precisa vir antes no arquivo (linha N)". Linha-base que falhou ao gravar: a derivada recebe "linha base com erro (linha N)".
   - A regra de não encadear segue valendo (roda na transação e enxerga a linha-base recém-criada); a prévia mostra o resultado completo, pois também grava antes de desfazer.
 - **Janelas de ciclo** (`metrics.windows`) ficam fora: são listas de faixas por tipo de dia e sentido, que não cabem em uma linha por linha de ônibus. Se necessário, um import próprio com uma linha por janela (`line;dayType;direction;from;to;minutes;intervalMinutes`).

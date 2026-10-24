@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
-import { vehicleTypeSchema } from './vehicle-type'
+import { vehicleTypeSchema, VEHICLE_TYPE_LABELS } from './vehicle-type'
 import { externalCodesSchema } from './plan-export/external-system'
 
 const windowEntrySchema = z.object({
@@ -13,8 +13,8 @@ const windowEntrySchema = z.object({
 })
 
 export const lineVehicleTypesSchema = z.object({
-  allowed:   z.array(vehicleTypeSchema).default([]),
-  preferred: vehicleTypeSchema.nullable().default(null),
+  allowed:   z.array(vehicleTypeSchema).default([]).meta({ label: 'Permitidos', optionLabels: VEHICLE_TYPE_LABELS }),
+  preferred: vehicleTypeSchema.nullable().default(null).meta({ label: 'Preferido', optionLabels: VEHICLE_TYPE_LABELS }),
 })
 
 export type LineVehicleTypes = z.infer<typeof lineVehicleTypesSchema>
@@ -132,6 +132,7 @@ export const lineSchema = withMeta(
     vehicleTypes: lineVehicleTypesSchema.optional().meta({
       label:          'Tipos de Veículo',
       listVisibility: 'never',
+      importFlatten:  true,
     }),
 
     // code of this line in each external system the plan is exported to — blank uses `code`
@@ -156,13 +157,18 @@ export const lineSchema = withMeta(
     defaultSort: { field: 'code', order: 'asc' },
     importKey:   'code',
     // every enum value appears at least once — the file is how users learn the accepted values;
-    // a line-base (parentLine) must already exist — import it in an earlier file
+    // a line-base (parentLine) comes from the database or from an earlier row of the same file
     importExamples: [
-      { code: '308',  name: 'Centro / Bairro Norte',     type: 'URBAN',        scope: 'Escopo Urbano', operatorBranches: 'Filial Centro|Filial Norte', isActive: 'SIM' },
-      { code: '308B', name: 'Centro / Bairro Norte (B)', type: 'URBAN',        scope: 'Escopo Urbano', parentLine: '308', notes: 'Variante: a linha base precisa já existir' },
-      { code: '501',  name: 'Cuiabá / Várzea Grande',    type: 'METROPOLITAN', scope: 'Escopo Metropolitano' },
-      { code: '701',  name: 'Distrito Rural',            type: 'RURAL',        isActive: 'NAO' },
-      { code: '900',  name: 'Linha Especial Evento',     type: 'SPECIAL' },
+      { code: '308',  name: 'Centro / Bairro Norte',     type: 'URBAN',        scope: 'Escopo Urbano', operatorBranches: 'Filial Centro|Filial Norte', isActive: 'SIM',
+        'externalCodes.GLOBUS': '0308', 'vehicleTypes.allowed': 'STANDARD|ARTICULATED', 'vehicleTypes.preferred': 'STANDARD' },
+      { code: '308B', name: 'Centro / Bairro Norte (B)', type: 'URBAN',        scope: 'Escopo Urbano', parentLine: '308', 'vehicleTypes.preferred': 'ARTICULATED',
+        notes: 'Variante: a linha base vem do banco ou de uma linha anterior do arquivo' },
+      { code: '501',  name: 'Cuiabá / Várzea Grande',    type: 'METROPOLITAN', scope: 'Escopo Metropolitano',
+        'vehicleTypes.allowed': 'BI_ARTICULATED|ARTICULATED', 'vehicleTypes.preferred': 'BI_ARTICULATED' },
+      { code: '701',  name: 'Distrito Rural',            type: 'RURAL',        isActive: 'NAO', 'vehicleTypes.allowed': 'MICRO_BUS|MINIBUS', 'vehicleTypes.preferred': 'MICRO_BUS' },
+      { code: '900',  name: 'Linha Especial Evento',     type: 'SPECIAL',      'vehicleTypes.allowed': 'VAN', 'vehicleTypes.preferred': 'VAN' },
+      { code: '310',  'externalCodes.GLOBUS': '0310', 'vehicleTypes.preferred': 'MINIBUS',
+        notes: 'Linha já cadastrada: só os subcampos preenchidos mudam, o resto é mantido' },
     ],
     groups: {
       'Metricas':   ['metrics'],

@@ -212,6 +212,16 @@ export function buildImportColumns(schema: ZodObject<any>): ImportColumn[] | und
 
   const columns: ImportColumn[] = []
   for (const [name, field] of Object.entries({ ...schema.shape, ...(schemaMeta.importFields ?? {}) })) {
+    const meta = (field as any).meta?.() ?? {}
+    // a flattened object: one column per property, named field.property
+    if (meta.importFlatten && unwrap(field as ZodType) instanceof ZodObject) {
+      for (const [prop, propField] of Object.entries((unwrap(field as ZodType) as ZodObject<any>).shape)) {
+        const column = importColumn(prop, propField as ZodType, `${name}.${prop}`)
+        if (!column) throw new Error(`importFlatten ${name}.${prop} is not importable`)
+        columns.push({ ...column, object: name, required: false, label: `${meta.label ?? toTitleCase(name)}: ${column.label}` })
+      }
+      continue
+    }
     const column = importColumn(name, field as ZodType)
     if (column) columns.push({ ...column, key: keys.includes(name) })
   }
