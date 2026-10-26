@@ -1,3 +1,6 @@
-## Sugestoes no console (Painel)
+## Erros painel
 
-1) Sugestão de grupos de turno: Acho que vale considerar nas sugestões um equilibrio entre condutores baseado nas linhas preferenciais, se uma linha opera com 10 carros (uteis), 7 sabado e 4 domingo (exemplo), e tem 20 condutores com ela nas preferencias, ideial seria distribuir nas sugestoes de forma que estas pessoas de forma que não ocorre de todas estarem no mesmo grupo... Isso é um critério adicional, não é imperativo, apenas ajudaria refinar as sugestões (caso elas ainda não considerem isso)
+VPAR
+> "Turno D Pegada: 29 operador(es) e nenhuma tabela no DOMINGO" D Pegada nao opera aos domingos...?
+> Demanda x Quadro: Mostra deficiencia de 4 condutores manha e sobra de 10 D Pegada, como informar (se é que precisa) que D Pegada sobre periodo da manha quando não existe tabela pendente de D Pegada?
+> Demanda x Quadro: Ao final mostra "88 / 93" em vermelho, mesmo quando o quadro atende... aqui é a margem de manobra ou so erro mesmo? se for a margem de manogra mostrar em amber (alerta) e erro (danger) somente insuficiente
