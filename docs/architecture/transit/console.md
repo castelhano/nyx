@@ -79,8 +79,11 @@ chart of supply × demand, longest run of days worked in the cycle.
 
 **Lines per shift** (never the whole day — spare crew in the morning don't cover the afternoon):
 each duty counts for its dominant line; `need` = duties of the busiest day type × cycle factor;
-`enabled` = crew of the shift who may operate it (line access mode + vehicle types); `bonded` =
-those with it as a priority (empresa) or preferred (crew member) line.
+`enabled` = crew of the shift who may operate it (line access mode + vehicle types); `ideal` = need
++ `transit.roster.lineMarginPct` (default 20%, room for vacations and absences). Enabled below the
+need is an error (`LINE_SHORT`), below the margin a warning (`LINE_MARGIN`); "Habilitar" suggests up
+to the margin. `bonded` = those with it as a priority (empresa) or preferred (crew member) line —
+informative only, listed collapsed: the generator spreads the lines without preferences.
 
 **Alerts** (`CONSOLE_ALERT_CODES`) are pure functions over the blocks, each with severity and the
 menu section it opens; the menu status is the worst severity per section.

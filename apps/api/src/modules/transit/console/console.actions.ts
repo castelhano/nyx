@@ -308,7 +308,8 @@ export function suggestLine(input: ConsoleInput, rules: RebalanceRules, kind: 'l
   const title = kind === 'lines' ? `Habilitar linha ${code}` : `Linha ${code} prioritária`
   if (!shift) return empty(kind, title, 'Turno não encontrado')
   const row = lineRows(input).find(l => l.shiftId === shiftId && l.lineId === lineId)
-  const need = row ? (kind === 'lines' ? -row.gap : row.need - row.bonded) : 0
+  // lines: up to the margin (need + lineMarginPct); priority: up to the need
+  const need = row ? (kind === 'lines' ? row.ideal - row.enabled : row.need - row.bonded) : 0
   const team = input.crew.filter(m => inSupply(m) && m.shiftId === shiftId)
   const lineTypes = new Set(input.duties.filter(d => d.shiftId === shiftId && d.lineMinutes.some(l => l.lineId === lineId)).flatMap(d => d.vehicleTypes))
   const excluded: ConsoleSuggestion['excluded'] = []
@@ -332,7 +333,7 @@ export function suggestLine(input: ConsoleInput, rules: RebalanceRules, kind: 'l
   const n = Math.max(0, Math.min(need, ranked.length))
   return {
     kind, title,
-    summary: need > 0 ? `${n} de ${need} necessário(s) no turno ${shift.name}` : `A linha ${code} já tem o necessário no turno ${shift.name}`,
+    summary: need > 0 ? `${n} de ${need} ${kind === 'lines' ? 'para a margem' : 'necessário(s)'} no turno ${shift.name}` : `A linha ${code} já tem ${kind === 'lines' ? 'a margem' : 'o necessário'} no turno ${shift.name}`,
     moves: ranked.slice(0, n).map(toMove), bench: { [`${shiftId}>${shiftId}`]: ranked.slice(n).map(toMove) }, excluded,
   }
 }

@@ -76,6 +76,7 @@ export interface ConsoleInput {
   patterns: ConsolePattern[]
   lines:    { id: string; code: string }[]
   lineAccessMode: RosterSettings['lineAccessMode']
+  lineMarginPct:  number
   ruleModes:      RosterSettings['ruleModes']
   noProfile:   ConsoleCrewData['noProfile']
   fixedCar:    ConsoleCrewData['fixedCar']
@@ -316,7 +317,7 @@ export function lineRows(input: ConsoleInput): ConsoleLineRow[] {
       const able = team.filter(m => canOperate(m, lineId, input.lineAccessMode) && duties.some(d => !d.vehicleTypes.some(v => m.blockedVehicleTypes.includes(v))))
       const need = ceil(count * factor)
       out.push({
-        lineId, lineCode: code.get(lineId) ?? '?', shiftId: s.id, duties: count, need, enabled: able.length,
+        lineId, lineCode: code.get(lineId) ?? '?', shiftId: s.id, duties: count, need, ideal: ceil(need * (1 + input.lineMarginPct / 100)), enabled: able.length,
         bonded: able.filter(m => m.priorityLines.includes(lineId) || m.prefLines.includes(lineId)).length, gap: able.length - need,
       })
     }
@@ -374,7 +375,7 @@ function alerts(input: ConsoleInput, s: Omit<ConsoleSnapshot, 'alerts' | 'status
   for (const l of s.crewData.lines) {
     const where = `Linha ${l.lineCode} · ${shiftName.get(l.shiftId)}`
     if (l.gap < 0) push({ code: 'LINE_SHORT', severity: 'error', section: 'crew', text: `${where}: ${l.enabled} habilitados para ${l.need} necessários` })
-    else if (l.bonded < l.need) push({ code: 'LINE_LOW_BOND', severity: 'warning', section: 'crew', text: `${where}: ${l.bonded} com a linha prioritária ou preferida para ${l.need} necessários` })
+    else if (l.enabled < l.ideal) push({ code: 'LINE_MARGIN', severity: 'warning', section: 'crew', text: `${where}: ${l.enabled} habilitados — abaixo da margem (${l.ideal} para ${l.need} necessários)` })
   }
   if (s.crewData.noProfile.length) push({ code: 'NO_PROFILE', severity: 'warning', section: 'crew', text: `${s.crewData.noProfile.length} funcionário(s) com cargo da função e sem perfil de operador` })
   if (s.crewData.noShift.length) push({ code: 'NO_SHIFT', severity: 'warning', section: 'crew', text: `${s.crewData.noShift.length} operador(es) sem turno vigente` })

@@ -284,20 +284,28 @@ export function StaffingSection({ snapshot, onSuggest }: { snapshot: ConsoleSnap
 
 // ── C: shifts ───────────────────────────────────────────────────────────────
 
+// the chart spans 03:00–22:00 at least, widened to whole hours to fit every start and shift window
 const H_FROM = 180, H_TO = 1320, BIN = 30
+// a clock time for the chart — a start before the operational day's midnight (negative) shows as the evening before
+const clock = (m: number) => fmtTime(((m % 1440) + 1440) % 1440)
 
 export function ShiftsSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
   const types = shownDayTypes(snapshot)
   const [typeId, setTypeId] = useState(types[0]?.id ?? '')
   const t = types.find(x => x.id === typeId) ?? types[0]
   const starts = useMemo(() => (t ? snapshot.shiftsAnalysis.starts[t.id] ?? [] : []), [snapshot, t])
+  const [from, to] = useMemo(() => [
+    Math.floor(Math.min(H_FROM, ...starts, ...snapshot.shifts.map(s => s.startFloor)) / 60) * 60,
+    Math.ceil(Math.max(H_TO, ...starts.map(x => x + BIN), ...snapshot.shifts.map(s => s.startCeiling)) / 60) * 60,
+  ], [starts, snapshot.shifts])
   const bins = useMemo(() => {
-    const out = new Array((H_TO - H_FROM) / BIN).fill(0)
-    for (const s of starts) { const i = Math.floor((Math.min(Math.max(s, H_FROM), H_TO - 1) - H_FROM) / BIN); out[i]++ }
+    const out = new Array((to - from) / BIN).fill(0)
+    for (const s of starts) out[Math.floor((s - from) / BIN)]++
     return out
-  }, [starts])
+  }, [starts, from, to])
   const max = Math.max(...bins, 1)
-  const pct = (m: number) => `${((Math.min(Math.max(m, H_FROM), H_TO) - H_FROM) / (H_TO - H_FROM)) * 100}%`
+  const pct = (m: number) => `${((Math.min(Math.max(m, from), to) - from) / (to - from)) * 100}%`
+  const ticks = Array.from({ length: Math.floor((to - from) / 180) + 1 }, (_, i) => from + i * 180)
   const shiftById = new Map(snapshot.shifts.map(s => [s.id, s]))
   const none = t ? snapshot.shiftsAnalysis.noShift[t.id] : null
   const idle = snapshot.shiftsAnalysis.idle.filter(x => x.dayTypeId === t?.id)
@@ -308,7 +316,7 @@ export function ShiftsSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
         <div className="relative h-28 flex items-end gap-px">
           {bins.map((n, i) => (
             <div key={i} className="flex-1 rounded-t-sm bg-foreground/15 hover:bg-foreground/30" style={{ height: `${(n / max) * 100}%` }}
-              title={`${fmtTime(H_FROM + i * BIN)}–${fmtTime(H_FROM + (i + 1) * BIN)}: ${n} tabelas`} />
+              title={`${clock(from + i * BIN)}–${clock(from + (i + 1) * BIN)}: ${n} tabela(s) iniciando`} />
           ))}
         </div>
         {snapshot.shifts.map(s => (
@@ -318,10 +326,14 @@ export function ShiftsSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
             <span className="absolute text-[10px] leading-4 text-muted-foreground" style={{ left: `calc(${pct(s.startCeiling)} + 4px)` }}>{s.code}</span>
           </div>
         ))}
-        <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums pt-0.5">
-          {[180, 360, 540, 720, 900, 1080].map(m => <span key={m}>{fmtTime(m)}</span>)}<span>{fmtTime(H_TO)}</span>
+        <div className="relative h-4 text-[10px] text-muted-foreground tabular-nums">
+          {ticks.map((m, i) => (
+            <span key={m} className={cn('absolute', i > 0 && '-translate-x-1/2', m === to && '-translate-x-full')} style={{ left: pct(m) }}>{clock(m)}</span>
+          ))}
         </div>
-        <p className="text-[11px] text-muted-foreground">Início das tabelas (barras) sobre a janela de início de cada turno (claro = limites, escuro = ideal).</p>
+        <p className="text-[11px] text-muted-foreground">
+          Barras: tabelas iniciando a cada 30 min. Faixas: janela de início de cada turno — fraca = mínimo a máximo, forte = ideal.
+        </p>
       </div>
 
       <ul className="mt-3 space-y-1.5 text-sm">
@@ -444,12 +456,23 @@ export function GroupsSection({ snapshot, onSuggest }: { snapshot: ConsoleSnapsh
 
 // ── E: crew records ─────────────────────────────────────────────────────────
 
+// how far the bonded crew is from the margin: none / under half / under it / there
+function BondBadge({ bonded, ideal }: { bonded: number; ideal: number }) {
+  const missing = ideal - bonded
+  if (missing <= 0) return <Badge label="vínculo ok" color="success" />
+  const share = bonded / ideal
+  return <Badge label={`faltam ${missing} · ${Math.round(share * 100)}%`} color={share === 0 ? 'destructive' : share < 0.5 ? 'warning' : 'info'} />
+}
+
 export function CrewSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnapshot; ctx: ConsoleCtx; onAction?: (a: ConsoleAction) => void }) {
   const d = snapshot.crewData
   const shiftById = new Map(snapshot.shifts.map(s => [s.id, s]))
-  const short = d.lines.filter(l => l.gap < 0)
-  const low   = d.lines.filter(l => l.gap >= 0 && l.bonded < l.need)
-  const fine  = d.lines.filter(l => l.gap >= 0 && l.bonded >= l.need)
+  // habilitação: below the need (error), below the margin (warning), fine; the bond (priority /
+  // preferred) is only informative — the generator spreads the lines without it
+  const short  = d.lines.filter(l => l.gap < 0)
+  const margin = d.lines.filter(l => l.gap >= 0 && l.enabled < l.ideal)
+  // the most short of bonded crew (against the margin) first
+  const fine   = d.lines.filter(l => l.enabled >= l.ideal).sort((a, b) => (b.ideal - b.bonded) - (a.ideal - a.bonded) || a.lineCode.localeCompare(b.lineCode))
   const [showFine, setShowFine] = useState(false)
 
   const rows: { label: string; items: { key: string; text: string; link: ConsoleLink }[]; severity: 'warning' | 'info'; action?: ReactNode }[] = [
@@ -476,34 +499,33 @@ export function CrewSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnap
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Habilitação por linha e turno</h3>
           <span className="text-[11px] text-muted-foreground">sobra num turno não cobre falta em outro</span>
         </div>
-        {short.length + low.length ? (
+        {short.length + margin.length ? (
           <table className="w-full text-sm tabular-nums">
             <thead className="text-xs text-muted-foreground">
               <tr className="[&>th]:pb-1 [&>th]:font-medium [&>th]:px-1.5">
                 <th className="text-left">Linha · turno</th>
                 <th className="text-right" title="Tabelas do turno com a linha como dominante, no tipo de dia mais cheio">Tabelas</th>
                 <th className="text-right" title="Operadores para cobrir todo dia (ciclo do regime)">Necessário</th>
+                <th className="text-right" title="Necessário + a margem da empresa (férias, faltas)">Com margem</th>
                 <th className="text-right" title="Operadores do turno que podem operar a linha">Habilitados</th>
-                <th className="text-right" title="Com a linha prioritária (empresa) ou preferida (operador)">Vinculados</th>
                 <th />
                 {onAction && <th />}
               </tr>
             </thead>
             <tbody>
-              {[...short, ...low].map(l => (
+              {[...short, ...margin].map(l => (
                 <tr key={l.lineId + l.shiftId} className="border-t border-border/60 [&>td]:py-1 [&>td]:px-1.5">
                   <td className="whitespace-nowrap"><span className="font-medium">{l.lineCode}</span> · {shiftById.get(l.shiftId)?.name}</td>
                   <td className="text-right">{l.duties}</td>
                   <td className="text-right">{l.need}</td>
-                  <td className={cn('text-right', l.gap < 0 && 'font-medium text-destructive')}>{l.enabled}</td>
-                  <td className={cn('text-right', l.bonded < l.need && 'text-amber-600 dark:text-amber-400')}>{l.bonded}</td>
-                  <td className="text-right">{l.gap < 0 ? <Badge label={`faltam ${-l.gap}`} color="destructive" /> : <Badge label="pouco vínculo" color="warning" />}</td>
+                  <td className="text-right text-muted-foreground">{l.ideal}</td>
+                  <td className={cn('text-right font-medium', l.gap < 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400')}>{l.enabled}</td>
+                  <td className="text-right">
+                    {l.gap < 0 ? <Badge label={`faltam ${-l.gap}`} color="destructive" /> : <Badge label={`margem: faltam ${l.ideal - l.enabled}`} color="warning" />}
+                  </td>
                   {onAction && (
                     <td className="text-right whitespace-nowrap">
-                      <button type="button" className="text-xs font-medium hover:underline"
-                        onClick={() => onAction({ kind: l.gap < 0 ? 'lines' : 'priority', shiftId: l.shiftId, lineId: l.lineId })}>
-                        {l.gap < 0 ? 'Habilitar' : 'Prioritárias'}
-                      </button>
+                      <button type="button" className="text-xs font-medium hover:underline" onClick={() => onAction({ kind: 'lines', shiftId: l.shiftId, lineId: l.lineId })}>Habilitar</button>
                     </td>
                   )}
                 </tr>
@@ -511,7 +533,7 @@ export function CrewSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnap
             </tbody>
           </table>
         ) : (
-          <p className="flex items-center gap-2 text-muted-foreground"><Icons.CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />Todas as linhas com habilitados e vínculos suficientes em cada turno.</p>
+          <p className="flex items-center gap-2 text-muted-foreground"><Icons.CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />Todas as linhas com habilitados suficientes, com margem, em cada turno.</p>
         )}
         {fine.length > 0 && (
           <div className="mt-2 text-xs">
@@ -520,11 +542,34 @@ export function CrewSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnap
               {fine.length} linha · turno ok
             </button>
             {showFine && (
-              <ul className="mt-1 ms-5 grid grid-cols-2 gap-x-6 gap-y-0.5 text-muted-foreground tabular-nums">
-                {fine.map(l => (
-                  <li key={l.lineId + l.shiftId}>{l.lineCode} · {shiftById.get(l.shiftId)?.name}: {l.enabled} de {l.need} <span className="text-emerald-600 dark:text-emerald-400">{signed(l.gap)}</span></li>
-                ))}
-              </ul>
+              <table className="mt-1 ms-5 text-xs tabular-nums text-muted-foreground">
+                <thead>
+                  <tr className="[&>th]:pb-0.5 [&>th]:pe-4 [&>th]:font-medium [&>th]:text-left">
+                    <th>Linha · turno</th><th>Habilitados</th><th>Com margem</th>
+                    <th title="Com a linha prioritária (empresa) ou preferida (operador) — informativo: o gerador distribui as linhas sem isso">Vinculados</th>
+                    <th />
+                    {onAction && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {fine.map(l => (
+                    <tr key={l.lineId + l.shiftId} className="[&>td]:py-0.5 [&>td]:pe-4">
+                      <td className="whitespace-nowrap"><span className="text-foreground">{l.lineCode}</span> · {shiftById.get(l.shiftId)?.name}</td>
+                      <td>{l.enabled}</td>
+                      <td>{l.ideal}</td>
+                      <td>{l.bonded} de {l.need}</td>
+                      <td><BondBadge bonded={l.bonded} ideal={l.ideal} /></td>
+                      {onAction && (
+                        <td>
+                          {l.bonded < l.need && (
+                            <button type="button" className="font-medium hover:underline hover:text-foreground" onClick={() => onAction({ kind: 'priority', shiftId: l.shiftId, lineId: l.lineId })}>Prioritárias</button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         )}

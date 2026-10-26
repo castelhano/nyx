@@ -43,7 +43,7 @@ const base = (over: Partial<ConsoleInput> = {}): ConsoleInput => ({
   dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
   shifts: [MAN, TAR],
   plans: [], duties: [], crew: [], patterns: [sixOne], lines: [{ id: 'L1', code: '101' }, { id: 'L2', code: '102' }],
-  lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes,
+  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes,
   noProfile: [], fixedCar: [], dailyErrors: [],
   ...over,
 })
@@ -106,13 +106,22 @@ describe('lines per shift', () => {
     expect(snap.alerts.filter(a => a.code === 'LINE_SHORT')).toHaveLength(1)
   })
 
-  it('warns when few crew members have the line as priority or preferred', () => {
+  it('counts who has the line as priority or preferred, without alerting', () => {
     const man = crewOf(7, 'MAN')
     man[0].priorityLines = ['L1']
     man[1].prefLines = ['L1']
     const snap = computeConsole(base({ crew: man, duties: dutiesOf('MAN', { UTIL: 4 }) }))
-    expect(snap.crewData.lines[0]).toMatchObject({ bonded: 2, need: 5 })
-    expect(snap.alerts.some(a => a.code === 'LINE_LOW_BOND')).toBe(true)
+    expect(snap.crewData.lines[0]).toMatchObject({ bonded: 2, need: 5, ideal: 6, enabled: 7 })
+    expect(snap.alerts.some(a => a.section === 'crew')).toBe(false)
+  })
+
+  it('warns when the enabled crew is above the need but below the margin', () => {
+    const enabled = { L1: 'ENABLED' as const }
+    // need 5, ideal 6 (+20%): 5 enabled → margin
+    const man = crewOf(7, 'MAN').map((m, i) => ({ ...m, lineAccess: i < 5 ? enabled : {} }))
+    const snap = computeConsole(base({ lineAccessMode: 'WHITELIST', crew: man, duties: dutiesOf('MAN', { UTIL: 4 }) }))
+    expect(snap.alerts.filter(a => a.code === 'LINE_MARGIN')).toHaveLength(1)
+    expect(snap.alerts.some(a => a.code === 'LINE_SHORT')).toBe(false)
   })
 })
 

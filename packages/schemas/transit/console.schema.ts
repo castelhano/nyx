@@ -41,7 +41,7 @@ export const CONSOLE_ALERT_CODES = [
   'SHIFT_SHORT', 'COVERAGE_SHORT',
   'DUTY_NO_SHIFT', 'SHIFT_IDLE', 'SHIFT_NO_CREW',
   'GROUPS_OFF_DEMAND', 'REST_RUN_LONG',
-  'LINE_SHORT', 'LINE_LOW_BOND', 'NO_PROFILE', 'NO_SHIFT', 'NO_PATTERN', 'FIXED_CAR_CONFLICT', 'AWAY',
+  'LINE_SHORT', 'LINE_MARGIN', 'NO_PROFILE', 'NO_SHIFT', 'NO_PATTERN', 'FIXED_CAR_CONFLICT', 'AWAY',
   'DAILY_ERROR',
 ] as const
 export type ConsoleAlertCode = typeof CONSOLE_ALERT_CODES[number]
@@ -186,6 +186,8 @@ export interface ConsoleLineRow {
   // duties of the shift whose dominant line it is, on its busiest day type
   duties:   number
   need:     number
+  // need + the empresa's margin (transit.roster.lineMarginPct)
+  ideal:    number
   // crew of the shift who may operate it (line access + vehicle type)
   enabled:  number
   // of those, who has it as a priority or preferred line

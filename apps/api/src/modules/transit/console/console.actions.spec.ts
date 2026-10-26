@@ -33,7 +33,7 @@ const input = (crew: ConsoleCrew[], duties: ConsoleDuty[]): ConsoleInput => ({
   days: Array.from({ length: 14 }, (_, i) => ({ day: addDays(START, i), weekday: i % 7, dayTypeId: typeOf(i % 7) })),
   dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
   shifts: [MAN, TAR], plans: [], duties, crew, patterns: [sixOne], lines: [{ id: 'L1', code: '101' }],
-  lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes, noProfile: [], fixedCar: [], dailyErrors: [],
+  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, noProfile: [], fixedCar: [], dailyErrors: [],
 })
 const rules: RebalanceRules = { criteria: [{ key: 'shiftTenure', active: true }, { key: 'hireDate', active: true }] }
 
@@ -98,11 +98,11 @@ describe('linhas', () => {
     const crew = crewOf(7, MAN, i => ({ lineAccess: i < 2 ? enabled : {}, prefLines: i === 5 ? ['L1'] : [] }))
     const inp: ConsoleInput = { ...input(crew, dutiesOf(MAN, 4)), lineAccessMode: 'WHITELIST' }
     const s = suggestLine(inp, rules, 'lines', 'MAN', 'L1')
-    // need 5 (4 × 7/6), 2 enabled → 3
-    expect(s.moves).toHaveLength(3)
+    // need 5 (4 × 7/6), margin 6 (+20%), 2 enabled → 4
+    expect(s.moves).toHaveLength(4)
     expect(s.moves[0].crewMemberId).toBe('MAN5')
     const imp = impact(inp, 'lines', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: null, lineId: 'L1' })), START, 0)
-    expect(imp.notes[0]).toMatch(/habilitados 2 → 5/)
+    expect(imp.notes[0]).toMatch(/habilitados 2 → 6/)
   })
   it('suggests priority lines up to the need, among who already operates it', () => {
     const inp = input(crewOf(7, MAN), dutiesOf(MAN, 4))

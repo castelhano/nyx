@@ -304,7 +304,7 @@ export async function loadConsoleInput(
     scopes: operated.map(o => ({ id: o.scope.id, name: o.scope.name })),
     days, dayTypes, shifts, plans, duties, crew, patterns,
     lines: lines.map(l => ({ id: l.id, code: l.code })),
-    lineAccessMode: settings.lineAccessMode, ruleModes: settings.ruleModes,
+    lineAccessMode: settings.lineAccessMode, lineMarginPct: settings.lineMarginPct, ruleModes: settings.ruleModes,
     noProfile, fixedCar, dailyErrors,
   }
 }

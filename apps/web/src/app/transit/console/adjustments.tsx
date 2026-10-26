@@ -30,7 +30,7 @@ export function AdjustmentsSection({ snapshot }: { snapshot: ConsoleSnapshot }) 
   const when = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 
   return (
-    <Card title="Ajustes" icon={Icons.ClipboardList} aside={<span className="text-xs text-muted-foreground">feitos pelo Painel — reverter é um novo ajuste</span>}>
+    <Card title="Ajustes" icon={Icons.ClipboardList} aside={<span className="text-xs text-muted-foreground">lista apenas ajustes feitos pelo Painel</span>}>
       {isLoading && <p className="text-muted-foreground">Carregando…</p>}
       {error && <p className="text-destructive">{error instanceof Error ? error.message : 'Erro'}</p>}
       {!isLoading && !data.length && <p className="text-muted-foreground">Nenhum ajuste feito pelo Painel ainda.</p>}

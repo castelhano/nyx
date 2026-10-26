@@ -79,6 +79,9 @@ export const rosterSettingsSchema = withMeta(z.object({
   // Painel de Escala: an approved absence (not férias) at least this long takes the crew member out
   // of the crew supply
   awayMinDays: z.number().int().min(1).max(365).default(15),
+  // Painel de Escala: crew enabled for a line × shift beyond the need (%) — room for vacations and
+  // absences; below it the line warns, below the need it's an error
+  lineMarginPct: z.number().int().min(0).max(100).default(20),
   // Painel de Escala: the selection rule of its suggestions (edited there)
   rebalanceRules: rebalanceRulesSchema.default(rebalanceRulesDefault),
   // plantões (reserve): on each day of the day type, `count` STANDBY duties of the empresa from

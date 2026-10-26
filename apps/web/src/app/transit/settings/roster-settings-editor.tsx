@@ -96,6 +96,14 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
           <span className="text-sm text-muted-foreground w-6">dias</span>
         </Row>
         <Row
+          diff={diff('lineMarginPct')}
+          label="Margem por linha no Painel"
+          hint="Habilitados por linha e turno além do necessário (férias, faltas) — abaixo dela o Painel alerta"
+        >
+          <NumberInput value={value.lineMarginPct} onChange={(v) => onChange({ ...value, lineMarginPct: Math.round(v) })} min={0} max={100} />
+          <span className="text-sm text-muted-foreground w-6">%</span>
+        </Row>
+        <Row
           diff={diff('habitualVehicleDays')}
           label="Carro Habitual"
           hint="O carro mais dirigido pelo operador nestes últimos dias"
