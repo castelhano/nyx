@@ -6,10 +6,11 @@ import { CrewModule } from './crew/crew.module'
 import { DailyModule } from './daily/daily.module'
 import { HourBankModule } from './hour-bank/hour-bank.module'
 import { ConsoleModule } from './console/console.module'
+import { PortalModule } from './portal/portal.module'
 import { Domain } from '../../core/domain-registry'
 
 @Domain({ label: 'Operação', icon: 'Route' })
 @Module({
-  imports: [NetworkModule, TimetablingModule, TransitSettingsModule, CrewModule, DailyModule, HourBankModule, ConsoleModule],
+  imports: [NetworkModule, TimetablingModule, TransitSettingsModule, CrewModule, DailyModule, HourBankModule, ConsoleModule, PortalModule],
 })
 export class TransitModule {}

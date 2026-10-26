@@ -25,6 +25,6 @@ import { VacationReleaseService } from './vacation/vacation-release.service'
   imports:     [CaslModule, TransitSettingsModule, DailyModule],
   controllers: [RestPatternController, CrewAbsenceTypeController, CrewRoleJobTitleController, CrewMemberController, CrewMemberShiftController, CrewMemberLineController, CrewOccurrenceController, VacationController],
   providers:   [RestPatternService, CrewAbsenceTypeService, CrewRoleJobTitleService, CrewMemberService, CrewMemberShiftService, CrewMemberLineService, CrewOccurrenceService, VacationReleaseService, VacationService],
-  exports:     [CrewMemberService, CrewMemberShiftService],
+  exports:     [CrewMemberService, CrewMemberShiftService, CrewOccurrenceService, CrewMemberLineService],
 })
 export class CrewModule {}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login']
+// /portal: the crew portal has its own session (portalToken, checked by its API)
+const PUBLIC_PATHS = ['/login', '/portal']
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl

@@ -877,6 +877,10 @@ model CrewMember {
   // lines (null = not preferred) and whether he may not do plantão at all
   standbyRank         Int?
   standbyBlocked      Boolean            @default(false)
+  // crew portal: what he may do there — the profile (null: the empresa's default) and his own
+  // PortalPermissions replacing it
+  portalProfileId     String?
+  portalOverride      Json?
   notes               String?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -893,6 +897,9 @@ model CrewMember {
   hourBankEntries  HourBankEntry[]
   hourBankLots     HourBankLot[]
   timesheetDays    CrewTimesheetDay[]
+  portalProfile    PortalProfile?     @relation(fields: [portalProfileId], references: [id], onDelete: SetNull)
+  access           CrewAccess?
+  notifications    CrewNotification[]
 
   @@map("transit_crew_members")
 }
@@ -1588,4 +1595,62 @@ model RosterAdjustment {
 
   @@index([branchId, role, createdAt])
   @@map("transit_roster_adjustments")
+}
+
+// ── crew portal ───────────────────────────────────────────────────────────────
+
+// Portal credentials (matrícula + PIN) — never exposed by a generic controller
+model CrewAccess {
+  id             String    @id @default(uuid())
+  crewMemberId   String    @unique
+  pinHash        String
+  mustChangePin  Boolean   @default(true)
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  // bumped on a PIN reset — older tokens are rejected
+  tokenVersion   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+
+  @@map("transit_crew_access")
+}
+
+// What the crew of an empresa may do in the portal — PortalPermissions (portal-profile.schema.ts).
+// isDefault: used by its crew members without a profile; one per empresa
+model PortalProfile {
+  id          String   @id @default(uuid())
+  branchId    String
+  name        String
+  isDefault   Boolean  @default(false)
+  permissions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch      Branch       @relation("BranchPortalProfiles", fields: [branchId], references: [id])
+  crewMembers CrewMember[]
+
+  @@unique([branchId, name])
+  @@map("transit_portal_profiles")
+}
+
+// A change of a PUBLISHED day told to a crew member — made from the DailyChangeLog the first time
+// his portal reads them; he confirms it ("Li e confirmo")
+model CrewNotification {
+  id           String    @id @default(uuid())
+  crewMemberId String
+  // the operational date it is about
+  date         DateTime  @db.Date
+  changeLogId  String?
+  message      String
+  readAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([crewMemberId, changeLogId])
+  @@index([crewMemberId, readAt])
+  @@map("transit_crew_notifications")
 }

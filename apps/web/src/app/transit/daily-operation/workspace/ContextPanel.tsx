@@ -8,6 +8,7 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
 import { GenerationList } from './GenerationList'
+import type { RepairRequest } from './RepairModal'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 import { ISSUE_LABEL, WEEKDAY, cellSummary, clock, dutyName, fmtDay, freeCells, hm, requestImpact, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
@@ -30,6 +31,8 @@ export interface PanelActions {
   revert:   (operationId: string, reason: string) => void
   // a PLANNED day copied again from the plans in force (its allocation goes)
   remake:   (operationId: string) => void
+  // "Reparar" — the day's (or one duty's) pendências, changing as little as possible
+  repair:   (r: RepairRequest) => void
 }
 
 interface Props {
@@ -116,6 +119,13 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
             return <p className="text-xs text-emerald-600 dark:text-emerald-400">{left ? `${left} operador(es) sem escala no dia` : 'Ninguém sobrando no dia'}</p>
           })()}
           {!day.operations.length && <p className="text-xs text-muted-foreground">Dia ainda não criado — gere a escala do período.</p>}
+          {canEdit && day.issues > 0 && day.operations.some(o => o.status !== 'CLOSED') && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Reparar</span>
+              <Button size="sm" variant="outline" className="h-6" onClick={() => actions.repair({ kind: 'crew', from: day.date, to: day.date })}>Tabelas</Button>
+              <Button size="sm" variant="outline" className="h-6" onClick={() => actions.repair({ kind: 'vehicles', from: day.date, to: day.date })}>Veículos</Button>
+            </div>
+          )}
           {day.operations.map(o => <OperationRow key={o.id} o={o} canEdit={canEdit} actions={actions} />)}
           <GenerationList list={board.generations.filter(g => g.from <= day.date && g.to >= day.date).slice(0, 3)} title="Gerado por" />
         </section>
@@ -199,6 +209,12 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
           placeholder="Sem operador" disabled={!canEdit || duty.locked} className="h-8 text-sm" emptyMessage="Nenhum operador"
         />
       </div>
+      {canEdit && !duty.locked && duty.kind !== 'STANDBY' && (!duty.crewMemberId || duty.issues.some(i => i.severity !== 'info')) && (
+        <button type="button" onClick={() => actions.repair({ kind: 'crew', from: duty.date, to: duty.date, onlyId: duty.id })}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+          <Icons.Wrench className="w-3 h-3" />Reparar esta tabela (livre, troca ou quadro insuficiente)
+        </button>
+      )}
       {duty.preferred.length > 0 && (
         <p className="text-xs text-muted-foreground">
           Preferenciais:{' '}

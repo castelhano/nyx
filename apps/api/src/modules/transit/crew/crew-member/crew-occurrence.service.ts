@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { crewOccurrenceSchema, restPatternWorks, CrewOccurrence, CreateCrewOccurrenceDto, UpdateCrewOccurrenceDto } from '@nyx/schemas'
+import { crewOccurrenceSchema, restPatternWorks, CrewOccurrence, CreateCrewOccurrenceDto, UpdateCrewOccurrenceDto, type PortalRequestDto } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { BaseService } from '../../../../core/base.service'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
@@ -112,6 +112,22 @@ export class CrewOccurrenceService extends BaseService<CrewOccurrence, CreateCre
     await this.syncDaysOff(created.id)
     if (options.release !== false) await this.vacations.release(created.id, userId)
     return created
+  }
+
+  // A request from the crew portal: one day, REQUESTED, what was asked kept (the portal checks the
+  // permission, the type and the quota before)
+  async createFromPortal(crewMemberId: string, req: PortalRequestDto): Promise<CrewOccurrence> {
+    const date = toDbDate(req.date)
+    const row = await this.normalized({
+      crewMemberId, kind: req.kind, startDate: date, endDate: date, status: 'REQUESTED', origin: 'PORTAL',
+      absenceTypeId:  req.kind === 'ABSENCE' ? req.absenceTypeId : null,
+      startNotBefore: req.kind === 'TIME_WINDOW' ? req.startNotBefore : null,
+      endNotAfter:    req.kind === 'TIME_WINDOW' ? req.endNotAfter : null,
+      coverCrewMemberId: null,
+    })
+    CrewOccurrenceService.assertValid(row)
+    await this.assertNoOverlap(null, crewMemberId, row)
+    return super.create({ ...row, notes: req.notes ?? null, requested: CrewOccurrenceService.snapshot(row) } as unknown as CreateCrewOccurrenceDto)
   }
 
   async updateAs(id: string, dto: UpdateCrewOccurrenceDto, userId: string | undefined): Promise<CrewOccurrence> {

@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AppLayout } from './app-layout'
 
-const AUTH_PATHS = ['/login']
+// without the app shell: the login and the crew portal
+const AUTH_PATHS = ['/login', '/portal']
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

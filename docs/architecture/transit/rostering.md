@@ -264,6 +264,65 @@ neighbors (rest across days) in the background.
 
 ---
 
+## Repair ("Reparar")
+
+`daily/repair/` — from the Escala screen (the period's pendências, a day, or one duty), per
+empresa × role: **changes as little as possible** to fix them. Proposal → editable list (per
+target: the option found, or the options to pick from) → summary per day (published days flagged
+with the crew notified) → apply. Each option is a list of steps with what they expect to find
+(`RepairStep`: crew `from → to`, vehicle `from → to`, `compOff` removed); the apply checks them all
+against the day as it is (409 when it changed, 400 when one person / car is chosen twice on a day)
+and writes through `DailyOperationService` (recalculation, `DailyChangeLog` on PUBLISHED days).
+Locked duties and days off entered by hand never move.
+
+**Crew** (`crew-repair.calc.ts`) — targets: duties without anyone, or whose holder can't be there
+(absent, day off, inactive, no shift, other empresa, a rule in BLOCK mode); a holder only breaking
+WARN rules leaves only for someone without any pendência. Plantões aren't targets. Days in order
+(a day's moves count for the next one's rest), over the generator's `RosterModel`:
+
+1. **free** — a minimum-cost matching of the day's targets with who has nothing on it;
+2. **swap** — a free one takes someone's duty and that one takes the target (one move); only when
+   none does, two levels (three people). Fewest people moved, then score;
+3. **short crew** — options for the user: cancel a folga compensada the generator gave (the lowest
+   hour bank first), or take someone off a plantão of the duty's shift, from the time with the most
+   plantões.
+
+**Vehicles** (`vehicle-repair.calc.ts`) — targets: no car, unavailable, wrong type, other
+empresa's, the same car on two blocks (it stays where it suits best). A free car by the vehicle
+step's preference (`carCost`); else a **type swap**: a block running a car that fits the target and
+accepting the free one swaps, the one losing the least preference.
+
+---
+
+## Crew portal
+
+`portal/` — the crew member's own API (`/api/portal/*`), with its own login and guard (never the
+staff JWT):
+
+- **Access** (`CrewAccess`): matrícula + 6-digit PIN (argon2). Created at the first login with the
+  first PIN — the CPF's first 6 digits —, which must be changed; staff resets it ("Resetar PIN do
+  portal"), which bumps `tokenVersion` (older tokens stop). 5 wrong PINs lock it for 15 min;
+  logins limited per IP. Token signed with `PORTAL_JWT_SECRET`.
+- **Guard** (`PortalGuard`): the token's version, an active employee; until the PIN is changed only
+  the change-PIN route answers, and with unread notifications only the notification routes.
+- **Permissions** (`PortalProfile` per empresa, `isDefault` for who has none;
+  `CrewMember.portalOverride` replaces the fields it sets): see the roster, request absences
+  (requestable types) / time windows, edit preferred lines; quotas per absence type and for time
+  windows, per week, month (load period) or year — requests from the portal and those entered by
+  staff on his behalf, requested or approved, count; a portal request over the quota is refused.
+- **Requests**: one day each, `REQUESTED`, what was asked kept (`createFromPortal`); approval stays
+  on the Escala screen.
+- **Roster**: only PUBLISHED / CLOSED days — duty, times, lines, cars, days off, absences, windows.
+- **Notifications** (`CrewNotification`): made from the `DailyChangeLog` entries naming him (since
+  his access exists) the first time the portal reads them; confirmed with "Li e confirmo".
+- **Preferred lines**: his ranks only — access and the empresa's priority lines stay.
+- **Screen** (`apps/web/src/app/portal/`, mobile first, public in `proxy.ts`, no app shell): the
+  login's "Operador" access; first access → new PIN; unread changes → a "Li e confirmo" sheet over
+  everything; tabs Escala (week by week, 4 back / 4 ahead), Pedidos (quotas, new request, history),
+  Linhas, Avisos — shown per the permissions.
+
+---
+
 ## Settings
 
 - **`transit.roster`** (per empresa, falling back to global): `lineAccessMode`,

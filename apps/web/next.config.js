@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@nyx/schemas', '@nyx/types'],
-  allowedDevOrigins: ['192.168.15.13'],
+  allowedDevOrigins: ['192.168.15.*'],
   // Em produção, rotear /api diretamente ao NestJS via nginx/load balancer e remover este rewrite.
   async rewrites() {
     return [

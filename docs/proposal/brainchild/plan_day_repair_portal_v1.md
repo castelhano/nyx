@@ -1,8 +1,19 @@
 # Plano — Reparo do dia e portal do condutor
 
-**Status: pendente.** São as duas fases que faltam da escala real. O que já existe (cadastros do
-condutor, dia operacional, gerador, tela Escala, publicação com `DailyChangeLog`) está descrito em
+**Status: reparo e portal implementados (backend, login "Gestão | Operador" e a tela do
+condutor em `apps/web/src/app/portal/*`).** O que existe está descrito em
 [`docs/architecture/transit/rostering.md`](../../architecture/transit/rostering.md).
+
+> **Implementado — diferenças em relação ao texto abaixo:**
+> - Cotas: `absenceLimits` (por código do tipo de ausência, editável no formulário do perfil) e
+>   `timeWindowLimit`, no lugar da lista `requestLimits`. Sem máximo = sem cota.
+> - `portalOverride` substitui só os campos que preenche (a lista de cotas inteira), editado no
+>   cadastro do operador (aba Portal).
+> - O acesso (`CrewAccess`) nasce no primeiro login com o PIN inicial (CPF); o gestor reseta pelo
+>   botão "Resetar PIN do portal" na lista de operadores.
+> - Notificações: geradas do `DailyChangeLog` na primeira leitura do portal (qualquer escritor do
+>   histórico — edição, gerador, reparo, férias), só as criadas depois do acesso.
+> - Ainda não feito: o aviso de cota estourada no pedido lançado pelo gestor (`STAFF_ON_BEHALF`).
 
 Convenções: comentários em snippets Prisma/TS em inglês; texto em pt-BR; minutos do dia
 operacional (`> 1440` = madrugada seguinte).
@@ -11,18 +22,28 @@ operacional (`> 1440` = madrugada seguinte).
 
 ## 1. Reparo do dia
 
-Ação do usuário na `DailyOperation`, com direcionamento. Só mexe no que tem pendência; o resto
-entra travado.
+Ação do usuário na tela Escala: **altera o mínimo possível para corrigir as pendências** do período
+selecionado. Não é restrito às tabelas com pendência — uma tabela sem pendência pode mudar se isso
+resolver uma pendência com menos alterações (ex.: uma troca entre dois operadores).
 
-> CONSIDERAÇÂO: "Só mexe no que tem pendência" -> "Altera o minimo possivel para corrigir pendencias", texto sugere que apenas tabelas com pendências podem ser alteradas, mais melhor texto que descreve eh esse que fiz, fluxo que imagino: Filtra pendencias -> Tenta ajustar so com as sobras (condutor e carro) -> [caso nao seja possivel] tenta rodar solução de trocas em escalas (mesmo sem pendencia) que altere o minimo possovel, exemplo: Uma escala sem condutor, condutor sobrando atual não pode ir na linha desta escala, basta inverter um outro que possa com ele... foi aletado apenas um condutor que tinha habilitação para a linha pendente...
+Fluxo de cada direcionamento: filtra as pendências → tenta resolver só com as **sobras** (operadores
+e carros livres) → se não der, **trocas** com o menor número de alterações → se ainda não der,
+**opções** para o usuário escolher (quadro insuficiente) ou fica sem solução, com o motivo.
 
-| Direcionamento | Pendências |
+### Decisões
+
+| Tema | Decisão |
 |---|---|
-| Cobrir tabelas | `DUTY_UNASSIGNED`, `CREW_ABSENT`, `SHIFT_WINDOW` — usa plantões e disponíveis, com as regras do gerador (`pairRule`, `ruleModes`) |
-| Encaixar veículos | `BLOCK_NO_VEHICLE`, `VEHICLE_DOUBLE`, `VEHICLE_UNAVAILABLE`, `VEHICLE_TYPE_MISMATCH` |
-| Recompor dia misto | `TRIP_UNCOVERED`, pegadas `isStale`, `BLOCK_NO_CREW` — reencaixe de viagens (lógica do vehicle solver sobre o adaptador do dia) e ajuste de pegadas (crew solver) |
-
-Num dia `PUBLISHED`, cada mudança entra no `DailyChangeLog`, como já acontece hoje.
+| Alcance | O período selecionado na tela Escala; cada dia resolvido por si, numa proposta só |
+| Princípio | Mudar o mínimo possível; tabelas sem pendência podem mudar numa troca |
+| Fluxo | Proposta → lista editável → prévia (pendências antes → depois) → confirmar, como no Painel |
+| Regra em WARN | O operador sai se houver substituto **sem nenhuma pendência**; senão fica como está |
+| Dias publicados | Valem. O modal destaca, com badge de alerta, as mudanças em dias `PUBLISHED` e quantos condutores serão afetados; cada mudança entra no `DailyChangeLog` |
+| Trocas | Preferência por **um movimento** (um operador a mais alterado por alvo); no máximo **dois níveis**. Valem também em dias publicados — notificar quem muda é o propósito do `DailyChangeLog` |
+| Travadas | Entradas travadas e folgas lançadas à mão nunca mudam, nem numa troca — só pela edição manual |
+| Período | Os dias são resolvidos em ordem; o dia seguinte já considera o proposto para o anterior (interjornada). A prévia avisa quando uma mudança afeta outro dia |
+| Folga | Chamar quem está de folga (hora extra) fica fora desta versão |
+| Dia misto | Fora do reparo — ver "Fora deste plano" |
 
 ### 1.1 O que já existe
 
@@ -38,88 +59,78 @@ Num dia `PUBLISHED`, cada mudança entra no `DailyChangeLog`, como já acontece 
 | **Dia misto** — viagens sem bloco contadas no resumo (`uncoveredTrips`), pegadas `isStale` com `staleReason` | `daily-materialize.ts`, `getBoard` | **não há edição estrutural no dia** (mover viagem entre blocos, refazer pegadas); `TRIP_UNCOVERED` não existe como pendência |
 
 Conclusão: a cobertura de tabelas e o encaixe de veículos já têm o motor pronto (o modelo do gerador
-e o casamento de veículos). Falta restringir esses motores ao que tem pendência, mantendo o resto
-do dia intacto. A recomposição do dia misto não tem base nenhuma hoje.
+e o casamento de veículos). Falta usá-los para mudar o mínimo possível, mantendo o resto do dia
+intacto.
 
-### 1.2 Etapas propostas
+### 1.2 Etapa A — Cobrir tabelas
 
-**Etapa A — Cobrir tabelas**
+**Alvos** (por dia × empresa × função):
+- tabelas sem operador (`DUTY_UNASSIGNED`);
+- tabelas cujo operador não pode estar nela: `CREW_ABSENT`, `CREW_ON_DAY_OFF`, `CREW_INACTIVE`,
+  `NO_SHIFT` e regras em modo BLOCK (`SHIFT_WINDOW`, `LINE_NOT_ALLOWED`, `VEHICLE_TYPE_BLOCKED`,
+  CNH / curso) — o operador sai e a tabela vira alvo;
+- tabelas com regra em modo WARN, só quando houver substituto sem nenhuma pendência.
 
-- **Alvos** (por dia × empresa × função):
-  - tabelas e plantões sem operador (`DUTY_UNASSIGNED`, `RESERVE_SHORT`);
-  - tabelas cujo operador não pode estar nela: `CREW_ABSENT`, `CREW_ON_DAY_OFF`, `CREW_INACTIVE`,
-    `NO_SHIFT`, e regras em modo BLOCK (`SHIFT_WINDOW`, `LINE_NOT_ALLOWED`, `VEHICLE_TYPE_BLOCKED`,
-    CNH / curso). O operador sai da tabela e ela entra como alvo.
-- **Candidatos:** quem está livre no dia e quem está num plantão (o plantão vira falta de reserva,
-  menos grave que uma tabela descoberta — a mesma ordem do gerador).
-- **Motor:** o `RosterModel` do gerador num dia só, com todo o resto como fixo: as entradas fora dos
-  alvos não mudam. Casamento de custo mínimo dos alvos com os candidatos (mesmo objetivo em níveis:
-  cobertura, WARN, preferidos, pontuação). Interjornada com os dias vizinhos respeitada.
-- **Fluxo** (o mesmo do Painel): proposta → lista editável (trocar o operador sugerido por outro
-  candidato, desmarcar) → prévia (pendências antes → depois) → confirmar → `assignMany` (registra
-  no `DailyChangeLog` se o dia for `PUBLISHED`).
-- O que sobrar sem operador aparece com o motivo (o diagnóstico do `shortage`).
+Plantão sem operador (`RESERVE_SHORT`) não é alvo: o plantão é a sobra do dia.
 
-**Etapa B — Encaixar veículos**
+**Níveis**, nesta ordem, cada um só para o que o anterior não resolveu:
 
-- **Alvos:** blocos com `BLOCK_NO_VEHICLE`, `VEHICLE_UNAVAILABLE`, `VEHICLE_TYPE_MISMATCH`,
-  `VEHICLE_BRANCH_MISMATCH`; em `VEHICLE_DOUBLE`, o carro fica no bloco em que ele é preferido ou
-  habitual do âncora, e os outros blocos viram alvo.
-- **Motor:** `roster-vehicles.ts` passa a aceitar um conjunto de blocos a refazer; os carros dos
-  demais blocos ficam onde estão e saem da lista de elegíveis. Mesma ordem de preferência.
-- **Fluxo:** igual ao da Etapa A (lista com o carro sugerido por bloco, editável).
+1. **Sobras** — quem está livre no dia (sem tabela, plantão, folga ou ausência). Casamento de custo
+   mínimo dos alvos com os livres, pelo `RosterModel` do gerador num dia só, com todo o resto fixo
+   (mesmo objetivo em níveis: cobertura, WARN, preferidos, pontuação). Interjornada com os dias
+   vizinhos respeitada.
+2. **Trocas** — um livre que não pode ir no alvo (ex.: não tem a linha) entra na tabela de outro
+   operador, que vai para o alvo (**um movimento**). Só se nenhum resolver, **dois níveis**: o livre
+   entra na tabela de B, B vai para a de C, C vai para o alvo. Nunca além disso. Entre as soluções,
+   a que altera menos operadores, depois a de melhor pontuação. Cada troca aparece na lista como um
+   grupo (quem sai de onde e vai para onde).
+3. **Quadro insuficiente** — sem sobras nem trocas, o modal mostra, por alvo, as opções para o
+   usuário escolher:
+   - **cancelar uma folga compensada** do dia: só as dadas pelo gerador (`source = GENERATED`),
+     nunca as pedidas e aprovadas; um operador cuja janela (turno + limites + restrições) cobre a
+     tabela, primeiro quem tem **menos saldo no banco de horas**. O dia volta a ser de trabalho e a
+     carga dele sobe;
+   - **reduzir um plantão**: tirar o operador de um plantão do mesmo turno da tabela, do horário com
+     **mais plantões** (ex.: um às 04:00 e três às 05:00 → um dos das 05:00). O plantão fica sem
+     operador (`RESERVE_SHORT`).
+   Sem nenhuma opção, a tabela fica sem operador, com o motivo (o diagnóstico do `shortage`).
 
-**Etapa C — Recompor dia misto**
+### 1.3 Etapa B — Encaixar veículos
 
-- Hoje não há edição estrutural no dia. Seria preciso: a pendência `TRIP_UNCOVERED`; um adaptador
-  do vehicle solver para o dia (encaixar as viagens sem bloco nos blocos existentes ou num bloco
-  novo); refazer as pegadas `isStale` com o crew solver sobre o dia (`daily-relief.ts` já adapta os
-  blocos do dia para o cálculo de tripulação).
-- É a maior das três e depende de decisões próprias (ver dúvidas).
+**Alvos:** blocos com `BLOCK_NO_VEHICLE`, `VEHICLE_UNAVAILABLE`, `VEHICLE_TYPE_MISMATCH`,
+`VEHICLE_BRANCH_MISMATCH`; em `VEHICLE_DOUBLE`, o carro fica no bloco em que ele é preferido ou
+habitual do âncora, e os outros viram alvo.
 
-**Etapa D — Tela**
+**Níveis:**
 
-- Na tela Escala: botão **Reparar** no painel do dia e no topo das pendências do período, com o
-  direcionamento (Cobrir tabelas / Encaixar veículos). Abre o modal da proposta.
-- Atalho para reparar só uma tabela a partir do painel dela (a Etapa A com um alvo).
+1. **Sobras** — carros da empresa livres no dia (ativos, disponíveis, sem outro bloco), do tipo que
+   o bloco aceita. `roster-vehicles.ts` passa a refazer só os blocos-alvo: os demais carros ficam
+   onde estão e saem da lista de elegíveis. Mesma ordem de preferência (preferido → habitual →
+   qualquer elegível).
+2. **Giro de tipo** — sobra um carro de outro tipo (ex.: sobra um convencional, o alvo pede
+   articulado): procura um bloco que hoje roda com um carro do tipo do alvo e aceita o tipo que
+   sobrou; esse bloco recebe o carro que sobrou e o dele vai para o alvo. Um nível só. O carro que
+   sai deixa de ser o preferido / habitual do âncora daquele bloco: isso entra como custo, e o giro
+   escolhe o bloco onde essa troca pesa menos.
+3. Sem sobra nem giro, o bloco fica sem carro.
 
-### 1.3 Dúvidas
+### 1.4 Etapa C — Tela
 
-Responda abaixo de cada uma (`R.:`).
+- Botão **Reparar** no topo das pendências do período e no painel do dia, com o direcionamento
+  (Cobrir tabelas / Encaixar veículos). Abre o modal da proposta, agrupada por dia.
+- No modal, por alvo: a solução proposta (sobra, troca ou giro, com quem muda) ou as opções de
+  quadro insuficiente para escolher; desmarcar ou trocar o sugerido.
+- Prévia: pendências antes → depois por dia; badge de alerta nos dias publicados, com os condutores
+  afetados.
+- Atalho para reparar uma tabela só, a partir do painel dela.
 
-**R1 — Alcance.** O reparo age num dia, ou no período selecionado na tela Escala (cada dia
-resolvido por si, numa proposta só)? Proponho o período: as pendências já são listadas por período,
-e reparar dia a dia uma semana inteira é repetitivo.
-R.: Perfeito, pode ser pelo periodo selecionado
+### Fora deste plano — recompor o dia misto
 
-**R2 — Quem pode cobrir.** Além dos livres e de quem está de plantão: (a) tirar alguém de uma
-tabela para cobrir outra mais importante (cadeia de trocas); (b) chamar quem está de folga (hora
-extra, sempre como aviso). Proponho nenhum dos dois na primeira versão — só livres e plantões —, e
-(b) como opção desligada por padrão se fizer falta.
-R.: Isso (comentei acima), vou citar alguns cenarios e o que é possivel do motor fazer (sugerir):
-### Quadro insuficiente (nao tem operador para fechar tabelas):
->> se existe compensação no dia (respeitando periodo da tabela) sugere cancelar uma compensação do dia para fechar
-ou
->> sugere reduzir plantao para fechar, qual plantao sugerir? no horário onde existe mais plantao (respeitando turno da escala), se de manha existe 1 plantao as 04h00 e 3 as 05h00 sugestão vem de um dos da 05h00
-(qual critério sugerir?) AMBOS, no modal de sugestão mostrar as opções, usuario seleciona a que melhor que convir
-
-### Falta de carro
-> Aqui não tem muito o que fazer, se existe sobra de carro de outra tecnologia (exemplo sobra um convencional e escala pede um articulado) veja se existe tabela para giro, se não fica em branco de carro
-
-**R3 — Regras em modo WARN.** Um operador numa tabela com uma regra em WARN (ex.: fora da janela,
-permitido com pendência): o reparo o tira se houver alguém sem a pendência? Proponho sim, mas só
-se o substituto não tiver nenhuma pendência; senão fica como está.
-R.: Perfeito
-
-**R4 — Dias publicados.** O reparo vale para dias `PUBLISHED` (com registro no `DailyChangeLog`,
-que vai notificar o condutor no portal)? Proponho sim, com aviso na prévia de quantos condutores
-serão afetados.
-R.: Sim, alterações em dias publicados tem badge de alerta adicional no modal destacado
-
-**R5 — Dia misto.** Com que frequência acontece na prática (só com exceções de calendário por
-linha)? Proponho tirar a Etapa C deste escopo e fechar A, B e D primeiro; a recomposição vira um
-plano próprio se for necessária.
-R.: Eh essencial implementação, mais devido a complexidade vamos fechar todos os outros primeiro e deixar ele para o final
+Essencial, mas não cabe no reparo: viagens sem bloco (`TRIP_UNCOVERED`, que nem existe como
+pendência hoje) e pegadas `isStale` exigem refazer a estrutura do dia — encaixar viagens em blocos
+e refazer pegadas. Será uma opção própria, com um solver ajustado ou dedicado (o vehicle solver e
+o crew solver sobre os blocos do dia; `daily-relief.ts` já adapta os blocos do dia para o cálculo
+de tripulação). Fica para depois de fechar o reparo e o portal.
 
 ---
 
@@ -151,6 +162,8 @@ model PortalProfile {
   id          String   @id @default(uuid())
   branchId    String
   name        String
+  // the empresa's default — used by its crew members without a profile; one per empresa
+  isDefault   Boolean  @default(false)
   // PortalPermissions
   permissions Json
   createdAt   DateTime @default(now())
@@ -202,6 +215,8 @@ export const portalPermissionsSchema = z.object({
 })
 ```
 
+- Cada condutor aponta para um perfil da própria empresa; sem perfil, vale o padrão da empresa
+  (`isDefault`); sem padrão, os valores do schema (só ver a escala).
 - Permissões efetivas = perfil ⊕ `CrewMember.portalOverride`. O override substitui a lista
   `requestLimits` inteira (não mescla item a item).
 - Só tipos de ausência com `requestable = true` podem ser pedidos.

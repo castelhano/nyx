@@ -3,6 +3,7 @@ import '../zod-meta'
 import { withMeta } from '../with-meta'
 import { CREW_ROLES, CREW_ROLE_LABEL } from './duty.schema'
 import { vehicleTypeSchema, VEHICLE_TYPE_LABELS } from './vehicle-type'
+import { portalPermissionsSchema } from './portal-profile.schema'
 
 export const OVERTIME_PREFERENCE_LABEL: Record<string, string> = {
   LIKES:   'Gosta de hora extra',
@@ -219,6 +220,29 @@ export const crewMemberSchema = withMeta(
       className:      'md:w-44',
     }),
 
+    // crew portal — null: the empresa's default profile
+    portalProfileId: z.uuid().optional().nullable().meta({
+      label:          'Perfil do portal',
+      helpText:       'Vazio: o perfil padrão da empresa.',
+      widget:         'select',
+      resource:       'portal-profile',
+      domain:         'transit',
+      labelField:     'name',
+      dependsOn:      'branchId',
+      listVisibility: 'hidden',
+      className:      'md:w-[20.75rem]',
+    }),
+
+    // his own permissions over the profile's — only the fields set (a quota list whole)
+    portalOverride: portalPermissionsSchema.partial().optional().nullable().meta({
+      label:          'Permissões próprias',
+      helpText:       'Substituem as do perfil só nos campos preenchidos.',
+      widget:         'object-editor',
+      showInForm:     true,
+      listVisibility: 'never',
+      importable:     false,
+    }),
+
     notes: z.string().optional().meta({
       label:          'Observações',
       widget:         'textarea',
@@ -239,7 +263,19 @@ export const crewMemberSchema = withMeta(
     groups: {
       'Escala':     ['notBeforeMinutes', 'notAfterMinutes', 'restPatternId', 'restOffset', 'blockedVehicleTypes', 'preferredVehicleId', 'weeklyHours', 'overtimePreference'],
       'Documentos': ['licenseCategory', 'licenseExpiresAt', 'courseExpiresAt'],
+      'Portal':     ['portalProfileId', 'portalOverride'],
     },
+    rowActions: [
+      {
+        // the portal PIN back to the CPF's first 6 digits, changed at the next login
+        action:     'resetPortalPin',
+        label:      'Resetar PIN do portal',
+        icon:       'KeyRound',
+        permission: 'update',
+        method:     'POST',
+        endpoint:   (row) => `/transit/crew-member/${row.id}/portal-pin/reset`,
+      },
+    ],
     importKey: 'employeeId',
     // like the form: the shift starts today (on create, or when it differs from the current one)
     importFields: {

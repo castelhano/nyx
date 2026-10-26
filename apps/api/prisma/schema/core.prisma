@@ -81,6 +81,7 @@ model Branch {
   duties         Duty[]          @relation("BranchDuties")
   lineOperators  LineOperator[]  @relation("BranchLineOperators")
   crewShifts     CrewShiftBranch[] @relation("BranchCrewShifts")
+  portalProfiles PortalProfile[]   @relation("BranchPortalProfiles")
   holidays       Holiday[]
 
   @@map("branches")

@@ -9,6 +9,7 @@ import { Breadcrumb }       from '@/components/ui/breadcrumb'
 import { Select }           from '@/components/ui/select'
 import { usePageGuard }     from '@/core/usePageGuard'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
+import { Button } from '@/components/ui/button'
 import { useShortcut }      from '@/lib/keywatch'
 import { apiFetch }         from '@/lib/auth'
 import { useToast }         from '@/lib/toast-context'
@@ -27,6 +28,7 @@ import { PeriodPicker } from './workspace/PeriodPicker'
 import { KeyHint } from '@/core/FieldRenderer'
 import { GenerationList } from './workspace/GenerationList'
 import { ShortageList } from './workspace/ShortageList'
+import { RepairModal, type RepairRequest } from './workspace/RepairModal'
 import { DutiesView } from './workspace/DutiesView'
 import { ContextPanel, RequestRow } from './workspace/ContextPanel'
 
@@ -123,6 +125,7 @@ export default function RosterPage() {
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const [drawer, setDrawer] = useState<'issues' | 'requests' | 'quality' | null>(null)
+  const [repair, setRepair] = useState<RepairRequest | null>(null)
 
   const q = search.trim().toLowerCase()
   // (memoized by the React Compiler)
@@ -253,6 +256,7 @@ export default function RosterPage() {
     },
     revert: (operationId: string, reason: string) =>
       run(() => call(`/transit/daily-operation/${operationId}/revert`, 'POST', { reason }), undefined, 'Status do dia revertido'),
+    repair: (r: RepairRequest) => setRepair(r),
   }
 
   const panelDate = cursor?.date ?? (dutyId ? idx?.dutyById.get(dutyId)?.date : null) ?? (dates.includes(localToday()) ? localToday() : dates[0] ?? null)
@@ -444,7 +448,19 @@ export default function RosterPage() {
             )}
             {drawer === 'issues' && (
               <section className="rounded-lg border border-border p-3 space-y-1 max-h-80 overflow-y-auto">
-                <p className="text-sm font-medium">Pendências do período</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium me-auto">Pendências do período</p>
+                  {canUpdate && issueDuties.length > 0 && (
+                    <>
+                      <Button size="sm" variant="outline" className="h-6 text-xs" title="Reparar as tabelas do período — o mínimo de mudanças" onClick={() => setRepair({ kind: 'crew', from, to })}>
+                        <Icons.Wrench className="w-3 h-3" />Tabelas
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-6 text-xs" title="Reparar os carros do período — o mínimo de mudanças" onClick={() => setRepair({ kind: 'vehicles', from, to })}>
+                        <Icons.Wrench className="w-3 h-3" />Veículos
+                      </Button>
+                    </>
+                  )}
+                </div>
                 {!issueDuties.length && <p className="text-xs text-muted-foreground">Nenhuma.</p>}
                 {shortage && shortage.length > 0 && (
                   <div className="border-b border-border pb-1.5 mb-1.5">
@@ -510,6 +526,18 @@ export default function RosterPage() {
             />
           </div>
         </div>
+      )}
+
+      {repair && (
+        <RepairModal
+          {...repair} branchId={branchId} role={role} canApply={canUpdate}
+          onClose={() => setRepair(null)}
+          onApplied={n => {
+            setRepair(null)
+            toast.success(`Reparo aplicado — ${n} mudança(s)`)
+            void queryClient.invalidateQueries({ queryKey: ['transit', 'roster-board', branchId, role] })
+          }}
+        />
       )}
     </div>
   )

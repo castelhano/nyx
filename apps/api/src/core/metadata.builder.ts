@@ -141,6 +141,8 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
       listVisibility: 'never'  as const,
       showInForm:     meta.showInForm ?? true,
       sortable:       false,
+      ...(inner instanceof ZodEnum ? { options: Object.keys((inner as ZodEnum<any>)._def.entries ?? {}) } : {}),
+      ...(meta.optionLabels ? { optionLabels: meta.optionLabels } : {}),
       ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
       ...(meta.min !== undefined ? { min: meta.min } : {}),
       ...(meta.max !== undefined ? { max: meta.max } : {}),
