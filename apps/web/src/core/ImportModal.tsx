@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import type { ImportColumn, ImportResult, ImportRow } from '@nyx/types'
 import { useMetadata } from './useMetadata'
 
-// Standard CSV import (docs/FLOW.md): the file is sent as a dry run on load, the preview shows
+// Standard CSV import: the file is sent as a dry run on load, the preview shows
 // what would happen, and Gravar sends it again for real — nothing is written while any row is
 // invalid. The preview has a fixed height and pages, so hundreds of rows never grow the modal.
 

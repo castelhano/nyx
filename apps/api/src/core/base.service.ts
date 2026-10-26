@@ -203,7 +203,7 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     }
   }
 
-  // CSV import (docs/FLOW.md) — available when the schema declares importKey
+  // CSV import — available when the schema declares importKey
   private assertImportable(): void {
     if (!(this.schema as any)._schemaMeta?.importKey) throw new NotFoundException('Importação não disponível para este recurso')
   }

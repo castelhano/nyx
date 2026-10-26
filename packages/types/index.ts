@@ -247,7 +247,7 @@ export interface ImportValue {
   group?: string
 }
 
-// CSV import (see docs/FLOW.md) — a column of the import file
+// CSV import — a column of the import file
 export interface ImportColumn {
   name:     string    // CSV header: the field key, without the `Id` suffix on relations
   field:    string    // schema field it fills

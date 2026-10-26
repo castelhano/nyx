@@ -204,7 +204,7 @@ function importColumn(name: string, field: ZodType, column?: string): ImportColu
   }
 }
 
-// Columns of the standard CSV import (docs/FLOW.md) — undefined when the schema has no
+// Columns of the standard CSV import — undefined when the schema has no
 // importKey. Scalar fields and relations only; virtual, computed and form-hidden fields are out.
 // importNested adds a related record's columns (e.g. an employee's new contract), named by the map.
 export function buildImportColumns(schema: ZodObject<any>): ImportColumn[] | undefined {

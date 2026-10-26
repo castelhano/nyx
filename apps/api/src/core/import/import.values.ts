@@ -1,6 +1,6 @@
 import type { ImportColumn } from '@nyx/types'
 
-// Cell → value conversion of the standard import (docs/FLOW.md): dates dd/mm/aaaa, times H:MM
+// Cell → value conversion of the standard import: dates dd/mm/aaaa, times H:MM
 // (stored as minutes), decimal comma, booleans SIM/NAO, enums by their stored value. Relations are resolved by the engine.
 
 export type CellResult = { ok: true; value: unknown } | { ok: false; message: string }

@@ -1,4 +1,4 @@
-// CSV reader for the standard import (docs/FLOW.md): `;` separator, RFC 4180 quoting
+// CSV reader for the standard import: `;` separator, RFC 4180 quoting
 // ("" escapes a quote; quoted cells may hold `;` and line breaks), UTF-8 or Latin-1.
 
 export interface CsvRecord {

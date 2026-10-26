@@ -1037,7 +1037,7 @@ async import(file: Express.Multer.File, /* ...plan params */ userId: string): Pr
 
 **ERP sync rule:** the ERP is always the source of truth for synced models. Records absent from the file receive domain-specific treatment — this logic is hardcoded per model, not abstracted.
 
-**Standard CSV import:** plain create/update of a resource from a file is not a job — it is the synchronous, schema-driven import (`POST /:domain/:resource/import`, see `docs/FLOW.md`), with a dry-run preview and all-or-nothing writes.
+**Standard CSV import:** plain create/update of a resource from a file is not a job — it is the synchronous, schema-driven import (`POST /:domain/:resource/import`, see §4.20), with a dry-run preview and all-or-nothing writes.
 
 #### Frontend
 
@@ -1085,6 +1085,47 @@ The Job Table covers the current needs with zero extra infrastructure. Migrate o
 **Frontend integration:** `lib/auth.ts` exports `uploadFile(path, formData)` — a bare `fetch` that sends only the `Authorization` header (no `Content-Type`), allowing the browser to set the correct `multipart/form-data` boundary automatically. The `avatar` widget in `FieldRenderer` and `AutoForm`'s submit handler use this function.
 
 **Storage note:** `apps/api/uploads/` is tracked in git via `.gitkeep` but its contents are gitignored. For production, replace local disk storage with an object store (S3, R2, etc.) and update `UploadController` accordingly.
+
+### 4.20 Standard CSV Import
+
+Any resource whose schema declares `importKey` gets a CSV import: `GET /:domain/:resource/import/template` (the "Modelo" file) and `POST /:domain/:resource/import?dryRun=` (dry run by default). The web `ImportModal` shows the preview and writes on confirm. List pages show the **Importar** button, and child resources with an import appear in the parent's split button.
+
+**File format:** `;` separator, UTF-8 or Latin-1 (the template is UTF-8 with BOM). The header row uses field keys, with relations named without the `Id` suffix. Values:
+- dates as `dd/mm/aaaa`, times as `H:MM` (`widget: 'time'`, stored in minutes);
+- decimal comma; booleans `SIM`/`NAO`; enums by their stored value;
+- lists separated by `|`;
+- masked fields as digits or already formatted.
+
+The limit is 5000 rows per file.
+
+**Rules:**
+- **Upsert by key:** the import creates or updates by `importKey`, and never deletes.
+- **Empty cell = keep the current value.** On create, the meta `defaultValue` applies.
+- **Relations:** matched by `importRef` (or `labelField`), case-insensitive. A reference to the resource's own key may point at a row earlier in the same file.
+- **All-or-nothing:** every row is converted and validated first. The writes then run in one transaction, with a savepoint per row, so the preview shows every error at once. Any invalid row, or a dry run, rolls the whole file back.
+- **Permissions:** whoever can `update` the resource can import it, and `scopeField` (branch scoping) is enforced.
+
+**Schema meta:**
+
+| Where | Key | Purpose |
+|---|---|---|
+| `withMeta` | `importKey` | Sync key (field or fields); enables the import |
+| `withMeta` | `importExamples` | Template rows; they must show every enum value (`import.examples.spec.ts` checks this) |
+| `withMeta` | `importFields` | Import-only columns, delivered apart from the record's fields (e.g. User's temporary password) |
+| `withMeta` | `importNested` | Columns of a related record created with the row (e.g. Employee's new contract) |
+| `withMeta` | `importNotice` | Warning shown in the modal |
+| `.meta()` | `importable` | `false` excludes the field; `true` includes a form-hidden one |
+| `.meta()` | `importRef` / `importName` | Field the relation is matched by / the column's name |
+| `.meta()` | `importFlatten` | An object field split into `field.prop` columns, merged with the current value on update |
+
+Computed, virtual and avatar fields are never imported.
+
+**Service hooks** (`BaseService`):
+- `importWrite(tx, op)` writes one row. The default does a plain create/update. Override it when the row has `nested` or `extra` values, or when it must apply business rules (e.g. `EmployeeService`, `UserService`, `CrewMemberService`). Anything it calls must use `tx`.
+- `importValues()` adds accepted values to the modal's panel.
+- `afterImport()` runs once after a real write (e.g. Locality rebuilds the OSRM matrix).
+
+Code: `apps/api/src/core/import/` (parser, value conversion, engine), `metadata.builder.ts` (`buildImportColumns`), `apps/web/src/core/ImportModal.tsx`.
 
 ---
 

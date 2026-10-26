@@ -9,7 +9,7 @@ import { stringEquals } from '../db.utils'
 import { decodeCsv, parseCsv, type ParsedCsv } from './csv.parser'
 import { parseCell, type CellResult } from './import.values'
 
-// Standard CSV import (docs/FLOW.md): every row is converted, resolved and validated first;
+// Standard CSV import: every row is converted, resolved and validated first;
 // then the valid rows' writes run in one transaction, each under a savepoint so a database error
 // marks its row and the rest still run. Any invalid row — or a dry run — rolls the whole thing back.
 
