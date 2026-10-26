@@ -76,6 +76,9 @@ export const rosterSettingsSchema = withMeta(z.object({
   lineAccessMode:    z.enum(['WHITELIST', 'BLACKLIST']).default('BLACKLIST'),
   // preferred lines per crew member (CrewMemberLine.rank 1..n)
   maxPreferredLines: z.number().int().min(0).max(10).default(3),
+  // the crew portal: OPTIONAL — he picks 0..max; REQUIRED — the portal stays locked until every
+  // slot is filled (capped by the lines he may pick)
+  portalPreferredLines: z.enum(['OPTIONAL', 'REQUIRED']).default('OPTIONAL'),
   // weekly hours when neither the crew member nor his contract set them (monthly = weekly × 5)
   defaultWeeklyHours: z.number().int().min(1).max(44).default(42),
   // weight of each preferred rank in driverPrefLine (%): rank 1 = [0], rank 2 = [1]...
@@ -130,6 +133,11 @@ export type RosterReserveTarget = RosterSettings['reserveTargets'][number]
 export const LINE_ACCESS_MODE_LABEL: Record<RosterSettings['lineAccessMode'], string> = {
   WHITELIST: 'WHITELIST • bloqueia todas',
   BLACKLIST: 'BLACKLIST • libera todas',
+}
+
+export const PORTAL_PREFERRED_LINES_LABEL: Record<RosterSettings['portalPreferredLines'], string> = {
+  OPTIONAL: 'Opcional',
+  REQUIRED: 'Obrigatório',
 }
 
 export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { label: string; hint: string }> = {

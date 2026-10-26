@@ -315,7 +315,10 @@ staff JWT):
 - **Roster**: only PUBLISHED / CLOSED days — duty, times, lines, cars, days off, absences, windows.
 - **Notifications** (`CrewNotification`): made from the `DailyChangeLog` entries naming him (since
   his access exists) the first time the portal reads them; confirmed with "Li e confirmo".
-- **Preferred lines**: his ranks only — access and the empresa's priority lines stay.
+- **Preferred lines**: his ranks only — access, the empresa's priority lines and his plantão rank
+  (which takes one of the slots) stay. `transit.roster.portalPreferredLines` = REQUIRED locks the
+  portal (after the PIN and the changes to confirm) until every slot is filled — capped by the
+  lines open to him, and only when his profile lets him edit them.
 - **Screen** (`apps/web/src/app/portal/`, mobile first, public in `proxy.ts`, no app shell): the
   login's "Operador" access; first access → new PIN; unread changes → a "Li e confirmo" sheet over
   everything; tabs Escala (week by week, 4 back / 4 ahead), Pedidos (quotas, new request, history),
@@ -326,7 +329,7 @@ staff JWT):
 ## Settings
 
 - **`transit.roster`** (per empresa, falling back to global): `lineAccessMode`,
-  `maxPreferredLines`, `preferredLineGrades`, `defaultWeeklyHours`, `loadPeriodStartDay`,
+  `maxPreferredLines`, `portalPreferredLines`, `preferredLineGrades`, `defaultWeeklyHours`, `loadPeriodStartDay`,
   `habitualVehicleDays`, `reserveTargets`, `ruleModes`, `range`, the hour bank start, and the
   Painel's `awayMinDays`, `lineMarginPct` and `rebalanceRules`.
 - **`transit.crew`** (per scope): the CCT rules, `interShiftRest` among them.

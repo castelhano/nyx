@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { LINE_ACCESS_MODE_LABEL, ROSTER_RULE_LABEL, ROSTER_RULE_MODE_LABEL, type RangeCriterion, type RosterReserveTarget, type RosterSettings } from '@nyx/schemas'
+import { LINE_ACCESS_MODE_LABEL, PORTAL_PREFERRED_LINES_LABEL, ROSTER_RULE_LABEL, ROSTER_RULE_MODE_LABEL, type RangeCriterion, type RosterReserveTarget, type RosterSettings } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { ClockInput } from '@/components/ui/clock-input'
 import { Select } from '@/components/ui/select'
@@ -61,6 +61,24 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
           <NumberInput value={value.maxPreferredLines} onChange={(v) => onChange({ ...value, maxPreferredLines: Math.round(v) })} min={0} max={10} />
           <span className="text-sm text-muted-foreground w-6"></span>
         </Row>
+        {value.maxPreferredLines > 0 && (
+          <Row
+            diff={diff('portalPreferredLines')}
+            label="Linhas Preferenciais no Portal"
+            hint="Obrigatório: o operador só usa o portal depois de escolher todas (ou todas as que pode operar)"
+          >
+            <Select
+              value={value.portalPreferredLines}
+              onChange={(e) => onChange({ ...value, portalPreferredLines: e.target.value as RosterSettings['portalPreferredLines'] })}
+              size="sm"
+              className="w-70"
+            >
+              {(Object.keys(PORTAL_PREFERRED_LINES_LABEL) as RosterSettings['portalPreferredLines'][]).map(m => (
+                <option key={m} value={m}>{PORTAL_PREFERRED_LINES_LABEL[m]}</option>
+              ))}
+            </Select>
+          </Row>
+        )}
         <Row
           diff={diff('defaultWeeklyHours')}
           label="Carga Semanal Padrão"

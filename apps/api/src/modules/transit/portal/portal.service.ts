@@ -49,15 +49,16 @@ export class PortalService {
       this.prisma.crewAccess.findUniqueOrThrow({ where: { crewMemberId: crew.id }, select: { createdAt: true } }),
     ])
     if (!crew.mustChangePin) await syncNotifications(this.prisma, crew.id, access.createdAt)
-    const [unread, types] = await Promise.all([
+    const [unread, types, linesMissing] = await Promise.all([
       this.prisma.crewNotification.count({ where: { crewMemberId: crew.id, readAt: null } }),
       permissions.requestAbsence
         ? this.prisma.crewAbsenceType.findMany({ where: { requestable: true, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
         : Promise.resolve([]),
+      crew.mustChangePin ? Promise.resolve(0) : this.linesMissing(crew),
     ])
     return {
       crewMemberId: crew.id, code: m.employee.code, name: m.employee.fullName, branch: m.employee.branch.name,
-      mustChangePin: crew.mustChangePin, permissions, unread, absenceTypes: types,
+      mustChangePin: crew.mustChangePin, permissions, unread, linesMissing, absenceTypes: types,
     }
   }
 
@@ -221,22 +222,36 @@ export class PortalService {
   // ── preferred lines ───────────────────────────────────────────────────────
 
   async preferredLines(crew: PortalCrew): Promise<PortalLines> {
-    const [board, permissions] = await Promise.all([this.lines.board(crew.id), this.permissions(crew)])
+    const [board, permissions, { portalPreferredLines }] = await Promise.all([this.lines.board(crew.id), this.permissions(crew), this.rosterConfig.get(crew.branchId)])
     const entry = new Map(board.entries.map(e => [e.lineId, e]))
     const operable = (lineId: string) => (board.lineAccessMode === 'WHITELIST' ? entry.get(lineId)?.access === 'ENABLED' : entry.get(lineId)?.access !== 'BLOCKED')
-    return {
-      maxPreferredLines: board.maxPreferredLines, editable: permissions.editPreferredLines,
-      lines: board.lines.filter(l => operable(l.id)).map(l => ({ id: l.id, code: l.code, name: l.name, rank: entry.get(l.id)?.rank ?? null, priority: !!entry.get(l.id)?.priority })),
-    }
+    const lines = board.lines.filter(l => operable(l.id)).map(l => ({ id: l.id, code: l.code, name: l.name, rank: entry.get(l.id)?.rank ?? null, priority: !!entry.get(l.id)?.priority }))
+    // his plantão preference (set by staff) takes one of the slots
+    const slots = Math.max(0, board.maxPreferredLines - (board.standby.rank != null ? 1 : 0))
+    const editable = permissions.editPreferredLines
+    // never more than he can pick — fewer lines open to him than slots must not lock him out
+    const required = editable && portalPreferredLines === 'REQUIRED' ? Math.min(slots, lines.length) : 0
+    return { maxPreferredLines: slots, editable, required, lines }
   }
 
-  // his preferences in order — access and the empresa's priority lines stay as they are
+  // REQUIRED mode: how many preferred lines he still has to pick before using the portal
+  async linesMissing(crew: PortalCrew): Promise<number> {
+    const { required, lines } = await this.preferredLines(crew)
+    return Math.max(0, required - lines.filter(l => l.rank != null).length)
+  }
+
+  // his preferences in order — access, the empresa's priority lines and his plantão rank stay
   async setPreferredLines(crew: PortalCrew, raw: unknown): Promise<PortalLines> {
-    if (!(await this.permissions(crew)).editPreferredLines) throw new ForbiddenException('Sem permissão para editar as linhas preferidas')
     const { preferred } = portalLinesSchema.parse(raw)
+    const current = await this.preferredLines(crew)
+    if (!current.editable) throw new ForbiddenException('Sem permissão para editar as linhas preferidas')
     if (new Set(preferred).size !== preferred.length) throw new BadRequestException('Linha repetida')
+    if (preferred.length > current.maxPreferredLines) throw new BadRequestException(`No máximo ${current.maxPreferredLines} linhas`)
+    if (preferred.length < current.required) throw new BadRequestException(`Escolha ${current.required} linhas`)
     const board = await this.lines.board(crew.id)
-    const rank = new Map(preferred.map((id, i) => [id, i + 1]))
+    // the ranks left free by the plantão, in order
+    const free = Array.from({ length: board.maxPreferredLines }, (_, i) => i + 1).filter(r => r !== board.standby.rank)
+    const rank = new Map(preferred.map((id, i) => [id, free[i]]))
     const rows = [
       ...board.entries.map(e => ({ lineId: e.lineId, access: e.access, priority: e.priority, rank: rank.get(e.lineId) ?? null })),
       ...preferred.filter(id => !board.entries.some(e => e.lineId === id)).map(id => ({ lineId: id, access: null, priority: false, rank: rank.get(id)! })),

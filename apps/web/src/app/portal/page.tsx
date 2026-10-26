@@ -32,6 +32,8 @@ export default function PortalPage() {
 
   const { data: me } = useQuery({ queryKey: ['portal', 'me'], queryFn: () => portalFetch<PortalMe>('/me'), enabled: ready })
   const locked = !!me && !me.mustChangePin && me.unread > 0
+  // REQUIRED mode: his preferred lines before anything else (after the changes to confirm)
+  const pickLines = !!me && !me.mustChangePin && !locked && me.linesMissing > 0
   const { data: notices = [] } = useQuery({
     queryKey: ['portal', 'notifications'],
     queryFn:  () => portalFetch<PortalNotification[]>('/notifications'),
@@ -77,13 +79,14 @@ export default function PortalPage() {
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        {!locked && current === 'escala'  && <Roster />}
-        {!locked && current === 'pedidos' && <Requests me={me} onSent={() => flash('Pedido enviado — aguarde a aprovação')} />}
-        {!locked && current === 'linhas'  && <Lines onSaved={() => flash('Preferências salvas')} />}
-        {current === 'avisos' && <Notices list={notices} />}
+        {pickLines && <Lines first onSaved={() => { void qc.invalidateQueries({ queryKey: ['portal', 'me'] }); flash('Preferências salvas') }} />}
+        {!locked && !pickLines && current === 'escala'  && <Roster />}
+        {!locked && !pickLines && current === 'pedidos' && <Requests me={me} onSent={() => flash('Pedido enviado — aguarde a aprovação')} />}
+        {!locked && !pickLines && current === 'linhas'  && <Lines onSaved={() => flash('Preferências salvas')} />}
+        {!pickLines && current === 'avisos' && <Notices list={notices} />}
       </main>
 
-      <nav className="grid border-t border-border bg-card" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+      {!pickLines && <nav className="grid border-t border-border bg-card" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
         {tabs.map(([key, label, Icon]) => (
           <button key={key} type="button" onClick={() => setTab(key)}
             className={cn('relative flex flex-col items-center gap-0.5 py-2.5 text-[11px] cursor-pointer', current === key ? 'text-primary font-medium' : 'text-muted-foreground')}>
@@ -92,7 +95,7 @@ export default function PortalPage() {
             {key === 'avisos' && unread.length > 0 && <span className="absolute right-[30%] top-1.5 h-2 w-2 rounded-full bg-red-500" />}
           </button>
         ))}
-      </nav>
+      </nav>}
 
       {locked && unread.length > 0 && <Changes list={unread} />}
 

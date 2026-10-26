@@ -58,6 +58,8 @@ export interface PortalMe {
   mustChangePin: boolean
   permissions:  PortalPermissions
   unread:       number
+  // preferred lines still to pick before the portal opens (REQUIRED mode) — 0: none
+  linesMissing: number
   // the types he may ask for (requestable)
   absenceTypes: { id: string; name: string }[]
 }
@@ -89,8 +91,11 @@ export interface PortalOccurrence {
 }
 
 export interface PortalLines {
+  // his slots — the empresa's maximum less the one his plantão preference takes
   maxPreferredLines: number
   editable: boolean
+  // how many he must keep picked (REQUIRED mode, capped by the lines he may pick) — 0: optional
+  required: number
   // the lines he may operate; rank: his preference; priority: the empresa's (read only)
   lines: { id: string; code: string; name: string; rank: number | null; priority: boolean }[]
 }

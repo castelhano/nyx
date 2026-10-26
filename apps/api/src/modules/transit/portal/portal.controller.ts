@@ -78,12 +78,14 @@ export class PortalController {
 
   @Get('preferred-lines')
   @UseGuards(PortalGuard)
+  @PortalOpenFor('lines')
   preferredLines(@Req() req: PortalRequest) {
     return this.portal.preferredLines(req.crew!)
   }
 
   @Put('preferred-lines')
   @UseGuards(PortalGuard)
+  @PortalOpenFor('lines')
   setPreferredLines(@Req() req: PortalRequest, @Body() body: unknown) {
     return this.portal.setPreferredLines(req.crew!, body)
   }

@@ -4,12 +4,14 @@ import { JwtService } from '@nestjs/jwt'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { PORTAL_SECRET, type PortalToken } from './portal-auth.service'
 import { syncNotifications } from './portal-notifications'
+import { PortalService } from './portal.service'
 
 // Every portal request: a portal token whose version still holds, from an active employee. Until
 // the PIN is changed only the routes marked 'pin' answer; with unread notifications, only the
-// ones marked 'notifications' (and 'pin') — the lock is in the API, not only on the screen.
+// ones marked 'notifications' (and 'pin'); with preferred lines still to pick (REQUIRED mode),
+// only the ones marked 'lines' (and before) — the lock is in the API, not only on the screen.
 
-export type PortalOpen = 'always' | 'pin' | 'notifications'
+export type PortalOpen = 'always' | 'pin' | 'notifications' | 'lines'
 export const OPEN_KEY = 'portal-open'
 export const PortalOpenFor = (open: PortalOpen) => SetMetadata(OPEN_KEY, open)
 
@@ -22,6 +24,7 @@ export class PortalGuard implements CanActivate {
     private readonly prisma:    PrismaService,
     private readonly jwt:       JwtService,
     private readonly reflector: Reflector,
+    private readonly portal:    PortalService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -53,6 +56,8 @@ export class PortalGuard implements CanActivate {
     await syncNotifications(this.prisma, member.id, member.access.createdAt)
     const unread = await this.prisma.crewNotification.count({ where: { crewMemberId: member.id, readAt: null } })
     if (unread) throw new ForbiddenException('Confirme as mudanças na sua escala para continuar')
+    if (open === 'lines') return true
+    if (await this.portal.linesMissing(req.crew)) throw new ForbiddenException('Escolha suas linhas preferidas para continuar')
     return true
   }
 }

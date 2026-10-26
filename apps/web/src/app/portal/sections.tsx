@@ -240,14 +240,15 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
 
 // ── preferred lines ─────────────────────────────────────────────────────────
 
-export function Lines({ onSaved }: { onSaved: () => void }) {
+// first: the portal's lock (REQUIRED mode) — he picks his lines before anything else
+export function Lines({ first, onSaved }: { first?: boolean; onSaved: () => void }) {
   const { data } = useQuery({ queryKey: ['portal', 'lines'], queryFn: () => portalFetch<PortalLines>('/preferred-lines') })
   if (!data) return <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
   // remounts on a fresh answer, so the list starts from what was saved
-  return <LinesForm key={JSON.stringify(data)} all={data} onSaved={onSaved} />
+  return <LinesForm key={JSON.stringify(data)} all={data} first={first} onSaved={onSaved} />
 }
 
-function LinesForm({ all, onSaved }: { all: PortalLines; onSaved: () => void }) {
+function LinesForm({ all, first, onSaved }: { all: PortalLines; first?: boolean; onSaved: () => void }) {
   const qc = useQueryClient()
   const saved = all.lines.filter(l => l.rank != null).sort((a, b) => a.rank! - b.rank!).map(l => l.id)
   const [preferred, setPreferred] = useState(saved)
@@ -255,6 +256,7 @@ function LinesForm({ all, onSaved }: { all: PortalLines; onSaved: () => void }) 
   const priority = all.lines.filter(l => l.priority)
   const available = all.lines.filter(l => !preferred.includes(l.id))
   const dirty = preferred.join() !== saved.join()
+  const missing = Math.max(0, all.required - preferred.length)
   const move = (i: number, d: -1 | 1) => setPreferred(p => { const n = [...p]; [n[i], n[i + d]] = [n[i + d], n[i]]; return n })
   const save = useMutation({
     mutationFn: () => portalFetch<PortalLines>('/preferred-lines', { method: 'PUT', body: { preferred } }),
@@ -262,6 +264,13 @@ function LinesForm({ all, onSaved }: { all: PortalLines; onSaved: () => void }) 
   })
   return (
     <div className="space-y-5 p-4">
+      {first && (
+        <div className="space-y-2 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary"><Icons.Route className="h-6 w-6" /></div>
+          <p className="text-lg font-semibold">Escolha suas linhas preferidas</p>
+          <p className="text-sm text-muted-foreground">Escolha {all.required} {all.required === 1 ? 'linha' : 'linhas'}, na ordem de preferência, para continuar.</p>
+        </div>
+      )}
       {priority.length > 0 && (
         <section className="space-y-2">
           <p className="text-sm font-medium">Definidas pela empresa</p>
@@ -275,7 +284,7 @@ function LinesForm({ all, onSaved }: { all: PortalLines; onSaved: () => void }) 
       )}
       <section className="space-y-2">
         <p className="text-sm font-medium">
-          Suas preferidas {all.editable && <span className="font-normal text-muted-foreground">— até {all.maxPreferredLines}, na ordem</span>}
+          Suas preferidas {all.editable && <span className="font-normal text-muted-foreground">— {all.required ? `escolha ${all.required}` : `até ${all.maxPreferredLines}`}, na ordem</span>}
         </p>
         {!preferred.length && <p className="text-sm text-muted-foreground">Nenhuma linha preferida.</p>}
         {preferred.map((id, i) => {
@@ -302,9 +311,10 @@ function LinesForm({ all, onSaved }: { all: PortalLines; onSaved: () => void }) 
           </PortalSelect>
         )}
       </section>
+      {all.editable && missing > 0 && <p className="text-sm text-amber-700 dark:text-amber-300">Falta{missing === 1 ? '' : 'm'} {missing} {missing === 1 ? 'linha' : 'linhas'}.</p>}
       {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
       {all.editable && (
-        <button type="button" disabled={!dirty || save.isPending} onClick={() => save.mutate()} className={primary}>{save.isPending ? 'Salvando…' : 'Salvar'}</button>
+        <button type="button" disabled={(!dirty && !first) || missing > 0 || save.isPending} onClick={() => save.mutate()} className={primary}>{save.isPending ? 'Salvando…' : 'Salvar'}</button>
       )}
     </div>
   )
