@@ -3,8 +3,8 @@ import '../zod-meta'
 import { withMeta } from '../with-meta'
 
 // Painel de Escala — the effective logical plans × the active crew of one scope + empresa + role,
-// as a typical week, and the adjustments of the crew it makes (docs/proposal/brainchild/
-// plan_roster_console_impl_v1.md). Registered purely for discovery / CASL, like the DOP: no model,
+// as a typical week, and the adjustments of the crew it makes (docs/architecture/transit/
+// console.md). Registered purely for discovery / CASL, like the DOP: no model,
 // one computed GET (the snapshot) plus the actions.
 export const consoleSchema = withMeta(
   z.object({

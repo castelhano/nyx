@@ -189,6 +189,8 @@ export default function HourBankPage() {
   useShortcut('ctrl+shift+c', () => { searchRef.current?.focus(); searchRef.current?.select() }, { desc: 'Filtrar operadores', icon: Icons.Search, origin: ORIGIN })
   useShortcut('ctrl+shift+g', () => branchRef.current?.focus(), { desc: 'Empresa', icon: Icons.Building2, origin: ORIGIN })
   useShortcut('alt+v', back, { desc: 'Voltar', icon: Icons.ArrowLeft, origin: ORIGIN, context: 'all' })
+  // the statement's own alt+l also resets its launch form
+  useShortcut('alt+l', () => setSearch(''), { display: false, origin: ORIGIN })
 
   if (guardNode) return guardNode
   const ctl = 'h-8 border border-input rounded-sm text-sm bg-input-bg px-2'

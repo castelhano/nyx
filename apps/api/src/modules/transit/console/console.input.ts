@@ -43,12 +43,15 @@ export async function loadConsoleInput(
     select:  { scope: { select: { id: true, name: true, _count: { select: { operators: true } } } } },
   })
   if (!operated.length) throw new BadRequestException('A empresa não opera nenhum escopo')
+  // an empresa should operate one scope: its crew isn't split per scope, so a second one counts
+  // everyone twice (BRANCH_MULTI_SCOPE) — the analysis takes the chosen scope with the whole crew
   const scope = operated.find(o => o.scope.id === params.scopeId)?.scope ?? operated[0].scope
   const sharedScope = scope._count.operators > 1
 
   const settings = await rosterConfig.get(branchId)
 
   // ── window and day types ──
+  // by the day types' patterns only: line calendar exceptions and holidays are one-off
   const resolve = await dayTypeService.patternResolver()
   const days: ConsoleInput['days'] = []
   for (let i = 0; i < CONSOLE_WINDOW_DAYS; i++) {
@@ -59,6 +62,8 @@ export async function loadConsoleInput(
   }
 
   // ── effective plans ──
+  // no validTo, even when it starts later; a plan without an active crew plan leaves its day type
+  // without demand (an error) — it never falls back to the previous plan
   const vehiclePlans = await prisma.vehiclePlan.findMany({
     where:   { scopeId: scope.id, status: { not: 'DRAFT' }, validTo: null },
     orderBy: { validFrom: 'desc' },
@@ -231,6 +236,7 @@ export async function loadConsoleInput(
       coverCrewMember: { select: { employee: { select: { code: true, fullName: true, preferredName: true } } } },
     },
   })
+  // only a long absence leaves the supply — short ones are absenteeism, not measured here
   const awayUntil = addDays(today, settings.awayMinDays)
   const nameOf = (e: { fullName: string; preferredName: string | null }) => e.preferredName || e.fullName
 

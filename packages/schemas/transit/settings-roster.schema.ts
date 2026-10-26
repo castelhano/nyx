@@ -5,7 +5,7 @@ import { CREW_ROLES } from './duty.schema'
 
 // The real roster's rules of one empresa (Settings scope 'branch', falling back to global).
 // The rest between duties is a CCT rule — it lives in the crew settings (per transit Scope).
-// See docs/proposal/brainchild/plan_crew_rostering_impl_v2.md §2.8 and §5.
+// See docs/architecture/transit/rostering.md.
 
 // the generator's behavior on a configurable rule — WARN assigns anyway as a last resort (high
 // cost) and the day shows the issue

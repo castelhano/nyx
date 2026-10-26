@@ -16,7 +16,7 @@ import { loadConsoleInput, type ConsoleParams } from './console.input'
 import { impact, planned, suggestGroups, suggestLine, suggestProfiles, suggestShifts, type MoveItem } from './console.actions'
 
 // Painel de Escala — no model and no CRUD, like the DOP: registers itself for discovery / CASL and
-// computes the snapshot on each request (docs/proposal/brainchild/plan_roster_console_impl_v1.md).
+// computes the snapshot on each request (docs/architecture/transit/console.md).
 // The adjustments change the crew records only (shift, rest group, lines, new profiles); generated
 // days keep what they were generated with — the next generation picks the new crew up.
 @Injectable()
@@ -70,6 +70,7 @@ export class ConsoleService {
     return impact(input, kind, items, effective, generated)
   }
 
+  // No undo: reverting is a new adjustment the other way — every one is logged (RosterAdjustment)
   async apply(kind: ConsoleActionKind, dto: ConsoleActionDto, userId?: string): Promise<RosterAdjustmentRow> {
     const [input, settings] = await Promise.all([this.input(dto), this.roster.get(dto.branchId)])
     const effective = this.effectiveOf(kind, dto)

@@ -1,9 +1,8 @@
-# Painel de Escala (Console)
+# Console (Painel de Escala)
 
 > Architecture reference for the Painel de Escala.
 > Source: `apps/api/src/modules/transit/console/`, `apps/web/src/app/transit/console/`,
 > types in `packages/schemas/transit/console.schema.ts` and `console-actions.schema.ts`.
-> Plan and decisions: `docs/proposal/brainchild/plan_roster_console_impl_v1.md`.
 
 ---
 

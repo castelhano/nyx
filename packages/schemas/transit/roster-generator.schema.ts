@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { CREW_ROLES } from './duty.schema'
 
 // "Gerar escala" — the real roster generator of one empresa and role over a horizon of days
-// (docs/proposal/brainchild/plan_crew_rostering_impl_v2.md §5).
+// (docs/architecture/transit/rostering.md).
 
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
 

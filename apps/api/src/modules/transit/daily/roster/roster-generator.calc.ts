@@ -5,8 +5,8 @@ import {
 import { rangeRaw, SCORE_SCALE } from '../../timetabling/vehicle-plan/scoring/plan-scoring.calc'
 import { hungarian } from './hungarian'
 
-// The real roster generator's pure part (docs/proposal/brainchild/plan_crew_rostering_impl_v2.md
-// §5): who works which daily duty over a horizon of days, for one empresa and role.
+// The real roster generator's pure part (docs/architecture/transit/rostering.md): who works
+// which daily duty over a horizon of days, for one empresa and role.
 //
 //   construction  day by day, a minimum-cost assignment (Hungarian) of the day's duties to the
 //                 crew members free that day, with the state carried from the days before

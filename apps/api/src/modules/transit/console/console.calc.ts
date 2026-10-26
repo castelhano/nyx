@@ -299,6 +299,7 @@ export function canOperate(m: ConsoleCrew, lineId: string, mode: RosterSettings[
   return mode === 'WHITELIST' ? m.lineAccess[lineId] === 'ENABLED' : m.lineAccess[lineId] !== 'BLOCKED'
 }
 
+// per shift, never the whole day — spare crew in one shift doesn't cover another's shortage
 export function lineRows(input: ConsoleInput): ConsoleLineRow[] {
   const supply = input.crew.filter(inSupply)
   const code = new Map(input.lines.map(l => [l.id, l.code]))

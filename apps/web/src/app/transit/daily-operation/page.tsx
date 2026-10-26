@@ -54,7 +54,7 @@ function dutyIssues(d: RosterBoardDuty): Map<string, number> {
 // month), two views (Operadores: people × days; Escalas: duties), a context panel (the selected
 // crew member / duty / day), the period's pendências and pending requests, and "Gerar".
 // The context lives in the URL (?empresa=&funcao=&data=&modo=&visao=); the last one is
-// remembered. See docs/proposal/brainchild/plan_crew_rostering_impl_v2.md (tela Escala).
+// remembered. See docs/architecture/transit/rostering.md (the Escala screen).
 
 export default function RosterPage() {
   const router       = useRouter()
