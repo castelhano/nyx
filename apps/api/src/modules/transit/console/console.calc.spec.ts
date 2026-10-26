@@ -136,9 +136,9 @@ describe('plans', () => {
   it('flags an effective plan without crew plan and duties without empresa', () => {
     const snap = computeConsole(base({
       plans: [
-        { dayTypeId: 'SAB', vehiclePlan: { id: 'v', label: 'Sáb', validFrom: START, fleet: 10, trips: 100 }, crewPlan: null, future: false, linesWithoutPlan: [] },
+        { dayTypeId: 'SAB', vehiclePlan: { id: 'v', label: 'Sáb', validFrom: START, fleet: 10, reserve: 0, trips: 100 }, crewPlan: null, future: false, linesWithoutPlan: [] },
         {
-          dayTypeId: 'UTIL', vehiclePlan: { id: 'u', label: 'Útil', validFrom: addDays(START, 20), fleet: 10, trips: 100 },
+          dayTypeId: 'UTIL', vehiclePlan: { id: 'u', label: 'Útil', validFrom: addDays(START, 20), fleet: 10, reserve: 0, trips: 100 },
           crewPlan: { id: 'c', label: 'Escala', duties: 4, byKind: {}, avgWorkMinutes: 420, overtimePct: 0, uncoveredMinutes: 0, stale: 0, issues: 0, noBranch: 3, score: 9000 },
           future: false, linesWithoutPlan: ['205'],
         },

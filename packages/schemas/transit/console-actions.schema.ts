@@ -39,14 +39,20 @@ export interface ConsoleMove {
   patternName: string | null
   // the groups he may get in the destination (his own pattern, else the shift's)
   groupOptions: { offset: number; label: string }[]
-  // groups: the pattern he ends up with (his own, set by the adjustment) — null: as it is
+  // groups: the pattern he ends up with (his own, set by the adjustment) — null: as it is;
+  // profiles: his own pattern — null: the shift's
   patternId?: string | null
+  // profiles: per shift, its pattern and the group suggested there — for a row moved to another shift
+  shiftOptions?: { shiftId: string; patternId: string | null; offset: number | null }[]
   // lines / priority: the line
   lineId?:  string | null
   // the change in words: "Manhã → Tarde", "A · folga Seg → C · folga Dom", "habilitar 310"…
   change:   string
   reasons:  string[]
 }
+
+// no day type with an effective crew plan: nothing to balance against (profiles still go, picked by hand)
+export const CONSOLE_NO_PLAN = 'Sem planejamento efetivo com escala ativa — as sugestões precisam da demanda das tabelas. Ative um planejamento e uma escala.'
 
 export interface ConsoleSuggestion {
   kind:     ConsoleActionKind
@@ -57,7 +63,9 @@ export interface ConsoleSuggestion {
   bench:    Record<string, ConsoleMove[]>
   // left out by the fixed filters, with the reason
   excluded: { crewMemberId: string; code: string; name: string; reason: string }[]
-  // groups: the rest patterns a row may switch to, with their groups
+  // what the suggestion left out — day types without an effective plan
+  notes?:   string[]
+  // groups / profiles: the rest patterns a row may switch to, with their groups
   patterns?: { id: string; name: string; groupOptions: { offset: number; label: string }[] }[]
 }
 

@@ -168,7 +168,7 @@ export function PlansSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
       <table className="w-full text-sm">
         <thead className="text-xs text-muted-foreground">
           <tr className="[&>th]:pb-2 [&>th]:font-medium [&>th]:text-left [&>th]:px-1.5">
-            <th>Tipo de dia</th><th>Planejamento · escala</th><th className="text-right!">Frota</th><th className="text-right!">Tabelas</th>
+            <th>Tipo de dia</th><th>Planejamento · escala</th><th className="text-right!">Frota</th><th className="text-right!">Reserva</th><th className="text-right!">%</th><th className="text-right!">Tabelas</th>
             <th className="text-right!">Jornada</th><th className="text-right!">Extra</th><th>Situação</th>
           </tr>
         </thead>
@@ -185,6 +185,8 @@ export function PlansSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
                     : vp && <span className="block text-[11px] text-destructive">sem escala ativa</span>}
                 </td>
                 <td className="text-right">{vp?.fleet ?? '—'}</td>
+                <td className={cn('text-right', vp && vp.reserve < 0 && 'text-destructive')}>{vp ? vp.reserve : '—'}</td>
+                <td className="text-right text-muted-foreground">{vp?.fleet ? `${(Math.round(vp.reserve / vp.fleet * 1000) / 10).toLocaleString('pt-BR')}%` : '—'}</td>
                 <td className="text-right">{c?.duties ?? '—'}</td>
                 <td className="text-right">{c ? fmtTime(c.avgWorkMinutes) : '—'}</td>
                 <td className="text-right">{c ? `${c.overtimePct.toLocaleString('pt-BR')}%` : '—'}</td>
@@ -202,9 +204,16 @@ export function PlansSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
               </tr>
             )
           })}
-          {!snapshot.plans.length && <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Nenhum plano efetivo no escopo.</td></tr>}
+          {!snapshot.plans.length && <tr><td colSpan={9} className="py-6 text-center text-muted-foreground">Nenhum plano efetivo no escopo.</td></tr>}
         </tbody>
       </table>
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+        <dt className="font-medium text-foreground/80">Frota</dt><dd>carros da empresa em uso no planejamento (blocos com viagens)</dd>
+        <dt className="font-medium text-foreground/80">Reserva</dt><dd>carros ativos da empresa (inclusive em manutenção) além da frota em uso; % sobre a frota em uso</dd>
+        <dt className="font-medium text-foreground/80">Tabelas</dt><dd>jornadas da empresa na escala lógica, da função selecionada</dd>
+        <dt className="font-medium text-foreground/80">Jornada</dt><dd>média do tempo trabalhado por tabela</dd>
+        <dt className="font-medium text-foreground/80">Extra</dt><dd>parte das horas pagas que é hora extra</dd>
+      </dl>
       {snapshot.scopes.length > 1 && <p className="mt-3 text-[11px] text-muted-foreground">A empresa opera em mais de um escopo — o quadro é o mesmo em todos.</p>}
     </Card>
   )

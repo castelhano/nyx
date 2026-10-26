@@ -6,6 +6,7 @@ import type { DayTypeService } from '../timetabling/day-type/day-type.service'
 import { addDays, dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
 import { effectiveWindow } from '../daily/daily-checks'
 import { outdatedOperations } from '../daily/daily-outdated'
+import { parseDay } from '../timetabling/dop/dop-resolution'
 import { dailyIssueLabel, type ConsoleCrew, type ConsoleDuty, type ConsoleInput, type ConsolePattern } from './console.calc'
 
 // What the Painel de Escala reads from the database — one load per request, the figures in
@@ -52,7 +53,8 @@ export async function loadConsoleInput(
   const days: ConsoleInput['days'] = []
   for (let i = 0; i < CONSOLE_WINDOW_DAYS; i++) {
     const day = addDays(today, i)
-    const dt = resolve(toDbDate(day))
+    // the resolver reads local weekdays — a local midnight, not toDbDate's UTC one
+    const dt = resolve(parseDay(day)!)
     if (dt) days.push({ day, weekday: (toDbDate(day).getUTCDay() + 6) % 7, dayTypeId: dt.id })
   }
 
@@ -153,6 +155,16 @@ export async function loadConsoleInput(
     }
   }
 
+  // the empresa's fleet per plan — its blocks with trips (the plan's fleetCount is the whole scope's)
+  const fleetRows = await prisma.vehicleBlock.groupBy({
+    by:    ['vehiclePlanId'],
+    where: { vehiclePlanId: { in: [...planOf.values()].map(vp => vp.id) }, blockTrips: { some: {} }, ...(sharedScope ? { branchId } : { OR: [{ branchId }, { branchId: null }] }) },
+    _count: { _all: true },
+  })
+  const fleetOf = new Map(fleetRows.map(r => [r.vehiclePlanId, r._count._all]))
+  // the empresa's own cars, running or in maintenance — what isn't in use is reserve
+  const vehicles = await prisma.vehicle.count({ where: { branchId, status: { in: ['ACTIVE', 'MAINTENANCE'] } } })
+
   const plans: ConsolePlanRow[] = dayTypes.map(t => {
     const vp = planOf.get(t.id)
     const cp = vp?.crewPlans[0] ?? null
@@ -162,10 +174,9 @@ export async function loadConsoleInput(
     const byKind: Record<string, number> = {}
     for (const d of own) byKind[d.kind] = (byKind[d.kind] ?? 0) + 1
     const summary = cp?.summary as { uncoveredMinutes?: number; score?: number } | null
-    const vpSummary = vp?.summary as { fleetCount?: number } | null
     return {
       dayTypeId: t.id,
-      vehiclePlan: vp ? { id: vp.id, label: vp.description || 'Planejamento', validFrom: vp.validFrom ? dayOf(vp.validFrom) : null, fleet: vpSummary?.fleetCount ?? null, trips: vp._count.trips } : null,
+      vehiclePlan: vp ? { id: vp.id, label: vp.description || 'Planejamento', validFrom: vp.validFrom ? dayOf(vp.validFrom) : null, fleet: fleetOf.get(vp.id) ?? 0, reserve: vehicles - (fleetOf.get(vp.id) ?? 0), trips: vp._count.trips } : null,
       crewPlan: cp ? {
         id: cp.id, label: cp.description || 'Escala', duties: own.length, byKind,
         avgWorkMinutes: sums.length ? Math.round(sums.reduce((n, s) => n + s.workMinutes, 0) / sums.length) : 0,

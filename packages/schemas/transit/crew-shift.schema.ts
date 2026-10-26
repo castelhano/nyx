@@ -55,6 +55,18 @@ export const crewShiftSchema = withMeta(
     endIdealMax:   timeField('Término', 'Ideal até'),
     endCeiling:    timeField('Término', 'Máximo'),
 
+    // default day-off cycle of the shift's crew — CrewMember.restPatternId overrides it
+    restPatternId: z.uuid().optional().nullable().meta({
+      label:          'Regime de folga',
+      helpText:       'Padrão de quem está no turno; o operador pode ter um próprio.',
+      widget:         'select',
+      resource:       'rest-pattern',
+      domain:         'transit',
+      labelField:     'name',
+      listVisibility: 'visible',
+      className:      'md:w-[16.75rem]',
+    }),
+
     allowSplit: z.boolean().default(false).meta({
       label:          'Dupla pegada',
       row:            'Opções',

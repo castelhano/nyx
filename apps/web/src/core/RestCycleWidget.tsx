@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Controller, useWatch, type Control } from 'react-hook-form'
 import { restGroupLabel, restGroupOffsets, restPatternWorks } from '@nyx/schemas'
@@ -9,22 +9,26 @@ import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
 import { cn, extractError } from '@/lib/utils'
+import { resolveIcon } from '@/lib/icons'
 import { localToday } from '@/lib/plan-vigence'
 
 // widget 'rest-cycle' — RestPattern.pattern as a calendar of Monday-to-Sunday weeks, day 0 on
 // the anchor date's weekday (click a day: works ↔ day off), then a preview of the next weeks per group with the
 // share of the crew working each day, and the crew per shift and group with "Equilibrar"
-// (GET/POST /transit/rest-pattern/:id/groups|balance).
+// (GET/POST /transit/rest-pattern/:id/groups|balance). Above it, the shifts with the pattern as their default.
 
 const WEEKDAY = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 // grid columns, Monday first
 const COLUMNS = [1, 2, 3, 4, 5, 6, 0]
 const PREVIEW_DAYS = 28
 
+const ShiftIcon = resolveIcon('Sunrise')
+
 interface Groups {
   offsets: number[]
   total:   number
   shifts:  { shiftId: string | null; code: string; counts: number[]; outside: number }[]
+  defaultOf: { id: string; code: string; name: string }[]
 }
 
 const addDays = (day: string, n: number) => {
@@ -36,6 +40,7 @@ const weekday = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay()
 
 export function RestCycleWidget({ field, control, readonly }: { field: MetadataField; control: Control<any>; readonly?: boolean }) {
   const { id } = useParams<{ id?: string }>()
+  const router = useRouter()
   const saved = !!id && id !== 'new'
   const confirm   = useConfirm()
   const { toast } = useToast()
@@ -96,6 +101,24 @@ export function RestCycleWidget({ field, control, readonly }: { field: MetadataF
 
           return (
             <div className="space-y-4">
+              {groups && groups.defaultOf.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Padrão dos turnos</span>
+                  {groups.defaultOf.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      title={s.name}
+                      onClick={() => router.push(`/transit/crew-shift/${s.id}`)}
+                      className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                    >
+                      <ShiftIcon className="w-3 h-3" />
+                      {s.code}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* ── cycle grid ── */}
               <div className="space-y-2">
                 <div className="inline-grid gap-1" style={{ gridTemplateColumns: `4.5rem repeat(7, 2.5rem)` }}>

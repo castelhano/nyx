@@ -39,15 +39,16 @@ export function moved(m: ConsoleCrew, to: Shift, offset: number | null, pattern?
   }
 }
 
-// a new crew profile (profiles action): an employee in the shift, the given group
-function newcomer(input: ConsoleInput, employeeId: string, to: Shift, offset: number | null): ConsoleCrew | null {
+// a new crew profile (profiles action): an employee in the shift, the given group — in the given
+// pattern, else the shift's
+function newcomer(input: ConsoleInput, employeeId: string, to: Shift, offset: number | null, pattern?: ConsolePattern | null): ConsoleCrew | null {
   const e = input.noProfile.find(x => x.employeeId === employeeId)
   if (!e) return null
   return moved({
     id: e.employeeId, code: e.code, name: e.name, hireDate: e.hireDate, shiftId: to.id, shiftSince: input.today,
     window: null, notBefore: null, notAfter: null, pattern: to.pattern, ownPattern: false, offset: 0,
     lineAccess: {}, prefLines: [], priorityLines: [], blockedVehicleTypes: [], standbyBlocked: false, rosterable: true, away: null, vacation: null,
-  }, to, offset)
+  }, to, offset, pattern)
 }
 
 export function applyMoves(input: ConsoleInput, kind: ConsoleActionKind, items: MoveItem[]): ConsoleInput {
@@ -55,7 +56,7 @@ export function applyMoves(input: ConsoleInput, kind: ConsoleActionKind, items: 
   const patternById = new Map(input.patterns.map(p => [p.id, p]))
   const mark = input.lineAccessMode === 'WHITELIST' ? 'ENABLED' : null
   if (kind === 'profiles') {
-    const added = items.flatMap(i => newcomer(input, i.crewMemberId, shiftById.get(i.to)!, i.offset) ?? [])
+    const added = items.flatMap(i => newcomer(input, i.crewMemberId, shiftById.get(i.to)!, i.offset, i.patternId ? patternById.get(i.patternId) ?? null : undefined) ?? [])
     return { ...input, crew: [...input.crew, ...added] }
   }
   const by = new Map(items.map(i => [i.crewMemberId, i]))
@@ -145,23 +146,38 @@ function groupOptions(p: ConsolePattern | null, today: Day): ConsoleMove['groupO
   return p ? restGroupOffsets({ pattern: p.cycle.pattern, staggered: p.staggered }).map(offset => ({ offset, label: groupLabel(p, offset, today) })) : []
 }
 
-// the group of the destination that lowers its shortage the most (then: the best worst day), with
-// `team` already there
-function bestOffset(input: ConsoleInput, team: ConsoleCrew[], to: Shift, p: ConsolePattern | null): number | null {
-  if (!p) return null
+// where one more crew member goes in the destination, with `team` already there: the group (in
+// pattern `p`; none → he works every day) that lowers its shortage the most, then the best worst
+// day, then the group with fewest of the team — and the shortage and worst day it leaves
+function placement(input: ConsoleInput, team: ConsoleCrew[], to: Shift, p: ConsolePattern | null): { offset: number | null; short: number; worst: number } {
   const demand = input.days.map(d => input.duties.filter(x => x.shiftId === to.id && x.dayTypeId === d.dayTypeId).length)
   const supply = input.days.map(d => team.filter(m => works(m, d.day)).length)
-  let best: number | null = null, bestShort = Infinity, bestWorst = -Infinity
-  for (const o of restGroupOffsets({ pattern: p.cycle.pattern, staggered: p.staggered })) {
+  const shape = p && { pattern: p.cycle.pattern, staggered: p.staggered }
+  const inGroup = (o: number) => team.filter(m => m.pattern?.id === p!.id && restGroupIndex(shape!, m.offset) === restGroupIndex(shape!, o)).length
+  let best = { offset: null as number | null, short: Infinity, worst: -Infinity }, bestCount = Infinity
+  for (const o of shape ? restGroupOffsets(shape) : [null]) {
     let worst = Infinity, short = 0
     input.days.forEach((d, t) => {
-      const b = supply[t] + (restPatternWorks(p.cycle, o, d.day) ? 1 : 0) - demand[t]
+      const b = supply[t] + (o == null || restPatternWorks(p!.cycle, o, d.day) ? 1 : 0) - demand[t]
       worst = Math.min(worst, b)
       short += Math.max(0, -b)
     })
-    if (short < bestShort || (short === bestShort && worst > bestWorst)) { best = o; bestShort = short; bestWorst = worst }
+    const count = o == null ? 0 : inGroup(o)
+    if (short < best.short || (short === best.short && (worst > best.worst || (worst === best.worst && count < bestCount)))) {
+      best = { offset: o, short, worst }
+      bestCount = count
+    }
   }
   return best
+}
+const bestOffset = (input: ConsoleInput, team: ConsoleCrew[], to: Shift, p: ConsolePattern | null) => (p ? placement(input, team, to, p).offset : null)
+
+// The suggestions balance only the day types with an effective crew plan — on the others the only
+// demand left is the plantões, which would steer everyone to their shifts
+export function planned(input: ConsoleInput): { input: ConsoleInput; left: string[] } {
+  const types = new Set(input.plans.filter(p => p.crewPlan).map(p => p.dayTypeId))
+  const left = input.dayTypes.filter(t => !types.has(t.id) && input.days.some(d => d.dayTypeId === t.id)).map(t => t.name)
+  return { input: { ...input, days: input.days.filter(d => types.has(d.dayTypeId)) }, left }
 }
 
 const empty = (kind: ConsoleActionKind, title: string, summary: string): ConsoleSuggestion => ({ kind, title, summary, moves: [], bench: {}, excluded: [] })
@@ -325,25 +341,49 @@ export function suggestLine(input: ConsoleInput, rules: RebalanceRules, kind: 'l
 
 // Each employee without a crew profile goes to the shift with the largest shortage, in the group
 // that helps it most
+// Each employee, one at a time, goes where he lowers the shortage the most (ties: the worst day);
+// with no shortage left, where the crew is thinnest for the duties (crew ÷ duties over the window) —
+// a shift without duties gets no one. No duties at all (no effective plan): no shift is suggested,
+// the list picks it.
 export function suggestProfiles(input: ConsoleInput, rules: RebalanceRules): ConsoleSuggestion {
   if (!input.noProfile.length || !input.shifts.length) return empty('profiles', 'Criar perfis de operador', 'Nenhum funcionário sem perfil')
   let crew = input.crew
   const moves: ConsoleMove[] = []
   const people = rank(input.noProfile.map(e => ({ ...e, shiftSince: null as Day | null })), rules)
+  const dutiesOf = new Map(input.shifts.map(sh => [sh.id, input.days.reduce((n, d) => n + input.duties.filter(x => x.shiftId === sh.id && x.dayTypeId === d.dayTypeId).length, 0)]))
   for (const e of people) {
-    const bal = shiftBalances(input, crew)
-    const to = [...input.shifts].sort((a, b) => worstOf(bal, a.id) - worstOf(bal, b.id) || bal.get(b.id)!.shortage - bal.get(a.id)!.shortage)[0]
-    const team = crew.filter(x => inSupply(x) && x.shiftId === to.id)
-    const offset = bestOffset(input, team, to, to.pattern)
-    const n = newcomer(input, e.employeeId, to, offset)
-    if (n) crew = [...crew, n]
+    const options = input.shifts.map(sh => {
+      const team = crew.filter(x => inSupply(x) && x.shiftId === sh.id)
+      const after = placement(input, team, sh, sh.pattern)
+      const shortNow = input.days.reduce((n, d) => n + Math.max(0, input.duties.filter(x => x.shiftId === sh.id && x.dayTypeId === d.dayTypeId).length - team.filter(m => works(m, d.day)).length), 0)
+      const worked = input.days.reduce((n, d) => n + team.filter(m => works(m, d.day)).length, 0)
+      return { sh, offset: after.offset, gain: shortNow - after.short, worst: after.worst, ratio: dutiesOf.get(sh.id)! ? worked / dutiesOf.get(sh.id)! : Infinity }
+    })
+    const short = options.filter(o => o.gain > 0).sort((a, b) => b.gain - a.gain || a.worst - b.worst)[0]
+    const thin = options.filter(o => o.ratio < Infinity).sort((a, b) => a.ratio - b.ratio)[0]
+    const pick = short ?? thin
+    const to = pick?.sh ?? null
+    const offset = pick?.offset ?? null
+    if (to) {
+      const n = newcomer(input, e.employeeId, to, offset)
+      if (n) crew = [...crew, n]
+    }
     moves.push({
-      crewMemberId: e.employeeId, code: e.code, name: e.name, from: to.id, to: to.id, offset,
-      groupLabel: to.pattern && offset != null ? groupLabel(to.pattern, offset, input.today) : null, patternName: to.pattern?.name ?? null,
-      groupOptions: groupOptions(to.pattern, input.today), change: `criar perfil · ${e.jobTitle}`, reasons: [`Admissão ${monthYear(e.hireDate)}`],
+      crewMemberId: e.employeeId, code: e.code, name: e.name, from: to?.id ?? '', to: to?.id ?? '', offset,
+      groupLabel: to?.pattern && offset != null ? groupLabel(to.pattern, offset, input.today) : null, patternName: to?.pattern?.name ?? null,
+      groupOptions: groupOptions(to?.pattern ?? null, input.today), patternId: null,
+      // the group each shift would give him — what the list falls back to when the shift is changed
+      shiftOptions: options.map(o => ({ shiftId: o.sh.id, patternId: o.sh.pattern?.id ?? null, offset: o.offset })),
+      change: `criar perfil · ${e.jobTitle}`, reasons: [`Admissão ${monthYear(e.hireDate)}`],
     })
   }
-  return { kind: 'profiles', title: 'Criar perfis de operador', summary: `${moves.length} funcionário(s) com cargo da função`, moves, bench: {}, excluded: [] }
+  const manual = moves.some(m => !m.to)
+  return {
+    kind: 'profiles', title: 'Criar perfis de operador',
+    summary: `${moves.length} funcionário(s) com cargo da função${manual ? ' — sem tabelas para sugerir o turno: escolha na lista' : ''}`,
+    moves, bench: {}, excluded: [],
+    patterns: input.patterns.map(p => ({ id: p.id, name: p.name, groupOptions: groupOptions(p, input.today) })),
+  }
 }
 
 // ── impact ──────────────────────────────────────────────────────────────────

@@ -121,4 +121,51 @@ describe('perfis', () => {
     const imp = impact(inp, 'profiles', [{ crewMemberId: 'e1', to: 'MAN', offset: s.moves[0].offset }], addDays(START, 3), 0)
     expect(imp.totals.UTIL.after).toBeGreaterThanOrEqual(imp.totals.UTIL.before)
   })
+
+  const newcomers = (n: number) => Array.from({ length: n }, (_, i) => ({ employeeId: `e${i}`, code: `9${String(i).padStart(3, '0')}`, name: `Novo ${i}`, jobTitle: 'Motorista', role: 'DRIVER', hireDate: '2026-09-01' }))
+
+  it('covers the shortage first, then spreads the rest by the duties — never to a shift without duties', () => {
+    const NOD = shift('NOD', 600, 700, 1200, 1300)
+    const inp = { ...input([...crewOf(7, MAN), ...crewOf(14, TAR)], [...dutiesOf(MAN, 8), ...dutiesOf(TAR, 6)]), noProfile: newcomers(30) }
+    inp.shifts = [...inp.shifts, NOD]
+    const s = suggestProfiles(inp, rules)
+    const to = (id: string) => s.moves.filter(m => m.to === id).length
+    expect(to('NOD')).toBe(0)
+    // MAN short (7 crew for 8 duties a day): fills first, and keeps more of the rest (more duties)
+    expect(s.moves.slice(0, 3).every(m => m.to === 'MAN')).toBe(true)
+    expect(to('MAN')).toBeGreaterThan(to('TAR'))
+    expect(to('TAR')).toBeGreaterThan(0)
+  })
+
+  it('spreads the newcomers over the groups instead of stacking them in one', () => {
+    const inp = { ...input(crewOf(7, MAN), dutiesOf(MAN, 6)), noProfile: newcomers(14) }
+    const s = suggestProfiles(inp, rules)
+    const perGroup = new Map<number, number>()
+    for (const m of s.moves) perGroup.set(m.offset!, (perGroup.get(m.offset!) ?? 0) + 1)
+    expect(Math.max(...perGroup.values()) - Math.min(...perGroup.values())).toBeLessThanOrEqual(1)
+    expect(perGroup.size).toBe(7)
+  })
+
+  it('without duties suggests no shift — the list picks it', () => {
+    const inp = { ...input(crewOf(7, MAN), []), noProfile: newcomers(3) }
+    const s = suggestProfiles(inp, rules)
+    expect(s.moves.every(m => m.to === '' && m.shiftOptions?.length === 2)).toBe(true)
+    expect(s.summary).toMatch(/escolha na lista/)
+  })
+
+  it('offers each shift with its suggested group, and takes a pattern of his own', () => {
+    const fiveTwo = { id: 'p5', name: '5x2', cycle: { pattern: 'TTTTTFF', anchorDate: START, offOnHolidays: false }, staggered: true }
+    const inp = { ...input([...crewOf(7, MAN), ...crewOf(14, TAR)], [...dutiesOf(MAN, 8), ...dutiesOf(TAR, 6)]),
+      patterns: [sixOne, fiveTwo],
+      noProfile: [{ employeeId: 'e1', code: '9001', name: 'Novo', jobTitle: 'Motorista', role: 'DRIVER', hireDate: '2026-09-01' }] }
+    const s = suggestProfiles(inp, rules)
+    expect(s.moves[0].shiftOptions?.map(o => o.shiftId)).toEqual(['MAN', 'TAR'])
+    expect(s.moves[0].shiftOptions?.every(o => o.patternId === 'p6' && o.offset != null)).toBe(true)
+    expect(s.patterns?.map(p => p.id)).toEqual(['p6', 'p5'])
+    // in TAR with 5x2: works 5 of 7 days — the impact counts him with his own pattern
+    const imp = impact(inp, 'profiles', [{ crewMemberId: 'e1', to: 'TAR', offset: 0, patternId: 'p5' }], START, 0)
+    const tar = imp.rows.find(r => r.shiftId === 'TAR')!
+    expect(tar.cells.SAB.after).toBe(tar.cells.SAB.before)
+    expect(tar.cells.UTIL.after).toBe(tar.cells.UTIL.before + 1)
+  })
 })

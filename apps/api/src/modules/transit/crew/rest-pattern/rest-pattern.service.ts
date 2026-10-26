@@ -13,6 +13,8 @@ export interface RestPatternGroups {
   offsets: number[]
   total:   number
   shifts:  { shiftId: string | null; code: string; counts: number[]; outside: number }[]
+  // shifts with the pattern as their default
+  defaultOf: { id: string; code: string; name: string }[]
 }
 
 @Injectable()
@@ -56,7 +58,10 @@ export class RestPatternService extends BaseService<RestPattern, CreateRestPatte
   }
 
   async groups(id: string): Promise<RestPatternGroups> {
-    const [p, members] = await Promise.all([this.pattern(id), this.members(id)])
+    const [p, members, defaultOf] = await Promise.all([
+      this.pattern(id), this.members(id),
+      this.prisma.crewShift.findMany({ where: { restPatternId: id }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true } }),
+    ])
     const offsets = restGroupOffsets(p)
     const byShift = new Map<string, RestPatternGroups['shifts'][number]>()
     for (const m of members) {
@@ -68,7 +73,7 @@ export class RestPatternService extends BaseService<RestPattern, CreateRestPatte
       if (g == null) row.outside++
       else row.counts[g]++
     }
-    return { offsets, total: members.length, shifts: [...byShift.values()].sort((a, b) => a.code.localeCompare(b.code)) }
+    return { offsets, total: members.length, shifts: [...byShift.values()].sort((a, b) => a.code.localeCompare(b.code)), defaultOf }
   }
 
   // Evens out the groups within each shift, moving as few crew members as possible; someone

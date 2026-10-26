@@ -6,9 +6,10 @@
 // Confirming only changes crew records; generated days stay as they were.
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import {
-  CONSOLE_ACTION_DATED, CONSOLE_ACTION_LABEL, REBALANCE_CRITERION_LABEL,
+  CONSOLE_ACTION_DATED, CONSOLE_ACTION_LABEL, CONSOLE_NO_PLAN, REBALANCE_CRITERION_LABEL,
   type ConsoleActionKind, type ConsoleImpact, type ConsoleMove, type ConsoleSnapshot, type ConsoleSuggestion, type RebalanceRules, type RosterAdjustmentRow,
 } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
@@ -54,10 +55,13 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
   const ctx = { branchId: snapshot.branchId, role: snapshot.role, scopeId: snapshot.scopeId }
   const base = `/transit/console/actions/${action.kind}`
   const dated = CONSOLE_ACTION_DATED[action.kind]
+  // no effective plan: nothing to suggest from — only new profiles go, by hand
+  const noPlan = action.kind !== 'profiles' && !snapshot.plans.some(p => p.crewPlan)
   const { data: suggestion, error: suggestError, isFetching: suggesting } = useQuery<ConsoleSuggestion>({
     queryKey: ['transit', 'console', 'suggest', ctx, action],
     queryFn:  () => post(`${base}/suggest`, { ...ctx, shiftId: action.shiftId ?? null, lineId: action.lineId ?? null }),
     gcTime:   0,
+    enabled:  !noPlan,
   })
 
   const [step, setStep]           = useState<'list' | 'preview'>('list')
@@ -68,6 +72,8 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
   const [busy, setBusy]           = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const [showExcluded, setShowExcluded] = useState(false)
+  // profiles: shift / pattern / group for every selected row ('' = keep)
+  const [bulk, setBulk]           = useState({ shiftId: '', patternId: '', offset: '' })
   const dateRef = useRef<HTMLInputElement>(null)
 
   const rows  = edit?.rows ?? suggestion?.moves.map(move => ({ move, on: true })) ?? []
@@ -75,6 +81,8 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
   const chosen = rows.filter(r => r.on).map(r => r.move)
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(effective) && effective >= localToday()
   const shiftName = new Map(snapshot.shifts.map(s => [s.id, s.name]))
+  // profiles: rows still without a shift (no duties to suggest one)
+  const missing = chosen.filter(m => !m.to).length
   const items = chosen.map(m => ({ crewMemberId: m.crewMemberId, from: m.from, to: m.to, offset: m.offset, patternId: m.patternId ?? null, lineId: m.lineId ?? null }))
 
   async function next() {
@@ -82,7 +90,7 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
     setError(null)
     if (step === 'list') {
       if (!validDate) { dateRef.current?.focus(); return }
-      if (!chosen.length) return
+      if (!chosen.length || missing) return
       setBusy(true)
       try {
         setImpact(await post<ConsoleImpact>(`${base}/preview`, { ...ctx, effective, items }))
@@ -115,17 +123,50 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
     if (!pick) return
     setRows(rows.map((r, k) => (k === i ? { move: pick, on: true } : r)), { ...bench, [key]: [cur, ...pool.filter(b => b !== pick)] })
   }
-  const setOffset = (i: number, offset: number) => setRows(rows.map((r, k) => (k === i
-    ? { ...r, move: { ...r.move, offset, groupLabel: r.move.groupOptions.find(g => g.offset === offset)?.label ?? null } } : r)))
-  // groups: another rest pattern for the row — its first group until one is picked
-  const setPattern = (i: number, patternId: string) => setRows(rows.map((r, k) => {
-    if (k !== i) return r
+  const withOffset = (m: ConsoleMove, offset: number): ConsoleMove => ({ ...m, offset, groupLabel: m.groupOptions.find(g => g.offset === offset)?.label ?? null })
+  // another rest pattern — its first group until one is picked
+  const withPattern = (m: ConsoleMove, patternId: string): ConsoleMove => {
     const p = suggestion?.patterns?.find(x => x.id === patternId)
-    if (!p) return r
+    if (!p) return m
     const g = p.groupOptions[0]
-    return { ...r, move: { ...r.move, patternId, patternName: p.name, groupOptions: p.groupOptions, offset: g?.offset ?? null, groupLabel: g?.label ?? null } }
-  }))
+    return { ...m, patternId, patternName: p.name, groupOptions: p.groupOptions, offset: g?.offset ?? null, groupLabel: g?.label ?? null }
+  }
+  // profiles: another shift — its pattern and the group suggested there
+  const withShift = (m: ConsoleMove, shiftId: string): ConsoleMove => {
+    const o = m.shiftOptions?.find(x => x.shiftId === shiftId)
+    if (!o) return m
+    const p = suggestion?.patterns?.find(x => x.id === o.patternId)
+    const groupOptions = p?.groupOptions ?? []
+    return { ...m, from: shiftId, to: shiftId, patternId: null, patternName: p?.name ?? null, groupOptions, offset: o.offset, groupLabel: groupOptions.find(g => g.offset === o.offset)?.label ?? null }
+  }
+  const update = (i: number, f: (m: ConsoleMove) => ConsoleMove) => setRows(rows.map((r, k) => (k === i ? { ...r, move: f(r.move) } : r)))
+  const setOffset  = (i: number, offset: number) => update(i, m => withOffset(m, offset))
+  const setPattern = (i: number, patternId: string) => update(i, m => withPattern(m, patternId))
+  const setShift   = (i: number, shiftId: string) => update(i, m => withShift(m, shiftId))
+  // profiles: '' = the shift's pattern (and its suggested group)
+  const setProfilePattern = (i: number, patternId: string) => update(i, m => (patternId ? withPattern(m, patternId) : withShift(m, m.to)))
+  // the pattern the bulk group refers to: the one picked, else the picked shift's
+  const shiftPatternId = (shiftId: string) => suggestion?.moves[0]?.shiftOptions?.find(o => o.shiftId === shiftId)?.patternId ?? null
+  const bulkPattern = suggestion?.patterns?.find(p => p.id === (bulk.patternId || (bulk.shiftId ? shiftPatternId(bulk.shiftId) : null))) ?? null
+  function applyBulk() {
+    setRows(rows.map(r => {
+      if (!r.on) return r
+      let m = r.move
+      if (bulk.shiftId) m = withShift(m, bulk.shiftId)
+      if (bulk.patternId) m = withPattern(m, bulk.patternId)
+      if (bulk.offset !== '' && m.groupOptions.some(g => g.offset === Number(bulk.offset))) m = withOffset(m, Number(bulk.offset))
+      return { ...r, move: m }
+    }))
+  }
+  const shiftPatternName = (m: ConsoleMove) => {
+    const id = m.shiftOptions?.find(x => x.shiftId === m.to)?.patternId
+    return suggestion?.patterns?.find(x => x.id === id)?.name ?? null
+  }
 
+  // crew entering (− leaving) the shift — shifts / profiles
+  const netOf = (shiftId: string) => (action.kind === 'shifts' || action.kind === 'profiles')
+    ? chosen.filter(m => m.to === shiftId && (action.kind === 'profiles' || m.from !== shiftId)).length - (action.kind === 'shifts' ? chosen.filter(m => m.from === shiftId && m.to !== shiftId).length : 0)
+    : 0
   const hasGroups = action.kind === 'shifts' || action.kind === 'groups' || action.kind === 'profiles'
   const ruleText = rule?.criteria.filter(c => c.active).map(c => REBALANCE_CRITERION_LABEL[c.key].label).join(' › ') || 'nenhum critério ativo'
   const types = snapshot.dayTypes.filter(t => !!impact?.totals[t.id])
@@ -153,6 +194,12 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
 
         {step === 'list' ? (
           <div className="overflow-auto px-6 py-4 space-y-4">
+            {noPlan && (
+              <p className="flex gap-2 text-sm text-amber-600 dark:text-amber-400">
+                <Icons.AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{CONSOLE_NO_PLAN} <Link href="/transit/vehicle-plan" className="underline underline-offset-2 hover:text-foreground">Ir ao planejamento</Link></span>
+              </p>
+            )}
             {suggesting && <p className="text-sm text-muted-foreground">Calculando a sugestão…</p>}
             {suggestError && <p className="flex gap-2 text-sm text-destructive"><Icons.AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{suggestError instanceof Error ? suggestError.message : 'Erro'}</p>}
             {suggestion && (
@@ -162,13 +209,55 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
                     <span className="text-sm">Data de efeito</span>
                     <input
                       ref={dateRef} type="date" min={localToday()} value={effective} onChange={e => setEffective(e.target.value)} autoFocus
-                      className={cn('h-8 border rounded-sm text-sm bg-input-bg px-2 focus:outline-none focus:ring-1 focus:ring-ring', effective ? 'border-input' : 'border-amber-500/60')}
+                      className={cn('h-8 border rounded-sm text-sm bg-input-bg px-2 focus:outline-none focus:ring-1 focus:ring-ring', validDate ? 'border-input' : 'border-amber-500/60')}
                     />
                     {!effective && <span className="text-xs text-muted-foreground">obrigatória — a partir de quando {action.kind === 'profiles' ? 'o perfil começa no turno' : 'o turno muda'}</span>}
+                    {effective && !validDate && (
+                      <span className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                        <Icons.AlertCircle className="w-3.5 h-3.5" />A data não pode ser retroativa — a partir de hoje
+                      </span>
+                    )}
                   </label>
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     {action.kind === 'groups' ? 'Sem data: o grupo novo vale para a próxima geração de escala.' : 'Sem data: vale já para a próxima geração de escala.'}
+                  </p>
+                )}
+
+                {suggestion.notes?.map(n => (
+                  <p key={n} className="flex gap-1.5 text-xs text-amber-600 dark:text-amber-400"><Icons.AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />{n}</p>
+                ))}
+
+                {action.kind === 'profiles' && rows.length > 0 && suggestion.patterns && (
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+                    <span className="me-1 text-muted-foreground">Aplicar aos selecionados:</span>
+                    <select value={bulk.shiftId} onChange={e => setBulk({ ...bulk, shiftId: e.target.value, offset: '' })} className="h-7 border border-input rounded-sm bg-input-bg px-1.5" title="Turno">
+                      <option value="">turno (manter)</option>
+                      {snapshot.shifts.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </select>
+                    <select value={bulk.patternId} onChange={e => setBulk({ ...bulk, patternId: e.target.value, offset: '' })} className="h-7 border border-input rounded-sm bg-input-bg px-1.5" title="Regime de folga">
+                      <option value="">{bulk.shiftId ? 'regime do turno' : 'regime (manter)'}</option>
+                      {suggestion.patterns.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    {bulkPattern && (
+                      <select value={bulk.offset} onChange={e => setBulk({ ...bulk, offset: e.target.value })} className="h-7 border border-input rounded-sm bg-input-bg px-1.5" title={bulkPattern.name}>
+                        <option value="">grupo sugerido</option>
+                        {bulkPattern.groupOptions.map(g => <option key={g.offset} value={g.offset}>{g.label}</option>)}
+                      </select>
+                    )}
+                    <button type="button" onClick={applyBulk} disabled={!chosen.length || (!bulk.shiftId && !bulk.patternId && bulk.offset === '')}
+                      className="h-7 px-2.5 rounded-sm border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+                      Aplicar a {chosen.length}
+                    </button>
+                  </div>
+                )}
+
+                {(action.kind === 'profiles' || action.kind === 'shifts') && chosen.length > 0 && (
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>Por turno de destino:</span>
+                    {snapshot.shifts.filter(x => chosen.some(m => m.to === x.id)).map(x => (
+                      <span key={x.id}><b className="font-medium text-foreground">{x.name}</b> {chosen.filter(m => m.to === x.id).length}</span>
+                    ))}
                   </p>
                 )}
 
@@ -189,7 +278,12 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
                           <td className="whitespace-nowrap">
                             {action.kind === 'shifts'
                               ? <>{shiftName.get(r.move.from)} <Icons.ArrowRight className="inline w-3.5 h-3.5 mx-1 text-muted-foreground" /> <b className="font-medium">{shiftName.get(r.move.to)}</b></>
-                              : action.kind === 'profiles' ? <>{r.move.change.replace('criar perfil · ', '')} <Icons.ArrowRight className="inline w-3.5 h-3.5 mx-1 text-muted-foreground" /> <b className="font-medium">{shiftName.get(r.move.to)}</b></>
+                              : action.kind === 'profiles' ? <>{r.move.change.replace('criar perfil · ', '')} <Icons.ArrowRight className="inline w-3.5 h-3.5 mx-1 text-muted-foreground" />
+                                <select value={r.move.to} onChange={e => setShift(i, e.target.value)} title="Turno"
+                                  className={cn('h-7 border rounded-sm text-xs font-medium bg-input-bg px-1.5', r.move.to ? 'border-input' : 'border-amber-500/60 text-muted-foreground')}>
+                                  {!r.move.to && <option value="">escolha o turno</option>}
+                                  {snapshot.shifts.filter(x => r.move.shiftOptions?.some(o => o.shiftId === x.id)).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                </select></>
                               : <span className="font-medium">{r.move.change}</span>}
                           </td>
                           {hasGroups && (
@@ -200,7 +294,14 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
                                   {suggestion.patterns.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                               )}
-                              {r.move.groupOptions.length > 1 ? (
+                              {action.kind === 'profiles' && suggestion.patterns && (
+                                <select value={r.move.patternId ?? ''} onChange={e => setProfilePattern(i, e.target.value)}
+                                  className="h-7 me-1 border border-input rounded-sm text-xs bg-input-bg px-1.5" title="Regime de folga">
+                                  <option value="">{shiftPatternName(r.move) ? `do turno (${shiftPatternName(r.move)})` : 'sem regime'}</option>
+                                  {suggestion.patterns.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              )}
+                              {r.move.groupOptions.length > (action.kind === 'profiles' ? 0 : 1) ? (
                                 <select value={r.move.offset ?? ''} onChange={e => setOffset(i, Number(e.target.value))} className="h-7 border border-input rounded-sm text-xs bg-input-bg px-1.5" title={r.move.patternName ?? undefined}>
                                   {r.move.groupOptions.map(g => <option key={g.offset} value={g.offset}>{g.label}</option>)}
                                 </select>
@@ -255,7 +356,15 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
               <tbody className="tabular-nums">
                 {impact.rows.map(r => (
                   <tr key={r.shiftId} className="border-b border-border/60 [&>td]:py-1.5 [&>td]:px-2">
-                    <td>{shiftName.get(r.shiftId)}</td>
+                    <td>
+                      {shiftName.get(r.shiftId)}
+                      {netOf(r.shiftId) !== 0 && (
+                        <span className={cn('ms-2 rounded-sm px-1.5 py-0.5 text-[11px] font-medium', netOf(r.shiftId) > 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400')}
+                          title="Operadores que entram (−: saem) do turno">
+                          {signed(netOf(r.shiftId))}
+                        </span>
+                      )}
+                    </td>
                     {types.map(t => {
                       const c = r.cells[t.id]
                       if (!c) return <td key={t.id} className="text-center text-muted-foreground">—</td>
@@ -296,12 +405,14 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
 
         <footer className="flex items-center gap-2 px-6 py-3 border-t border-border">
           {error ? <span className="flex-1 flex gap-1.5 text-xs text-destructive"><Icons.AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />{error}</span>
-            : <span className="text-xs text-muted-foreground me-auto">{chosen.length} de {rows.length} selecionados</span>}
+            : missing && step === 'list'
+              ? <span className="flex-1 flex gap-1.5 text-xs text-amber-600 dark:text-amber-400"><Icons.AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />{missing} selecionado(s) sem turno — escolha na lista ou em “Aplicar aos selecionados”</span>
+              : <span className="text-xs text-muted-foreground me-auto">{chosen.length} de {rows.length} selecionados</span>}
           <Button type="button" variant="cancel" size="sm" onClick={step === 'list' ? onClose : () => { setStep('list'); setError(null) }}>
             {step === 'list' ? 'Cancelar' : 'Voltar'}
           </Button>
           {step === 'list'
-            ? <Button type="button" size="sm" disabled={busy || !chosen.length || !validDate} onClick={() => void next()}>{busy ? 'Calculando…' : 'Prévia do impacto'}</Button>
+            ? <Button type="button" size="sm" disabled={busy || !chosen.length || !validDate || !!missing} onClick={() => void next()}>{busy ? 'Calculando…' : 'Prévia do impacto'}</Button>
             : <Button type="button" variant="safeConfirm" size="sm" disabled={busy || !canApply} title={canApply ? undefined : 'Sem permissão para alterar operadores'} onClick={() => void next()}>{busy ? 'Aplicando…' : 'Confirmar ajuste'}</Button>}
         </footer>
       </div>

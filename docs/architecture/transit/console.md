@@ -108,6 +108,17 @@ his bounds fit the destination window, he operates most of its duties (lines, ve
 then tie-breaks in order: **most recent in the shift** (`CrewMemberShift.validFrom`), **most recent
 hire** (`Employee.hireDate`), matrícula last.
 
+**Day types balanced.** Only those with an effective crew plan (`planned`) — on the others the only
+demand left is the plantões. None at all: every suggestion is refused (`CONSOLE_NO_PLAN`), except new
+profiles, whose shift is then picked by hand ("Aplicar aos selecionados" sets shift, pattern and
+group for every selected row). Some only: the suggestion notes the day types left out.
+
+**Profiles.** One employee at a time: where he lowers the shortage the most (ties: the worst day);
+with no shortage left, the shift with the thinnest crew for its duties (crew ÷ duties over the
+window) — a shift without duties gets no one. His group: the one lowering the shortage, then the
+best worst day, then the emptiest (no stacking when the groups tie). Shift, pattern ("do turno" =
+none of his own) and group are editable per row.
+
 **Shifts.** Short shifts by worst balance; donors are the shifts with spare crew, never left short.
 A move is kept when it lowers the destination's shortage (Σ duties missing crew over the window —
 one person rarely lifts the worst day, as he's off on one of them); his group in the destination is

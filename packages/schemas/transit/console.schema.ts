@@ -90,7 +90,9 @@ export interface ConsoleShift {
 // A — the effective plan of a day type
 export interface ConsolePlanRow {
   dayTypeId: string
-  vehiclePlan: { id: string; label: string; validFrom: string | null; fleet: number | null; trips: number } | null
+  // fleet: the empresa's cars in use (its blocks with trips); reserve: its active cars (incl. in
+  // maintenance) beyond those
+  vehiclePlan: { id: string; label: string; validFrom: string | null; fleet: number | null; reserve: number; trips: number } | null
   crewPlan: {
     id: string; label: string
     // the empresa's duties of the role (plantões of the plan included)

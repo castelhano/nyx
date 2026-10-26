@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import {
-  CONSOLE_ACTION_DATED, consoleSchema, rebalanceRulesSchema,
+  CONSOLE_ACTION_DATED, CONSOLE_NO_PLAN, consoleSchema, rebalanceRulesSchema,
   type ConsoleActionDto, type ConsoleActionKind, type ConsoleImpact, type ConsoleSnapshot, type ConsoleSuggestDto, type ConsoleSuggestion,
   type CrewRole, type RebalanceRules, type RosterAdjustmentItem, type RosterAdjustmentRow, type RosterAdjustmentState,
 } from '@nyx/schemas'
@@ -13,7 +13,7 @@ import { CrewMemberShiftService } from '../crew/crew-member/crew-member-shift.se
 import { dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
 import { computeConsole, type ConsoleCrew, type ConsoleInput } from './console.calc'
 import { loadConsoleInput, type ConsoleParams } from './console.input'
-import { impact, suggestGroups, suggestLine, suggestProfiles, suggestShifts, type MoveItem } from './console.actions'
+import { impact, planned, suggestGroups, suggestLine, suggestProfiles, suggestShifts, type MoveItem } from './console.actions'
 
 // Painel de Escala — no model and no CRUD, like the DOP: registers itself for discovery / CASL and
 // computes the snapshot on each request (docs/proposal/brainchild/plan_roster_console_impl_v1.md).
@@ -43,6 +43,15 @@ export class ConsoleService {
   async suggest(kind: ConsoleActionKind, dto: ConsoleSuggestDto): Promise<ConsoleSuggestion> {
     const [input, settings] = await Promise.all([this.input(dto), this.roster.get(dto.branchId)])
     const rules = settings.rebalanceRules
+    const { input: scoped, left } = planned(input)
+    if (!scoped.days.length && kind !== 'profiles') throw new BadRequestException(CONSOLE_NO_PLAN)
+    const suggestion = this.suggestOf(kind, scoped, rules, dto)
+    return left.length && scoped.days.length
+      ? { ...suggestion, notes: [`${left.join(', ')} sem planejamento efetivo com escala ativa — fora da sugestão`] }
+      : suggestion
+  }
+
+  private suggestOf(kind: ConsoleActionKind, input: ConsoleInput, rules: RebalanceRules, dto: ConsoleSuggestDto): ConsoleSuggestion {
     if (kind === 'shifts') return suggestShifts(input, rules)
     if (kind === 'profiles') return suggestProfiles(input, rules)
     if (!dto.shiftId) throw new BadRequestException('Informe o turno')
@@ -74,12 +83,15 @@ export class ConsoleService {
       for (const i of items) {
         if (kind === 'profiles') {
           const e = input.noProfile.find(x => x.employeeId === i.crewMemberId)!
-          const created = await tx.crewMember.create({ data: { employeeId: e.employeeId, role: dto.role, restOffset: i.offset ?? 0 } })
+          // his own pattern only when it isn't the shift's — otherwise he follows the shift's
+          const shiftPattern = input.shifts.find(x => x.id === i.to)?.pattern?.id ?? null
+          const restPatternId = i.patternId && i.patternId !== shiftPattern ? i.patternId : null
+          const created = await tx.crewMember.create({ data: { employeeId: e.employeeId, role: dto.role, restOffset: i.offset ?? 0, restPatternId } })
           await tx.crewMemberShift.create({ data: { crewMemberId: created.id, shiftId: i.to, validFrom: toDbDate(effective), validTo: null } })
           log.push({
             crewMemberId: created.id, code: e.code, name: e.name,
             before: { shiftId: null, restOffset: 0, restPatternId: null },
-            after:  { shiftId: i.to, restOffset: i.offset ?? 0, restPatternId: null },
+            after:  { shiftId: i.to, restOffset: i.offset ?? 0, restPatternId },
           })
           continue
         }
