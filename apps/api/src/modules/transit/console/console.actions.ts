@@ -114,10 +114,17 @@ function blockedFrom(input: ConsoleInput, m: ConsoleCrew, to: Shift): string | n
 }
 
 // the order of the selection rule — the first ones move; matrícula last
-function rank<T extends Pick<ConsoleCrew, 'code' | 'hireDate' | 'shiftSince'>>(list: T[], rules: RebalanceRules): T[] {
+// `spread`: the lineSpread criterion (rest groups only) — how far above their fair share his lines
+// are in his group; the higher first. Without it the criterion is skipped.
+function rank<T extends Pick<ConsoleCrew, 'code' | 'hireDate' | 'shiftSince'>>(list: T[], rules: RebalanceRules, spread?: (m: T) => number): T[] {
   const keys = rules.criteria.filter(c => c.active).map(c => c.key)
   return [...list].sort((a, b) => {
     for (const k of keys) {
+      if (k === 'lineSpread') {
+        const x = spread ? spread(b) - spread(a) : 0
+        if (Math.abs(x) > 1e-9) return x
+        continue
+      }
       // the most recent first: later dates sort first
       const x = k === 'shiftTenure' ? (b.shiftSince ?? '').localeCompare(a.shiftSince ?? '') : b.hireDate.localeCompare(a.hireDate)
       if (x) return x
@@ -127,7 +134,7 @@ function rank<T extends Pick<ConsoleCrew, 'code' | 'hireDate' | 'shiftSince'>>(l
 }
 
 function reasons(m: Pick<ConsoleCrew, 'hireDate' | 'shiftSince'>, rules: RebalanceRules): string[] {
-  return rules.criteria.filter(c => c.active).map(c => (c.key === 'shiftTenure'
+  return rules.criteria.filter(c => c.active && c.key !== 'lineSpread').map(c => (c.key === 'shiftTenure'
     ? (m.shiftSince ? `No turno desde ${monthYear(m.shiftSince)}` : 'Sem data no turno')
     : `Admissão ${monthYear(m.hireDate)}`))
 }
@@ -259,15 +266,22 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
 // Within a shift, each pattern's crew spread over its groups as the demand asks (idealGroupCounts):
 // the overfull groups give the ones the rule picks (and anyone between groups) to the short groups.
 // Every row may also switch to another pattern.
+// How many per group: the demand (idealGroupCounts). Who leaves an overfull group and where to: by
+// the selection rule, where lineSpread (when active) weighs his lines — those bonded (priority or
+// preferred) with duties in the shift — against their fair share in each group, ∝ the group's size.
 export function suggestGroups(input: ConsoleInput, rules: RebalanceRules, shiftId: string): ConsoleSuggestion {
   const shift = input.shifts.find(s => s.id === shiftId)
   if (!shift) return empty('groups', 'Grupos de folga', 'Turno não encontrado')
   const team = input.crew.filter(m => inSupply(m) && m.shiftId === shiftId)
+  const spreading = rules.criteria.some(c => c.key === 'lineSpread' && c.active)
+  const shiftLines = new Set(lineRows(input).filter(r => r.shiftId === shiftId).map(r => r.lineId))
+  const lineCode = new Map(input.lines.map(l => [l.id, l.code]))
+  const linesOf = (m: ConsoleCrew) => [...new Set([...m.priorityLines, ...m.prefLines])].filter(l => shiftLines.has(l))
   const moves: ConsoleMove[] = [], benchList: ConsoleMove[] = []
-  const toMove = (m: ConsoleCrew, offset: number): ConsoleMove => ({
+  const toMove = (m: ConsoleCrew, offset: number, why: string[] = []): ConsoleMove => ({
     crewMemberId: m.id, code: m.code, name: m.name, from: shiftId, to: shiftId, offset, patternId: null,
     groupLabel: groupLabel(m.pattern!, offset, input.today), patternName: m.pattern!.name, groupOptions: groupOptions(m.pattern, input.today),
-    change: `${groupLabel(m.pattern!, m.offset, input.today)} → ${groupLabel(m.pattern!, offset, input.today)}`, reasons: reasons(m, rules),
+    change: `${groupLabel(m.pattern!, m.offset, input.today)} → ${groupLabel(m.pattern!, offset, input.today)}`, reasons: [...why, ...reasons(m, rules)],
   })
   for (const pid of [...new Set(team.flatMap(m => (m.pattern ? [m.pattern.id] : [])))]) {
     const mine = team.filter(m => m.pattern?.id === pid)
@@ -275,18 +289,43 @@ export function suggestGroups(input: ConsoleInput, rules: RebalanceRules, shiftI
     const shape = { pattern: p.cycle.pattern, staggered: p.staggered }
     const offsets = restGroupOffsets(shape)
     const ideal = idealGroupCounts(input, team, pid)
-    const count = offsets.map((_, g) => mine.filter(m => restGroupIndex(shape, m.offset) === g).length)
-    // who leaves: anyone between groups, then the overfull groups' ones by the rule
-    const leaving = [
-      ...mine.filter(m => restGroupIndex(shape, m.offset) == null),
-      ...offsets.flatMap((_, g) => rank(mine.filter(m => restGroupIndex(shape, m.offset) === g), rules).slice(0, Math.max(0, count[g] - ideal[g]))),
-    ]
-    const gaps = offsets.map((_, g) => Math.max(0, ideal[g] - count[g]))
-    for (const m of leaving) {
-      const g = gaps.findIndex(n => n > 0)
-      if (g < 0) break
-      gaps[g]--
-      moves.push(toMove(m, offsets[g]))
+    const idealTotal = ideal.reduce((a, b) => a + b, 0) || 1
+    // where each one is as the moves go: group index (null: between groups)
+    const at = new Map(mine.map(m => [m.id, restGroupIndex(shape, m.offset)]))
+    const count = (g: number) => mine.filter(m => at.get(m.id) === g).length
+    const bonded = new Map<string, number>()
+    for (const m of mine) for (const l of linesOf(m)) bonded.set(l, (bonded.get(l) ?? 0) + 1)
+    // his line l in group g: those there with it, over its fair share there
+    const above = (l: string, g: number) => mine.filter(x => at.get(x.id) === g && linesOf(x).includes(l)).length - bonded.get(l)! * ideal[g] / idealTotal
+    const excess = (m: ConsoleCrew) => {
+      const g = at.get(m.id)
+      return spreading && g != null ? linesOf(m).reduce((n, l) => n + above(l, g), 0) : 0
+    }
+    // why: his most concentrated line in the group he leaves
+    const why = (m: ConsoleCrew): string[] => {
+      const g = at.get(m.id)
+      if (!spreading || g == null || !linesOf(m).length) return []
+      const l = linesOf(m).sort((a, b) => above(b, g) - above(a, g))[0]
+      if (above(l, g) <= 0) return []
+      return [`Linha ${lineCode.get(l) ?? '?'}: ${mine.filter(x => at.get(x.id) === g && linesOf(x).includes(l)).length} no grupo ${restGroupLabel(g)}`]
+    }
+    const place = (m: ConsoleCrew) => {
+      const open = offsets.map((_, g) => g).filter(g => count(g) < ideal[g])
+      if (!open.length) return
+      // the open group where his lines are least represented; ties: the first
+      const score = (g: number) => (spreading ? linesOf(m).reduce((n, l) => n + above(l, g), 0) : 0)
+      const g = open.reduce((best, h) => (score(h) < score(best) - 1e-9 ? h : best), open[0])
+      moves.push(toMove(m, offsets[g], why(m)))
+      at.set(m.id, g)
+    }
+    // anyone between groups first, then one at a time out of the overfull groups
+    for (const m of mine.filter(x => at.get(x.id) == null)) place(m)
+    for (;;) {
+      const over = mine.filter(m => { const g = at.get(m.id); return g != null && count(g) > ideal[g] && !moves.some(x => x.crewMemberId === m.id) })
+      if (!over.length || offsets.every((_, g) => count(g) >= ideal[g])) break
+      const before = moves.length
+      place(rank(over, rules, excess)[0])
+      if (moves.length === before) break
     }
     benchList.push(...rank(mine.filter(m => !moves.some(x => x.crewMemberId === m.id)), rules).map(m => toMove(m, m.offset)))
   }

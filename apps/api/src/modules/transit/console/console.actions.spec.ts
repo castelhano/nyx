@@ -92,6 +92,26 @@ describe('grupos de folga por demanda', () => {
   })
 })
 
+describe('grupos de folga × linhas vinculadas', () => {
+  // all off on Monday; one stays there (see above) — the two bonded to L1 are the oldest in the shift
+  const inp = () => input(
+    crewOf(7, MAN, i => ({ offset: 6, prefLines: i < 2 ? ['L1'] : [], shiftSince: i < 2 ? '2020-01-01' : `2025-0${i}-01` })),
+    dutiesOf(MAN, 6).filter(d => d.dayTypeId !== 'DOM' || d.id.endsWith('-0')),
+  )
+  const stays = (s: ReturnType<typeof suggestGroups>) => ['MAN0', 'MAN1', 'MAN2', 'MAN3', 'MAN4', 'MAN5', 'MAN6'].filter(id => !s.moves.some(m => m.crewMemberId === id))
+
+  it('moves first who has his lines concentrated in the group', () => {
+    const s = suggestGroups(inp(), { criteria: [{ key: 'lineSpread', active: true }, ...rules.criteria] }, 'MAN')
+    expect(stays(s)).toHaveLength(1)
+    expect(['MAN0', 'MAN1']).not.toContain(stays(s)[0])
+    expect(s.moves.find(m => m.crewMemberId === 'MAN0')!.reasons[0]).toMatch(/Linha 101: 2 no grupo/)
+  })
+  it('without it, the selection rule alone: the oldest in the shift stay', () => {
+    const s = suggestGroups(inp(), { criteria: [{ key: 'lineSpread', active: false }, ...rules.criteria] }, 'MAN')
+    expect(['MAN0', 'MAN1']).toContain(stays(s)[0])
+  })
+})
+
 describe('linhas', () => {
   it('enables the line for the crew of the short shift, those who prefer it first', () => {
     const enabled: ConsoleCrew['lineAccess'] = { L1: 'ENABLED' }

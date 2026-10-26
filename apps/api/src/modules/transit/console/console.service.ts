@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import {
-  CONSOLE_ACTION_DATED, CONSOLE_NO_PLAN, consoleSchema, rebalanceRulesSchema,
+  CONSOLE_ACTION_DATED, CONSOLE_NO_PLAN, consoleSchema, rebalanceRulesSchema, withAllCriteria,
   type ConsoleActionDto, type ConsoleActionKind, type ConsoleImpact, type ConsoleSnapshot, type ConsoleSuggestDto, type ConsoleSuggestion,
   type CrewRole, type RebalanceRules, type RosterAdjustmentItem, type RosterAdjustmentRow, type RosterAdjustmentState,
 } from '@nyx/schemas'
@@ -42,7 +42,7 @@ export class ConsoleService {
 
   async suggest(kind: ConsoleActionKind, dto: ConsoleSuggestDto): Promise<ConsoleSuggestion> {
     const [input, settings] = await Promise.all([this.input(dto), this.roster.get(dto.branchId)])
-    const rules = settings.rebalanceRules
+    const rules = withAllCriteria(settings.rebalanceRules)
     const { input: scoped, left } = planned(input)
     if (!scoped.days.length && kind !== 'profiles') throw new BadRequestException(CONSOLE_NO_PLAN)
     const suggestion = this.suggestOf(kind, scoped, rules, dto)
@@ -120,7 +120,7 @@ export class ConsoleService {
       return tx.rosterAdjustment.create({
         data: {
           scopeId: input.scopeId, branchId: dto.branchId, role: dto.role, kind, effective: toDbDate(effective),
-          rule: settings.rebalanceRules, items: log as unknown as Prisma.InputJsonValue, userId: userId ?? null,
+          rule: withAllCriteria(settings.rebalanceRules), items: log as unknown as Prisma.InputJsonValue, userId: userId ?? null,
         },
       })
     })
@@ -204,11 +204,11 @@ export class ConsoleService {
   }
 
   async rule(branchId: string): Promise<RebalanceRules> {
-    return (await this.roster.get(branchId)).rebalanceRules
+    return withAllCriteria((await this.roster.get(branchId)).rebalanceRules)
   }
 
   async saveRule(branchId: string, raw: unknown): Promise<RebalanceRules> {
-    const rebalanceRules = rebalanceRulesSchema.parse(raw)
+    const rebalanceRules = withAllCriteria(rebalanceRulesSchema.parse(raw))
     const current = await this.roster.get(branchId)
     return (await this.roster.put({ ...current, rebalanceRules }, branchId)).rebalanceRules
   }

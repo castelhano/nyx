@@ -168,7 +168,8 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
     ? chosen.filter(m => m.to === shiftId && (action.kind === 'profiles' || m.from !== shiftId)).length - (action.kind === 'shifts' ? chosen.filter(m => m.from === shiftId && m.to !== shiftId).length : 0)
     : 0
   const hasGroups = action.kind === 'shifts' || action.kind === 'groups' || action.kind === 'profiles'
-  const ruleText = rule?.criteria.filter(c => c.active).map(c => REBALANCE_CRITERION_LABEL[c.key].label).join(' › ') || 'nenhum critério ativo'
+  // the order in force here — lineSpread weighs only in the rest groups
+  const ruleText = rule?.criteria.filter(c => c.active && (action.kind === 'groups' || !REBALANCE_CRITERION_LABEL[c.key].groupsOnly)).map(c => REBALANCE_CRITERION_LABEL[c.key].label).join(' › ') || 'nenhum critério ativo'
   const types = snapshot.dayTypes.filter(t => !!impact?.totals[t.id])
 
   return (

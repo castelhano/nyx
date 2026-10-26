@@ -109,7 +109,12 @@ after), listed in "Ajustes". No undo — reverting is a new adjustment the other
 **Selection rule** (`transit.roster.rebalanceRules`, edited only in the Painel): fixed filters —
 his bounds fit the destination window, he operates most of its duties (lines, vehicle types) —
 then tie-breaks in order: **most recent in the shift** (`CrewMemberShift.validFrom`), **most recent
-hire** (`Employee.hireDate`), matrícula last.
+hire** (`Employee.hireDate`), matrícula last. A third criterion, **distribute lines across the
+groups** (`lineSpread`, default first), weighs only in the rest groups suggestion: who leaves an
+overfull group is first who has his lines (priority or preferred, with duties in the shift)
+concentrated there above their fair share (∝ the group's ideal size), and he goes to the open group
+where they are least represented. Rules saved before a criterion existed get it active, at its
+default place (`withAllCriteria`).
 
 **Day types balanced.** Only those with an effective crew plan (`planned`) — on the others the only
 demand left is the plantões. None at all: every suggestion is refused (`CONSOLE_NO_PLAN`), except new

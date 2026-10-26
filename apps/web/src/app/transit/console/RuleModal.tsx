@@ -2,7 +2,8 @@
 
 // The empresa's selection rule — who the Painel suggests moving once it knows how many
 // (transit.roster.rebalanceRules, edited only here). The fixed filters (window, lines, vehicle
-// types) always apply; the criteria break ties in order, matrícula last.
+// types) always apply; the criteria break ties in order, matrícula last. A groups-only criterion
+// shows only from the rest groups (section or adjustment) — hidden, it keeps its place.
 
 import { useEffect, useState } from 'react'
 import { REBALANCE_CRITERION_LABEL, type RebalanceRules } from '@nyx/schemas'
@@ -14,8 +15,8 @@ import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 
 const ORIGIN = 'apps/web/src/app/transit/console/RuleModal.tsx'
 
-export function RuleModal({ branchId, rule, canEdit, onSaved, onClose }: {
-  branchId: string; rule: RebalanceRules; canEdit: boolean; onSaved: (r: RebalanceRules) => void; onClose: () => void
+export function RuleModal({ branchId, rule, groups, canEdit, onSaved, onClose }: {
+  branchId: string; rule: RebalanceRules; groups: boolean; canEdit: boolean; onSaved: (r: RebalanceRules) => void; onClose: () => void
 }) {
   useShortcutContext('console_rule_md', 'Atalhos — Regra de seleção')
   const [draft, setDraft]   = useState(rule)
@@ -44,10 +45,14 @@ export function RuleModal({ branchId, rule, canEdit, onSaved, onClose }: {
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  function move(i: number, d: -1 | 1) {
+  // the criteria shown, by their index in the rule
+  const shown = draft.criteria.map((c, i) => ({ c, i })).filter(({ c }) => groups || !REBALANCE_CRITERION_LABEL[c.key].groupsOnly)
+  // swaps with the next shown one up or down — a hidden one in between stays put
+  function move(k: number, d: -1 | 1) {
+    const other = shown[k + d]
+    if (!other) return
     const criteria = [...draft.criteria]
-    const j = i + d
-    if (j < 0 || j >= criteria.length) return
+    const i = shown[k].i, j = other.i
     ;[criteria[i], criteria[j]] = [criteria[j], criteria[i]]
     setDraft({ criteria })
   }
@@ -65,18 +70,21 @@ export function RuleModal({ branchId, rule, canEdit, onSaved, onClose }: {
           </p>
         </div>
         <ol className="space-y-1.5">
-          {draft.criteria.map((c, i) => (
+          {shown.map(({ c, i }, k) => (
             <li key={c.key} className={cn('flex items-center gap-2 rounded-md border border-border px-3 py-2', !c.active && 'opacity-55')}>
-              <span className="w-4 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+              <span className="w-4 text-xs text-muted-foreground tabular-nums">{k + 1}</span>
               <input type="checkbox" checked={c.active} disabled={!canEdit} onChange={() => toggle(i)} />
               <div className="flex-1 min-w-0">
-                <div className="text-sm">{REBALANCE_CRITERION_LABEL[c.key].label}</div>
+                <div className="text-sm">
+                  {REBALANCE_CRITERION_LABEL[c.key].label}
+                  {REBALANCE_CRITERION_LABEL[c.key].groupsOnly && <span className="ms-2 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">grupos de folga</span>}
+                </div>
                 <div className="text-[11px] text-muted-foreground">{REBALANCE_CRITERION_LABEL[c.key].hint}</div>
               </div>
               {canEdit && (
                 <div className="flex flex-col">
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-30"><Icons.ChevronUp className="w-4 h-4" /></button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === draft.criteria.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-30"><Icons.ChevronDown className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => move(k, -1)} disabled={k === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-30"><Icons.ChevronUp className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => move(k, 1)} disabled={k === shown.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-30"><Icons.ChevronDown className="w-4 h-4" /></button>
                 </div>
               )}
             </li>

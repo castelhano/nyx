@@ -44,10 +44,12 @@ const rosterRangeDefault = {
 // Painel de Escala — who the Painel suggests moving once it knows how many: tie-breaks in priority
 // order (each breaks the previous one's ties; matrícula last). shiftTenure: the latest to arrive
 // at their current shift go first; hireDate: the most recently hired go first.
-export const REBALANCE_CRITERIA = ['shiftTenure', 'hireDate'] as const
+export const REBALANCE_CRITERIA = ['lineSpread', 'shiftTenure', 'hireDate'] as const
 export type RebalanceCriterion = typeof REBALANCE_CRITERIA[number]
 
-export const REBALANCE_CRITERION_LABEL: Record<RebalanceCriterion, { label: string; hint: string }> = {
+// groupsOnly: weighs only in the rest groups suggestion — the others skip it
+export const REBALANCE_CRITERION_LABEL: Record<RebalanceCriterion, { label: string; hint: string; groupsOnly?: true }> = {
+  lineSpread:  { label: 'Distribuir linhas entre os grupos', hint: 'Move primeiro quem tem linhas (prioritárias ou preferidas) concentradas no grupo, para o grupo onde elas têm menos candidatos', groupsOnly: true },
   shiftTenure: { label: 'Mais novo no turno',   hint: 'Move primeiro quem chegou por último ao turno de origem' },
   hireDate:    { label: 'Mais novo na empresa', hint: 'Move primeiro os admitidos mais recentemente — preserva os antigos' },
 }
@@ -58,6 +60,15 @@ export const rebalanceRulesSchema = z.object({
   criteria: z.array(z.object({ key: z.enum(REBALANCE_CRITERIA), active: z.boolean() })).default(rebalanceRulesDefault.criteria),
 })
 export type RebalanceRules = z.infer<typeof rebalanceRulesSchema>
+
+// a rule saved before a criterion existed: the missing ones come in active, where the default puts them
+export function withAllCriteria(rules: RebalanceRules): RebalanceRules {
+  const criteria = [...rules.criteria]
+  REBALANCE_CRITERIA.forEach((key, i) => {
+    if (!criteria.some(c => c.key === key)) criteria.splice(Math.min(i, criteria.length), 0, { key, active: true })
+  })
+  return { criteria }
+}
 
 export const rosterSettingsSchema = withMeta(z.object({
   // what CrewMemberLine.access means: WHITELIST — a crew member only operates his ENABLED

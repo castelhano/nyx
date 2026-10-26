@@ -161,6 +161,7 @@ export default function ConsolePage() {
         <RuleModal
           branchId={branchId}
           rule={rule}
+          groups={action ? action.kind === 'groups' : section === 'groups'}
           canEdit={canUpdate}
           onClose={() => setRuleOpen(false)}
           onSaved={r => {
