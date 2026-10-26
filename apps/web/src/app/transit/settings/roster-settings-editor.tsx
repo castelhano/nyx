@@ -10,6 +10,7 @@ import { Icons } from '@/lib/icons'
 import { SectionHeader, DiffDot, NumberInput, RangeTable, DURATION_UNIT } from './criteria-tables'
 
 const ROSTER_RANGE_META: Record<keyof RosterSettings['range'], { label: string; unit: string; hint: string }> = {
+  priorityLine:   { label: 'Linhas Prioritárias',  unit: '%',          hint: 'Minutos de viagem nas linhas prioritárias definidas pela empresa — pesa antes das preferências do operador.' },
   driverPrefLine: { label: 'Linhas Preferenciais',  unit: '%',          hint: 'Minutos de viagem nas linhas preferenciais do operador, ponderados pelo peso de cada uma.' },
   shiftFit:       { label: 'Ajuste ao Turno',       unit: DURATION_UNIT, hint: 'Média por jornada de quanto o início/fim fica fora do ideal do turno.' },
   loadDeficit:    { label: 'Déficit de Carga',      unit: '%',          hint: 'Quanto falta para a carga do período (com "Garantir carga").' },
@@ -85,6 +86,14 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         >
           <NumberInput value={value.loadPeriodStartDay} onChange={(v) => onChange({ ...value, loadPeriodStartDay: Math.round(v) })} min={1} max={28} />
           <span className="text-sm text-muted-foreground w-6"></span>
+        </Row>
+        <Row
+          diff={diff('awayMinDays')}
+          label="Afastamento no Painel"
+          hint="Ausência aprovada (não férias) a partir destes dias tira o operador do quadro no Painel de Escala"
+        >
+          <NumberInput value={value.awayMinDays} onChange={(v) => onChange({ ...value, awayMinDays: Math.round(v) })} min={1} max={365} />
+          <span className="text-sm text-muted-foreground w-6">dias</span>
         </Row>
         <Row
           diff={diff('habitualVehicleDays')}

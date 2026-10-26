@@ -2,14 +2,16 @@ import type { ShiftWindow } from '@nyx/schemas'
 import type { PrismaService } from '../../../../prisma/prisma.service'
 
 // What the crew calculation needs about the operators: their active shifts (CrewShift) and who
-// operates each line of the plan (LineOperator) — see CrewCalcContext.shifts / lineOperators.
+// operates each line of the plan (LineOperator) — see CrewCalcContext.shifts / lineOperators —
+// and whether the plan's Scope has more than one operator (CrewCalcContext.sharedScope).
 // Shared by CrewPlanService.recalculate, the crew solver's input and the daily operation.
 // `lines`: the lines of a VehiclePlan, or given ones.
 export async function loadCrewBranchRules(prisma: PrismaService, lines: { vehiclePlanId: string } | { lineIds: string[] }): Promise<{
   shifts:        Map<string, ShiftWindow[]>
   lineOperators: Map<string, string[]>
+  sharedScope:   boolean
 }> {
-  const [shiftRows, operatorRows] = await Promise.all([
+  const [shiftRows, operatorRows, operatorCount] = await Promise.all([
     prisma.crewShift.findMany({
       where:  { isActive: true },
       select: {
@@ -22,6 +24,11 @@ export async function loadCrewBranchRules(prisma: PrismaService, lines: { vehicl
       where:  'lineIds' in lines ? { lineId: { in: lines.lineIds } } : { line: { planLines: { some: { vehiclePlanId: lines.vehiclePlanId } } } },
       select: { lineId: true, branchId: true },
     }),
+    prisma.scopeOperator.count({
+      where: 'lineIds' in lines
+        ? { scope: { lines: { some: { id: { in: lines.lineIds } } } } }
+        : { scope: { vehiclePlans: { some: { id: lines.vehiclePlanId } } } },
+    }),
   ])
   const shifts = new Map<string, ShiftWindow[]>()
   for (const { branches, ...s } of shiftRows) {
@@ -29,5 +36,5 @@ export async function loadCrewBranchRules(prisma: PrismaService, lines: { vehicl
   }
   const lineOperators = new Map<string, string[]>()
   for (const r of operatorRows) lineOperators.set(r.lineId, [...(lineOperators.get(r.lineId) ?? []), r.branchId])
-  return { shifts, lineOperators }
+  return { shifts, lineOperators, sharedScope: operatorCount > 1 }
 }

@@ -114,6 +114,8 @@ export interface RgMember {
   lineAccess: Record<string, 'ENABLED' | 'BLOCKED'>
   // preferred line → its grade (0..1)
   prefGrade:  Record<string, number>
+  // the empresa's priority lines for him (CrewMemberLine.priority) → 1
+  priorityGrade: Record<string, number>
   blockedVehicleTypes: string[]
   overtimePreference: 'LIKES' | 'NEUTRAL' | 'AVOIDS'
   status:  RgStatus[]
@@ -248,11 +250,17 @@ const STAGE_REASON: Record<Stage, string> = {
 // and the crew members the fixed rules allow (Kuhn) — the rest between days and the change
 // limit aren't counted, so it's an upper bound.
 export function coverageBound(model: RosterModel): number {
-  const { input } = model
   let total = 0
+  for (const n of coverageByDay(model).values()) total += n
+  return total
+}
+
+// the same matching, day by day (day index → duties covered) — the Painel de Escala's "cobríveis"
+export function coverageByDay(model: RosterModel): Map<number, number> {
+  const out = new Map<number, number>()
   const byDay = new Map<number, number[]>()
-  input.duties.forEach((d, i) => byDay.set(d.day, [...(byDay.get(d.day) ?? []), i]))
-  for (const duties of byDay.values()) {
+  model.input.duties.forEach((d, i) => byDay.set(d.day, [...(byDay.get(d.day) ?? []), i]))
+  for (const [day, duties] of byDay) {
     const holder = new Map<number, number>()
     const tryDuty = (di: number, seen: Set<number>): boolean => {
       for (const mi of model.candidates[di]) {
@@ -263,9 +271,11 @@ export function coverageBound(model: RosterModel): number {
       }
       return false
     }
-    for (const di of duties) if (tryDuty(di, new Set())) total++
+    let n = 0
+    for (const di of duties) if (tryDuty(di, new Set())) n++
+    out.set(day, n)
   }
-  return total
+  return out
 }
 
 // Why each duty left without anyone has none — grouped by reason and shift.
@@ -305,12 +315,13 @@ export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holde
   return [...groups.values()].sort((a, b) => b.dutyIds.length - a.dutyIds.length)
 }
 
-// graded share (0..1) of the duty's trip minutes on the member's preferred lines; null without
-function prefShare(m: RgMember, d: RgDuty): { num: number; den: number } {
+// graded share of the duty's trip minutes on the given lines (the member's preferred or priority
+// ones): num / den is 0..1
+function lineShare(grade: Record<string, number>, d: RgDuty): { num: number; den: number } {
   let num = 0, den = 0
   for (const l of d.lineMinutes) {
     den += l.minutes
-    num += l.minutes * (m.prefGrade[l.lineId] ?? 0)
+    num += l.minutes * (grade[l.lineId] ?? 0)
   }
   return { num, den }
 }
@@ -339,6 +350,7 @@ export class RosterModel {
   // per duty: the members it can go to
   readonly candidates: Int32Array[]
   readonly hasPrefs: boolean[]
+  readonly hasPriority: boolean[]
 
   constructor(readonly input: RgInput) {
     this.M = input.members.length
@@ -356,6 +368,7 @@ export class RosterModel {
       this.candidates.push(Int32Array.from(list))
     }
     this.hasPrefs = input.members.map(m => Object.keys(m.prefGrade).length > 0)
+    this.hasPriority = input.members.map(m => Object.keys(m.priorityGrade).length > 0)
   }
 
   ruleOf(mi: number, di: number): number {
@@ -371,7 +384,7 @@ export class RosterModel {
     let last = { ...m.lastSignatures }
     let prevEnd = m.prevEnd, prevFixed = true
     let warns = 0, hard = false, workedDays = 0, pin = 0
-    let prefNum = 0, prefDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
+    let prefNum = 0, prefDen = 0, prioNum = 0, prioDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
     let publishedDays = 0, publishedChanged = 0
     // compensate: a one-off substitution (a different duty, back to the usual one the next worked
     // day) doesn't count against maxChanges — its two changes still weigh in the score
@@ -403,8 +416,10 @@ export class RosterModel {
         // a blocked pair (only in an allocation made by hand) counts as one broken rule
         const rule = this.ruleOf(mi, di)
         warns += rule < 0 ? 1 : rule
-        const p = prefShare(m, d)
+        const p = lineShare(m.prefGrade, d)
         prefNum += p.num; prefDen += p.den
+        const q = lineShare(m.priorityGrade, d)
+        prioNum += q.num; prioDen += q.den
         const w = m.windows[t]
         if (w) { shiftSum += shiftIdealDistance(w, start, end); shiftN++ }
       } else {
@@ -436,6 +451,7 @@ export class RosterModel {
     let num = 0, den = 0
     const add = (c: RangeCriterion, value: number, raw = rangeRaw) => { num += c.modifier * raw(value, c); den += c.modifier }
     const share = this.hasPrefs[mi] && prefDen > 0 ? prefNum / prefDen * 100 : null
+    if (r.priorityLine.active && this.hasPriority[mi] && prioDen > 0) add(r.priorityLine, prioNum / prioDen * 100)
     if (r.driverPrefLine.active && share != null) add(r.driverPrefLine, share)
     if (r.shiftFit.active && shiftN) add(r.shiftFit, shiftSum / shiftN)
     if (target > 0) {
@@ -511,8 +527,12 @@ export function construct(model: RosterModel): RgResult {
           const change = isChange(last[mi], d.signature)
           if (change && changes[mi] >= input.maxChanges) return
           if (change && r.tableChanges.active) x += r.tableChanges.modifier
+          if (r.priorityLine.active && model.hasPriority[mi]) {
+            const q = lineShare(m.priorityGrade, d)
+            x += r.priorityLine.modifier * (1 - (q.den ? q.num / q.den : 0))
+          }
           if (r.driverPrefLine.active && model.hasPrefs[mi]) {
-            const p = prefShare(m, d)
+            const p = lineShare(m.prefGrade, d)
             x += r.driverPrefLine.modifier * (1 - (p.den ? p.num / p.den : 0))
           }
           const w = m.windows[t]

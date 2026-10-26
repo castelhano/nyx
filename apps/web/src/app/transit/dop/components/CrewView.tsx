@@ -218,7 +218,7 @@ export function CrewView({ scopeId, branchId, from, to }: { scopeId: string; bra
         <StatTile icon={Icons.Users} label="Jornadas/dia útil" value={fmtNum(refDuties)} sub={`${fmtNum(total.dutyShare, 0)} jornadas-dia no período`} />
         <StatTile
           icon={Icons.UserRound} label="Quadro estimado" value={staff.estimate.toLocaleString('pt-BR')}
-          sub={`maior entre útil (${staff.weekday}) e sáb+dom (${staff.saturday}+${staff.sunday}) — estimativa`}
+          sub={`maior entre útil (${staff.weekday}) e sáb+dom (${staff.saturday}+${staff.sunday}) — estimativa; por turno e regime no Painel de Escala`}
         />
         <StatTile icon={Icons.Clock} label="Horas operacionais" value={fmtHours(total.paidMinutes)} />
         <StatTile

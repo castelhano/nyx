@@ -2,6 +2,7 @@ import { lineVehicleTypesSchema, restPatternWorks, shiftFits, shiftIdealDistance
 import type { PrismaService } from '../../../prisma/prisma.service'
 import type { TransitRosterConfigService } from '../settings/transit-roster-config.service'
 import { addDays, dayOf, toDbDate, type Day } from '../timetabling/plan-validity'
+import { loadContextCycles, restOfDay } from './crew-context'
 
 // The day's own checks — who works each duty and which vehicle runs each block — on top of
 // what the crew/vehicle calculations already flag. Never block anything: they become
@@ -32,8 +33,9 @@ export interface BlockFacts {
 
 type CrewRow = Awaited<ReturnType<typeof loadCrewFacts>>['members'][number]
 
-// Everything the crew checks read about the crew members holding the day's duties
-export async function loadCrewFacts(prisma: PrismaService, roster: TransitRosterConfigService, day: Day, dailyDutyIds: string[]) {
+// Everything the crew checks read about the crew members holding the day's duties — `crewContext`:
+// the day's DailyOperation.crewContext (the rest cycles it was generated with)
+export async function loadCrewFacts(prisma: PrismaService, roster: TransitRosterConfigService, day: Day, dailyDutyIds: string[], crewContext: unknown = null) {
   const entries = await prisma.rosterEntry.findMany({
     where:  { dailyDutyId: { in: dailyDutyIds } },
     select: { crewMemberId: true, dailyDutyId: true },
@@ -72,7 +74,8 @@ export async function loadCrewFacts(prisma: PrismaService, roster: TransitRoster
   ])
   const branches = [...new Set(members.map(m => m.employee.branchId))]
   const settings = new Map(await Promise.all(branches.map(async b => [b, await roster.get(b)] as const)))
-  return { entries, members, sameDay, neighbors, occurrences, holidays, settings }
+  const cycles = await loadContextCycles(prisma, [crewContext])
+  return { entries, members, sameDay, neighbors, occurrences, holidays, settings, crewContext, cycles }
 }
 
 const shiftWindowSelect = {
@@ -107,7 +110,7 @@ export function crewIssues(
     if (facts.occurrences.some(o => o.crewMemberId === memberId && o.kind === 'ABSENCE')) push('CREW_ABSENT')
 
     const mine = facts.sameDay.filter(e => e.crewMemberId === memberId)
-    if (mine.some(e => e.kind === 'DAY_OFF' || e.kind === 'COMP_OFF') || offByPattern(m, day, facts.holidays)) push('CREW_ON_DAY_OFF')
+    if (mine.some(e => e.kind === 'DAY_OFF' || e.kind === 'COMP_OFF') || offByPattern(m, day, facts)) push('CREW_ON_DAY_OFF')
     if (mine.filter(e => e.dailyDutyId).length > 1) push('CREW_MULTIPLE_DUTIES', 'warning')
 
     if (duty.branchId && m.employee.branchId !== duty.branchId) push('CREW_BRANCH_MISMATCH')
@@ -167,11 +170,12 @@ export function effectiveWindow(
   return { ...shift, startFloor, endCeiling }
 }
 
-function offByPattern(m: CrewRow, day: Day, holidays: { branchId: string | null }[]): boolean {
-  const pattern = m.restPattern ?? m.shifts[0]?.shift.restPattern
+// off by his rest cycle — the one the day was generated with, else his current one
+function offByPattern(m: CrewRow, day: Day, facts: Awaited<ReturnType<typeof loadCrewFacts>>): boolean {
+  const { pattern, offset } = restOfDay(facts.crewContext, m.id, facts.cycles, { pattern: m.restPattern ?? m.shifts[0]?.shift.restPattern ?? null, offset: m.restOffset })
   if (!pattern) return false
-  const isHoliday = holidays.some(h => !h.branchId || h.branchId === m.employee.branchId)
-  return !restPatternWorks(pattern, m.restOffset, day, isHoliday)
+  const isHoliday = facts.holidays.some(h => !h.branchId || h.branchId === m.employee.branchId)
+  return !restPatternWorks(pattern, offset, day, isHoliday)
 }
 
 // issues per daily block about its vehicle and coverage

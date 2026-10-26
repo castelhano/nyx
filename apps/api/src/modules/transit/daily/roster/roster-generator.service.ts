@@ -3,11 +3,11 @@ import { Worker } from 'worker_threads'
 import { Prisma } from '@prisma/client'
 import * as path from 'path'
 import { Observable, Subject } from 'rxjs'
-import { ROSTER_MAX_HORIZON_DAYS, rosterGeneratorParamsSchema, type RosterGeneratorParams } from '@nyx/schemas'
+import { ROSTER_MAX_HORIZON_DAYS, rosterGeneratorParamsSchema, type DailyCrewContext, type RosterGeneratorParams } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
-import { addDays, toDbDate } from '../../timetabling/plan-validity'
+import { addDays, dayOf, toDbDate } from '../../timetabling/plan-validity'
 import { DailyOperationService } from '../daily-operation.service'
 import type { RosterProposal } from './roster-generator.calc'
 import { daysBetween, loadRosterInput, type RosterContext } from './roster-generator.input'
@@ -282,7 +282,7 @@ export class RosterGeneratorService {
     const kindOf    = new Map(input.duties.map(d => [d.id, d.kind]))
     // a day that left the editable statuses meanwhile keeps what it has
     const editable: ('PLANNED' | 'PUBLISHED')[] = params.includePublished ? ['PLANNED', 'PUBLISHED'] : ['PLANNED']
-    const planned = await this.prisma.dailyOperation.findMany({ where: { id: { in: context.operationIds }, status: { in: editable } }, select: { id: true, status: true } })
+    const planned = await this.prisma.dailyOperation.findMany({ where: { id: { in: context.operationIds }, status: { in: editable } }, select: { id: true, status: true, date: true, crewContext: true } })
     const published = new Set(planned.filter(p => p.status === 'PUBLISHED').map(p => p.id))
     const openDuties = await this.prisma.dailyDuty.findMany({
       where: { id: { in: dutyIds }, dailyOperationId: { in: planned.map(p => p.id) } }, select: { id: true, dailyOperationId: true },
@@ -344,6 +344,14 @@ export class RosterGeneratorService {
         ],
       })
       if (changes.length) await tx.dailyChangeLog.createMany({ data: changes })
+      // the rest cycle each crew member was generated with, on every day written — the day's checks
+      // read it, so a later change of his rest group only reaches the next generation
+      for (const op of planned) {
+        const rest = context.crewContext.get(dayOf(op.date))
+        if (!rest) continue
+        const crewContext = { ...((op.crewContext ?? {}) as DailyCrewContext), [params.role]: rest }
+        await tx.dailyOperation.update({ where: { id: op.id }, data: { crewContext: crewContext as Prisma.InputJsonValue } })
+      }
     }, { timeout: 60_000 })
 
     // the record of the generation (the day's panel lists it) — the summary without its long lists

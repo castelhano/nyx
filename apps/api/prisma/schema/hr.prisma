@@ -55,6 +55,7 @@ model JobTitle {
 
   department Department @relation(fields: [departmentId], references: [id])
   contracts  Contract[]
+  crewRole   CrewRoleJobTitle?
 
   @@map("job_titles")
 }

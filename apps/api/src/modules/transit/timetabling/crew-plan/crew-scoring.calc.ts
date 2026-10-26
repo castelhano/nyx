@@ -202,6 +202,8 @@ export interface CrewCalcContext {
   // lineId → branchIds operating it (LineOperator; a line absent or with none: any) — absent
   // skips LINE_NOT_OPERATED
   lineOperators?: Map<string, string[]>
+  // the plan's Scope has more than one operator — a duty with no branch is BRANCH_NONE
+  sharedScope?:   boolean
 }
 
 export interface DutyEvaluation {
@@ -433,6 +435,7 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     }
   }
   for (const pieceId of notOperated) push({ code: 'LINE_NOT_OPERATED', severity: 'warning', value: 0, pieceId })
+  if (!duty.branchId && ctx.sharedScope) push({ code: 'BRANCH_NONE', severity: 'error', value: 0 })
 
   const shift = dutyShift(duty, summary, ctx)
   push(shift.issue)
@@ -636,11 +639,12 @@ export function computeCrewPlan(input: {
   repeatsNextDay?: boolean
   shifts?:         CrewCalcContext['shifts']
   lineOperators?:  CrewCalcContext['lineOperators']
+  sharedScope?:    boolean
 }): CrewCalcResult {
   const ctx: CrewCalcContext = {
     settings: input.settings, blocks: new Map(input.blocks.map(b => [b.id, b])),
     walk: input.walk, mealStops: input.mealStops, repeatsNextDay: input.repeatsNextDay,
-    shifts: input.shifts, lineOperators: input.lineOperators,
+    shifts: input.shifts, lineOperators: input.lineOperators, sharedScope: input.sharedScope,
   }
   const agg = new CrewScoreAggregate(ctx)
 

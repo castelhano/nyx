@@ -18,19 +18,22 @@ const FORM_ID = 'crew-lines-form'
 
 // The operator's lines (CrewMemberLine) as one board: every line his empresa operates, by line
 // group. One click toggles the state that matters in the empresa's mode (enabled in
-// "habilitadas", blocked in "bloqueadas"); the ★ makes it the next preference. The plantão is one
-// more item (STANDBY): allowed unless blocked, whatever the mode, and rankable. Saved at once.
+// "habilitadas", blocked in "bloqueadas"); the ★ makes it the next preference; the ◆ makes it a
+// priority line of the empresa (no limit, weighs before his preferences in the generator, the crew
+// portal can't change it). The plantão is one more item (STANDBY): allowed unless blocked, whatever
+// the mode, and rankable. Saved at once.
 
 interface Board {
   lineAccessMode:    'WHITELIST' | 'BLACKLIST'
   maxPreferredLines: number
   lines:   { id: string; code: string; name: string; groups: { id: string; name: string }[] }[]
-  entries: { lineId: string; access: 'ENABLED' | 'BLOCKED' | null; rank: number | null }[]
+  entries: { lineId: string; access: 'ENABLED' | 'BLOCKED' | null; rank: number | null; priority: boolean }[]
   standby: { blocked: boolean; rank: number | null }
 }
 
-// prefs may hold STANDBY (the plantão's place among the preferred lines)
-interface Draft { on: string[]; prefs: string[]; standbyBlocked: boolean }
+// prefs may hold STANDBY (the plantão's place among the preferred lines); prio: the empresa's
+// priority lines
+interface Draft { on: string[]; prefs: string[]; prio: string[]; standbyBlocked: boolean }
 
 const STANDBY = '__STANDBY__'
 
@@ -59,7 +62,8 @@ function draftOf(board: Board, entries = board.entries, standby = board.standby)
     .sort((a, b) => a.rank! - b.rank!)
     .map(e => e.lineId)
     .slice(0, board.maxPreferredLines)
-  return { on, prefs, standbyBlocked: standby.blocked }
+  const prio = entries.filter(e => e.priority && known.has(e.lineId) && operable(e.lineId)).map(e => e.lineId)
+  return { on, prefs, prio, standbyBlocked: standby.blocked }
 }
 
 export default function CrewMemberLinesPage() {
@@ -80,7 +84,7 @@ export default function CrewMemberLinesPage() {
   const [edit, setEdit]     = useState<Draft | null>(null)
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
-  const draft = edit ?? (board ? draftOf(board) : { on: [], prefs: [], standbyBlocked: false })
+  const draft = edit ?? (board ? draftOf(board) : { on: [], prefs: [], prio: [], standbyBlocked: false })
   const dirty = !!board && !!edit && JSON.stringify(edit) !== JSON.stringify(draftOf(board))
 
   const whitelist = board?.lineAccessMode === 'WHITELIST'
@@ -99,7 +103,14 @@ export default function CrewMemberLinesPage() {
     const set = new Set(draft.on)
     for (const id of ids) { if (on) set.add(id); else set.delete(id) }
     const next = { ...draft, on: [...set] }
-    setEdit({ ...next, prefs: next.prefs.filter(id => operable(id, next)) })
+    setEdit({ ...next, prefs: next.prefs.filter(id => operable(id, next)), prio: next.prio.filter(id => operable(id, next)) })
+  }
+
+  // a priority line must be operable — marking one enables it (whitelist) / unblocks it (blacklist)
+  function prioritize(id: string) {
+    if (draft.prio.includes(id)) return setEdit({ ...draft, prio: draft.prio.filter(p => p !== id) })
+    const on = whitelist ? [...new Set([...draft.on, id])] : draft.on.filter(x => x !== id)
+    setEdit({ ...draft, on, prio: [...draft.prio, id] })
   }
 
   function star(id: string) {
@@ -145,11 +156,12 @@ export default function CrewMemberLinesPage() {
     setSaving(true)
     try {
       const mark = whitelist ? 'ENABLED' : 'BLOCKED'
-      const ids = new Set([...draft.on, ...draft.prefs.filter(id => id !== STANDBY)])
+      const ids = new Set([...draft.on, ...draft.prefs.filter(id => id !== STANDBY), ...draft.prio])
       const entries = [...ids].map(lineId => ({
         lineId,
-        access: draft.on.includes(lineId) ? mark : null,
-        rank:   draft.prefs.includes(lineId) ? draft.prefs.indexOf(lineId) + 1 : null,
+        access:   draft.on.includes(lineId) ? mark : null,
+        rank:     draft.prefs.includes(lineId) ? draft.prefs.indexOf(lineId) + 1 : null,
+        priority: draft.prio.includes(lineId),
       }))
       const standby = { blocked: draft.standbyBlocked, rank: draft.prefs.includes(STANDBY) ? draft.prefs.indexOf(STANDBY) + 1 : null }
       const res  = await apiFetch(`/transit/crew-member-line/board/${crewMemberId}`, { method: 'PUT', body: JSON.stringify({ entries, standby }) })
@@ -223,6 +235,25 @@ export default function CrewMemberLinesPage() {
                 emptyMessage={copySearch ? 'Nenhum operador' : 'Digite matrícula ou nome'}
               />
             )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium w-24">Prioritárias</span>
+            {draft.prio.map(id => {
+              const line = lineById.get(id)
+              return (
+                <span key={id} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-sky-500/60 bg-sky-500/10 text-sm">
+                  {line?.code ?? '—'}
+                  {!readonly && (
+                    <button type="button" onClick={() => prioritize(id)} title="Tirar das prioritárias" className="text-muted-foreground hover:text-foreground">
+                      <Icons.X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </span>
+              )
+            })}
+            {!draft.prio.length && <span className="inline-flex items-center h-8 px-2.5 rounded-sm border border-dashed border-border text-sm text-muted-foreground">—</span>}
+            <span className="text-xs text-muted-foreground">◆ definidas pela empresa · sem limite · o gerador considera antes das preferidas · o operador não altera</span>
           </div>
 
           {board.maxPreferredLines > 0 && (
@@ -324,6 +355,7 @@ export default function CrewMemberLinesPage() {
                 {section.lines.map(l => {
                   const on = draft.on.includes(l.id)
                   const rank = draft.prefs.indexOf(l.id) + 1
+                  const prio = draft.prio.includes(l.id)
                   const canStar = operable(l.id) && (rank > 0 || draft.prefs.length < board.maxPreferredLines)
                   return (
                     <span
@@ -346,11 +378,18 @@ export default function CrewMemberLinesPage() {
                         <button
                           type="button" disabled={readonly || !canStar} onClick={() => star(l.id)}
                           title={rank ? `${rank}ª preferida — clique para tirar` : 'Tornar preferida'}
-                          className={cn('h-full pr-2 pl-0.5 text-xs disabled:opacity-30 disabled:cursor-default', rank ? 'text-amber-500' : 'text-muted-foreground/60 hover:text-amber-500')}
+                          className={cn('h-full pl-0.5 text-xs disabled:opacity-30 disabled:cursor-default', rank ? 'text-amber-500' : 'text-muted-foreground/60 hover:text-amber-500')}
                         >
                           {rank ? `★${rank}` : '☆'}
                         </button>
                       )}
+                      <button
+                        type="button" disabled={readonly} onClick={() => prioritize(l.id)}
+                        title={prio ? 'Prioritária da empresa — clique para tirar' : 'Tornar prioritária (empresa)'}
+                        className={cn('h-full pr-2 pl-1 text-xs disabled:opacity-30 disabled:cursor-default', prio ? 'text-sky-500' : 'text-muted-foreground/60 hover:text-sky-500')}
+                      >
+                        {prio ? '◆' : '◇'}
+                      </button>
                     </span>
                   )
                 })}

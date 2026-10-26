@@ -1,0 +1,152 @@
+import { describe, expect, it } from 'vitest'
+import { rosterSettingsSchema } from '@nyx/schemas'
+import { computeConsole, idealGroupCounts, maxRun, type ConsoleCrew, type ConsoleDuty, type ConsoleInput } from './console.calc'
+
+const settings = rosterSettingsSchema.parse({})
+// 2026-10-05 is a Monday
+const START = '2026-10-05'
+const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+const typeOf = (w: number) => (w < 5 ? 'UTIL' : w === 5 ? 'SAB' : 'DOM')
+
+const window = (n = 14): ConsoleInput['days'] =>
+  Array.from({ length: n }, (_, i) => ({ day: addDays(START, i), weekday: i % 7, dayTypeId: typeOf(i % 7) }))
+
+// a weekly 6x1 with the day off on `off` (0 = Monday): anchor on a Monday, offset moves the day off
+const sixOne = { id: 'p6', name: '6x1', cycle: { pattern: 'TTTTTTF', anchorDate: START, offOnHolidays: false }, staggered: true }
+
+const shift = (id: string, startFloor: number, startCeiling: number, endFloor: number, endCeiling: number) => ({
+  id, code: id, name: id, priority: 0, allowSplit: false,
+  startFloor, startIdealMin: startFloor, startIdealMax: startCeiling, startCeiling,
+  endFloor, endIdealMin: endFloor, endIdealMax: endCeiling, endCeiling, pattern: sixOne,
+})
+const MAN = shift('MAN', 240, 480, 600, 960)
+const TAR = shift('TAR', 720, 900, 1260, 1500)
+
+const crewOf = (n: number, shiftId: string, over: Partial<ConsoleCrew> = {}, off = (i: number) => i % 7): ConsoleCrew[] =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `${shiftId}${i}`, code: `${shiftId}${i}`, name: `${shiftId} ${i}`, hireDate: '2020-01-01', shiftId, shiftSince: '2025-01-01',
+    window: shiftId === 'MAN' ? MAN : TAR, notBefore: null, notAfter: null, pattern: sixOne, ownPattern: false, offset: ((6 - off(i)) % 7 + 7) % 7,
+    lineAccess: {}, prefLines: [], priorityLines: [], blockedVehicleTypes: [], standbyBlocked: false, rosterable: true,
+    away: null, vacation: null, ...over,
+  }))
+
+const dutiesOf = (shiftId: string, counts: Record<string, number>, lineId = 'L1'): ConsoleDuty[] =>
+  Object.entries(counts).flatMap(([dayTypeId, n]) => Array.from({ length: n }, (_, i) => ({
+    id: `${shiftId}-${dayTypeId}-${i}`, dayTypeId, shiftId, kind: 'STRAIGHT',
+    start: shiftId === 'MAN' ? 300 : 800, end: shiftId === 'MAN' ? 780 : 1300, paid: 420,
+    lineMinutes: [{ lineId, minutes: 300 }], vehicleTypes: ['STANDARD'], standby: false, label: `D${i + 1}`, preferred: [],
+  })))
+
+const base = (over: Partial<ConsoleInput> = {}): ConsoleInput => ({
+  scopeId: 's', branchId: 'b', role: 'DRIVER', today: START, scopes: [{ id: 's', name: 'Escopo' }],
+  days: window(),
+  dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
+  shifts: [MAN, TAR],
+  plans: [], duties: [], crew: [], patterns: [sixOne], lines: [{ id: 'L1', code: '101' }, { id: 'L2', code: '102' }],
+  lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes,
+  noProfile: [], fixedCar: [], dailyErrors: [],
+  ...over,
+})
+
+describe('rest cycle helpers', () => {
+  it('maxRun goes round the cycle', () => {
+    expect(maxRun('TTTTTTF')).toBe(6)
+    expect(maxRun('TTFTTTTTT')).toBe(8)
+    expect(maxRun('TTTT')).toBe(4)
+  })
+})
+
+describe('demand × crew', () => {
+  it('takes the worst day of each day type, not the average', () => {
+    // 7 crew, one day off per weekday each: 6 work every day; all off on Monday: Monday has 0
+    const even = crewOf(7, 'MAN')
+    const st = computeConsole(base({ crew: even, duties: dutiesOf('MAN', { UTIL: 6, SAB: 6, DOM: 6 }) })).staffing
+    expect(st.rows[0].cells.UTIL).toMatchObject({ demand: 6, worst: 6, balance: 0 })
+
+    const monday = crewOf(7, 'MAN', {}, () => 0)
+    const st2 = computeConsole(base({ crew: monday, duties: dutiesOf('MAN', { UTIL: 6, SAB: 6, DOM: 6 }) })).staffing
+    expect(st2.rows[0].cells.UTIL.worst).toBe(0)
+    expect(st2.rows[0].cells.UTIL.avg).toBeCloseTo(5.6, 1)
+    expect(st2.rows[0].cells.UTIL.balance).toBe(-6)
+  })
+
+  it('leaves a long absence out of the supply, never férias', () => {
+    const crew = crewOf(7, 'MAN')
+    crew[0].away = { reason: 'INSS', until: '2026-12-31' }
+    crew[1].vacation = { until: '2026-10-20', cover: null }
+    const snap = computeConsole(base({ crew, duties: dutiesOf('MAN', { UTIL: 5 }) }))
+    expect(snap.staffing.rows[0].current).toBe(6)
+    expect(snap.crew).toMatchObject({ active: 6, away: 1, vacation: 1 })
+  })
+
+  it('needs 7 crew for every 6 duties of a 6x1 shift', () => {
+    const snap = computeConsole(base({ crew: crewOf(7, 'MAN'), duties: dutiesOf('MAN', { UTIL: 12 }) }))
+    expect(snap.staffing.rows[0].required).toBe(14)
+  })
+
+  it('counts what the crew can cover by fitting the windows (spare morning crew cover nothing in the afternoon)', () => {
+    const snap = computeConsole(base({ crew: crewOf(14, 'MAN'), duties: [...dutiesOf('MAN', { UTIL: 4 }), ...dutiesOf('TAR', { UTIL: 4 })] }))
+    expect(snap.staffing.totals.UTIL).toEqual({ demand: 8, coverable: 4 })
+    expect(snap.alerts.some(a => a.code === 'SHIFT_SHORT')).toBe(true)
+    expect(snap.alerts.some(a => a.code === 'COVERAGE_SHORT')).toBe(true)
+  })
+})
+
+describe('lines per shift', () => {
+  it('flags a line short in one shift even when the other shift has crew to spare', () => {
+    const man = crewOf(7, 'MAN', { lineAccess: { L1: 'ENABLED' } })
+    const tar = crewOf(14, 'TAR', { lineAccess: { L1: 'ENABLED' } })
+    man.slice(0, 5).forEach(m => { m.lineAccess = {} })
+    const snap = computeConsole(base({
+      lineAccessMode: 'WHITELIST', crew: [...man, ...tar], duties: [...dutiesOf('MAN', { UTIL: 4 }), ...dutiesOf('TAR', { UTIL: 4 })],
+    }))
+    const row = snap.crewData.lines.find(l => l.shiftId === 'MAN')!
+    expect(row).toMatchObject({ lineCode: '101', duties: 4, need: 5, enabled: 2, gap: -3 })
+    expect(snap.crewData.lines.find(l => l.shiftId === 'TAR')!.gap).toBeGreaterThan(0)
+    expect(snap.alerts.filter(a => a.code === 'LINE_SHORT')).toHaveLength(1)
+  })
+
+  it('warns when few crew members have the line as priority or preferred', () => {
+    const man = crewOf(7, 'MAN')
+    man[0].priorityLines = ['L1']
+    man[1].prefLines = ['L1']
+    const snap = computeConsole(base({ crew: man, duties: dutiesOf('MAN', { UTIL: 4 }) }))
+    expect(snap.crewData.lines[0]).toMatchObject({ bonded: 2, need: 5 })
+    expect(snap.alerts.some(a => a.code === 'LINE_LOW_BOND')).toBe(true)
+  })
+})
+
+describe('rest groups by demand', () => {
+  it('sends the days off to the weekday with the least duties', () => {
+    // 7 crew all off on Monday; Sunday needs few duties — the ideal puts the days off on Sunday
+    const crew = crewOf(7, 'MAN', {}, () => 0)
+    const inp = base({ crew, duties: dutiesOf('MAN', { UTIL: 6, SAB: 6, DOM: 1 }) })
+    const counts = idealGroupCounts(inp, crew, 'p6')
+    const offsets = [0, 1, 2, 3, 4, 5, 6]
+    // the group whose day off is Sunday (offset 0 with the anchor on a Monday) gets everyone it can
+    const sundayGroup = offsets.findIndex(o => o === 0)
+    expect(counts[sundayGroup]).toBeGreaterThanOrEqual(5)
+    const snap = computeConsole(inp)
+    expect(snap.groups[0].worstIdeal).toBeGreaterThan(snap.groups[0].worstNow)
+    expect(snap.alerts.some(a => a.code === 'GROUPS_OFF_DEMAND')).toBe(true)
+  })
+})
+
+describe('plans', () => {
+  it('flags an effective plan without crew plan and duties without empresa', () => {
+    const snap = computeConsole(base({
+      plans: [
+        { dayTypeId: 'SAB', vehiclePlan: { id: 'v', label: 'Sáb', validFrom: START, fleet: 10, trips: 100 }, crewPlan: null, future: false, linesWithoutPlan: [] },
+        {
+          dayTypeId: 'UTIL', vehiclePlan: { id: 'u', label: 'Útil', validFrom: addDays(START, 20), fleet: 10, trips: 100 },
+          crewPlan: { id: 'c', label: 'Escala', duties: 4, byKind: {}, avgWorkMinutes: 420, overtimePct: 0, uncoveredMinutes: 0, stale: 0, issues: 0, noBranch: 3, score: 9000 },
+          future: false, linesWithoutPlan: ['205'],
+        },
+      ],
+    }))
+    const codes = snap.alerts.map(a => a.code)
+    expect(codes).toEqual(expect.arrayContaining(['PLAN_NO_CREW', 'DUTY_NO_BRANCH', 'LINE_NO_PLAN', 'PLAN_FUTURE']))
+    expect(snap.plans.find(p => p.dayTypeId === 'UTIL')!.future).toBe(true)
+    expect(snap.status.plans).toEqual({ severity: 'error', count: 3 })
+  })
+})

@@ -157,6 +157,11 @@ export const DAILY_ISSUE_LABEL: Record<DailyIssueCode, string> = {
   BLOCK_NO_CREW:           'Carro sem motorista em parte do serviço',
 }
 
+// DailyOperation.crewContext — per role, per crew member: the rest cycle the day's roster was
+// generated with. The day's checks read it instead of the crew member's current settings.
+export interface DailyCrewRest { restPatternId: string | null; restOffset: number }
+export type DailyCrewContext = Partial<Record<string, Record<string, DailyCrewRest>>>
+
 // DailyOperation.summary
 export interface DailySummary {
   // issue counts by code — the plan's (duty/block) and the day's

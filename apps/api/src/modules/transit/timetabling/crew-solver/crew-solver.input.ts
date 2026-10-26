@@ -79,6 +79,7 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     walk,
     shifts:        branchRules.shifts,
     lineOperators: branchRules.lineOperators,
+    sharedScope:   branchRules.sharedScope,
     crew,
     pins,
   }

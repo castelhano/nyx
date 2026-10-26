@@ -528,7 +528,8 @@ model BlockInterval {
 
 // A generated vehicle-block plan for one (scope, dayType) combination — the solver's
 // output artifact, holding blocks/lines plus scoring summaries. Multiple plans (drafts,
-// revisions) may exist for the same scope/dayType; nothing enforces a single ACTIVE one.
+// revisions) may exist for the same scope/dayType; activating one ends the others in force (or
+// sends them back to DRAFT), so at most one non-DRAFT plan of a scope/dayType has no validTo.
 model VehiclePlan {
   id          String            @id @default(uuid())
   scopeId     String
@@ -929,6 +930,9 @@ model CrewMemberLine {
   access       CrewLineAccess?
   // 1 = primary, 2 = secondary... ≤ roster.maxPreferredLines; null = not preferred
   rank         Int?
+  // the empresa's priority line for him — set by staff, beyond his own preferences and with no
+  // limit; the generator weighs it before them (priorityLine) and the crew portal can't change it
+  priority     Boolean         @default(false)
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
@@ -1192,6 +1196,11 @@ model DailyOperation {
   sources     Json
   // DailySummary — issue counts by code
   summary     Json?
+  // DailyCrewContext — per role, per crew member, the rest cycle the day's roster was generated
+  // with: { DRIVER: { <crewMemberId>: { restPatternId, restOffset } } }. Written for every day an
+  // accepted generation writes; the day's checks read it instead of the crew member's current
+  // settings, so changing his rest group only reaches the days generated after. null = never generated
+  crewContext Json?
   publishedAt DateTime?
   closedAt    DateTime?
   createdAt   DateTime    @default(now())
@@ -1539,4 +1548,44 @@ model CrewTimesheetDay {
   @@unique([crewMemberId, date])
   @@index([date])
   @@map("transit_crew_timesheet_days")
+}
+
+// ── crew roles × job titles ───────────────────────────────────────────────────
+
+// Which JobTitles are crew of a role — an active employee whose current contract has one should
+// have a CrewMember of that role. Several titles may map to the same role; a title to one at most.
+model CrewRoleJobTitle {
+  id         String   @id @default(uuid())
+  jobTitleId String   @unique
+  role       CrewRole
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  jobTitle JobTitle @relation(fields: [jobTitleId], references: [id], onDelete: Cascade)
+
+  @@map("transit_crew_role_job_titles")
+}
+
+// ── Painel de Escala ──────────────────────────────────────────────────────────
+
+// One confirmed adjustment of the Painel de Escala — what changed in the crew members' records, kept
+// for later reference (no undo: reverting is a new adjustment the other way)
+model RosterAdjustment {
+  id        String   @id @default(uuid())
+  scopeId   String
+  branchId  String
+  role      CrewRole
+  // shifts | groups | pattern | lines | priority | profiles
+  kind      String
+  // when it takes effect (shift changes); rest group / pattern changes reach the next generation
+  effective DateTime @db.Date
+  // the selection rule in use when it was suggested (RebalanceRules)
+  rule      Json?
+  // RosterAdjustmentItem[] — [{ crewMemberId, code, name, before, after }]: the touched fields
+  items     Json
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([branchId, role, createdAt])
+  @@map("transit_roster_adjustments")
 }

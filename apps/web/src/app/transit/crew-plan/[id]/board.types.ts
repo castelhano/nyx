@@ -145,7 +145,7 @@ export const CRITERION_LABEL: Record<string, string> = {
 export const METER_ISSUES = new Set<DutyIssue['code']>(['WALK_DISTANCE'])
 
 // issues with no meaningful value/limit — rendered as the label only
-export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED'])
+export const VALUELESS_ISSUES = new Set<DutyIssue['code']>(['BRANCH_MISMATCH', 'MEAL_LOCATION', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED', 'BRANCH_NONE'])
 
 export const DIRECTION_LABEL = ROUTE_DIRECTION_LABEL
 

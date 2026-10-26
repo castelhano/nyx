@@ -5,6 +5,8 @@ import { RestPatternController } from './rest-pattern/rest-pattern.controller'
 import { RestPatternService } from './rest-pattern/rest-pattern.service'
 import { CrewAbsenceTypeController } from './crew-absence-type/crew-absence-type.controller'
 import { CrewAbsenceTypeService } from './crew-absence-type/crew-absence-type.service'
+import { CrewRoleJobTitleController } from './crew-role-job-title/crew-role-job-title.controller'
+import { CrewRoleJobTitleService } from './crew-role-job-title/crew-role-job-title.service'
 import { CrewMemberController } from './crew-member/crew-member.controller'
 import { CrewMemberService } from './crew-member/crew-member.service'
 import { CrewMemberShiftController } from './crew-member/crew-member-shift.controller'
@@ -21,8 +23,8 @@ import { VacationReleaseService } from './vacation/vacation-release.service'
 // Crew members' operational profile — the real roster's master data
 @Module({
   imports:     [CaslModule, TransitSettingsModule, DailyModule],
-  controllers: [RestPatternController, CrewAbsenceTypeController, CrewMemberController, CrewMemberShiftController, CrewMemberLineController, CrewOccurrenceController, VacationController],
-  providers:   [RestPatternService, CrewAbsenceTypeService, CrewMemberService, CrewMemberShiftService, CrewMemberLineService, CrewOccurrenceService, VacationReleaseService, VacationService],
+  controllers: [RestPatternController, CrewAbsenceTypeController, CrewRoleJobTitleController, CrewMemberController, CrewMemberShiftController, CrewMemberLineController, CrewOccurrenceController, VacationController],
+  providers:   [RestPatternService, CrewAbsenceTypeService, CrewRoleJobTitleService, CrewMemberService, CrewMemberShiftService, CrewMemberLineService, CrewOccurrenceService, VacationReleaseService, VacationService],
   exports:     [CrewMemberService, CrewMemberShiftService],
 })
 export class CrewModule {}

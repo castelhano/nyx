@@ -1,4 +1,4 @@
-import { restPatternWorks, type DutySummary, type RosterGeneratorParams, type ShiftWindow, type VehiclePlanConstraints } from '@nyx/schemas'
+import { restPatternWorks, type DailyCrewRest, type DutySummary, type RosterGeneratorParams, type ShiftWindow, type VehiclePlanConstraints } from '@nyx/schemas'
 import type { PrismaService } from '../../../../prisma/prisma.service'
 import type { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
@@ -27,6 +27,8 @@ export interface RosterContext {
   scopeIds:   string[]
   // the days in the horizon it may change (PLANNED, and PUBLISHED with `published`)
   operationIds: string[]
+  // per day, the rest cycle each crew member was generated with — DailyOperation.crewContext
+  crewContext: Map<Day, Record<string, DailyCrewRest>>
 }
 
 const HISTORY_DAYS = 45
@@ -78,13 +80,13 @@ export async function loadRosterInput(
           contracts: { where: { status: 'ACTIVE' }, orderBy: { startDate: 'desc' }, take: 1, select: { weeklyHours: true } },
         },
       },
-      restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } },
-      lines:       { select: { lineId: true, access: true, rank: true } },
+      restPattern: { select: { id: true, pattern: true, anchorDate: true, offOnHolidays: true } },
+      lines:       { select: { lineId: true, access: true, rank: true, priority: true } },
       shifts: {
         where:  { validFrom: { lte: toDbDate(to) }, OR: [{ validTo: null }, { validTo: { gte: toDbDate(from) } }] },
         select: {
           validFrom: true, validTo: true,
-          shift: { select: { ...shiftWindowSelect, isActive: true, restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } } } },
+          shift: { select: { ...shiftWindowSelect, isActive: true, restPattern: { select: { id: true, pattern: true, anchorDate: true, offOnHolidays: true } } } },
         },
       },
     },
@@ -107,10 +109,10 @@ export async function loadRosterInput(
     where:  { id: { in: titularIds } },
     select: {
       id: true, restOffset: true,
-      restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } },
+      restPattern: { select: { id: true, pattern: true, anchorDate: true, offOnHolidays: true } },
       shifts: {
         where:  { validFrom: { lte: toDbDate(to) }, OR: [{ validTo: null }, { validTo: { gte: toDbDate(from) } }] },
-        select: { validFrom: true, validTo: true, shift: { select: { restPattern: { select: { pattern: true, anchorDate: true, offOnHolidays: true } } } } },
+        select: { validFrom: true, validTo: true, shift: { select: { restPattern: { select: { id: true, pattern: true, anchorDate: true, offOnHolidays: true } } } } },
       },
     },
   })).map(t => [t.id, t]))
@@ -231,6 +233,7 @@ export async function loadRosterInput(
   // ── each crew member's days ──
   const dutyIndex = new Map(rgDuties.map((d, i) => [d.id, i]))
   const maxPreferred = settings.maxPreferredLines
+  const crewContext = new Map<Day, Record<string, DailyCrewRest>>(days.map(d => [d, {}]))
   const rgMembers: RgMember[] = members.map(m => {
     const mine = entries.filter(e => e.crewMemberId === m.id)
     const occ  = occurrences.filter(o => o.crewMemberId === m.id)
@@ -253,15 +256,17 @@ export async function loadRosterInput(
       courseExpired.push(!!m.courseExpiresAt && dayOf(m.courseExpiresAt) < day)
       fixed.push(works.length ? merge(works.map(e => ({ s: e.dailyDuty!.summary as DutySummary | null, sig: signature(e.dailyDutyId!, e.dailyDuty!.shiftId) }))) : null)
 
+      // the day's rest cycle — covering a titular: his days off
+      const cov = coveringOn(m.id, day)
+      const t = cov ? titulars.get(cov.titular) : undefined
+      const tPattern = t ? t.restPattern ?? t.shifts.find(s => dayOf(s.validFrom) <= day && (!s.validTo || dayOf(s.validTo) >= day))?.shift.restPattern ?? null : null
+      const pattern = tPattern ?? m.restPattern ?? bound?.restPattern ?? null
+      const offset  = tPattern ? t!.restOffset : m.restOffset
+      crewContext.get(day)![m.id] = { restPatternId: pattern?.id ?? null, restOffset: offset }
+
       if (works.length) status.push('fixed')
       else if (onDay.length || absentOn(day) || !bound) status.push('away')
       else {
-        // covering a titular: his days off
-        const cov = coveringOn(m.id, day)
-        const t = cov ? titulars.get(cov.titular) : undefined
-        const tPattern = t ? t.restPattern ?? t.shifts.find(s => dayOf(s.validFrom) <= day && (!s.validTo || dayOf(s.validTo) >= day))?.shift.restPattern ?? null : null
-        const pattern = tPattern ?? m.restPattern ?? bound.restPattern
-        const offset  = tPattern ? t!.restOffset : m.restOffset
         const isHoliday = holidays.some(h => dayOf(h.date) === day && (!h.branchId || h.branchId === branchId))
         status.push(pattern && !restPatternWorks(pattern, offset, day, isHoliday) ? 'off' : 'free')
       }
@@ -319,6 +324,7 @@ export async function loadRosterInput(
       // the plantão: allowed unless blocked, whatever the empresa's mode
       lineAccess: { ...Object.fromEntries(m.lines.filter(l => l.access).map(l => [l.lineId, l.access!])), [STANDBY_LINE]: m.standbyBlocked ? 'BLOCKED' : 'ENABLED' },
       prefGrade,
+      priorityGrade: Object.fromEntries(m.lines.filter(l => l.priority).map(l => [l.lineId, 1])),
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
       status, windows, fixed, licenseExpired, courseExpired,
@@ -338,6 +344,7 @@ export async function loadRosterInput(
   return {
     scopeIds,
     operationIds: operations.map(o => o.id),
+    crewContext,
     input: {
       days, duties: rgDuties, members: rgMembers,
       loadDaysBefore: daysBetween(loadStart, from),

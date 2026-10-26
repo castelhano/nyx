@@ -61,6 +61,7 @@ export interface CrewSolverInput {
   // operators' shifts and line operators — the same issues the screen flags (crew-branch-rules.ts)
   shifts?:        CrewCalcContext['shifts']
   lineOperators?: CrewCalcContext['lineOperators']
+  sharedScope?:   boolean
   // "Limitar turnos ao quadro ativo" — absent: no limit
   crew?:          CrewCapacity
   // trip groups with crew members (VehiclePlan.constraints.bundleCrew): the duty holding one must
@@ -628,6 +629,7 @@ export function evaluateSolverDuties(input: CrewSolverInput, solverDuties: Solve
     mealStops:     input.mealStops,
     shifts:        input.shifts,
     lineOperators: input.lineOperators,
+    sharedScope:   input.sharedScope,
     duties: [
       ...input.locked,
       ...duties.map((d, i): CrewCalcDuty => ({

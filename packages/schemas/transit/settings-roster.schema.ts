@@ -24,6 +24,9 @@ function rosterReserveTargetSchema() {
 }
 
 const rosterRangeDefault = {
+  // % of the trip minutes on the empresa's priority lines (CrewMemberLine.priority) — weighs more
+  // than the crew member's own preferences, so those come first
+  priorityLine:   { active: true, modifier: 30, floor: 0, idealMin: 70, idealMax: 100, ceiling: 100 },
   // % of the trip minutes on preferred lines, each rank weighted by its grade
   driverPrefLine: { active: true, modifier: 20, floor: 0, idealMin: 70, idealMax: 100, ceiling: 100 },
   // average minutes per duty away from the effective shift's ideal start/end
@@ -37,6 +40,24 @@ const rosterRangeDefault = {
   // days whose duty changes on a PUBLISHED day the generator redoes (includePublished)
   publishedChanges: { active: true, modifier: 60, floor: 0, idealMin: 0, idealMax: 0, ceiling: 2 },
 }
+
+// Painel de Escala — who the Painel suggests moving once it knows how many: tie-breaks in priority
+// order (each breaks the previous one's ties; matrícula last). shiftTenure: the latest to arrive
+// at their current shift go first; hireDate: the most recently hired go first.
+export const REBALANCE_CRITERIA = ['shiftTenure', 'hireDate'] as const
+export type RebalanceCriterion = typeof REBALANCE_CRITERIA[number]
+
+export const REBALANCE_CRITERION_LABEL: Record<RebalanceCriterion, { label: string; hint: string }> = {
+  shiftTenure: { label: 'Mais novo no turno',   hint: 'Move primeiro quem chegou por último ao turno de origem' },
+  hireDate:    { label: 'Mais novo na empresa', hint: 'Move primeiro os admitidos mais recentemente — preserva os antigos' },
+}
+
+const rebalanceRulesDefault = { criteria: REBALANCE_CRITERIA.map(key => ({ key, active: true })) }
+
+export const rebalanceRulesSchema = z.object({
+  criteria: z.array(z.object({ key: z.enum(REBALANCE_CRITERIA), active: z.boolean() })).default(rebalanceRulesDefault.criteria),
+})
+export type RebalanceRules = z.infer<typeof rebalanceRulesSchema>
 
 export const rosterSettingsSchema = withMeta(z.object({
   // what CrewMemberLine.access means: WHITELIST — a crew member only operates his ENABLED
@@ -55,6 +76,11 @@ export const rosterSettingsSchema = withMeta(z.object({
   // the hour bank's first month (mês de corte, 'YYYY-MM') — its opening balances are launched
   // in it; null = no hour bank
   hourBankStart: z.string().regex(/^\d{4}-\d{2}$/).nullable().default(null),
+  // Painel de Escala: an approved absence (not férias) at least this long takes the crew member out
+  // of the crew supply
+  awayMinDays: z.number().int().min(1).max(365).default(15),
+  // Painel de Escala: the selection rule of its suggestions (edited there)
+  rebalanceRules: rebalanceRulesSchema.default(rebalanceRulesDefault),
   // plantões (reserve): on each day of the day type, `count` STANDBY duties of the empresa from
   // start to end (minutes, end past 24h allowed) at the locality — created with the day and
   // filled by the generator with whoever is left over
@@ -69,6 +95,7 @@ export const rosterSettingsSchema = withMeta(z.object({
     course:         ruleMode.default('BLOCK'),
   }).default({ lineAccess: 'BLOCK', vehicleType: 'BLOCK', shiftWindow: 'BLOCK', interShiftRest: 'BLOCK', license: 'BLOCK', course: 'BLOCK' }),
   range: z.object({
+    priorityLine:   rangeCriterionSchema.default(rosterRangeDefault.priorityLine),
     driverPrefLine: rangeCriterionSchema.default(rosterRangeDefault.driverPrefLine),
     shiftFit:       rangeCriterionSchema.default(rosterRangeDefault.shiftFit),
     loadDeficit:    rangeCriterionSchema.default(rosterRangeDefault.loadDeficit),

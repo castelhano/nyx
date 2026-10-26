@@ -21,6 +21,7 @@ import { systemAbsenceTypeId } from '../crew/crew-absence-type/system-types'
 import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
 import { crewIssues, loadCrewFacts, vehicleIssues, type BlockFacts, type DutyFacts } from './daily-checks'
+import { loadContextCycles, restOfDay } from './crew-context'
 
 type ChangeAction = 'ASSIGN_CREW' | 'UNASSIGN_CREW' | 'SWAP_CREW' | 'ASSIGN_VEHICLE' | 'CANCEL_TRIP' | 'RESTORE_TRIP' | 'DAY_OFF' | 'UNPUBLISH' | 'REOPEN'
 
@@ -377,7 +378,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   }
 
   private async operation(id: string) {
-    const op = await this.prisma.dailyOperation.findUnique({ where: { id }, select: { id: true, scopeId: true, date: true, status: true, sources: true } })
+    const op = await this.prisma.dailyOperation.findUnique({ where: { id }, select: { id: true, scopeId: true, date: true, status: true, sources: true, crewContext: true } })
     if (!op) throw new NotFoundException('Dia operacional não encontrado')
     return op
   }
@@ -484,7 +485,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       }
       return { id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, summary: result.duties.get(d.id)!.summary, lineIds: [...lineIds], vehicleTypes: [...types] }
     })
-    const crewFacts = await loadCrewFacts(this.prisma, this.rosterConfig, day, duties.map(d => d.id))
+    const crewFacts = await loadCrewFacts(this.prisma, this.rosterConfig, day, duties.map(d => d.id), op.crewContext)
     const dutyDayIssues = crewIssues(day, dutyFacts, crewFacts, settings.range.interShiftRest.floor)
 
     const live = events.filter(e => !e.isCancelled)
@@ -629,6 +630,8 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       this.prisma.vehiclePlan.findMany({ where: { id: { in: sources.map(s => s.vehiclePlanId) } }, select: { id: true, description: true } }),
       this.prisma.dayType.findMany({ where: { id: { in: sources.map(s => s.dayTypeId) } }, select: { id: true, name: true } }),
     ])
+    // a generated day judges the rest cycle by the one it was generated with
+    const cycles = await loadContextCycles(this.prisma, [op.crewContext])
 
     const lineCode = new Map(op.scope.lines.map(l => [l.id, l.code]))
     const localityIds = new Set<string>()
@@ -682,7 +685,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       crew: members.map(m => {
         const mine = entries.filter(e => e.crewMemberId === m.id)
         const absence = occurrences.find(o => o.crewMemberId === m.id)
-        const pattern = m.restPattern ?? m.shifts[0]?.shift.restPattern ?? null
+        const { pattern, offset } = restOfDay(op.crewContext, m.id, cycles, { pattern: m.restPattern ?? m.shifts[0]?.shift.restPattern ?? null, offset: m.restOffset })
         const isHoliday = holidays.some(h => !h.branchId || h.branchId === m.employee.branchId)
         const off = mine.find(e => !e.dailyDutyId)?.kind ?? null
         return {
@@ -693,7 +696,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
           elsewhere:    (dutyIdsOf.get(m.id) ?? []).filter(x => !ownDutyIds.has(x)).length,
           dayOff:       off,
           absence:      absence?.absenceType?.name ?? (absence ? 'Ausência' : null),
-          patternOff:   !!pattern && !restPatternWorks(pattern, m.restOffset, day, isHoliday),
+          patternOff:   !!pattern && !restPatternWorks(pattern, offset, day, isHoliday),
         }
       }),
       vehicles: vehicles.map(v => ({

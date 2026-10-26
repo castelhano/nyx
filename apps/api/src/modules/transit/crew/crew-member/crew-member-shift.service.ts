@@ -34,13 +34,19 @@ export class CrewMemberShiftService extends BaseService<CrewMemberShift, CreateC
     return super.update(id, dto)
   }
 
-  // the crew member's shift from `from` on (CrewMember form and import): the open one is closed
-  // the day before; the same shift already open is left as it is
+  // the crew member's shift from `from` on (CrewMember form, import, Painel de Escala): links
+  // starting on/after `from` (one scheduled earlier) are replaced, the open one is closed the day
+  // before; the same shift already open is left as it is
   async startShift(crewMemberId: string, shiftId: string, from: Day, db: Db = this.prisma): Promise<void> {
-    const open = await db.crewMemberShift.findFirst({ where: { crewMemberId, validTo: null }, select: { shiftId: true } })
-    if (open?.shiftId === shiftId) return
+    const open = await db.crewMemberShift.findFirst({ where: { crewMemberId, validTo: null }, select: { shiftId: true, validFrom: true } })
+    if (open?.shiftId === shiftId && dayOf(open.validFrom) <= from) return
     await this.assertShiftOfBranch(crewMemberId, shiftId, db)
-    await this.closeOpenBefore(crewMemberId, from, db)
+    await db.crewMemberShift.deleteMany({ where: { crewMemberId, validFrom: { gte: toDbDate(from) } } })
+    // the last link left runs up to the day before — open, or closed when a later one was scheduled
+    const last = await db.crewMemberShift.findFirst({ where: { crewMemberId }, orderBy: { validFrom: 'desc' }, select: { id: true, validTo: true } })
+    if (last && (!last.validTo || dayOf(last.validTo) >= from)) {
+      await db.crewMemberShift.update({ where: { id: last.id }, data: { validTo: toDbDate(addDays(from, -1)) } })
+    }
     await this.assertNoOverlap(crewMemberId, null, from, null, db)
     await db.crewMemberShift.create({ data: { crewMemberId, shiftId, validFrom: toDbDate(from), validTo: null } })
   }

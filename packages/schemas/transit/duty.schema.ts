@@ -71,12 +71,13 @@ export type DutySummary = z.infer<typeof dutySummarySchema>
 // A rule not met — flagged, never blocks a save. Range criteria flag only outside
 // [floor, ceiling] (`error`); outside the ideal they only cost score (see settings-crew.schema.ts).
 // `warning` is left for the non-range checks (MIN_PIECE, MEAL_LOCATION, TRAVEL_GAP without matrix,
-// BUNDLE_SPLIT, SHIFT_NONE, SHIFT_MISMATCH, LINE_NOT_OPERATED).
+// BUNDLE_SPLIT, SHIFT_NONE, SHIFT_MISMATCH, LINE_NOT_OPERATED). BRANCH_NONE is an error: a duty
+// with no empresa in a Scope several operate belongs to nobody's crew.
 export const dutyIssueSchema = z.object({
   code: z.enum([
     'WORK_TIME', 'SPREAD', 'MEAL_BREAK', 'SPLIT_INTERVAL', 'WALK_DISTANCE', 'MEAL_REQUIRED', 'PIECE_OFF_SERVICE',
     'CONTINUOUS_DRIVING', 'MIN_PIECE', 'TRAVEL_GAP', 'BRANCH_MISMATCH', 'MEAL_LOCATION', 'IDLE_TIME',
-    'BUNDLE_SPLIT', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED',
+    'BUNDLE_SPLIT', 'SHIFT_NONE', 'SHIFT_MISMATCH', 'LINE_NOT_OPERATED', 'BRANCH_NONE',
   ]),
   // info: a note (e.g. a shift set by hand outside its window) — never a pendência
   severity: z.enum(['warning', 'error', 'info']),
@@ -107,6 +108,7 @@ export const DUTY_ISSUE_LABEL: Record<DutyIssue['code'], string> = {
   SHIFT_NONE:         'Fora de todos os turnos da empresa',
   SHIFT_MISMATCH:     'Turno definido manualmente (fora da janela)',
   LINE_NOT_OPERATED:  'Linha não operada pela empresa',
+  BRANCH_NONE:        'Tabela sem empresa',
 }
 
 export const dutySchema = withMeta(

@@ -1,7 +1,8 @@
 # Proposta — Painel de Escala (Console)
 
-**Status: rascunho de levantamento.** Base para um plano de implementação futuro. Nada aqui está
-implementado. Responder as dúvidas do fim com `R.:`, como nos outros planos.
+**Status: levantamento fechado; protótipo validado.** A implementação segue
+[`plan_roster_console_impl_v1.md`](plan_roster_console_impl_v1.md), que revisa alguns pontos
+daqui (endpoint único de snapshot, janela de referência, etapas).
 
 Objetivo: uma central única de **gestão da escala**, onde o gestor vê de relance:
 - o resumo das escalas lógicas em vigor (útil, sábado, domingo);
@@ -101,20 +102,24 @@ gerador só mostra isso depois, como falta (`shortage`).
 - **Cards independentes**: cada seção tem sua própria consulta (carrega em paralelo, falha
   isolada).
 
-Layout sugerido (desktop) — a validar no protótipo (Fase 1):
+Layout (desktop) — validado no protótipo (Fase 1): KPIs e alertas no topo; abaixo, um menu
+lateral com as análises (ícone de erro / alerta / ok e contagem em cada item) e o painel com a
+análise escolhida, na largura toda. Clicar num alerta abre a análise dele.
 
 ```
 ┌ Empresa ▾  Função ▾ ─────────────────────────────────────────────────────┐
-│ [Alertas: 12]  [Saldo do quadro: −4]  [Tabelas sem empresa: 3]  [Dias c/ erro: 2] │  ← KPIs
-├──────────────────────────────┬────────────────────────────────────────────┤
-│ Escalas em vigor (A)         │ Demanda × Quadro por turno (B)              │
-│ útil · sáb · dom             │ turno × útil/sáb/dom, saldo +/− [Sugestões] │
-├──────────────────────────────┼────────────────────────────────────────────┤
-│ Distribuição de turnos (C)   │ Grupos de folga × demanda semanal (D)       │
-│                              │                               [Sugestões]   │
-├──────────────────────────────┼────────────────────────────────────────────┤
-│ Cadastro do quadro (E)       │ Dias gerados com erro (F) · Ajustes recentes │
-└──────────────────────────────┴────────────────────────────────────────────┘
+│ [Erros] [Falta no quadro] [Cobríveis no útil] [Operadores] [Dias c/ erro] │  ← KPIs
+├───────────────────────────────────────────────────────────────────────────┤
+│ Alertas (por severidade, clicáveis)                                       │
+├────────────────────────┬──────────────────────────────────────────────────┤
+│ ✕ Escalas efetivas   2 │                                                  │
+│ ✕ Demanda × quadro   1 │   análise selecionada                            │
+│ ! Distribuição turnos 1│   (tabela, gráficos, [Sugestões])                │
+│ ! Grupos de folga    3 │                                                  │
+│ ✕ Cadastro do quadro 1 │                                                  │
+│ ✕ Dias gerados       3 │                                                  │
+│   Ajustes recentes   0 │                                                  │
+└────────────────────────┴──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -257,9 +262,11 @@ Problemas de cadastro que derrubam o dimensionamento ou o gerador:
   mapeado para uma função (Q7, §6.8) e que não tem `CrewMember`; e `CrewMember` de funcionário
   inativo;
 - operador sem turno vigente, sem regime efetivo, `isRosterable = false` (quantos e quem);
-- **cobertura de linha:** por linha, tabelas × operadores que podem operá-la (modo
-  WHITELIST/BLACKLIST) × operadores com a linha como preferida. Linha com tabelas e poucos
-  habilitados = risco; nenhum habilitado no WHITELIST = falta certa;
+- **habilitação por linha × turno** (nunca no dia inteiro — 10 sobrando de manhã não cobrem 10
+  faltando à tarde): por turno, tabelas de cada linha (linha dominante) → necessário
+  (`× 7/6`) × operadores do turno que podem operá-la (modo WHITELIST/BLACKLIST e tipo de
+  veículo). Mostra **só as combinações com habilitados abaixo do necessário** (erro); as ok ficam
+  recolhidas. Quantos preferem a linha aparece como informação secundária;
 - **tipo de veículo:** tabelas cujos blocos exigem um tipo (ex.: articulado) × operadores aptos;
 - **carro fixo:** veículo fixo inativo, mesmo carro fixo para dois operadores com turnos
   sobrepostos, carro fixo de outra empresa;

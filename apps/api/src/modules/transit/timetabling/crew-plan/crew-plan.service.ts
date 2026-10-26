@@ -463,6 +463,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
       shifts:         branchRules.shifts,
       lineOperators:  branchRules.lineOperators,
+      sharedScope:    branchRules.sharedScope,
     })
 
     // only rows whose derived state actually changed are written — a single piece edit

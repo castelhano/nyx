@@ -98,6 +98,16 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
     return this.pickByPattern(date, dayTypes as unknown as DayType[])
   }
 
+  // In-memory counterpart of resolveByPattern for many dates: the patterns loaded once; null when
+  // no pattern covers the date (no line exceptions — the calendar's own day type)
+  async patternResolver(): Promise<(date: Date) => DayType | null> {
+    const dayTypes = await this.prisma.dayType.findMany({
+      where:   { pattern: { not: Prisma.DbNull } },
+      orderBy: { priority: 'asc' },
+    }) as unknown as DayType[]
+    return (date: Date) => dayTypes.find(dt => this.matchesPattern(date, dt.pattern as unknown as DayTypePattern)) ?? null
+  }
+
   private pickByPattern(date: Date, patternedDayTypes: DayType[]): DayType {
     for (const dt of patternedDayTypes) {
       if (this.matchesPattern(date, dt.pattern as unknown as DayTypePattern)) return dt

@@ -368,6 +368,15 @@ export const crewMemberLineSchema = withMeta(
       className:      'md:w-28',
     }),
 
+    // the empresa's priority line for him — set by staff, beyond his own preferences and with no limit
+    priority: z.boolean().default(false).meta({
+      label:          'Prioritária (empresa)',
+      helpText:       'Definida pela empresa, além das preferências do operador e sem limite. O gerador considera as prioritárias antes das preferidas; o operador não altera.',
+      widget:         'switch',
+      listVisibility: 'visible',
+      defaultValue:   false,
+    }),
+
     createdAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),

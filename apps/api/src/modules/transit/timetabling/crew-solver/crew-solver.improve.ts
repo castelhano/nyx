@@ -111,7 +111,7 @@ export class CrewImprover {
     this.ctx = {
       settings: input.settings, blocks: new Map(input.blocks.map(b => [b.id, b])),
       walk: input.walk, mealStops: input.mealStops,
-      shifts: input.shifts, lineOperators: input.lineOperators,
+      shifts: input.shifts, lineOperators: input.lineOperators, sharedScope: input.sharedScope,
     }
     this.views = new Map(input.blocks.map(b => [b.id, new BlockView(b, input.mealStops)]))
     this.agg = new CrewScoreAggregate(this.ctx)

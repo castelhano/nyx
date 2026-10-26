@@ -3,7 +3,7 @@
 ---
 # Outros
 ## Alto
-[ ] Dashboard de escala
+[x] Dashboard de escala — Painel de Escala (`transit/console`, docs/architecture/transit/console.md)
 [ ] Alternar List de feriados para layout de calendario (similar as ferias de condutores)
 ## Medio
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações) (q+backspace)
