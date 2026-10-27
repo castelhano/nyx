@@ -95,6 +95,14 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     super(prisma, 'vehiclePlan', vehiclePlanSchema, 'transit')
   }
 
+  protected override buildFilterWhere(query: Record<string, unknown>) {
+    const { f_branchId, ...rest } = query as Record<string, string | undefined>
+    return {
+      ...super.buildFilterWhere(rest),
+      ...(f_branchId ? { scope: { operators: { some: { branchId: f_branchId } } } } : {}),
+    }
+  }
+
   // summary/constraints/settings are only ever written by recalculate()/applyDiff — a
   // generic PATCH here must not be able to overwrite them directly (they'd go stale
   // with no isStale marker to signal it). See docs/proposal/vehicle-plan-summary-

@@ -101,6 +101,17 @@ export const vehiclePlanSchema = withMeta(
       keybind:        'd',
     }),
 
+    // filter only — plans whose scope the branch operates (ScopeOperator), see VehiclePlanService
+    branchId: z.uuid().optional().meta({
+      label:          'Operadora',
+      listVisibility: 'never',
+      showInForm:     false,
+      sortable:       false,
+      computed:       true,
+      filter:         { type: 'relation', endpoint: 'core/branch', labelField: 'name' },
+      keybind:        'o',
+    }),
+
     description: z.string().optional().meta({
       label:          'Descrição',
       listVisibility: 'visible',

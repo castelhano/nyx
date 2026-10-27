@@ -4,6 +4,7 @@
 # Outros
 
 ## Alto
+[ ] VehiclePlan, add filtro para operadora
 [ ] Alternar List de feriados para layout de calendario (similar as ferias de condutores)
 [ ] Na tela do condutor, ao selecionar um dia mostrar detalhamento da operação, viagens, itinerário, observações, marcos, etc
 
