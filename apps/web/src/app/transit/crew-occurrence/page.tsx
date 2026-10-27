@@ -17,6 +17,7 @@ import { apiFetch }         from '@/lib/auth'
 import { useToast }         from '@/lib/toast-context'
 import { cn, extractError } from '@/lib/utils'
 import { localToday }       from '@/lib/plan-vigence'
+import { WEEK, MONTHS, addDays, monthGrid } from '@/lib/calendar'
 
 const ORIGIN  = 'apps/web/src/app/transit/crew-occurrence/page'
 const FORM_ID = 'crew-occurrence-form'
@@ -50,14 +51,6 @@ interface Form {
   cover: CrewRef | null
 }
 
-const WEEK = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
-const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
-
-const addDays = (day: string, n: number) => {
-  const d = new Date(`${day}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + n)
-  return d.toISOString().slice(0, 10)
-}
 const dayStr = (v: string) => v.slice(0, 10)
 const fmtDay = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
 const fmtSpan = (o: { startDate: string; endDate: string }) =>
@@ -87,16 +80,7 @@ export default function CrewOccurrencesPage() {
   const { guardNode, canCreate, canUpdate } = usePageGuard('transit', 'crew-occurrence')
 
   const [month, setMonth] = useState(() => localToday().slice(0, 7))
-  // Monday-first weeks covering the month
-  const grid = useMemo(() => {
-    const first = `${month}-01`
-    const start = addDays(first, -((new Date(`${first}T00:00:00Z`).getUTCDay() + 6) % 7))
-    const next  = new Date(`${first}T00:00:00Z`); next.setUTCMonth(next.getUTCMonth() + 1)
-    const last  = addDays(next.toISOString().slice(0, 10), -1)
-    const days: string[] = []
-    for (let d = start; d <= last || days.length % 7; d = addDays(d, 1)) days.push(d)
-    return days
-  }, [month])
+  const grid = useMemo(() => monthGrid(month), [month])
   const shiftMonth = (n: number) => {
     const d = new Date(`${month}-01T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n)
     setMonth(d.toISOString().slice(0, 7))

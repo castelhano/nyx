@@ -2,10 +2,11 @@
 
 ---
 # Outros
+
 ## Alto
-[x] Dashboard de escala — Painel de Escala (`transit/console`, docs/architecture/transit/console.md)
 [ ] Alternar List de feriados para layout de calendario (similar as ferias de condutores)
 [ ] Na tela do condutor, ao selecionar um dia mostrar detalhamento da operação, viagens, itinerário, observações, marcos, etc
+
 ## Medio
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações) (q+backspace)
 [ ] Adição de ponto / waypoint no cadastro da rota, permitir remover um ponto ainda nao persistido (pending), e alt+l deve descartar pendencias (q+backspace)
@@ -14,7 +15,7 @@
 ## Baixo
 [ ] Separar conceito de preparo e conclusao de servico
 [-] Converter exports para GTFS format (plano em docs/proposal/plan_gtfs_export_v1.md)
-[ ] Unificar metodo de geração de CSV entre listpages (fragmentado em cada pagina hoje)
+[-] Unificar metodo de geração de CSV entre listpages (fragmentado em cada pagina hoje)
 
 
 ## Pendencias
