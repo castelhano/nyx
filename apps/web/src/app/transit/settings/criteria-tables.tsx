@@ -62,9 +62,25 @@ function HintPopover({ hint }: { hint: string }) {
 // meta unit of a minutes field edited as H:MM (DurationInput) instead of a plain number
 export const DURATION_UNIT = 'h:mm'
 
-export function DiffDot({ show }: { show: boolean }) {
+// onRestore makes the dot a button that brings back the reference value. Its hit area (20px,
+// ghost-button hover) is laid over the dot, so the row keeps the dot's 6px. -ml-1 mr-1 moves the
+// dot 4px left without moving the label — centered between a px-4 row's edge and its gap-2 label;
+// the table cells, with less room on the left, cancel it (mx-0).
+export function DiffDot({ show, onRestore, className }: { show: boolean; onRestore?: () => void; className?: string }) {
   if (!show) return <span className="w-1.5" />
-  return <span className="w-1.5 h-1.5 rounded-full bg-amber-700 flex-shrink-0" title="Difere do global" />
+  if (!onRestore) return <span className={cn('w-1.5 h-1.5 -ml-1 mr-1 rounded-full bg-amber-700 flex-shrink-0', className)} title="Difere do global" />
+  return (
+    <span className={cn('relative w-1.5 h-1.5 -ml-1 mr-1 flex-shrink-0', className)}>
+      <button
+        type="button"
+        onClick={onRestore}
+        title="Difere do global — clique para usar o valor do global"
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-sm flex items-center justify-center cursor-pointer hover:bg-accent/70 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-700" />
+      </button>
+    </span>
+  )
 }
 
 export function NumberInput({ value, onChange, min = 0, max, step = 1, disabled }: {
@@ -101,11 +117,13 @@ export function NumberInput({ value, onChange, min = 0, max, step = 1, disabled 
 
 type AnchoredMeta = Record<string, { label: string; unit: string; hint: string }>
 
-export function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ data, globalData, meta, onChange, disabled }: {
+export function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ data, globalData, meta, onChange, onRestore, disabled }: {
   data:       T
   globalData: T
   meta:       AnchoredMeta
   onChange?:  (key: keyof T, field: keyof AnchoredCriterion, value: unknown) => void
+  // brings a row back to its globalData values (DiffDot)
+  onRestore?: (key: keyof T) => void
   disabled?:  boolean
 }) {
   const keys = Object.keys(meta) as (keyof T)[]
@@ -142,7 +160,7 @@ export function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ dat
               <tr key={String(key)} className="group">
                 <td className="pl-2 pr-0">
                   <div className="flex items-center justify-center h-full py-3">
-                    <DiffDot show={isDiff} />
+                    <DiffDot show={isDiff} onRestore={onRestore && (() => onRestore(key))} className="mx-0" />
                   </div>
                 </td>
                 <td className="px-3 py-2.5">
@@ -193,11 +211,13 @@ export function AnchoredTable<T extends Record<string, AnchoredCriterion>>({ dat
 
 type RangeMeta = Record<string, { label: string; unit: string; hint: string }>
 
-export function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData, meta, onChange, disabled }: {
+export function RangeTable<T extends Record<string, RangeCriterion>>({ data, globalData, meta, onChange, onRestore, disabled }: {
   data:       T
   globalData: T
   meta:       RangeMeta
   onChange?:  (key: keyof T, field: keyof RangeCriterion, value: unknown) => void
+  // brings a row back to its globalData values (DiffDot)
+  onRestore?: (key: keyof T) => void
   disabled?:  boolean
 }) {
   const keys = Object.keys(meta) as (keyof T)[]
@@ -245,7 +265,7 @@ export function RangeTable<T extends Record<string, RangeCriterion>>({ data, glo
               <tr key={String(key)} className="group">
                 <td className="pl-2 pr-0">
                   <div className="flex items-center justify-center h-full py-3">
-                    <DiffDot show={isDiff} />
+                    <DiffDot show={isDiff} onRestore={onRestore && (() => onRestore(key))} className="mx-0" />
                   </div>
                 </td>
                 <td className="px-3 py-2.5">

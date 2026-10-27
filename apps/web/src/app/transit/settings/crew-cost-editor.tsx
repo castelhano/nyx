@@ -2,7 +2,7 @@
 
 import type { CrewCostSettings, CrewRoleCost } from '@nyx/schemas'
 import { cn } from '@/lib/utils'
-import { SectionHeader } from './criteria-tables'
+import { SectionHeader, DiffDot } from './criteria-tables'
 
 const ROLES: { key: keyof CrewCostSettings['byRole']; label: string }[] = [
   { key: 'DRIVER',         label: 'Motorista' },
@@ -49,22 +49,25 @@ export function CrewCostEditor({ value, reference, onChange }: {
                   const v       = value.byRole[r.key][f.key]
                   const changed = reference != null && reference.byRole[r.key][f.key] !== v
                   return (
-                    <td key={r.key} className="px-4 py-2 text-center">
-                      <input
-                        type="number"
-                        value={v}
-                        min={f.min}
-                        step={f.step}
-                        title={changed ? `Global: ${reference.byRole[r.key][f.key]}` : undefined}
-                        onChange={(e) => {
-                          const n = parseFloat(e.target.value)
-                          if (!isNaN(n)) set(r.key, f.key, Math.max(f.min, n))
-                        }}
-                        className={cn(
-                          'h-8 w-28 rounded-sm border bg-input-bg text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring',
-                          changed ? 'border-amber-600' : 'border-input',
-                        )}
-                      />
+                    <td key={r.key} className="px-4 py-2">
+                      <div className="flex items-center justify-center gap-2">
+                        <DiffDot show={changed} onRestore={() => reference && set(r.key, f.key, reference.byRole[r.key][f.key])} />
+                        <input
+                          type="number"
+                          value={v}
+                          min={f.min}
+                          step={f.step}
+                          title={changed ? `Global: ${reference.byRole[r.key][f.key]}` : undefined}
+                          onChange={(e) => {
+                            const n = parseFloat(e.target.value)
+                            if (!isNaN(n)) set(r.key, f.key, Math.max(f.min, n))
+                          }}
+                          className={cn(
+                            'h-8 w-28 rounded-sm border bg-input-bg text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring',
+                            changed ? 'border-amber-600' : 'border-input',
+                          )}
+                        />
+                      </div>
                     </td>
                   )
                 })}

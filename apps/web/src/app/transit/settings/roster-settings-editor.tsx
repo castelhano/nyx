@@ -29,6 +29,8 @@ interface Props {
 // The real roster's rules of one empresa (transit.roster, scope branch)
 export function RosterSettingsEditor({ value, reference, onChange }: Props) {
   const diff = (key: keyof RosterSettings) => !!reference && JSON.stringify(value[key]) !== JSON.stringify(reference[key])
+  // DiffDot restore — the reference's value for that key
+  const restore = (key: keyof RosterSettings) => reference ? () => onChange({ ...value, [key]: reference[key] }) : undefined
   const grades = Array.from({ length: value.maxPreferredLines }, (_, i) => value.preferredLineGrades[i] ?? 0)
   const setGrade = (i: number, v: number) => onChange({ ...value, preferredLineGrades: grades.map((g, k) => (k === i ? Math.round(v) : g)) })
   const updateRange = (key: keyof RosterSettings['range'], field: keyof RangeCriterion, v: unknown) =>
@@ -39,6 +41,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
       <div className="rounded-lg border border-border divide-y divide-border">
         <Row
           diff={diff('lineAccessMode')}
+          onRestore={restore('lineAccessMode')}
           label="Regra de Linhas do Operador"
           hint="Regra de associação de linhas para operador"
         >
@@ -55,6 +58,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
         <Row
           diff={diff('maxPreferredLines')}
+          onRestore={restore('maxPreferredLines')}
           label="Linhas Preferenciais por Operador"
           hint="Quantidade de linhas aceitas como preferênciais"
         >
@@ -64,6 +68,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         {value.maxPreferredLines > 0 && (
           <Row
             diff={diff('portalPreferredLines')}
+            onRestore={restore('portalPreferredLines')}
             label="Linhas Preferenciais no Portal"
             hint="Obrigatório: o operador só usa o portal depois de escolher todas (ou todas as que pode operar)"
           >
@@ -81,6 +86,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         )}
         <Row
           diff={diff('defaultWeeklyHours')}
+          onRestore={restore('defaultWeeklyHours')}
           label="Carga Semanal Padrão"
           hint="Quando nem o operador nem o contrato definem — mensal = semanal × 5"
         >
@@ -90,6 +96,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         {grades.length > 0 && (
           <Row
             diff={diff('preferredLineGrades')}
+            onRestore={restore('preferredLineGrades')}
             label="Peso das Linhas Preferenciais"
             hint="Bonificação do gerador no atendimento de linhas preferenciais"
           >
@@ -99,6 +106,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         )}
         <Row
           diff={diff('loadPeriodStartDay')}
+          onRestore={restore('loadPeriodStartDay')}
           label="Início do Período da Carga"
           hint="Dia do mês em que começa o período da carga — 1 = mês civil"
         >
@@ -107,6 +115,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
         <Row
           diff={diff('awayMinDays')}
+          onRestore={restore('awayMinDays')}
           label="Afastamento no Painel"
           hint="Ausência aprovada (não férias) a partir destes dias tira o operador do quadro no Painel de Escala"
         >
@@ -115,6 +124,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
         <Row
           diff={diff('lineMarginPct')}
+          onRestore={restore('lineMarginPct')}
           label="Margem por linha no Painel"
           hint="Habilitados por linha e turno além do necessário (férias, faltas) — abaixo dela o Painel alerta"
         >
@@ -123,6 +133,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
         <Row
           diff={diff('habitualVehicleDays')}
+          onRestore={restore('habitualVehicleDays')}
           label="Carro Habitual"
           hint="O carro mais dirigido pelo operador nestes últimos dias"
         >
@@ -131,6 +142,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         </Row>
         <Row
           diff={diff('hourBankStart')}
+          onRestore={restore('hourBankStart')}
           label="Banco de Horas — Início"
           hint="Mês de corte: a partir dele o banco é calculado e os saldos iniciais são lançados. Vazio = sem banco de horas"
         >
@@ -143,7 +155,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
       </div>
 
       <SectionHeader label="Plantões" sub="Reserva da empresa por tipo de dia — os plantões são criados com o dia e o gerador os preenche com quem sobra depois das tabelas." />
-      <ReserveTargets value={value.reserveTargets} diff={diff('reserveTargets')} onChange={reserveTargets => onChange({ ...value, reserveTargets })} />
+      <ReserveTargets value={value.reserveTargets} diff={diff('reserveTargets')} onRestore={restore('reserveTargets')} onChange={reserveTargets => onChange({ ...value, reserveTargets })} />
 
       <SectionHeader label="Regras do Gerador" sub="Bloqueia: nunca escala. Alerta: só como último recurso, e o dia mostra a pendência." />
       <div className="rounded-lg border border-border divide-y divide-border">
@@ -151,6 +163,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
           <Row
             key={k}
             diff={!!reference && value.ruleModes[k] !== reference.ruleModes[k]}
+            onRestore={reference ? () => onChange({ ...value, ruleModes: { ...value.ruleModes, [k]: reference.ruleModes[k] } }) : undefined}
             label={ROSTER_RULE_LABEL[k].label}
             hint={ROSTER_RULE_LABEL[k].hint}
           >
@@ -172,6 +185,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
         globalData={reference ? reference.range : value.range}
         meta={ROSTER_RANGE_META}
         onChange={updateRange}
+        onRestore={reference ? (key) => onChange({ ...value, range: { ...value.range, [key]: reference.range[key] } }) : undefined}
       />
     </div>
   )
@@ -185,7 +199,7 @@ async function fetchList<T>(path: string): Promise<T[]> {
 }
 
 // one row per target: day type, start–end, garage, how many
-function ReserveTargets({ value, diff, onChange }: { value: RosterReserveTarget[]; diff: boolean; onChange: (next: RosterReserveTarget[]) => void }) {
+function ReserveTargets({ value, diff, onRestore, onChange }: { value: RosterReserveTarget[]; diff: boolean; onRestore?: () => void; onChange: (next: RosterReserveTarget[]) => void }) {
   const { data: dayTypes = [] } = useQuery({
     queryKey: ['transit', 'day-type', 'list'],
     queryFn:  () => fetchList<{ id: string; code: string; name: string }>('/transit/day-type'),
@@ -202,7 +216,7 @@ function ReserveTargets({ value, diff, onChange }: { value: RosterReserveTarget[
   return (
     <div className="rounded-lg border border-border">
       <div className="flex items-center gap-2 px-4 py-3">
-        <DiffDot show={diff} />
+        <DiffDot show={diff} onRestore={onRestore} />
         <p className="text-sm text-muted-foreground">{value.length ? `${value.reduce((n, t) => n + t.count, 0)} plantão(ões) em ${value.length} meta(s)` : 'Nenhuma meta de plantão'}</p>
         <Button type="button" size="sm" variant="outline" className="ml-auto" disabled={!dayTypes.length} onClick={add}>
           <Icons.Plus className="w-3.5 h-3.5" />Adicionar
@@ -232,11 +246,11 @@ function ReserveTargets({ value, diff, onChange }: { value: RosterReserveTarget[
   )
 }
 
-function Row({ diff, label, hint, children }: { diff: boolean; label: string; hint: string; children: React.ReactNode }) {
+function Row({ diff, onRestore, label, hint, children }: { diff: boolean; onRestore?: () => void; label: string; hint: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-6 px-4 py-3">
       <div className="flex items-center gap-2">
-        <DiffDot show={diff} />
+        <DiffDot show={diff} onRestore={onRestore} />
         <div>
           <p className="text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>

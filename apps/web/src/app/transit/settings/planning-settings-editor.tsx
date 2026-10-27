@@ -84,6 +84,19 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
     onChange({ ...value, line: { ...value.line, fleetUsage: { ...value.line.fleetUsage, [field]: v } } })
   }
 
+  // DiffDot restore: the reference's values for what a dot covers (none while disabled)
+  const restore = (patch: (r: PlanningSettings) => Partial<PlanningSettings>) =>
+    reference && !disabled ? () => onChange({ ...value, ...patch(reference) }) : undefined
+  const restoreAnchored = reference && !disabled
+    ? (key: keyof PlanningSettings['anchored']) => onChange({ ...value, anchored: { ...value.anchored, [key]: reference.anchored[key] } })
+    : undefined
+  const restoreRange = reference && !disabled
+    ? (key: keyof PlanningSettings['range']) => onChange({ ...value, range: { ...value.range, [key]: reference.range[key] } })
+    : undefined
+  const restoreLine = reference && !disabled
+    ? (key: LineRangeKey | 'fleetUsage') => onChange({ ...value, line: { ...value.line, [key]: reference.line[key] } })
+    : undefined
+
   return (
     <div className="flex flex-col gap-6">
       {/* Hard rules */}
@@ -92,7 +105,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
         <div className="rounded-lg border border-border divide-y divide-border">
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div className="flex items-center gap-2">
-              <DiffDot show={!!reference && value.minLayoverMinutes !== reference.minLayoverMinutes} />
+              <DiffDot show={!!reference && value.minLayoverMinutes !== reference.minLayoverMinutes} onRestore={restore(r => ({ minLayoverMinutes: r.minLayoverMinutes }))} />
               <div>
                 <p className="text-sm font-medium">Intervalo Mínimo entre Viagens</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Menor tempo parado no terminal entre duas viagens seguidas do carro (também usado ao normalizar a importação)</p>
@@ -111,7 +124,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
           </div>
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div className="flex items-center gap-2">
-              <DiffDot show={!!reference && value.restrictToBranchLines !== reference.restrictToBranchLines} />
+              <DiffDot show={!!reference && value.restrictToBranchLines !== reference.restrictToBranchLines} onRestore={restore(r => ({ restrictToBranchLines: r.restrictToBranchLines }))} />
               <div>
                 <p className="text-sm font-medium">Consistir Linha da Empresa</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Cada carro vai só para uma empresa que opera todas as linhas dele (empresas operadoras da linha; linha sem nenhuma aceita qualquer empresa)</p>
@@ -129,7 +142,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
           {STOP_PARAMS.map((p) => (
             <div key={p.key} className="flex items-center justify-between gap-6 px-4 py-3">
               <div className="flex items-center gap-2">
-                <DiffDot show={!!reference && value[p.key] !== reference[p.key]} />
+                <DiffDot show={!!reference && value[p.key] !== reference[p.key]} onRestore={restore(r => ({ [p.key]: r[p.key] }))} />
                 <div>
                   <p className="text-sm font-medium">{p.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{p.hint}</p>
@@ -167,6 +180,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
           globalData={ref.anchored}
           meta={ANCHORED_META}
           onChange={updateAnchored}
+          onRestore={restoreAnchored}
           disabled={disabled}
         />
       </div>
@@ -188,6 +202,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
           globalData={ref.range}
           meta={RANGE_META}
           onChange={updateRange}
+          onRestore={restoreRange}
           disabled={disabled}
         />
       </div>
@@ -203,6 +218,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
           globalData={lineRanges(ref.line)}
           meta={LINE_RANGE_META}
           onChange={updateLineRange}
+          onRestore={restoreLine}
           disabled={disabled}
         />
         <AnchoredTable
@@ -210,6 +226,7 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
           globalData={{ fleetUsage: ref.line.fleetUsage }}
           meta={LINE_FLEET_META}
           onChange={(_key, field, v) => updateLineFleetUsage(field, v)}
+          onRestore={restoreLine}
           disabled={disabled}
         />
       </div>

@@ -71,6 +71,18 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
     onChange({ ...value, anchored: { ...value.anchored, [key]: { ...value.anchored[key], [field]: v } } })
   }
 
+  // DiffDot restore: the reference's values for what a dot covers (none while disabled)
+  const restore = (patch: (r: CrewSettings) => Partial<CrewSettings>) =>
+    reference && !disabled ? () => onChange({ ...value, ...patch(reference) }) : undefined
+  const restoreRule = (keys: (keyof MealRule)[]) =>
+    restore(r => ({ mealRule: { ...rule, ...Object.fromEntries(keys.map(k => [k, r.mealRule[k]])) } }))
+  const restoreAnchored = reference && !disabled
+    ? (key: keyof CrewSettings['anchored']) => onChange({ ...value, anchored: { ...value.anchored, [key]: reference.anchored[key] } })
+    : undefined
+  const restoreRange = reference && !disabled
+    ? (key: keyof CrewSettings['range']) => onChange({ ...value, range: { ...value.range, [key]: reference.range[key] } })
+    : undefined
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
@@ -79,7 +91,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
           {CREW_PARAMS.map((p) => (
             <div key={p.key} className="flex items-center justify-between gap-6 px-4 py-3">
               <div className="flex items-center gap-2">
-                <DiffDot show={!!reference && value[p.key] !== reference[p.key]} />
+                <DiffDot show={!!reference && value[p.key] !== reference[p.key]} onRestore={restore(r => ({ [p.key]: r[p.key] }))} />
                 <div>
                   <p className="text-sm font-medium">{p.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{p.hint}</p>
@@ -102,7 +114,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
           {/* intrajornada of a STRAIGHT duty — mode (none / allowed / required) and form */}
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div className="flex items-center gap-2">
-              <DiffDot show={!!reference && (rule.mode !== reference.mealRule.mode || rule.form !== reference.mealRule.form)} />
+              <DiffDot show={!!reference && (rule.mode !== reference.mealRule.mode || rule.form !== reference.mealRule.form)} onRestore={restoreRule(['mode', 'form'])} />
               <div>
                 <p className="text-sm font-medium">Intervalo de Refeição</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -141,7 +153,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
           {rule.mode !== 'none' && rule.form === 'continuous' && (
             <div className="flex items-center justify-between gap-6 px-4 py-3">
               <div className="flex items-center gap-2">
-                <DiffDot show={!!reference && value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId} />
+                <DiffDot show={!!reference && value.mealBreakIntervalTypeId !== reference.mealBreakIntervalTypeId} onRestore={restore(r => ({ mealBreakIntervalTypeId: r.mealBreakIntervalTypeId }))} />
                 <div>
                   <p className="text-sm font-medium">Tipo de Intervalo da Refeição</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -164,7 +176,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
           {rule.mode !== 'none' && rule.form === 'fractioned' && (
             <div className="flex items-center justify-between gap-6 px-4 py-3">
               <div className="flex items-center gap-2">
-                <DiffDot show={!!reference && (rule.fractionedMinTotal !== reference.mealRule.fractionedMinTotal || rule.fractionedMinLongest !== reference.mealRule.fractionedMinLongest)} />
+                <DiffDot show={!!reference && (rule.fractionedMinTotal !== reference.mealRule.fractionedMinTotal || rule.fractionedMinLongest !== reference.mealRule.fractionedMinLongest)} onRestore={restoreRule(['fractionedMinTotal', 'fractionedMinLongest'])} />
                 <div>
                   <p className="text-sm font-medium">Refeição Fracionada</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -204,6 +216,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
           globalData={reference ? reference.anchored : value.anchored}
           meta={CREW_ANCHORED_META}
           onChange={updateAnchored}
+          onRestore={restoreAnchored}
           disabled={disabled}
         />
       </div>
@@ -218,6 +231,7 @@ export function CrewSettingsEditor({ value, reference, onChange, disabled }: Pro
           globalData={reference ? reference.range : value.range}
           meta={rule.mode !== 'none' && rule.form === 'continuous' ? CREW_RANGE_META : CREW_RANGE_META_NO_MEAL}
           onChange={updateRange}
+          onRestore={restoreRange}
           disabled={disabled}
         />
       </div>
