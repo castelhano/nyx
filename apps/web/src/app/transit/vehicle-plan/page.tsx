@@ -96,6 +96,12 @@ export default function VehiclePlanListPage() {
     origin: 'app/transit/vehicle-plan/page',
   })
 
+  // AutoList's alt+l (clear filters) fires too
+  useShortcut('alt+l', () => setSelected([]), {
+    display: false,
+    origin:  'app/transit/vehicle-plan/page',
+  })
+
   const handleAction = useCallback(async (action: string, row: Record<string, unknown>) => {
     if (action === 'import') {
       setImportPlanId(row.id as string)
