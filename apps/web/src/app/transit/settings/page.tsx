@@ -7,11 +7,14 @@ import { Icons } from '@/lib/icons'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Stepper } from '@/components/ui/stepper'
 import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
+import { useConfirm } from '@/lib/confirm-context'
 import { msgs } from '@/lib/messages'
 import type { GeneralSettings, PlanningSettings, CrewSettings, CrewCostSettings, RosterSettings } from '@nyx/schemas'
 import { SectionHeader, NumberInput } from './criteria-tables'
@@ -25,6 +28,10 @@ import { RosterSettingsEditor } from './roster-settings-editor'
 interface TransitScope { id: string; name: string }
 interface BranchOption { id: string; name: string }
 interface IntervalTypeOption { id: string; name: string }
+// scope/branch ids with a settings row of their own, per key (GET /transit/settings/overrides)
+interface SettingsOverrides { planning: string[]; crew: string[]; crewCost: string[]; roster: string[] }
+
+const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -32,6 +39,7 @@ export default function TransitSettingsPage() {
   const router      = useRouter()
   const queryClient = useQueryClient()
   const { toast }   = useToast()
+  const confirm     = useConfirm()
 
   // planning settings are keyed by transit Scope, like the crew rules below
   const [scope, setScope]       = useState<string>('global')
@@ -162,6 +170,15 @@ export default function TransitSettingsPage() {
     },
   })
 
+  const { data: overrides } = useQuery<SettingsOverrides>({
+    queryKey: ['transit', 'settings', 'overrides'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/settings/overrides')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
   // ── sync server → form ─────────────────────────────────────────────────────
   // resetSignal is bumped by the "reset" action to force a re-sync even when the
   // server value's identity hasn't changed — needs an effect, not just a query load.
@@ -176,17 +193,25 @@ export default function TransitSettingsPage() {
 
   // ── save ───────────────────────────────────────────────────────────────────
 
+  // Only the sections edited since loading are saved — a scope/branch showing the inherited
+  // global values gets a row of its own only when something in it actually changes.
   async function handleSave() {
     if (!general || !planning || !crew || !roster || !crewCost) return
+    const puts: [string, unknown][] = [
+      ['/transit/settings/general',                           sameValue(general,  serverGeneral)  ? null : general],
+      [`/transit/settings/planning?scope=${scope}`,           sameValue(planning, serverPlanning) ? null : planning],
+      [`/transit/settings/crew?scope=${crewScope}`,           sameValue(crew,     serverCrew)     ? null : crew],
+      [`/transit/settings/roster?branch=${rosterBranch}`,     sameValue(roster,   serverRoster)   ? null : roster],
+      [`/transit/settings/crew-cost?scope=${crewScope}`,      sameValue(crewCost, serverCrewCost) ? null : crewCost],
+    ]
+    const changed = puts.filter(([, body]) => body !== null)
+    if (!changed.length) {
+      toast.info('Nenhuma alteração para salvar')
+      return
+    }
     setSaving(true)
     try {
-      const responses = await Promise.all([
-        apiFetch('/transit/settings/general', { method: 'PUT', body: JSON.stringify(general) }),
-        apiFetch(`/transit/settings/planning?scope=${scope}`, { method: 'PUT', body: JSON.stringify(planning) }),
-        apiFetch(`/transit/settings/crew?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crew) }),
-        apiFetch(`/transit/settings/roster?branch=${rosterBranch}`, { method: 'PUT', body: JSON.stringify(roster) }),
-        apiFetch(`/transit/settings/crew-cost?scope=${crewScope}`, { method: 'PUT', body: JSON.stringify(crewCost) }),
-      ])
+      const responses = await Promise.all(changed.map(([url, body]) => apiFetch(url, { method: 'PUT', body: JSON.stringify(body) })))
       if (responses.some((r) => !r.ok)) throw new Error()
       queryClient.invalidateQueries({ queryKey: ['transit', 'settings'] })
       toast.success(msgs.saved())
@@ -197,11 +222,30 @@ export default function TransitSettingsPage() {
     }
   }
 
+  // "Usar global" — drops the scope's own rows, so it inherits the global ones again
+  async function handleUseGlobal(urls: string[], name: string) {
+    const ok = await confirm({
+      title:        'Usar configuração global?',
+      description:  `A configuração customizada de ${name} será removida e passará a seguir a global.`,
+      confirmLabel: 'Usar global',
+      variant:      'destructive',
+    })
+    if (!ok) return
+    try {
+      const responses = await Promise.all(urls.map((url) => apiFetch(url, { method: 'DELETE' })))
+      if (responses.some((r) => !r.ok)) throw new Error()
+      queryClient.invalidateQueries({ queryKey: ['transit', 'settings'] })
+      toast.success(`${name} passou a usar a configuração global`)
+    } catch {
+      toast.error(msgs.error.delete())
+    }
+  }
+
   // ── shortcuts & topbar ─────────────────────────────────────────────────────
 
   useTopbarActions([
     { label: 'Salvar', icon: Icons.Save, onClick: handleSave, primary: true, disabled: saving, keybind: 'ALT+G' },
-  ], [general, planning, crew, roster, crewCost, saving, scope, crewScope, rosterBranch])
+  ], [general, planning, crew, roster, crewCost, serverGeneral, serverPlanning, serverCrew, serverRoster, serverCrewCost, saving, scope, crewScope, rosterBranch])
 
   useShortcut('alt+g', handleSave, { desc: 'Salvar configurações', icon: Icons.Save, origin: 'TransitSettingsPage' })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: 'TransitSettingsPage' })
@@ -214,6 +258,11 @@ export default function TransitSettingsPage() {
   const isCrewScoped = crewScope !== 'global'
   const gCrew        = globalCrew ?? crew
   const isRosterScoped = rosterBranch !== 'global'
+
+  const scopeName  = (id: string) => transitScopes?.find((s) => s.id === id)?.name ?? id
+  const branchName = (id: string) => branches?.find((b) => b.id === id)?.name ?? id
+  // crew rules and their cost share the crew scope selector — either row makes it its own
+  const crewOverrides = [...new Set([...(overrides?.crew ?? []), ...(overrides?.crewCost ?? [])])]
 
   // ── render ─────────────────────────────────────────────────────────────────
 
@@ -360,15 +409,15 @@ export default function TransitSettingsPage() {
           >
             <option value="global">Global</option>
             {transitScopes?.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+              <option key={s.id} value={s.id}>{s.name}{overrides?.planning.includes(s.id) ? ' (própria)' : ''}</option>
             ))}
           </Select>
-          {isPlanningScoped && (
-            <span className="flex items-center gap-x-2 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
-              <span>Diferentes do Global</span>
-            </span>
-          )}
+          <OverrideStatus
+            selected={scope}
+            overrides={overrides?.planning ?? []}
+            nameOf={scopeName}
+            onUseGlobal={() => handleUseGlobal([`/transit/settings/planning?scope=${scope}`], scopeName(scope))}
+          />
         </div>
 
         {planning && gPlanning && (
@@ -396,15 +445,18 @@ export default function TransitSettingsPage() {
           >
             <option value="global">Global</option>
             {transitScopes?.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+              <option key={s.id} value={s.id}>{s.name}{crewOverrides.includes(s.id) ? ' (própria)' : ''}</option>
             ))}
           </Select>
-          {isCrewScoped && (
-            <span className="flex items-center gap-x-2 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
-              <span>Diferentes do Global</span>
-            </span>
-          )}
+          <OverrideStatus
+            selected={crewScope}
+            overrides={crewOverrides}
+            nameOf={scopeName}
+            onUseGlobal={() => handleUseGlobal([
+              `/transit/settings/crew?scope=${crewScope}`,
+              `/transit/settings/crew-cost?scope=${crewScope}`,
+            ], scopeName(crewScope))}
+          />
         </div>
 
         {crew && gCrew && (
@@ -443,15 +495,15 @@ export default function TransitSettingsPage() {
           >
             <option value="global">Global</option>
             {branches?.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
+              <option key={b.id} value={b.id}>{b.name}{overrides?.roster.includes(b.id) ? ' (própria)' : ''}</option>
             ))}
           </Select>
-          {isRosterScoped && (
-            <span className="flex items-center gap-x-2 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
-              <span>Diferentes do Global</span>
-            </span>
-          )}
+          <OverrideStatus
+            selected={rosterBranch}
+            overrides={overrides?.roster ?? []}
+            nameOf={branchName}
+            onUseGlobal={() => handleUseGlobal([`/transit/settings/roster?branch=${rosterBranch}`], branchName(rosterBranch))}
+          />
         </div>
 
         {roster && (
@@ -463,5 +515,43 @@ export default function TransitSettingsPage() {
         )}
       </section>
     </div>
+  )
+}
+
+// Next to a stage's scope selector. On Global: which scopes have a configuration of their own.
+// On a scope: whether it has one (and the way back to the global) or is inheriting the global.
+function OverrideStatus({ selected, overrides, nameOf, onUseGlobal }: {
+  selected:    string
+  overrides:   string[]
+  nameOf:      (id: string) => string
+  onUseGlobal: () => void
+}) {
+  if (selected === 'global') {
+    if (!overrides.length) return null
+    return (
+      <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <span>Custom:</span>
+        {overrides.map((id) => nameOf(id)).sort((a, b) => a.localeCompare(b, 'pt-BR')).map((name) => (
+          <Badge key={name} label={name} color="warning" />
+        ))}
+      </span>
+    )
+  }
+  if (!overrides.includes(selected)) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Herdando do Global — salvar uma alteração cria uma configuração própria
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-x-3 text-xs text-muted-foreground">
+      <Badge label="CUSTOM" color="warning" />
+      <span className="flex items-center gap-x-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 flex-shrink-0"></span>
+        <span>Diferentes do Global</span>
+      </span>
+      <Button type="button" variant="outline" size="sm" onClick={onUseGlobal}>Usar global</Button>
+    </span>
   )
 }

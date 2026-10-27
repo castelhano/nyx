@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body, Query, UseGuards } from '@nestjs/common'
+import { Controller, Get, Put, Delete, Body, Query, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../../../auth/policies.guard'
 import { TransitGeneralConfigService }   from './transit-general-config.service'
 import { TransitPlanningConfigService }  from './transit-planning-config.service'
@@ -16,6 +16,15 @@ export class TransitSettingsController {
     private readonly roster:   TransitRosterConfigService,
     private readonly crewCost: TransitCrewCostConfigService,
   ) {}
+
+  // the scope/branch ids with their own row, per settings key
+  @Get('overrides')
+  async getOverrides() {
+    const [planning, crew, crewCost, roster] = await Promise.all([
+      this.planning.overrides(), this.crew.overrides(), this.crewCost.overrides(), this.roster.overrides(),
+    ])
+    return { planning, crew, crewCost, roster }
+  }
 
   @Get('general')
   getGeneral() {
@@ -40,6 +49,11 @@ export class TransitSettingsController {
     return this.planning.put(dto, scopeId)
   }
 
+  @Delete('planning')
+  deletePlanning(@Query('scope') scope?: string) {
+    return this.planning.removeOverride(scope)
+  }
+
   // ?scope=<transit Scope.id> | global
   @Get('crew')
   getCrew(@Query('scope') scope?: string) {
@@ -51,6 +65,11 @@ export class TransitSettingsController {
   putCrew(@Body() dto: unknown, @Query('scope') scope?: string) {
     const scopeId = scope && scope !== 'global' ? scope : undefined
     return this.crew.put(dto, scopeId)
+  }
+
+  @Delete('crew')
+  deleteCrew(@Query('scope') scope?: string) {
+    return this.crew.removeOverride(scope)
   }
 
   // ?scope=<transit Scope.id> | global
@@ -66,6 +85,11 @@ export class TransitSettingsController {
     return this.crewCost.put(dto, scopeId)
   }
 
+  @Delete('crew-cost')
+  deleteCrewCost(@Query('scope') scope?: string) {
+    return this.crewCost.removeOverride(scope)
+  }
+
   // ?branch=<Branch.id> | global
   @Get('roster')
   getRoster(@Query('branch') branch?: string) {
@@ -77,5 +101,10 @@ export class TransitSettingsController {
   putRoster(@Body() dto: unknown, @Query('branch') branch?: string) {
     const branchId = branch && branch !== 'global' ? branch : undefined
     return this.roster.put(dto, branchId)
+  }
+
+  @Delete('roster')
+  deleteRoster(@Query('branch') branch?: string) {
+    return this.roster.removeOverride(branch)
   }
 }

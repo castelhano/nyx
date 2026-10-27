@@ -73,6 +73,23 @@ export abstract class BaseSettingsService<T> {
     return row.value as T
   }
 
+  // the scopeIds with a row of their own (an override of the global one)
+  async overrides(): Promise<string[]> {
+    if (this.scope === 'global') return []
+    const rows = await this.prisma.settings.findMany({
+      where:  { key: this.key, scope: { not: 'global' } },
+      select: { scope: true },
+    })
+    return rows.map(r => r.scope)
+  }
+
+  // drops a scope's own row — it falls back to the global one again
+  async removeOverride(scopeId?: string): Promise<void> {
+    const scopeValue = this.resolveScope(scopeId)
+    if (scopeValue === 'global') throw new BadRequestException('A configuração global não pode ser removida')
+    await this.prisma.settings.deleteMany({ where: { key: this.key, scope: scopeValue } })
+  }
+
   private resolveScope(scopeId?: string): string {
     return this.scope !== 'global' && scopeId ? scopeId : 'global'
   }
