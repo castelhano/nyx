@@ -9,7 +9,7 @@ interface Props {
   filter:     BlockFilter | null
   onChange:   (next: BlockFilter | null) => void
   matchCount: number
-  // the empresas the plan's blocks belong to
+  // the empresas the plan's blocks belong to (UNASSIGNED_BRANCH for blocks with none)
   branches:   { id: string; name: string }[]
   // the depots the plan's blocks belong to
   depots:     { id: string; name: string }[]
@@ -64,7 +64,7 @@ export function BlockFilterBar({ filter, onChange, matchCount, branches, depots,
       // selection/editing there.
       className="absolute top-1 inset-x-0 mx-auto w-fit z-20 flex items-center gap-2 px-2.5 py-1 bg-background border border-border rounded-lg shadow-lg text-xs"
     >
-      {branches.length > 1 && (
+      {branches.length > 0 && (
         <select
           value={branchId}
           onChange={e => { commit(field, relation, timeLabel, issuesOnly, e.target.value); release(e) }}

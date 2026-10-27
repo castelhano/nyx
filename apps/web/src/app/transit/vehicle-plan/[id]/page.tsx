@@ -14,7 +14,7 @@ import { useConfirm }        from '@/lib/confirm-context'
 import { extractError }      from '@/lib/utils'
 import { NewPlanForm }       from './components/NewPlanForm'
 import { InlineDescription } from './components/InlineDescription'
-import { useGanttEditor } from './hooks/useGanttEditor'
+import { useGanttEditor, UNASSIGNED_BRANCH } from './hooks/useGanttEditor'
 import { useVehiclePlanShortcuts } from './hooks/useVehiclePlanShortcuts'
 import { useOsoCoverage } from './hooks/useOsoCoverage'
 import { useServiceRequirements } from './hooks/useServiceRequirements'
@@ -149,11 +149,17 @@ export default function VehiclePlanPage() {
   } = editor
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
-  // the empresas of the plan's blocks — BlockFilterBar's empresa list
+  // the empresas of the plan's blocks — BlockFilterBar's empresa list; "Não atribuída" last when
+  // some block has none
   const filterBranches = useMemo(() => {
     const byId = new Map<string, string>()
-    for (const b of mergedPlottedData?.blocks ?? []) if (b.branch) byId.set(b.branch.id, b.branch.name)
-    return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    let unassigned = false
+    for (const b of mergedPlottedData?.blocks ?? []) {
+      if (b.branch) byId.set(b.branch.id, b.branch.name)
+      else unassigned = true
+    }
+    const branches = [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    return unassigned ? [...branches, { id: UNASSIGNED_BRANCH, name: 'Não atribuída' }] : branches
   }, [mergedPlottedData])
   // the depots of the plan's blocks — BlockFilterBar's depot list
   const filterDepots = useMemo(() => {
