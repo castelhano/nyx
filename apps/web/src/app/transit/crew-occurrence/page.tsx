@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { CREW_OCCURRENCE_ORIGIN_LABEL, CREW_OCCURRENCE_STATUS_LABEL } from '@nyx/schemas'
+import { CREW_OCCURRENCE_ORIGIN_LABEL, CREW_OCCURRENCE_STATUS_LABEL, PORTAL_QUOTA_PERIOD_LABEL, type PortalQuotaBalance } from '@nyx/schemas'
 import { Icons }            from '@/lib/icons'
 import { AutoBreadcrumb }   from '@/core/AutoBreadcrumb'
 import { usePageGuard }     from '@/core/usePageGuard'
@@ -153,6 +153,20 @@ export default function CrewOccurrencesPage() {
   })
   const readonly = form?.id ? !canUpdate : !canCreate
 
+  // a request launched on his behalf counts on his portal quota — over it is allowed, with a warning
+  const onBehalf = !!form && !form.id && form.origin === 'STAFF_ON_BEHALF'
+  const { data: quotas } = useQuery<PortalQuotaBalance[]>({
+    queryKey: ['transit', 'crew-member', 'portal-quotas', crewMemberId, form?.startDate],
+    queryFn:  async () => {
+      const res = await apiFetch(`/transit/crew-member/${crewMemberId}/portal-quotas?date=${form!.startDate}`)
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(extractError(json))
+      return json
+    },
+    enabled: onBehalf && /^\d{4}-\d{2}-\d{2}$/.test(form?.startDate ?? ''),
+  })
+  const quota = onBehalf ? quotas?.find(q => q.kind === form!.kind && (form!.kind === 'TIME_WINDOW' || q.absenceTypeId === form!.absenceTypeId)) : undefined
+
   // the launch panel over the selected days (or the cursor's)
   function launch(r = sel ?? { from: cursor, to: cursor }) {
     if (!canCreate) return
@@ -241,9 +255,10 @@ export default function CrewOccurrencesPage() {
 
   const back = () => router.push(`/transit/crew-member/${crewMemberId}`)
   useTopbarActions([
-    ...(canCreate ? [{ label: 'Lançar', icon: Icons.Plus, onClick: () => launch(), primary: !form, keybind: 'ENTER' }] : []),
+    ...(canCreate ? [{ label: 'Lançar', icon: Icons.Plus, onClick: () => launch(), primary: !form, keybind: 'ALT+N' }] : []),
     ...(form && !readonly ? [{ label: saving ? 'Gravar…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, primary: true, disabled: saving, keybind: 'ALT+G' }] : []),
   ], [canCreate, form, readonly, saving, sel, cursor])
+  useShortcut('alt+n', () => launch(), { desc: 'Lançar pedido', icon: Icons.Plus, origin: ORIGIN, context: 'all' })
   useShortcut('alt+g', () => void handleSave(), { desc: 'Gravar pedido', icon: Icons.Save, origin: ORIGIN, context: 'all' })
   useShortcut('alt+v', back, { desc: 'Voltar', icon: Icons.ArrowLeft, origin: ORIGIN, context: 'all' })
   useShortcut('alt+l', reset, { display: false, origin: ORIGIN })
@@ -325,7 +340,8 @@ export default function CrewOccurrencesPage() {
         {/* ── side: form, pending, history ── */}
         <div className="space-y-5">
           {form && cal && (
-            <form id={FORM_ID} onSubmit={handleSave} className="rounded-lg border border-border p-4 space-y-3">
+            // remounts per request, so the start date takes the focus each time one opens
+            <form key={form.id ?? 'new'} id={FORM_ID} onSubmit={handleSave} className="rounded-lg border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-medium">{form.id ? 'Pedido' : 'Lançar'}</h2>
                 <button type="button" onClick={() => { setForm(null); setSel(null) }} className="text-muted-foreground hover:text-foreground"><Icons.X className="w-4 h-4" /></button>
@@ -343,7 +359,7 @@ export default function CrewOccurrencesPage() {
               <div className="grid grid-cols-2 gap-2">
                 <label className="space-y-1">
                   <span className="text-xs text-muted-foreground">De</span>
-                  <input type="date" value={form.startDate} disabled={readonly}
+                  <input type="date" value={form.startDate} disabled={readonly} autoFocus
                     onChange={e => { set('startDate', e.target.value); if (e.target.value > form.endDate) set('endDate', e.target.value) }}
                     className="h-8 w-full border border-input rounded-sm text-sm bg-input-bg px-2" />
                 </label>
@@ -356,7 +372,7 @@ export default function CrewOccurrencesPage() {
               {form.kind === 'ABSENCE' ? (
                 <label className="block space-y-1">
                   <span className="text-xs text-muted-foreground">Motivo</span>
-                  <Select value={form.absenceTypeId} onChange={e => set('absenceTypeId', e.target.value)} size="sm" disabled={readonly} autoFocus>
+                  <Select value={form.absenceTypeId} onChange={e => set('absenceTypeId', e.target.value)} size="sm" disabled={readonly}>
                     <option value="">Selecione…</option>
                     {cal.absenceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </Select>
@@ -409,6 +425,13 @@ export default function CrewOccurrencesPage() {
                     <option value="STAFF_ON_BEHALF">Solicitado</option>
                   </Select>
                 </label>
+              )}
+              {quota && (
+                <p className={cn('text-xs', quota.used >= quota.max ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+                  {quota.used >= quota.max && <Icons.AlertTriangle className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />}
+                  Cota do portal — {quota.label}: {quota.used} de {quota.max} na {PORTAL_QUOTA_PERIOD_LABEL[quota.period].toLowerCase()} ({fmtDay(quota.from)}–{fmtDay(quota.to)})
+                  {quota.used >= quota.max && '. Este pedido passa da cota.'}
+                </p>
               )}
               <label className="block space-y-1">
                 <span className="text-xs text-muted-foreground">Observações</span>

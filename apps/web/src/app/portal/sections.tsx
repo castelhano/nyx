@@ -127,7 +127,8 @@ const STATUS: Record<PortalOccurrence['status'], { label: string; tone: string }
 export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
   const qc = useQueryClient()
   const today = localToday()
-  const kinds = ([me.permissions.requestAbsence && 'ABSENCE', me.permissions.requestTimeWindow && 'TIME_WINDOW'] as const).filter(k => !!k)
+  // no requestable absence type: nothing to ask for as an absence
+  const kinds = ([me.permissions.requestAbsence && me.absenceTypes.length > 0 && 'ABSENCE', me.permissions.requestTimeWindow && 'TIME_WINDOW'] as const).filter(k => !!k)
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<'ABSENCE' | 'TIME_WINDOW'>(kinds[0])
   const [date, setDate] = useState(addDays(today, 1))

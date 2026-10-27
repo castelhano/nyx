@@ -45,6 +45,8 @@ export interface FieldMeta {
   labelField?: string
   /** record fields: the field of `resource` whose value is used as the record key */
   keyField?: string
+  /** record fields: what a key is called on screen ("Tipo de dia") */
+  keyLabel?: string
   relatedDisplayFields?: string[]
   relatedWhere?: Record<string, unknown>
   keybind?: string
@@ -109,6 +111,10 @@ export interface MetadataField {
   domain?: string
   labelField?: string
   keyField?: string
+  keyLabel?: string
+  /** nested fields: may be left unset (optional in the schema, not just defaulted) — an override's
+   *  "not set" state, distinct from false / empty */
+  clearable?: boolean
   relatedDisplayFields?: string[]
   relatedWhere?: Record<string, unknown>
   keybind?: string

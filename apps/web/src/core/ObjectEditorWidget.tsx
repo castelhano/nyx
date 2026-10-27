@@ -14,6 +14,7 @@ import type { MetadataField } from '@nyx/types'
 import { inputBaseCls } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Icons } from '@/lib/icons'
+import { Switch } from '@/components/ui/switch'
 import { useFieldOptions } from './useFieldOptions'
 
 const readonlyCls = 'opacity-60 cursor-not-allowed bg-muted'
@@ -32,16 +33,24 @@ function PrimitiveInput({
   readonly?: boolean
   className?: string
 }) {
-  if (field.type === 'boolean') {
+  // optional boolean (an override): unset / yes / no
+  if (field.type === 'boolean' && field.clearable) {
     return (
-      <input
-        type="checkbox"
-        checked={Boolean(value)}
-        onChange={(e) => onChange(e.target.checked)}
+      <select
+        value={value == null ? '' : String(value)}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value === 'true')}
         disabled={readonly}
-        className={cn('rounded', className)}
-      />
+        className={cn(fieldInputCls, 'w-36', className, readonly && readonlyCls)}
+      >
+        <option value="">Não definido</option>
+        <option value="true">Sim</option>
+        <option value="false">Não</option>
+      </select>
     )
+  }
+
+  if (field.type === 'boolean') {
+    return <Switch checked={Boolean(value)} onToggle={() => onChange(!value)} disabled={readonly} className={className} />
   }
 
   if (field.type === 'enum' && field.options) {
@@ -80,6 +89,23 @@ function PrimitiveInput({
   )
 }
 
+/** A boolean as a switch with its label beside it, the whole row clickable. */
+function BooleanRow({
+  field, value, onChange, readonly,
+}: {
+  field: MetadataField
+  value: unknown
+  onChange: (v: unknown) => void
+  readonly?: boolean
+}) {
+  return (
+    <label className={cn('flex items-center gap-2.5 text-sm', !readonly && 'cursor-pointer')}>
+      <PrimitiveInput field={field} value={value} onChange={onChange} readonly={readonly} />
+      {field.label}
+    </label>
+  )
+}
+
 /** Compact label+input cell, used when every sibling in an object is a leaf (flows inline). */
 function CompactLeafCell({
   field, value, onChange, readonly,
@@ -89,6 +115,7 @@ function CompactLeafCell({
   onChange: (v: unknown) => void
   readonly?: boolean
 }) {
+  if (field.type === 'boolean') return <BooleanRow field={field} value={value} onChange={onChange} readonly={readonly} />
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs text-muted-foreground">{field.label}</label>
@@ -115,9 +142,25 @@ function ObjectValueEditor({
   // metrics.renewalIndex = { overall, OUTBOUND, INBOUND, CIRCULAR }, all numbers) flows inline.
   const hasWideChild = children.some((f) => f.type === 'array' || f.type === 'record')
 
+  const filled = Object.values(value).some((v) => v !== undefined && v !== null)
   return (
     <div className="space-y-2">
-      {!hideLabel && <p className="font-semibold text-muted-foreground">{field.label}</p>}
+      {!hideLabel && (
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{field.label}</p>
+          {/* an optional object goes back to unset (no quota, or the profile's in an override) */}
+          {field.clearable && filled && !readonly && (
+            <button
+              type="button"
+              onClick={() => (onChange as (v: unknown) => void)(undefined)}
+              title="Limpar"
+              className="p-1 rounded-sm text-muted-foreground hover:text-destructive hover:bg-accent cursor-pointer"
+            >
+              <Icons.Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       {allLeaf ? (
         <div className="flex flex-wrap gap-3">
           {children.map((sub) => (
@@ -262,7 +305,9 @@ function RecordValueEditor({
 
   function removeKey(key: string) {
     const { [key]: _removed, ...rest } = value
-    onChange(rest)
+    // the last key out of an optional record: back to unset, not an empty set
+    if (!Object.keys(rest).length && field.clearable) (onChange as (v: unknown) => void)(undefined)
+    else onChange(rest)
   }
 
   return (
@@ -282,7 +327,7 @@ function RecordValueEditor({
                 className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
               >
                 <Icons.ChevronDown className={cn('w-3.5 h-3.5 transition-transform', isOpen && 'rotate-180')} />
-                Tipo de dia: {labelOf(key)}
+                {labelOf(key)}
               </button>
               {canEditKeys && (
                 <button
@@ -310,7 +355,7 @@ function RecordValueEditor({
       {canEditKeys && available.length > 0 && (
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">Tipo de dia</label>
+            <label className="text-xs text-muted-foreground">{field.keyLabel ?? 'Chave'}</label>
             <select value={newKey} onChange={(e) => setNewKey(e.target.value)} className={cn(fieldInputCls, 'w-48')}>
               <option value="">Selecione…</option>
               {available.map((o) => {
@@ -381,6 +426,7 @@ function FieldValueEditor({
   }
   // standalone leaf (top-level field, or a non-leaf sibling forced this object into the
   // stacked layout) — normal label + full-width input, distinct from CompactLeafCell
+  if (field.type === 'boolean') return <BooleanRow field={field} value={value} onChange={onChange} readonly={readonly} />
   return (
     <div className="flex flex-col gap-1 min-w-48">
       <label className="text-sm font-medium">{field.label}</label>
@@ -402,16 +448,28 @@ export function ObjectEditorWidget({
         const value = (ctrl.value ?? {}) as Record<string, unknown>
         const handleKey = (key: string, val: unknown) => ctrl.onChange({ ...value, [key]: val })
 
+        // consecutive booleans read as one list of switches, closer together
+        const groups: MetadataField[][] = []
+        for (const sub of field.fields ?? []) {
+          const last = groups[groups.length - 1]
+          if (sub.type === 'boolean' && last?.[0].type === 'boolean') last.push(sub)
+          else groups.push([sub])
+        }
+
         return (
           <div className="space-y-5">
-            {field.fields?.map((sub) => (
-              <FieldValueEditor
-                key={sub.name}
-                field={sub}
-                value={value[sub.name]}
-                onChange={(v) => handleKey(sub.name, v)}
-                readonly={readonly}
-              />
+            {groups.map((group) => (
+              <div key={group[0].name} className="space-y-3">
+                {group.map((sub) => (
+                  <FieldValueEditor
+                    key={sub.name}
+                    field={sub}
+                    value={value[sub.name]}
+                    onChange={(v) => handleKey(sub.name, v)}
+                    readonly={readonly}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         )

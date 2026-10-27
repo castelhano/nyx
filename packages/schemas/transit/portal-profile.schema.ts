@@ -26,7 +26,7 @@ export const portalPermissionsSchema = z.object({
   editPreferredLines: z.boolean().default(false).meta({ label: 'Editar linhas preferidas' }),
   // per absence type (its code)
   absenceLimits: z.record(z.string(), quotaSchema).default({})
-    .meta({ label: 'Cotas por tipo de ausência', resource: 'crew-absence-type', domain: 'transit', keyField: 'code', labelField: 'name' }),
+    .meta({ label: 'Cotas por tipo de ausência', resource: 'crew-absence-type', domain: 'transit', keyField: 'code', labelField: 'name', keyLabel: 'Tipo de ausência' }),
   timeWindowLimit: quotaSchema.optional().meta({ label: 'Cota de restrição de horário' }),
 })
 export type PortalPermissions = z.infer<typeof portalPermissionsSchema>

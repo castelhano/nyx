@@ -91,14 +91,25 @@ export class PortalController {
   }
 }
 
-// Staff side: a crew member's portal PIN back to the first one (the CPF's first 6 digits)
+// Staff side: a crew member's portal PIN back to the first one (the CPF's first 6 digits), and
+// his quotas (a request launched on his behalf over them is allowed, with a warning)
 @Controller('transit/crew-member')
 @UseGuards(JwtAuthGuard)
 export class PortalAccessController {
   constructor(
     private readonly auth:        PortalAuthService,
+    private readonly portal:      PortalService,
     private readonly caslFactory: CaslAbilityFactory,
   ) {}
+
+  @Get(':id/portal-quotas')
+  async quotas(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Query('date') date?: string) {
+    if (req.user) {
+      const ability = await this.caslFactory.createForUser(req.user)
+      if (!ability.can('read', 'CrewOccurrence')) throw new ForbiddenException()
+    }
+    return this.portal.quotasOf(id, date)
+  }
 
   @Post(':id/portal-pin/reset')
   @HttpCode(204)

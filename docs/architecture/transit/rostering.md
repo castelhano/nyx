@@ -309,7 +309,8 @@ staff JWT):
   `CrewMember.portalOverride` replaces the fields it sets): see the roster, request absences
   (requestable types) / time windows, edit preferred lines; quotas per absence type and for time
   windows, per week, month (load period) or year — requests from the portal and those entered by
-  staff on his behalf, requested or approved, count; a portal request over the quota is refused.
+  staff on his behalf, requested or approved, count; a portal request over the quota is refused, one
+  launched on his behalf passes with a warning on the launch form (`transit/crew-member/:id/portal-quotas`).
 - **Requests**: one day each, `REQUESTED`, what was asked kept (`createFromPortal`); approval stays
   on the Escala screen.
 - **Roster**: only PUBLISHED / CLOSED days — duty, times, lines, cars, days off, absences, windows.

@@ -13,7 +13,8 @@ condutor em `apps/web/src/app/portal/*`).** O que existe está descrito em
 >   botão "Resetar PIN do portal" na lista de operadores.
 > - Notificações: geradas do `DailyChangeLog` na primeira leitura do portal (qualquer escritor do
 >   histórico — edição, gerador, reparo, férias), só as criadas depois do acesso.
-> - Ainda não feito: o aviso de cota estourada no pedido lançado pelo gestor (`STAFF_ON_BEHALF`).
+> - O aviso de cota no pedido lançado pelo gestor (`STAFF_ON_BEHALF`) aparece no formulário de
+>   lançamento (Pedidos do operador), pelo `GET transit/crew-member/:id/portal-quotas`.
 
 Convenções: comentários em snippets Prisma/TS em inglês; texto em pt-BR; minutos do dia
 operacional (`> 1440` = madrugada seguinte).

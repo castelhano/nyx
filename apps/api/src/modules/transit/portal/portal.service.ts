@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, UnprocessableEntityException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import {
   PORTAL_QUOTA_PERIOD_LABEL, effectivePortalPermissions, formatDutyNumber, portalLinesSchema, portalRequestSchema,
   type PortalLines, type PortalMe, type PortalNotification, type PortalOccurrence, type PortalPermissions,
@@ -193,11 +193,19 @@ export class PortalService {
     return this.balances(crew, await this.permissions(crew), date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : dayOf(new Date()))
   }
 
+  // staff side: a crew member's quotas, to warn a request launched on his behalf over them
+  async quotasOf(crewMemberId: string, date?: string): Promise<PortalQuotaBalance[]> {
+    const m = await this.prisma.crewMember.findUnique({ where: { id: crewMemberId }, select: { id: true, role: true, employee: { select: { branchId: true } } } })
+    if (!m) throw new NotFoundException('Operador não encontrado')
+    return this.quotas({ id: m.id, branchId: m.employee.branchId, role: m.role, mustChangePin: false }, date)
+  }
+
   private async balances(crew: PortalCrew, permissions: PortalPermissions, date: Day): Promise<PortalQuotaBalance[]> {
     const codes = Object.keys(permissions.absenceLimits)
     const types = codes.length
-      ? await this.prisma.crewAbsenceType.findMany({ where: { code: { in: codes } }, select: { id: true, code: true, name: true } })
+      ? await this.prisma.crewAbsenceType.findMany({ where: { code: { in: codes }, requestable: true, isActive: true }, select: { id: true, code: true, name: true } })
       : []
+    // only what he can ask for — a quota on a type closed to the portal would never move
     const wanted: { label: string; kind: 'ABSENCE' | 'TIME_WINDOW'; absenceTypeId: string | null; quota: PortalQuota }[] = [
       ...types.map(t => ({ label: t.name, kind: 'ABSENCE' as const, absenceTypeId: t.id, quota: permissions.absenceLimits[t.code] })),
       ...(permissions.timeWindowLimit ? [{ label: 'Restrição de horário', kind: 'TIME_WINDOW' as const, absenceTypeId: null, quota: permissions.timeWindowLimit }] : []),

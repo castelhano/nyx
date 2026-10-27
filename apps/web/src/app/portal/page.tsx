@@ -56,7 +56,7 @@ export default function PortalPage() {
   const p = me.permissions
   const tabs: TabDef[] = [
     ...(p.viewRoster ? [['escala', 'Escala', Icons.CalendarDays] as TabDef] : []),
-    ...(p.requestAbsence || p.requestTimeWindow ? [['pedidos', 'Pedidos', Icons.Send] as TabDef] : []),
+    ...((p.requestAbsence && me.absenceTypes.length > 0) || p.requestTimeWindow ? [['pedidos', 'Pedidos', Icons.Send] as TabDef] : []),
     ['linhas', 'Linhas', Icons.Route],
     ['avisos', 'Avisos', Icons.Bell],
   ]

@@ -78,6 +78,8 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
     const field = rawField
     const meta  = (field as any).meta?.() ?? {}
     const inner = unwrap(field)
+    // optional/nullable (not only defaulted): unset is a state of its own
+    const clearable = field instanceof ZodOptional || field instanceof ZodNullable ? { clearable: true } : {}
 
     if (inner instanceof ZodObject) {
       return {
@@ -88,6 +90,7 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
         listVisibility: 'never'  as const,
         showInForm:     meta.showInForm ?? true,
         sortable:       false,
+        ...clearable,
         fields:         buildNestedFields((inner as ZodObject<any>).shape),
         ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
       }
@@ -107,12 +110,13 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
         listVisibility: 'never'  as const,
         showInForm:     meta.showInForm ?? true,
         sortable:       false,
+        ...clearable,
         ...(valueInner instanceof ZodObject
           ? { fields: buildNestedFields((valueInner as ZodObject<any>).shape) }
           : {}),
         ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
         // resource whose rows are the allowed keys — lets the editor add/remove them
-        ...(meta.resource ? { resource: meta.resource, domain: meta.domain, keyField: meta.keyField ?? 'id', labelField: meta.labelField } : {}),
+        ...(meta.resource ? { resource: meta.resource, domain: meta.domain, keyField: meta.keyField ?? 'id', labelField: meta.labelField, keyLabel: meta.keyLabel } : {}),
       }
     }
 
@@ -126,6 +130,7 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
         listVisibility: 'never'  as const,
         showInForm:     meta.showInForm ?? true,
         sortable:       false,
+        ...clearable,
         ...(elementInner instanceof ZodObject
           ? { itemFields: buildNestedFields((elementInner as ZodObject<any>).shape) }
           : {}),
@@ -141,6 +146,7 @@ function buildNestedFields(shape: Record<string, ZodType>): MetadataField[] {
       listVisibility: 'never'  as const,
       showInForm:     meta.showInForm ?? true,
       sortable:       false,
+      ...clearable,
       ...(inner instanceof ZodEnum ? { options: Object.keys((inner as ZodEnum<any>)._def.entries ?? {}) } : {}),
       ...(meta.optionLabels ? { optionLabels: meta.optionLabels } : {}),
       ...(meta.placeholder ? { placeholder: meta.placeholder } : {}),
