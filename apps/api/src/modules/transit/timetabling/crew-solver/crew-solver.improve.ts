@@ -19,6 +19,12 @@ import { mealPolicy } from '@nyx/schemas'
 //              Doing it piece by piece would pass through a short duty (a TRIPPER, or an error
 //              below the work floor) the search almost never accepts. Accepted only when it
 //              improves the score (no annealing).
+//  - unsplit:  a SPLIT comes apart at its split gap, each half a STRAIGHT of its own (taking the
+//              nearest piece — whole, or cut at a relief point — from a duty next to it in time)
+//              or joining a duty that takes it. Single moves can't undo a split without passing
+//              through a short duty with an error, so the issues once traded for splits would stay.
+//              Drawn only while the SPLIT share is above range.splitRatio.idealMax; accepted
+//              only when it improves the score, like eliminate.
 // Every duty a move builds follows the hard rules (buildDuty); a move that breaks one is
 // dropped. Duties with an issue come first: a move never adds one and always goes through when it
 // removes one; among equals, the score optimized is the raw one (CrewScoreAggregate.rawScore): a
@@ -39,6 +45,11 @@ const ELIMINATE_SHARE = 0.1
 const ELIMINATE_DRAW = 3
 // receivers tried per piece, nearest in time first
 const ELIMINATE_CANDIDATES = 6
+// share of the attempts that try to undo a SPLIT, while the plan's SPLIT share is above
+// range.splitRatio.idealMax
+const UNSPLIT_SHARE = 0.1
+// SPLIT duties drawn to find one to undo
+const UNSPLIT_DRAW = 8
 // share of worsening moves accepted at the start (calibrates the temperature)
 const START_ACCEPT = 0.3
 const CALIBRATION_MOVES = 300
@@ -185,9 +196,11 @@ export class CrewImprover {
     if (!this.duties.length) return
     // a new cycle swaps the duties — only between moves, never while one is being applied
     if (this.temperature != null && Date.now() - this.cycleStart >= this.cycleMs) this.nextCycle(Date.now())
+    const unsplitting = this.splitOver() && this.random() < UNSPLIT_SHARE
     const r = this.random()
-    const eliminating = r < ELIMINATE_SHARE
-    const move = eliminating ? this.eliminate()
+    const eliminating = !unsplitting && r < ELIMINATE_SHARE
+    const move = unsplitting ? this.unsplit()
+      : eliminating ? this.eliminate()
       : r < ELIMINATE_SHARE + 0.3 ? this.shift()
       : r < ELIMINATE_SHARE + 0.6 ? this.swap()
       : this.transfer()
@@ -204,11 +217,11 @@ export class CrewImprover {
     const delta  = score - this.current
 
     // less crew overflow, then fewer duties with an issue always goes through, more never does;
-    // among equals an elimination goes through only when it pays off (its worsenings are much
-    // larger than the other moves' and would heat the annealing up into a random walk), the rest
-    // anneal
+    // among equals an elimination (or unsplit) goes through only when it pays off (its worsenings
+    // are much larger than the other moves' and would heat the annealing up into a random walk),
+    // the rest anneal
     const ok = this.overflow !== overflow ? this.overflow < overflow
-      : issues !== this.issues ? issues < this.issues : eliminating ? delta >= 0 : this.accept(delta)
+      : issues !== this.issues ? issues < this.issues : eliminating || unsplitting ? delta >= 0 : this.accept(delta)
     if (!ok) {
       for (const w of move.added)   this.agg.remove(w.calc, w.ev)
       for (const w of move.removed) this.agg.add(w.calc, w.ev)
@@ -396,6 +409,80 @@ export class CrewImprover {
       added.push(b2)
     }
     return { removed: [a, ...taken.keys()], added }
+  }
+
+  // the plan's SPLIT share (locked duties included) above range.splitRatio.idealMax
+  private splitOver(): boolean {
+    const c = this.input.settings.range.splitRatio
+    const total = this.duties.length + this.locked.length
+    return c.active && total > 0 && (this.agg.kindCount('SPLIT') / total) * 100 > c.idealMax
+  }
+
+  // a SPLIT comes apart at its split gap (the longest between its pieces): each half a STRAIGHT
+  // of its own, or its pieces placed in other duties — or nothing changes
+  private unsplit(): Move | null {
+    let a: WorkDuty | null = null
+    for (let k = 0; k < UNSPLIT_DRAW && !a; k++) {
+      const w = this.pick()
+      if (w.kind === 'SPLIT') a = w
+    }
+    if (!a) return null
+    const pieces = a.pieces
+    const gapAt = (i: number) => pieces[i].startMinutes - pieces[i - 1].endMinutes
+    let at = 1
+    for (let i = 2; i < pieces.length; i++) if (gapAt(i) > gapAt(at)) at = i
+
+    // donor/receiver → its pieces so far ([] = dissolved)
+    const taken = new Map<WorkDuty, SolverPiece[]>()
+    const added: WorkDuty[] = []
+    for (const half of [pieces.slice(0, at), pieces.slice(at)]) {
+      const own = this.grow(half, a, taken)
+      if (own) added.push(own)
+      else if (!half.every(p => this.place(p, a, taken))) return null
+    }
+    for (const [w, ps] of taken) {
+      if (!ps.length) continue
+      const w2 = this.build(ps, w.branchId)
+      if (!w2) return null
+      added.push(w2)
+    }
+    return { removed: [a, ...taken.keys()], added }
+  }
+
+  // `half` as a STRAIGHT of its own: alone, or with the nearest piece in time (whole, or the part
+  // next to it cut at a relief point) taken from another duty that stays valid — recorded in `taken`
+  private grow(half: SolverPiece[], from: WorkDuty, taken: Map<WorkDuty, SolverPiece[]>): WorkDuty | null {
+    const alone = this.build(half, from.branchId)
+    if (alone?.kind === 'STRAIGHT') return alone
+    const start = half[0].startMinutes, end = half[half.length - 1].endMinutes
+    const minPiece = this.input.settings.minPieceMinutes
+    const candidates: { w: WorkDuty; pieces: SolverPiece[]; q: SolverPiece; gap: number }[] = []
+    for (const w of this.duties) {
+      if (w === from || w.branchId !== from.branchId) continue
+      const pieces = taken.get(w) ?? w.pieces
+      for (const q of pieces) {
+        const gap = q.endMinutes <= start ? start - q.endMinutes : q.startMinutes >= end ? q.startMinutes - end : -1
+        if (gap >= 0) candidates.push({ w, pieces, q, gap })
+      }
+    }
+    candidates.sort((x, y) => x.gap - y.gap)
+    for (const { w, pieces, q } of candidates.slice(0, ELIMINATE_CANDIDATES)) {
+      const before = q.endMinutes <= start
+      const view = this.views.get(q.vehicleBlockId)!
+      const cuts = view.cutsIn(q.startMinutes + minPiece, q.endMinutes - minPiece)
+      for (const cut of [null, ...(cuts.length ? [this.randomOf(cuts)] : [])]) {
+        const head = cut == null ? q : { ...q, endMinutes: cut, endLocalityId: view.locality(cut) }
+        const tail = cut == null ? q : { ...q, startMinutes: cut, startLocalityId: view.locality(cut) }
+        const [part, rest] = cut == null ? [q, null] : before ? [tail, head] : [head, tail]
+        const own = this.build([...half, part], from.branchId)
+        if (own?.kind !== 'STRAIGHT') continue
+        const left = pieces.flatMap(x => (x !== q ? [x] : rest ? [rest] : []))
+        if (left.length && !this.build(left, w.branchId)) continue
+        taken.set(w, left)
+        return own
+      }
+    }
+    return null
   }
 
   // `part` joins the nearest duty in time (same operator, no overlap, room left) whose pieces

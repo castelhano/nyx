@@ -188,6 +188,7 @@ Moves, drawn at random over the current duties:
 | Move | Share | What it does |
 |---|---|---|
 | `eliminate` | 10% | dissolves a duty (the least worked of 3 drawn): each piece — whole, or cut at a relief point into head and tail — joins the nearest duty in time that takes it, never turning a receiver into a TRIPPER |
+| `unsplit` | 10%, only while the SPLIT share is above `range.splitRatio.idealMax` | a SPLIT comes apart at its split gap: each half becomes a STRAIGHT of its own — taking the nearest piece in time (whole, or the part next to it cut at a relief point) from a duty that stays valid — or its pieces join other duties as in `eliminate`. Single moves can't undo a split without passing through a short duty with an error, so splits traded for issues early on would otherwise stay |
 | `shift` | 30% | the relief point between two pieces that meet on a vehicle moves up to 3 points either way |
 | `swap` | 30% | two duties exchange their tails |
 | `transfer` | 30% | a piece (or its head/tail) moves to another duty, or becomes a duty of its own |
@@ -197,7 +198,7 @@ Every duty a move builds follows the hard rules (`build`); a move that breaks on
 **Acceptance**, on the incremental `CrewScoreAggregate`:
 
 - more duties with an issue — never; fewer — always;
-- among equals, `eliminate` only when the raw score doesn't drop (its worsenings are much larger than the other moves' and would heat the annealing into a random walk);
+- among equals, `eliminate` and `unsplit` only when the raw score doesn't drop (its worsenings are much larger than the other moves' and would heat the annealing into a random walk);
 - the rest anneal: better always, worse with probability `exp(Δ/T)`, `T` calibrated on the first 300 worsening moves (30% accepted at the start).
 
 **Cycles** — `T` cools to 1% over a cycle (`min(stopMaxTotalMinutes, stopNoImprovementMinutes / 2)`), then the search goes back to the **best** duties and starts a cycle at 70% of the previous temperature. Improvements come in bursts at the end of each cycle. The best duties are kept apart from the current ones: whatever is emitted, and whatever is left when the search stops, is always the best found.
