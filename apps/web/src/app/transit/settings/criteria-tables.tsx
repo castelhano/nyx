@@ -74,7 +74,7 @@ export function DiffDot({ show, onRestore, className }: { show: boolean; onResto
       <button
         type="button"
         onClick={onRestore}
-        title="Difere do global — clique para usar o valor do global"
+        title="Restaurar do Global"
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-sm flex items-center justify-center cursor-pointer hover:bg-accent/70 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <span className="w-1.5 h-1.5 rounded-full bg-amber-700" />
