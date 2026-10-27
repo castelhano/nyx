@@ -48,7 +48,11 @@ export interface DailyBoardData {
 
 export const ISSUE_LABEL: Record<string, string> = { ...VEHICLE_BLOCK_ISSUE_LABEL, ...DUTY_ISSUE_LABEL, ...DAILY_ISSUE_LABEL }
 
-export const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+// < 0 (a sign-on before 00:00) wraps to the previous day: −2 → 23:58
+export const fmtTime = (m: number) => {
+  if (m < 0) m = ((m % 1440) + 1440) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
 
 export const dutyLabel = (d: Pick<DayDuty, 'role' | 'dutyNumber'>) => formatDutyNumber(d.role, d.dutyNumber)
 

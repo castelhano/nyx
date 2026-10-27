@@ -151,8 +151,10 @@ export const DIRECTION_LABEL = ROUTE_DIRECTION_LABEL
 
 export const STALE_LABEL = DUTY_PIECE_STALE_LABEL
 
-// minutes past midnight of the operational day — > 1440 stays as 24:xx, 25:xx...
+// minutes past midnight of the operational day — > 1440 stays as 24:xx, 25:xx...; < 0 (a
+// sign-on before 00:00) wraps to the previous day: −2 → 23:58
 export function fmtTime(m: number): string {
+  if (m < 0) m = ((m % 1440) + 1440) % 1440
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
 

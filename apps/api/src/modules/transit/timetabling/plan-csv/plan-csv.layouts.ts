@@ -71,8 +71,10 @@ export interface CsvDuty {
 
 // ── formatting ───────────────────────────────────────────────────────────────
 
-// HH:MM without wrapping past midnight (25:10) — sorts right and reads as [h]:mm in Excel
+// HH:MM without wrapping past midnight (25:10) — sorts right and reads as [h]:mm in Excel.
+// Before 00:00 (a sign-on ahead of the first trip) wraps to the previous day: −2 → 23:58
 export function clock(m: number): string {
+  if (m < 0) m = ((m % 1440) + 1440) % 1440
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 }
 
