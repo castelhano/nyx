@@ -273,7 +273,7 @@ export function PlanCompareModal({ planIds, onClose }: Props) {
                   <Fragment key={cat}>
                     <SectionRow label={cat} span={plans.length} minor />
                     {METRICS.filter(m => m.cat === cat).map(m => (
-                      <MetricRow key={m.label} label={m.label} unit={m.unit} values={plans.map(m.get)} fmt={m.fmt} inverse={m.inverse} />
+                      <MetricRow key={m.label} label={m.label} unit={m.unit} values={plans.map(m.get)} fmt={m.fmt} inverse={m.inverse} points={m.points} />
                     ))}
                   </Fragment>
                 ))}
@@ -362,12 +362,13 @@ function SectionRow({ label, span, minor }: { label: string; span: number; minor
 }
 
 // first value is the reference — the others carry their variation against it
-function MetricRow({ label, unit, values, fmt, inverse, notes }: {
+function MetricRow({ label, unit, values, fmt, inverse, points, notes }: {
   label:   string
   unit:    string
   values:  (number | null)[]
   fmt:     (v: number) => string
   inverse?: boolean
+  points?:  boolean
   notes?:  (string | null)[]
 }) {
   return (
@@ -382,7 +383,7 @@ function MetricRow({ label, unit, values, fmt, inverse, notes }: {
             <span className="tabular-nums font-medium">{v == null ? '—' : fmt(v)}</span>
             {notes?.[i] && <p className="text-[10px] text-muted-foreground">{notes[i]}</p>}
           </div>
-          {i > 0 && <DeltaPill g={goodness(values[0], v, inverse)} />}
+          {i > 0 && <DeltaPill g={goodness(values[0], v, inverse, points)} />}
         </div>
       ))}
     </>

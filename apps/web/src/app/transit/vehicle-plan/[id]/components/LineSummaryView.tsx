@@ -134,6 +134,10 @@ export function fmtPct(v: number): string {
   return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 }
 
+export function fmtDelta(g: Goodness): string {
+  return g.points ? `${g.delta >= 0 ? '+' : ''}${g.delta.toFixed(1)} p.p.` : fmtPct(g.delta)
+}
+
 // Display only — the score/summary calc still cuts bands at the precise (possibly
 // half-hour) boundary; the label is intentionally rounded down to the whole hour.
 export function fmtBand([from, to]: [number, number]): string {
@@ -182,6 +186,8 @@ export interface Goodness {
   delta:   number
   neutral: boolean
   good:    boolean
+  // delta is the difference in percentage points (metric is itself a %), not a % change
+  points?: boolean
 }
 
 // "Maior melhor" vs "menor melhor" is driven by each metric's `inverse` flag (the same
@@ -903,7 +909,7 @@ export function Stat({ label, value, goodness }: { label: string; value: string;
             'text-[10px] font-semibold tabular-nums shrink-0',
             goodness.good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
           )}>
-            {fmtPct(goodness.delta)}
+            {fmtDelta(goodness)}
           </span>
         )}
       </div>

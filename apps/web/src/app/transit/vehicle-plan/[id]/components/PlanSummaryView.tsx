@@ -8,7 +8,7 @@ import { apiFetch } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/lib/icons'
 import { useShortcutContext } from '@/lib/keywatch'
-import { Stat, pctChange, fmtPct, fmtBand, PLAN_STATUS_LABEL, type Goodness, type PeakBands } from './LineSummaryView'
+import { Stat, pctChange, fmtDelta, fmtBand, PLAN_STATUS_LABEL, type Goodness, type PeakBands } from './LineSummaryView'
 
 interface Bucket {
   key:   string
@@ -49,6 +49,8 @@ export interface MetricDef {
   inverse?: boolean
   band?:    keyof PeakBands
   cat:      string
+  // the metric is a %: compare in percentage points
+  points?:  boolean
 }
 
 export const int = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
@@ -65,7 +67,7 @@ export const METRICS: MetricDef[] = [
   { label: 'Km produtivo',       unit: 'km/dia',   get: o => o.summary?.productiveKm ?? null,        fmt: dec,                cat: 'Produção' },
   { label: 'Km ocioso',          unit: 'km/dia',   get: o => o.summary?.deadrunKm ?? null,           fmt: dec, inverse: true, cat: 'Produção' },
   { label: 'Km total',           unit: 'km/dia',   get: o => o.summary?.totalKm ?? null,             fmt: dec, inverse: true, cat: 'Produção' },
-  { label: 'Ociosidade',         unit: '% do km',  get: o => o.summary && o.summary.totalKm > 0 ? (o.summary.deadrunKm / o.summary.totalKm) * 100 : null, fmt: dec, inverse: true, cat: 'Produção' },
+  { label: 'Ociosidade',         unit: '% do km',  get: o => o.summary && o.summary.totalKm > 0 ? (o.summary.deadrunKm / o.summary.totalKm) * 100 : null, fmt: dec, inverse: true, points: true, cat: 'Produção' },
   { label: 'Horas produtivas',   unit: 'h-veículo', get: o => hours(o.summary?.productiveMinutes),   fmt: dec,                cat: 'Tempo' },
   { label: 'Horas ociosas',      unit: 'h-veículo', get: o => hours(o.summary?.deadrunMinutes),      fmt: dec, inverse: true, cat: 'Tempo' },
   { label: 'Horas totais',       unit: 'h-veículo', get: o => hours(o.summary?.totalMinutes),        fmt: dec, inverse: true, cat: 'Tempo' },
@@ -74,11 +76,11 @@ export const METRICS: MetricDef[] = [
 
 export const CATEGORIES = ['Frota', 'Produção', 'Tempo']
 
-export function goodness(a: number | null, p: number | null, inverse?: boolean): Goodness | null {
+export function goodness(a: number | null, p: number | null, inverse?: boolean, points?: boolean): Goodness | null {
   if (a == null || p == null) return null
-  const delta   = pctChange(a, p)
-  const neutral = Math.abs(delta) < 0.5
-  return { delta, neutral, good: !neutral && (inverse ? delta < 0 : delta > 0) }
+  const delta   = points ? p - a : pctChange(a, p)
+  const neutral = Math.abs(delta) < (points ? 0.05 : 0.5)
+  return { delta, neutral, good: !neutral && (inverse ? delta < 0 : delta > 0), points }
 }
 
 export function DeltaPill({ g }: { g: Goodness | null }) {
@@ -93,7 +95,7 @@ export function DeltaPill({ g }: { g: Goodness | null }) {
           : 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20',
     )}>
       {!g.neutral && (g.good ? <Icons.ArrowUp className="w-3 h-3" /> : <Icons.ArrowDown className="w-3 h-3" />)}
-      {fmtPct(g.delta)}
+      {fmtDelta(g)}
     </span>
   )
 }
@@ -352,7 +354,7 @@ export function PlanSummaryView({ planId, onClose, switcher, hasPendingChanges }
                               )}
                               <td className="px-4 py-2.5 text-right tabular-nums font-medium text-foreground text-sm">{p != null ? m.fmt(p) : '—'}</td>
                               {hasReference && (
-                                <td className="px-5 py-2.5 text-right"><DeltaPill g={goodness(a, p, m.inverse)} /></td>
+                                <td className="px-5 py-2.5 text-right"><DeltaPill g={goodness(a, p, m.inverse, m.points)} /></td>
                               )}
                             </tr>
                           )
@@ -387,8 +389,8 @@ export function PlanSummaryView({ planId, onClose, switcher, hasPendingChanges }
 function CardBody({ o, primary, reference }: { o: PlanOverview; primary?: boolean; reference?: PlanOverview | null }) {
   const s = o.summary
   const r = reference?.summary ?? null
-  const g = (a: number | null | undefined, p: number | null | undefined, inverse?: boolean) =>
-    reference ? goodness(a ?? null, p ?? null, inverse) : null
+  const g = (a: number | null | undefined, p: number | null | undefined, inverse?: boolean, points?: boolean) =>
+    reference ? goodness(a ?? null, p ?? null, inverse, points) : null
   const idle  = (x: VehiclePlanSummary | null) => x && x.totalKm > 0 ? (x.deadrunKm / x.totalKm) * 100 : null
   return (
     <>
@@ -402,7 +404,7 @@ function CardBody({ o, primary, reference }: { o: PlanOverview; primary?: boolea
         <Stat label="Frota"        value={`${s?.fleetCount ?? 0} veíc.`}                                 goodness={g(r?.fleetCount, s?.fleetCount, true)} />
         <Stat label="Viagens"      value={int(o.tripCount)}                                              goodness={g(reference?.tripCount, o.tripCount)} />
         <Stat label="Km total"     value={`${dec(s?.totalKm ?? 0)} km`}                                  goodness={g(r?.totalKm, s?.totalKm, true)} />
-        <Stat label="Ociosidade"   value={idle(s) != null ? `${dec(idle(s)!)}%` : '—'}                   goodness={g(idle(r), idle(s), true)} />
+        <Stat label="Ociosidade"   value={idle(s) != null ? `${dec(idle(s)!)}%` : '—'}                   goodness={g(idle(r), idle(s), true, true)} />
         <Stat label="Horas-veículo" value={`${dec((s?.totalMinutes ?? 0) / 60)} h`}                      goodness={g(hours(r?.totalMinutes), hours(s?.totalMinutes), true)} />
         <Stat label="Linhas"       value={int(o.lineCount)} />
       </div>
@@ -419,7 +421,7 @@ function CardBody({ o, primary, reference }: { o: PlanOverview; primary?: boolea
               <p className="text-[10px] text-muted-foreground mt-0.5">Frota {item.label.toLowerCase()}</p>
               {gd && !gd.neutral && (
                 <span className={cn('text-[9px] font-semibold tabular-nums', gd.good ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-                  {fmtPct(gd.delta)}
+                  {fmtDelta(gd)}
                 </span>
               )}
             </div>
