@@ -43,6 +43,13 @@ export class CrewPlanController extends BaseController<CrewPlan, CreateCrewPlanD
     return this.crewPlanService.duplicate(id)
   }
 
+  // the plan's score under its inherited settings — plan comparison
+  @Get(':id/base-score')
+  async getBaseScore(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
+    await this.assertAbility(req.user, 'read')
+    return this.crewPlanService.baseScore(id)
+  }
+
   // the plan's effective settings: { settings, isCustom, inherited }
   @Get(':id/settings')
   async getSettings(@Req() req: { user?: AuthUser }, @Param('id') id: string) {

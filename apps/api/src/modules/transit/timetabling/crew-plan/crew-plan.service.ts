@@ -415,9 +415,43 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       ({ count: removed } = await this.prisma.duty.deleteMany({ where: { crewPlanId: id, pieces: { some: { vehicleBlockId: null } } } }))
     }
 
-    const [{ settings }, blockRows, duties, branchRules] = await Promise.all([
-      this.resolveSettings(id),
-      this.prisma.vehicleBlock.findMany({ where: { vehiclePlanId: plan.vehiclePlanId }, select: { id: true } }),
+    const { settings } = await this.resolveSettings(id)
+    const { result, duties, relief } = await this.evaluate(id, plan.vehiclePlanId, plan.vehiclePlan.dayType.pattern, settings)
+
+    // only rows whose derived state actually changed are written — a single piece edit
+    // usually touches one or two duties, not the whole plan
+    const same       = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b)
+    const piecesById = new Map(duties.flatMap(d => d.pieces).map(p => [p.id, p]))
+    const dutiesById = new Map(duties.map(d => [d.id, d]))
+    await this.prisma.$transaction(async (tx) => {
+      for (const [pieceId, st] of result.pieces) {
+        const cur = piecesById.get(pieceId)!
+        // a valid piece re-anchors its ends; a stale one keeps the anchors it had (piece-adjust.ts)
+        const points      = !st.isStale && cur.vehicleBlockId ? relief.get(cur.vehicleBlockId)?.points ?? [] : null
+        const startAnchor = points ? resolveAnchor(points, cur.startLocalityId, cur.startMinutes, cur.startAnchor, 'start') : cur.startAnchor
+        const endAnchor   = points ? resolveAnchor(points, cur.endLocalityId, cur.endMinutes, cur.endAnchor, 'end') : cur.endAnchor
+        if (cur.isStale !== st.isStale || cur.staleReason !== st.staleReason || cur.startAnchor !== startAnchor || cur.endAnchor !== endAnchor) {
+          await tx.dutyPiece.update({ where: { id: pieceId }, data: { isStale: st.isStale, staleReason: st.staleReason, startAnchor, endAnchor } })
+        }
+      }
+      for (const [dutyId, d] of result.duties) {
+        const cur = dutiesById.get(dutyId)!
+        if (cur.isStale === d.isStale && cur.shiftId === d.shiftId && same(cur.summary, d.summary) && same(cur.issues, d.issues)) continue
+        await tx.duty.update({
+          where: { id: dutyId },
+          data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.some(isPending), isStale: d.isStale, shiftId: d.shiftId },
+        })
+      }
+      if (!same(plan.summary, result.summary)) await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })
+    }, { timeout: 30_000 })
+    return removed
+  }
+
+  // The plan's derived state (duty summaries/issues, piece staleness, plan summary) under
+  // `settings` — recalculate() writes it, baseScore() only reads its score
+  private async evaluate(id: string, vehiclePlanId: string, dayTypePattern: unknown, settings: CrewSettings) {
+    const [blockRows, duties, branchRules] = await Promise.all([
+      this.prisma.vehicleBlock.findMany({ where: { vehiclePlanId }, select: { id: true } }),
       this.prisma.duty.findMany({
         where:  { crewPlanId: id },
         select: {
@@ -427,7 +461,7 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
           activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
         },
       }),
-      loadCrewBranchRules(this.prisma, { vehiclePlanId: plan.vehiclePlanId }),
+      loadCrewBranchRules(this.prisma, { vehiclePlanId }),
     ])
     const [relief, mealStops] = await Promise.all([
       loadBlockRelief(this.prisma, blockRows.map(b => b.id)),
@@ -460,39 +494,25 @@ export class CrewPlanService extends BaseService<CrewPlan, CreateCrewPlanDto, Up
       })),
       walk,
       mealStops: new Set(mealStops.map(s => `${s.routeId}:${s.localityId}`)),
-      repeatsNextDay: repeatsNextDay(plan.vehiclePlan.dayType.pattern),
+      repeatsNextDay: repeatsNextDay(dayTypePattern),
       shifts:         branchRules.shifts,
       lineOperators:  branchRules.lineOperators,
       sharedScope:    branchRules.sharedScope,
     })
+    return { result, duties, relief }
+  }
 
-    // only rows whose derived state actually changed are written — a single piece edit
-    // usually touches one or two duties, not the whole plan
-    const same       = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b)
-    const piecesById = new Map(duties.flatMap(d => d.pieces).map(p => [p.id, p]))
-    const dutiesById = new Map(duties.map(d => [d.id, d]))
-    await this.prisma.$transaction(async (tx) => {
-      for (const [pieceId, st] of result.pieces) {
-        const cur = piecesById.get(pieceId)!
-        // a valid piece re-anchors its ends; a stale one keeps the anchors it had (piece-adjust.ts)
-        const points      = !st.isStale && cur.vehicleBlockId ? relief.get(cur.vehicleBlockId)?.points ?? [] : null
-        const startAnchor = points ? resolveAnchor(points, cur.startLocalityId, cur.startMinutes, cur.startAnchor, 'start') : cur.startAnchor
-        const endAnchor   = points ? resolveAnchor(points, cur.endLocalityId, cur.endMinutes, cur.endAnchor, 'end') : cur.endAnchor
-        if (cur.isStale !== st.isStale || cur.staleReason !== st.staleReason || cur.startAnchor !== startAnchor || cur.endAnchor !== endAnchor) {
-          await tx.dutyPiece.update({ where: { id: pieceId }, data: { isStale: st.isStale, staleReason: st.staleReason, startAnchor, endAnchor } })
-        }
-      }
-      for (const [dutyId, d] of result.duties) {
-        const cur = dutiesById.get(dutyId)!
-        if (cur.isStale === d.isStale && cur.shiftId === d.shiftId && same(cur.summary, d.summary) && same(cur.issues, d.issues)) continue
-        await tx.duty.update({
-          where: { id: dutyId },
-          data:  { summary: d.summary, issues: d.issues, hasIssues: d.issues.some(isPending), isStale: d.isStale, shiftId: d.shiftId },
-        })
-      }
-      if (!same(plan.summary, result.summary)) await tx.crewPlan.update({ where: { id }, data: { summary: result.summary } })
-    }, { timeout: 30_000 })
-    return removed
+  // The plan's score under the settings it would inherit (Scope/global) — the score plan
+  // comparison puts side by side when a crew plan has its own settings. Nothing written.
+  async baseScore(id: string): Promise<{ score: number }> {
+    const plan = await this.prisma.crewPlan.findUnique({
+      where:  { id },
+      select: { vehiclePlanId: true, vehiclePlan: { select: { scopeId: true, dayType: { select: { pattern: true } } } } },
+    })
+    if (!plan) throw new NotFoundException('crewPlan not found')
+    const settings = await this.crewConfig.get(plan.vehiclePlan.scopeId)
+    const { result } = await this.evaluate(id, plan.vehiclePlanId, plan.vehiclePlan.dayType.pattern, settings)
+    return { score: result.summary.score }
   }
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Icons } from '@/lib/icons'
 import { useQueryClient } from '@tanstack/react-query'
@@ -15,6 +15,10 @@ import { downloadCsv } from '@/lib/csv'
 import { extractError } from '@/lib/utils'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
+import { Button } from '@/components/ui/button'
+import { PlanCompareModal } from './components/PlanCompareModal'
+
+type Row = Record<string, unknown>
 
 export default function VehiclePlanListPage() {
   const router       = useRouter()
@@ -29,6 +33,18 @@ export default function VehiclePlanListPage() {
   const [importDayTypeName, setImportDayTypeName] = useState<string | null>(null)
   const [importScopeId,   setImportScopeId]   = useState<string | null>(null)
   const [importScopeName, setImportScopeName] = useState<string | null>(null)
+
+  // plans picked for "Comparar" — same scope + day type, up to 3
+  const [selected,    setSelected]    = useState<Row[]>([])
+  const [compareOpen, setCompareOpen] = useState(false)
+  const selection = useMemo(() => ({
+    max:       3,
+    selected,
+    onChange:  setSelected,
+    canSelect: (row: Row, current: Row[]) =>
+      !current.length || (row.scopeId === current[0].scopeId && row.dayTypeId === current[0].dayTypeId)
+        || 'Somente planejamentos do mesmo escopo e tipo de dia',
+  }), [selected])
 
   const { guardNode, meta } = usePageGuard('transit', 'vehicle-plan')
 
@@ -71,6 +87,12 @@ export default function VehiclePlanListPage() {
   useShortcut('alt+d', handleDownloadCsv, {
     desc:   'Baixar dados em CSV',
     icon:   Icons.Download,
+    origin: 'app/transit/vehicle-plan/page',
+  })
+
+  useShortcut('alt+c', () => { if (selected.length >= 2) setCompareOpen(true) }, {
+    desc:   'Comparar planejamentos selecionados',
+    icon:   Icons.GitCompare,
     origin: 'app/transit/vehicle-plan/page',
   })
 
@@ -118,7 +140,26 @@ export default function VehiclePlanListPage() {
         filters={Object.keys(filters).length ? filters : undefined}
         onEdit={(id) => router.push(`/transit/vehicle-plan/${id}`)}
         onAction={handleAction}
+        selection={selection}
       />
+      {selected.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-card border border-border rounded-lg shadow-lg px-4 py-2">
+          <span className="text-sm text-muted-foreground">
+            {selected.length} {selected.length === 1 ? 'selecionado' : 'selecionados'}
+            {selected.length < 2 && ' · selecione mais um para comparar'}
+          </span>
+          <Button size="sm" disabled={selected.length < 2} onClick={() => setCompareOpen(true)}>
+            <Icons.GitCompare className="w-3.5 h-3.5" />
+            Comparar
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected([])} title="Limpar seleção">
+            <Icons.X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
+      {compareOpen && (
+        <PlanCompareModal planIds={selected.map(r => String(r.id))} onClose={() => setCompareOpen(false)} />
+      )}
       {importOpen && (
         <SyncModal
           domain="transit"

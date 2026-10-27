@@ -12,6 +12,7 @@ import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { VehiclePlanConstraints, VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
 import type { VehiclePlanLineSummary } from '@nyx/schemas'
+import type { CrewPlanSummary } from '@nyx/schemas'
 import type { VehiclePlanDiff } from '@nyx/schemas'
 import type { PreviewLineScoreDto, PlanActivationPreview } from '@nyx/schemas'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
@@ -34,6 +35,44 @@ import { uncoveredRequirementWarnings } from '../../network/line-service-require
 function touchesSyncedAttributes(u: VehiclePlanDiff['tripUpdates'][number]): boolean {
   return u.stopPattern !== undefined || u.markings !== undefined || u.requiredVehicleType !== undefined
 }
+
+// The block rows recalculate() scores — shared with inheritedPlanScore()
+const SCORING_BLOCK_INCLUDE = {
+  blockTrips: {
+    orderBy: { sequence: 'asc' },
+    include: {
+      trip: {
+        select: {
+          departureMinutes:    true,
+          arrivalMinutes:      true,
+          bundleId:            true,
+          route: {
+            select: {
+              lineId:                true,
+              originLocalityId:      true,
+              destinationLocalityId: true,
+              direction:             true,
+              line: { select: { metrics: true, vehicleTypes: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+  blockDeadruns: {
+    select: {
+      type:                  true,
+      originLocalityId:      true,
+      destinationLocalityId: true,
+      departureMinutes:      true,
+      arrivalMinutes:        true,
+      bundleId:              true,
+    },
+  },
+  blockIntervals: {
+    select: { departureMinutes: true, arrivalMinutes: true, bundleId: true },
+  },
+} as const
 
 @Injectable()
 export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto> {
@@ -156,45 +195,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         where:  { id: planId },
         select: { dayType: { select: { code: true } }, scope: { select: { operators: { select: { branchId: true, share: true } } } } },
       }),
-      db.vehicleBlock.findMany({
-        where:   { vehiclePlanId: planId },
-        include: {
-          blockTrips: {
-            orderBy: { sequence: 'asc' },
-            include: {
-              trip: {
-                select: {
-                  departureMinutes:    true,
-                  arrivalMinutes:      true,
-                  bundleId:            true,
-                  route: {
-                    select: {
-                      lineId:                true,
-                      originLocalityId:      true,
-                      destinationLocalityId: true,
-                      direction:             true,
-                      line: { select: { metrics: true, vehicleTypes: true } },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          blockDeadruns: {
-            select: {
-              type:                  true,
-              originLocalityId:      true,
-              destinationLocalityId: true,
-              departureMinutes:      true,
-              arrivalMinutes:        true,
-              bundleId:              true,
-            },
-          },
-          blockIntervals: {
-            select: { departureMinutes: true, arrivalMinutes: true, bundleId: true },
-          },
-        },
-      }),
+      db.vehicleBlock.findMany({ where: { vehiclePlanId: planId }, include: SCORING_BLOCK_INCLUDE }),
       db.travelTimeMatrix.findMany(),
       db.vehiclePlanLine.findMany({
         where:  { vehiclePlanId: planId },
@@ -1828,6 +1829,102 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       draft:  { planId, planStatus: plan.status, ...draft },
       active: activePlan && active ? { planId: activePlan.id, description: activePlan.description, validFrom: activePlan.validFrom, ...active } : null,
     }
+  }
+
+  // Side-by-side comparison of 2–3 plans of the same scope+dayType (the list's "Comparar"):
+  // each plan's overview, its lines with the OSO they're pinned to (the client flags lines
+  // that diverge between plans) and its crew plans. Plans are compared by their score under
+  // the inherited settings, computed live: the stored one may predate a settings change, or
+  // come from the plan's own settings.
+  async comparePlans(ids: string[]) {
+    const unique = [...new Set(ids)]
+    if (unique.length < 2 || unique.length > 3) throw new BadRequestException('Selecione de 2 a 3 planejamentos para comparar')
+
+    const plans = await this.prisma.vehiclePlan.findMany({
+      where:  { id: { in: unique } },
+      select: {
+        id: true, description: true, status: true, validFrom: true, validTo: true, generatedAt: true,
+        scopeId: true, dayTypeId: true, settings: true,
+        scope:   { select: { name: true } },
+        dayType: { select: { name: true } },
+        lines:   {
+          select: {
+            lineId: true, lineScheduleId: true, isDrifted: true,
+            line:         { select: { code: true, name: true } },
+            lineSchedule: { select: { approvalRef: true } },
+          },
+        },
+        crewPlans: {
+          select:  { id: true, description: true, status: true, generatedAt: true, summary: true, settings: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    })
+    if (plans.length !== unique.length) throw new NotFoundException('VehiclePlan not found')
+    if (plans.some(p => p.scopeId !== plans[0].scopeId || p.dayTypeId !== plans[0].dayTypeId)) {
+      throw new BadRequestException('Somente planejamentos do mesmo escopo e tipo de dia podem ser comparados')
+    }
+
+    const inherited = await this.planningConfig.get(plans[0].scopeId)
+    const byId = new Map(plans.map(p => [p.id, p]))
+    const result = await Promise.all(unique.map(async id => {
+      const p = byId.get(id)!
+      const overview = await this.planOverview(id)
+      const isCustom = !!p.settings
+      return {
+        planId:      p.id,
+        description: p.description,
+        status:      p.status,
+        validFrom:   p.validFrom,
+        validTo:     p.validTo,
+        generatedAt: p.generatedAt,
+        ...overview,
+        score: {
+          own:  overview.summary?.score ?? null,
+          base: await this.inheritedPlanScore(id, inherited),
+          isCustom,
+        },
+        lines: p.lines
+          .map(l => ({ lineId: l.lineId, code: l.line.code, name: l.line.name, lineScheduleId: l.lineScheduleId, approvalRef: l.lineSchedule?.approvalRef ?? null, isDrifted: l.isDrifted }))
+          .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true })),
+        crewPlans: p.crewPlans.map(c => ({
+          id: c.id, description: c.description, status: c.status, generatedAt: c.generatedAt,
+          summary: c.summary as CrewPlanSummary | null, isCustom: !!c.settings,
+        })),
+      }
+    }))
+
+    return {
+      scope:     plans[0].scope.name,
+      dayType:   plans[0].dayType.name,
+      peakBands: {
+        morning:   this.PEAK_MORNING,
+        afternoon: this.PEAK_AFTERNOON,
+        offPeak:   [this.PEAK_MORNING[1], this.PEAK_AFTERNOON[0]] as [number, number],
+      },
+      plans: result,
+    }
+  }
+
+  // The plan's score under `cfg` instead of its own settings — same scoring as
+  // recalculate(), nothing written.
+  private async inheritedPlanScore(planId: string, cfg: PlanningSettings): Promise<number | null> {
+    const [plan, blocks, matrix] = await Promise.all([
+      this.prisma.vehiclePlan.findUnique({
+        where:  { id: planId },
+        select: { scope: { select: { operators: { select: { branchId: true, share: true } } } } },
+      }),
+      this.prisma.vehicleBlock.findMany({ where: { vehiclePlanId: planId }, include: SCORING_BLOCK_INCLUDE }),
+      this.prisma.travelTimeMatrix.findMany(),
+    ])
+    const withTrips = blocks.filter(b => b.blockTrips.length > 0)
+    if (!plan || withTrips.length === 0) return null
+
+    const matrixKm: Record<string, number> = {}
+    for (const m of matrix) matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm
+    const planTrips  = withTrips.flatMap(b => b.blockTrips.map(bt => ({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes })))
+    const aggregates = withTrips.map(b => buildAggregateFromPersisted(b, matrixKm))
+    return scoreFromAggregates(aggregates, planTrips, cfg, operatorShares(plan.scope.operators)).score
   }
 
   // One side of getPlanComparison: the persisted plan summary plus the breakdowns the

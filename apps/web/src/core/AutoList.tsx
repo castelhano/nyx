@@ -54,6 +54,14 @@ interface Props {
   onEdit?:   (id: string) => void
   onAction?: (action: string, row: Row) => void | Promise<void>
   filters?:  Record<string, string>
+  // row checkboxes, controlled by the page — selected rows are kept whole, so they survive
+  // paging/filtering; canSelect returns why a row can't join the current selection
+  selection?: {
+    max:        number
+    selected:   Row[]
+    onChange:   (rows: Row[]) => void
+    canSelect?: (row: Row, selected: Row[]) => true | string
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +262,7 @@ function buildColumns(
   onEdit?: (id: string) => void,
   rowActions?: RowActionDef[],
   onRowAction?: (action: RowActionDef, row: Row) => void,
+  selection?: Props['selection'],
 ): ColumnDef<Row>[] {
   const cols: ColumnDef<Row>[] = fields
     .filter((f) => f.listVisibility !== 'never')
@@ -303,6 +312,34 @@ function buildColumns(
       },
     }))
 
+  if (selection) {
+    cols.unshift({
+      id:           '_select',
+      enableHiding: false,
+      header:       () => null,
+      cell:         ({ row }) => {
+        const id      = String(row.original.id)
+        const checked = selection.selected.some((r) => String(r.id) === id)
+        const verdict = checked ? true
+          : selection.selected.length >= selection.max ? `Máximo de ${selection.max} selecionados`
+          : selection.canSelect?.(row.original, selection.selected) ?? true
+        const blocked = verdict === true ? null : verdict
+        return (
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={!!blocked}
+            title={blocked ?? undefined}
+            className="align-middle cursor-pointer disabled:cursor-not-allowed"
+            onChange={() => selection.onChange(checked
+              ? selection.selected.filter((r) => String(r.id) !== id)
+              : [...selection.selected, row.original])}
+          />
+        )
+      },
+    })
+  }
+
   if ((rowActions?.length && onRowAction) || onEdit) {
     cols.push({
       id:           '_actions',
@@ -334,7 +371,7 @@ function buildColumns(
   return cols
 }
 
-export function AutoList({ domain, resource, onEdit, onAction, filters }: Props) {
+export function AutoList({ domain, resource, onEdit, onAction, filters, selection }: Props) {
   const router      = useRouter()
   const queryClient = useQueryClient()
   const { toast }   = useToast()
@@ -536,8 +573,8 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
   }, [])
 
   const columns = useMemo(
-    () => buildColumns(meta?.fields ?? [], sorting, handleSort, dateFormat, meta?.permissions?.update !== false ? onEdit : undefined, visibleRowActions, handleRowAction),
-    [meta?.fields, sorting, handleSort, dateFormat, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction],
+    () => buildColumns(meta?.fields ?? [], sorting, handleSort, dateFormat, meta?.permissions?.update !== false ? onEdit : undefined, visibleRowActions, handleRowAction, selection),
+    [meta?.fields, sorting, handleSort, dateFormat, meta?.permissions?.update, onEdit, visibleRowActions, handleRowAction, selection],
   )
 
   // React Compiler isn't enabled in this project — TanStack Table's useReactTable()
@@ -683,6 +720,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters }: Props)
                       className={cn(
                         'px-3 py-2',
                         cell.column.id === '_actions' && 'text-end px-1 py-1',
+                        cell.column.id === '_select' && 'w-px pe-0',
                       )}
                       onClick={cell.column.id === '_actions' ? (e) => e.stopPropagation() : undefined}
                     >

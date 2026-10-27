@@ -18,6 +18,13 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
     super(vehiclePlanService, caslFactory)
   }
 
+  // ?ids=a,b[,c] — 2–3 plans of the same scope+dayType side by side
+  @Get('compare')
+  async comparePlans(@Req() req: any, @Query('ids') ids?: string) {
+    await this.assertAbility(req.user, 'read')
+    return this.vehiclePlanService.comparePlans(ids ? ids.split(',') : [])
+  }
+
   // the plan's effective planning settings: { settings, isCustom, inherited }
   @Get(':id/settings')
   async getSettings(@Req() req: any, @Param('id') id: string) {

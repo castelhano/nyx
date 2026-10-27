@@ -18,7 +18,7 @@ interface Bucket {
 }
 
 // VehiclePlanService.planOverview
-interface PlanOverview {
+export interface PlanOverview {
   summary:     VehiclePlanSummary | null
   lineCount:   number
   tripCount:   number
@@ -40,7 +40,7 @@ interface PlanComparisonResponse {
   active:    (PlanOverview & { planId: string; description: string | null; validFrom: string | null }) | null
 }
 
-interface MetricDef {
+export interface MetricDef {
   label:    string
   unit:     string
   get:      (o: PlanOverview) => number | null
@@ -51,11 +51,11 @@ interface MetricDef {
   cat:      string
 }
 
-const int = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
-const dec = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+export const int = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
+export const dec = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
 const hours = (minutes: number | undefined) => minutes == null ? null : minutes / 60
 
-const METRICS: MetricDef[] = [
+export const METRICS: MetricDef[] = [
   { label: 'Frota total',        unit: 'veículos', get: o => o.summary?.fleetCount ?? null,          fmt: int, inverse: true, cat: 'Frota' },
   { label: 'Frota pico manhã',   unit: 'veículos', get: o => o.summary?.peakFleetMorning ?? null,    fmt: int, inverse: true, band: 'morning',   cat: 'Frota' },
   { label: 'Frota entrepico',    unit: 'veículos', get: o => o.summary?.peakFleetOffPeak ?? null,    fmt: int, inverse: true, band: 'offPeak',   cat: 'Frota' },
@@ -72,16 +72,16 @@ const METRICS: MetricDef[] = [
   { label: 'Velocidade média',   unit: 'km/h',     get: o => o.summary && o.summary.productiveMinutes > 0 ? o.summary.productiveKm / (o.summary.productiveMinutes / 60) : null, fmt: dec, cat: 'Tempo' },
 ]
 
-const CATEGORIES = ['Frota', 'Produção', 'Tempo']
+export const CATEGORIES = ['Frota', 'Produção', 'Tempo']
 
-function goodness(a: number | null, p: number | null, inverse?: boolean): Goodness | null {
+export function goodness(a: number | null, p: number | null, inverse?: boolean): Goodness | null {
   if (a == null || p == null) return null
   const delta   = pctChange(a, p)
   const neutral = Math.abs(delta) < 0.5
   return { delta, neutral, good: !neutral && (inverse ? delta < 0 : delta > 0) }
 }
 
-function DeltaPill({ g }: { g: Goodness | null }) {
+export function DeltaPill({ g }: { g: Goodness | null }) {
   if (!g) return <span className="text-xs px-2 py-0.5 rounded-full bg-muted/60 text-muted-foreground">—</span>
   return (
     <span className={cn(
@@ -98,9 +98,9 @@ function DeltaPill({ g }: { g: Goodness | null }) {
   )
 }
 
-const hourLabel = (h: number) => `${String(h % 24).padStart(2, '0')}h`
+export const hourLabel = (h: number) => `${String(h % 24).padStart(2, '0')}h`
 
-function HourTooltip({ active, payload, label }: any) {
+export function HourTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
     <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs shadow-2xl">
