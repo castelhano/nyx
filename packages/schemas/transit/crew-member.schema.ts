@@ -262,6 +262,7 @@ export const crewMemberSchema = withMeta(
     nameField:     'code',
     nameFirstWord: false,
     icon:          'IdCard',
+    defaultSort:   { field: 'employee.code', order: 'asc' },
     stayOnSave:    true,
     groups: {
       'Escala':     ['notBeforeMinutes', 'notAfterMinutes', 'restPatternId', 'restOffset', 'blockedVehicleTypes', 'preferredVehicleId', 'weeklyHours', 'overtimePreference'],

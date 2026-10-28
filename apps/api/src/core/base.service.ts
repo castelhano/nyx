@@ -75,7 +75,8 @@ export abstract class BaseService<T, CreateDTO, UpdateDTO> {
     const orderBy = query.sortField
       ? { [query.sortField]: query.sortOrder ?? 'asc' }
       : defaultSort
-        ? { [defaultSort.field]: defaultSort.order }
+        // a dotted field sorts by a relation's column: 'employee.code' → { employee: { code } }
+        ? (defaultSort.field as string).split('.').reduceRight<unknown>((by, key) => ({ [key]: by }), defaultSort.order)
         : { createdAt: 'desc' as const }
 
     const KNOWN_KEYS = new Set(['page', 'pageSize', 'search', 'sortField', 'sortOrder'])

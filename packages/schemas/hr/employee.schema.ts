@@ -159,7 +159,7 @@ export const employeeSchema = withMeta(
     labelPlural: 'Funcionários',
     nameField:   'code',
     icon:        'UserRound',
-    defaultSort: { field: 'fullName', order: 'asc' },
+    defaultSort: { field: 'code', order: 'asc' },
     afterCreate:    '/hr/contract?employeeId={id}',
     defaultFilters: { status: 'ACTIVE' },
     importKey:      'code',
