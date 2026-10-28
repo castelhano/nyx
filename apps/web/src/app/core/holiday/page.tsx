@@ -181,7 +181,7 @@ export default function HolidayPage() {
     ...(canCreate ? [{ label: 'Novo', icon: Icons.Plus, onClick: () => setForm({ id: null, date: cursor, name: '', branchId }), primary: !form, keybind: 'ALT+N' }] : []),
     ...(form && !readonly ? [{ label: saving ? 'Gravar…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, primary: true, disabled: saving, keybind: 'ALT+G' }] : []),
     ...(canImport ? [{ label: 'Importar', icon: Icons.Upload, onClick: () => setImporting(true), variant: 'ghost' as const }] : []),
-    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: exportCsv, disabled: !holidays.length, variant: 'ghost' as const }] : []),
+    ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: exportCsv, variant: 'ghost' as const }] : []),
   ], [canCreate, canImport, meta?.allowCsv, form, readonly, saving, cursor, branchId, holidays])
   useShortcut('alt+n', () => { if (canCreate) setForm({ id: null, date: cursor, name: '', branchId }) }, { desc: 'Novo feriado', icon: Icons.Plus, origin: ORIGIN, context: 'all' })
   useShortcut('alt+g', () => void handleSave(), { desc: 'Gravar feriado', icon: Icons.Save, origin: ORIGIN, context: 'all' })
@@ -203,7 +203,7 @@ export default function HolidayPage() {
             <button type="button" onClick={() => setYear(y => y - 1)} className="p-1 rounded hover:bg-muted"><Icons.ChevronLeft className="w-4 h-4" /></button>
             <span className="text-sm font-medium w-14 text-center tabular-nums">{year}</span>
             <button type="button" onClick={() => setYear(y => y + 1)} className="p-1 rounded hover:bg-muted"><Icons.ChevronRight className="w-4 h-4" /></button>
-            <button type="button" onClick={() => { setYear(Number(today.slice(0, 4))); setCursor(today) }} className="text-xs text-muted-foreground hover:text-foreground ml-1">hoje</button>
+            <button type="button" onClick={() => { setYear(Number(today.slice(0, 4))); setCursor(today) }} className="text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-sm p-2 cursor-pointer">HOJE</button>
             <Select value={branchId} onChange={e => setBranchId(e.target.value)} size="sm" wrapperClassName="w-60 ml-2">
               <option value="">Todas as empresas</option>
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -279,7 +279,7 @@ export default function HolidayPage() {
               <label className="block space-y-1">
                 <span className="text-xs text-muted-foreground">Empresa</span>
                 <Select value={form.branchId} onChange={e => setForm(f => f && ({ ...f, branchId: e.target.value }))} size="sm" disabled={readonly}>
-                  <option value="">Todas (feriado geral)</option>
+                  <option value="">Todas</option>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </Select>
               </label>
