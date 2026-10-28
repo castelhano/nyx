@@ -22,6 +22,7 @@ export default function PortalPage() {
   const [ready, setReady] = useState(false)
   const [tab, setTab] = useState<Tab | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [profile, setProfile] = useState(false)
   const flash = (t: string) => { setToast(t); setTimeout(() => setToast(null), 2500) }
 
   useEffect(() => {
@@ -66,13 +67,15 @@ export default function PortalPage() {
   return (
     <div className="relative mx-auto flex h-dvh max-w-md flex-col bg-background">
       <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
-          {me.name.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('')}
-        </div>
-        <div className="min-w-0 me-auto">
-          <p className="text-sm font-semibold leading-tight">{me.name}</p>
-          <p className="text-xs text-muted-foreground">{me.code} · {me.branch}</p>
-        </div>
+        <button type="button" disabled={!p.editContact} onClick={() => setProfile(true)} className="flex min-w-0 me-auto items-center gap-3 text-left cursor-pointer disabled:cursor-default" title={p.editContact ? 'Meus dados' : undefined}>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+            {me.name.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('')}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight">{me.name}</p>
+            <p className="text-xs text-muted-foreground">{me.code} · {me.branch}</p>
+          </div>
+        </button>
         <button type="button" onClick={logout} className="p-2 text-muted-foreground hover:text-foreground cursor-pointer" title="Sair">
           <Icons.LogOut className="h-5 w-5" />
         </button>
@@ -98,6 +101,7 @@ export default function PortalPage() {
       </nav>}
 
       {locked && unread.length > 0 && <Changes list={unread} />}
+      {profile && !locked && p.editContact && <Profile me={me} onClose={() => setProfile(false)} onSaved={() => { setProfile(false); flash('Telefone atualizado') }} />}
 
       {toast && (
         <div className="pointer-events-none absolute inset-x-4 bottom-20 rounded-lg bg-foreground px-4 py-2.5 text-center text-sm text-background shadow-lg">{toast}</div>
@@ -168,6 +172,47 @@ function Changes({ list }: { list: PortalNotification[] }) {
         {ack.error && <p className="text-sm text-destructive">{ack.error.message}</p>}
         <button type="button" disabled={ack.isPending} onClick={() => ack.mutate()} className={primary}>{ack.isPending ? 'Confirmando…' : 'Li e confirmo'}</button>
       </div>
+    </div>
+  )
+}
+
+// ── his data ────────────────────────────────────────────────────────────────
+
+const maskPhone = (v: string) => {
+  const d = v.replace(/\D/g, '').slice(0, 11)
+  if (d.length <= 2) return d.length ? `(${d}` : ''
+  const split = d.length === 11 ? 7 : 6
+  return d.length <= split ? `(${d.slice(0, 2)}) ${d.slice(2)}` : `(${d.slice(0, 2)}) ${d.slice(2, split)}-${d.slice(split)}`
+}
+
+function Profile({ me, onClose, onSaved }: { me: PortalMe; onClose: () => void; onSaved: () => void }) {
+  const qc = useQueryClient()
+  const [phone, setPhone] = useState(me.phone ?? '')
+  const save = useMutation({
+    mutationFn: () => portalFetch<{ phone: string }>('/phone', { method: 'PUT', body: { phone } }),
+    onSuccess:  r => { qc.setQueryData<PortalMe>(['portal', 'me'], m => m && { ...m, phone: r.phone }); onSaved() },
+  })
+  const digits = phone.replace(/\D/g, '').length
+  const ok = (digits === 10 || digits === 11) && phone !== (me.phone ?? '')
+  return (
+    <div className="absolute inset-0 z-10 flex items-end bg-black/50" onClick={onClose}>
+      <form
+        onClick={e => e.stopPropagation()}
+        onSubmit={e => { e.preventDefault(); if (ok) save.mutate() }}
+        className="w-full space-y-4 rounded-t-2xl bg-card px-5 pb-6 pt-5"
+      >
+        <div className="flex items-center gap-2">
+          <Icons.UserRound className="h-5 w-5 text-primary" />
+          <p className="me-auto text-base font-semibold">Meus dados</p>
+          <button type="button" onClick={onClose} className="p-1 text-muted-foreground cursor-pointer"><Icons.X className="h-5 w-5" /></button>
+        </div>
+        <label className="block space-y-1 text-sm">
+          <span className="text-muted-foreground">Telefone</span>
+          <input className={field} type="tel" inputMode="numeric" autoComplete="tel" placeholder="(00) 00000-0000" value={phone} onChange={e => setPhone(maskPhone(e.target.value))} />
+        </label>
+        {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
+        <button type="submit" disabled={!ok || save.isPending} className={primary}>{save.isPending ? 'Salvando…' : 'Salvar'}</button>
+      </form>
     </div>
   )
 }

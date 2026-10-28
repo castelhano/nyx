@@ -30,6 +30,7 @@ model User {
   permissions     UserPermission[]
   passwordHistory UserPasswordHistory[]
   jobs            Job[]
+  employeeChanges EmployeeChange[]
 
   @@map("users")
 }

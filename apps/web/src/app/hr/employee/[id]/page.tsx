@@ -1,0 +1,236 @@
+'use client'
+
+import { useState, useEffect, useMemo } from 'react'
+import { useRouter, useSearchParams, useParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
+import { Icons } from '@/lib/icons'
+import { AutoForm } from '@/core/AutoForm'
+import { AutoBreadcrumb } from '@/core/AutoBreadcrumb'
+import { usePageGuard } from '@/core/usePageGuard'
+import { useRecordQuery } from '@/core/useRecordQuery'
+import { useDiscovery } from '@/core/useDiscovery'
+import { apiFetch } from '@/lib/auth'
+import { useTopbarActions } from '@/components/layout/topbar-actions-context'
+import { useShortcut, useKeywatch } from '@/lib/keywatch'
+import { useToast } from '@/lib/toast-context'
+import { useConfirm } from '@/lib/confirm-context'
+import { msgs } from '@/lib/messages'
+import { extractError } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { EmployeeChangesModal } from './EmployeeChangesModal'
+
+const domain   = 'hr'
+const resource = 'employee'
+const FORM_ID  = 'employee-form'
+
+// The generic detail page plus the phone's change history (EmployeeChange) at the end of Contato
+export default function EmployeeDetailPage() {
+  const { id }       = useParams<{ id: string }>()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const isNew        = id === 'new'
+
+  const [isPending,   setIsPending]   = useState(false)
+  const [resetSignal, setResetSignal] = useState(0)
+  const [changesOpen, setChangesOpen] = useState(false)
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const confirm   = useConfirm()
+
+  const contextParams:   Record<string, string>  = {}
+  const derivedDefaults: Record<string, unknown> = {}
+  for (const [key, value] of searchParams.entries()) {
+    if (key.startsWith('_')) derivedDefaults[key.slice(1)] = value
+    else                     contextParams[key]             = value
+  }
+
+  const readonlyFields = isNew ? Object.keys(contextParams) : []
+  const contextQuery   = Object.keys(contextParams).length
+    ? `?${new URLSearchParams(contextParams)}`
+    : ''
+  const listPath = `/${domain}/${resource}${contextQuery}`
+
+  // Memoizado para referência estável — evita resets desnecessários no AutoForm (prop values)
+  const newRecordDefaults = useMemo(
+    () => isNew ? { ...contextParams, ...derivedDefaults } : undefined,
+    [isNew, searchParams], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  // ── Todos os hooks chamados incondicionalmente ────────────────────────────
+
+  const { data: domains } = useDiscovery()
+
+  const { data: record, error: recordError } = useRecordQuery(
+    [domain, resource, id],
+    `/${domain}/${resource}/${id}`,
+    { enabled: !isNew },
+  )
+
+  const { guardNode, meta, canCreate, canUpdate, canDelete } = usePageGuard(domain, resource, isNew, recordError ?? undefined)
+
+  const recordName = record && meta ? String(record[meta.nameField] ?? '') : undefined
+
+  // Quando o lineId (ou outro contextField) não veio na URL, deriva do registro carregado
+  // React Compiler isn't enabled in this project — this manual useMemo's broader
+  // deps than what it infers are conservative, not a bug.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const effectiveListPath = useMemo(() => {
+    if (contextQuery || !meta?.breadcrumb?.length || !record) return listPath
+    const params = new URLSearchParams()
+    for (const bc of meta.breadcrumb) {
+      const val = record[bc.contextField]
+      if (val) params.set(bc.contextField, String(val))
+    }
+    return params.size ? `/${domain}/${resource}?${params}` : listPath
+  }, [contextQuery, listPath, meta?.breadcrumb, record])
+
+  const visibleChildren = useMemo(
+    () => meta?.children?.filter((child) => {
+      if (!child.privatePermissions) return true
+      const childDomain = child.domain ?? domain
+      return domains.some((d) => d.key === childDomain && d.resources.some((r) => r.key === child.resource))
+    }) ?? [],
+    [meta?.children, domains],
+  )
+
+  const childActions = (!isNew && record?.id)
+    ? visibleChildren.map((child) => {
+        const childDomain = child.domain ?? domain
+        const href = `/${childDomain}/${child.resource}?${child.contextField}=${record.id}`
+        return {
+          label:   child.label,
+          icon:    Icons.LayoutList,
+          onClick: () => router.push(href),
+          variant: 'ghost' as const,
+          primary: false,
+          ...(child.keybind  ? { keybind:  child.keybind.toUpperCase() } : {}),
+          ...(child.overflow ? { overflow: true }                       : {}),
+        }
+      })
+    : []
+
+  async function handleDelete() {
+    const ok = await confirm({ title: `Excluir ${meta?.label ?? 'registro'}?` })
+    if (!ok) return
+    setIsPending(true)
+    try {
+      const res = await apiFetch(`/${domain}/${resource}/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw json
+      }
+      toast.success(msgs.deleted())
+      router.push(effectiveListPath)
+    } catch (err) {
+      toast.error(extractError(err as Record<string, unknown>, msgs.error.delete()))
+      setIsPending(false)
+    }
+  }
+
+  useTopbarActions([
+    ...childActions,
+    ...(isNew ? canCreate : canUpdate) ? [{ label: isPending ? 'Gravar…' : 'Gravar', icon: Icons.Save, type: 'submit' as const, form: FORM_ID, disabled: isPending, primary: true }] : [],
+    ...(!isNew && canDelete ? [{ label: 'Excluir', icon: Icons.Trash2, variant: 'destructive' as const, onClick: handleDelete, disabled: isPending }] : []),
+  ], [isNew, visibleChildren, record?.id, isPending, canCreate, canUpdate, canDelete])
+
+  const { coreRef } = useKeywatch()
+  useEffect(() => {
+    const core = coreRef.current
+    if (!core || isNew || !visibleChildren.length || !record?.id) return
+    const group = '_children_kb'
+    for (const child of visibleChildren) {
+      if (!child.keybind) continue
+      const href = `/${child.domain ?? domain}/${child.resource}?${child.contextField}=${record.id}`
+      core.bind(child.keybind, () => router.push(href), {
+        desc: child.label, icon: Icons.LayoutList, group, order: 4,
+      })
+    }
+    return () => { core.unbindGroup('_children_kb') }
+  }, [isNew, visibleChildren, record?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useShortcut('alt+g', () => {
+    if (isNew ? canCreate : canUpdate)
+      (document.getElementById(FORM_ID) as HTMLFormElement | null)?.requestSubmit()
+  }, { desc: 'Salvar registro', icon: Icons.Save, origin: 'apps/web/src/app/hr/employee/[id]/page', context: 'all' })
+
+  useShortcut('alt+l', () => setResetSignal((s) => s + 1), {
+    display: false,
+    origin:  'apps/web/src/app/hr/employee/[id]/page',
+  })
+
+  useShortcut('alt+v', () => router.push(effectiveListPath), {
+    desc: 'Voltar', icon: Icons.ArrowLeft,
+    origin: 'apps/web/src/app/hr/employee/[id]/page', context: 'all',
+  })
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (guardNode) return guardNode
+
+  async function handleSubmit(data: Record<string, unknown>) {
+    setIsPending(true)
+    try {
+      const path = isNew ? `/${domain}/${resource}` : `/${domain}/${resource}/${id}`
+      const res  = await apiFetch(path, {
+        method: isNew ? 'POST' : 'PATCH',
+        body:   JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(extractError(json))
+      }
+      const created = await res.json()
+      toast.success(isNew ? msgs.created() : msgs.updated())
+      if (isNew && meta?.afterCreate) {
+        const redirect = meta.afterCreate.replace(/\{(\w+)\}/g, (_, key) => String(created[key] ?? ''))
+        router.push(redirect)
+      } else if (meta?.stayOnSave) {
+        if (isNew) router.replace(`/${domain}/${resource}/${created.id}${contextQuery}`)
+        else {
+          await queryClient.invalidateQueries({ queryKey: [domain, resource, id] })
+          setIsPending(false)
+        }
+      } else {
+        router.push(effectiveListPath)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : msgs.error.save())
+      setIsPending(false)
+    }
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <AutoBreadcrumb
+        domain={domain}
+        resource={resource}
+        id={id}
+        recordName={recordName}
+        contextParams={contextParams}
+      />
+      <AutoForm
+        domain={domain}
+        resource={resource}
+        defaultValues={isNew ? newRecordDefaults : record}
+        readonlyFields={readonlyFields}
+        readOnly={!isNew && !canUpdate}
+        isNew={isNew}
+        onSubmit={handleSubmit}
+        formId={FORM_ID}
+        resetSignal={resetSignal}
+        groupSlots={isNew ? undefined : {
+          Contato: (
+            <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setChangesOpen(true)}>
+                <Icons.History className="w-3.5 h-3.5" />
+                Histórico de alterações
+              </Button>
+            </div>
+          ),
+        }}
+      />
+
+      {changesOpen && <EmployeeChangesModal employeeId={id} onClose={() => setChangesOpen(false)} />}
+    </div>
+  )
+}

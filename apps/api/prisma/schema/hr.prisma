@@ -81,11 +81,36 @@ model Employee {
   branch    Branch     @relation(fields: [branchId], references: [id])
   contracts Contract[]
   crewMember CrewMember?
+  changes    EmployeeChange[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("employees")
+}
+
+enum EmployeeChangeOrigin {
+  STAFF  // the HR screen
+  PORTAL // the crew member himself, in the crew portal
+}
+
+// A change to a tracked field of an Employee (today only the phone) — who changed it, from what
+model EmployeeChange {
+  id         String               @id @default(uuid())
+  employeeId String
+  field      String
+  oldValue   String?
+  newValue   String?
+  origin     EmployeeChangeOrigin
+  // STAFF: the user who saved it
+  userId     String?
+  createdAt  DateTime             @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId, createdAt])
+  @@map("employee_changes")
 }
 
 model Contract {

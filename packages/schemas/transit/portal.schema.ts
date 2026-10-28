@@ -30,6 +30,13 @@ export const portalRequestSchema = z.discriminatedUnion('kind', [
 ])
 export type PortalRequestDto = z.infer<typeof portalRequestSchema>
 
+// his phone — typed with or without the mask, kept masked like the HR screen keeps it
+export const portalPhoneSchema = z.object({
+  phone: z.string().transform(v => v.replace(/\D/g, ''))
+    .refine(d => d.length === 10 || d.length === 11, 'Informe o telefone com DDD')
+    .transform(d => d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`),
+})
+
 export const portalLinesSchema = z.object({
   // preferred lines in order (1st = primary)
   preferred: z.array(z.uuid()),
@@ -55,6 +62,7 @@ export interface PortalMe {
   code:         string
   name:         string
   branch:       string
+  phone:        string | null
   mustChangePin: boolean
   permissions:  PortalPermissions
   unread:       number

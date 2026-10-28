@@ -35,6 +35,12 @@ export class PortalController {
     return this.portal.me(req.crew!)
   }
 
+  @Put('phone')
+  @UseGuards(PortalGuard)
+  setPhone(@Req() req: PortalRequest, @Body() body: unknown) {
+    return this.portal.setPhone(req.crew!, body)
+  }
+
   @Get('notifications')
   @UseGuards(PortalGuard)
   @PortalOpenFor('notifications')

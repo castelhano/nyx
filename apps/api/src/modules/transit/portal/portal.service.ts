@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import {
-  PORTAL_QUOTA_PERIOD_LABEL, effectivePortalPermissions, formatDutyNumber, portalLinesSchema, portalRequestSchema,
+  PORTAL_QUOTA_PERIOD_LABEL, effectivePortalPermissions, formatDutyNumber, portalLinesSchema, portalPhoneSchema, portalRequestSchema,
   type PortalLines, type PortalMe, type PortalNotification, type PortalOccurrence, type PortalPermissions,
   type PortalQuota, type PortalQuotaBalance, type PortalRosterDay,
 } from '@nyx/schemas'
@@ -10,12 +10,13 @@ import { CrewOccurrenceService } from '../crew/crew-member/crew-occurrence.servi
 import { CrewMemberLineService } from '../crew/crew-member/crew-member-line.service'
 import { addDays, dayOf, toDbDate, type Day } from '../timetabling/plan-validity'
 import { loadPeriodStart } from '../daily/roster/roster-generator.input'
+import { logEmployeeChanges } from '../../hr/employee/employee-change'
 import { syncNotifications } from './portal-notifications'
 import type { PortalCrew } from './portal.guard'
 
 // What the crew member sees and does in the portal: his roster (only published days), his
 // requests (one day each, within his profile's quotas), the changes to confirm and his preferred
-// lines — all scoped to himself.
+// lines and his phone — all scoped to himself.
 
 const MAX_ROSTER_DAYS = 62
 const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
@@ -43,7 +44,7 @@ export class PortalService {
     const [m, permissions, access] = await Promise.all([
       this.prisma.crewMember.findUniqueOrThrow({
         where:  { id: crew.id },
-        select: { employee: { select: { code: true, fullName: true, branch: { select: { name: true } } } } },
+        select: { employee: { select: { code: true, fullName: true, phone: true, branch: { select: { name: true } } } } },
       }),
       this.permissions(crew),
       this.prisma.crewAccess.findUniqueOrThrow({ where: { crewMemberId: crew.id }, select: { createdAt: true } }),
@@ -57,9 +58,24 @@ export class PortalService {
       crew.mustChangePin ? Promise.resolve(0) : this.linesMissing(crew),
     ])
     return {
-      crewMemberId: crew.id, code: m.employee.code, name: m.employee.fullName, branch: m.employee.branch.name,
+      crewMemberId: crew.id, code: m.employee.code, name: m.employee.fullName, branch: m.employee.branch.name, phone: m.employee.phone,
       mustChangePin: crew.mustChangePin, permissions, unread, linesMissing, absenceTypes: types,
     }
+  }
+
+  // ── phone ───────────────────────────────────────────────────────────────────
+
+  // straight to his Employee — no review; the change is kept in EmployeeChange
+  async setPhone(crew: PortalCrew, raw: unknown): Promise<{ phone: string }> {
+    if (!(await this.permissions(crew)).editContact) throw new ForbiddenException('Seu perfil não permite atualizar os dados de contato')
+    const { phone } = portalPhoneSchema.parse(raw)
+    await this.prisma.$transaction(async tx => {
+      const { employeeId, employee } = await tx.crewMember.findUniqueOrThrow({ where: { id: crew.id }, select: { employeeId: true, employee: { select: { phone: true } } } })
+      if (employee.phone === phone) return
+      await tx.employee.update({ where: { id: employeeId }, data: { phone } })
+      await logEmployeeChanges(tx, employeeId, employee, { phone }, 'PORTAL')
+    })
+    return { phone }
   }
 
   // ── notifications ─────────────────────────────────────────────────────────

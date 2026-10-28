@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
-import { employeeSchema, Employee, CreateEmployeeDto, UpdateEmployeeDto } from '@nyx/schemas'
+import { employeeSchema, Employee, CreateEmployeeDto, UpdateEmployeeDto, type EmployeeChangeEntry } from '@nyx/schemas'
 import type { AuthUser } from '@nyx/types'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
 import { stringContains } from '../../../core/db.utils'
 import type { ImportOp } from '../../../core/import/import.engine'
 import { assertNoConflict, assertSingleActive, closeOpenContract } from '../contract/contract.rules'
+import { logEmployeeChanges } from './employee-change'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -29,6 +30,7 @@ export class EmployeeService extends BaseService<Employee, CreateEmployeeDto, Up
   async update(id: string, dto: UpdateEmployeeDto, user?: AuthUser): Promise<Employee> {
     const current = await this.findOne(id, user)
     const result  = await super.update(id, dto, user)
+    await logEmployeeChanges(this.prisma, id, current, result, 'STAFF', user?.id)
 
     const oldUrl = current.photoUrl
     const newUrl = result.photoUrl
@@ -38,6 +40,20 @@ export class EmployeeService extends BaseService<Employee, CreateEmployeeDto, Up
     }
 
     return result
+  }
+
+  // the changes to its tracked fields, newest first
+  async changes(id: string, user?: AuthUser): Promise<EmployeeChangeEntry[]> {
+    await this.findOne(id, user)
+    const rows = await this.prisma.employeeChange.findMany({
+      where:   { employeeId: id },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { name: true } } },
+    })
+    return rows.map(r => ({
+      id: r.id, field: r.field, oldValue: r.oldValue, newValue: r.newValue, origin: r.origin,
+      userName: r.user?.name ?? null, createdAt: r.createdAt.toISOString(),
+    }))
   }
 
   // An import row's contract columns are always a NEW contract: the open one is closed the day

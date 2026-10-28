@@ -224,3 +224,15 @@ export const updateEmployeeSchema = createEmployeeSchema.partial()
 export type Employee          = z.infer<typeof employeeSchema>
 export type CreateEmployeeDto = z.infer<typeof createEmployeeSchema>
 export type UpdateEmployeeDto = z.infer<typeof updateEmployeeSchema>
+
+// a change to a tracked field (EmployeeChange) — GET /hr/employee/:id/changes
+export interface EmployeeChangeEntry {
+  id:        string
+  field:     string
+  oldValue:  string | null
+  newValue:  string | null
+  origin:    'STAFF' | 'PORTAL'
+  // STAFF: who saved it
+  userName:  string | null
+  createdAt: string
+}
