@@ -23,6 +23,16 @@ export class CrewMemberService extends BaseService<CrewMember, CreateCrewMemberD
     super(prisma, 'crewMember', crewMemberSchema, 'transit')
   }
 
+  // the role its current contract's job title maps to (CrewRoleJobTitle) — prefills the create form
+  async suggestRole(employeeId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where:   { employeeId, status: 'ACTIVE' },
+      orderBy: { startDate: 'desc' },
+      select:  { jobTitle: { select: { crewRole: { select: { role: true } } } } },
+    })
+    return contract?.jobTitle.crewRole?.role
+  }
+
   protected buildSearchWhere(search: string) {
     return { employee: { OR: [{ fullName: stringContains(search) }, { code: stringContains(search) }] } }
   }

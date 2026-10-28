@@ -105,13 +105,16 @@ export const crewMemberSchema = withMeta(
       keybind:        'k',
     }),
 
+    // on create, suggested from the employee's current job title (CrewRoleJobTitle)
     role: z.enum(CREW_ROLES).default('DRIVER').meta({
-      label:          'Função',
-      listVisibility: 'visible',
-      filter:         true,
-      defaultValue:   'DRIVER',
-      className:      'md:w-1/4',
-      optionLabels:   CREW_ROLE_LABEL,
+      label:           'Função',
+      listVisibility:  'visible',
+      filter:          true,
+      defaultValue:    'DRIVER',
+      className:       'md:w-1/4',
+      optionLabels:    CREW_ROLE_LABEL,
+      suggestEndpoint: '/transit/crew-member/suggest-role',
+      suggestParams:   ['employeeId'],
     }),
 
     isRosterable: z.boolean().default(true).meta({

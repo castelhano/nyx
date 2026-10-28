@@ -1,4 +1,4 @@
-import { Controller, UseGuards } from '@nestjs/common'
+import { Controller, Get, Query, UseGuards } from '@nestjs/common'
 import { CrewMember, CreateCrewMemberDto, UpdateCrewMemberDto } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
@@ -9,9 +9,17 @@ import { CrewMemberService } from './crew-member.service'
 @UseGuards(JwtAuthGuard)
 export class CrewMemberController extends BaseController<CrewMember, CreateCrewMemberDto, UpdateCrewMemberDto> {
   constructor(
-    service: CrewMemberService,
+    private readonly crewMemberService: CrewMemberService,
     caslFactory: CaslAbilityFactory,
   ) {
-    super(service, caslFactory)
+    super(crewMemberService, caslFactory)
+  }
+
+  // must be defined before :id routes so NestJS matches static segments first
+  @Get('suggest-role')
+  async suggestRole(@Query('employeeId') employeeId?: string) {
+    if (!employeeId) return {}
+    const role = await this.crewMemberService.suggestRole(employeeId)
+    return role ? { role } : {}
   }
 }
