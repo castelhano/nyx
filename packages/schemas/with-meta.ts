@@ -33,6 +33,8 @@ export type RowActionInput = {
   endpoint?:    (row: Record<string, unknown>) => string
   body?:        Record<string, unknown>
   visibleWhen?: { field: string; value: unknown }
+  // asks before running (the confirm modal)
+  confirm?:     { title: string; description?: string; confirmLabel?: string; variant?: 'destructive' | 'default' }
 }
 
 export type SchemaMeta<T extends z.ZodRawShape> = {

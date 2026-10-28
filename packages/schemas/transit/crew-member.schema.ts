@@ -278,6 +278,11 @@ export const crewMemberSchema = withMeta(
         permission: 'update',
         method:     'POST',
         endpoint:   (row) => `/transit/crew-member/${row.id}/portal-pin/reset`,
+        confirm:    {
+          title:        'Resetar o PIN do portal?',
+          description:  'O PIN volta para os 6 primeiros dígitos do CPF e deverá ser trocado no próximo acesso. Sessões abertas no portal são encerradas.',
+          confirmLabel: 'Resetar',
+        },
       },
     ],
     importKey: 'employeeId',

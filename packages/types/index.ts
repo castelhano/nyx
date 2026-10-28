@@ -244,6 +244,7 @@ export interface RowActionDef {
   endpointTemplate?: string
   body?:             Record<string, unknown>
   visibleWhen?:      { field: string; value: unknown }
+  confirm?:          { title: string; description?: string; confirmLabel?: string; variant?: 'destructive' | 'default' }
 }
 
 // CSV import: an accepted value of a column, as the import modal lists it

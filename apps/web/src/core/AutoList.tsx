@@ -17,6 +17,7 @@ import { useShortcut, useKeywatch, type ShortcutSection } from '@/lib/keywatch'
 import { KeyHint } from './FieldRenderer'
 import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
+import { useConfirm } from '@/lib/confirm-context'
 import { msgs } from '@/lib/messages'
 import { Icons } from '@/lib/icons'
 import { Button } from '@/components/ui/button'
@@ -375,6 +376,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters, selectio
   const router      = useRouter()
   const queryClient = useQueryClient()
   const { toast }   = useToast()
+  const confirm     = useConfirm()
   const { user }    = useAuth()
   const { coreRef } = useKeywatch()
   const dateFormat  = user?.preferences?.dateFormat ?? 'DD/MM/YYYY'
@@ -428,6 +430,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters, selectio
     [meta?.rowActions, meta?.permissions],
   )
   const handleRowAction = useCallback(async (action: RowActionDef, row: Row) => {
+    if (action.confirm && !(await confirm(action.confirm))) return
     if (action.hrefTemplate) {
       router.push(resolveTemplate(action.hrefTemplate, row))
       return
@@ -455,7 +458,7 @@ export function AutoList({ domain, resource, onEdit, onAction, filters, selectio
       return
     }
     onAction?.(action.action, row)
-  }, [domain, resource, onAction, router, queryClient, toast])
+  }, [domain, resource, onAction, router, queryClient, toast, confirm])
 
   const sortField = sorting[0]?.id   ?? null
   const sortOrder = sorting[0]?.desc ? 'desc' : 'asc'
