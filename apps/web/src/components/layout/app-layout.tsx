@@ -13,7 +13,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <GlobalShortcuts />
       <GlobalSearch />
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-dvh overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
           <Topbar />
