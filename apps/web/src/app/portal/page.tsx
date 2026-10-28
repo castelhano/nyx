@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { PortalMe, PortalNotification } from '@nyx/schemas'
+import { weakPinReason, type PortalMe, type PortalNotification } from '@nyx/schemas'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { clearPortalToken, getPortalToken, portalFetch } from '@/lib/portal-auth'
@@ -121,9 +121,10 @@ function ChangePin({ onDone }: { onDone: () => void }) {
     onSuccess:  onDone,
   })
   const digits = (v: string) => v.replace(/\D/g, '').slice(0, 6)
+  const weak = weakPinReason(next)
   const error = next.length === 6 && next === current ? 'O PIN novo deve ser diferente do atual'
-    : again.length === 6 && again !== next ? 'Os PINs não conferem' : save.error?.message ?? null
-  const ok = current.length === 6 && next.length === 6 && again === next && next !== current
+    : weak ?? (again.length === 6 && again !== next ? 'Os PINs não conferem' : save.error?.message ?? null)
+  const ok = current.length === 6 && next.length === 6 && again === next && next !== current && !weak
   return (
     <form
       onSubmit={e => { e.preventDefault(); if (ok) save.mutate() }}

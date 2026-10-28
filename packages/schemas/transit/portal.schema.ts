@@ -13,8 +13,28 @@ export const portalLoginSchema = z.object({
 })
 export type PortalLoginDto = z.infer<typeof portalLoginSchema>
 
+// A PIN anyone would try first: one digit repeated (777777), a run (123456, 987654, 890123), a
+// repeated pair or triple (121212, 123123), a mirror (123321) or a doubled run (112233). The
+// personal ones (CPF, birth date, matrícula) are checked by the API, which has the data.
+export function weakPinReason(pin: string): string | null {
+  if (!/^\d{6}$/.test(pin)) return null
+  const d = [...pin].map(Number)
+  const steps = d.slice(1).map((x, i) => (x - d[i] + 10) % 10)
+  const isRun = (s: number[]) => s.every(x => x === 1) || s.every(x => x === 9)
+  if (steps.every(s => s === 0)) return 'O PIN não pode ser um único número repetido'
+  if (isRun(steps)) return 'O PIN não pode ser uma sequência'
+  if (pin === pin.slice(0, 2).repeat(3) || pin === pin.slice(0, 3).repeat(2)) return 'O PIN não pode repetir um mesmo grupo de números'
+  if (pin === [...pin].reverse().join('')) return 'O PIN não pode ser espelhado'
+  if (d[0] === d[1] && d[2] === d[3] && d[4] === d[5] && isRun([(d[2] - d[0] + 10) % 10, (d[4] - d[2] + 10) % 10])) return 'O PIN não pode ser uma sequência'
+  return null
+}
+
 export const portalChangePinSchema = z.object({ current: pin, next: pin })
   .refine(p => p.next !== p.current, { message: 'O PIN novo deve ser diferente do atual', path: ['next'] })
+  .superRefine((p, ctx) => {
+    const weak = weakPinReason(p.next)
+    if (weak) ctx.addIssue({ code: 'custom', message: weak, path: ['next'] })
+  })
 export type PortalChangePinDto = z.infer<typeof portalChangePinSchema>
 
 // a request is always one day

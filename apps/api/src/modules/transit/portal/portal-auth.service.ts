@@ -62,8 +62,10 @@ export class PortalAuthService {
 
   async changePin(crewMemberId: string, raw: unknown): Promise<void> {
     const dto = portalChangePinSchema.parse(raw)
-    const access = await this.prisma.crewAccess.findUnique({ where: { crewMemberId } })
+    const access = await this.prisma.crewAccess.findUnique({ where: { crewMemberId }, include: { crewMember: { select: { employee: { select: { code: true, taxId: true, dateOfBirth: true } } } } } })
     if (!access || !(await argon2.verify(access.pinHash, dto.current))) throw new BadRequestException('PIN atual incorreto')
+    const personal = personalPinReason(dto.next, access.crewMember.employee)
+    if (personal) throw new BadRequestException(personal)
     await this.prisma.crewAccess.update({ where: { id: access.id }, data: { pinHash: await argon2.hash(dto.next), mustChangePin: false } })
   }
 
@@ -86,6 +88,21 @@ export class PortalAuthService {
     recent.push(now)
     this.hits.set(ip, recent)
   }
+}
+
+// a PIN made of what others know about him: the CPF's start (the first PIN), his birth date, his
+// matrícula (the login itself)
+function personalPinReason(pin: string, e: { code: string; taxId: string; dateOfBirth: Date | null }): string | null {
+  if (pin === e.taxId.replace(/\D/g, '').slice(0, 6)) return 'O PIN não pode ser o início do CPF'
+  if (e.dateOfBirth) {
+    const [y, m, d] = e.dateOfBirth.toISOString().slice(0, 10).split('-')
+    if ([`${d}${m}${y.slice(2)}`, `${y.slice(2)}${m}${d}`, `${m}${d}${y.slice(2)}`].includes(pin)) return 'O PIN não pode ser a data de nascimento'
+  }
+  const code = e.code.replace(/\D/g, '')
+  if (code && (code.padStart(6, '0') === pin || (code.length >= 4 && pin.includes(code)) || (code.length > 6 && code.includes(pin)))) {
+    return 'O PIN não pode conter a matrícula'
+  }
+  return null
 }
 
 // the first 6 digits of the CPF
