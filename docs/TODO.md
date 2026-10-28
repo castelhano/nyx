@@ -4,9 +4,11 @@
 # Outros
 
 ## Alto
-
-## Medio
+[ ] Na tela do condutor implementar solicitação de troca de turno...
 [ ] Na tela do condutor, ao selecionar um dia mostrar detalhamento da operação, viagens, itinerário, observações, marcos, etc
+[ ] Como implementar escalas 5x2? (3 moldes simulados)
+## Medio
+[ ] Tela operador (e logica do app) como representar um pedido de "troca de folga" (nao eh folga adicional)
 [ ] Edições em vehicle-plan (pending), adicionar history rollback (voltar ações) (q+backspace)
 [ ] Adição de ponto / waypoint no cadastro da rota, permitir remover um ponto ainda nao persistido (pending), e alt+l deve descartar pendencias (q+backspace)
 [ ] Tipar parâmetro db/tx (PrismaService | Prisma.TransactionClient) nos services/utils que hoje usam `any` pra aceitar os dois — eslint tem no-unsafe-* desligado em apps/api por causa disso (eslint.config.mjs)
