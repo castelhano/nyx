@@ -522,7 +522,7 @@ export class CrewImprover {
   // The duty those pieces make, or null when it breaks a hard rule:
   //  - pieces in time order, no overlap; consecutive pieces on the same vehicle merge;
   //    at most MAX_PIECES;
-  //  - between pieces at different places, the driver walks — within settings.maxWalkMeters and a
+  //  - between pieces at different places, the driver walks — within settings.range.walkDistance.ceiling and a
   //    gap that fits the walk (unknown distance → no duty);
   //  - at most one long interval: the meal (STRAIGHT — a rest within the meal type's range, at a
   //    meal stop of the line that arrives; only when settings.mealRule places meal breaks
@@ -558,7 +558,7 @@ export class CrewImprover {
       const prev = pieces[i - 1], next = pieces[i]
       const gap    = next.startMinutes - prev.endMinutes
       const meters = walkMeters(walk, prev.endLocalityId, next.startLocalityId)
-      if (meters == null || meters > settings.maxWalkMeters) return null
+      if (meters == null || meters > settings.range.walkDistance.ceiling) return null
       const travel = walkMinutes(meters)
       if (gap < travel) return null
       const rest = gap - travel

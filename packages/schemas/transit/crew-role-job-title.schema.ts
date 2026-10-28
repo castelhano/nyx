@@ -37,8 +37,8 @@ export const crewRoleJobTitleSchema = withMeta(
     updatedAt: z.date().meta({ showInForm: false, listVisibility: 'never' }),
   }),
   {
-    label:       'Cargo da Função',
-    labelPlural: 'Cargos das Funções',
+    label:       'Associar Função',
+    labelPlural: 'Associar Funções',
     nameField:   'jobTitleId',
     icon:        'Briefcase',
   },

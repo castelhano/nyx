@@ -27,7 +27,7 @@ import { walkMeters, walkMinutes, type CrewWalk } from './crew-walk'
 //   interval (its longest gap) — the driver is at the employer's disposal (walking included).
 //   Only the meal break and the split interval are off the clock.
 // - Between pieces at different places the driver walks (crew-walk.ts), unless a TRAVEL
-//   activity is declared there: beyond settings.maxWalkMeters → WALK_DISTANCE; a gap shorter
+//   activity is declared there: beyond settings.range.walkDistance.ceiling → WALK_DISTANCE; a gap shorter
 //   than the walk → TRAVEL_GAP.
 // - Stops: the vehicle's idle time within the duty's pieces + the idle gaps between them
 //   (breaks and the split interval aside). A STRAIGHT meets the intrajornada in the form
@@ -308,8 +308,8 @@ export function evaluateDuty(duty: CrewCalcDuty, ctx: CrewCalcContext): DutyEval
     const meters = walkMeters(ctx.walk, g.prev.endLocalityId, g.next.startLocalityId)
     if (meters == null) {
       walkIssues.push({ code: 'TRAVEL_GAP', severity: 'warning', value: g.minutes, pieceId: g.next.id })
-    } else if (meters > settings.maxWalkMeters) {
-      walkIssues.push({ code: 'WALK_DISTANCE', severity: 'error', value: Math.round(meters), limit: settings.maxWalkMeters, pieceId: g.next.id })
+    } else if (meters > settings.range.walkDistance.ceiling) {
+      walkIssues.push({ code: 'WALK_DISTANCE', severity: 'error', value: Math.round(meters), limit: settings.range.walkDistance.ceiling, pieceId: g.next.id })
     } else {
       walked += meters
       if (g.minutes < walkMinutes(meters)) walkIssues.push({ code: 'TRAVEL_GAP', severity: 'error', value: g.minutes, limit: walkMinutes(meters), pieceId: g.next.id })

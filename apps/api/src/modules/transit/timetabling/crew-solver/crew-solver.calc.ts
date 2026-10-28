@@ -429,7 +429,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
             // (no deadrun recorded); the pieces themselves stay in service
             if (g.split) {
               const meters = walkMeters(input.walk, v.locality(g.startMinutes), v.locality(g.endMinutes))
-              if (meters == null || meters > settings.maxWalkMeters || len(g) < walkMinutes(meters)) continue
+              if (meters == null || meters > settings.range.walkDistance.ceiling || len(g) < walkMinutes(meters)) continue
               if (v.offService(from, g.startMinutes) || v.offService(g.endMinutes, to)) continue
             } else if (v.offService(from, to, g)) continue
             // a split's gap is not worked; a meal break inside the piece counts only if paid
@@ -561,7 +561,7 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
       const b = loose[j].piece
       if (used.has(j) || loose[j].branchId !== branchId || b.startMinutes < a.endMinutes) continue
       const meters = walkMeters(input.walk, a.endLocalityId, b.startLocalityId)
-      if (meters == null || meters > settings.maxWalkMeters) continue
+      if (meters == null || meters > settings.range.walkDistance.ceiling) continue
       const travel = walkMinutes(meters)
       const gap = b.startMinutes - a.endMinutes
       const spread = b.endMinutes - a.startMinutes + signs

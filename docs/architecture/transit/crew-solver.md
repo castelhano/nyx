@@ -65,7 +65,6 @@ CrewPlan.settings ?? Settings(transit.crew, Scope) ?? global
 | `handoverMinutes` | tolerated overlap between same-role pieces on the same block |
 | `minPieceMinutes` | shorter pieces are flagged (`MIN_PIECE`, warning) — unless the piece is all its service span holds |
 | `maxContinuousDrivingMinutes` | `CONTINUOUS_DRIVING` (error) |
-| `maxWalkMeters` | farthest walk between pieces at different places (`WALK_DISTANCE`) |
 | `nightStartHour` / `nightEndHour` | informative `nightMinutes` |
 | `mealBreakIntervalTypeId` | the `IntervalType` placed as the meal break — its min/max decide when a gap becomes a meal |
 | `mealRule` | see below |
@@ -145,7 +144,7 @@ Range criteria (`settings.range`) — outside `[idealMin, idealMax]` they cost s
 | `idleTime` | paid idle time — the gaps between pieces that are neither the meal nor the split interval (`IDLE_TIME`) |
 | `vehicleChanges` | vehicle changes in the duty |
 | `lineChanges` | line changes, counted apart from vehicle changes |
-| `walkDistance` | meters walked between pieces |
+| `walkDistance` | meters walked between pieces — its ceiling is also the farthest single walk, a hard rule even when inactive (`WALK_DISTANCE`) |
 
 Per plan:
 

@@ -3,7 +3,7 @@ import type { PrismaService } from '../../../../prisma/prisma.service'
 // How a driver gets from the end of a piece to the start of the next one at another place:
 // on foot (a declared TRAVEL activity aside). Distance: the travel matrix's road distance
 // (TravelTimeMatrix.distanceKm), else the straight line × STRAIGHT_LINE_FACTOR; speed fixed.
-// Beyond settings.maxWalkMeters the pieces can't follow each other (WALK_DISTANCE).
+// Beyond range.walkDistance.ceiling (per walk) the pieces can't follow each other (WALK_DISTANCE).
 
 export const WALK_METERS_PER_MINUTE = 4000 / 60
 const STRAIGHT_LINE_FACTOR = 1.3
