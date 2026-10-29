@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { VEHICLE_TYPE_LABELS, type VehicleTypeValue } from '@nyx/schemas'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Icons } from '@/lib/icons'
@@ -112,12 +113,15 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
 
       {day && (
         <section className="rounded-lg border border-border p-3 space-y-2">
-          <p className="font-medium">{WEEKDAY[weekday(day.date)]} {fmtDay(day.date)}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-medium">{WEEKDAY[weekday(day.date)]} {fmtDay(day.date)}</p>
+            {day.operations.length > 0 && (() => {
+              // the crew left over: without a duty, day off or absence on the day
+              const left = [...freeCells(board, idx)].filter(k => k.endsWith(`|${day.date}`)).length
+              return <span title="Operadores sem tabela, folga ou ausência no dia"><Badge label={left ? `Sobra ${left}` : 'Sem sobra'} color={left ? 'success' : 'muted'} /></span>
+            })()}
+          </div>
           <p className="text-xs text-muted-foreground">{day.assigned}/{day.duties} tabela(s) com operador · {day.issues} com pendência</p>
-          {day.operations.length > 0 && (() => {
-            const left = [...freeCells(board, idx)].filter(k => k.endsWith(`|${day.date}`)).length
-            return <p className="text-xs text-emerald-600 dark:text-emerald-400">{left ? `${left} operador(es) sem escala no dia` : 'Ninguém sobrando no dia'}</p>
-          })()}
           {!day.operations.length && <p className="text-xs text-muted-foreground">Dia ainda não criado — gere a escala do período.</p>}
           {canEdit && day.issues > 0 && day.operations.some(o => o.status !== 'CLOSED') && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -217,7 +221,7 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
       )}
       {duty.preferred.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Preferenciais:{' '}
+          Fixos:{' '}
           {duty.preferred.map((id, i) => {
             const m = idx.memberById.get(id)
             return <span key={id} className={cn(id === duty.crewMemberId && 'text-foreground font-medium')}>{i > 0 && ' · '}{i + 1}º {m ? `${m.code} ${m.name}` : 'outra empresa'}</span>

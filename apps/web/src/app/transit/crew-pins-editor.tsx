@@ -9,7 +9,7 @@ import { Icons } from '@/lib/icons'
 // warning: why this crew member can't take it (e.g. outside his shift) — shown, never enforced
 export interface CrewPin { id: string; code: string; name: string; warning?: string }
 
-// "Operadores preferenciais": who should work a duty or a trip group, in order — searched by code
+// "Operadores fixos": who should work a duty or a trip group, in order — searched by code
 // or name (the empresa's, when given), reordered with ↑↓, removed with ✕; each change goes out
 // at once (onChange)
 export function CrewPinsEditor({ pins, branchId, canEdit, onChange, hint }: {
@@ -31,7 +31,7 @@ export function CrewPinsEditor({ pins, branchId, canEdit, onChange, hint }: {
   const move = (i: number, d: -1 | 1) => { const next = [...ids]; [next[i], next[i + d]] = [next[i + d], next[i]]; onChange(next) }
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-medium">Operadores preferenciais</p>
+      <p className="text-xs font-medium">Operadores fixos</p>
       {!pins.length && <p className="text-xs text-muted-foreground">Nenhum — a escala diária escolhe livremente.</p>}
       {pins.map((p, i) => (
         <div key={p.id} className="flex items-center gap-1.5 text-xs">

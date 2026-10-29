@@ -244,6 +244,14 @@ export default function RosterPage() {
         description: 'Encerrar é para depois que o dia aconteceu: ele fica somente leitura, como registro do realizado, e a geração não o refaz mais. Só um administrador consegue reabri-lo.',
         confirmLabel: 'Encerrar',
       }))) return
+      // publishing with crew left over on the day asks first
+      const date = board?.days.find(d => d.operations.some(o => o.id === operationId))?.date
+      const left = date ? [...free].filter(k => k.endsWith(`|${date}`)).length : 0
+      if (to === 'PUBLISHED' && left > 0 && !(await confirm({
+        title: 'Operadores não escalados',
+        description: `${left} operador(es) sem tabela, folga ou ausência em ${fmtDay(date!)}. Publicar mesmo assim?`,
+        confirmLabel: 'Publicar',
+      }))) return
       void run(() => call(`/transit/daily-operation/${operationId}/${to === 'PUBLISHED' ? 'publish' : 'close'}`, 'POST', {}), undefined, to === 'PUBLISHED' ? 'Dia publicado' : 'Dia encerrado')
     },
     remake: async (operationId: string) => {

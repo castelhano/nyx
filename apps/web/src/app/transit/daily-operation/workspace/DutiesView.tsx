@@ -83,7 +83,7 @@ function Timeline({ board, idx, duties, selectedId, onSelect }: Props) {
                   : <span className="text-red-600 dark:text-red-400">sem operador</span>}
                 {d.locked && <Icons.Lock className="w-3 h-3 shrink-0 text-muted-foreground" />}
                 {d.preferred.length > 0 && (
-                  <span title={`Preferencial: ${d.preferred.map((id, i) => `${i + 1}º ${idx.memberById.get(id)?.code ?? '?'}`).join(', ')}`} className={cn('text-[10px] shrink-0', d.crewMemberId === d.preferred[0] ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}>★</span>
+                  <span title={`Fixo: ${d.preferred.map((id, i) => `${i + 1}º ${idx.memberById.get(id)?.code ?? '?'}`).join(', ')}`} className={cn('text-[10px] shrink-0', d.crewMemberId === d.preferred[0] ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}>★</span>
                 )}
                 <span className="ml-auto flex gap-1 shrink-0">
                   {d.blocks.map(b => (

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import {
   dailyOperationSchema, restPatternWorks, validateBlock,
   type CreateDailyOperationDto, type DailyIssue, type DailyOperation, type DailySource, type DailySummary,
-  type CrewRole, type DutySummary, type UpdateDailyOperationDto, type VehicleTypeValue,
+  type CrewRole, type DutySummary, type UpdateDailyOperationDto, type VehiclePlanConstraints, type VehicleTypeValue,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { BaseService } from '../../../core/base.service'
@@ -426,7 +426,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
       this.prisma.dailyDuty.findMany({
         where:  { dailyOperationId: id },
         select: {
-          id: true, role: true, kind: true, branchId: true, shiftId: true, summary: true, issues: true, isStale: true,
+          id: true, role: true, kind: true, branchId: true, shiftId: true, sourceDutyId: true, summary: true, issues: true, isStale: true,
           pieces:     { select: { id: true, dailyBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true, isStale: true, staleReason: true } },
           activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true } },
         },
@@ -474,6 +474,19 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
 
     // ── the day's own checks ──
     const blockById = new Map(blocks.map(b => [b.id, b]))
+    // the duties' fixed crew members, as the generator reads them: the logical duty's, then its
+    // trip groups' — a titular on férias gives his place to his ferista
+    const [logical, plans, covers] = await Promise.all([
+      this.prisma.duty.findMany({ where: { id: { in: [...new Set(duties.flatMap(d => d.sourceDutyId ?? []))] } }, select: { id: true, constraints: true } }),
+      this.prisma.vehiclePlan.findMany({ where: { id: { in: sources.map(s => s.vehiclePlanId) } }, select: { constraints: true } }),
+      this.prisma.crewOccurrence.findMany({
+        where:  { kind: 'ABSENCE', status: 'APPROVED', coverCrewMemberId: { not: null }, startDate: { lte: toDbDate(day) }, endDate: { gte: toDbDate(day) } },
+        select: { crewMemberId: true, coverCrewMemberId: true },
+      }),
+    ])
+    const dutyPins = new Map(logical.map(d => [d.id, (d.constraints as { crewMemberIds?: string[] } | null)?.crewMemberIds ?? []]))
+    const bundleCrew = new Map(plans.flatMap(p => Object.entries((p.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {})))
+    const coverOf = new Map(covers.map(c => [c.crewMemberId, c.coverCrewMemberId!]))
     const dutyFacts: DutyFacts[] = duties.map(d => {
       const live = d.pieces.filter(p => !result.pieces.get(p.id)?.isStale && p.dailyBlockId)
       const lineIds = new Set<string>(), types = new Set<VehicleTypeValue>()
@@ -483,7 +496,11 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
         const b = blockById.get(p.dailyBlockId!)
         if (b) types.add(b.vehicle?.vehicleType ?? b.vehicleType)
       }
-      return { id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, summary: result.duties.get(d.id)!.summary, lineIds: [...lineIds], vehicleTypes: [...types] }
+      const groups = new Set(live.flatMap(p => events
+        .filter(e => e.dailyBlockId === p.dailyBlockId && e.kind === 'TRIP' && !e.isCancelled && e.bundleId && Math.min(e.endMinutes, p.endMinutes) > Math.max(e.startMinutes, p.startMinutes))
+        .map(e => e.bundleId!)))
+      const fixed = [...(dutyPins.get(d.sourceDutyId ?? '') ?? []), ...[...groups].flatMap(g => bundleCrew.get(g) ?? [])].map(id => coverOf.get(id) ?? id)
+      return { id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, summary: result.duties.get(d.id)!.summary, lineIds: [...lineIds], vehicleTypes: [...types], fixed }
     })
     const crewFacts = await loadCrewFacts(this.prisma, this.rosterConfig, day, duties.map(d => d.id), op.crewContext)
     const dutyDayIssues = crewIssues(day, dutyFacts, crewFacts, settings.range.interShiftRest.floor)
@@ -521,7 +538,10 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
           }
         }
         const r = result.duties.get(d.id)!
-        const issues = [...r.issues, ...(dutyDayIssues.get(d.id) ?? [])]
+        // a duty outside every shift stops being a pendência once someone holds it — only noted
+        const held = crewFacts.entries.some(e => e.dailyDutyId === d.id)
+        const own = r.issues.map(i => (held && i.code === 'SHIFT_NONE' ? { ...i, severity: 'info' as const } : i))
+        const issues = [...own, ...(dutyDayIssues.get(d.id) ?? [])]
         count(issues)
         if (d.isStale === r.isStale && d.shiftId === r.shiftId && same(d.summary, r.summary) && same(d.issues, issues)) continue
         await tx.dailyDuty.update({

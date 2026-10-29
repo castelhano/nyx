@@ -2,8 +2,12 @@
 
 ---
 # Outros
+> Aumentar horario de inicio ideal turnos (2P em especial) para evitar mostrar alertas de fora do ideal
+
 
 ## Alto
+[ ] Problema escala diaria, condutor preferencial ignora restrição de horários (dentre outros) e é respeitado no gerador, mudar nome (nos labels apenas) onde esta "preferencial" para "fixo"
+[ ] Permitir na geração da escala diaria seleciona intervalo diferente da seleção de visão
 [ ] Na tela do condutor implementar solicitação de troca de turno...
 [ ] Na tela do condutor, ao selecionar um dia mostrar detalhamento da operação, viagens, itinerário, observações, marcos, etc
 [ ] Como implementar escalas 5x2? (3 moldes simulados)

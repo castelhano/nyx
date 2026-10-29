@@ -22,7 +22,7 @@ const ROWS: Row[] = [
     value: q => `${q.belowLoad}/${q.withLoad}`, rank: q => -q.belowLoad },
   { label: 'Fora do ideal do turno', title: 'Média de minutos fora do início/fim ideal do turno',
     value: q => (q.shiftDev == null ? '—' : `⌀ ${q.shiftDev} min`), rank: q => (q.shiftDev == null ? null : -q.shiftDev) },
-  { label: 'Operador preferencial', title: 'Tabelas (ou grupos de viagens) com operadores preferenciais definidos: feitas pelo 1º da lista · por alguém da lista',
+  { label: 'Operador fixo', title: 'Tabelas (ou grupos de viagens) com operadores fixos definidos: feitas pelo 1º da lista · por alguém da lista',
     value: q => (q.pinned?.duties ? `${q.pinned.first}/${q.pinned.duties} 1º · ${q.pinned.listed} lista` : '—'), rank: q => (q.pinned?.duties ? q.pinned.first + q.pinned.listed / 100 : null) },
   { label: 'Carro fixo', title: 'Dias trabalhados por operadores com carro fixo em que dirigem o carro fixo (só na escala atual — os carros são alocados ao aceitar)',
     value: q => (q.fixedCar?.days ? `${pct(q.fixedCar.met, q.fixedCar.days)} (${q.fixedCar.met}/${q.fixedCar.days})` : '—'), rank: q => (q.fixedCar?.days ? q.fixedCar.met / q.fixedCar.days : null) },

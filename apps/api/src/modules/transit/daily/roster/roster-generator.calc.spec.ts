@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rosterSettingsSchema } from '@nyx/schemas'
-import { RosterModel, type RgDuty, type RgInput, type RgMember } from './roster-generator.calc'
+import { pairRule, RosterModel, type RgDuty, type RgInput, type RgMember } from './roster-generator.calc'
 
 const settings = rosterSettingsSchema.parse({})
 const duty = (id: string, day: number, signature: string): RgDuty => ({
@@ -57,10 +57,10 @@ describe('compensate — the hour bank decides who is left free', () => {
     inp.members = inp.members.map(withStatus)
     expect(value(inp, [[0], [-1]])).toBeGreaterThan(value(inp, [[-1], [0]]))
   })
-  it('lets the first preferred go when the next one listed takes it', () => {
+  it('keeps the first fixed crew member even with the next one listed free', () => {
     const inp = one([0, 1])
     inp.members = inp.members.map(withStatus)
-    expect(value(inp, [[-1], [0]])).toBeGreaterThan(value(inp, [[0], [-1]]))
+    expect(value(inp, [[0], [-1]])).toBeGreaterThan(value(inp, [[-1], [0]]))
   })
   it("doesn't count a one-off substitution against maxChanges", () => {
     const days = ['2026-10-01', '2026-10-02', '2026-10-03']
@@ -84,5 +84,32 @@ describe('priority lines — the empresa\'s, before the crew member\'s preferenc
   it('without priority lines, his preference decides', () => {
     const model = new RosterModel(one(member({ prefGrade: { L2: 1 } })))
     expect(model.evaluate(0, Int32Array.from([1])).score).toBeGreaterThan(model.evaluate(0, Int32Array.from([0])).score)
+  })
+})
+
+describe('fixed crew members', () => {
+  const window = { startFloor: 600, startCeiling: 700, endFloor: 900, endCeiling: 1000, startIdealMin: 600, startIdealMax: 700, endIdealMin: 900, endIdealMax: 1000, allowSplit: false } as RgMember['windows'][number]
+  const outside = (preferred: number[], ruleModes = settings.ruleModes): RgInput => ({
+    ...input(member({ windows: [window, window], lineAccess: { L: 'BLOCKED' } })),
+    duties: [{ ...duty('a', 0, 'P#A'), lineMinutes: [{ lineId: 'L', minutes: 60 }], preferred }],
+    ruleModes,
+  })
+  it('skips the shift window and the line access', () => {
+    expect(pairRule(outside([]), 0, outside([]).duties[0])).toBe(-1)
+    expect(pairRule(outside([0]), 0, outside([0]).duties[0])).toBe(0)
+  })
+  it('still follows the license rule mode', () => {
+    const inp = outside([0])
+    inp.members[0].licenseExpired = [true, true]
+    expect(pairRule(inp, 0, inp.duties[0])).toBe(-1)
+    inp.ruleModes = { ...settings.ruleModes, license: 'WARN' }
+    expect(pairRule(inp, 0, inp.duties[0])).toBe(1)
+  })
+  it('a change into his fixed duty is not held by maxChanges', () => {
+    const inp = input(member())
+    inp.duties = [inp.duties[0], { ...inp.duties[1], preferred: [0] }]
+    const e = new RosterModel(inp).evaluate(0, Int32Array.from([0, 1]))
+    expect(e.changes).toBe(1)
+    expect(e.hard).toBe(false)
   })
 })

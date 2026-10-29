@@ -17,6 +17,8 @@ export interface DutyFacts {
   // lines and vehicle types of its live pieces
   lineIds:   string[]
   vehicleTypes: VehicleTypeValue[]
+  // its fixed crew members — on it, the line, vehicle type and shift window checks are only info
+  fixed:     string[]
 }
 
 export interface BlockFacts {
@@ -105,6 +107,7 @@ export function crewIssues(
     if (!m) continue
     const push = (code: DailyIssue['code'], severity: DailyIssue['severity'] = 'error', value?: number) =>
       issues.push({ code, severity, crewMemberId: memberId, ...(value != null ? { value } : {}) })
+    const fixedRule = duty.fixed.includes(memberId) ? 'info' : 'error'
 
     if (m.employee.status !== 'ACTIVE') push('CREW_INACTIVE')
     if (facts.occurrences.some(o => o.crewMemberId === memberId && o.kind === 'ABSENCE')) push('CREW_ABSENT')
@@ -120,7 +123,7 @@ export function crewIssues(
     const window = shift ? effectiveWindow(shift, m, facts.occurrences.filter(o => o.crewMemberId === memberId)) : null
     if (!shift) push('NO_SHIFT', 'warning')
     else if (start != null && end != null && !shiftFits(window!, start, end, duty.kind)) {
-      push('SHIFT_WINDOW')
+      push('SHIFT_WINDOW', fixedRule)
     } else if (start != null && end != null && window) {
       // inside the window but far from its ideal (beyond shiftFit's ceiling): an advisory
       const limit = facts.settings.get(m.employee.branchId)?.range.shiftFit.ceiling ?? 120
@@ -135,8 +138,8 @@ export function crewIssues(
 
     const mode = facts.settings.get(m.employee.branchId)?.lineAccessMode ?? 'BLACKLIST'
     const access = new Map(m.lines.map(l => [l.lineId, l.access]))
-    if (duty.lineIds.some(l => mode === 'WHITELIST' ? access.get(l) !== 'ENABLED' : access.get(l) === 'BLOCKED')) push('LINE_NOT_ALLOWED')
-    if (duty.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t))) push('VEHICLE_TYPE_BLOCKED')
+    if (duty.lineIds.some(l => mode === 'WHITELIST' ? access.get(l) !== 'ENABLED' : access.get(l) === 'BLOCKED')) push('LINE_NOT_ALLOWED', fixedRule)
+    if (duty.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t))) push('VEHICLE_TYPE_BLOCKED', fixedRule)
     if (duty.kind === 'STANDBY' && m.standbyBlocked) push('STANDBY_BLOCKED')
 
     const expired = (d: Date | null) => !!d && dayOf(d) < day

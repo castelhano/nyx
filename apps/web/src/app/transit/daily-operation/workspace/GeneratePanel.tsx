@@ -172,7 +172,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
           {opts.compensate && (
             <p className="text-[11px] text-muted-foreground">
               Quem sobrar no dia recebe folga compensada — fica livre quem tem mais horas no banco (saldo do mês anterior primeiro).
-              Um preferencial só cede a tabela ao próximo da lista.
+              Um operador fixo não cede a tabela para folga compensada.
             </p>
           )}
           <ExtraStandbyEditor value={opts.extraStandby} from={from} to={to} onChange={extraStandby => setOpts(o => ({ ...o, extraStandby }))} />

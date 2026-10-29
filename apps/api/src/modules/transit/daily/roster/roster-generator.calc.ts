@@ -15,36 +15,36 @@ import { hungarian } from './hungarian'
 //                 crew member on its day, or two crew members swap a range of days
 //
 // The objective: coverage first (UNASSIGNED per duty without a crew member, UNASSIGNED_STANDBY per
-// plantão — filled with who's left over), then WARN rule violations (WARN each), then the
-// preferred crew members (PIN per step down the list, PIN_OUT for someone off it), then — with
+// plantão — filled with who's left over), then the fixed crew members (PIN per step down the
+// list, one more for someone off it), then WARN rule violations (WARN each), then — with
 // `compensate` — the hour bank (BANK × priority per crew member left free for a folga
 // compensada), then the score — the average of each crew member's weighted criteria
 // (roster.range + the crew interShiftRest ideal) on the 0–9999 scale of the other solvers. Each
-// level outweighs everything below it, but the bank sits between a step down a preferred list
-// and leaving it: a preferred crew member with more hours gives way to the next one listed,
-// never to someone off the list.
+// level outweighs everything below it: the first fixed crew member keeps his duty even breaking a
+// WARN rule, and the next one listed only takes it when he can't (day off, absence, a BLOCK rule).
+// A fixed crew member isn't held by the line, vehicle type and shift window rules, nor by
+// maxChanges on his duty.
 // Redoing PUBLISHED days (includePublished), each day whose duty differs from the published one
 // costs range.publishedChanges — the search changes the published roster only where it pays off.
 // BLOCK rules and the always-blocking ones are hard: never assigned.
 
-export const UNASSIGNED = 100_000_000
+export const UNASSIGNED = 100_000_000_000
 // a plantão (STANDBY) without anyone — it takes whoever is left once the duties are covered
-export const UNASSIGNED_STANDBY = 10_000_000
+export const UNASSIGNED_STANDBY = 10_000_000_000
 export const WARN       = 1_000_000
 
 export const missingCost = (d: RgDuty) => (d.standby ? UNASSIGNED_STANDBY : UNASSIGNED)
 
-// a duty with preferred crew members (Duty.constraints.crewMemberIds): each step down the list
-// costs PIN, anyone else PIN_OUT on top of the whole list — below a WARN rule, above the whole
-// score (no criterion outweighs a preferred crew member)
-export const PIN = SCORE_SCALE
+// a duty with fixed crew members (Duty.constraints.crewMemberIds): each step down the list costs
+// PIN, anyone else one step past the whole list — above the WARN rules one pair can break
+// (license, course, the rest on either side), below coverage
+export const PIN = 10 * WARN
 // a crew member left free for a folga compensada: up to BANK by his priority (bankPriority)
 export const BANK = 6 * SCORE_SCALE
-const PIN_OUT = 8 * SCORE_SCALE
 export const pinCost = (d: RgDuty, mi: number) => {
   if (!d.preferred.length) return 0
   const r = d.preferred.indexOf(mi)
-  return r < 0 ? PIN_OUT + PIN * d.preferred.length : PIN * r
+  return PIN * (r < 0 ? d.preferred.length : r)
 }
 
 // The priority of a folga compensada (0..1): the previous month's balance first while it's 5h or
@@ -96,7 +96,7 @@ export interface RgDuty {
   operated: boolean
   // a plantão (kind STANDBY)
   standby: boolean
-  // the crew members (indices) who should work it, in order — none: anyone
+  // the fixed crew members (indices) who should work it, in order — none: anyone
   preferred: number[]
 }
 
@@ -200,9 +200,12 @@ export const isChange = (last: Record<string, string>, sig: string) => {
 
 // ── pair rules ────────────────────────────────────────────────────────────────
 
-// -1 = blocked, else the number of WARN rules the pair breaks
-export function pairRule(input: RgInput, m: RgMember, d: RgDuty): number {
+// -1 = blocked, else the number of WARN rules the pair breaks — a fixed crew member of the duty
+// skips the line, vehicle type and shift window rules
+export function pairRule(input: RgInput, mi: number, d: RgDuty): number {
+  const m = input.members[mi]
   if (m.status[d.day] !== 'free' || !d.operated) return -1
+  const fixed = d.preferred.includes(mi)
   let warns = 0
   const rule = (broken: boolean, mode: 'BLOCK' | 'WARN') => {
     if (!broken) return true
@@ -216,9 +219,9 @@ export function pairRule(input: RgInput, m: RgMember, d: RgDuty): number {
   const lineBroken = input.lineAccessMode === 'WHITELIST'
     ? lines.some(l => m.lineAccess[l] !== 'ENABLED')
     : lines.some(l => m.lineAccess[l] === 'BLOCKED')
-  if (!rule(lineBroken, input.ruleModes.lineAccess)) return -1
-  if (!rule(d.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t)), input.ruleModes.vehicleType)) return -1
-  if (!rule(!shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return -1
+  if (!rule(!fixed && lineBroken, input.ruleModes.lineAccess)) return -1
+  if (!rule(!fixed && d.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t)), input.ruleModes.vehicleType)) return -1
+  if (!rule(!fixed && !shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return -1
   if (!rule(m.licenseExpired[d.day], input.ruleModes.license)) return -1
   if (!rule(m.courseExpired[d.day], input.ruleModes.course)) return -1
   return warns
@@ -227,15 +230,18 @@ export function pairRule(input: RgInput, m: RgMember, d: RgDuty): number {
 // The first fixed rule (BLOCK) that keeps a crew member off a duty, whatever he has that day —
 // null when none does. The diagnosis of the duties left without anyone.
 type Stage = 'window' | 'line' | 'vehicle' | 'license'
-function blockedBy(input: RgInput, m: RgMember, d: RgDuty): Stage | null {
-  const block = (broken: boolean, mode: 'BLOCK' | 'WARN') => broken && mode === 'BLOCK'
+function blockedBy(input: RgInput, mi: number, d: RgDuty): Stage | null {
+  const m = input.members[mi]
+  const fixed = d.preferred.includes(mi)
+  const block = (broken: boolean, mode: 'BLOCK' | 'WARN') => !fixed && broken && mode === 'BLOCK'
   const window = m.windows[d.day]
   if (!window || block(!shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return 'window'
   const lines = d.lineMinutes.map(l => l.lineId)
   const lineBroken = input.lineAccessMode === 'WHITELIST' ? lines.some(l => m.lineAccess[l] !== 'ENABLED') : lines.some(l => m.lineAccess[l] === 'BLOCKED')
   if (block(lineBroken, input.ruleModes.lineAccess)) return 'line'
   if (block(d.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t)), input.ruleModes.vehicleType)) return 'vehicle'
-  if (block(m.licenseExpired[d.day], input.ruleModes.license) || block(m.courseExpired[d.day], input.ruleModes.course)) return 'license'
+  const held = (broken: boolean, mode: 'BLOCK' | 'WARN') => broken && mode === 'BLOCK'
+  if (held(m.licenseExpired[d.day], input.ruleModes.license) || held(m.courseExpired[d.day], input.ruleModes.course)) return 'license'
   return null
 }
 
@@ -294,8 +300,8 @@ export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holde
         : d.standby ? 'plantão — ninguém sobrou depois das tabelas'
         : `faltam operadores — os ${model.candidates[di].length} que poderiam cobrir já estão em outras tabelas`
     } else {
-      const free = input.members.filter(m => m.status[d.day] === 'free')
-      const stages = free.map(m => blockedBy(input, m, d))
+      const free = input.members.flatMap((m, mi) => (m.status[d.day] === 'free' ? [mi] : []))
+      const stages = free.map(mi => blockedBy(input, mi, d))
       const order: Stage[] = ['window', 'line', 'vehicle', 'license']
       // the first rule that leaves nobody
       const stage = order.find((_, k) => stages.every(s => s != null && order.indexOf(s) <= k)) ?? 'window'
@@ -306,8 +312,8 @@ export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holde
     g.dutyIds.push(d.id)
     groups.set(key, g)
     // who'd fit but is on his rest pattern's day off
-    for (const m of input.members) {
-      if (g.couldCover.length >= 6 || m.status[d.day] !== 'off' || blockedBy(input, m, d)) continue
+    for (const [mi, m] of input.members.entries()) {
+      if (g.couldCover.length >= 6 || m.status[d.day] !== 'off' || blockedBy(input, mi, d)) continue
       const label = `${m.code} ${m.name}`
       if (!g.couldCover.includes(label)) g.couldCover.push(label)
     }
@@ -361,7 +367,7 @@ export class RosterModel {
     for (let di = 0; di < D; di++) {
       const list: number[] = []
       for (let mi = 0; mi < this.M; mi++) {
-        const r = pairRule(input, input.members[mi], input.duties[di])
+        const r = pairRule(input, mi, input.duties[di])
         this.rule[mi * D + di] = r
         if (r >= 0) list.push(mi)
       }
@@ -403,7 +409,7 @@ export class RosterModel {
     }
 
     for (let t = 0; t < this.T; t++) {
-      let start: number, end: number, paid: number, sig: string, isFixed: boolean
+      let start: number, end: number, paid: number, sig: string, isFixed: boolean, pinned = false
       last = lastOn(m, t, last)
       const f = m.status[t] === 'fixed' ? m.fixed[t] : null
       const di = row[t]
@@ -412,6 +418,7 @@ export class RosterModel {
       } else if (di >= 0) {
         const d = input.duties[di]
         start = d.start; end = d.end; paid = d.paid; sig = d.signature; isFixed = false
+        pinned = d.preferred.includes(mi)
         pin += pinCost(d, mi)
         // a blocked pair (only in an allocation made by hand) counts as one broken rule
         const rule = this.ruleOf(mi, di)
@@ -434,7 +441,9 @@ export class RosterModel {
       if (change) {
         changes++
         if (!isFixed) newChanges++
-        if (input.compensate && subFrom === sig) exempt += 2
+        // a change into his fixed duty doesn't count against maxChanges
+        if (pinned) exempt++
+        else if (input.compensate && subFrom === sig) exempt += 2
       }
       subFrom = change && !isFixed ? last[group] : null
       last[group] = sig
@@ -525,7 +534,7 @@ export function construct(model: RosterModel): RgResult {
             x += WARN
           }
           const change = isChange(last[mi], d.signature)
-          if (change && changes[mi] >= input.maxChanges) return
+          if (change && changes[mi] >= input.maxChanges && !d.preferred.includes(mi)) return
           if (change && r.tableChanges.active) x += r.tableChanges.modifier
           if (r.priorityLine.active && model.hasPriority[mi]) {
             const q = lineShare(m.priorityGrade, d)
@@ -571,7 +580,7 @@ export function construct(model: RosterModel): RgResult {
       const cur = f ?? (di >= 0 ? { start: input.duties[di].start, end: input.duties[di].end, paid: input.duties[di].paid, signature: input.duties[di].signature } : null)
       if (!cur) { prevEnd[mi] = null; continue }
       worked[mi] += cur.paid
-      if (isChange(last[mi], cur.signature)) changes[mi]++
+      if (isChange(last[mi], cur.signature) && !(di >= 0 && input.duties[di].preferred.includes(mi))) changes[mi]++
       last[mi][signatureGroup(cur.signature)] = cur.signature
       prevEnd[mi] = cur.end
     }
