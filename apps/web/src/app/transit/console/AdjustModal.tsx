@@ -203,7 +203,8 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
                 <span>{CONSOLE_NO_PLAN} <Link href="/transit/vehicle-plan" className="underline underline-offset-2 hover:text-foreground">Ir ao planejamento</Link></span>
               </p>
             )}
-            {suggesting && <p className="text-sm text-muted-foreground">Calculando a sugestão…</p>}
+            {suggesting && <Working text="Calculando a sugestão" />}
+            {busy && <Working text="Calculando o impacto no quadro" />}
             {suggestError && <p className="flex gap-2 text-sm text-destructive"><Icons.AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{suggestError instanceof Error ? suggestError.message : 'Erro'}</p>}
             {suggestion && (
               <>
@@ -415,10 +416,19 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
             {step === 'list' ? 'Cancelar' : 'Voltar'}
           </Button>
           {step === 'list'
-            ? <Button type="button" size="sm" disabled={busy || !chosen.length || !validDate || !!missing} onClick={() => void next()}>{busy ? 'Calculando…' : 'Prévia do impacto'}</Button>
-            : <Button type="button" variant="safeConfirm" size="sm" disabled={busy || !canApply} title={canApply ? undefined : 'Sem permissão para alterar operadores'} onClick={() => void next()}>{busy ? 'Aplicando…' : 'Confirmar ajuste'}</Button>}
+            ? <Button type="button" size="sm" disabled={busy || !chosen.length || !validDate || !!missing} onClick={() => void next()}>{busy ? <><Icons.Loader2 className="w-3.5 h-3.5 animate-spin" />Calculando…</> : 'Prévia do impacto'}</Button>
+            : <Button type="button" variant="safeConfirm" size="sm" disabled={busy || !canApply} title={canApply ? undefined : 'Sem permissão para alterar operadores'} onClick={() => void next()}>{busy ? <><Icons.Loader2 className="w-3.5 h-3.5 animate-spin" />Aplicando…</> : 'Confirmar ajuste'}</Button>}
         </footer>
       </div>
     </div>
+  )
+}
+
+// the suggestion and the impact take a few seconds (the coverage over the whole window) — say so
+function Working({ text }: { text: string }) {
+  return (
+    <p role="status" aria-live="polite" className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+      <Icons.Loader2 className="w-4 h-4 shrink-0 animate-spin" />{text}… pode levar alguns segundos.
+    </p>
   )
 }
