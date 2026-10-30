@@ -256,11 +256,19 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
     }
   }
 
-  // never trade coverage: drop the last moves while the crew can cover fewer duties than before
+  // never trade coverage: drop the last moves while the crew can cover fewer duties than before. The
+  // rest groups the moves unbalance ride along in the same adjustment, checked in the same pass (one
+  // coverage check in the usual case — each is a full WindowCover); dropped first when it fails.
   const before = staffing(input).totals
-  while (moves.length) {
-    const after = staffing(applyMoves(input, 'shifts', moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset })))).totals
-    if (Object.entries(before).every(([t, x]) => (after[t]?.coverable ?? 0) >= x.coverable)) break
+  const asItems = (list: ConsoleMove[]) => list.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset }))
+  const covers = (list: ConsoleMove[]) => {
+    const after = staffing(applyMoves(input, 'shifts', asItems(list))).totals
+    return Object.entries(before).every(([t, x]) => (after[t]?.coverable ?? 0) >= x.coverable)
+  }
+  const fixFor = (list: ConsoleMove[]) => (list.length ? compensateGroups(input, rules, applyMoves(input, 'shifts', asItems(list)).crew, list) : [])
+  let groupFix = fixFor(moves)
+  while (moves.length && !covers([...moves, ...groupFix])) {
+    if (groupFix.length) { groupFix = []; continue }
     const last = moves.pop()!
     const key = `${last.from}>${last.to}`
     bench[key] = [last, ...(bench[key] ?? [])]
@@ -273,13 +281,6 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
     return `${n} de ${shiftById.get(a)!.name} para ${shiftById.get(b)!.name}`
   }).join(' · ')
 
-  // the rest groups the moves unbalanced, in the same adjustment — kept only if coverage holds
-  const asItems = (list: ConsoleMove[]) => list.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset }))
-  let groupFix = moves.length ? compensateGroups(input, rules, applyMoves(input, 'shifts', asItems(moves)).crew, moves) : []
-  if (groupFix.length) {
-    const after = staffing(applyMoves(input, 'shifts', asItems([...moves, ...groupFix]))).totals
-    if (!Object.entries(before).every(([t, x]) => (after[t]?.coverable ?? 0) >= x.coverable)) groupFix = []
-  }
   return {
     kind: 'shifts', title: 'Balancear turnos',
     summary: [summary || (short.length ? 'Nenhum operador elegível nos turnos com sobra' : 'Turnos equilibrados'), groupFix.length && `${groupFix.length} acerto(s) de grupo de folga`].filter(Boolean).join(' · '),
