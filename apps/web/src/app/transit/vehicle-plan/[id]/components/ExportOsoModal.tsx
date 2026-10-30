@@ -34,6 +34,7 @@ export function ExportOsoModal({ planId, onClose }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [format, setFormat] = useState<'xlsx' | 'pdf'>('pdf')
   const [exporting, setExporting] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -61,6 +62,19 @@ export function ExportOsoModal({ planId, onClose }: Props) {
       return json.data ?? json
     },
   })
+
+  // ';' splits the search into several terms ("206;a15") — a line is visible
+  // when its code or name matches any of them
+  const terms        = search.toLowerCase().split(';').map(t => t.trim()).filter(Boolean)
+  const visibleLines = terms.length
+    ? lines.filter(l => terms.some(t => l.code.toLowerCase().includes(t) || l.name.toLowerCase().includes(t)))
+    : lines
+
+  // Enter adds every visible exportable line to the selection
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    setSelected(prev => new Set([...prev, ...visibleLines.filter(l => l.hasTrips).map(l => l.id)]))
+  }
 
   function toggle(id: string) {
     setSelected(prev => {
@@ -115,10 +129,20 @@ export function ExportOsoModal({ planId, onClose }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Buscar linha… (ex: 206;a15)"
+            autoFocus
+            className="w-full text-sm rounded-sm border border-input bg-input-bg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
               Selecionar:
-              <button onClick={() => setSelected(new Set(lines.filter(l => l.hasTrips).map(l => l.id)))} className="hover:text-foreground underline">
+              <button onClick={() => setSelected(new Set(visibleLines.filter(l => l.hasTrips).map(l => l.id)))} className="hover:text-foreground underline">
                 Todos
               </button>
               <span>·</span>
@@ -141,9 +165,11 @@ export function ExportOsoModal({ planId, onClose }: Props) {
 
           {isLoading ? (
             <div className="text-sm text-muted-foreground py-6 text-center">Carregando…</div>
+          ) : visibleLines.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-6 text-center">Nenhuma linha encontrada</div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {lines.map(l => {
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
+              {visibleLines.map(l => {
                 const isSelected = selected.has(l.id)
                 return (
                   <button
@@ -153,7 +179,7 @@ export function ExportOsoModal({ planId, onClose }: Props) {
                     onClick={() => toggle(l.id)}
                     title={l.hasTrips ? l.name : `${l.name} — sem viagens neste plano`}
                     className={cn(
-                      'px-3 py-1 rounded-sm border text-sm transition-colors cursor-pointer',
+                      'px-2 py-1 rounded-sm border text-sm text-center truncate transition-colors cursor-pointer',
                       isSelected
                         ? 'bg-accent text-accent-foreground border-accent'
                         : 'bg-background text-muted-foreground hover:bg-muted',

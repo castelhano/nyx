@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import ExcelJS from 'exceljs'
 import { PrismaService } from '../../../../../prisma/prisma.service'
-import type { OsoAssembled, OsoCarro, OsoTripEvent } from './oso-assembler'
+import type { OsoAssembled, OsoCarro, OsoEvent, OsoTripEvent } from './oso-assembler'
 import type { OsoBand } from './oso-banding'
 import type { OsoCarroLayout, OsoColumn } from './oso-layout.resolver'
 import type { OsoSummary } from './oso-summary'
@@ -275,6 +275,14 @@ function tripSlot(col: OsoColumn, e: OsoTripEvent, minutesBeforeDestination: Map
   return { minutes: columnValue(col, e, minutesBeforeDestination), ...resolveMarkingStyle(e.markings) }
 }
 
+// blank spacer row after an INTERV, or after a RECO that still has events following it
+// (block garages mid-day and comes back out), visually separating it from the next sequence
+function needsSpacerAfter(events: OsoEvent[], idx: number): boolean {
+  const e = events[idx]
+  if (e.kind === 'interval') return true
+  return e.kind === 'deadrun' && e.type === 'RETURN' && idx < events.length - 1
+}
+
 // one row = one full cycle: the carro's own chronological event stream is walked and paired
 // ida-then-volta into a row; a RECO/INTERV/DISPLACEMENT that interrupts a pending ida gets its
 // own two rows instead — see the pending-branch comment below for why
@@ -288,7 +296,7 @@ function buildCarroRows(
 
   if (directions.length <= 1) {
     // CIRCULAR — no pairing, every trip/RECO/INTERV/DISPLACEMENT is its own row
-    for (const e of carro.events) {
+    for (const [idx, e] of carro.events.entries()) {
       const row: Slot[] = new Array(layout.columns.length).fill(null)
       if (e.kind === 'trip') {
         layout.columns.forEach((col, i) => { row[i] = tripSlot(col, e, minutesBeforeDestination) })
@@ -300,8 +308,7 @@ function buildCarroRows(
         row[0] = 'RECO'
       }
       rows.push(row)
-      // blank spacer row after an INTERV, visually separating it from the sequence that follows
-      if (e.kind === 'interval') rows.push(new Array(layout.columns.length).fill(null))
+      if (needsSpacerAfter(carro.events, idx)) rows.push(new Array(layout.columns.length).fill(null))
     }
     return rows
   }
@@ -319,7 +326,7 @@ function buildCarroRows(
 
   const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false }
 
-  for (const e of carro.events) {
+  for (const [idx, e] of carro.events.entries()) {
     if (e.kind === 'trip' && e.direction === firstDir) {
       if (pending) flush()
       firstCols.forEach((col, i) => { cur[i] = tripSlot(col, e, minutesBeforeDestination) })
@@ -353,8 +360,7 @@ function buildCarroRows(
         cur[firstCols.length] = slot
         flush()
       }
-      // blank spacer row after an INTERV, visually separating it from the sequence that follows
-      if (e.kind === 'interval') rows.push(new Array(G).fill(null))
+      if (needsSpacerAfter(carro.events, idx)) rows.push(new Array(G).fill(null))
     }
   }
   // a pending ida with no more family events at all (no volta, no deadrun/interval ever
