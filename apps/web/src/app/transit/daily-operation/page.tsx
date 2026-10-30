@@ -126,6 +126,7 @@ export default function RosterPage() {
   const searchRef = useRef<HTMLInputElement>(null)
   const [drawer, setDrawer] = useState<'issues' | 'requests' | 'quality' | null>(null)
   const [repair, setRepair] = useState<RepairRequest | null>(null)
+  const clearSelection = () => { setCursor(null); setAnchor(null); setDutyId(null) }
 
   const q = search.trim().toLowerCase()
   // (memoized by the React Compiler)
@@ -320,6 +321,7 @@ export default function RosterPage() {
   useShortcut('ctrl+shift+f', () => { searchRef.current?.focus(); searchRef.current?.select() }, { desc: 'Buscar', icon: Icons.Search, origin: ORIGIN })
   useShortcut('alt+v', () => router.push('/transit'), { desc: 'Voltar', icon: Icons.ArrowLeft, origin: ORIGIN })
   useShortcut('alt+l', () => void queryClient.invalidateQueries({ queryKey: boardKey }), { display: false, origin: ORIGIN })
+  useShortcut('esc', clearSelection, { display: false, origin: ORIGIN, enabled: !repair && (!!cursor || !!dutyId) })
 
   if (guardNode) return guardNode
 
@@ -530,7 +532,7 @@ export default function RosterPage() {
               board={board} idx={idx} date={panelDate}
               memberId={view === 'operadores' ? cursor?.memberId ?? null : null}
               dutyId={view === 'escalas' ? dutyId : null}
-              canEdit={canUpdate} actions={panelActions}
+              canEdit={canUpdate} actions={panelActions} onClose={clearSelection}
             />
           </div>
         </div>

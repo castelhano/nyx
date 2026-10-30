@@ -44,11 +44,13 @@ interface Props {
   dutyId:   string | null
   canEdit:  boolean
   actions:  PanelActions
+  // drops the selection (crew member / duty) — the date's day stays
+  onClose:  () => void
 }
 
 const STATUS_LABEL = { PLANNED: 'Planejada', PUBLISHED: 'Publicada', CLOSED: 'Encerrada' }
 
-export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, actions }: Props) {
+export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, actions, onClose }: Props) {
   const member = memberId ? idx.memberById.get(memberId) : null
   const cell = member && date ? idx.cellOf.get(`${member.id}|${date}`) : undefined
   const s = member && date ? cellSummary(cell, idx, board.multiScope) : null
@@ -59,11 +61,14 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
     <aside className="space-y-4 text-sm">
       {member && date && s && (
         <section className="rounded-lg border border-border p-3 space-y-2">
-          <div>
-            <p className="font-medium"><span className="tabular-nums text-muted-foreground">{member.code}</span> {member.name}</p>
-            <p className="text-xs text-muted-foreground">
-              {[member.shiftId ? `Turno ${idx.shiftCode.get(member.shiftId)}` : 'Sem turno', member.rest].filter(Boolean).join(' · ')}
-            </p>
+          <div className="flex items-start gap-2">
+            <div className="min-w-0">
+              <p className="font-medium"><span className="tabular-nums text-muted-foreground">{member.code}</span> {member.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {[member.shiftId ? `Turno ${idx.shiftCode.get(member.shiftId)}` : 'Sem turno', member.rest].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <CloseButton onClick={onClose} />
           </div>
           {member.stats && (
             <div className="grid grid-cols-3 gap-2 text-xs">
@@ -109,7 +114,7 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
         </section>
       )}
 
-      {duty && <DutySection board={board} idx={idx} duty={duty} canEdit={canEdit} actions={actions} />}
+      {duty && <DutySection board={board} idx={idx} duty={duty} canEdit={canEdit} actions={actions} onClose={member ? undefined : onClose} />}
 
       {day && (
         <section className="rounded-lg border border-border p-3 space-y-2">
@@ -140,6 +145,14 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
   )
 }
 
+function CloseButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} title="Fechar (Esc)" className="ml-auto shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer">
+      <Icons.X className="w-3.5 h-3.5" />
+    </button>
+  )
+}
+
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div className="rounded-sm bg-muted/40 px-2 py-1">
@@ -149,7 +162,7 @@ function Stat({ label, value, warn }: { label: string; value: string; warn?: boo
   )
 }
 
-function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoard; idx: BoardIndex; duty: RosterBoardDuty; canEdit: boolean; actions: PanelActions }) {
+function DutySection({ board, idx, duty, canEdit, actions, onClose }: { board: RosterBoard; idx: BoardIndex; duty: RosterBoardDuty; canEdit: boolean; actions: PanelActions; onClose?: () => void }) {
   const holder = duty.crewMemberId ? idx.memberById.get(duty.crewMemberId) : null
   const [crewSearch, setCrewSearch] = useState('')
   const [carSearch, setCarSearch] = useState<Record<string, string>>({})
@@ -200,6 +213,7 @@ function DutySection({ board, idx, duty, canEdit, actions }: { board: RosterBoar
             {duty.locked ? <Icons.Lock className="w-3.5 h-3.5" /> : <Icons.LockOpen className="w-3.5 h-3.5" />}
           </button>
         )}
+        {onClose && <CloseButton onClick={onClose} />}
       </div>
       <p className="text-xs text-muted-foreground tabular-nums">
         {duty.start != null && duty.end != null ? `${clock(duty.start)}–${clock(duty.end)}` : '—'} · {hm(duty.paid)} pagas · {duty.lines.join(', ') || 'sem linha'}
