@@ -14,10 +14,10 @@ import { useTopbarActions } from '@/components/layout/topbar-actions-context'
 import { useShortcut } from '@/lib/keywatch'
 import { Icons } from '@/lib/icons'
 import { apiFetch } from '@/lib/auth'
-import { extractError } from '@/lib/utils'
+import { cn, extractError } from '@/lib/utils'
 import { useToast } from '@/lib/toast-context'
 import {
-  AlertsCard, CrewSection, DailySection, GroupsSection, KpiStrip, PlansSection, SectionNav, ShiftsSection, StaffingSection,
+  AlertsCard, ConsoleSkeleton, CrewSection, DailySection, GroupsSection, KpiStrip, PlansSection, SectionNav, ShiftsSection, StaffingSection,
   type ConsoleCtx,
 } from './sections'
 import { AdjustModal, type ConsoleAction } from './AdjustModal'
@@ -75,6 +75,8 @@ export default function ConsolePage() {
       return json
     },
     enabled: !!branchId,
+    // a few seconds of server work: only on Atualizar or after an adjustment, never on focus
+    refetchOnWindowFocus: false,
   })
 
   const { data: rule = null } = useQuery<RebalanceRules>({
@@ -119,26 +121,36 @@ export default function ConsolePage() {
       </div>
 
       {error && <p className="flex gap-2 text-sm text-destructive"><Icons.AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{error instanceof Error ? error.message : 'Erro ao carregar'}</p>}
-      {!snapshot && !error && <p className="text-sm text-muted-foreground">{branchId ? 'Calculando…' : 'Carregando…'}</p>}
+      {!snapshot && !error && (branchId ? <ConsoleSkeleton /> : <p className="text-sm text-muted-foreground">Carregando…</p>)}
 
       {snapshot && (
-        <>
-          <KpiStrip snapshot={snapshot} />
-          <AlertsCard alerts={snapshot.alerts} ctx={ctx} />
+        // a refresh keeps the figures in view, dimmed, until the new ones arrive
+        <div className="relative" aria-busy={isFetching}>
+          {isFetching && (
+            <div className="sticky top-2 z-10 flex justify-center h-0" role="status" aria-live="polite">
+              <span className="flex items-center gap-2 h-8 rounded-full border border-border bg-card px-3 text-xs font-medium shadow-md">
+                <Icons.Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />Recalculando…
+              </span>
+            </div>
+          )}
+          <div className={cn('space-y-4 transition-opacity', isFetching && 'opacity-50 pointer-events-none')}>
+            <KpiStrip snapshot={snapshot} />
+            <AlertsCard alerts={snapshot.alerts} ctx={ctx} />
 
-          <div className="grid md:grid-cols-[15rem_minmax(0,1fr)] gap-4 items-start">
-            <SectionNav value={section} status={snapshot.status} onChange={s => setCtx({ secao: s })} />
-            <div>
-              {section === 'plans'    && <PlansSection snapshot={snapshot} />}
-              {section === 'staffing' && <StaffingSection snapshot={snapshot} onSuggest={() => setAction({ kind: 'shifts' })} />}
-              {section === 'shifts'   && <ShiftsSection key={snapshot.scopeId} snapshot={snapshot} />}
-              {section === 'groups'   && <GroupsSection key={snapshot.scopeId} snapshot={snapshot} onSuggest={shiftId => setAction({ kind: 'groups', shiftId })} />}
-              {section === 'crew'     && <CrewSection snapshot={snapshot} ctx={ctx} onAction={setAction} />}
-              {section === 'daily'    && <DailySection snapshot={snapshot} ctx={ctx} />}
-              {section === 'adjust'   && <AdjustmentsSection snapshot={snapshot} />}
+            <div className="grid md:grid-cols-[15rem_minmax(0,1fr)] gap-4 items-start">
+              <SectionNav value={section} status={snapshot.status} onChange={s => setCtx({ secao: s })} />
+              <div>
+                {section === 'plans'    && <PlansSection snapshot={snapshot} />}
+                {section === 'staffing' && <StaffingSection snapshot={snapshot} onSuggest={() => setAction({ kind: 'shifts' })} />}
+                {section === 'shifts'   && <ShiftsSection key={snapshot.scopeId} snapshot={snapshot} />}
+                {section === 'groups'   && <GroupsSection key={snapshot.scopeId} snapshot={snapshot} onSuggest={shiftId => setAction({ kind: 'groups', shiftId })} />}
+                {section === 'crew'     && <CrewSection snapshot={snapshot} ctx={ctx} onAction={setAction} />}
+                {section === 'daily'    && <DailySection snapshot={snapshot} ctx={ctx} />}
+                {section === 'adjust'   && <AdjustmentsSection snapshot={snapshot} />}
+              </div>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* the rule modal replaces the adjust one while open — it comes back with the new rule's suggestion */}

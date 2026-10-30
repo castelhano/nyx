@@ -18,9 +18,12 @@ import { normalizeOccurrence } from './timesheet-parser'
 
 export type DayMove = Pick<HourBankMovement, 'minutes' | 'payMinutes' | 'holidayMinutes' | 'occurrence'>
 
-// the extra: half banked, the rest paid apart
+// the share of the extra that goes into the bank — the rest is paid apart (also what the Painel
+// sizes the crew's days off for)
+export const BANKED_SHARE = 0.5
+
 const splitExtra = (extra: number) => {
-  const banked = Math.floor(extra / 2)
+  const banked = Math.floor(extra * BANKED_SHARE)
   return { minutes: banked, payMinutes: extra - banked }
 }
 

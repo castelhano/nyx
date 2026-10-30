@@ -61,6 +61,33 @@ export function Card({ title, icon: Icon, aside, children, className }: { title:
   )
 }
 
+// the page's shape while the snapshot is computed (the sizing takes a few seconds)
+export function ConsoleSkeleton() {
+  const bar = 'rounded-sm bg-muted animate-pulse'
+  return (
+    <div className="space-y-4" role="status" aria-live="polite" aria-label="Calculando o quadro">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
+            <div className={cn(bar, 'h-3 w-20')} />
+            <div className={cn(bar, 'h-7 w-14')} />
+            <div className={cn(bar, 'h-2.5 w-32')} />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-lg border border-border bg-card flex flex-col items-center justify-center gap-2 py-10">
+        <Icons.Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <p className="text-sm font-medium">Calculando o quadro…</p>
+        <p className="text-xs text-muted-foreground">Simulando a escala de 5 semanas — pode levar alguns segundos</p>
+      </div>
+      <div className="grid md:grid-cols-[15rem_minmax(0,1fr)] gap-4 items-start">
+        <div className="space-y-2">{Array.from({ length: 7 }, (_, i) => <div key={i} className={cn(bar, 'h-9 w-full')} />)}</div>
+        <div className={cn(bar, 'h-64 w-full rounded-lg')} />
+      </div>
+    </div>
+  )
+}
+
 const balanceCls = (b: number) =>
   b < 0 ? 'bg-destructive/12 text-destructive' : b >= 4 ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-400' : 'bg-muted/60 text-foreground'
 
@@ -82,11 +109,28 @@ export const shownDayTypes = (s: ConsoleSnapshot) => s.dayTypes.filter(t => t.da
 
 export function KpiStrip({ snapshot }: { snapshot: ConsoleSnapshot }) {
   const errors = snapshot.alerts.filter(a => a.severity === 'error').length
-  const short  = snapshot.staffing.rows.reduce((a, r) => a + Math.max(0, -Math.min(0, ...Object.values(r.cells).map(c => c.balance))), 0)
+  const z      = snapshot.sizing
   const main   = shownDayTypes(snapshot).map(t => ({ t, x: snapshot.staffing.totals[t.id] })).filter(x => x.x).sort((a, b) => b.x.demand - a.x.demand)[0]
-  const tiles: { label: string; value: string; detail: string; bad?: boolean }[] = [
+  // aside: a second figure beside the value, almost as prominent
+  const tiles: { label: string; value: string; detail: ReactNode; bad?: boolean; aside?: ReactNode }[] = [
     { label: 'Erros', value: String(errors), detail: `${snapshot.alerts.length} alertas no total`, bad: errors > 0 },
-    { label: 'Falta no quadro', value: short ? `−${short}` : '0', detail: 'soma dos turnos, no pior dia', bad: short > 0 },
+    {
+      label:  z.balance < 0 ? 'Falta no quadro' : z.balance > 0 ? 'Sobra no quadro' : 'Quadro',
+      value:  z.balance < 0 ? `−${-z.balance}` : z.balance > 0 ? `+${z.balance}` : 'ok',
+      detail: (
+        <>
+          operacional {z.operational} · férias +{z.vacation}
+          {z.bank > 0 && <span className="block">abater {z.bankPct}% do banco: +{z.bank}</span>}
+        </>
+      ),
+      bad:    z.balance < 0,
+      aside: (
+        <span className="flex flex-col items-center rounded-md bg-muted/70 px-3 py-1 leading-tight" title={`atual ${z.current} · necessário ${z.required}`}>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">necessário</span>
+          <span className="text-2xl font-semibold tabular-nums">{z.required}</span>
+        </span>
+      ),
+    },
     main
       ? { label: `Cobríveis · ${main.t.name}`, value: `${main.x.coverable}/${main.x.demand}`, detail: 'tabelas, pelo encaixe de horário', bad: main.x.coverable < main.x.demand }
       : { label: 'Cobríveis', value: '—', detail: 'sem plano efetivo' },
@@ -98,7 +142,10 @@ export function KpiStrip({ snapshot }: { snapshot: ConsoleSnapshot }) {
       {tiles.map(t => (
         <div key={t.label} className="rounded-lg border border-border bg-card px-4 py-3">
           <div className="text-xs text-muted-foreground">{t.label}</div>
-          <div className={cn('text-2xl font-semibold tabular-nums mt-0.5', t.bad && 'text-destructive')}>{t.value}</div>
+          <div className="flex items-end justify-between gap-2 mt-0.5">
+            <div className={cn('text-2xl font-semibold tabular-nums', t.bad && 'text-destructive')}>{t.value}</div>
+            {t.aside}
+          </div>
           <div className="text-[11px] text-muted-foreground mt-0.5">{t.detail}</div>
         </div>
       ))}
@@ -224,6 +271,8 @@ export function PlansSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
 export function StaffingSection({ snapshot, onSuggest }: { snapshot: ConsoleSnapshot; onSuggest?: () => void }) {
   const types = shownDayTypes(snapshot)
   const shiftById = new Map(snapshot.shifts.map(s => [s.id, s]))
+  const sizeOf = new Map(snapshot.sizing.shifts.map(s => [s.shiftId, s]))
+  const moves = snapshot.sizing.groups.filter(g => g.add !== g.remove)
   return (
     <Card title="Demanda × quadro por turno" icon={Icons.Users} aside={
       <Button size="sm" variant="outline" disabled={!onSuggest} onClick={onSuggest} title={onSuggest ? undefined : 'Em breve'}><Icons.Sparkles className="w-3.5 h-3.5" />Sugestões</Button>
@@ -233,7 +282,7 @@ export function StaffingSection({ snapshot, onSuggest }: { snapshot: ConsoleSnap
           <tr className="[&>th]:pb-2 [&>th]:font-medium [&>th]:px-1.5">
             <th className="text-left">Turno</th>
             {types.map(t => <th key={t.id}>{t.name}</th>)}
-            <th className="text-right" title="Operadores disponíveis / necessários para cobrir o tipo de dia mais cheio todo dia">Quadro</th>
+            <th className="text-right" title="Operadores disponíveis / necessários: cobrir todas as tabelas em todos os dias da janela, mais a reserva de férias e a do banco de horas">Quadro</th>
           </tr>
         </thead>
         <tbody className="tabular-nums">
@@ -254,9 +303,16 @@ export function StaffingSection({ snapshot, onSuggest }: { snapshot: ConsoleSnap
                     </td>
                   )
                 })}
-                <td className={cn('text-right px-1.5! whitespace-nowrap', r.current < r.required && 'text-destructive font-medium')}>
-                  {r.current}<span className="text-muted-foreground font-normal"> / {r.required}</span>
-                </td>
+                {(() => {
+                  const z = sizeOf.get(r.shiftId)
+                  if (!z) return <td />
+                  return (
+                    <td className={cn('text-right px-1.5! whitespace-nowrap', z.current < z.required && 'text-destructive font-medium')}
+                      title={`operacional ${z.operational} · férias +${z.vacation}${z.bank ? ` · abatimento do banco +${z.bank}, à parte` : ''}`}>
+                      {z.current}<span className="text-muted-foreground font-normal"> / {z.required}</span>
+                    </td>
+                  )
+                })()}
               </tr>
             )
           })}
@@ -275,8 +331,15 @@ export function StaffingSection({ snapshot, onSuggest }: { snapshot: ConsoleSnap
           </tr>
         </tbody>
       </table>
+      {moves.length > 0 && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground/80">Para cobrir com o mínimo de gente:</span>{' '}
+          {moves.map(g => `${shiftById.get(g.shiftId)?.name ?? '?'}${g.label ? ` ${g.label}` : ''} ${signed(g.add - g.remove)}`).join(' · ')}
+        </p>
+      )}
       <p className="mt-3 text-[11px] text-muted-foreground">
         Saldo = operadores no pior dia do tipo (janela de 5 semanas) − tabelas do plano efetivo, plantões incluídos. Férias não descontam; afastados sim.
+        Quadro = necessário para cobrir todas as tabelas de todos os dias, pelas regras da escala, mais férias (30 dias/ano). O abatimento do banco de horas ({snapshot.sizing.bankPct}% com folga) vem à parte: +{snapshot.sizing.bank}.
       </p>
     </Card>
   )

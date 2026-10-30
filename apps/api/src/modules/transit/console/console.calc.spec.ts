@@ -25,7 +25,7 @@ const TAR = shift('TAR', 720, 900, 1260, 1500)
 const crewOf = (n: number, shiftId: string, over: Partial<ConsoleCrew> = {}, off = (i: number) => i % 7): ConsoleCrew[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `${shiftId}${i}`, code: `${shiftId}${i}`, name: `${shiftId} ${i}`, hireDate: '2020-01-01', shiftId, shiftSince: '2025-01-01',
-    window: shiftId === 'MAN' ? MAN : TAR, notBefore: null, notAfter: null, pattern: sixOne, ownPattern: false, offset: ((6 - off(i)) % 7 + 7) % 7,
+    window: shiftId === 'MAN' ? MAN : TAR, notBefore: null, notAfter: null, journey: 420, pattern: sixOne, ownPattern: false, offset: ((6 - off(i)) % 7 + 7) % 7,
     lineAccess: {}, prefLines: [], priorityLines: [], blockedVehicleTypes: [], standbyBlocked: false, rosterable: true,
     away: null, vacation: null, ...over,
   }))
@@ -33,7 +33,7 @@ const crewOf = (n: number, shiftId: string, over: Partial<ConsoleCrew> = {}, off
 const dutiesOf = (shiftId: string, counts: Record<string, number>, lineId = 'L1'): ConsoleDuty[] =>
   Object.entries(counts).flatMap(([dayTypeId, n]) => Array.from({ length: n }, (_, i) => ({
     id: `${shiftId}-${dayTypeId}-${i}`, dayTypeId, shiftId, kind: 'STRAIGHT',
-    start: shiftId === 'MAN' ? 300 : 800, end: shiftId === 'MAN' ? 780 : 1300, paid: 420,
+    start: shiftId === 'MAN' ? 300 : 800, end: shiftId === 'MAN' ? 780 : 1300, paid: 420, overtime: 0,
     lineMinutes: [{ lineId, minutes: 300 }], vehicleTypes: ['STANDARD'], standby: false, label: `D${i + 1}`, preferred: [],
   })))
 
@@ -43,7 +43,7 @@ const base = (over: Partial<ConsoleInput> = {}): ConsoleInput => ({
   dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
   shifts: [MAN, TAR],
   plans: [], duties: [], crew: [], patterns: [sixOne], lines: [{ id: 'L1', code: '101' }, { id: 'L2', code: '102' }],
-  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes,
+  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100,
   noProfile: [], fixedCar: [], dailyErrors: [],
   ...over,
 })
@@ -79,16 +79,70 @@ describe('demand × crew', () => {
     expect(snap.crew).toMatchObject({ active: 6, away: 1, vacation: 1 })
   })
 
-  it('needs 7 crew for every 6 duties of a 6x1 shift', () => {
-    const snap = computeConsole(base({ crew: crewOf(7, 'MAN'), duties: dutiesOf('MAN', { UTIL: 12 }) }))
-    expect(snap.staffing.rows[0].required).toBe(14)
-  })
-
   it('counts what the crew can cover by fitting the windows (spare morning crew cover nothing in the afternoon)', () => {
     const snap = computeConsole(base({ crew: crewOf(14, 'MAN'), duties: [...dutiesOf('MAN', { UTIL: 4 }), ...dutiesOf('TAR', { UTIL: 4 })] }))
     expect(snap.staffing.totals.UTIL).toEqual({ demand: 8, coverable: 4 })
-    expect(snap.alerts.some(a => a.code === 'SHIFT_SHORT')).toBe(true)
-    expect(snap.alerts.some(a => a.code === 'COVERAGE_SHORT')).toBe(true)
+    // enough people, in the wrong shift: the afternoon gets crew, the morning gives some up
+    const add = (id: string) => snap.sizing.groups.filter(g => g.shiftId === id).reduce((n, g) => n + g.add - g.remove, 0)
+    expect(add('TAR')).toBeGreaterThan(0)
+    expect(add('MAN')).toBeLessThan(0)
+  })
+})
+
+describe('crew sizing', () => {
+  const every = (n: number) => ({ UTIL: n, SAB: n, DOM: n })
+
+  it('7 crew of a 6x1 shift cover 6 duties a day — plus the vacation reserve', () => {
+    const z = computeConsole(base({ crew: crewOf(7, 'MAN'), duties: dutiesOf('MAN', every(6)) })).sizing
+    expect(z).toMatchObject({ current: 7, operational: 7, vacation: 1, bank: 0, required: 8, balance: -1 })
+    expect(z.groups).toEqual([])
+  })
+
+  it('adds virtual crew in the groups that are short', () => {
+    const z = computeConsole(base({ crew: crewOf(7, 'MAN'), duties: dutiesOf('MAN', every(12)) })).sizing
+    expect(z.operational).toBe(14)
+    expect(z.groups.reduce((n, g) => n + g.add, 0)).toBe(7)
+  })
+
+  it('takes out the crew nothing needs', () => {
+    const z = computeConsole(base({ crew: crewOf(14, 'MAN'), duties: dutiesOf('MAN', every(6)) })).sizing
+    expect(z.operational).toBe(7)
+    expect(z.groups.reduce((n, g) => n + g.remove, 0)).toBe(7)
+  })
+
+  it('reports the duties no shift takes apart, without sizing crew for them', () => {
+    const odd = { ...dutiesOf('MAN', { UTIL: 1 })[0], id: 'odd', start: 60, end: 400 }
+    const z = computeConsole(base({ crew: crewOf(7, 'MAN'), duties: [...dutiesOf('MAN', every(6)), odd] })).sizing
+    expect(z.unfit).toEqual({ UTIL: 1 })
+    expect(z.operational).toBe(7)
+  })
+
+  it('crosses shifts only under shiftWindow WARN, keeping the interjornada', () => {
+    // the morning needs one more on Sunday; the afternoon has spare crew then — but only who is off
+    // on Saturday may start at 05:00 on Sunday (the afternoon ends at 25:00)
+    const duties = [...dutiesOf('MAN', { UTIL: 6, SAB: 6, DOM: 7 }), ...dutiesOf('TAR', { UTIL: 6, SAB: 6, DOM: 2 })]
+    const crew = [...crewOf(7, 'MAN'), ...crewOf(14, 'TAR')]
+    const warn = { ...settings.ruleModes, shiftWindow: 'WARN' as const }
+    const block = computeConsole(base({ crew, duties })).sizing
+    expect(block.operational).toBe(15)
+    expect(computeConsole(base({ crew, duties, ruleModes: warn })).sizing.operational).toBe(14)
+    // a rest floor the Monday afternoon can't keep after a Sunday morning: no crossing
+    expect(computeConsole(base({ crew, duties, ruleModes: warn, restFloor: 1500 })).sizing.operational).toBe(15)
+  })
+
+  it('sizes the hour bank beyond the idle crew, by the share taken as days off', () => {
+    const duties = dutiesOf('MAN', every(6)).map(d => ({ ...d, overtime: 60 }))
+    // 60 min × 6 duties × (21 + 4 + 5) days = 10800 min/month; half banked = 5400 ÷ 420 ≈ 12.9 days
+    // off, nobody idle → 12.9 ÷ 25.7 days worked a month → 1 crew member
+    const z = computeConsole(base({ crew: crewOf(7, 'MAN'), duties })).sizing
+    expect(z).toMatchObject({ bank: 1, bankPct: 100, required: 8 })
+    expect(computeConsole(base({ crew: crewOf(7, 'MAN'), duties, bankCompPct: 0 })).sizing.bank).toBe(0)
+  })
+
+  it('takes the bank\'s days off on the crew working idle first', () => {
+    // Sunday needs 6, weekdays 5: one idle a weekday (21 days a month) takes the 12.9 days off
+    const duties = dutiesOf('MAN', { UTIL: 5, SAB: 6, DOM: 6 }).map(d => ({ ...d, overtime: 60 }))
+    expect(computeConsole(base({ crew: crewOf(7, 'MAN'), duties })).sizing.bank).toBe(0)
   })
 })
 

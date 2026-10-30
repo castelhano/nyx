@@ -2,11 +2,12 @@ import {
   CONSOLE_SECTIONS, CONSOLE_FUTURE_DAYS, DAILY_ISSUE_LABEL, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks, shiftFits,
   type ConsoleAlert, type ConsoleCrewData, type ConsoleDailyError, type ConsoleGroupPattern, type ConsoleGroups, type ConsoleLineRow,
   type ConsolePlanRow, type ConsoleSection, type ConsoleSectionStatus, type ConsoleShift, type ConsoleShiftsAnalysis, type ConsoleSnapshot,
-  type ConsoleStaffing, type RestCycle, type RosterSettings, type ShiftWindow,
+  type ConsoleSizing, type ConsoleStaffing, type RestCycle, type RosterSettings, type ShiftWindow,
 } from '@nyx/schemas'
-import { RosterModel, STANDBY_LINE, coverageByDay, type RgDuty, type RgInput, type RgMember } from '../daily/roster/roster-generator.calc'
+import { RosterModel, STANDBY_LINE, type RgDuty, type RgInput, type RgMember } from '../daily/roster/roster-generator.calc'
 import { daysBetween } from '../daily/roster/roster-generator.input'
-import type { Day } from '../timetabling/plan-validity'
+import { BANKED_SHARE } from '../hour-bank/hour-bank.calc'
+import { addDays, type Day } from '../timetabling/plan-validity'
 
 // The Painel de Escala's figures — pure: everything comes in ConsoleInput (console.input.ts).
 // Effective plans × active crew over a reference window of days; each day type takes the worst of
@@ -23,11 +24,13 @@ export interface ConsoleCrew {
   shiftId:   string | null
   // first day of the current shift link
   shiftSince: Day | null
-  // the effective window today (shift + his bounds)
+  // his shift's window (his own bounds apart: notBefore / notAfter)
   window:    ShiftWindow | null
   // his own bounds ("não inicia antes de / não termina depois de")
   notBefore: number | null
   notAfter:  number | null
+  // his daily journey in minutes (contract weekly hours ÷ days worked a week) — null: no contract
+  journey:   number | null
   pattern:   ConsolePattern | null
   // the pattern is his own (CrewMember.restPatternId) — else his shift's, and changes with it
   ownPattern: boolean
@@ -50,6 +53,8 @@ export interface ConsoleDuty {
   start:     number
   end:       number
   paid:      number
+  // planned overtime (DutySummary.overtimeMinutes)
+  overtime:  number
   lineMinutes:  { lineId: string; minutes: number }[]
   vehicleTypes: string[]
   standby:   boolean
@@ -78,6 +83,11 @@ export interface ConsoleInput {
   lineAccessMode: RosterSettings['lineAccessMode']
   lineMarginPct:  number
   ruleModes:      RosterSettings['ruleModes']
+  // the interjornada's floor (crew settings) — a duty out of his shift must keep it to his own
+  // shift's duties on the days around
+  restFloor:      number
+  // RosterSettings.hourBankCompPct
+  bankCompPct:    number
   noProfile:   ConsoleCrewData['noProfile']
   fixedCar:    ConsoleCrewData['fixedCar']
   dailyErrors: ConsoleDailyError[]
@@ -131,7 +141,8 @@ function windowModel(input: ConsoleInput, crew: ConsoleCrew[]): RosterModel {
     lineAccess: { ...m.lineAccess, [STANDBY_LINE]: m.standbyBlocked ? 'BLOCKED' : 'ENABLED' },
     prefGrade: {}, priorityGrade: {}, blockedVehicleTypes: m.blockedVehicleTypes, overtimePreference: 'NEUTRAL',
     status: input.days.map(d => (worksOn(m, d.day) ? 'free' : 'off')),
-    windows: input.days.map(() => m.window), fixed: input.days.map(() => null),
+    windows: input.days.map(() => m.window), limits: input.days.map(() => ({ notBefore: m.notBefore, notAfter: m.notAfter })),
+    fixed: input.days.map(() => null),
     licenseExpired: input.days.map(() => false), courseExpired: input.days.map(() => false),
     targetMinutes: 0, dayLoad: 0, workedBefore: 0, changesBefore: 0, lastSignatures: {}, prevEnd: null, nextStart: null,
     published: input.days.map(() => -2), current: input.days.map(() => -1),
@@ -148,7 +159,8 @@ function windowModel(input: ConsoleInput, crew: ConsoleCrew[]): RosterModel {
 
 // ── B: demand × crew ────────────────────────────────────────────────────────
 
-export function staffing(input: ConsoleInput, crew = input.crew): ConsoleStaffing {
+// covered: the supply's coverage per day (WindowCover.coveredByDay), when already at hand
+export function staffing(input: ConsoleInput, crew = input.crew, covered?: Map<number, number>): ConsoleStaffing {
   const supply = crew.filter(inSupply)
   const demandOf = (shiftId: string | null, dayTypeId: string) => input.duties.filter(d => d.shiftId === shiftId && d.dayTypeId === dayTypeId).length
   const typeIds = input.dayTypes.map(t => t.id)
@@ -163,12 +175,10 @@ export function staffing(input: ConsoleInput, crew = input.crew): ConsoleStaffin
       const worst = Math.min(...per), demand = demandOf(s.id, t)
       cells[t] = { demand, worst, avg: per.reduce((a, b) => a + b, 0) / per.length, balance: worst - demand }
     }
-    const factor = cycleFactor(team)
-    const required = Math.max(0, ...Object.values(cells).map(c => ceil(c.demand * factor)))
-    return { shiftId: s.id, cells, current: team.length, required }
+    return { shiftId: s.id, cells, current: team.length }
   })
 
-  const covered = coverageByDay(windowModel(input, supply))
+  covered ??= new WindowCover(input, supply).coveredByDay()
   const totals: ConsoleStaffing['totals'] = {}
   const noShift: ConsoleStaffing['noShift'] = {}
   for (const t of typeIds) {
@@ -179,6 +189,327 @@ export function staffing(input: ConsoleInput, crew = input.crew): ConsoleStaffin
     noShift[t] = demandOf(null, t)
   }
   return { rows, noShift, totals }
+}
+
+// ── B: the crew the plans need ──────────────────────────────────────────────
+
+// share of the time a crew member is on vacation: 30 days a year, even through the year
+const VACATION_SHARE = 30 / 365
+// days a month of each kind of day (by weekday, 0 = Monday) — the sector's convention for the
+// planned overtime of a month
+const MONTH_DAYS = [21, 21, 21, 21, 21, 4, 5]
+// a journey when nobody of the shift has a contract: 44h over 6 days
+const DEFAULT_JOURNEY = 440
+
+interface CoverMember {
+  shiftId: string | null
+  // the group he counts in: `${shiftId}|${patternId}|${offset}`
+  group:   string
+  // per day: whether he works (rest pattern) and the slots (duty-days) he may take
+  works:   boolean[]
+  slots:   number[][]
+  real:    boolean
+}
+
+// Who covers what over the window: per day, a maximum matching between the duty-days (slots) and
+// the crew, by the roster generator's own rules (RosterModel.candidates). A duty out of the crew
+// member's shift (shiftWindow WARN) also keeps the interjornada to his own shift on the days
+// around (when interShiftRest blocks) — the per-day matching can't see the days around otherwise.
+// The matching is kept up to date as crew members are added (virtual ones) or taken out: each
+// change is one augmenting path, so trying a candidate costs a search, not a new matching.
+export class WindowCover {
+  readonly slots: { t: number; duty: ConsoleDuty }[] = []
+  readonly members: CoverMember[] = []
+  // per slot: the members who may take it
+  private readonly cands: number[][]
+  // per slot: its member, -1 none; per member and day: his slot, -1 none
+  private holder: Int32Array
+  private dutyOf: Int32Array[] = []
+  private readonly removed: boolean[] = []
+  // per day: slots nobody holds
+  readonly uncovered: Int32Array
+  private readonly T: number
+
+  constructor(private readonly input: ConsoleInput, crew: ConsoleCrew[]) {
+    this.T = input.days.length
+    const model = windowModel(input, crew)
+    const byId = new Map(input.duties.map(d => [d.id, d]))
+    for (const d of model.input.duties) this.slots.push({ t: d.day, duty: byId.get(d.signature)! })
+    this.cands = this.slots.map(() => [])
+    this.holder = new Int32Array(this.slots.length).fill(-1)
+    this.uncovered = new Int32Array(this.T)
+    for (const s of this.slots) this.uncovered[s.t]++
+
+    crew.forEach(m => {
+      const slots: number[][] = Array.from({ length: this.T }, () => [])
+      const works = input.days.map(d => worksOn(m, d.day))
+      this.members.push({ shiftId: m.shiftId, group: groupKey(m.shiftId, m.pattern, m.offset), works, slots, real: true })
+    })
+    model.candidates.forEach((list, si) => {
+      const { t, duty } = this.slots[si]
+      for (const mi of list) {
+        const m = crew[mi]
+        if (!m.window || this.restKept(m.window, (day: Day) => worksOn(m, day), t, duty)) {
+          this.members[mi].slots[t].push(si)
+          this.cands[si].push(mi)
+        }
+      }
+    })
+    for (let mi = 0; mi < crew.length; mi++) {
+      this.dutyOf.push(new Int32Array(this.T).fill(-1))
+      this.removed.push(false)
+      for (let t = 0; t < this.T; t++) if (this.reach(this.members[mi].slots[t], t, new Set(), mi, true)) this.uncovered[t]--
+    }
+  }
+
+  // a duty out of the shift: the rest to the shift's latest end the day before and to its
+  // earliest start the day after, on the days he works
+  private restKept(shift: ShiftWindow, works: (day: Day) => boolean, t: number, d: ConsoleDuty): boolean {
+    if (shiftFits(shift, d.start, d.end, d.kind) || this.input.ruleModes.interShiftRest !== 'BLOCK') return true
+    const day = this.input.days[t].day
+    if (works(addDays(day, -1)) && 1440 + d.start - shift.endCeiling < this.input.restFloor) return false
+    if (works(addDays(day, 1)) && 1440 + shift.startFloor - d.end < this.input.restFloor) return false
+    return true
+  }
+
+  // an augmenting path from a member (mi; -1: a candidate not added yet) through his slots on day t
+  private reach(slots: number[], t: number, seen: Set<number>, mi: number, commit: boolean): boolean {
+    for (const s of slots) {
+      if (seen.has(s)) continue
+      seen.add(s)
+      const h = this.holder[s]
+      if (h < 0 || this.reach(this.members[h].slots[t], t, seen, h, commit)) {
+        if (commit) { this.holder[s] = mi; this.dutyOf[mi][t] = s }
+        return true
+      }
+    }
+    return false
+  }
+
+  // an augmenting path from a slot nobody holds, through the members who may take it
+  private reachSlot(s: number, t: number, seen: Set<number>): boolean {
+    for (const mi of this.cands[s]) {
+      if (this.removed[mi] || seen.has(mi)) continue
+      seen.add(mi)
+      const o = this.dutyOf[mi][t]
+      if (o < 0 || this.reachSlot(o, t, seen)) {
+        this.holder[s] = mi
+        this.dutyOf[mi][t] = s
+        return true
+      }
+    }
+    return false
+  }
+
+  coveredByDay(): Map<number, number> {
+    const out = new Map<number, number>()
+    this.slots.forEach(s => out.set(s.t, (out.get(s.t) ?? 0) + 1))
+    for (const [t, n] of out) out.set(t, n - this.uncovered[t])
+    return out
+  }
+
+  // a virtual crew member of the shift in the group (offset of the shift's pattern): his slots
+  virtual(shift: ConsoleInput['shifts'][number], offset: number): CoverMember {
+    const works = (day: Day) => !shift.pattern || restPatternWorks(shift.pattern.cycle, offset, day)
+    const warn = this.input.ruleModes.shiftWindow === 'WARN'
+    const slots: number[][] = Array.from({ length: this.T }, () => [])
+    this.slots.forEach(({ t, duty }, si) => {
+      if (!works(this.input.days[t].day)) return
+      const fits = shiftFits(shift, duty.start, duty.end, duty.kind)
+      if (fits || (warn && this.restKept(shift, works, t, duty))) slots[t].push(si)
+    })
+    return { shiftId: shift.id, group: groupKey(shift.id, shift.pattern, offset), works: this.input.days.map(d => works(d.day)), slots, real: false }
+  }
+
+  // days the member would cover that nobody does now
+  gain(c: CoverMember): number {
+    let n = 0
+    for (let t = 0; t < this.T; t++) if (this.uncovered[t] && c.slots[t].length && this.reach(c.slots[t], t, new Set(), -1, false)) n++
+    return n
+  }
+
+  add(c: CoverMember): void {
+    const mi = this.members.push(c) - 1
+    this.dutyOf.push(new Int32Array(this.T).fill(-1))
+    this.removed.push(false)
+    for (let t = 0; t < this.T; t++) for (const s of c.slots[t]) this.cands[s].push(mi)
+    for (let t = 0; t < this.T; t++) if (this.uncovered[t] && this.reach(c.slots[t], t, new Set(), mi, true)) this.uncovered[t]--
+  }
+
+  // takes the member out if everything he holds is taken by someone else; else nothing changes
+  tryRemove(mi: number): boolean {
+    const holder = this.holder.slice(), dutyOf = this.dutyOf.map(a => a.slice())
+    this.removed[mi] = true
+    for (let t = 0; t < this.T; t++) {
+      const s = this.dutyOf[mi][t]
+      if (s < 0) continue
+      this.holder[s] = -1
+      this.dutyOf[mi][t] = -1
+      if (!this.reachSlot(s, t, new Set([mi]))) {
+        this.holder = holder
+        this.dutyOf = dutyOf
+        this.removed[mi] = false
+        return false
+      }
+    }
+    return true
+  }
+
+  // the shifts whose duties the member may take on day t
+  servable(mi: number, t: number): Set<string | null> { return new Set(this.members[mi].slots[t].map(si => this.slots[si].duty.shiftId)) }
+  // whether the member works day t without a duty
+  idle(mi: number, t: number): boolean { return !this.removed[mi] && this.members[mi].works[t] && this.dutyOf[mi][t] < 0 }
+}
+
+// `total` split in proportion to `exact`: the floors, then one more to the largest remainders
+function largestRemainder(total: number, exact: number[]): number[] {
+  const out = exact.map(Math.floor)
+  let left = total - out.reduce((a, b) => a + b, 0)
+  for (const i of exact.map((_, i) => i).sort((a, b) => (exact[b] - Math.floor(exact[b])) - (exact[a] - Math.floor(exact[a])))) {
+    if (left <= 0) break
+    out[i]++
+    left--
+  }
+  return out
+}
+
+const groupKey = (shiftId: string | null, pattern: { id: string } | null, offset: number) => `${shiftId}|${pattern?.id ?? '-'}|${offset}`
+
+// The operational crew from the current coverage: virtual crew members — one per shift × group of
+// the shift's pattern — added while one covers more, the one covering the most days first (ties:
+// the shift of lowest priority, then the smaller group); then the current crew members nothing
+// needs taken out. Greedy: a good bound, not always the fewest.
+function operationalRun(input: ConsoleInput, cover: WindowCover) {
+  const size = new Map<string, number>()
+  cover.members.forEach(m => size.set(m.group, (size.get(m.group) ?? 0) + 1))
+  const priority = new Map(input.shifts.map(s => [s.id, s.priority]))
+
+  // operational: add
+  const candidates = input.shifts.flatMap(s => (s.pattern ? restGroupOffsets({ pattern: s.pattern.cycle.pattern, staggered: s.pattern.staggered }) : [0]).map(o => cover.virtual(s, o)))
+  const added = new Map<string, number>()
+  for (;;) {
+    let best: CoverMember | null = null, bestGain = 0
+    for (const c of candidates) {
+      const g = cover.gain(c)
+      if (g > bestGain || (g === bestGain && g > 0 && best && (
+        (priority.get(c.shiftId!) ?? 0) < (priority.get(best.shiftId!) ?? 0)
+        || ((priority.get(c.shiftId!) ?? 0) === (priority.get(best.shiftId!) ?? 0) && (size.get(c.group) ?? 0) < (size.get(best.group) ?? 0))
+      ))) { best = c; bestGain = g }
+    }
+    if (!best) break
+    cover.add({ ...best })
+    added.set(best.group, (added.get(best.group) ?? 0) + 1)
+    size.set(best.group, (size.get(best.group) ?? 0) + 1)
+  }
+
+  // operational: take out one at a time from the group with the most crew left, so the groups stay
+  // even (emptying one first would leave the others unable to cover its days); a group is done at
+  // its first crew member needed
+  const removedOf = new Map<string, number>()
+  const pool = new Map<string, number[]>()
+  cover.members.forEach((m, mi) => { if (m.real) pool.set(m.group, [...(pool.get(m.group) ?? []), mi]) })
+  for (;;) {
+    const next = [...pool].filter(([, list]) => list.length).sort((a, b) => b[1].length - a[1].length)[0]
+    if (!next) break
+    const [group, list] = next
+    if (!cover.tryRemove(list.pop()!)) { pool.delete(group); continue }
+    removedOf.set(group, (removedOf.get(group) ?? 0) + 1)
+  }
+
+  // per day type: what's left nobody can take, on its worst day
+  const unfit: ConsoleSizing['unfit'] = {}
+  input.days.forEach((d, t) => { if (cover.uncovered[t]) unfit[d.dayTypeId] = Math.max(unfit[d.dayTypeId] ?? 0, cover.uncovered[t]) })
+  const total = (m: Map<string, number>) => [...m.values()].reduce((a, b) => a + b, 0)
+  return { cover, added, removedOf, unfit, net: total(added) - total(removedOf) }
+}
+
+// The crew the plans need (ConsoleSizing): the operational crew and the vacation reserve — the
+// hour bank's crew apart. Under shiftWindow WARN the greedy run may keep crew of one shift holding another's
+// duties where that shift's own crew would do with fewer — a crew that doesn't cross is a crew
+// that may: the strict run wins when it takes fewer, leaving no more duties without anyone.
+export function sizing(input: ConsoleInput, cover: WindowCover): ConsoleSizing {
+  const supply = input.crew.filter(inSupply)
+  const priority = new Map(input.shifts.map(s => [s.id, s.priority]))
+  let run = operationalRun(input, cover)
+  if (input.ruleModes.shiftWindow === 'WARN') {
+    const strict: ConsoleInput = { ...input, ruleModes: { ...input.ruleModes, shiftWindow: 'BLOCK' } }
+    const alt = operationalRun(strict, new WindowCover(strict, supply))
+    const lost = (u: ConsoleSizing['unfit']) => Object.values(u).reduce((a, b) => a + b, 0)
+    if (alt.net < run.net && lost(alt.unfit) <= lost(run.unfit)) run = alt
+  }
+  const { added, removedOf, unfit } = run
+  cover = run.cover
+
+  // per shift: current and operational
+  const shiftOfGroup = (g: string) => g.split('|')[0]
+  const rows = input.shifts.map(s => {
+    const current = supply.filter(m => m.shiftId === s.id).length
+    let op = current
+    for (const [g, n] of added) if (shiftOfGroup(g) === s.id) op += n
+    for (const [g, n] of removedOf) if (shiftOfGroup(g) === s.id) op -= n
+    return { shiftId: s.id, current, operational: op, vacation: 0, bank: 0, required: 0 }
+  })
+  const operational = rows.reduce((n, r) => n + r.operational, 0)
+
+  // vacation: on the operational crew, split among the shifts by the largest remainder
+  largestRemainder(ceil(operational * VACATION_SHARE), rows.map(r => r.operational * VACATION_SHARE)).forEach((n, i) => { rows[i].vacation = n })
+
+  // the hour bank: the planned overtime's banked share, as days off of each shift's journey a
+  // month — per day type, its days a month by the convention. The crew working idle absorbs them
+  // first: an idle crew member on a day takes the days off of a shift whose duties he may take that
+  // day, the neediest first (by his own shift it'd be arbitrary — overlapping windows leave the
+  // matching free to pick who stays idle). What's left becomes crew, rounded on the total.
+  const typeDays = new Map<string, number[]>()
+  input.days.forEach((d, t) => typeDays.set(d.dayTypeId, [...(typeDays.get(d.dayTypeId) ?? []), t]))
+  const monthDays = new Map([...typeDays].map(([type, ts]) => {
+    const count = new Array(7).fill(0)
+    for (const t of ts) count[input.days[t].weekday]++
+    return [type, MONTH_DAYS[count.indexOf(Math.max(...count))]] as const
+  }))
+  const journeys = (list: ConsoleCrew[]) => list.flatMap(m => (m.journey ? [m.journey] : []))
+  const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
+  const allJourney = avg(journeys(supply)) ?? DEFAULT_JOURNEY
+  const need = new Map(rows.map(r => {
+    const overtime = input.duties.filter(d => d.shiftId === r.shiftId).reduce((n, d) => n + d.overtime * (monthDays.get(d.dayTypeId) ?? 0), 0)
+    const journey = avg(journeys(supply.filter(m => m.shiftId === r.shiftId))) ?? allJourney
+    return [r.shiftId, overtime * BANKED_SHARE * input.bankCompPct / 100 / journey] as const
+  }))
+  for (const [type, ts] of typeDays) {
+    const w = (monthDays.get(type) ?? 0) / ts.length
+    for (const t of ts) {
+      cover.members.forEach((_, mi) => {
+        if (!cover.idle(mi, t)) return
+        let best: string | null = null
+        for (const id of cover.servable(mi, t)) if (id && (need.get(id) ?? 0) > 0 && (!best || need.get(id)! > need.get(best)!)) best = id
+        if (best) need.set(best, Math.max(0, need.get(best)! - w))
+      })
+    }
+  }
+  const owed = rows.map(r => {
+    const cycle = input.shifts.find(s => s.id === r.shiftId)!.pattern?.cycle.pattern
+    const worked = 30 * (cycle ? [...cycle].filter(c => c === 'T').length / cycle.length : 6 / 7)
+    return (need.get(r.shiftId) ?? 0) / worked
+  })
+  largestRemainder(ceil(owed.reduce((a, b) => a + b, 0)), owed).forEach((n, i) => { rows[i].bank = n })
+  // the bank's crew apart: what the plans need is operational + vacation
+  for (const r of rows) r.required = r.operational + r.vacation
+
+  // where the operational crew differs from the current one
+  const groupRows: ConsoleSizing['groups'] = [...new Set([...added.keys(), ...removedOf.keys()])].map(g => {
+    const [shiftId, patternId, offset] = g.split('|')
+    const pattern = input.patterns.find(p => p.id === patternId) ?? input.shifts.find(s => s.pattern?.id === patternId)?.pattern ?? null
+    const idx = pattern ? restGroupIndex({ pattern: pattern.cycle.pattern, staggered: pattern.staggered }, Number(offset)) : null
+    return {
+      shiftId, offset: Number(offset), label: idx == null ? null : restGroupLabel(idx),
+      current: cover.members.filter(m => m.real && m.group === g).length, add: added.get(g) ?? 0, remove: removedOf.get(g) ?? 0,
+    }
+  }).sort((a, b) => (priority.get(a.shiftId) ?? 0) - (priority.get(b.shiftId) ?? 0) || a.offset - b.offset)
+
+  const sum = (k: 'operational' | 'vacation' | 'bank' | 'required') => rows.reduce((n, r) => n + r[k], 0)
+  return {
+    current: supply.length, operational: sum('operational'), vacation: sum('vacation'), required: sum('required'),
+    balance: supply.length - sum('required'), bank: sum('bank'), bankPct: input.bankCompPct, shifts: rows, groups: groupRows, unfit,
+  }
 }
 
 // ── C: shifts ───────────────────────────────────────────────────────────────
@@ -349,14 +680,13 @@ function alerts(input: ConsoleInput, s: Omit<ConsoleSnapshot, 'alerts' | 'status
     if (p.crewPlan?.uncoveredMinutes) push({ code: 'PLAN_UNCOVERED', severity: 'warning', section: 'plans', text: `${t}: ${p.crewPlan.uncoveredMinutes} min de serviço sem tabela`, link: { kind: 'crew-plan', id: p.crewPlan.id } })
     if (p.crewPlan?.stale) push({ code: 'PLAN_STALE', severity: 'warning', section: 'plans', text: `${t}: ${p.crewPlan.stale} tabela(s) desatualizada(s)`, link: { kind: 'crew-plan', id: p.crewPlan.id } })
   }
-  for (const r of s.staffing.rows) {
-    const worst = Object.entries(r.cells).sort((a, b) => a[1].balance - b[1].balance)[0]
-    if (worst && worst[1].balance < 0) {
-      push({ code: 'SHIFT_SHORT', severity: 'error', section: 'staffing', text: `Turno ${shiftName.get(r.shiftId)}: faltam ${-worst[1].balance} no pior dia (${typeName.get(worst[0])})` })
-    }
+  const z = s.sizing
+  if (z.balance < 0) {
+    const bank = z.bank ? ` — e +${z.bank} para abater ${z.bankPct}% do banco` : ''
+    push({ code: 'CREW_SHORT', severity: 'error', section: 'staffing', text: `Faltam ${-z.balance} no quadro: necessário ${z.required} (operacional ${z.operational} · férias +${z.vacation}), atual ${z.current}${bank}` })
   }
-  for (const [t, x] of Object.entries(s.staffing.totals)) {
-    if (x.coverable < x.demand) push({ code: 'COVERAGE_SHORT', severity: 'error', section: 'staffing', text: `${typeName.get(t)}: o quadro cobre ${x.coverable} de ${x.demand} tabelas no pior dia` })
+  for (const [t, n] of Object.entries(z.unfit)) {
+    push({ code: 'DUTY_UNFIT', severity: 'warning', section: 'staffing', text: `${typeName.get(t)}: ${n} tabela(s) que ninguém pode cobrir no pior dia — nenhum turno aceita o horário, ou ninguém pode operar a linha ou o veículo` })
   }
   for (const [t, x] of Object.entries(s.shiftsAnalysis.noShift)) {
     if (x.count) push({ code: 'DUTY_NO_SHIFT', severity: 'warning', section: 'shifts', text: `${typeName.get(t)}: ${x.count} tabela(s) fora de qualquer turno` })
@@ -407,7 +737,8 @@ function sectionStatus(list: ConsoleAlert[]): Record<ConsoleSection, ConsoleSect
 // ── the snapshot ────────────────────────────────────────────────────────────
 
 export function computeConsole(input: ConsoleInput): ConsoleSnapshot {
-  const st = staffing(input)
+  const cover = new WindowCover(input, input.crew.filter(inSupply))
+  const st = staffing(input, input.crew, cover.coveredByDay())
   const crewData: ConsoleCrewData = {
     noProfile: input.noProfile,
     noShift:   input.crew.filter(m => !m.shiftId && !m.away).map(ref),
@@ -427,6 +758,7 @@ export function computeConsole(input: ConsoleInput): ConsoleSnapshot {
       ({ id, code, name, startFloor, startIdealMin, startIdealMax, startCeiling, endFloor, endIdealMin, endIdealMax, endCeiling, allowSplit })),
     plans: input.plans.map(p => ({ ...p, future: !!p.vehiclePlan?.validFrom && daysAhead(input.today, p.vehiclePlan.validFrom) > CONSOLE_FUTURE_DAYS })),
     staffing: st,
+    sizing: sizing(input, cover),
     shiftsAnalysis: shiftsAnalysis(input, st),
     groups: groups(input),
     crew: { active: input.crew.filter(inSupply).length, away: crewData.away.length, vacation: crewData.vacation.length },

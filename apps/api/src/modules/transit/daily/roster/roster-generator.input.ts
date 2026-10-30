@@ -1,11 +1,11 @@
-import { restPatternWorks, type DailyCrewRest, type DutySummary, type RosterGeneratorParams, type ShiftWindow, type VehiclePlanConstraints } from '@nyx/schemas'
+import { restPatternWorks, type CrewLimit, type DailyCrewRest, type DutySummary, type RosterGeneratorParams, type ShiftWindow, type VehiclePlanConstraints } from '@nyx/schemas'
 import type { PrismaService } from '../../../../prisma/prisma.service'
 import type { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import type { BankPosition } from '../../hour-bank/hour-bank.service'
 import { loadCrewBranchRules } from '../../timetabling/crew-plan/crew-branch-rules'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
-import { effectiveWindow } from '../daily-checks'
+import { crewLimit } from '../daily-checks'
 import { NOT_PUBLISHED, STANDBY_LINE, isChange, signatureGroup, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
 
 // Reads everything the generator needs for one empresa/role over [from, to]:
@@ -245,13 +245,14 @@ export async function loadRosterInput(
       e.locked || (e.kind !== 'DUTY' && e.kind !== 'STANDBY' && e.source !== 'GENERATED')
       || (!!e.dailyDuty && !(e.dailyDuty.operation.status === 'PLANNED' || (options.published && e.dailyDuty.operation.status === 'PUBLISHED')))
 
-    const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = [], courseExpired: boolean[] = []
+    const status: RgStatus[] = [], windows: (ShiftWindow | null)[] = [], limits: CrewLimit[] = [], fixed: (RgFixed | null)[] = [], licenseExpired: boolean[] = [], courseExpired: boolean[] = []
     for (const day of days) {
       const onDay = mine.filter(e => dayOf(e.date) === day && isFixed(e))
       const works = onDay.filter(e => e.dailyDuty)
       const bound = m.shifts.find(s => dayOf(s.validFrom) <= day && (!s.validTo || dayOf(s.validTo) >= day))?.shift ?? null
       const timeWindows = occ.filter(o => o.kind === 'TIME_WINDOW' && dayOf(o.startDate) <= day && dayOf(o.endDate) >= day)
-      windows.push(bound ? effectiveWindow(bound, m, timeWindows) : null)
+      windows.push(bound)
+      limits.push(crewLimit(m, timeWindows))
       licenseExpired.push(!!m.licenseExpiresAt && dayOf(m.licenseExpiresAt) < day)
       courseExpired.push(!!m.courseExpiresAt && dayOf(m.courseExpiresAt) < day)
       fixed.push(works.length ? merge(works.map(e => ({ s: e.dailyDuty!.summary as DutySummary | null, sig: signature(e.dailyDutyId!, e.dailyDuty!.shiftId) }))) : null)
@@ -327,7 +328,7 @@ export async function loadRosterInput(
       priorityGrade: Object.fromEntries(m.lines.filter(l => l.priority).map(l => [l.lineId, 1])),
       blockedVehicleTypes: m.blockedVehicleTypes,
       overtimePreference: m.overtimePreference,
-      status, windows, fixed, licenseExpired, courseExpired,
+      status, windows, limits, fixed, licenseExpired, courseExpired,
       targetMinutes, dayLoad, bank: options.bank?.get(m.id), workedBefore, changesBefore, lastSignatures: last, lastSwaps, prevEnd, nextStart,
       current: days.map(day => {
         const held = mine.find(e => dayOf(e.date) === day && e.dailyDutyId && dutyIndex.has(e.dailyDutyId))

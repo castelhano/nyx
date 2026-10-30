@@ -854,8 +854,8 @@ model CrewMember {
   role                CrewRole           @default(DRIVER)
   // out of the generator when false (still assignable by hand)
   isRosterable        Boolean            @default(true)
-  // replace the bound shift's hard bounds: earliest sign-on (startFloor) / latest sign-off
-  // (endCeiling) — "can't start before X / finish after Y"
+  // his own bounds on top of the bound shift's (they only narrow it; ruleModes.crewWindow):
+  // earliest sign-on / latest sign-off — "can't start before X / finish after Y"
   notBeforeMinutes    Int?
   notAfterMinutes     Int?
   // overrides the shift's RestPattern

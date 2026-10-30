@@ -151,12 +151,15 @@ day's blocks — `daily-relief.ts`), block issues through `validateBlock`, then 
 | `DUTY_UNASSIGNED`, `RESERVE_SHORT` (plantão without anyone) | `BLOCK_NO_VEHICLE`, `BLOCK_NO_CREW` |
 | `CREW_ABSENT`, `CREW_ON_DAY_OFF`, `CREW_INACTIVE`, `NO_SHIFT` | `VEHICLE_DOUBLE`, `VEHICLE_UNAVAILABLE` |
 | `CREW_MULTIPLE_DUTIES`, `CREW_BRANCH_MISMATCH`, `STANDBY_BLOCKED` | `VEHICLE_TYPE_MISMATCH`, `VEHICLE_BRANCH_MISMATCH` |
-| `SHIFT_WINDOW`, `LINE_NOT_ALLOWED`, `VEHICLE_TYPE_BLOCKED` | |
+| `SHIFT_WINDOW`, `CREW_WINDOW`, `LINE_NOT_ALLOWED`, `VEHICLE_TYPE_BLOCKED` | |
 | `INTER_SHIFT_REST`, `LICENSE_EXPIRED`, `COURSE_EXPIRED`, `SHIFT_IDEAL` (info) | |
 
-The crew member's **effective window** on a date = his shift's bands, narrowed by his own bounds and
-by approved time windows (`effectiveWindow`). The rest between days (`INTER_SHIFT_REST`) is the CCT
-rule `interShiftRest` of the crew settings (per scope).
+Two windows, two checks: the **shift's** bands (`SHIFT_WINDOW`; only info on a duty he's fixed to)
+and **his own limit** on the date (`CREW_WINDOW`; holds even on a fixed duty) — his
+`notBeforeMinutes` / `notAfterMinutes` narrowed by approved time windows (`crewLimit`,
+`CrewLimit` / `limitFits` in `@nyx/schemas`). The limit only narrows: one wider than the shift has
+no effect, a duty outside the shift is `SHIFT_WINDOW`'s call. The rest between days
+(`INTER_SHIFT_REST`) is the CCT rule `interShiftRest` of the crew settings (per scope).
 
 Vehicles: `VehicleUnavailability` (fleet) takes a car out on `[startDate, endDate]`.
 
@@ -190,7 +193,10 @@ only as a last resort (`WARN` cost each, the day shows the issue):
 
 - `lineAccess`: a line he may not operate;
 - `vehicleType`: a vehicle type blocked for him;
-- `shiftWindow`: outside his effective window;
+- `shiftWindow`: outside his shift's window — WARN lets one shift take another's duties (a Tarde
+  crew member off on Saturday on a Sunday morning);
+- `crewWindow`: outside his own limit (bounds, approved time windows) — kept apart from
+  `shiftWindow` so crossing shifts never breaks them;
 - `interShiftRest`: rest below the minimum between days;
 - `license` / `course`: CNH or course expired on the date.
 

@@ -2,7 +2,6 @@ import {
   nextRestDay, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks,
   type ConsoleActionKind, type ConsoleImpact, type ConsoleMove, type ConsoleSuggestion, type RebalanceRules,
 } from '@nyx/schemas'
-import { effectiveWindow } from '../daily/daily-checks'
 import { addDays, type Day } from '../timetabling/plan-validity'
 import {
   canOperate, idealGroupCounts, inSupply, lineRows, staffing,
@@ -26,13 +25,13 @@ const works = (m: ConsoleCrew, day: Day) => !m.pattern || restPatternWorks(m.pat
 
 // ── crew after the moves ────────────────────────────────────────────────────
 
-// the crew member as he'd be: in the destination shift (its window with his bounds), with his own
+// the crew member as he'd be: in the destination shift (its window), with his own
 // pattern, the one set by the adjustment, or the shift's, and the given group
 export function moved(m: ConsoleCrew, to: Shift, offset: number | null, pattern?: ConsolePattern | null): ConsoleCrew {
   const own = pattern !== undefined && pattern !== null
   return {
     ...m, shiftId: to.id,
-    window: effectiveWindow(to, { notBeforeMinutes: m.notBefore, notAfterMinutes: m.notAfter }, []),
+    window: to,
     pattern: own ? pattern : m.ownPattern ? m.pattern : to.pattern,
     ownPattern: own || m.ownPattern,
     offset: offset ?? m.offset,
@@ -46,7 +45,7 @@ function newcomer(input: ConsoleInput, employeeId: string, to: Shift, offset: nu
   if (!e) return null
   return moved({
     id: e.employeeId, code: e.code, name: e.name, hireDate: e.hireDate, shiftId: to.id, shiftSince: input.today,
-    window: null, notBefore: null, notAfter: null, pattern: to.pattern, ownPattern: false, offset: 0,
+    window: null, notBefore: null, notAfter: null, journey: null, pattern: to.pattern, ownPattern: false, offset: 0,
     lineAccess: {}, prefLines: [], priorityLines: [], blockedVehicleTypes: [], standbyBlocked: false, rosterable: true, away: null, vacation: null,
   }, to, offset, pattern)
 }

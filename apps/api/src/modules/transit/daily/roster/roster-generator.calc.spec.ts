@@ -113,3 +113,29 @@ describe('fixed crew members', () => {
     expect(e.hard).toBe(false)
   })
 })
+
+describe('shift window × crew member bounds', () => {
+  // the duty (06:00–13:00) is out of his shift (from 10:00) and past his "não depois de" 12:00
+  const shift = { startFloor: 600, startCeiling: 900, endFloor: 900, endCeiling: 1440, startIdealMin: 600, startIdealMax: 900, endIdealMin: 900, endIdealMax: 1440, allowSplit: false } as RgMember['windows'][number]
+  const case_ = (limits: RgMember['limits'], ruleModes: Partial<RgInput['ruleModes']>): RgInput => ({
+    ...input(member({ windows: [shift, shift], limits })),
+    ruleModes: { ...settings.ruleModes, ...ruleModes },
+  })
+  it('shiftWindow WARN lets him take another shift\'s duty, with a warning', () => {
+    const inp = case_(undefined, { shiftWindow: 'WARN' })
+    expect(pairRule(inp, 0, inp.duties[0])).toBe(1)
+  })
+  it('his own bounds still block it', () => {
+    const limit = { notBefore: null, notAfter: 720 }
+    const inp = case_([limit, limit], { shiftWindow: 'WARN' })
+    expect(pairRule(inp, 0, inp.duties[0])).toBe(-1)
+  })
+  it('his own bounds hold even on a duty he is fixed to', () => {
+    const limit = { notBefore: null, notAfter: 720 }
+    const inp = case_([limit, limit], {})
+    inp.duties = [{ ...inp.duties[0], preferred: [0] }, inp.duties[1]]
+    expect(pairRule(inp, 0, inp.duties[0])).toBe(-1)
+    inp.ruleModes = { ...inp.ruleModes, crewWindow: 'WARN' }
+    expect(pairRule(inp, 0, inp.duties[0])).toBe(1)
+  })
+})

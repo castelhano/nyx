@@ -1,6 +1,6 @@
 import {
-  ROSTER_COMP_TOLERANCE, shiftFits, shiftIdealDistance,
-  type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterPublishedChange, type RosterQuality, type RosterSettings, type RosterShortage, type ShiftWindow,
+  ROSTER_COMP_TOLERANCE, limitFits, shiftFits, shiftIdealDistance,
+  type CrewLimit, type RangeCriterion, type RosterMemberStat, type RosterProposalSummary, type RosterPublishedChange, type RosterQuality, type RosterSettings, type RosterShortage, type ShiftWindow,
 } from '@nyx/schemas'
 import { rangeRaw, SCORE_SCALE } from '../../timetabling/vehicle-plan/scoring/plan-scoring.calc'
 import { hungarian } from './hungarian'
@@ -119,8 +119,11 @@ export interface RgMember {
   blockedVehicleTypes: string[]
   overtimePreference: 'LIKES' | 'NEUTRAL' | 'AVOIDS'
   status:  RgStatus[]
-  // the effective window per day (shift + the crew member's bounds + time-window requests)
+  // the shift's window per day (ruleModes.shiftWindow; the ideal for shiftFit)
   windows: (ShiftWindow | null)[]
+  // his own bounds per day — notBefore/notAfter and time-window requests (ruleModes.crewWindow);
+  // none: unbounded
+  limits?: (CrewLimit | null)[]
   fixed:   (RgFixed | null)[]
   licenseExpired: boolean[]
   courseExpired:  boolean[]
@@ -222,6 +225,8 @@ export function pairRule(input: RgInput, mi: number, d: RgDuty): number {
   if (!rule(!fixed && lineBroken, input.ruleModes.lineAccess)) return -1
   if (!rule(!fixed && d.vehicleTypes.some(t => m.blockedVehicleTypes.includes(t)), input.ruleModes.vehicleType)) return -1
   if (!rule(!fixed && !shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return -1
+  // his own bounds hold even on a duty he's fixed to
+  if (!rule(!limitFits(m.limits?.[d.day], d.start, d.end), input.ruleModes.crewWindow)) return -1
   if (!rule(m.licenseExpired[d.day], input.ruleModes.license)) return -1
   if (!rule(m.courseExpired[d.day], input.ruleModes.course)) return -1
   return warns
@@ -236,6 +241,7 @@ function blockedBy(input: RgInput, mi: number, d: RgDuty): Stage | null {
   const block = (broken: boolean, mode: 'BLOCK' | 'WARN') => !fixed && broken && mode === 'BLOCK'
   const window = m.windows[d.day]
   if (!window || block(!shiftFits(window, d.start, d.end, d.kind), input.ruleModes.shiftWindow)) return 'window'
+  if (!limitFits(m.limits?.[d.day], d.start, d.end) && input.ruleModes.crewWindow === 'BLOCK') return 'window'
   const lines = d.lineMinutes.map(l => l.lineId)
   const lineBroken = input.lineAccessMode === 'WHITELIST' ? lines.some(l => m.lineAccess[l] !== 'ENABLED') : lines.some(l => m.lineAccess[l] === 'BLOCKED')
   if (block(lineBroken, input.ruleModes.lineAccess)) return 'line'

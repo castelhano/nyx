@@ -24,7 +24,7 @@ import { repairVehicles, type VehicleRepairBlock } from './vehicle-repair.calc'
 const HARD: DailyIssueCode[] = ['CREW_ABSENT', 'CREW_ON_DAY_OFF', 'CREW_INACTIVE', 'NO_SHIFT', 'CREW_BRANCH_MISMATCH']
 // the ones under a configurable rule — BLOCK takes him off, WARN only for someone without pendências
 const RULE: Partial<Record<DailyIssueCode, keyof RosterSettings['ruleModes']>> = {
-  SHIFT_WINDOW: 'shiftWindow', LINE_NOT_ALLOWED: 'lineAccess', VEHICLE_TYPE_BLOCKED: 'vehicleType',
+  SHIFT_WINDOW: 'shiftWindow', CREW_WINDOW: 'crewWindow', LINE_NOT_ALLOWED: 'lineAccess', VEHICLE_TYPE_BLOCKED: 'vehicleType',
   INTER_SHIFT_REST: 'interShiftRest', LICENSE_EXPIRED: 'license', COURSE_EXPIRED: 'course',
 }
 

@@ -7,6 +7,7 @@ import {
 } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { resourceRegistry } from '../../../core/resource-registry'
+import { TransitCrewConfigService } from '../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../settings/transit-roster-config.service'
 import { DayTypeService } from '../timetabling/day-type/day-type.service'
 import { CrewMemberShiftService } from '../crew/crew-member/crew-member-shift.service'
@@ -24,6 +25,7 @@ export class ConsoleService {
   constructor(
     private readonly prisma:   PrismaService,
     private readonly roster:   TransitRosterConfigService,
+    private readonly crewConfig: TransitCrewConfigService,
     private readonly dayTypes: DayTypeService,
     private readonly shifts:   CrewMemberShiftService,
   ) {
@@ -31,7 +33,7 @@ export class ConsoleService {
   }
 
   private input(params: ConsoleParams): Promise<ConsoleInput> {
-    return loadConsoleInput(this.prisma, this.roster, this.dayTypes, params)
+    return loadConsoleInput(this.prisma, this.roster, this.crewConfig, this.dayTypes, params)
   }
 
   async snapshot(params: ConsoleParams): Promise<ConsoleSnapshot> {

@@ -1,10 +1,10 @@
 import { BadRequestException } from '@nestjs/common'
 import { bestShift, CREW_ROLE_PREFIX, CREW_ROLES, type ConsoleDailyError, type ConsolePlanRow, type CrewRole, type DailySummary, type DutySummary } from '@nyx/schemas'
 import type { PrismaService } from '../../../prisma/prisma.service'
+import type { TransitCrewConfigService } from '../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../settings/transit-roster-config.service'
 import type { DayTypeService } from '../timetabling/day-type/day-type.service'
 import { addDays, dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
-import { effectiveWindow } from '../daily/daily-checks'
 import { outdatedOperations } from '../daily/daily-outdated'
 import { parseDay } from '../timetabling/dop/dop-resolution'
 import { dailyIssueLabel, type ConsoleCrew, type ConsoleDuty, type ConsoleInput, type ConsolePattern } from './console.calc'
@@ -20,7 +20,7 @@ export const CONSOLE_DAILY_DAYS = 30
 // the day's issues that make a generated day show up (errors of crew, vehicles and coverage)
 const DAILY_ERROR_CODES = new Set([
   'DUTY_UNASSIGNED', 'RESERVE_SHORT', 'BLOCK_NO_VEHICLE', 'BLOCK_NO_CREW', 'VEHICLE_DOUBLE', 'VEHICLE_UNAVAILABLE',
-  'CREW_ABSENT', 'CREW_ON_DAY_OFF', 'CREW_INACTIVE', 'SHIFT_WINDOW', 'LINE_NOT_ALLOWED', 'VEHICLE_TYPE_BLOCKED', 'INTER_SHIFT_REST',
+  'CREW_ABSENT', 'CREW_ON_DAY_OFF', 'CREW_INACTIVE', 'SHIFT_WINDOW', 'CREW_WINDOW', 'LINE_NOT_ALLOWED', 'VEHICLE_TYPE_BLOCKED', 'INTER_SHIFT_REST',
 ])
 
 export interface ConsoleParams { branchId: string; role: CrewRole; scopeId?: string | null }
@@ -30,7 +30,7 @@ const asPattern = (p: { id: string; name: string; pattern: string; anchorDate: D
   ({ id: p.id, name: p.name, cycle: { pattern: p.pattern, anchorDate: p.anchorDate, offOnHolidays: p.offOnHolidays }, staggered: p.staggered })
 
 export async function loadConsoleInput(
-  prisma: PrismaService, rosterConfig: TransitRosterConfigService, dayTypeService: DayTypeService, params: ConsoleParams,
+  prisma: PrismaService, rosterConfig: TransitRosterConfigService, crewConfig: TransitCrewConfigService, dayTypeService: DayTypeService, params: ConsoleParams,
 ): Promise<ConsoleInput> {
   const { branchId, role } = params
   if (!branchId || !CREW_ROLES.includes(role)) throw new BadRequestException('Informe a empresa e a função')
@@ -48,7 +48,7 @@ export async function loadConsoleInput(
   const scope = operated.find(o => o.scope.id === params.scopeId)?.scope ?? operated[0].scope
   const sharedScope = scope._count.operators > 1
 
-  const settings = await rosterConfig.get(branchId)
+  const [settings, crewSettings] = await Promise.all([rosterConfig.get(branchId), crewConfig.get(scope.id)])
 
   // ── window and day types ──
   // by the day types' patterns only: line calendar exceptions and holidays are one-off
@@ -144,7 +144,7 @@ export async function loadConsoleInput(
     }
     duties.push({
       id: d.id, dayTypeId: dayTypeOfPlan.get(d.crewPlanId)!, shiftId: d.shiftId, kind: d.kind,
-      start: s.startMinutes, end: s.endMinutes, paid: s.paidMinutes, lineMinutes, vehicleTypes: [...vehicleTypes], standby: d.kind === 'STANDBY',
+      start: s.startMinutes, end: s.endMinutes, paid: s.paidMinutes, overtime: s.overtimeMinutes, lineMinutes, vehicleTypes: [...vehicleTypes], standby: d.kind === 'STANDBY',
       label: `${CREW_ROLE_PREFIX[role]}${d.dutyNumber}`, preferred: (d.constraints as { crewMemberIds?: string[] } | null)?.crewMemberIds ?? [],
     })
   }
@@ -154,7 +154,7 @@ export async function loadConsoleInput(
     for (let k = 0; k < r.count; k++) {
       duties.push({
         id: `reserve-${i}-${k}`, dayTypeId: r.dayTypeId, shiftId: bestShift(shiftRows, r.startMinutes, r.endMinutes, 'STANDBY')?.id ?? null,
-        kind: 'STANDBY', start: r.startMinutes, end: r.endMinutes, paid: r.endMinutes - r.startMinutes, lineMinutes: [], vehicleTypes: [], standby: true,
+        kind: 'STANDBY', start: r.startMinutes, end: r.endMinutes, paid: r.endMinutes - r.startMinutes, overtime: 0, lineMinutes: [], vehicleTypes: [], standby: true,
         label: null, preferred: [],
       })
     }
@@ -205,9 +205,14 @@ export async function loadConsoleInput(
     where:   { role, employee: { branchId, status: 'ACTIVE' } },
     orderBy: { employee: { code: 'asc' } },
     select: {
-      id: true, isRosterable: true, notBeforeMinutes: true, notAfterMinutes: true, restOffset: true, blockedVehicleTypes: true, standbyBlocked: true,
+      id: true, isRosterable: true, notBeforeMinutes: true, notAfterMinutes: true, restOffset: true, blockedVehicleTypes: true, standbyBlocked: true, weeklyHours: true,
       preferredVehicle: { select: { id: true, code: true, status: true, branchId: true } },
-      employee:    { select: { code: true, fullName: true, preferredName: true, hireDate: true } },
+      employee: {
+        select: {
+          code: true, fullName: true, preferredName: true, hireDate: true,
+          contracts: { where: { status: 'ACTIVE' }, orderBy: { startDate: 'desc' }, take: 1, select: { weeklyHours: true, workDaysPerWeek: true } },
+        },
+      },
       restPattern: { select: patternSelect },
       lines:       { select: { lineId: true, access: true, rank: true, priority: true } },
       // the open link: the shift going forward (a later one already scheduled counts)
@@ -246,11 +251,13 @@ export async function loadConsoleInput(
     const occ = occurrences.filter(o => o.crewMemberId === m.id)
     const away = occ.find(o => o.absenceType?.effect === 'ABSENCE' && o.absenceType.systemKey !== 'VACATION' && dayOf(o.endDate) >= awayUntil)
     const vacation = occ.find(o => o.absenceType?.systemKey === 'VACATION')
+    const contract = m.employee.contracts[0]
     return {
       id: m.id, code: m.employee.code, name: nameOf(m.employee), hireDate: dayOf(m.employee.hireDate),
       shiftId: link?.shift.id ?? null, shiftSince: link ? dayOf(link.validFrom) : null,
-      window: link ? effectiveWindow(link.shift, m, []) : null,
+      window: link?.shift ?? null,
       notBefore: m.notBeforeMinutes, notAfter: m.notAfterMinutes,
+      journey: contract ? Math.round((m.weeklyHours ?? contract.weeklyHours) * 60 / contract.workDaysPerWeek) : null,
       pattern: pattern ? asPattern(pattern) : null, ownPattern: !!m.restPattern,
       offset: m.restOffset,
       lineAccess: Object.fromEntries(m.lines.filter(l => l.access).map(l => [l.lineId, l.access!])),
@@ -311,6 +318,7 @@ export async function loadConsoleInput(
     days, dayTypes, shifts, plans, duties, crew, patterns,
     lines: lines.map(l => ({ id: l.id, code: l.code })),
     lineAccessMode: settings.lineAccessMode, lineMarginPct: settings.lineMarginPct, ruleModes: settings.ruleModes,
+    restFloor: crewSettings.range.interShiftRest.floor, bankCompPct: settings.hourBankCompPct,
     noProfile, fixedCar, dailyErrors,
   }
 }

@@ -1,4 +1,4 @@
-import { lineVehicleTypesSchema, restPatternWorks, shiftFits, shiftIdealDistance, type DailyIssue, type DutySummary, type ShiftWindow, type VehicleTypeValue } from '@nyx/schemas'
+import { limitFits, lineVehicleTypesSchema, restPatternWorks, shiftFits, shiftIdealDistance, type CrewLimit, type DailyIssue, type DutySummary, type VehicleTypeValue } from '@nyx/schemas'
 import type { PrismaService } from '../../../prisma/prisma.service'
 import type { TransitRosterConfigService } from '../settings/transit-roster-config.service'
 import { addDays, dayOf, toDbDate, type Day } from '../timetabling/plan-validity'
@@ -120,18 +120,20 @@ export function crewIssues(
 
     const start = duty.summary.startMinutes, end = duty.summary.endMinutes
     const shift = m.shifts[0]?.shift
-    const window = shift ? effectiveWindow(shift, m, facts.occurrences.filter(o => o.crewMemberId === memberId)) : null
+    const limit = crewLimit(m, facts.occurrences.filter(o => o.crewMemberId === memberId))
+    // his own bounds hold even on a duty he's fixed to
+    if (start != null && end != null && !limitFits(limit, start, end)) push('CREW_WINDOW')
     if (!shift) push('NO_SHIFT', 'warning')
-    else if (start != null && end != null && !shiftFits(window!, start, end, duty.kind)) {
+    else if (start != null && end != null && !shiftFits(shift, start, end, duty.kind)) {
       push('SHIFT_WINDOW', fixedRule)
-    } else if (start != null && end != null && window) {
+    } else if (start != null && end != null) {
       // inside the window but far from its ideal (beyond shiftFit's ceiling): an advisory
-      const limit = facts.settings.get(m.employee.branchId)?.range.shiftFit.ceiling ?? 120
-      const off = shiftIdealDistance(window, start, end)
-      if (off > limit) {
+      const ceiling = facts.settings.get(m.employee.branchId)?.range.shiftFit.ceiling ?? 120
+      const off = shiftIdealDistance(shift, start, end)
+      if (off > ceiling) {
         const side = (label: string, v: number, lo: number, hi: number) =>
           v < lo || v > hi ? `${label} ${clock(v)} (ideal ${clock(lo)}–${clock(hi)})` : null
-        const detail = [side('início', start, window.startIdealMin, window.startIdealMax), side('fim', end, window.endIdealMin, window.endIdealMax)].filter(Boolean).join(' · ')
+        const detail = [side('início', start, shift.startIdealMin, shift.startIdealMax), side('fim', end, shift.endIdealMin, shift.endIdealMax)].filter(Boolean).join(' · ')
         issues.push({ code: 'SHIFT_IDEAL', severity: 'info', crewMemberId: memberId, value: off, detail })
       }
     }
@@ -159,18 +161,19 @@ export function crewIssues(
   return out
 }
 
-// the shift's bounds, with the crew member's own and an approved time-window request on top
-export function effectiveWindow(
-  shift: ShiftWindow, m: Pick<CrewRow, 'notBeforeMinutes' | 'notAfterMinutes'>,
+// the crew member's own bounds with an approved time-window request on top (CrewLimit) — apart
+// from the shift's window
+export function crewLimit(
+  m: Pick<CrewRow, 'notBeforeMinutes' | 'notAfterMinutes'>,
   occurrences: { kind: string; startNotBefore: number | null; endNotAfter: number | null }[],
-): ShiftWindow {
-  let startFloor = m.notBeforeMinutes ?? shift.startFloor
-  let endCeiling = m.notAfterMinutes ?? shift.endCeiling
+): CrewLimit {
+  let notBefore = m.notBeforeMinutes
+  let notAfter  = m.notAfterMinutes
   for (const o of occurrences.filter(x => x.kind === 'TIME_WINDOW')) {
-    if (o.startNotBefore != null) startFloor = Math.max(startFloor, o.startNotBefore)
-    if (o.endNotAfter != null) endCeiling = Math.min(endCeiling, o.endNotAfter)
+    if (o.startNotBefore != null) notBefore = Math.max(notBefore ?? o.startNotBefore, o.startNotBefore)
+    if (o.endNotAfter != null) notAfter = Math.min(notAfter ?? o.endNotAfter, o.endNotAfter)
   }
-  return { ...shift, startFloor, endCeiling }
+  return { notBefore, notAfter }
 }
 
 // off by his rest cycle — the one the day was generated with, else his current one

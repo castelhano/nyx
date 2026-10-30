@@ -132,6 +132,15 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
           <span className="text-sm text-muted-foreground w-6">%</span>
         </Row>
         <Row
+          diff={diff('hourBankCompPct')}
+          onRestore={restore('hourBankCompPct')}
+          label="Banco abatido com folga"
+          hint="Parte das horas do banco (geradas pela HE do planejamento) que a empresa abate com folga compensada — o Painel dimensiona o quadro para ela; o resto é pago no fechamento"
+        >
+          <NumberInput value={value.hourBankCompPct} onChange={(v) => onChange({ ...value, hourBankCompPct: Math.round(v) })} min={0} max={100} />
+          <span className="text-sm text-muted-foreground w-6">%</span>
+        </Row>
+        <Row
           diff={diff('habitualVehicleDays')}
           onRestore={restore('habitualVehicleDays')}
           label="Carro Habitual"
@@ -157,7 +166,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
       <SectionHeader label="Plantões" sub="Reserva da empresa por tipo de dia — os plantões são criados com o dia e o gerador os preenche com quem sobra depois das tabelas." />
       <ReserveTargets value={value.reserveTargets} diff={diff('reserveTargets')} onRestore={restore('reserveTargets')} onChange={reserveTargets => onChange({ ...value, reserveTargets })} />
 
-      <SectionHeader label="Regras do Gerador" sub="Bloqueia: nunca escala. Alerta: só como último recurso, e o dia mostra a pendência." />
+      <SectionHeader label="Regras do Gerador" sub="Bloqueia: nunca escala. Alerta: só como último recurso, e o dia mostra a pendência. Valem também para o quadro calculado no Painel de Escala." />
       <div className="rounded-lg border border-border divide-y divide-border">
         {(Object.keys(ROSTER_RULE_LABEL) as (keyof RosterSettings['ruleModes'])[]).map(k => (
           <Row
@@ -166,6 +175,7 @@ export function RosterSettingsEditor({ value, reference, onChange }: Props) {
             onRestore={reference ? () => onChange({ ...value, ruleModes: { ...value.ruleModes, [k]: reference.ruleModes[k] } }) : undefined}
             label={ROSTER_RULE_LABEL[k].label}
             hint={ROSTER_RULE_LABEL[k].hint}
+            impact={ROSTER_RULE_LABEL[k].impact}
           >
             <Select
               value={value.ruleModes[k]}
@@ -246,7 +256,8 @@ function ReserveTargets({ value, diff, onRestore, onChange }: { value: RosterRes
   )
 }
 
-function Row({ diff, onRestore, label, hint, children }: { diff: boolean; onRestore?: () => void; label: string; hint: string; children: React.ReactNode }) {
+// impact: what changing it does beyond its own screen — highlighted under the hint
+function Row({ diff, onRestore, label, hint, impact, children }: { diff: boolean; onRestore?: () => void; label: string; hint: string; impact?: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-6 px-4 py-3">
       <div className="flex items-center gap-2">
@@ -254,6 +265,11 @@ function Row({ diff, onRestore, label, hint, children }: { diff: boolean; onRest
         <div>
           <p className="text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>
+          {impact && (
+            <p className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400 mt-1">
+              <Icons.AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />{impact}
+            </p>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">{children}</div>

@@ -102,15 +102,21 @@ export const rosterSettingsSchema = withMeta(z.object({
   // start to end (minutes, end past 24h allowed) at the locality — created with the day and
   // filled by the generator with whoever is left over
   reserveTargets: z.array(rosterReserveTargetSchema()).default([]),
+  // the share of the hour bank the empresa takes as days off (folga compensada) — the Painel
+  // sizes the crew for it; the rest is paid at the bank's closing
+  hourBankCompPct: z.number().int().min(0).max(100).default(100),
   ruleModes: z.object({
     lineAccess:     ruleMode.default('BLOCK'),
     vehicleType:    ruleMode.default('BLOCK'),
     shiftWindow:    ruleMode.default('BLOCK'),
+    // the crew member's own bounds and approved time-window requests — apart from the shift's,
+    // so an empresa may let one shift take another's duties without ever breaking these
+    crewWindow:     ruleMode.default('BLOCK'),
     interShiftRest: ruleMode.default('BLOCK'),
     license:        ruleMode.default('BLOCK'),
     // some empresas operate for a while with the course expired, never with the license
     course:         ruleMode.default('BLOCK'),
-  }).default({ lineAccess: 'BLOCK', vehicleType: 'BLOCK', shiftWindow: 'BLOCK', interShiftRest: 'BLOCK', license: 'BLOCK', course: 'BLOCK' }),
+  }).default({ lineAccess: 'BLOCK', vehicleType: 'BLOCK', shiftWindow: 'BLOCK', crewWindow: 'BLOCK', interShiftRest: 'BLOCK', license: 'BLOCK', course: 'BLOCK' }),
   range: z.object({
     priorityLine:   rangeCriterionSchema.default(rosterRangeDefault.priorityLine),
     driverPrefLine: rangeCriterionSchema.default(rosterRangeDefault.driverPrefLine),
@@ -140,10 +146,16 @@ export const PORTAL_PREFERRED_LINES_LABEL: Record<RosterSettings['portalPreferre
   REQUIRED: 'Obrigatório',
 }
 
-export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { label: string; hint: string }> = {
+// impact: what changing it does beyond the generator — shown highlighted
+export const ROSTER_RULE_LABEL: Record<keyof RosterSettings['ruleModes'], { label: string; hint: string; impact?: string }> = {
   lineAccess:     { label: 'Linha do Operador',  hint: 'Linha bloqueada (ou não habilitada) para o operador' },
   vehicleType:    { label: 'Tipo de Veículo',    hint: 'Tipo de veículo bloqueado para o operador' },
-  shiftWindow:    { label: 'Janela do Turno',    hint: 'Fora do turno, dos limites do operador ou de uma restrição de horário' },
+  shiftWindow:    {
+    label:  'Janela do Turno',
+    hint:   'Tabela fora dos limites do turno do operador — em Alerta, um turno pode pegar tabelas de outro, respeitando a interjornada',
+    impact: 'Muda o quadro necessário no Painel de Escala: em Alerta, a sobra de um turno cobre a falta de outro e o quadro calculado tende a cair',
+  },
+  crewWindow:     { label: 'Restrições do Operador', hint: 'Fora dos limites do próprio operador ("não antes de" / "não depois de") ou de uma restrição de horário aprovada' },
   interShiftRest: { label: 'Interjornada',       hint: 'Descanso abaixo do mínimo entre dias seguidos' },
   license:        { label: 'CNH',                hint: 'CNH vencida na data' },
   course:         { label: 'Curso',              hint: 'Curso de transporte coletivo vencido na data' },

@@ -38,7 +38,7 @@ export const CONSOLE_SECTION_LABEL: Record<ConsoleSection, string> = {
 
 export const CONSOLE_ALERT_CODES = [
   'PLAN_NO_CREW', 'DUTY_NO_BRANCH', 'LINE_NO_PLAN', 'BRANCH_MULTI_SCOPE', 'PLAN_FUTURE', 'PLAN_UNCOVERED', 'PLAN_STALE',
-  'SHIFT_SHORT', 'COVERAGE_SHORT',
+  'CREW_SHORT', 'DUTY_UNFIT',
   'DUTY_NO_SHIFT', 'SHIFT_IDLE', 'SHIFT_NO_CREW',
   'GROUPS_OFF_DEMAND', 'REST_RUN_LONG',
   'LINE_SHORT', 'LINE_MARGIN', 'NO_PROFILE', 'NO_SHIFT', 'NO_PATTERN', 'FIXED_CAR_CONFLICT', 'AWAY',
@@ -129,8 +129,6 @@ export interface ConsoleStaffRow {
   cells:    Record<string, ConsoleStaffCell>
   // available crew members of the shift (afastados out)
   current:  number
-  // to cover its busiest day type every day: demand × cycle ÷ days worked of the shift's regime
-  required: number
 }
 
 export interface ConsoleStaffing {
@@ -139,6 +137,31 @@ export interface ConsoleStaffing {
   noShift: Record<string, number>
   // per day type: all the duties, and the most the crew can cover on its worst day (matching)
   totals: Record<string, { demand: number; coverable: number }>
+}
+
+// The crew the effective plans need (docs/architecture/transit/console.md, Sizing):
+// operational — the fewest that cover every duty on every day of the window with the regimes,
+// the shift windows and the empresa's roster rules — plus the vacation reserve (30 days a year,
+// even through the year). The hour bank's crew apart: the planned overtime's banked share
+// (bankPct of it) taken as days off, beyond what the crew already works idle.
+export interface ConsoleSizing {
+  current:     number
+  operational: number
+  vacation:    number
+  // operational + vacation
+  required:    number
+  // current − required: < 0 short, > 0 spare
+  balance:     number
+  bank:        number
+  // RosterSettings.hourBankCompPct
+  bankPct:     number
+  shifts:      { shiftId: string; current: number; operational: number; vacation: number; bank: number; required: number }[]
+  // where the operational crew differs from the current one, per shift and rest group
+  // (CrewMember.restOffset; label A, B… — null: not one of the pattern's groups)
+  groups:      { shiftId: string; offset: number; label: string | null; current: number; add: number; remove: number }[]
+  // per day type: duties nobody can take on its worst day (no shift fits, or no one may operate
+  // the line / vehicle type) — not a matter of crew size
+  unfit:       Record<string, number>
 }
 
 // C — shifts
@@ -231,6 +254,7 @@ export interface ConsoleSnapshot {
   shifts:   ConsoleShift[]
   plans:    ConsolePlanRow[]
   staffing: ConsoleStaffing
+  sizing:   ConsoleSizing
   shiftsAnalysis: ConsoleShiftsAnalysis
   groups:   ConsoleGroups[]
   crew:     { active: number; away: number; vacation: number }

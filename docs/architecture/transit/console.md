@@ -58,13 +58,37 @@ absence that isn't vacation and runs at least `transit.roster.awayMinDays` (defa
 does. A crew member works on a date by his rest pattern (his own, else his shift's) and group.
 
 **Per shift × day type.** `worst` = crew of the shift working on the worst date of the type,
-`balance = worst − demand` (the average shows as detail). `required` = the busiest day type's
-demand × cycle ÷ days worked of the shift's regime (6x1 → 7/6).
+`balance = worst − demand` (the average shows as detail) — the daily reading, not the sizing.
 
 **Coverable.** Shift labels are approximate — the generator's eligibility is by fitting the window.
 So each day type also gets the most duties the crew can cover on its worst date: the roster
-generator's own model (`RosterModel` over the window, `pairRule` for the fixed rules,
-`coverageByDay` for the matching) — the Painel never says "ok" to a crew the generator can't roster.
+generator's own model (`RosterModel` over the window, `pairRule` for the fixed rules) matched per
+day by `WindowCover` — the Painel never says "ok" to a crew the generator can't roster. A duty
+outside the crew member's shift (`shiftWindow` WARN) must also keep the interjornada to his own
+shift's latest end the day before and earliest start the day after, on the days he works — the
+per-day matching can't see the days around otherwise.
+
+**Sizing** (`sizing`, `ConsoleSizing` — the "Falta / Sobra no quadro" card, the Quadro column, the
+`CREW_SHORT` alert). Required = operational + vacation; balance = current − required. The hour
+bank's crew comes apart (with the share considered), never in the balance.
+- *Operational:* the fewest crew members covering every duty of every day of the window. From the
+  current coverage, virtual crew members — one per shift × group of the shift's pattern, the shift's
+  window, no personal restriction — are added while one covers more (the most days first; ties: the
+  shift of lowest priority, then the smaller group); then current ones nothing needs are taken out,
+  one at a time from the group with the most left (so the groups stay even). Each try is one
+  augmenting path on the kept matching. Greedy: under `shiftWindow` WARN it may keep crew of one
+  shift holding another's duties where fewer would do, so the strict run (BLOCK) wins when it needs
+  fewer without leaving more duties uncovered. Where it differs from the current crew shows per
+  shift and group ("Manhã A +3"); duties nobody can take are `unfit` (`DUTY_UNFIT`), not crew.
+- *Vacation:* `ceil(operational × 30/365)` — 30 days a year, even through the year; split among the
+  shifts by the largest remainder. Booked vacations and sold days don't count.
+- *Hour bank:* per shift, the plan's overtime a month (per day type × 21 / 4 / 5 by its main
+  weekday) × the banked share (`BANKED_SHARE`, the hour bank's) × `transit.roster.hourBankCompPct`,
+  as days off of the shift's average journey (contract). The operational crew working idle (from the
+  matching) absorbs them first: an idle crew member on a day takes the days off of a shift whose
+  duties he may take that day, the neediest first — by his own shift it'd be arbitrary, overlapping
+  windows leave the matching free to pick who stays idle. What's left ÷ days worked a month by the
+  shift's regime, rounded on the total. Planned only — the bank's real balance doesn't count.
 
 **Shifts.** Sign-on histogram per day type over the shifts' windows, duties fitting no shift,
 duties fitting two shifts (decided by priority only), shifts idle on a day type, shifts with duties

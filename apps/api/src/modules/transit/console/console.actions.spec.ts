@@ -19,12 +19,12 @@ const TAR = shift('TAR', 720, 900, 1260, 1500)
 const crewOf = (n: number, s: typeof MAN, over: (i: number) => Partial<ConsoleCrew> = () => ({})): ConsoleCrew[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `${s.id}${i}`, code: `${s.id}${String(i).padStart(2, '0')}`, name: `${s.id} ${i}`, hireDate: '2020-01-01', shiftId: s.id, shiftSince: '2025-01-01',
-    window: s, notBefore: null, notAfter: null, pattern: sixOne, ownPattern: false, offset: ((6 - (i % 7)) % 7 + 7) % 7,
+    window: s, notBefore: null, notAfter: null, journey: 420, pattern: sixOne, ownPattern: false, offset: ((6 - (i % 7)) % 7 + 7) % 7,
     lineAccess: {}, prefLines: [], priorityLines: [], blockedVehicleTypes: [], standbyBlocked: false, rosterable: true, away: null, vacation: null,
     ...over(i),
   }))
 const dutiesOf = (s: typeof MAN, n: number): ConsoleDuty[] => ['UTIL', 'SAB', 'DOM'].flatMap(t => Array.from({ length: n }, (_, i) => ({
-  id: `${s.id}-${t}-${i}`, dayTypeId: t, shiftId: s.id, kind: 'STRAIGHT', start: s.id === 'MAN' ? 300 : 800, end: s.id === 'MAN' ? 780 : 1300, paid: 420,
+  id: `${s.id}-${t}-${i}`, dayTypeId: t, shiftId: s.id, kind: 'STRAIGHT', start: s.id === 'MAN' ? 300 : 800, end: s.id === 'MAN' ? 780 : 1300, paid: 420, overtime: 0,
   lineMinutes: [{ lineId: 'L1', minutes: 300 }], vehicleTypes: ['STANDARD'], standby: false, label: `D${i + 1}`, preferred: [],
 })))
 
@@ -33,7 +33,7 @@ const input = (crew: ConsoleCrew[], duties: ConsoleDuty[]): ConsoleInput => ({
   days: Array.from({ length: 14 }, (_, i) => ({ day: addDays(START, i), weekday: i % 7, dayTypeId: typeOf(i % 7) })),
   dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
   shifts: [MAN, TAR], plans: [], duties, crew, patterns: [sixOne], lines: [{ id: 'L1', code: '101' }],
-  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, noProfile: [], fixedCar: [], dailyErrors: [],
+  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100, noProfile: [], fixedCar: [], dailyErrors: [],
 })
 const rules: RebalanceRules = { criteria: [{ key: 'shiftTenure', active: true }, { key: 'hireDate', active: true }] }
 

@@ -101,7 +101,8 @@ export const DAILY_ISSUE_CODES = [
   'CREW_MULTIPLE_DUTIES',  // more than one duty on the day
   'CREW_INACTIVE',         // employee not active / out of the generator
   'NO_SHIFT',              // no shift in force for the crew member
-  'SHIFT_WINDOW',          // outside the crew member's window (shift + bounds + time-window request)
+  'SHIFT_WINDOW',          // outside the crew member's shift window
+  'CREW_WINDOW',           // outside the crew member's own bounds or an approved time-window request
   'LINE_NOT_ALLOWED',      // a line he may not operate (branch's line access mode)
   'VEHICLE_TYPE_BLOCKED',  // a vehicle type blocked for him
   'STANDBY_BLOCKED',       // on a plantão he may not do (CrewMember.standbyBlocked)
@@ -140,7 +141,8 @@ export const DAILY_ISSUE_LABEL: Record<DailyIssueCode, string> = {
   CREW_MULTIPLE_DUTIES:    'Operador em mais de uma tabela',
   CREW_INACTIVE:           'Operador inativo',
   NO_SHIFT:                'Operador sem turno',
-  SHIFT_WINDOW:            'Fora do horário do operador',
+  SHIFT_WINDOW:            'Fora do turno do operador',
+  CREW_WINDOW:             'Fora da restrição de horário do operador',
   LINE_NOT_ALLOWED:        'Linha não permitida ao operador',
   VEHICLE_TYPE_BLOCKED:    'Tipo de veículo bloqueado ao operador',
   STANDBY_BLOCKED:         'Operador não faz plantão',

@@ -141,6 +141,15 @@ export function shiftFits(s: ShiftWindow, startMinutes: number, endMinutes: numb
   return outside(startMinutes, s.startFloor, s.startCeiling) === 0 && outside(endMinutes, s.endFloor, s.endCeiling) === 0
 }
 
+// A crew member's own bounds on a day: his notBefore / notAfter with an approved time-window
+// request on top. They only narrow the shift's window, never widen it — under its own rule
+// (ruleModes.crewWindow), apart from the shift's (ruleModes.shiftWindow).
+export interface CrewLimit { notBefore: number | null; notAfter: number | null }
+
+export function limitFits(l: CrewLimit | null | undefined, startMinutes: number, endMinutes: number): boolean {
+  return !l || ((l.notBefore == null || startMinutes >= l.notBefore) && (l.notAfter == null || endMinutes <= l.notAfter))
+}
+
 // minutes away from the shift's ideal windows (start + end) — 0 when both are ideal
 export function shiftIdealDistance(s: ShiftWindow, startMinutes: number, endMinutes: number): number {
   return outside(startMinutes, s.startIdealMin, s.startIdealMax) + outside(endMinutes, s.endIdealMin, s.endIdealMax)
