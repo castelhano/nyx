@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rosterSettingsSchema, type RebalanceRules } from '@nyx/schemas'
-import { impact, suggestGroups, suggestLine, suggestProfiles, suggestShifts } from './console.actions'
+import { changeRequestRows, impact, suggestGroups, suggestLine, suggestProfiles, suggestRequest, suggestShifts } from './console.actions'
 import type { ConsoleCrew, ConsoleDuty, ConsoleInput } from './console.calc'
 
 const settings = rosterSettingsSchema.parse({})
@@ -33,7 +33,7 @@ const input = (crew: ConsoleCrew[], duties: ConsoleDuty[]): ConsoleInput => ({
   days: Array.from({ length: 14 }, (_, i) => ({ day: addDays(START, i), weekday: i % 7, dayTypeId: typeOf(i % 7) })),
   dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
   shifts: [MAN, TAR], plans: [], duties, crew, patterns: [sixOne], lines: [{ id: 'L1', code: '101' }],
-  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100, noProfile: [], fixedCar: [], dailyErrors: [],
+  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100, noProfile: [], fixedCar: [], dailyErrors: [], requests: [],
 })
 const rules: RebalanceRules = { criteria: [{ key: 'shiftTenure', active: true }, { key: 'hireDate', active: true }] }
 
@@ -187,5 +187,143 @@ describe('perfis', () => {
     const tar = imp.rows.find(r => r.shiftId === 'TAR')!
     expect(tar.cells.SAB.after).toBe(tar.cells.SAB.before)
     expect(tar.cells.UTIL.after).toBe(tar.cells.UTIL.before + 1)
+  })
+})
+
+describe('pedidos de troca', () => {
+  const ask = (crewMemberId: string, over: Partial<ConsoleInput['requests'][number]>): ConsoleInput['requests'][number] => ({
+    id: `r-${crewMemberId}-${over.kind ?? 'SHIFT'}`, kind: 'SHIFT', status: 'QUEUED', crewMemberId, change: '', notes: null,
+    createdAt: '2026-09-01T12:00:00.000Z', shiftId: null, restPatternId: null, restOffset: null, ...over,
+  })
+  // MAN short (7 for 8), TAR spare (14 for 6)
+  const short = () => input([...crewOf(7, MAN), ...crewOf(14, TAR)], [...dutiesOf(MAN, 8), ...dutiesOf(TAR, 6)])
+
+  it('a shift asked with a place and his own with a surplus is ready; the queue goes oldest first', () => {
+    const inp = short()
+    inp.requests = [
+      ask('TAR3', { shiftId: 'MAN', createdAt: '2026-08-01T12:00:00.000Z' }),
+      ask('TAR5', { shiftId: 'MAN' }),
+    ]
+    const rows = changeRequestRows(inp)
+    expect(rows.map(r => [r.code, r.position, r.ready])).toEqual([['TAR03', 1, true], ['TAR05', 2, true]])
+    expect(rows[0].reason).toBe('MAN com vaga')
+  })
+
+  it('waits while the shift asked has no place, or his own has no surplus', () => {
+    const inp = short()
+    inp.requests = [ask('MAN2', { shiftId: 'TAR' })]
+    expect(changeRequestRows(inp)[0]).toMatchObject({ ready: false, reason: 'TAR sem vaga' })
+    // both short: MAN has a place, TAR none to give
+    const tight = input([...crewOf(7, MAN), ...crewOf(7, TAR)], [...dutiesOf(MAN, 8), ...dutiesOf(TAR, 8)])
+    tight.requests = [ask('TAR1', { shiftId: 'MAN' })]
+    expect(changeRequestRows(tight)[0]).toMatchObject({ ready: false, reason: 'MAN com vaga · TAR sem sobra' })
+  })
+
+  it('granting a shift request moves him alone, into the group he asked for when he has one open', () => {
+    const inp = short()
+    inp.requests = [ask('TAR3', { shiftId: 'MAN' }), ask('TAR3', { kind: 'REST_GROUP', restPatternId: 'p6', restOffset: 2 })]
+    const s = suggestRequest(inp, rules, 'r-TAR3-SHIFT')
+    expect(s.kind).toBe('shifts')
+    expect(s.moves).toHaveLength(1)
+    expect(s.moves[0]).toMatchObject({ crewMemberId: 'TAR3', from: 'TAR', to: 'MAN', offset: 2 })
+    expect(s.moves[0].reasons).toContain('Grupo de folga pedido por ele')
+  })
+
+  it('granting a rest group request keeps his shift', () => {
+    const inp = short()
+    inp.requests = [ask('MAN1', { kind: 'REST_GROUP', restPatternId: 'p6', restOffset: 3 })]
+    const s = suggestRequest(inp, rules, 'r-MAN1-REST_GROUP')
+    expect(s.kind).toBe('groups')
+    expect(s.moves[0]).toMatchObject({ from: 'MAN', to: 'MAN', offset: 3 })
+  })
+
+  // TAR: 14 crew, 6 of them off on Sunday (A), for fewer duties on Sunday
+  const mix = (sh: typeof MAN, n: Record<string, number>) => Object.entries(n).flatMap(([t, k]) => dutiesOf(sh, k).filter(d => d.dayTypeId === t))
+  const uneven = (tar: Record<string, number>) => input(
+    [...crewOf(7, MAN), ...crewOf(14, TAR, i => ({ offset: [0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 1, 2][i], shiftSince: `2025-${String(i % 12 + 1).padStart(2, '0')}-01` }))],
+    [...dutiesOf(MAN, 7), ...mix(TAR, tar)],
+  )
+
+  it('balancing takes the queued first, even when the selection rule would pick someone else', () => {
+    const inp = uneven({ UTIL: 11, SAB: 11, DOM: 5 })
+    expect(suggestShifts(inp, rules).moves[0].crewMemberId).not.toBe('TAR0')
+    inp.requests = [ask('TAR0', { shiftId: 'MAN' })]
+    const s = suggestShifts(inp, rules)
+    expect(s.moves[0]).toMatchObject({ crewMemberId: 'TAR0', from: 'TAR', to: 'MAN' })
+    expect(s.moves[0].reasons[0]).toMatch(/Pedido na fila desde 01\/09/)
+  })
+
+  it('a request only REQUESTED (not reviewed) has no priority', () => {
+    const inp = uneven({ UTIL: 11, SAB: 11, DOM: 5 })
+    inp.requests = [ask('TAR0', { shiftId: 'MAN', status: 'REQUESTED' })]
+    expect(suggestShifts(inp, rules).moves[0].crewMemberId).not.toBe('TAR0')
+  })
+
+  it('the group he leaves short is refilled in the same suggestion, without touching him', () => {
+    const inp = uneven({ UTIL: 11, SAB: 11, DOM: 5 })
+    inp.requests = [ask('TAR0', { shiftId: 'MAN' })]
+    const s = suggestShifts(inp, rules)
+    const fix = s.moves.filter(m => m.from === m.to)
+    expect(fix).toHaveLength(1)
+    expect(fix[0]).toMatchObject({ from: 'TAR', offset: 0 })
+    expect(fix[0].crewMemberId).not.toBe('TAR0')
+    expect(fix[0].reasons[0]).toBe('Acerto de grupo da troca de turno')
+    expect(s.summary).toMatch(/1 acerto\(s\) de grupo/)
+  })
+
+  it('the refill takes whoever queued for that group first', () => {
+    const inp = uneven({ UTIL: 11, SAB: 11, DOM: 5 })
+    const plain = suggestShifts({ ...inp, requests: [ask('TAR0', { shiftId: 'MAN' })] }, rules).moves.find(m => m.from === m.to)!
+    // TAR7 and TAR13 share the overfull group C
+    const other = plain.crewMemberId === 'TAR7' ? 'TAR13' : 'TAR7'
+    inp.requests = [ask('TAR0', { shiftId: 'MAN' }), ask(other, { kind: 'REST_GROUP', restPatternId: 'p6', restOffset: 0 })]
+    const fix = suggestShifts(inp, rules).moves.filter(m => m.from === m.to)
+    expect(fix[0]).toMatchObject({ crewMemberId: other, offset: 0 })
+  })
+
+  it('the rest groups suggestion takes the queued for an open group first', () => {
+    const inp = uneven({ UTIL: 11, SAB: 11, DOM: 5 })
+    const plain = suggestGroups(inp, rules, 'TAR').moves
+    expect(plain).toHaveLength(1)
+    const other = plain[0].crewMemberId === 'TAR7' ? 'TAR13' : 'TAR7'
+    inp.requests = [ask(other, { kind: 'REST_GROUP', restPatternId: 'p6', restOffset: 0 })]
+    const s = suggestGroups(inp, rules, 'TAR')
+    expect(s.moves[0]).toMatchObject({ crewMemberId: other, offset: 0 })
+    expect(s.moves[0].reasons[0]).toMatch(/Pedido na fila/)
+  })
+
+  it('two mirrored shift requests pair up with no place needed, and swap shifts and groups', () => {
+    // both shifts short: no place either way
+    const tight = input([...crewOf(7, MAN), ...crewOf(7, TAR)], [...dutiesOf(MAN, 8), ...dutiesOf(TAR, 8)])
+    tight.requests = [ask('MAN2', { shiftId: 'TAR', createdAt: '2026-08-01T00:00:00.000Z' }), ask('TAR5', { shiftId: 'MAN' })]
+    const rows = changeRequestRows(tight)
+    expect(rows.map(r => [r.code, r.ready, r.swapWith?.code])).toEqual([['MAN02', true, 'TAR05'], ['TAR05', true, 'MAN02']])
+    expect(rows[0].reason).toBe('Troca casada com TAR05 TAR 5')
+    const s = suggestRequest(tight, rules, rows[0].id, rows[0].swapWith!.requestId)
+    const man2 = tight.crew.find(m => m.id === 'MAN2')!, tar5 = tight.crew.find(m => m.id === 'TAR5')!
+    expect(s.moves).toEqual([
+      expect.objectContaining({ crewMemberId: 'MAN2', from: 'MAN', to: 'TAR', offset: tar5.offset }),
+      expect.objectContaining({ crewMemberId: 'TAR5', from: 'TAR', to: 'MAN', offset: man2.offset }),
+    ])
+  })
+
+  it('no pair when one of them does not fit the other shift, or only one is queued', () => {
+    const tight = input([...crewOf(7, MAN), ...crewOf(7, TAR, i => (i === 5 ? { notBefore: 600 } : {}))], [...dutiesOf(MAN, 8), ...dutiesOf(TAR, 8)])
+    tight.requests = [ask('MAN2', { shiftId: 'TAR' }), ask('TAR5', { shiftId: 'MAN' })]
+    expect(changeRequestRows(tight).every(r => !r.swapWith)).toBe(true)
+    tight.crew = tight.crew.map(m => ({ ...m, notBefore: null }))
+    tight.requests = [ask('MAN2', { shiftId: 'TAR' }), ask('TAR5', { shiftId: 'MAN', status: 'REQUESTED' })]
+    expect(changeRequestRows(tight).every(r => !r.swapWith)).toBe(true)
+  })
+
+  it('two in the same shift asking for each other\'s group swap groups', () => {
+    const inp = short()
+    const a = inp.crew.find(m => m.id === 'MAN1')!, b = inp.crew.find(m => m.id === 'MAN4')!
+    inp.requests = [ask('MAN1', { kind: 'REST_GROUP', restPatternId: 'p6', restOffset: b.offset }), ask('MAN4', { kind: 'REST_GROUP', restPatternId: 'p6', restOffset: a.offset })]
+    const rows = changeRequestRows(inp)
+    expect(rows[0].swapWith?.code).toBe('MAN04')
+    const s = suggestRequest(inp, rules, rows[0].id, rows[0].swapWith!.requestId)
+    expect(s.kind).toBe('groups')
+    expect(s.moves.map(m => [m.crewMemberId, m.offset])).toEqual([['MAN1', b.offset], ['MAN4', a.offset]])
   })
 })

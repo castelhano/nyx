@@ -50,6 +50,44 @@ export const portalRequestSchema = z.discriminatedUnion('kind', [
 ])
 export type PortalRequestDto = z.infer<typeof portalRequestSchema>
 
+// a lasting change, with no date — CrewChangeRequest in transit.prisma
+export const portalChangeRequestSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('SHIFT'), shiftId: z.uuid('Informe o turno'), notes: z.string().max(500).optional() }),
+  z.object({ kind: z.literal('REST_GROUP'), restOffset: z.number().int().min(0), notes: z.string().max(500).optional() }),
+])
+export type PortalChangeRequestDto = z.infer<typeof portalChangeRequestSchema>
+
+export type CrewChangeRequestKind = 'SHIFT' | 'REST_GROUP'
+export type CrewChangeRequestStatus = 'REQUESTED' | 'QUEUED' | 'FULFILLED' | 'REJECTED' | 'CANCELLED'
+
+export interface PortalChangeRequest {
+  id:          string
+  kind:        CrewChangeRequestKind
+  status:      CrewChangeRequestStatus
+  // "Manhã → Tarde", "Grupo A → Grupo B"
+  change:      string
+  notes:       string | null
+  reviewNotes: string | null
+  createdAt:   string
+  // QUEUED: his place among the queued asking the same (1 = next)
+  position:    number | null
+}
+
+// a rest group and its days off in the preview weeks
+export interface PortalRestGroupOption {
+  offset:  number
+  label:   string
+  current: boolean
+  // the preview days he is off (YYYY-MM-DD)
+  off:     string[]
+}
+
+export interface PortalChangeOptions {
+  shifts: { id: string; name: string; current: boolean }[]
+  // his rest pattern's groups — null: no pattern, or a single group
+  restGroups: { patternName: string; from: string; to: string; options: PortalRestGroupOption[] } | null
+}
+
 // his phone — typed with or without the mask, kept masked like the HR screen keeps it
 export const portalPhoneSchema = z.object({
   phone: z.string().transform(v => v.replace(/\D/g, ''))
@@ -103,7 +141,8 @@ export interface PortalRosterDay {
   window: string | null
 }
 
-export interface PortalNotification { id: string; date: string; message: string; createdAt: string; readAt: string | null }
+// roster: a change of a published day (from the change log) — else a notice like a change request's step
+export interface PortalNotification { id: string; date: string; message: string; roster: boolean; createdAt: string; readAt: string | null }
 
 export interface PortalOccurrence {
   id: string

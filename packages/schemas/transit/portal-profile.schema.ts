@@ -23,6 +23,8 @@ export const portalPermissionsSchema = z.object({
   viewRoster:         z.boolean().default(true).meta({ label: 'Ver a escala' }),
   requestAbsence:     z.boolean().default(false).meta({ label: 'Pedir ausência (tipos solicitáveis)' }),
   requestTimeWindow:  z.boolean().default(false).meta({ label: 'Pedir restrição de horário' }),
+  requestShiftChange:     z.boolean().default(false).meta({ label: 'Pedir troca de turno' }),
+  requestRestGroupChange: z.boolean().default(false).meta({ label: 'Pedir troca de grupo de folga' }),
   editPreferredLines: z.boolean().default(false).meta({ label: 'Editar linhas preferidas' }),
   editContact:        z.boolean().default(false).meta({ label: 'Pode atualizar dados de contato' }),
   // per absence type (its code)

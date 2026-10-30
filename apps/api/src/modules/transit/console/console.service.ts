@@ -1,8 +1,8 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import {
   CONSOLE_ACTION_DATED, CONSOLE_NO_PLAN, consoleSchema, rebalanceRulesSchema, withAllCriteria,
-  type ConsoleActionDto, type ConsoleActionKind, type ConsoleImpact, type ConsoleSnapshot, type ConsoleSuggestDto, type ConsoleSuggestion,
+  type ConsoleActionDto, type ConsoleRequestReviewDto, type ConsoleActionKind, type ConsoleImpact, type ConsoleSnapshot, type ConsoleSuggestDto, type ConsoleSuggestion,
   type CrewRole, type RebalanceRules, type RosterAdjustmentItem, type RosterAdjustmentRow, type RosterAdjustmentState,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
@@ -14,7 +14,8 @@ import { CrewMemberShiftService } from '../crew/crew-member/crew-member-shift.se
 import { dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
 import { computeConsole, type ConsoleCrew, type ConsoleInput } from './console.calc'
 import { loadConsoleInput, type ConsoleParams } from './console.input'
-import { impact, planned, suggestGroups, suggestLine, suggestProfiles, suggestShifts, type MoveItem } from './console.actions'
+import { changeRequestRows, impact, planned, suggestGroups, suggestLine, suggestProfiles, suggestRequest, suggestShifts, type MoveItem } from './console.actions'
+import { changeRequestSelect, notifyChange, reviewMessage, settleChangeRequests } from '../crew/crew-member/crew-change-request'
 
 // Painel de Escala — no model and no CRUD, like the DOP: registers itself for discovery / CASL and
 // computes the snapshot on each request (docs/architecture/transit/console.md).
@@ -37,7 +38,8 @@ export class ConsoleService {
   }
 
   async snapshot(params: ConsoleParams): Promise<ConsoleSnapshot> {
-    return computeConsole(await this.input(params))
+    const input = await this.input(params)
+    return computeConsole(input, changeRequestRows(planned(input).input))
   }
 
   // ── actions ─────────────────────────────────────────────────────────────────
@@ -54,6 +56,7 @@ export class ConsoleService {
   }
 
   private suggestOf(kind: ConsoleActionKind, input: ConsoleInput, rules: RebalanceRules, dto: ConsoleSuggestDto): ConsoleSuggestion {
+    if (dto.requestId && (kind === 'shifts' || kind === 'groups')) return suggestRequest(input, rules, dto.requestId, dto.pairId)
     if (kind === 'shifts') return suggestShifts(input, rules)
     if (kind === 'profiles') return suggestProfiles(input, rules)
     if (!dto.shiftId) throw new BadRequestException('Informe o turno')
@@ -108,7 +111,8 @@ export class ConsoleService {
           })
           continue
         }
-        if (kind === 'shifts') await this.shifts.startShift(m.id, i.to, effective, tx)
+        // a shifts adjustment may carry group-only rows (the groups its moves unbalanced) — no new link
+        if (kind === 'shifts' && i.to !== m.shiftId) await this.shifts.startShift(m.id, i.to, effective, tx)
         const data = {
           ...(i.offset != null && i.offset !== m.offset ? { restOffset: i.offset } : {}),
           ...(i.patternId ? { restPatternId: i.patternId } : {}),
@@ -127,7 +131,25 @@ export class ConsoleService {
         },
       })
     })
+    // the change requests the adjustment met — whether it came from one or from a balancing
+    if (kind === 'shifts' || kind === 'groups') await settleChangeRequests(this.prisma, items.map(i => i.crewMemberId), adjustment.id)
     return (await this.rows([adjustment]))[0]
+  }
+
+  // a change request into the queue (from REQUESTED) or rejected (REQUESTED / QUEUED); he is told
+  async review(id: string, dto: ConsoleRequestReviewDto, userId?: string): Promise<void> {
+    const r = await this.prisma.crewChangeRequest.findFirst({
+      where:  { id, crewMember: { employee: { branchId: dto.branchId } } },
+      select: changeRequestSelect,
+    })
+    if (!r) throw new NotFoundException('Pedido não encontrado')
+    const allowed = dto.decision === 'QUEUED' ? r.status === 'REQUESTED' : r.status === 'REQUESTED' || r.status === 'QUEUED'
+    if (!allowed) throw new ConflictException('O pedido já foi analisado ou encerrado — atualize o Painel')
+    const notes = dto.notes || null
+    await this.prisma.$transaction(async tx => {
+      await tx.crewChangeRequest.update({ where: { id }, data: { status: dto.decision, reviewNotes: notes, reviewedByUserId: userId ?? null, reviewedAt: new Date() } })
+      await notifyChange(tx, [{ crewMemberId: r.crewMemberId, message: reviewMessage(r, dto.decision, notes) }])
+    })
   }
 
   // a line for a crew member: lines — he may operate it (whitelist: ENABLED; blacklist: no longer

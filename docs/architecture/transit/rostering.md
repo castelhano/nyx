@@ -319,6 +319,14 @@ staff JWT):
   launched on his behalf passes with a warning on the launch form (`transit/crew-member/:id/portal-quotas`).
 - **Requests**: one day each, `REQUESTED`, what was asked kept (`createFromPortal`); approval stays
   on the Escala screen.
+- **Change requests** (`CrewChangeRequest`, `portal-change-request.service.ts`): a lasting change
+  with no date — another shift (of his empresa) or another group of his rest pattern, which he picks
+  by its days off over the next 4 weeks (holidays counted when the pattern is `offOnHolidays`). One
+  open (`REQUESTED` / `QUEUED`) per kind; he sees the status, his place in the queue, and cancels.
+  Reviewed in the Painel de Escala (console.md › Change requests). Permissions `requestShiftChange` /
+  `requestRestGroupChange`.
+- **Notifications** also come from the change requests' steps (queued, rejected, granted) — written
+  directly, without a change log.
 - **Roster**: only PUBLISHED / CLOSED days — duty, times, lines, cars, days off, absences, windows.
 - **Notifications** (`CrewNotification`): made from the `DailyChangeLog` entries naming him (since
   his access exists) the first time the portal reads them; confirmed with "Li e confirmo".

@@ -23,7 +23,7 @@ export type Console = z.infer<typeof consoleSchema>
 
 // ── snapshot (computed, never persisted) ─────────────────────────────────────
 
-export const CONSOLE_SECTIONS = ['plans', 'staffing', 'shifts', 'groups', 'crew', 'daily', 'adjust'] as const
+export const CONSOLE_SECTIONS = ['plans', 'staffing', 'shifts', 'groups', 'crew', 'requests', 'daily', 'adjust'] as const
 export type ConsoleSection = typeof CONSOLE_SECTIONS[number]
 
 export const CONSOLE_SECTION_LABEL: Record<ConsoleSection, string> = {
@@ -32,6 +32,7 @@ export const CONSOLE_SECTION_LABEL: Record<ConsoleSection, string> = {
   shifts:   'Distribuição de turnos',
   groups:   'Grupos de folga',
   crew:     'Cadastro do quadro',
+  requests: 'Pedidos de troca',
   daily:    'Dias gerados com erro',
   adjust:   'Ajustes',
 }
@@ -42,6 +43,7 @@ export const CONSOLE_ALERT_CODES = [
   'DUTY_NO_SHIFT', 'SHIFT_IDLE', 'SHIFT_NO_CREW',
   'GROUPS_OFF_DEMAND', 'REST_RUN_LONG',
   'LINE_SHORT', 'LINE_MARGIN', 'NO_PROFILE', 'NO_SHIFT', 'NO_PATTERN', 'FIXED_CAR_CONFLICT', 'AWAY',
+  'CHANGE_REQUESTED', 'CHANGE_READY',
   'DAILY_ERROR',
 ] as const
 export type ConsoleAlertCode = typeof CONSOLE_ALERT_CODES[number]
@@ -241,6 +243,30 @@ export interface ConsoleDailyError {
   issues:      { code: string; label: string; count: number }[]
 }
 
+// An open CrewChangeRequest of the empresa's crew of the role — oldest first
+export interface ConsoleChangeRequest {
+  id:           string
+  kind:         'SHIFT' | 'REST_GROUP'
+  status:       'REQUESTED' | 'QUEUED'
+  crewMemberId: string
+  code:         string
+  name:         string
+  // "Manhã → Tarde", "Grupo A → Grupo B"
+  change:       string
+  notes:        string | null
+  createdAt:    string
+  // QUEUED: his place among the queued asking the same (1 = next)
+  position:     number | null
+  // the shift it is about — SHIFT: the one asked; REST_GROUP: his current one
+  shiftId:      string | null
+  // whether the Painel could grant it now, and why (not): "Tarde com vaga", "Manhã sem sobra"…
+  ready:        boolean
+  reason:       string
+  // QUEUED: the queued request that mirrors it (he asks for the other's shift / group and the other
+  // for his) — granted together, with no place needed
+  swapWith:     { requestId: string; code: string; name: string } | null
+}
+
 export interface ConsoleSectionStatus { severity: ConsoleSeverity | 'ok'; count: number }
 
 export interface ConsoleSnapshot {
@@ -260,6 +286,7 @@ export interface ConsoleSnapshot {
   crew:     { active: number; away: number; vacation: number }
   crewData: ConsoleCrewData
   dailyErrors: ConsoleDailyError[]
+  requests: ConsoleChangeRequest[]
   alerts:   ConsoleAlert[]
   status:   Record<ConsoleSection, ConsoleSectionStatus>
 }

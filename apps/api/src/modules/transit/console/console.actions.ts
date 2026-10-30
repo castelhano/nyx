@@ -1,6 +1,6 @@
 import {
   nextRestDay, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks,
-  type ConsoleActionKind, type ConsoleImpact, type ConsoleMove, type ConsoleSuggestion, type RebalanceRules,
+  type ConsoleActionKind, type ConsoleChangeRequest, type ConsoleImpact, type ConsoleMove, type ConsoleSuggestion, type RebalanceRules,
 } from '@nyx/schemas'
 import { addDays, type Day } from '../timetabling/plan-validity'
 import {
@@ -197,18 +197,38 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
   const moves: ConsoleMove[] = []
   const bench: ConsoleSuggestion['bench'] = {}
   const excluded = new Map<string, ConsoleSuggestion['excluded'][number]>()
-  const toMove = (m: ConsoleCrew, from: Shift, to: Shift, offset: number | null): ConsoleMove => {
+  const toMove = (m: ConsoleCrew, from: Shift, to: Shift, offset: number | null, why: string[] = []): ConsoleMove => {
     const p = m.ownPattern ? m.pattern : to.pattern
     return {
       crewMemberId: m.id, code: m.code, name: m.name, from: from.id, to: to.id, offset,
       groupLabel: p && offset != null ? groupLabel(p, offset, input.today) : null, patternName: p?.name ?? null,
-      groupOptions: groupOptions(p, input.today), change: `${from.name} → ${to.name}`, reasons: reasons(m, rules),
+      groupOptions: groupOptions(p, input.today), change: `${from.name} → ${to.name}`, reasons: [...why, ...reasons(m, rules)],
     }
+  }
+  // his group in the destination: the one he queued for in its pattern, else where it needs one most
+  const groupIn = (m: ConsoleCrew, to: Shift, team: ConsoleCrew[]) => {
+    const p = m.ownPattern ? m.pattern : to.pattern
+    return queuedGroup(input, m.id, p) ?? bestOffset(input, team, to, p)
   }
 
   const balance = shiftBalances(input, crew)
   const short = input.shifts.filter(s => worstOf(balance, s.id) < 0).sort((a, b) => worstOf(balance, a.id) - worstOf(balance, b.id))
   for (const target of short) {
+    // the queue first: who asked for this shift, oldest first, from any shift with crew to spare
+    for (const r of input.requests.filter(x => x.status === 'QUEUED' && x.kind === 'SHIFT' && x.shiftId === target.id)) {
+      const cur = shiftBalances(input, crew)
+      if (worstOf(cur, target.id) >= 0) break
+      const m = crew.find(x => x.id === r.crewMemberId)
+      const from = m?.shiftId ? shiftById.get(m.shiftId) : undefined
+      if (!m || !from || !inSupply(m) || taken.has(m.id) || from.id === target.id || worstOf(cur, from.id) <= 0 || blockedFrom(input, m, target)) continue
+      const offset = groupIn(m, target, crew.filter(x => inSupply(x) && x.shiftId === target.id))
+      const trial = crew.map(x => (x.id === m.id ? moved(x, target, offset) : x))
+      const after = shiftBalances(input, trial)
+      if (worstOf(after, from.id) < 0 || after.get(target.id)!.shortage >= cur.get(target.id)!.shortage) continue
+      crew = trial
+      taken.add(m.id)
+      moves.push(toMove(m, from, target, offset, [`Pedido na fila desde ${fmtDay(r.createdAt.slice(0, 10))}`]))
+    }
     const donors = input.shifts.filter(s => s.id !== target.id && worstOf(balance, s.id) > 0).sort((a, b) => worstOf(balance, b.id) - worstOf(balance, a.id))
     for (const donor of donors) {
       if (worstOf(shiftBalances(input, crew), target.id) >= 0) break
@@ -222,8 +242,7 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
       for (const m of rank(able, rules)) {
         const cur = shiftBalances(input, crew)
         if (worstOf(cur, target.id) >= 0 || worstOf(cur, donor.id) <= 0) { left.push(m); continue }
-        const team = crew.filter(x => inSupply(x) && x.shiftId === target.id)
-        const offset = bestOffset(input, team, target, m.ownPattern ? m.pattern : target.pattern)
+        const offset = groupIn(m, target, crew.filter(x => inSupply(x) && x.shiftId === target.id))
         const trial = crew.map(x => (x.id === m.id ? moved(x, target, offset) : x))
         const after = shiftBalances(input, trial)
         // the donor never goes short, and the destination's shortage has to drop
@@ -253,11 +272,72 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
     const [a, b] = k.split('>')
     return `${n} de ${shiftById.get(a)!.name} para ${shiftById.get(b)!.name}`
   }).join(' · ')
+
+  // the rest groups the moves unbalanced, in the same adjustment — kept only if coverage holds
+  const asItems = (list: ConsoleMove[]) => list.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset }))
+  let groupFix = moves.length ? compensateGroups(input, rules, applyMoves(input, 'shifts', asItems(moves)).crew, moves) : []
+  if (groupFix.length) {
+    const after = staffing(applyMoves(input, 'shifts', asItems([...moves, ...groupFix]))).totals
+    if (!Object.entries(before).every(([t, x]) => (after[t]?.coverable ?? 0) >= x.coverable)) groupFix = []
+  }
   return {
     kind: 'shifts', title: 'Balancear turnos',
-    summary: summary || (short.length ? 'Nenhum operador elegível nos turnos com sobra' : 'Turnos equilibrados'),
-    moves, bench, excluded: [...excluded.values()],
+    summary: [summary || (short.length ? 'Nenhum operador elegível nos turnos com sobra' : 'Turnos equilibrados'), groupFix.length && `${groupFix.length} acerto(s) de grupo de folga`].filter(Boolean).join(' · '),
+    moves: [...moves, ...groupFix], bench, excluded: [...excluded.values()],
   }
+}
+
+// the group a crew member queued for in pattern `p` — null: none
+function queuedGroup(input: ConsoleInput, crewMemberId: string, p: ConsolePattern | null): number | null {
+  if (!p) return null
+  return input.requests.find(r => r.status === 'QUEUED' && r.kind === 'REST_GROUP' && r.crewMemberId === crewMemberId && r.restPatternId === p.id && r.restOffset != null)?.restOffset ?? null
+}
+
+// After shift moves (`crew`: as they leave it), the rest groups of each shift × pattern they touched,
+// back to the demand's counts (idealGroupCounts): one move per crew member who left or came, at most —
+// what was off before stays for the groups action. The movers stay put (the one arriving already took
+// the group the destination needs most). Who goes: the oldest queued for an open group, else the
+// selection rule, out of an overfull group into the emptiest.
+function compensateGroups(input: ConsoleInput, rules: RebalanceRules, after: ConsoleCrew[], moves: ConsoleMove[]): ConsoleMove[] {
+  const out: ConsoleMove[] = []
+  const pinned = new Set(moves.map(m => m.crewMemberId))
+  let crew = after
+  const budget = new Map<string, number>()
+  for (const mv of moves) {
+    const was = input.crew.find(x => x.id === mv.crewMemberId)?.pattern
+    const now = crew.find(x => x.id === mv.crewMemberId)?.pattern
+    if (was) budget.set(`${mv.from}|${was.id}`, (budget.get(`${mv.from}|${was.id}`) ?? 0) + 1)
+    if (now) budget.set(`${mv.to}|${now.id}`, (budget.get(`${mv.to}|${now.id}`) ?? 0) + 1)
+  }
+  for (const [key, n] of budget) {
+    const [shiftId, pid] = key.split('|')
+    for (let k = 0; k < n; k++) {
+      const team = crew.filter(x => inSupply(x) && x.shiftId === shiftId)
+      const mine = team.filter(x => x.pattern?.id === pid)
+      if (!mine.length) break
+      const p = mine[0].pattern!
+      const shape = { pattern: p.cycle.pattern, staggered: p.staggered }
+      const offsets = restGroupOffsets(shape)
+      const ideal = idealGroupCounts(input, team, pid)
+      const count = (g: number) => mine.filter(x => restGroupIndex(shape, x.offset) === g).length
+      const under = offsets.map((_, g) => g).filter(g => count(g) < ideal[g])
+      const pool = mine.filter(x => { const g = restGroupIndex(shape, x.offset); return !pinned.has(x.id) && g != null && count(g) > ideal[g] })
+      if (!under.length || !pool.length) break
+      const asked = input.requests.find(r => r.status === 'QUEUED' && r.kind === 'REST_GROUP' && r.restPatternId === pid && r.restOffset != null
+        && under.includes(restGroupIndex(shape, r.restOffset)!) && pool.some(x => x.id === r.crewMemberId))
+      const m = asked ? pool.find(x => x.id === asked.crewMemberId)! : rank(pool, rules)[0]
+      const offset = asked ? asked.restOffset! : offsets[under.reduce((a, g) => (count(g) - ideal[g] < count(a) - ideal[a] ? g : a), under[0])]
+      out.push({
+        crewMemberId: m.id, code: m.code, name: m.name, from: shiftId, to: shiftId, offset, patternId: null,
+        groupLabel: groupLabel(p, offset, input.today), patternName: p.name, groupOptions: groupOptions(p, input.today),
+        change: `${groupLabel(p, m.offset, input.today)} → ${groupLabel(p, offset, input.today)}`,
+        reasons: [asked ? `Pedido na fila desde ${fmtDay(asked.createdAt.slice(0, 10))}` : 'Acerto de grupo da troca de turno', ...reasons(m, rules)],
+      })
+      pinned.add(m.id)
+      crew = crew.map(x => (x.id === m.id ? { ...x, offset } : x))
+    }
+  }
+  return out
 }
 
 // ── rest groups by demand ───────────────────────────────────────────────────
@@ -317,11 +397,21 @@ export function suggestGroups(input: ConsoleInput, rules: RebalanceRules, shiftI
       moves.push(toMove(m, offsets[g], why(m)))
       at.set(m.id, g)
     }
+    // the queued for a group of this pattern, oldest first (the requests' order)
+    const queued = input.requests.filter(r => r.status === 'QUEUED' && r.kind === 'REST_GROUP' && r.restPatternId === pid && r.restOffset != null)
     // anyone between groups first, then one at a time out of the overfull groups
     for (const m of mine.filter(x => at.get(x.id) == null)) place(m)
     for (;;) {
       const over = mine.filter(m => { const g = at.get(m.id); return g != null && count(g) > ideal[g] && !moves.some(x => x.crewMemberId === m.id) })
       if (!over.length || offsets.every((_, g) => count(g) >= ideal[g])) break
+      // whoever queued for an open group goes there first
+      const asked = queued.find(r => { const g = restGroupIndex(shape, r.restOffset!); return g != null && count(g) < ideal[g] && over.some(m => m.id === r.crewMemberId) })
+      if (asked) {
+        const m = over.find(x => x.id === asked.crewMemberId)!
+        moves.push(toMove(m, asked.restOffset!, [`Pedido na fila desde ${fmtDay(asked.createdAt.slice(0, 10))}`, ...why(m)]))
+        at.set(m.id, restGroupIndex(shape, asked.restOffset!))
+        continue
+      }
       const before = moves.length
       place(rank(over, rules, excess)[0])
       if (moves.length === before) break
@@ -425,6 +515,180 @@ export function suggestProfiles(input: ConsoleInput, rules: RebalanceRules): Con
   }
 }
 
+// ── change requests ─────────────────────────────────────────────────────────
+
+const away = (m: ConsoleCrew) => (m.away ? `Afastado até ${fmtDay(m.away.until)}` : !m.shiftId ? 'Sem turno vigente' : 'Fora do gerador')
+
+// The queued requests that mirror each other, paired oldest first: SHIFT — he is in the shift the
+// other asks for and asks for the other's, each fitting the other's shift; REST_GROUP — same shift and
+// pattern, each asking for the other's group. A swap needs no place: each takes the other's.
+export function pairSwaps(input: ConsoleInput): Map<string, string> {
+  const crewById = new Map(input.crew.map(m => [m.id, m]))
+  const shiftById = new Map(input.shifts.map(s => [s.id, s]))
+  const queued = input.requests.filter(r => r.status === 'QUEUED' && crewById.get(r.crewMemberId) && inSupply(crewById.get(r.crewMemberId)!))
+  const group = (m: ConsoleCrew, offset: number) => (m.pattern ? restGroupIndex({ pattern: m.pattern.cycle.pattern, staggered: m.pattern.staggered }, offset) : null)
+  const mirrors = (r: ConsoleInput['requests'][number], q: ConsoleInput['requests'][number]): boolean => {
+    const a = crewById.get(r.crewMemberId)!, b = crewById.get(q.crewMemberId)!
+    if (r.kind !== q.kind || a.id === b.id) return false
+    if (r.kind === 'SHIFT') {
+      const toA = r.shiftId ? shiftById.get(r.shiftId) : undefined, toB = q.shiftId ? shiftById.get(q.shiftId) : undefined
+      return !!toA && !!toB && r.shiftId === b.shiftId && q.shiftId === a.shiftId && !blockedFrom(input, a, toA) && !blockedFrom(input, b, toB)
+    }
+    return a.shiftId === b.shiftId && !!a.pattern && a.pattern.id === b.pattern?.id && r.restPatternId === a.pattern.id && q.restPatternId === a.pattern.id
+      && r.restOffset != null && q.restOffset != null
+      && group(a, r.restOffset) === group(b, b.offset) && group(b, q.restOffset) === group(a, a.offset)
+  }
+  const out = new Map<string, string>()
+  for (const r of queued) {
+    if (out.has(r.id)) continue
+    const q = queued.find(x => !out.has(x.id) && mirrors(r, x))
+    if (q) { out.set(r.id, q.id); out.set(q.id, r.id) }
+  }
+  return out
+}
+
+// Each open request, oldest first, with whether the Painel could grant it now — by the suggestions'
+// own rule: SHIFT — the shift asked short and his own with a surplus, and he fits it; REST_GROUP —
+// the group asked below the demand's count and his own above it. Position: among the queued asking
+// the same. `input`: planned() — no day left, no effective plan to rate against.
+export function changeRequestRows(input: ConsoleInput): ConsoleChangeRequest[] {
+  const crewById = new Map(input.crew.map(m => [m.id, m]))
+  const shiftById = new Map(input.shifts.map(s => [s.id, s]))
+  const balance = input.days.length ? shiftBalances(input, input.crew) : null
+  const queued = new Map<string, number>()
+
+  const rate = (r: ConsoleInput['requests'][number], m: ConsoleCrew): { ready: boolean; reason: string } => {
+    if (!balance) return { ready: false, reason: 'Sem planejamento efetivo' }
+    if (!inSupply(m)) return { ready: false, reason: away(m) }
+    const from = shiftById.get(m.shiftId!)
+    if (r.kind === 'SHIFT') {
+      const to = r.shiftId ? shiftById.get(r.shiftId) : undefined
+      if (!to) return { ready: false, reason: 'Turno pedido fora da empresa' }
+      const why = blockedFrom(input, m, to)
+      if (why) return { ready: false, reason: why }
+      if (worstOf(balance, to.id) >= 0) return { ready: false, reason: `${to.name} sem vaga` }
+      if (worstOf(balance, m.shiftId!) <= 0) return { ready: false, reason: `${to.name} com vaga · ${from?.name ?? 'turno atual'} sem sobra` }
+      return { ready: true, reason: `${to.name} com vaga` }
+    }
+    const p = m.pattern
+    if (!p || p.id !== r.restPatternId || r.restOffset == null) return { ready: false, reason: 'Regime de folga mudou desde o pedido' }
+    const shape = { pattern: p.cycle.pattern, staggered: p.staggered }
+    const team = input.crew.filter(x => inSupply(x) && x.shiftId === m.shiftId)
+    const ideal = idealGroupCounts(input, team, p.id)
+    const count = (g: number) => team.filter(x => x.pattern?.id === p.id && restGroupIndex(shape, x.offset) === g).length
+    const want = restGroupIndex(shape, r.restOffset), have = restGroupIndex(shape, m.offset)
+    if (want == null) return { ready: false, reason: 'Grupo pedido inválido' }
+    const name = (g: number) => `Grupo ${restGroupLabel(g)}`
+    if (count(want) >= ideal[want]) return { ready: false, reason: `${name(want)} completo` }
+    if (have != null && count(have) <= ideal[have]) return { ready: false, reason: `${name(want)} com vaga · ${name(have)} sem sobra` }
+    return { ready: true, reason: `${name(want)} com vaga` }
+  }
+
+  const swaps = pairSwaps(input)
+  return input.requests.flatMap(r => {
+    const m = crewById.get(r.crewMemberId)
+    if (!m) return []
+    const pair = swaps.get(r.id)
+    const other = pair ? crewById.get(input.requests.find(x => x.id === pair)!.crewMemberId)! : null
+    const rated = rate(r, m)
+    let position: number | null = null
+    if (r.status === 'QUEUED') {
+      const key = r.kind === 'SHIFT' ? `S|${r.shiftId}` : `G|${r.restPatternId}|${r.restOffset}`
+      position = (queued.get(key) ?? 0) + 1
+      queued.set(key, position)
+    }
+    return [{
+      id: r.id, kind: r.kind, status: r.status, crewMemberId: m.id, code: m.code, name: m.name, change: r.change, notes: r.notes,
+      createdAt: r.createdAt, position, shiftId: r.kind === 'SHIFT' ? r.shiftId : m.shiftId,
+      // a swap is ready whatever the places; one ready on its own keeps its reason
+      ...(other && !rated.ready ? { ready: true, reason: `Troca casada com ${other.code} ${other.name}` } : rated),
+      swapWith: other && pair ? { requestId: pair, code: other.code, name: other.name } : null,
+    }]
+  })
+}
+
+// Granting one request now: his move alone, as a shifts / groups suggestion (the list, the date and
+// the impact as usual). A new shift: the group he asked for when he has one open in the destination's
+// pattern, else the group the destination needs most — he is moving anyway.
+export function suggestRequest(input: ConsoleInput, rules: RebalanceRules, requestId: string, pairId?: string | null): ConsoleSuggestion {
+  if (pairId) return suggestSwap(input, rules, requestId, pairId)
+  const r = input.requests.find(x => x.id === requestId)
+  const m = r && input.crew.find(x => x.id === r.crewMemberId)
+  const from = m?.shiftId ? input.shifts.find(s => s.id === m.shiftId) : undefined
+  const kind = r?.kind === 'REST_GROUP' ? 'groups' : 'shifts'
+  if (!r || !m) return empty(kind, 'Atender pedido', 'Pedido não encontrado ou já encerrado')
+  if (!from) return empty(kind, 'Atender pedido', `${m.code} ${m.name} sem turno vigente`)
+  const title = `Atender pedido · ${m.code} ${m.name}`
+  const asked = [`Pedido de ${fmtDay(r.createdAt.slice(0, 10))}`]
+  const patterns = input.patterns.map(p => ({ id: p.id, name: p.name, groupOptions: groupOptions(p, input.today) }))
+
+  if (r.kind === 'REST_GROUP') {
+    const p = m.pattern
+    if (!p || p.id !== r.restPatternId || r.restOffset == null) return empty('groups', title, 'Regime de folga mudou desde o pedido')
+    return {
+      kind: 'groups', title, summary: r.change, bench: {}, excluded: [], patterns,
+      moves: [{
+        crewMemberId: m.id, code: m.code, name: m.name, from: from.id, to: from.id, offset: r.restOffset, patternId: null,
+        groupLabel: groupLabel(p, r.restOffset, input.today), patternName: p.name, groupOptions: groupOptions(p, input.today),
+        change: `${groupLabel(p, m.offset, input.today)} → ${groupLabel(p, r.restOffset, input.today)}`, reasons: [...asked, ...reasons(m, rules)],
+      }],
+    }
+  }
+
+  const to = r.shiftId ? input.shifts.find(s => s.id === r.shiftId) : undefined
+  if (!to) return empty('shifts', title, 'Turno pedido fora da empresa')
+  const p = m.ownPattern ? m.pattern : to.pattern
+  const group = p && input.requests.find(x => x.crewMemberId === m.id && x.kind === 'REST_GROUP' && x.restPatternId === p.id && x.restOffset != null)
+  const team = input.crew.filter(x => inSupply(x) && x.shiftId === to.id)
+  const offset = group ? group.restOffset : bestOffset(input, team, to, p)
+  const why = blockedFrom(input, m, to)
+  return {
+    kind: 'shifts', title, summary: why ? `${r.change} — atenção: ${why}` : r.change, bench: {}, excluded: [],
+    moves: [{
+      crewMemberId: m.id, code: m.code, name: m.name, from: from.id, to: to.id, offset,
+      groupLabel: p && offset != null ? groupLabel(p, offset, input.today) : null, patternName: p?.name ?? null,
+      groupOptions: groupOptions(p, input.today), change: `${from.name} → ${to.name}`,
+      reasons: [...asked, ...(group ? ['Grupo de folga pedido por ele'] : []), ...reasons(m, rules)],
+    }],
+  }
+}
+
+// Two mirrored requests granted together (pairSwaps): shifts — each to the other's shift and, in the
+// same pattern, the other's group, so neither shift's groups change; groups — each to the other's.
+function suggestSwap(input: ConsoleInput, rules: RebalanceRules, requestId: string, pairId: string): ConsoleSuggestion {
+  const r = input.requests.find(x => x.id === requestId)
+  const kind = r?.kind === 'REST_GROUP' ? 'groups' : 'shifts'
+  if (!r || pairSwaps(input).get(requestId) !== pairId) return empty(kind, 'Troca casada', 'Os pedidos não formam mais uma troca — atualize o Painel')
+  const q = input.requests.find(x => x.id === pairId)!
+  const a = input.crew.find(x => x.id === r.crewMemberId)!, b = input.crew.find(x => x.id === q.crewMemberId)!
+  const shiftOf = (m: ConsoleCrew) => input.shifts.find(s => s.id === m.shiftId)!
+  const why = (x: typeof r, other: ConsoleCrew) => [`Troca casada com ${other.code} ${other.name}`, `Pedido na fila desde ${fmtDay(x.createdAt.slice(0, 10))}`, ...reasons(other === b ? a : b, rules)]
+  const title = `Troca casada · ${a.code} ${a.name} ⇄ ${b.code} ${b.name}`
+
+  if (kind === 'groups') {
+    const p = a.pattern!
+    const move = (m: ConsoleCrew, x: typeof r, other: ConsoleCrew): ConsoleMove => ({
+      crewMemberId: m.id, code: m.code, name: m.name, from: m.shiftId!, to: m.shiftId!, offset: x.restOffset, patternId: null,
+      groupLabel: groupLabel(p, x.restOffset!, input.today), patternName: p.name, groupOptions: groupOptions(p, input.today),
+      change: `${groupLabel(p, m.offset, input.today)} → ${groupLabel(p, x.restOffset!, input.today)}`, reasons: why(x, other),
+    })
+    return { kind, title, summary: `${r.change} · ${q.change}`, moves: [move(a, r, b), move(b, q, a)], bench: {}, excluded: [], patterns: input.patterns.map(x => ({ id: x.id, name: x.name, groupOptions: groupOptions(x, input.today) })) }
+  }
+
+  const move = (m: ConsoleCrew, other: ConsoleCrew, x: typeof r): ConsoleMove => {
+    const from = shiftOf(m), to = shiftOf(other)
+    const p = m.ownPattern ? m.pattern : to.pattern
+    // the other's group when it is the same pattern — the destination's groups stay as they were
+    const offset = queuedGroup(input, m.id, p) ?? (p && other.pattern?.id === p.id ? other.offset : bestOffset(input, input.crew.filter(y => inSupply(y) && y.shiftId === to.id && y.id !== other.id), to, p))
+    return {
+      crewMemberId: m.id, code: m.code, name: m.name, from: from.id, to: to.id, offset,
+      groupLabel: p && offset != null ? groupLabel(p, offset, input.today) : null, patternName: p?.name ?? null,
+      groupOptions: groupOptions(p, input.today), change: `${from.name} → ${to.name}`, reasons: why(x, other),
+    }
+  }
+  return { kind, title, summary: `${shiftOf(a).name} ⇄ ${shiftOf(b).name}`, moves: [move(a, b, r), move(b, a, q)], bench: {}, excluded: [] }
+}
+
 // ── impact ──────────────────────────────────────────────────────────────────
 
 // longest run of days worked across the change, from 2 weeks before to 2 weeks after `effective`
@@ -451,7 +715,7 @@ export function impact(input: ConsoleInput, kind: ConsoleActionKind, items: Move
     for (const i of items) {
       const was = input.crew.find(m => m.id === i.crewMemberId)!
       const now = next.crew.find(m => m.id === i.crewMemberId)!
-      if (kind === 'shifts') {
+      if (kind === 'shifts' && i.to !== was.shiftId) {
         for (const d of input.duties.filter(x => x.preferred.includes(was.id) && x.shiftId === was.shiftId && x.label)) {
           warnings.push(`${d.label} (${typeName.get(d.dayTypeId)}) perde ${was.code} ${was.name} como operador preferido`)
         }

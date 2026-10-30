@@ -30,8 +30,10 @@ const CONFIRM_TEXT: Record<ConsoleActionKind, (n: number, date: string) => strin
   profiles: (n, d) => `Confirmar cria ${n} perfil(is) de operador, no turno a partir de ${d}.`,
 }
 
-// what to adjust — groups: a shift; lines / priority: a shift and a line
-export interface ConsoleAction { kind: ConsoleActionKind; shiftId?: string; lineId?: string }
+// what to adjust — groups: a shift; lines / priority: a shift and a line; requestId (shifts / groups):
+// grant that change request — the suggestion is his move alone; with pairId, the swap with its
+// mirror request (both moves)
+export interface ConsoleAction { kind: ConsoleActionKind; shiftId?: string; lineId?: string; requestId?: string; pairId?: string }
 
 interface Props {
   action:     ConsoleAction
@@ -59,7 +61,7 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
   const noPlan = action.kind !== 'profiles' && !snapshot.plans.some(p => p.crewPlan)
   const { data: suggestion, error: suggestError, isFetching: suggesting } = useQuery<ConsoleSuggestion>({
     queryKey: ['transit', 'console', 'suggest', ctx, action],
-    queryFn:  () => post(`${base}/suggest`, { ...ctx, shiftId: action.shiftId ?? null, lineId: action.lineId ?? null }),
+    queryFn:  () => post(`${base}/suggest`, { ...ctx, shiftId: action.shiftId ?? null, lineId: action.lineId ?? null, requestId: action.requestId ?? null, pairId: action.pairId ?? null }),
     gcTime:   0,
     enabled:  !noPlan,
   })

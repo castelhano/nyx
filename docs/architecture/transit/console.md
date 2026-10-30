@@ -154,7 +154,46 @@ none of his own) and group are editable per row.
 A move is kept when it lowers the destination's shortage (Σ duties missing crew over the window —
 one person rarely lifts the worst day, as he's off on one of them); his group in the destination is
 the one that lowers it most. Moves are dropped from the end while the crew would cover fewer duties
-than before.
+than before. **The queue first**: for each short shift, the `QUEUED` requests for it, oldest first,
+before the selection rule — still only from a shift with crew to spare and only when he fits; his
+group there is the one he queued for in its pattern, else where it needs one most. **Group refill**:
+the rest groups the moves unbalanced (per shift × pattern touched, one move per crew member who left
+or came, at most — older imbalances stay for the groups action) go in the same suggestion as
+group-only rows (`from` = `to`, no new shift link on apply): out of an overfull group into the
+emptiest, the oldest queued for that group first; the movers stay put. Dropped if coverage would
+fall.
+
+**Groups.** Before the selection rule, whoever queued for an open group (and sits in an overfull
+one) goes there, oldest first.
+
+---
+
+## Change requests
+
+The crew's `CrewChangeRequest`s (crew portal — rostering.md › Crew portal) in the "Pedidos de troca"
+section, oldest first, each rated by the suggestions' own rule (`changeRequestRows`): **SHIFT** — the
+shift asked short (worst balance < 0), his own with a surplus, and he fits it (`blockedFrom`);
+**REST_GROUP** — the group asked below the demand's count (`idealGroupCounts`) and his own above it.
+Otherwise it shows why it waits ("Tarde sem vaga", "Manhã sem sobra", "Grupo B completo").
+
+- **Aprovar agora / Atender agora** — the adjust modal with his move alone (`suggest` with
+  `requestId` → `suggestRequest`): shifts with the date as usual; his group in the new shift is the
+  one he asked for when he has a group request open in that pattern, else where the destination needs
+  one most (he is moving anyway). Always confirmed — never applied by itself.
+- **Troca casada** (`pairSwaps`): two `QUEUED` requests that mirror each other, paired oldest first —
+  SHIFT: each in the shift the other asks for, each fitting it; REST_GROUP: same shift and pattern,
+  each asking for the other's group. Ready with no place needed ("Troca casada com …"); "Trocar com …"
+  opens both moves (`suggest` with `requestId` + `pairId`). In a shift swap each takes the other's
+  group (same pattern), so neither shift's groups change. Never applied by itself.
+- **Aprovar na fila** (`REQUESTED` → `QUEUED`) / **Recusar** (with a note shown in the portal) —
+  `POST /transit/console/requests/:id/review`.
+- **Fulfilled**: any open request whose shift / group the crew member now has — after an `apply`
+  (`adjustmentId` kept), or by any other path, found when the Painel or the portal loads
+  (`settleChangeRequests`, `crew/crew-member/crew-change-request.ts`). Each step tells him in the
+  portal.
+- **Priority**: only `QUEUED` requests weigh in the shifts and groups suggestions (Adjustments ›
+  Shifts / Groups); one `REQUESTED` waits for review.
+- Alerts: `CHANGE_REQUESTED` (waiting for review), `CHANGE_READY` (queued and grantable now).
 
 ---
 

@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common'
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common'
 import { z } from 'zod'
 import {
-  CONSOLE_ACTION_KINDS, consoleActionSchema, consoleSchema, consoleSuggestSchema,
+  CONSOLE_ACTION_KINDS, consoleActionSchema, consoleRequestReviewSchema, consoleSchema, consoleSuggestSchema,
   type ConsoleActionKind, type ConsoleImpact, type ConsoleSnapshot, type ConsoleSuggestion, type CrewRole, type RebalanceRules, type RosterAdjustmentRow,
 } from '@nyx/schemas'
 import type { AuthUser } from '@nyx/types'
@@ -62,6 +62,16 @@ export class ConsoleController {
     const dto = this.parse(consoleActionSchema, body)
     await this.assert(req.user, dto.branchId, 'apply')
     return this.console.apply(this.kind(kind), dto, req.user.id)
+  }
+
+  // a crew member's change request: into the queue or rejected — granting it now is an adjustment
+  // (suggest with requestId, then apply)
+  @Post('requests/:id/review')
+  @HttpCode(204)
+  async review(@Req() req: { user: AuthUser }, @Param('id') id: string, @Body() body: unknown): Promise<void> {
+    const dto = this.parse(consoleRequestReviewSchema, body)
+    await this.assert(req.user, dto.branchId, 'apply')
+    await this.console.review(id, dto, req.user.id)
   }
 
   @Get('adjustments')

@@ -76,6 +76,10 @@ export const consoleSuggestSchema = z.object({
   scopeId:  z.uuid().optional().nullable(),
   shiftId:  z.uuid().optional().nullable(),
   lineId:   z.uuid().optional().nullable(),
+  // shifts / groups: the change request to grant now — the suggestion is his move alone
+  requestId: z.uuid().optional().nullable(),
+  // with requestId: its mirror request — the swap of the two
+  pairId:    z.uuid().optional().nullable(),
 })
 export type ConsoleSuggestDto = z.infer<typeof consoleSuggestSchema>
 
@@ -96,6 +100,14 @@ export const consoleActionSchema = z.object({
   })).min(1, 'Nenhum operador selecionado'),
 })
 export type ConsoleActionDto = z.infer<typeof consoleActionSchema>
+
+// a change request: into the queue (approved, waits for a place) or rejected — notes go to the portal
+export const consoleRequestReviewSchema = z.object({
+  branchId: z.uuid(),
+  decision: z.enum(['QUEUED', 'REJECTED']),
+  notes:    z.string().trim().max(500).optional(),
+})
+export type ConsoleRequestReviewDto = z.infer<typeof consoleRequestReviewSchema>
 
 export interface ConsoleImpact {
   // per shift × day type: the balance before → after

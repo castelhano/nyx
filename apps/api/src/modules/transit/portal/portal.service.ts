@@ -84,7 +84,7 @@ export class PortalService {
     const access = await this.prisma.crewAccess.findUniqueOrThrow({ where: { crewMemberId: crew.id }, select: { createdAt: true } })
     await syncNotifications(this.prisma, crew.id, access.createdAt)
     const rows = await this.prisma.crewNotification.findMany({ where: { crewMemberId: crew.id }, orderBy: [{ readAt: { sort: 'desc', nulls: 'first' } }, { createdAt: 'desc' }], take: 100 })
-    return rows.map(n => ({ id: n.id, date: dayOf(n.date), message: n.message, createdAt: n.createdAt.toISOString(), readAt: n.readAt?.toISOString() ?? null }))
+    return rows.map(n => ({ id: n.id, date: dayOf(n.date), message: n.message, roster: n.changeLogId != null, createdAt: n.createdAt.toISOString(), readAt: n.readAt?.toISOString() ?? null }))
   }
 
   // "Li e confirmo" — the given ones, or every unread one

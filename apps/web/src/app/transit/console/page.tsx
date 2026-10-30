@@ -22,6 +22,7 @@ import {
 } from './sections'
 import { AdjustModal, type ConsoleAction } from './AdjustModal'
 import { AdjustmentsSection } from './adjustments'
+import { RequestsSection } from './requests'
 import { RuleModal } from './RuleModal'
 
 const ORIGIN   = 'apps/web/src/app/transit/console/page.tsx'
@@ -145,6 +146,10 @@ export default function ConsolePage() {
                 {section === 'shifts'   && <ShiftsSection key={snapshot.scopeId} snapshot={snapshot} />}
                 {section === 'groups'   && <GroupsSection key={snapshot.scopeId} snapshot={snapshot} onSuggest={shiftId => setAction({ kind: 'groups', shiftId })} />}
                 {section === 'crew'     && <CrewSection snapshot={snapshot} ctx={ctx} onAction={setAction} />}
+                {section === 'requests' && (
+                  <RequestsSection snapshot={snapshot} canReview={canUpdate}
+                    onGrant={(r, swap) => setAction({ kind: r.kind === 'SHIFT' ? 'shifts' : 'groups', shiftId: r.shiftId ?? undefined, requestId: r.id, pairId: swap ? r.swapWith?.requestId : undefined })} />
+                )}
                 {section === 'daily'    && <DailySection snapshot={snapshot} ctx={ctx} />}
                 {section === 'adjust'   && <AdjustmentsSection snapshot={snapshot} />}
               </div>

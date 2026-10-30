@@ -799,6 +799,8 @@ model CrewShift {
   branches     CrewShiftBranch[]
   duties       Duty[]
   crewMembers  CrewMemberShift[]
+  changeRequests     CrewChangeRequest[] @relation("ChangeRequestShift")
+  changeRequestsFrom CrewChangeRequest[] @relation("ChangeRequestFromShift")
 
   @@map("transit_crew_shifts")
 }
@@ -836,6 +838,7 @@ model RestPattern {
 
   shifts      CrewShift[]
   crewMembers CrewMember[]
+  changeRequests CrewChangeRequest[]
 
   @@map("transit_rest_patterns")
 }
@@ -900,6 +903,7 @@ model CrewMember {
   portalProfile    PortalProfile?     @relation(fields: [portalProfileId], references: [id], onDelete: SetNull)
   access           CrewAccess?
   notifications    CrewNotification[]
+  changeRequests   CrewChangeRequest[]
 
   @@map("transit_crew_members")
 }
@@ -1042,6 +1046,57 @@ model CrewOccurrence {
   @@index([crewMemberId, startDate])
   @@index([coverCrewMemberId, startDate])
   @@map("transit_crew_occurrences")
+}
+
+enum CrewChangeRequestKind {
+  SHIFT      // another shift
+  REST_GROUP // another group of his rest pattern
+}
+
+enum CrewChangeRequestStatus {
+  REQUESTED // waiting for staff
+  QUEUED    // approved by staff — waits for the Painel de Escala to open a place (oldest first)
+  FULFILLED
+  REJECTED
+  CANCELLED
+}
+
+// A lasting change the crew member asks for, with no date — his shift or his rest group. Staff
+// approves it at once or into the queue, where the Painel de Escala suggests it first once the
+// shift asked has a place. One open (REQUESTED / QUEUED) per kind and crew member.
+model CrewChangeRequest {
+  id               String                  @id @default(uuid())
+  crewMemberId     String
+  kind             CrewChangeRequestKind
+  status           CrewChangeRequestStatus @default(REQUESTED)
+  origin           CrewOccurrenceOrigin    @default(PORTAL)
+  // SHIFT: the shift he wants
+  shiftId          String?
+  // REST_GROUP: the group (offset) he wants in the pattern he had when asking
+  restPatternId    String?
+  restOffset       Int?
+  // what he had when asking — shift / group
+  fromShiftId      String?
+  fromOffset       Int?
+  notes            String?
+  reviewNotes      String?
+  createdByUserId  String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  fulfilledAt      DateTime?
+  // the RosterAdjustment that granted it
+  adjustmentId     String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  crewMember  CrewMember   @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  shift       CrewShift?   @relation("ChangeRequestShift", fields: [shiftId], references: [id])
+  fromShift   CrewShift?   @relation("ChangeRequestFromShift", fields: [fromShiftId], references: [id])
+  restPattern RestPattern? @relation(fields: [restPatternId], references: [id])
+
+  @@index([crewMemberId, status])
+  @@index([kind, status, createdAt])
+  @@map("transit_crew_change_requests")
 }
 
 // Logical crew schedule built on top of one VehiclePlan's blocks — duties ("tabelas")

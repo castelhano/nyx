@@ -57,7 +57,7 @@ export default function PortalPage() {
   const p = me.permissions
   const tabs: TabDef[] = [
     ...(p.viewRoster ? [['escala', 'Escala', Icons.CalendarDays] as TabDef] : []),
-    ...((p.requestAbsence && me.absenceTypes.length > 0) || p.requestTimeWindow ? [['pedidos', 'Pedidos', Icons.Send] as TabDef] : []),
+    ...((p.requestAbsence && me.absenceTypes.length > 0) || p.requestTimeWindow || p.requestShiftChange || p.requestRestGroupChange ? [['pedidos', 'Pedidos', Icons.Send] as TabDef] : []),
     ['linhas', 'Linhas', Icons.Route],
     ['avisos', 'Avisos', Icons.Bell],
   ]
@@ -159,9 +159,9 @@ function Changes({ list }: { list: PortalNotification[] }) {
       <div className="max-h-[85%] w-full space-y-4 overflow-y-auto rounded-t-2xl bg-card px-5 pb-6 pt-5">
         <div className="flex items-center gap-2">
           <Icons.Bell className="h-5 w-5 text-amber-500" />
-          <p className="text-base font-semibold">Sua escala mudou</p>
+          <p className="text-base font-semibold">{list.every(n => n.roster) ? 'Sua escala mudou' : 'Novos avisos'}</p>
         </div>
-        <p className="text-sm text-muted-foreground">Confirme que viu as mudanças para continuar.</p>
+        <p className="text-sm text-muted-foreground">Confirme que viu {list.every(n => n.roster) ? 'as mudanças' : 'os avisos'} para continuar.</p>
         <ul className="space-y-2">
           {list.map(n => (
             <li key={n.id} className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm">

@@ -1,6 +1,6 @@
 import {
   CONSOLE_SECTIONS, CONSOLE_FUTURE_DAYS, DAILY_ISSUE_LABEL, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks, shiftFits,
-  type ConsoleAlert, type ConsoleCrewData, type ConsoleDailyError, type ConsoleGroupPattern, type ConsoleGroups, type ConsoleLineRow,
+  type ConsoleAlert, type ConsoleChangeRequest, type ConsoleCrewData, type ConsoleDailyError, type ConsoleGroupPattern, type ConsoleGroups, type ConsoleLineRow,
   type ConsolePlanRow, type ConsoleSection, type ConsoleSectionStatus, type ConsoleShift, type ConsoleShiftsAnalysis, type ConsoleSnapshot,
   type ConsoleSizing, type ConsoleStaffing, type RestCycle, type RosterSettings, type ShiftWindow,
 } from '@nyx/schemas'
@@ -15,6 +15,20 @@ import { addDays, type Day } from '../timetabling/plan-validity'
 // pairRule), so the Painel never says "ok" to a crew the generator can't roster.
 
 export interface ConsolePattern { id: string; name: string; cycle: RestCycle; staggered: boolean }
+
+// an open CrewChangeRequest of the crew — what was asked (console.actions rates it)
+export interface ConsoleRequestInput {
+  id:            string
+  kind:          'SHIFT' | 'REST_GROUP'
+  status:        'REQUESTED' | 'QUEUED'
+  crewMemberId:  string
+  change:        string
+  notes:         string | null
+  createdAt:     string
+  shiftId:       string | null
+  restPatternId: string | null
+  restOffset:    number | null
+}
 
 export interface ConsoleCrew {
   id:   string
@@ -91,6 +105,8 @@ export interface ConsoleInput {
   noProfile:   ConsoleCrewData['noProfile']
   fixedCar:    ConsoleCrewData['fixedCar']
   dailyErrors: ConsoleDailyError[]
+  // open change requests, oldest first
+  requests:    ConsoleRequestInput[]
 }
 
 const ref = (m: ConsoleCrew) => ({ id: m.id, code: m.code, name: m.name })
@@ -714,6 +730,10 @@ function alerts(input: ConsoleInput, s: Omit<ConsoleSnapshot, 'alerts' | 'status
   if (s.crewData.noPattern.length) push({ code: 'NO_PATTERN', severity: 'warning', section: 'crew', text: `${s.crewData.noPattern.length} operador(es) sem regime de folga` })
   for (const f of s.crewData.fixedCar) push({ code: 'FIXED_CAR_CONFLICT', severity: 'warning', section: 'crew', text: `${f.code} ${f.name}: carro fixo ${f.vehicleCode} — ${f.reason}`, link: { kind: 'crew-member', id: f.id } })
   if (s.crewData.away.length) push({ code: 'AWAY', severity: 'info', section: 'crew', text: `${s.crewData.away.length} operador(es) afastado(s) fora do quadro` })
+  const asked = s.requests.filter(r => r.status === 'REQUESTED').length
+  if (asked) push({ code: 'CHANGE_REQUESTED', severity: 'info', section: 'requests', text: `${asked} pedido(s) de troca de turno ou grupo aguardando análise` })
+  const ready = s.requests.filter(r => r.status === 'QUEUED' && r.ready).length
+  if (ready) push({ code: 'CHANGE_READY', severity: 'warning', section: 'requests', text: `${ready} pedido(s) na fila já podem ser atendidos` })
   for (const d of s.dailyErrors) {
     const when = daysAhead(input.today, d.date) <= 1 ? 'Amanhã' : `${d.date.slice(8, 10)}/${d.date.slice(5, 7)}`
     push({
@@ -737,7 +757,8 @@ function sectionStatus(list: ConsoleAlert[]): Record<ConsoleSection, ConsoleSect
 
 // ── the snapshot ────────────────────────────────────────────────────────────
 
-export function computeConsole(input: ConsoleInput): ConsoleSnapshot {
+// `requests`: the open change requests rated (console.actions changeRequestRows)
+export function computeConsole(input: ConsoleInput, requests: ConsoleChangeRequest[] = []): ConsoleSnapshot {
   const cover = new WindowCover(input, input.crew.filter(inSupply))
   const st = staffing(input, input.crew, cover.coveredByDay())
   const crewData: ConsoleCrewData = {
@@ -765,6 +786,7 @@ export function computeConsole(input: ConsoleInput): ConsoleSnapshot {
     crew: { active: input.crew.filter(inSupply).length, away: crewData.away.length, vacation: crewData.vacation.length },
     crewData,
     dailyErrors: input.dailyErrors,
+    requests,
   }
   const list = alerts(input, base)
   return { ...base, alerts: list, status: sectionStatus(list) }

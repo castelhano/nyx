@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { PortalLines, PortalMe, PortalNotification, PortalOccurrence, PortalQuotaBalance, PortalRosterDay } from '@nyx/schemas'
+import type { PortalChangeOptions, PortalChangeRequest, PortalLines, PortalMe, PortalNotification, PortalOccurrence, PortalQuotaBalance, PortalRosterDay } from '@nyx/schemas'
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { portalFetch } from '@/lib/portal-auth'
@@ -124,42 +124,89 @@ const STATUS: Record<PortalOccurrence['status'], { label: string; tone: string }
   CANCELLED: { label: 'Cancelado',  tone: 'bg-muted text-muted-foreground' },
 }
 
+const CHANGE_STATUS: Record<PortalChangeRequest['status'], { label: string; tone: string }> = {
+  REQUESTED: { label: 'Aguardando',        tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
+  QUEUED:    { label: 'Aprovado · na fila', tone: 'bg-sky-500/15 text-sky-700 dark:text-sky-300' },
+  FULFILLED: { label: 'Atendido',          tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
+  REJECTED:  { label: 'Recusado',          tone: 'bg-red-500/15 text-red-700 dark:text-red-300' },
+  CANCELLED: { label: 'Cancelado',         tone: 'bg-muted text-muted-foreground' },
+}
+
+type Kind = 'ABSENCE' | 'TIME_WINDOW' | 'SHIFT' | 'REST_GROUP'
+const KIND_LABEL: Record<Kind, string> = { ABSENCE: 'Ausência', TIME_WINDOW: 'Horário', SHIFT: 'Turno', REST_GROUP: 'Folga' }
+const isChange = (k: Kind): k is 'SHIFT' | 'REST_GROUP' => k === 'SHIFT' || k === 'REST_GROUP'
+
 export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
   const qc = useQueryClient()
   const today = localToday()
-  // no requestable absence type: nothing to ask for as an absence
-  const kinds = ([me.permissions.requestAbsence && me.absenceTypes.length > 0 && 'ABSENCE', me.permissions.requestTimeWindow && 'TIME_WINDOW'] as const).filter(k => !!k)
+  const p = me.permissions
+  const { data: options } = useQuery({
+    queryKey: ['portal', 'change-options'],
+    queryFn:  () => portalFetch<PortalChangeOptions>('/change-requests/options'),
+    enabled:  p.requestShiftChange || p.requestRestGroupChange,
+  })
+  // no requestable absence type / no other shift / a single rest group: nothing to ask for
+  const kinds = ([
+    p.requestAbsence && me.absenceTypes.length > 0 && 'ABSENCE',
+    p.requestTimeWindow && 'TIME_WINDOW',
+    p.requestShiftChange && options && options.shifts.some(s => !s.current) && 'SHIFT',
+    p.requestRestGroupChange && options?.restGroups && 'REST_GROUP',
+  ] as const).filter((k): k is Kind => !!k)
   const [open, setOpen] = useState(false)
-  const [kind, setKind] = useState<'ABSENCE' | 'TIME_WINDOW'>(kinds[0])
+  const [picked, setKind] = useState<Kind | null>(null)
+  const kind = picked && kinds.includes(picked) ? picked : kinds[0]
   const [date, setDate] = useState(addDays(today, 1))
   const [typeId, setTypeId] = useState(me.absenceTypes[0]?.id ?? '')
   const [until, setUntil] = useState('15:00')
+  const [shiftId, setShiftId] = useState('')
+  const [offset, setOffset] = useState<number | null>(null)
+  const [notes, setNotes] = useState('')
 
   const { data: list = [] } = useQuery({ queryKey: ['portal', 'requests'], queryFn: () => portalFetch<PortalOccurrence[]>('/occurrences') })
+  const { data: changes = [] } = useQuery({
+    queryKey: ['portal', 'change-requests'],
+    queryFn:  () => portalFetch<PortalChangeRequest[]>('/change-requests'),
+    enabled:  p.requestShiftChange || p.requestRestGroupChange,
+  })
+  const pending = kind && isChange(kind) ? changes.find(c => c.kind === kind && (c.status === 'REQUESTED' || c.status === 'QUEUED')) : undefined
   const { data: quotas = [] } = useQuery({ queryKey: ['portal', 'quotas', today], queryFn: () => portalFetch<PortalQuotaBalance[]>(`/quotas?date=${today}`) })
   // the quotas of the period holding the day asked
   const { data: dayQuotas } = useQuery({
     queryKey: ['portal', 'quotas', date],
     queryFn:  () => portalFetch<PortalQuotaBalance[]>(`/quotas?date=${date}`),
-    enabled:  open && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    enabled:  open && !!kind && !isChange(kind) && /^\d{4}-\d{2}-\d{2}$/.test(date),
   })
   const quota = dayQuotas?.find(q => q.kind === kind && (kind === 'TIME_WINDOW' || q.absenceTypeId === typeId))
-  const local = date < today ? 'O pedido não pode ser para um dia que já passou'
+  const local = kind === 'SHIFT' ? (pending ? 'Você já tem um pedido de troca de turno em aberto' : !shiftId ? 'Escolha o turno' : null)
+    : kind === 'REST_GROUP' ? (pending ? 'Você já tem um pedido de troca de grupo em aberto' : offset == null ? 'Escolha o grupo' : null)
+    : date < today ? 'O pedido não pode ser para um dia que já passou'
     : quota && quota.used >= quota.max ? `Cota esgotada: ${quota.label} — ${quota.used} de ${quota.max}` : null
 
   const send = useMutation({
-    mutationFn: () => portalFetch<PortalOccurrence>('/occurrences', {
-      method: 'POST',
-      body:   kind === 'ABSENCE' ? { kind, date, absenceTypeId: typeId } : { kind, date, startNotBefore: null, endNotAfter: toMinutes(until) },
-    }),
+    mutationFn: (): Promise<unknown> => (kind === 'SHIFT' || kind === 'REST_GROUP'
+      ? portalFetch<PortalChangeRequest>('/change-requests', {
+        method: 'POST',
+        body:   { ...(kind === 'SHIFT' ? { kind, shiftId } : { kind, restOffset: offset }), notes: notes.trim() || undefined },
+      })
+      : portalFetch<PortalOccurrence>('/occurrences', {
+        method: 'POST',
+        body:   kind === 'ABSENCE' ? { kind, date, absenceTypeId: typeId } : { kind, date, startNotBefore: null, endNotAfter: toMinutes(until) },
+      })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['portal', 'requests'] })
+      void qc.invalidateQueries({ queryKey: ['portal', 'change-requests'] })
       void qc.invalidateQueries({ queryKey: ['portal', 'quotas'] })
       setOpen(false)
+      setNotes('')
       onSent()
     },
   })
+  const cancel = useMutation({
+    mutationFn: (id: string) => portalFetch<PortalChangeRequest>(`/change-requests/${id}/cancel`, { method: 'POST' }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['portal', 'change-requests'] }),
+  })
   const error = local ?? send.error?.message ?? null
+  if (!kind) return <p className="p-4 text-sm text-muted-foreground">Nenhum pedido disponível no seu perfil.</p>
 
   return (
     <div className="space-y-4 p-4">
@@ -180,20 +227,35 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
       ) : (
         <form onSubmit={e => { e.preventDefault(); if (!local) send.mutate() }} className="space-y-3 rounded-xl border border-border bg-card p-4">
           {kinds.length > 1 && (
-            <div className="grid grid-cols-2 rounded-lg border border-border p-0.5 text-sm">
+            <div className="grid rounded-lg border border-border p-0.5 text-sm" style={{ gridTemplateColumns: `repeat(${kinds.length}, minmax(0, 1fr))` }}>
               {kinds.map(k => (
                 <button key={k} type="button" onClick={() => setKind(k)}
                   className={cn('rounded-md py-2 font-medium cursor-pointer', kind === k ? 'bg-primary text-white' : 'text-muted-foreground')}>
-                  {k === 'ABSENCE' ? 'Ausência' : 'Horário'}
+                  {KIND_LABEL[k]}
                 </button>
               ))}
             </div>
           )}
-          <label className="block space-y-1 text-sm">
-            <span className="text-muted-foreground">Dia</span>
-            <input type="date" required min={today} value={date} onChange={e => setDate(e.target.value)} className={field} />
-          </label>
-          {kind === 'ABSENCE' ? (
+          {!isChange(kind) && (
+            <label className="block space-y-1 text-sm">
+              <span className="text-muted-foreground">Dia</span>
+              <input type="date" required min={today} value={date} onChange={e => setDate(e.target.value)} className={field} />
+            </label>
+          )}
+          {kind === 'SHIFT' && options ? (
+            <>
+              <p className="text-sm text-muted-foreground">Seu turno: <span className="font-medium text-foreground">{options.shifts.find(s => s.current)?.name ?? 'nenhum'}</span></p>
+              <label className="block space-y-1 text-sm">
+                <span className="text-muted-foreground">Quero passar para</span>
+                <PortalSelect required value={shiftId} onChange={e => setShiftId(e.target.value)}>
+                  <option value="">Escolha o turno</option>
+                  {options.shifts.filter(s => !s.current).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </PortalSelect>
+              </label>
+            </>
+          ) : kind === 'REST_GROUP' && options?.restGroups ? (
+            <RestGroupPicker groups={options.restGroups} value={offset} onChange={setOffset} />
+          ) : kind === 'ABSENCE' ? (
             <label className="block space-y-1 text-sm">
               <span className="text-muted-foreground">Motivo</span>
               <PortalSelect required value={typeId} onChange={e => setTypeId(e.target.value)}>
@@ -206,6 +268,15 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
               <input type="time" required value={until} onChange={e => setUntil(e.target.value)} className={field} />
             </label>
           )}
+          {isChange(kind) && (
+            <>
+              <label className="block space-y-1 text-sm">
+                <span className="text-muted-foreground">Motivo (opcional)</span>
+                <input type="text" maxLength={500} value={notes} onChange={e => setNotes(e.target.value)} className={field} />
+              </label>
+              <p className="text-xs text-muted-foreground">Sem data: o pedido fica para análise e é atendido quando houver vaga.</p>
+            </>
+          )}
           {quota && <p className="text-xs text-muted-foreground">Cota: {quota.used} de {quota.max} {periodLabel(quota.period)}.</p>}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex gap-2">
@@ -215,6 +286,30 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
             </button>
           </div>
         </form>
+      )}
+
+      {changes.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Trocas de turno e folga</p>
+          {changes.map(c => (
+            <div key={c.id} className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-center gap-2">
+                <p className="me-auto text-sm font-medium">{c.kind === 'SHIFT' ? 'Turno' : 'Folga'} · {c.change}</p>
+                <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', CHANGE_STATUS[c.status].tone)}>{CHANGE_STATUS[c.status].label}</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pedido em {ddmm(c.createdAt.slice(0, 10))}{c.position != null && ` · ${c.position}º na fila`}
+              </p>
+              {c.reviewNotes && <p className="mt-1 text-xs text-muted-foreground">“{c.reviewNotes}”</p>}
+              {(c.status === 'REQUESTED' || c.status === 'QUEUED') && (
+                <button type="button" disabled={cancel.isPending} onClick={() => cancel.mutate(c.id)} className="mt-2 text-xs font-medium text-destructive disabled:opacity-50 cursor-pointer">
+                  Cancelar pedido
+                </button>
+              )}
+            </div>
+          ))}
+          {cancel.error && <p className="text-sm text-destructive">{cancel.error.message}</p>}
+        </div>
       )}
 
       <div className="space-y-2">
@@ -235,6 +330,37 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// each group of his pattern as its days off in the preview weeks — the letter alone says nothing
+function RestGroupPicker({ groups, value, onChange }: { groups: NonNullable<PortalChangeOptions['restGroups']>; value: number | null; onChange: (o: number) => void }) {
+  const weeks = Array.from({ length: Math.round((Date.parse(groups.to) - Date.parse(groups.from)) / 86_400_000 + 1) / 7 }, (_, w) =>
+    Array.from({ length: 7 }, (_, d) => addDays(groups.from, w * 7 + d)))
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Suas folgas de {ddmm(groups.from)} a {ddmm(groups.to)} em cada grupo ({groups.patternName}). Vale a partir da próxima escala gerada — os dias já publicados não mudam.
+      </p>
+      {groups.options.map(g => {
+        const off = new Set(g.off)
+        return (
+          <button key={g.offset} type="button" disabled={g.current} onClick={() => onChange(g.offset)}
+            className={cn('w-full space-y-2 rounded-xl border p-3 text-left cursor-pointer disabled:cursor-default',
+              value === g.offset ? 'border-primary ring-1 ring-primary' : 'border-border', g.current && 'bg-muted/40')}>
+            <p className="text-sm font-semibold">{g.label}{g.current && <span className="ms-2 text-xs font-normal text-muted-foreground">seu grupo</span>}</p>
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px]">
+              {[1, 2, 3, 4, 5, 6, 0].map(d => <span key={d} className="text-muted-foreground">{WEEKDAY[d]}</span>)}
+              {weeks.flat().map(day => (
+                <span key={day} className={cn('rounded py-1 tabular-nums', off.has(day) ? 'bg-emerald-500/20 font-semibold text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground')}>
+                  {day.slice(8, 10)}
+                </span>
+              ))}
+            </div>
+          </button>
+        )
+      })}
     </div>
   )
 }

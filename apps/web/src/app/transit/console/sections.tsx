@@ -99,7 +99,7 @@ const SEV: Record<ConsoleSeverity, { icon: LucideIcon; cls: string }> = {
 
 export const SECTION_ICON: Record<ConsoleSection, LucideIcon> = {
   plans: Icons.Layers, staffing: Icons.Users, shifts: Icons.Clock, groups: Icons.CalendarRange,
-  crew: Icons.IdCard, daily: Icons.CalendarX, adjust: Icons.ClipboardList,
+  crew: Icons.IdCard, requests: Icons.ArrowLeftRight, daily: Icons.CalendarX, adjust: Icons.ClipboardList,
 }
 
 // the day types the analyses show: those with days in the window or an effective plan

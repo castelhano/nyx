@@ -3,6 +3,7 @@ import type { AuthUser } from '@nyx/types'
 import { CaslAbilityFactory } from '../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../auth/policies.guard'
 import { PortalAuthService } from './portal-auth.service'
+import { PortalChangeRequestService } from './portal-change-request.service'
 import { PortalGuard, PortalOpenFor, type PortalRequest } from './portal.guard'
 import { PortalService } from './portal.service'
 
@@ -10,8 +11,9 @@ import { PortalService } from './portal.service'
 @Controller('portal')
 export class PortalController {
   constructor(
-    private readonly auth:   PortalAuthService,
-    private readonly portal: PortalService,
+    private readonly auth:    PortalAuthService,
+    private readonly portal:  PortalService,
+    private readonly changes: PortalChangeRequestService,
   ) {}
 
   @Post('auth/login')
@@ -73,6 +75,32 @@ export class PortalController {
   @UseGuards(PortalGuard)
   request(@Req() req: PortalRequest, @Body() body: unknown) {
     return this.portal.request(req.crew!, body)
+  }
+
+  @Get('change-requests')
+  @UseGuards(PortalGuard)
+  changeRequests(@Req() req: PortalRequest) {
+    return this.changes.list(req.crew!)
+  }
+
+  // the shifts and rest groups he may ask for, the groups with their days off ahead
+  @Get('change-requests/options')
+  @UseGuards(PortalGuard)
+  changeOptions(@Req() req: PortalRequest) {
+    return this.changes.options(req.crew!)
+  }
+
+  @Post('change-requests')
+  @UseGuards(PortalGuard)
+  changeRequest(@Req() req: PortalRequest, @Body() body: unknown) {
+    return this.changes.create(req.crew!, body)
+  }
+
+  @Post('change-requests/:id/cancel')
+  @HttpCode(200)
+  @UseGuards(PortalGuard)
+  cancelChange(@Req() req: PortalRequest, @Param('id') id: string) {
+    return this.changes.cancel(req.crew!, id)
   }
 
   // his quotas and how much is used in the period holding `date`

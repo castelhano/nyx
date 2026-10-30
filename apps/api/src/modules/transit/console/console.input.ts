@@ -6,6 +6,7 @@ import type { TransitRosterConfigService } from '../settings/transit-roster-conf
 import type { DayTypeService } from '../timetabling/day-type/day-type.service'
 import { addDays, dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
 import { outdatedOperations } from '../daily/daily-outdated'
+import { OPEN_CHANGE, changeRequestSelect, changeText, settleChangeRequests } from '../crew/crew-member/crew-change-request'
 import { parseDay } from '../timetabling/dop/dop-resolution'
 import { dailyIssueLabel, type ConsoleCrew, type ConsoleDuty, type ConsoleInput, type ConsolePattern } from './console.calc'
 
@@ -298,6 +299,17 @@ export async function loadConsoleInput(
     select: { id: true, code: true, fullName: true, preferredName: true, hireDate: true, contracts: { where: { status: 'ACTIVE' }, orderBy: { startDate: 'desc' }, take: 1, select: { jobTitle: { select: { name: true } } } } },
   })).map(e => ({ employeeId: e.id, code: e.code, name: nameOf(e), jobTitle: e.contracts[0]?.jobTitle.name ?? '', role, hireDate: dayOf(e.hireDate) })) : []
 
+  // ── open change requests (the ones already met settle first) ──
+  await settleChangeRequests(prisma, members.map(m => m.id))
+  const requests: ConsoleInput['requests'] = (await prisma.crewChangeRequest.findMany({
+    where:   { crewMemberId: { in: members.map(m => m.id) }, status: { in: [...OPEN_CHANGE] } },
+    orderBy: { createdAt: 'asc' },
+    select:  changeRequestSelect,
+  })).map(r => ({
+    id: r.id, kind: r.kind, status: r.status as 'REQUESTED' | 'QUEUED', crewMemberId: r.crewMemberId, change: changeText(r), notes: r.notes,
+    createdAt: r.createdAt.toISOString(), shiftId: r.shiftId, restPatternId: r.restPatternId, restOffset: r.restOffset,
+  }))
+
   // ── generated days with errors ──
   const operations = await prisma.dailyOperation.findMany({
     where:   { scopeId: scope.id, status: 'PLANNED', date: { gte: date, lte: toDbDate(addDays(today, CONSOLE_DAILY_DAYS)) } },
@@ -319,6 +331,6 @@ export async function loadConsoleInput(
     lines: lines.map(l => ({ id: l.id, code: l.code })),
     lineAccessMode: settings.lineAccessMode, lineMarginPct: settings.lineMarginPct, ruleModes: settings.ruleModes,
     restFloor: crewSettings.range.interShiftRest.floor, bankCompPct: settings.hourBankCompPct,
-    noProfile, fixedCar, dailyErrors,
+    noProfile, fixedCar, dailyErrors, requests,
   }
 }

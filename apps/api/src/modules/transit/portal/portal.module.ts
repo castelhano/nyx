@@ -7,6 +7,7 @@ import { PortalProfileController } from './portal-profile.controller'
 import { PortalProfileService } from './portal-profile.service'
 import { PortalAccessController, PortalController } from './portal.controller'
 import { PortalAuthService } from './portal-auth.service'
+import { PortalChangeRequestService } from './portal-change-request.service'
 import { PortalGuard } from './portal.guard'
 import { PortalService } from './portal.service'
 
@@ -14,6 +15,6 @@ import { PortalService } from './portal.service'
 @Module({
   imports:     [CaslModule, TransitSettingsModule, CrewModule, JwtModule.register({})],
   controllers: [PortalProfileController, PortalController, PortalAccessController],
-  providers:   [PortalProfileService, PortalAuthService, PortalService, PortalGuard],
+  providers:   [PortalProfileService, PortalAuthService, PortalService, PortalChangeRequestService, PortalGuard],
 })
 export class PortalModule {}

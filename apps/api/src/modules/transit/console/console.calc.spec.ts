@@ -44,7 +44,7 @@ const base = (over: Partial<ConsoleInput> = {}): ConsoleInput => ({
   shifts: [MAN, TAR],
   plans: [], duties: [], crew: [], patterns: [sixOne], lines: [{ id: 'L1', code: '101' }, { id: 'L2', code: '102' }],
   lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100,
-  noProfile: [], fixedCar: [], dailyErrors: [],
+  noProfile: [], fixedCar: [], dailyErrors: [], requests: [],
   ...over,
 })
 
