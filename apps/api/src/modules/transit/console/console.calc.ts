@@ -533,7 +533,8 @@ function shiftsAnalysis(input: ConsoleInput, st: ConsoleStaffing): ConsoleShifts
   }
   const idle: ConsoleShiftsAnalysis['idle'] = []
   for (const r of st.rows) {
-    for (const [t, c] of Object.entries(r.cells)) if (r.current > 0 && c.demand === 0) idle.push({ shiftId: r.shiftId, dayTypeId: t, crew: r.current })
+    // crew working that day type (a regime off on it — Domingo Fixo — leaves nobody idle)
+    for (const [t, c] of Object.entries(r.cells)) if (c.avg > 0 && c.demand === 0) idle.push({ shiftId: r.shiftId, dayTypeId: t, crew: Math.ceil(c.avg) })
   }
   return {
     starts, noShift, idle,
@@ -692,7 +693,7 @@ function alerts(input: ConsoleInput, s: Omit<ConsoleSnapshot, 'alerts' | 'status
     if (x.count) push({ code: 'DUTY_NO_SHIFT', severity: 'warning', section: 'shifts', text: `${typeName.get(t)}: ${x.count} tabela(s) fora de qualquer turno` })
   }
   for (const id of s.shiftsAnalysis.noCrew) push({ code: 'SHIFT_NO_CREW', severity: 'warning', section: 'shifts', text: `Turno ${shiftName.get(id)} tem tabelas e nenhum operador`, link: { kind: 'crew-shift', id } })
-  for (const x of s.shiftsAnalysis.idle) push({ code: 'SHIFT_IDLE', severity: 'info', section: 'shifts', text: `Turno ${shiftName.get(x.shiftId)}: ${x.crew} operador(es) e nenhuma tabela no ${typeName.get(x.dayTypeId)}` })
+  for (const x of s.shiftsAnalysis.idle) push({ code: 'SHIFT_IDLE', severity: 'info', section: 'shifts', text: `Turno ${shiftName.get(x.shiftId)}: ${x.crew} operador(es) trabalhando e nenhuma tabela no ${typeName.get(x.dayTypeId)}` })
   for (const g of s.groups) {
     for (const p of g.patterns) {
       const off = p.groups.reduce((n, x) => n + Math.max(0, x.count - x.ideal), 0) + p.outside

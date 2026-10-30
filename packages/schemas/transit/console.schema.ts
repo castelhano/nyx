@@ -172,7 +172,7 @@ export interface ConsoleShiftsAnalysis {
   noShift: Record<string, { count: number; earliest: number | null; latest: number | null }>
   // duties fitting two shifts (decided by priority only)
   overlaps: { shiftIds: [string, string]; count: number }[]
-  // a shift with crew and no duty on a day type
+  // a shift with crew working on a day type (on average) and no duty on it
   idle: { shiftId: string; dayTypeId: string; crew: number }[]
   // a shift with duties and no crew
   noCrew: string[]

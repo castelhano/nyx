@@ -415,7 +415,7 @@ export function ShiftsSection({ snapshot }: { snapshot: ConsoleSnapshot }) {
         ))}
         {idle.map(x => (
           <li key={x.shiftId} className="flex gap-2"><Icons.Info className="w-4 h-4 shrink-0 mt-0.5 text-sky-600 dark:text-sky-400" />
-            <span className="flex-1">{shiftById.get(x.shiftId)?.name}: {x.crew} operador(es) e nenhuma tabela no {t?.name.toLowerCase()}.</span>
+            <span className="flex-1">{shiftById.get(x.shiftId)?.name}: {x.crew} operador(es) trabalhando e nenhuma tabela no {t?.name.toLowerCase()}.</span>
           </li>
         ))}
         {snapshot.shiftsAnalysis.noCrew.map(id => (

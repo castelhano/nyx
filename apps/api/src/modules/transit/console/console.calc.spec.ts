@@ -213,3 +213,15 @@ describe('plans', () => {
     expect(snap.status.plans).toEqual({ severity: 'error', count: 3 })
   })
 })
+
+describe('idle shifts', () => {
+  it('a shift off on a day type (Domingo Fixo) is not idle on it', () => {
+    const sundayOff = { ...sixOne, id: 'df', cycle: { ...sixOne.cycle, pattern: 'TTTTTTF' } }
+    // anchored on a Monday with offset 0: off every Sunday
+    const crew = crewOf(7, 'MAN', { pattern: sundayOff, offset: 0 })
+    const snap = computeConsole(base({ crew, duties: dutiesOf('MAN', { UTIL: 6, SAB: 6 }) }))
+    expect(snap.shiftsAnalysis.idle).toEqual([])
+    const working = computeConsole(base({ crew: crewOf(7, 'MAN'), duties: dutiesOf('MAN', { UTIL: 6, SAB: 6 }) }))
+    expect(working.shiftsAnalysis.idle).toEqual([{ shiftId: 'MAN', dayTypeId: 'DOM', crew: 6 }])
+  })
+})
