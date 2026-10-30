@@ -465,7 +465,7 @@ export default function RosterPage() {
               <section className="rounded-lg border border-border p-3 space-y-1 max-h-80 overflow-y-auto">
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-medium me-auto">Pendências do período</p>
-                  {canUpdate && issueDuties.length > 0 && (
+                  {canUpdate && issueDuties.length > 0 && to >= localToday() && (
                     <>
                       <Button size="sm" variant="outline" className="h-6 text-xs" title="Reparar as tabelas do período — o mínimo de mudanças" onClick={() => setRepair({ kind: 'crew', from, to })}>
                         <Icons.Wrench className="w-3 h-3" />Tabelas

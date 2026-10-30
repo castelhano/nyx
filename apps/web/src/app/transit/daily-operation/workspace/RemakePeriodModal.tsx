@@ -14,6 +14,7 @@ import { localToday } from '@/lib/plan-vigence'
 import { extractError } from '@/lib/utils'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import { fmtDay } from './board'
+import { startOf } from './GeneratePanel'
 
 const ORIGIN = 'apps/web/src/app/transit/daily-operation/workspace/RemakePeriodModal.tsx'
 
@@ -36,7 +37,7 @@ async function remake(body: unknown): Promise<RemakePeriodResult> {
 export function RemakePeriodModal({ branchId, from: viewFrom, to: viewTo, onDone, onClose }: Props) {
   useShortcutContext('remake_period_md', 'Atalhos — Refazer período')
   const today = localToday()
-  const [from, setFrom] = useState(viewFrom < today ? today : viewFrom)
+  const [from, setFrom] = useState(startOf(viewFrom, viewTo, today))
   const [to, setTo] = useState(viewTo)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

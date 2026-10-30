@@ -16,7 +16,7 @@ import { loadCrewBranchRules } from '../timetabling/crew-plan/crew-branch-rules'
 import { loadCrewWalk } from '../timetabling/crew-plan/crew-walk'
 import { canonicalJson } from '../timetabling/crew-plan/crew-plan.service'
 import { defaultIntervalMaxMinutes } from '../timetabling/vehicle-plan/block-issues.utils'
-import { addDays, dayOf, fromToday, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
+import { addDays, dayOf, fromToday, localToday, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
 import { systemAbsenceTypeId } from '../crew/crew-absence-type/system-types'
 import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
@@ -148,6 +148,7 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
   async rematerialize(id: string): Promise<{ id: string }> {
     const op = await this.operation(id)
     if (op.status !== 'PLANNED') throw new BadRequestException('Só um dia ainda planejado pode ser refeito')
+    if (dayOf(op.date) < localToday()) throw new BadRequestException('Um dia passado não é refeito')
     await this.prisma.dailyOperation.delete({ where: { id } })
     const created = await this.create({ scopeId: op.scopeId, date: op.date })
     return { id: created.id }

@@ -14,6 +14,7 @@ import { useToast }         from '@/lib/toast-context'
 import { useConfirm }       from '@/lib/confirm-context'
 import { cn, extractError } from '@/lib/utils'
 import { Badge }            from '@/components/ui/badge'
+import { localToday }       from '@/lib/plan-vigence'
 import type { DailyBoardData } from './daily.types'
 import { ISSUE_LABEL, crewSituation, dutyLabel } from './daily.types'
 import { BlocksTable, CrewTable, DutiesTable } from './DayTables'
@@ -106,7 +107,7 @@ function DailyOperationBoard({ id }: { id: string }) {
     ...(status === 'PLANNED' ? [{ label: 'Publicar', icon: Icons.Send, onClick: () => void handlePublish(), primary: true, disabled: saving || !canUpdate }] : []),
     ...(status === 'PUBLISHED' ? [{ label: 'Encerrar', icon: Icons.Lock, onClick: () => void handleClose(), primary: true, disabled: saving || !canUpdate }] : []),
     ...(canEdit ? [{ label: 'Recalcular', icon: Icons.RefreshCw, onClick: () => void handleRecalculate(), disabled: saving, keybind: 'ALT+G' }] : []),
-    ...(status === 'PLANNED' && canUpdate ? [{ label: 'Refazer o dia', icon: Icons.RotateCcw, onClick: () => void handleRematerialize(), disabled: saving, overflow: true }] : []),
+    ...(status === 'PLANNED' && canUpdate && (data?.operation.date ?? '') >= localToday() ? [{ label: 'Refazer o dia', icon: Icons.RotateCcw, onClick: () => void handleRematerialize(), disabled: saving, overflow: true }] : []),
   ], [status, saving, canEdit, canUpdate])
 
   useShortcut('alt+g', () => { if (canEdit && !saving) void handleRecalculate() }, { desc: 'Recalcular o dia', icon: Icons.RefreshCw, origin: ORIGIN })

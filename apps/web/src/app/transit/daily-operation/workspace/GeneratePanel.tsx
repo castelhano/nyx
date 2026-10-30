@@ -51,13 +51,17 @@ interface Props {
   onSelectDuty?: (dutyId: string) => void
 }
 
+// the suggested start: the view's — brought to today when the view runs from the past into today
+// or later; a view wholly past is kept as it is (refused, so the user sees what he picked)
+export const startOf = (from: string, to: string, today: string) => (from < today && to >= today ? today : from)
+
 const spanDays = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1
 
 export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onProposal, onRefresh, onClose, onSelectDuty }: Props) {
   const confirm = useConfirm()
-  // the run's period: the view's, from today on — the past is never generated
+  // the run's period: the view's (startOf) — the past is never generated
   const today = localToday()
-  const [period, setPeriod] = useState({ from: viewFrom < today ? today : viewFrom, to: viewTo })
+  const [period, setPeriod] = useState({ from: startOf(viewFrom, viewTo, today), to: viewTo })
   const { from, to } = period
   const periodError = to < today ? 'Período retroativo — dias anteriores a hoje não são gerados'
     : from > to ? 'Início depois do fim'
@@ -111,7 +115,7 @@ export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onPr
 
   // a new view resets the period while there's no run
   useEffect(() => {
-    if (!jobId) setPeriod({ from: viewFrom < today ? today : viewFrom, to: viewTo })
+    if (!jobId) setPeriod({ from: startOf(viewFrom, viewTo, today), to: viewTo })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewFrom, viewTo])
 

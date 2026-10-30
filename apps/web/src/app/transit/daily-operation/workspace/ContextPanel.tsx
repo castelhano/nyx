@@ -12,6 +12,7 @@ import { GenerationList } from './GenerationList'
 import type { RepairRequest } from './RepairModal'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
+import { localToday } from '@/lib/plan-vigence'
 import { ISSUE_LABEL, WEEKDAY, cellSummary, clock, dutyName, fmtDay, freeCells, hm, requestImpact, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty } from './board'
 
 interface Suggestion { crewMemberId: string; code: string; name: string; points: number; warns: number; reasons: string[] }
@@ -128,14 +129,14 @@ export function ContextPanel({ board, idx, date, memberId, dutyId, canEdit, acti
           </div>
           <p className="text-xs text-muted-foreground">{day.assigned}/{day.duties} tabela(s) com operador · {day.issues} com pendência</p>
           {!day.operations.length && <p className="text-xs text-muted-foreground">Dia ainda não criado — gere a escala do período.</p>}
-          {canEdit && day.issues > 0 && day.operations.some(o => o.status !== 'CLOSED') && (
+          {canEdit && day.issues > 0 && day.date >= localToday() && day.operations.some(o => o.status !== 'CLOSED') && (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-muted-foreground">Reparar</span>
               <Button size="sm" variant="outline" className="h-6" onClick={() => actions.repair({ kind: 'crew', from: day.date, to: day.date })}>Tabelas</Button>
               <Button size="sm" variant="outline" className="h-6" onClick={() => actions.repair({ kind: 'vehicles', from: day.date, to: day.date })}>Veículos</Button>
             </div>
           )}
-          {day.operations.map(o => <OperationRow key={o.id} o={o} canEdit={canEdit} actions={actions} />)}
+          {day.operations.map(o => <OperationRow key={o.id} o={o} past={day.date < localToday()} canEdit={canEdit} actions={actions} />)}
           <GenerationList list={board.generations.filter(g => g.from <= day.date && g.to >= day.date).slice(0, 3)} title="Gerado por" />
         </section>
       )}
@@ -227,7 +228,7 @@ function DutySection({ board, idx, duty, canEdit, actions, onClose }: { board: R
           placeholder="Sem operador" disabled={!canEdit || duty.locked} className="h-8 text-sm" emptyMessage="Nenhum operador"
         />
       </div>
-      {canEdit && !duty.locked && duty.kind !== 'STANDBY' && (!duty.crewMemberId || duty.issues.some(i => i.severity !== 'info')) && (
+      {canEdit && !duty.locked && duty.kind !== 'STANDBY' && duty.date >= localToday() && (!duty.crewMemberId || duty.issues.some(i => i.severity !== 'info')) && (
         <button type="button" onClick={() => actions.repair({ kind: 'crew', from: duty.date, to: duty.date, onlyId: duty.id })}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
           <Icons.Wrench className="w-3 h-3" />Reparar esta tabela (livre, troca ou quadro insuficiente)
@@ -300,8 +301,8 @@ function DutySection({ board, idx, duty, canEdit, actions, onClose }: { board: R
 }
 
 // one Scope's day: its status, publish / close, and one status back for admins — with a reason
-// (Enter confirms, Esc goes back)
-function OperationRow({ o, canEdit, actions }: { o: RosterBoard['days'][number]['operations'][number]; canEdit: boolean; actions: PanelActions }) {
+// (Enter confirms, Esc goes back); a past day can't be remade
+function OperationRow({ o, past, canEdit, actions }: { o: RosterBoard['days'][number]['operations'][number]; past: boolean; canEdit: boolean; actions: PanelActions }) {
   const isAdmin = useAuth().user?.role === 'admin'
   const [reverting, setReverting] = useState(false)
   const [reason, setReason] = useState('')
@@ -314,13 +315,13 @@ function OperationRow({ o, canEdit, actions }: { o: RosterBoard['days'][number][
         <span className={cn('ml-auto', o.status === 'PUBLISHED' && 'text-emerald-600 dark:text-emerald-400', o.status === 'CLOSED' && 'text-muted-foreground')}>{STATUS_LABEL[o.status]}</span>
         {canEdit && o.status === 'PLANNED'   && <Button size="sm" variant="outline" className="h-6" onClick={() => actions.status(o.id, 'PUBLISHED')}>Publicar</Button>}
         {canEdit && o.status === 'PUBLISHED' && <Button size="sm" variant="outline" className="h-6" onClick={() => actions.status(o.id, 'CLOSED')}>Encerrar</Button>}
-        {canEdit && o.status === 'PLANNED' && <Button size="sm" variant="ghost" className="h-6" onClick={() => actions.remake(o.id)}>Refazer</Button>}
+        {canEdit && o.status === 'PLANNED' && !past && <Button size="sm" variant="ghost" className="h-6" onClick={() => actions.remake(o.id)}>Refazer</Button>}
         {isAdmin && o.status !== 'PLANNED' && !reverting && <Button size="sm" variant="ghost" className="h-6" onClick={() => setReverting(true)}>{back}</Button>}
       </div>
       {o.outdated && (
         <p className="flex items-start gap-1 text-[11px] text-amber-600 dark:text-amber-400">
           <Icons.AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-          <span>{o.outdated}.{o.status === 'PLANNED' ? ' Refazer copia o dia de novo.' : ' Só um dia planejado pode ser refeito.'}</span>
+          <span>{o.outdated}.{past ? ' Um dia passado não é refeito.' : o.status === 'PLANNED' ? ' Refazer copia o dia de novo.' : ' Só um dia planejado pode ser refeito.'}</span>
         </p>
       )}
       {reverting && (
