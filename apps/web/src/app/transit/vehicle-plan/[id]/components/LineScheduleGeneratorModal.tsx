@@ -227,6 +227,31 @@ function makeInitialLineState(line: LineRecord | undefined, dayTypeCode: string)
   }
 }
 
+// Saved preview — the modal's whole editable config, kept in this browser only so the
+// user can generate, discard, reload it and tweak. Keyed by plan + the exact line set.
+interface SavedPreview {
+  savedAt:                string
+  lineStates:             Record<string, LineGenState>
+  priorityMode:           PriorityMode
+  principalLineId:        string | null
+  minTrunkHeadwayMinutes: number
+  maxShiftFraction:       number
+  deltaOverride:          Partial<Record<Direction, string>>
+}
+
+function previewKey(planId: string, lineIds: string[]): string {
+  return `nyx:line-gen-preview:${planId}:${[...lineIds].sort().join(',')}`
+}
+
+function readPreview(key: string): SavedPreview | null {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) as SavedPreview : null
+  } catch {
+    return null
+  }
+}
+
 interface Props {
   planId:               string
   lineIds:              string[]
@@ -630,6 +655,42 @@ export function LineScheduleGeneratorModal({
       const p = typeof patch === 'function' ? patch(st) : patch
       return { ...prev, [lineId]: { ...st, ...p } }
     })
+  }
+
+  const storageKey = previewKey(planId, lineIds)
+  const [savedAt, setSavedAt] = useState(() => readPreview(storageKey)?.savedAt ?? null)
+
+  function savePreview() {
+    const preview: SavedPreview = {
+      savedAt: new Date().toISOString(),
+      lineStates, priorityMode, principalLineId, minTrunkHeadwayMinutes, maxShiftFraction, deltaOverride,
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(preview))
+    } catch {
+      toast.error('Não foi possível salvar a prévia neste navegador')
+      return
+    }
+    setSavedAt(preview.savedAt)
+    toast.success('Prévia salva')
+  }
+
+  function loadPreview() {
+    const saved = readPreview(storageKey)
+    if (!saved) { setSavedAt(null); return }
+    // keeps the async seeding effects from overwriting the loaded config if their
+    // data arrives after this
+    for (const lineId of Object.keys(saved.lineStates)) {
+      seededRef.current.add(lineId)
+      directionsSeededRef.current.add(lineId)
+    }
+    setLineStates(prev => ({ ...prev, ...saved.lineStates }))
+    setPriorityMode(saved.priorityMode)
+    setPrincipalLineId(saved.principalLineId)
+    setMinTrunkHeadwayMinutes(saved.minTrunkHeadwayMinutes)
+    setMaxShiftFraction(saved.maxShiftFraction)
+    setDeltaOverride(saved.deltaOverride)
+    toast.success('Prévia carregada')
   }
 
   const activeState = lineStates[activeLineId]
@@ -2150,6 +2211,15 @@ export function LineScheduleGeneratorModal({
                 )}
               </div>
               <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={savePreview} disabled={lineIds.some(id => !lineStates[id])}>
+                  Salvar prévia
+                </Button>
+                <Button
+                  type="button" variant="outline" size="sm" onClick={loadPreview} disabled={!savedAt}
+                  title={savedAt ? `Salva em ${new Date(savedAt).toLocaleString('pt-BR')}` : 'Nenhuma prévia salva'}
+                >
+                  Carregar prévia
+                </Button>
                 <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={onClose}>
                   Cancelar
                 </Button>
