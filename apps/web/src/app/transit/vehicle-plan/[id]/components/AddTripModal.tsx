@@ -297,7 +297,10 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
   // focused rest break): opposite direction of the reference (same direction if the
   // line only has one), starting right after whatever's already in that gap — an
   // existing rest break's end, or the line's per-window recovery time (intervalMinutes,
-  // falling back to 5min) when the gap is empty. Skipped entirely if there's no room.
+  // falling back to 5min) when the gap is empty. If there's no room after, mirrors it
+  // before the reference: ending right before an existing break's start, or the new
+  // trip's own recovery time before the reference departs (needs a metrics window to
+  // size it). After always wins when both fit. Skipped entirely if neither fits.
   useEffect(() => {
     if (appliedReferenceRef.current) return
     if (!reference || !referenceEligible) return
@@ -328,19 +331,47 @@ export function AddTripModal({ plottedLines, dayTypeCode, plottedBlocks, referen
       // recovery time belongs to the reference trip (rest after it), not to the new one
       : referenceTrip.trip.arrivalMinutes + (resolveCycleWindow(lineMetrics, dayTypeCode, refDirection, referenceTrip.trip.departureMinutes)?.intervalMinutes ?? 5)
 
+    // One-time complex prefill, gated by appliedReferenceRef above — not a plain
+    // derived value, computable during render.
+    const apply = (dep: number) => {
+      setRouteId(candidateRoute.id)
+      setDepHH(String(Math.floor(dep / 60) % 24))
+      setDepMM(String(dep % 60))
+      setBlockId(block.id)
+    }
+
     // space check only when a metrics window gives a synchronous duration — otherwise
     // let the async resolveCycle() + the submit-time overlap fallback handle it
     const window = resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, startMinutes)
-    if (window && hasOverlap(block, startMinutes, startMinutes + window.minutes)) return
+    if (!window || !hasOverlap(block, startMinutes, startMinutes + window.minutes)) {
+      apply(startMinutes)
+      return
+    }
 
-    // One-time complex prefill, gated by appliedReferenceRef above — not a plain
-    // derived value, computable during render.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setRouteId(candidateRoute.id)
-    setDepHH(String(Math.floor(startMinutes / 60) % 24))
-    setDepMM(String(startMinutes % 60))
-    setBlockId(block.id)
-    /* eslint-enable react-hooks/set-state-in-effect */
+    // ── no room after — try before the reference ──
+    const refDeparture = referenceTrip.trip.departureMinutes
+    const prevBreak = [...block.blockIntervals]
+      .filter(bi => bi.arrivalMinutes < refDeparture)
+      .sort((a, b) => b.arrivalMinutes - a.arrivalMinutes)[0]
+    const prevOther = [
+      ...block.blockTrips.map(bt => bt.trip.arrivalMinutes),
+      ...block.blockDeadruns.map(dr => dr.arrivalMinutes),
+    ].filter(arr => arr < refDeparture).sort((a, b) => b - a)[0]
+    const usesBreak = !!prevBreak && (prevOther == null || prevBreak.arrivalMinutes > prevOther)
+
+    // Windows are keyed by departure, which depends on the duration itself — guess
+    // from the reference departure, then re-resolve once at the estimated departure.
+    const guess = resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, refDeparture)
+    if (!guess) return
+    const estimated = refDeparture - (usesBreak ? 0 : guess.intervalMinutes) - guess.minutes
+    const before    = resolveCycleWindow(lineMetrics, dayTypeCode, candidateRoute.direction, estimated) ?? guess
+
+    // recovery here belongs to the new trip (rest after it, before the reference departs)
+    const endMinutes   = usesBreak ? prevBreak.departureMinutes - 1 : refDeparture - before.intervalMinutes
+    const beginMinutes = endMinutes - before.minutes
+    if (beginMinutes < 0 || hasOverlap(block, beginMinutes, endMinutes)) return
+
+    apply(beginMinutes)
   }, [routes, reference, referenceEligible, referenceLineId, tripType, lineId, plottedLines, dayTypeCode])
 
   // Prefill from a "Produtiva" (deadrun->trip) seed: departure/block are already set
