@@ -142,7 +142,7 @@ export function KpiStrip({ snapshot }: { snapshot: ConsoleSnapshot }) {
       {tiles.map(t => (
         <div key={t.label} className="rounded-lg border border-border bg-card px-4 py-3">
           <div className="text-xs text-muted-foreground">{t.label}</div>
-          <div className="flex items-end justify-between gap-2 mt-0.5">
+          <div className="flex items-start justify-between gap-2 mt-0.5">
             <div className={cn('text-2xl font-semibold tabular-nums', t.bad && 'text-destructive')}>{t.value}</div>
             {t.aside}
           </div>
