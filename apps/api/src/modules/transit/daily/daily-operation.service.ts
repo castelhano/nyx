@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import {
-  dailyOperationSchema, restPatternWorks, validateBlock,
+  dailyOperationSchema, remakePeriodSchema, restPatternWorks, validateBlock, type RemakePeriodResult,
   type CreateDailyOperationDto, type DailyIssue, type DailyOperation, type DailySource, type DailySummary,
   type CrewRole, type DutySummary, type UpdateDailyOperationDto, type VehiclePlanConstraints, type VehicleTypeValue,
 } from '@nyx/schemas'
@@ -16,7 +16,7 @@ import { loadCrewBranchRules } from '../timetabling/crew-plan/crew-branch-rules'
 import { loadCrewWalk } from '../timetabling/crew-plan/crew-walk'
 import { canonicalJson } from '../timetabling/crew-plan/crew-plan.service'
 import { defaultIntervalMaxMinutes } from '../timetabling/vehicle-plan/block-issues.utils'
-import { addDays, dayOf, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
+import { addDays, dayOf, fromToday, parseStartDate, toDbDate, type Day } from '../timetabling/plan-validity'
 import { systemAbsenceTypeId } from '../crew/crew-absence-type/system-types'
 import { materializeDay } from './daily-materialize'
 import { loadDailyRelief } from './daily-relief'
@@ -151,6 +151,29 @@ export class DailyOperationService extends BaseService<DailyOperation, CreateDai
     await this.prisma.dailyOperation.delete({ where: { id } })
     const created = await this.create({ scopeId: op.scopeId, date: op.date })
     return { id: created.id }
+  }
+
+  // "Refazer período": every PLANNED day of the Scopes the empresa operates, from today on, remade
+  // (the whole Scope's day, like rematerialize — every empresa of the Scope) — published / closed
+  // days stay; days not created yet are left to the generator
+  async remakePeriod(raw: unknown): Promise<RemakePeriodResult> {
+    const q = remakePeriodSchema.parse(raw)
+    if (q.from > q.to) throw new BadRequestException('Período inválido')
+    const from = fromToday(q.from, q.to)
+    const scopes = await this.prisma.scopeOperator.findMany({ where: { branchId: q.branchId }, select: { scopeId: true } })
+    const ops = await this.prisma.dailyOperation.findMany({
+      where:   { scopeId: { in: scopes.map(s => s.scopeId) }, date: { gte: toDbDate(from), lte: toDbDate(q.to) } },
+      select:  { id: true, status: true },
+      orderBy: { date: 'asc' },
+    })
+    const planned = ops.filter(o => o.status === 'PLANNED')
+    const locked = await this.prisma.rosterEntry.count({ where: { locked: true, dailyDuty: { dailyOperationId: { in: planned.map(o => o.id) } } } })
+    const operators = await this.prisma.scopeOperator.findMany({ where: { scopeId: { in: scopes.map(s => s.scopeId) } }, select: { abbr: true } })
+    const branches = [...new Set(operators.map(o => o.abbr))].sort()
+    const result = { from, to: q.to, days: planned.length, skipped: ops.length - planned.length, locked, branches }
+    if (q.dryRun) return result
+    for (const o of planned) await this.rematerialize(o.id)
+    return result
   }
 
   async setStatus(id: string, status: 'PUBLISHED' | 'CLOSED'): Promise<void> {

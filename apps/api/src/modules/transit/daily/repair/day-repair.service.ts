@@ -7,7 +7,7 @@ import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { HourBankService } from '../../hour-bank/hour-bank.service'
-import { dayOf, toDbDate } from '../../timetabling/plan-validity'
+import { dayOf, fromToday, toDbDate } from '../../timetabling/plan-validity'
 import { DailyOperationService } from '../daily-operation.service'
 import { loadRosterInput, daysBetween } from '../roster/roster-generator.input'
 import { carBlockSelect, loadCarFacts, type CarBlock } from '../roster/roster-vehicles'
@@ -41,7 +41,9 @@ export class DayRepairService {
   ) {}
 
   async propose(kind: DayRepairKind, raw: unknown): Promise<DayRepairProposal> {
-    const q = dayRepairQuerySchema.parse(raw)
+    const parsed = dayRepairQuerySchema.parse(raw)
+    if (parsed.from > parsed.to) throw new BadRequestException('Período inválido')
+    const q = { ...parsed, from: fromToday(parsed.from, parsed.to) }
     if (q.from > q.to || daysBetween(q.from, q.to) + 1 > ROSTER_MAX_HORIZON_DAYS) throw new BadRequestException('Período inválido')
     const items = kind === 'crew' ? await this.crew(q.branchId, q.role, q.from, q.to) : await this.vehicles(q.branchId, q.from, q.to)
     return { kind, from: q.from, to: q.to, items }

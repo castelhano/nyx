@@ -23,6 +23,7 @@ import {
 } from './workspace/board'
 import { OperatorsGrid, type GridPos, type Overlay } from './workspace/OperatorsGrid'
 import { GeneratePanel, type Proposal } from './workspace/GeneratePanel'
+import { RemakePeriodModal } from './workspace/RemakePeriodModal'
 import { QualityTable } from './workspace/QualityTable'
 import { PeriodPicker } from './workspace/PeriodPicker'
 import { KeyHint } from '@/core/FieldRenderer'
@@ -287,6 +288,7 @@ export default function RosterPage() {
 
   // ── generation: its proposal drawn over the board ──
   const [genOpen, setGenOpen] = useState(false)
+  const [remakeOpen, setRemakeOpen] = useState(false)
   const [proposal, setProposal] = useState<Proposal | null>(null)
   const overlay = useMemo((): Overlay | null => {
     if (!proposal || !board || !idx) return null
@@ -314,7 +316,10 @@ export default function RosterPage() {
   }, [proposal, board, idx, dates])
 
   useTopbarActions([
-    ...(canUpdate ? [{ label: 'Gerar', icon: Icons.Sparkles, onClick: () => setGenOpen(o => !o), primary: true }] : []),
+    ...(canUpdate ? [{
+      label: 'Gerar', icon: Icons.Sparkles, onClick: () => setGenOpen(o => !o), primary: true,
+      menu: [{ label: 'Refazer período', icon: Icons.RotateCcw, onClick: () => setRemakeOpen(true) }],
+    }] : []),
     { label: 'Recalcular dia', icon: Icons.RefreshCw, onClick: recalcDay, variant: 'ghost' as const, keybind: 'ALT+G', disabled: busy > 0 },
   ], [canUpdate, panelDate, busy, board])
   useShortcut('alt+g', recalcDay, { desc: 'Recalcular o dia selecionado', icon: Icons.RefreshCw, origin: ORIGIN })
@@ -545,6 +550,18 @@ export default function RosterPage() {
           onApplied={n => {
             setRepair(null)
             toast.success(`Reparo aplicado — ${n} mudança(s)`)
+            void queryClient.invalidateQueries({ queryKey: ['transit', 'roster-board', branchId, role] })
+          }}
+        />
+      )}
+      {remakeOpen && (
+        <RemakePeriodModal
+          branchId={branchId} from={from} to={to}
+          onClose={() => setRemakeOpen(false)}
+          onDone={r => {
+            setRemakeOpen(false)
+            setProposal(null)
+            toast.success(`${r.days} dia(s) refeito(s) — gere a escala de novo`)
             void queryClient.invalidateQueries({ queryKey: ['transit', 'roster-board', branchId, role] })
           }}
         />

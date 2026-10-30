@@ -33,6 +33,13 @@ export function localToday(): Day {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
+// a period's start brought to today: the generator and the repair never redo the past
+export function fromToday(from: Day, to: Day): Day {
+  const today = localToday()
+  if (to < today) throw new BadRequestException('O período já passou — dias anteriores a hoje não são alterados')
+  return from < today ? today : from
+}
+
 export function parseStartDate(s: unknown): Day {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s) || dayOf(toDbDate(s)) !== s) {
     throw new BadRequestException('Data de início inválida')

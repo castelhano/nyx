@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { CrewRole, RosterExtraStandby, RosterProposalSummary } from '@nyx/schemas'
+import { ROSTER_MAX_HORIZON_DAYS, type CrewRole, type RosterExtraStandby, type RosterProposalSummary } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Icons } from '@/lib/icons'
 import { apiFetch, getToken } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { cn, extractError } from '@/lib/utils'
+import { localToday } from '@/lib/plan-vigence'
 import { fmtDay } from './board'
 import { QualityTable } from './QualityTable'
 import { ShortageList } from './ShortageList'
@@ -37,6 +38,8 @@ const STOP_LABEL: Record<StopReason, string> = { finished: 'Concluída', user_st
 interface Props {
   branchId:   string
   role:       CrewRole
+  // the view's period — the run's default; the run may cover another one (only the view's days
+  // are drawn on the board, the summary covers it all)
   from:       string
   to:         string
   // the best proposal so far (null: none / discarded)
@@ -48,8 +51,18 @@ interface Props {
   onSelectDuty?: (dutyId: string) => void
 }
 
-export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh, onClose, onSelectDuty }: Props) {
+const spanDays = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1
+
+export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onProposal, onRefresh, onClose, onSelectDuty }: Props) {
   const confirm = useConfirm()
+  // the run's period: the view's, from today on — the past is never generated
+  const today = localToday()
+  const [period, setPeriod] = useState({ from: viewFrom < today ? today : viewFrom, to: viewTo })
+  const { from, to } = period
+  const periodError = to < today ? 'Período retroativo — dias anteriores a hoje não são gerados'
+    : from > to ? 'Início depois do fim'
+    : spanDays(from, to) > ROSTER_MAX_HORIZON_DAYS ? `No máximo ${ROSTER_MAX_HORIZON_DAYS} dias`
+    : null
   const [opts, setOpts] = useState({
     ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false,
     extraStandby: [] as RosterExtraStandby[], compensate: true,
@@ -96,19 +109,26 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
     es.onerror = () => { es.close(); setRunning(false) }
   }
 
-  // this empresa/role's run, when it is for this period
+  // a new view resets the period while there's no run
+  useEffect(() => {
+    if (!jobId) setPeriod({ from: viewFrom < today ? today : viewFrom, to: viewTo })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewFrom, viewTo])
+
+  // this empresa/role's run, whatever its period — the panel takes it
   useEffect(() => {
     let cancelled = false
     void apiFetch(`${BASE}/current?branchId=${branchId}&role=${role}`).then(r => r.json()).then(json => {
       const job = json.job as { jobId: string; running: boolean; params: { from: string; to: string; includePublished?: boolean } } | null
-      if (cancelled || !job || job.params.from !== from || job.params.to !== to) return
+      if (cancelled || !job) return
+      setPeriod({ from: job.params.from, to: job.params.to })
       runPublished.current = !!job.params.includePublished
       setJobId(job.jobId); setRunning(job.running)
       attach(job.jobId)
     }).catch(() => null)
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId, role, from, to])
+  }, [branchId, role])
 
   function reset() {
     esRef.current?.close()
@@ -155,12 +175,27 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
   }
 
   const num = 'h-7 w-14 border border-input rounded-sm text-xs bg-input-bg px-1.5 text-right'
+  const date = 'h-7 border border-input rounded-sm text-xs bg-input-bg px-1.5'
   return (
     <section className="rounded-lg border border-primary/50 p-3 space-y-3 text-sm">
       <div className="flex items-center">
-        <p className="font-medium">Gerar escala · {fmtDay(from)}–{fmtDay(to)}</p>
+        <p className="font-medium">Gerar escala{jobId && ` · ${fmtDay(from)}–${fmtDay(to)}`}</p>
         <button type="button" onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground cursor-pointer" title="Fechar (a geração continua)"><Icons.X className="w-4 h-4" /></button>
       </div>
+
+      {!jobId && (
+        <div className="space-y-1 text-xs">
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={from} min={today} max={to} onChange={e => e.target.value && setPeriod(p => ({ ...p, from: e.target.value }))} className={date} />
+            <span className="text-muted-foreground">a</span>
+            <input type="date" value={to} min={from} onChange={e => e.target.value && setPeriod(p => ({ ...p, to: e.target.value }))} className={date} />
+          </div>
+          {periodError && <p className="text-destructive">{periodError}</p>}
+        </div>
+      )}
+      {jobId && (from < viewFrom || to > viewTo) && (
+        <p className="text-[11px] text-muted-foreground">No quadro, só os dias da visão — o resumo cobre o período todo.</p>
+      )}
 
       {!jobId && (
         <div className="space-y-2 text-xs">
@@ -185,7 +220,7 @@ export function GeneratePanel({ branchId, role, from, to, onProposal, onRefresh,
             Cria os dias que faltam. Alocações travadas, {opts.includePublished ? '' : 'dias publicados, '}dias encerrados, folgas compensadas e folgas lançadas à mão ficam como estão.
             {opts.includePublished && ' Nos dias publicados muda o mínimo possível — cada mudança fica registrada.'}
           </p>
-          <Button size="sm" onClick={() => void start()}><Icons.Sparkles className="w-3.5 h-3.5" />Gerar</Button>
+          <Button size="sm" disabled={!!periodError} onClick={() => void start()}><Icons.Sparkles className="w-3.5 h-3.5" />Gerar</Button>
         </div>
       )}
 

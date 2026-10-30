@@ -82,6 +82,20 @@ export type DailyOperation          = z.infer<typeof dailyOperationSchema>
 export type CreateDailyOperationDto = z.infer<typeof createDailyOperationSchema>
 export type UpdateDailyOperationDto = z.infer<typeof updateDailyOperationSchema>
 
+// "Refazer período" (Escala screen): the empresa's PLANNED days of the period, from today on,
+// copied again from the plans in force — dryRun only counts what it would do
+export const remakePeriodSchema = z.object({
+  branchId: z.uuid(),
+  from:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dryRun:   z.boolean().default(false),
+})
+export type RemakePeriodDto = z.infer<typeof remakePeriodSchema>
+// days: PLANNED days (re)made; skipped: published / closed ones left as they are; locked: locked
+// allocations lost with them; branches: the abbr of every empresa operating those Scopes — a day
+// is the Scope's, so all of them are remade
+export interface RemakePeriodResult { from: string; to: string; days: number; skipped: number; locked: number; branches: string[] }
+
 // the logical plan each line of the day was copied from
 export interface DailySource {
   vehiclePlanId: string

@@ -18,6 +18,14 @@ export class DailyOperationController extends BaseController<DailyOperation, Cre
     super(daily, caslFactory)
   }
 
+  @Post('remake-period')
+  @HttpCode(200)
+  async remakePeriod(@Req() req: Req, @Body() body: { branchId?: string }) {
+    await this.assertAbility(req.user, 'update')
+    if (req.user && req.user.role !== 'admin' && body?.branchId && !req.user.branchIds.includes(body.branchId)) throw new ForbiddenException()
+    return this.daily.remakePeriod(body)
+  }
+
   @Get(':id/board')
   async board(@Req() req: Req, @Param('id') id: string) {
     await this.assertAbility(req.user, 'read')

@@ -7,7 +7,7 @@ import { ROSTER_MAX_HORIZON_DAYS, rosterGeneratorParamsSchema, type DailyCrewCon
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
-import { addDays, dayOf, toDbDate } from '../../timetabling/plan-validity'
+import { addDays, dayOf, fromToday, toDbDate } from '../../timetabling/plan-validity'
 import { DailyOperationService } from '../daily-operation.service'
 import type { RosterProposal } from './roster-generator.calc'
 import { daysBetween, loadRosterInput, type RosterContext } from './roster-generator.input'
@@ -83,7 +83,7 @@ export class RosterGeneratorService {
     if (!jobId) throw new BadRequestException('jobId obrigatório')
     const parsed = rosterGeneratorParamsSchema.safeParse(raw)
     if (!parsed.success) throw new BadRequestException(parsed.error.issues.map(i => i.message))
-    const params = parsed.data
+    const params = { ...parsed.data, from: fromToday(parsed.data.from, parsed.data.to) }
     if (daysBetween(params.from, params.to) + 1 > ROSTER_MAX_HORIZON_DAYS) {
       throw new BadRequestException(`O período pode ter no máximo ${ROSTER_MAX_HORIZON_DAYS} dias`)
     }
