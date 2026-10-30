@@ -201,9 +201,11 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
       onSent()
     },
   })
+  // the request asked to cancel — confirmed before it goes
+  const [cancelling, setCancelling] = useState<string | null>(null)
   const cancel = useMutation({
     mutationFn: (id: string) => portalFetch<PortalChangeRequest>(`/change-requests/${id}/cancel`, { method: 'POST' }),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: ['portal', 'change-requests'] }),
+    onSuccess:  () => { setCancelling(null); void qc.invalidateQueries({ queryKey: ['portal', 'change-requests'] }) },
   })
   const error = local ?? send.error?.message ?? null
   if (!kind) return <p className="p-4 text-sm text-muted-foreground">Nenhum pedido disponível no seu perfil.</p>
@@ -301,11 +303,23 @@ export function Requests({ me, onSent }: { me: PortalMe; onSent: () => void }) {
                 Pedido em {ddmm(c.createdAt.slice(0, 10))}{c.position != null && ` · ${c.position}º na fila`}
               </p>
               {c.reviewNotes && <p className="mt-1 text-xs text-muted-foreground">“{c.reviewNotes}”</p>}
-              {(c.status === 'REQUESTED' || c.status === 'QUEUED') && (
-                <button type="button" disabled={cancel.isPending} onClick={() => cancel.mutate(c.id)} className="mt-2 text-xs font-medium text-destructive disabled:opacity-50 cursor-pointer">
+              {(c.status === 'REQUESTED' || c.status === 'QUEUED') && (cancelling === c.id ? (
+                <div className="mt-2 space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-2.5">
+                  <p className="text-xs">
+                    Cancelar este pedido?{c.status === 'QUEUED' && ' Você sai da fila — se pedir de novo, volta para o fim.'}
+                  </p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setCancelling(null)} className="h-9 flex-1 rounded-lg border border-border text-sm font-medium cursor-pointer">Não</button>
+                    <button type="button" disabled={cancel.isPending} onClick={() => cancel.mutate(c.id)} className="h-9 flex-1 rounded-lg bg-destructive text-sm font-medium text-white disabled:opacity-50 cursor-pointer">
+                      {cancel.isPending ? 'Cancelando…' : 'Sim, cancelar'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => { cancel.reset(); setCancelling(c.id) }} className="mt-2 text-xs font-medium text-destructive cursor-pointer">
                   Cancelar pedido
                 </button>
-              )}
+              ))}
             </div>
           ))}
           {cancel.error && <p className="text-sm text-destructive">{cancel.error.message}</p>}
