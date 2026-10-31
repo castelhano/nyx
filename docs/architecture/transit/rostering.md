@@ -338,6 +338,14 @@ staff JWT):
   login's "Operador" access; first access → new PIN; unread changes → a "Li e confirmo" sheet over
   everything; tabs Escala (week by week, 4 back / 4 ahead), Pedidos (quotas, new request, history),
   Linhas, Avisos — shown per the permissions.
+- **Day detail** (`GET /portal/roster/:date`, `day-detail.tsx`): a published day's duties, all of
+  them — sign-on/off, the pieces (when and where he takes / hands over the vehicle, the headline)
+  with their trips, deadruns and intervals, breaks and travel; the trips' markings
+  (`DailyBlockEvent.markings`, copied from `TransitTrip.markings` at materialization) are the day's
+  notes. **Trip map** (`GET /portal/roster/:date/trip/:eventId/map`, `trip-map.tsx`): only a trip
+  of his own pieces — the route's legs (`RouteLocality.geometry`, straight lines where missing),
+  stops, relief points; his position (`watchPosition`, HTTPS only) with the straight-line distance
+  to where he takes / hands over the vehicle, screen kept on (Wake Lock).
 
 ---
 

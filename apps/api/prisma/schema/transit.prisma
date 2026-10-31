@@ -1330,6 +1330,10 @@ model DailyBlockEvent {
   endMinutes            Int
   requiredVehicleType   VehicleType?
   bundleId              String?
+  // TripMarking[] copied from TransitTrip.markings — TRIP only; the notes the crew sees
+  markings              Json?
+  // copied from TransitTrip.stopPattern — TRIP only
+  stopPattern           TripStopPattern?
   // a trip not run today (supressão) — kept for the record
   isCancelled           Boolean        @default(false)
   createdAt             DateTime       @default(now())

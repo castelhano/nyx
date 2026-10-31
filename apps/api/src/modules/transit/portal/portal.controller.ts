@@ -65,6 +65,18 @@ export class PortalController {
     return this.portal.roster(req.crew!, from, to)
   }
 
+  @Get('roster/:date')
+  @UseGuards(PortalGuard)
+  rosterDay(@Req() req: PortalRequest, @Param('date') date: string) {
+    return this.portal.rosterDay(req.crew!, date)
+  }
+
+  @Get('roster/:date/trip/:eventId/map')
+  @UseGuards(PortalGuard)
+  tripMap(@Req() req: PortalRequest, @Param('date') date: string, @Param('eventId') eventId: string) {
+    return this.portal.tripMap(req.crew!, date, eventId)
+  }
+
   @Get('occurrences')
   @UseGuards(PortalGuard)
   requests(@Req() req: PortalRequest) {

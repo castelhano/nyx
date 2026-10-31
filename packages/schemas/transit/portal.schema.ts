@@ -134,12 +134,69 @@ export interface PortalRosterDay {
   date: string
   // what he has: a duty, a plantão, a day off, an absence — null: nothing published
   kind: 'DUTY' | 'STANDBY' | 'DAY_OFF' | 'COMP_OFF' | 'ABSENCE' | null
-  duty: { label: string; start: number | null; end: number | null; lines: string[]; vehicles: string[] } | null
+  // place: where he shows up (the sign-on's place, else where his first piece starts)
+  duty: { label: string; start: number | null; end: number | null; place: string | null; lines: string[]; vehicles: string[] } | null
   // the day off / absence reason
   reason: string | null
   // a time window in force on the day: "até 18:00"
   window: string | null
 }
+
+// A day's duties in detail — what he does, when and where, in order
+export interface PortalRosterDayDetail {
+  date: string
+  duties: PortalDutyDetail[]
+  // a time window in force on the day, as in PortalRosterDay
+  window: string | null
+}
+
+export interface PortalDutyDetail {
+  label: string
+  kind: 'DUTY' | 'STANDBY'
+  start: number | null
+  end: number | null
+  totals: { spreadMinutes: number; workMinutes: number; breakMinutes: number } | null
+  // the markings of its trips, each text once — the day's notes
+  notes: string[]
+  items: PortalDutyItem[]
+}
+
+export type PortalDutyItem =
+  | { type: 'SIGN_ON' | 'SIGN_OFF'; minutes: number; locality: string | null }
+  // the relief points are the headline: where and when he takes / hands over the vehicle
+  // fromDepot / toDepot: leaves / returns to the garage ("saída garagem" / "recolhe") — else a relief
+  | { type: 'PIECE'; start: number; end: number; from: string; to: string; fromDepot: boolean; toDepot: boolean; vehicle: string | null; events: PortalDutyEvent[] }
+  | { type: 'BREAK'; start: number; end: number; label: string; locality: string | null }
+  | { type: 'TRAVEL' | 'STANDBY'; start: number; end: number; from: string | null; to: string | null }
+
+export type PortalDutyEvent =
+  | {
+    type: 'TRIP'; id: string; start: number; end: number; line: string; from: string; to: string
+    stopPattern: 'LOCAL' | 'LIMITED' | 'EXPRESS' | null; cancelled: boolean
+    // he takes / hands over the vehicle mid-trip — the piece's edge, else null
+    joinsAt: number | null; leavesAt: number | null
+    notes: string[]
+  }
+  | { type: 'DEADRUN'; start: number; end: number; from: string; to: string }
+  | { type: 'INTERVAL'; start: number; end: number; label: string }
+
+// A trip of his day on the map — the route's trajectory and stops
+export interface PortalTripMap {
+  line: string
+  route: string
+  start: number
+  end: number
+  // the route's legs joined in order — GeoJSON order, [lng, lat]
+  path: [number, number][]
+  // some leg has no trajectory generated — the path joins those stops in a straight line
+  approximate: boolean
+  stops: { name: string; lat: number; lng: number; kind: 'ORIGIN' | 'DESTINATION' | 'STOP' }[]
+  // where he takes / hands over the vehicle when it falls inside this trip — else null
+  joins: PortalMapPoint | null
+  leaves: PortalMapPoint | null
+}
+
+export interface PortalMapPoint { name: string; lat: number | null; lng: number | null; minutes: number }
 
 // roster: a change of a published day (from the change log) — else a notice like a change request's step
 export interface PortalNotification { id: string; date: string; message: string; roster: boolean; createdAt: string; readAt: string | null }

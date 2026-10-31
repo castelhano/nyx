@@ -159,12 +159,14 @@ export async function materializeDay(prisma: PrismaService, dayTypes: DayTypeSer
 
 const tripSelect = {
   id: true, departureMinutes: true, arrivalMinutes: true, requiredVehicleType: true, bundleId: true, routeId: true,
+  markings: true, stopPattern: true,
   route: { select: { lineId: true, originLocalityId: true, destinationLocalityId: true } },
 } as const
 
 type TripRow = {
   id: string; departureMinutes: number; arrivalMinutes: number; requiredVehicleType: Prisma.DailyBlockEventCreateManyInput['requiredVehicleType']
-  bundleId: string | null; routeId: string; route: { lineId: string; originLocalityId: string; destinationLocalityId: string }
+  bundleId: string | null; routeId: string; markings: Prisma.JsonValue; stopPattern: Prisma.DailyBlockEventCreateManyInput['stopPattern']
+  route: { lineId: string; originLocalityId: string; destinationLocalityId: string }
 }
 
 function tripEvent(dailyOperationId: string, dailyBlockId: string | null, t: TripRow): Prisma.DailyBlockEventCreateManyInput {
@@ -172,5 +174,6 @@ function tripEvent(dailyOperationId: string, dailyBlockId: string | null, t: Tri
     dailyOperationId, dailyBlockId, kind: 'TRIP', sourceId: t.id, lineId: t.route.lineId, routeId: t.routeId,
     originLocalityId: t.route.originLocalityId, destinationLocalityId: t.route.destinationLocalityId,
     startMinutes: t.departureMinutes, endMinutes: t.arrivalMinutes, requiredVehicleType: t.requiredVehicleType, bundleId: t.bundleId,
+    markings: t.markings ?? Prisma.DbNull, stopPattern: t.stopPattern,
   }
 }

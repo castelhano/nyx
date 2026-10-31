@@ -9,6 +9,7 @@ import type { PortalChangeOptions, PortalChangeRequest, PortalLines, PortalMe, P
 import { Icons } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { portalFetch } from '@/lib/portal-auth'
+import { DayDetail } from './day-detail'
 
 export const WEEKDAY = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MONTH = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -50,6 +51,7 @@ export function Roster() {
   const today = localToday()
   const monday = addDays(today, -((weekday(today) + 6) % 7))
   const [week, setWeek] = useState(0)
+  const [open, setOpen] = useState<string | null>(null)
   const from = addDays(monday, week * 7)
   const end = addDays(from, 6)
   const { data: days, isLoading, error } = useQuery({
@@ -68,7 +70,8 @@ export function Roster() {
       </div>
       {isLoading && <div className="flex justify-center py-8"><Icons.Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
-      {days?.map(d => <DayCard key={d.date} d={d} today={today} />)}
+      {days?.map(d => <DayCard key={d.date} d={d} today={today} onOpen={d.duty ? () => setOpen(d.date) : undefined} />)}
+      {open && <DayDetail date={open} onClose={() => setOpen(null)} />}
     </div>
   )
 }
@@ -81,11 +84,14 @@ const KIND: Record<NonNullable<PortalRosterDay['kind']>, { label: string; tone: 
   ABSENCE:  { label: 'Ausência',  tone: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
 }
 
-function DayCard({ d, today }: { d: PortalRosterDay; today: string }) {
+function DayCard({ d, today, onOpen }: { d: PortalRosterDay; today: string; onOpen?: () => void }) {
   const isToday = d.date === today
   const k = d.kind ? KIND[d.kind] : null
   return (
-    <div className={cn('flex gap-3 rounded-xl border bg-card p-3', isToday ? 'border-primary ring-1 ring-primary' : 'border-border', !d.kind && 'border-dashed bg-transparent')}>
+    <div
+      onClick={onOpen}
+      className={cn('flex gap-3 rounded-xl border bg-card p-3', isToday ? 'border-primary ring-1 ring-primary' : 'border-border', !d.kind && 'border-dashed bg-transparent', onOpen && 'cursor-pointer active:bg-muted')}
+    >
       <div className="w-11 shrink-0 text-center">
         <p className="text-[11px] uppercase text-muted-foreground">{WEEKDAY[weekday(d.date)]}</p>
         <p className="text-xl font-semibold leading-tight tabular-nums">{d.date.slice(8, 10)}</p>
@@ -96,12 +102,13 @@ function DayCard({ d, today }: { d: PortalRosterDay; today: string }) {
         {k && (
           <div className="flex items-center gap-2">
             <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', k.tone)}>{k.label}</span>
-            {d.duty && d.kind === 'DUTY' && <span className="text-sm font-semibold">Tabela {d.duty.label}</span>}
+            {d.duty && d.kind === 'DUTY' && <span className="text-xs text-muted-foreground">Tabela {d.duty.label}</span>}
           </div>
         )}
         {d.duty?.start != null && d.duty.end != null && (
           <p className="text-lg font-semibold tabular-nums">{clock(d.duty.start)} <span className="text-muted-foreground">–</span> {clock(d.duty.end)}</p>
         )}
+        {d.duty?.place && <p className="flex items-center gap-1 font-medium"><Icons.MapPin className="h-4 w-4 shrink-0 text-primary" />{d.duty.place}</p>}
         {d.duty && (d.duty.lines.length > 0 || d.duty.vehicles.length > 0) && (
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted-foreground">
             {d.duty.lines.length > 0 && <span className="flex items-center gap-1"><Icons.Route className="h-3.5 w-3.5" />Linha {d.duty.lines.join(' · ')}</span>}
@@ -111,6 +118,7 @@ function DayCard({ d, today }: { d: PortalRosterDay; today: string }) {
         {d.reason && <p className="text-sm">{d.reason}</p>}
         {d.window && <p className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-300"><Icons.Clock className="h-3.5 w-3.5" />Restrição aprovada: {d.window}</p>}
       </div>
+      {onOpen && <Icons.ChevronRight className="h-5 w-5 shrink-0 self-center text-muted-foreground" />}
     </div>
   )
 }

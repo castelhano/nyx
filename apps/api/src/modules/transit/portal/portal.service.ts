@@ -2,7 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
 import {
   PORTAL_QUOTA_PERIOD_LABEL, effectivePortalPermissions, formatDutyNumber, portalLinesSchema, portalPhoneSchema, portalRequestSchema,
   type PortalLines, type PortalMe, type PortalNotification, type PortalOccurrence, type PortalPermissions,
-  type PortalQuota, type PortalQuotaBalance, type PortalRosterDay,
+  type PortalQuota, type PortalQuotaBalance, type PortalRosterDay, type PortalRosterDayDetail, type PortalDutyDetail, type PortalTripMap, type PortalMapPoint,
+  type PortalDutyItem, type PortalDutyEvent, type DutySummary, type TripMarking,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../prisma/prisma.service'
 import { TransitRosterConfigService } from '../settings/transit-roster-config.service'
@@ -20,6 +21,24 @@ import type { PortalCrew } from './portal.guard'
 
 const MAX_ROSTER_DAYS = 62
 const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+
+// where he shows up: the sign-on's place, else where his first piece starts
+type SignOnSource = { activities: { type: string; originLocalityId: string | null; destinationLocalityId: string | null }[]; pieces: { startLocalityId: string }[] }
+function signOnPlace(d: SignOnSource): string | null {
+  const a = d.activities.find(x => x.type === 'SIGN_ON')
+  return a?.originLocalityId ?? a?.destinationLocalityId ?? d.pieces[0]?.startLocalityId ?? null
+}
+
+type Occurrence = { kind: string; startDate: Date; endDate: Date; startNotBefore: number | null; endNotAfter: number | null }
+const onDay = (o: { startDate: Date; endDate: Date }, date: Day) => dayOf(o.startDate) <= date && dayOf(o.endDate) >= date
+// the approved time windows in force on the day, as one text: "a partir de 08:00 até 18:00"
+function windowOn(occurrences: Occurrence[], date: Day): string | null {
+  const windows = occurrences.filter(o => o.kind === 'TIME_WINDOW' && onDay(o, date))
+  return windows.length ? [
+    windows.some(w => w.startNotBefore != null) ? `a partir de ${clock(Math.max(...windows.flatMap(w => w.startNotBefore ?? [])))}` : null,
+    windows.some(w => w.endNotAfter != null) ? `até ${clock(Math.min(...windows.flatMap(w => w.endNotAfter ?? [])))}` : null,
+  ].filter(Boolean).join(' ') : null
+}
 
 @Injectable()
 export class PortalService {
@@ -114,10 +133,12 @@ export class PortalService {
           dailyDuty: {
             select: {
               role: true, dutyNumber: true, kind: true, summary: true,
+              activities: { where: { type: 'SIGN_ON' }, select: { type: true, originLocalityId: true, destinationLocalityId: true } },
               pieces: {
-                where:  { isStale: false },
+                where:   { isStale: false },
+                orderBy: { sequence: 'asc' },
                 select: {
-                  startMinutes: true, endMinutes: true,
+                  startMinutes: true, endMinutes: true, startLocalityId: true,
                   block: { select: { vehicle: { select: { code: true } }, events: { where: { kind: 'TRIP', isCancelled: false }, select: { startMinutes: true, endMinutes: true, lineId: true } } } },
                 },
               },
@@ -133,17 +154,13 @@ export class PortalService {
     const open = new Set(published.map(p => dayOf(p.date)))
     const lineIds = [...new Set(entries.flatMap(e => e.dailyDuty?.pieces.flatMap(p => p.block?.events.flatMap(ev => ev.lineId ?? []) ?? []) ?? []))]
     const lineCode = new Map((await this.prisma.transitLine.findMany({ where: { id: { in: lineIds } }, select: { id: true, code: true } })).map(l => [l.id, l.code]))
+    const placeIds = [...new Set(entries.flatMap(e => (e.dailyDuty ? signOnPlace(e.dailyDuty) ?? [] : [])))]
+    const placeName = new Map((await this.prisma.transitLocality.findMany({ where: { id: { in: placeIds } }, select: { id: true, name: true } })).map(l => [l.id, l.name]))
 
     const out: PortalRosterDay[] = []
     for (let date = from; date <= to; date = addDays(date, 1)) {
-      const on = (o: { startDate: Date; endDate: Date }) => dayOf(o.startDate) <= date && dayOf(o.endDate) >= date
-      const absence = occurrences.find(o => o.kind === 'ABSENCE' && on(o))
-      const windows = occurrences.filter(o => o.kind === 'TIME_WINDOW' && on(o))
-      const window = windows.length ? [
-        windows.some(w => w.startNotBefore != null) ? `a partir de ${clock(Math.max(...windows.flatMap(w => w.startNotBefore ?? [])))}` : null,
-        windows.some(w => w.endNotAfter != null) ? `até ${clock(Math.min(...windows.flatMap(w => w.endNotAfter ?? [])))}` : null,
-      ].filter(Boolean).join(' ') : null
-      const day: PortalRosterDay = { date, kind: null, duty: null, reason: null, window }
+      const absence = occurrences.find(o => o.kind === 'ABSENCE' && onDay(o, date))
+      const day: PortalRosterDay = { date, kind: null, duty: null, reason: null, window: windowOn(occurrences, date) }
       const mine = open.has(date) ? entries.filter(e => dayOf(e.date) === date) : []
       const work = mine.find(e => e.dailyDuty)
       const off = mine.find(e => e.kind === 'DAY_OFF' || e.kind === 'COMP_OFF')
@@ -158,7 +175,8 @@ export class PortalService {
         day.kind = d.kind === 'STANDBY' ? 'STANDBY' : 'DUTY'
         day.duty = {
           label: d.kind === 'STANDBY' ? 'Plantão' : formatDutyNumber(d.role, d.dutyNumber),
-          start: s?.startMinutes ?? null, end: s?.endMinutes ?? null, lines: [...lines].sort(), vehicles: [...vehicles].sort(),
+          start: s?.startMinutes ?? null, end: s?.endMinutes ?? null, place: placeName.get(signOnPlace(d) ?? '') ?? null,
+          lines: [...lines].sort(), vehicles: [...vehicles].sort(),
         }
       } else if (off) {
         day.kind = off.kind
@@ -170,6 +188,189 @@ export class PortalService {
       out.push(day)
     }
     return out
+  }
+
+  // A published day's duties in detail: sign-on/off, the pieces (where and when he takes and
+  // hands over the vehicle) with their trips, deadruns and intervals, and the off-vehicle time
+  async rosterDay(crew: PortalCrew, date: Day): Promise<PortalRosterDayDetail> {
+    const day = await this.publishedDay(crew, date)
+    const [entries, occurrences] = await Promise.all([
+      this.prisma.rosterEntry.findMany({
+        where:  { crewMemberId: crew.id, date: day, dailyDuty: { operation: { status: { in: ['PUBLISHED', 'CLOSED'] } } } },
+        select: {
+          dailyDuty: {
+            select: {
+              role: true, dutyNumber: true, kind: true, summary: true,
+              activities: { select: { type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, originLocalityId: true, destinationLocalityId: true } },
+              pieces: {
+                where:   { isStale: false },
+                orderBy: { sequence: 'asc' },
+                select: {
+                  startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true,
+                  block: {
+                    select: {
+                      vehicle: { select: { code: true } },
+                      events: {
+                        orderBy: { startMinutes: 'asc' },
+                        select: {
+                          id: true, kind: true, startMinutes: true, endMinutes: true, lineId: true, intervalTypeId: true,
+                          originLocalityId: true, destinationLocalityId: true, isCancelled: true, markings: true, stopPattern: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.crewOccurrence.findMany({
+        where:  { crewMemberId: crew.id, status: 'APPROVED', kind: 'TIME_WINDOW', startDate: { lte: day }, endDate: { gte: day } },
+        select: { kind: true, startDate: true, endDate: true, startNotBefore: true, endNotAfter: true },
+      }),
+    ])
+    const duties = entries.flatMap(e => e.dailyDuty ?? [])
+    const events = duties.flatMap(d => d.pieces.flatMap(p => p.block?.events ?? []))
+    const localityIds = new Set<string>()
+    for (const d of duties) {
+      for (const a of d.activities) for (const id of [a.originLocalityId, a.destinationLocalityId]) if (id) localityIds.add(id)
+      for (const p of d.pieces) localityIds.add(p.startLocalityId).add(p.endLocalityId)
+    }
+    for (const ev of events) for (const id of [ev.originLocalityId, ev.destinationLocalityId]) if (id) localityIds.add(id)
+    const intervalIds = [...new Set([...duties.flatMap(d => d.activities.flatMap(a => a.intervalTypeId ?? [])), ...events.flatMap(ev => ev.intervalTypeId ?? [])])]
+    const lineIds = [...new Set(events.flatMap(ev => ev.lineId ?? []))]
+    const [localities, intervals, lines] = await Promise.all([
+      this.prisma.transitLocality.findMany({ where: { id: { in: [...localityIds] } }, select: { id: true, name: true, isDepot: true } }),
+      this.prisma.intervalType.findMany({ where: { id: { in: intervalIds } }, select: { id: true, name: true } }),
+      this.prisma.transitLine.findMany({ where: { id: { in: lineIds } }, select: { id: true, code: true } }),
+    ])
+    const placeName = new Map(localities.map(l => [l.id, l.name]))
+    const depots = new Set(localities.filter(l => l.isDepot).map(l => l.id))
+    const intervalName = new Map(intervals.map(i => [i.id, i.name]))
+    const lineCode = new Map(lines.map(l => [l.id, l.code]))
+    const place = (id: string | null) => (id ? placeName.get(id) ?? '?' : null)
+    const legends = (m: unknown) => ((m ?? []) as TripMarking[]).map(t => t.legendText.trim()).filter(Boolean)
+
+    const detail = duties.map((d): PortalDutyDetail => {
+      const s = d.summary as DutySummary | null
+      const items: PortalDutyItem[] = []
+      const notes = new Set<string>()
+      for (const p of d.pieces) {
+        const own = (p.block?.events ?? []).filter(ev => ev.startMinutes < p.endMinutes && ev.endMinutes > p.startMinutes)
+        items.push({
+          type: 'PIECE', start: p.startMinutes, end: p.endMinutes, from: place(p.startLocalityId)!, to: place(p.endLocalityId)!,
+          fromDepot: depots.has(p.startLocalityId), toDepot: depots.has(p.endLocalityId),
+          vehicle: p.block?.vehicle?.code ?? null,
+          events: own.map((ev): PortalDutyEvent => {
+            if (ev.kind === 'TRIP') {
+              const trip = legends(ev.markings)
+              if (!ev.isCancelled) for (const n of trip) notes.add(n)
+              return {
+                type: 'TRIP', id: ev.id, start: ev.startMinutes, end: ev.endMinutes, line: lineCode.get(ev.lineId ?? '') ?? '?',
+                from: place(ev.originLocalityId) ?? '?', to: place(ev.destinationLocalityId) ?? '?',
+                stopPattern: ev.stopPattern, cancelled: ev.isCancelled,
+                joinsAt: ev.startMinutes < p.startMinutes ? p.startMinutes : null, leavesAt: ev.endMinutes > p.endMinutes ? p.endMinutes : null,
+                notes: trip,
+              }
+            }
+            if (ev.kind === 'DEADRUN') return { type: 'DEADRUN', start: ev.startMinutes, end: ev.endMinutes, from: place(ev.originLocalityId) ?? '?', to: place(ev.destinationLocalityId) ?? '?' }
+            return { type: 'INTERVAL', start: ev.startMinutes, end: ev.endMinutes, label: intervalName.get(ev.intervalTypeId ?? '') ?? 'Intervalo' }
+          }),
+        })
+      }
+      for (const a of d.activities) {
+        if (a.type === 'BREAK') items.push({ type: 'BREAK', start: a.startMinutes, end: a.endMinutes, label: intervalName.get(a.intervalTypeId ?? '') ?? 'Intervalo', locality: place(a.originLocalityId ?? a.destinationLocalityId) })
+        else if (a.type === 'TRAVEL' || a.type === 'STANDBY') items.push({ type: a.type, start: a.startMinutes, end: a.endMinutes, from: place(a.originLocalityId), to: place(a.destinationLocalityId) })
+      }
+      items.sort((a, b) => ('start' in a ? a.start : 0) - ('start' in b ? b.start : 0))
+      // sign-on/off: the summary's effective times (explicit activity or the settings' minutes);
+      // the place is the activity's, else where the first piece starts / the last one ends
+      const signOn  = d.activities.find(a => a.type === 'SIGN_ON')
+      const signOff = d.activities.find(a => a.type === 'SIGN_OFF')
+      const start = s?.startMinutes ?? signOn?.startMinutes ?? null
+      const end   = s?.endMinutes ?? signOff?.endMinutes ?? null
+      if (start != null) items.unshift({ type: 'SIGN_ON', minutes: start, locality: place(signOnPlace(d)) })
+      if (end != null) items.push({ type: 'SIGN_OFF', minutes: end, locality: place(signOff?.destinationLocalityId ?? signOff?.originLocalityId ?? d.pieces.at(-1)?.endLocalityId ?? null) })
+      return {
+        label: d.kind === 'STANDBY' ? 'Plantão' : formatDutyNumber(d.role, d.dutyNumber),
+        kind: d.kind === 'STANDBY' ? 'STANDBY' : 'DUTY', start, end,
+        totals: s ? { spreadMinutes: s.spreadMinutes, workMinutes: s.workMinutes, breakMinutes: s.breakMinutes } : null,
+        notes: [...notes], items,
+      }
+    })
+    detail.sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+    return { date, duties: detail, window: windowOn(occurrences, date) }
+  }
+
+  // A trip of one of his duties on the day, on the map: the route's trajectory (its legs joined),
+  // its stops and where he takes / hands over the vehicle when that falls inside the trip
+  async tripMap(crew: PortalCrew, date: Day, eventId: string): Promise<PortalTripMap> {
+    const day = await this.publishedDay(crew, date)
+    const event = await this.prisma.dailyBlockEvent.findFirst({
+      where:  { id: eventId, kind: 'TRIP', operation: { date: day, status: { in: ['PUBLISHED', 'CLOSED'] } } },
+      select: { startMinutes: true, endMinutes: true, routeId: true, dailyBlockId: true },
+    })
+    // his own trips only: on a block one of his duties of the day runs, inside the piece
+    const piece = event?.dailyBlockId ? await this.prisma.dailyDutyPiece.findFirst({
+      where: {
+        dailyBlockId: event.dailyBlockId, isStale: false, startMinutes: { lt: event.endMinutes }, endMinutes: { gt: event.startMinutes },
+        duty: { rosterEntries: { some: { crewMemberId: crew.id, date: day } } },
+      },
+      select: { startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true },
+    }) : null
+    if (!event?.routeId || !piece) throw new NotFoundException('Viagem não encontrada na sua escala')
+    const route = await this.prisma.transitRoute.findUniqueOrThrow({
+      where:  { id: event.routeId },
+      select: {
+        name: true, line: { select: { code: true } },
+        localities: { orderBy: { sequence: 'asc' }, select: { lat: true, lng: true, geometry: true, locality: { select: { name: true, lat: true, lng: true } } } },
+      },
+    })
+    const path: [number, number][] = []
+    let approximate = false
+    let prev: [number, number] | null = null
+    for (const [i, rl] of route.localities.entries()) {
+      const lat = rl.locality?.lat ?? rl.lat, lng = rl.locality?.lng ?? rl.lng
+      const point: [number, number] | null = lat != null && lng != null ? [lng, lat] : null
+      const leg = (rl.geometry as { coordinates?: [number, number][] } | null)?.coordinates
+      if (i > 0 && leg?.length) path.push(...(path.length ? leg.slice(1) : leg))
+      else if (i > 0 && point) {
+        // no trajectory for the leg: straight from the previous point
+        approximate = true
+        if (!path.length && prev) path.push(prev)
+        path.push(point)
+      }
+      if (point) prev = point
+    }
+    const named = route.localities.filter(rl => rl.locality?.lat != null && rl.locality.lng != null)
+    const stops = named.map((rl, i): PortalTripMap['stops'][number] => ({
+      name: rl.locality!.name, lat: rl.locality!.lat!, lng: rl.locality!.lng!,
+      kind: i === 0 ? 'ORIGIN' : i === named.length - 1 ? 'DESTINATION' : 'STOP',
+    }))
+    const edges = [piece.startMinutes > event.startMinutes ? piece.startLocalityId : null, piece.endMinutes < event.endMinutes ? piece.endLocalityId : null]
+    const places = new Map((await this.prisma.transitLocality.findMany({
+      where: { id: { in: edges.filter((id): id is string => !!id) } }, select: { id: true, name: true, lat: true, lng: true },
+    })).map(l => [l.id, l]))
+    const point = (id: string | null, minutes: number): PortalMapPoint | null => {
+      const l = id ? places.get(id) : null
+      return l ? { name: l.name, lat: l.lat, lng: l.lng, minutes } : null
+    }
+    return {
+      line: route.line.code, route: route.name, start: event.startMinutes, end: event.endMinutes, path, approximate, stops,
+      joins: point(edges[0], piece.startMinutes), leaves: point(edges[1], piece.endMinutes),
+    }
+  }
+
+  // the date, once it's a published (or closed) day of his empresa's scopes he may see
+  private async publishedDay(crew: PortalCrew, date: Day): Promise<Date> {
+    if (!(await this.permissions(crew)).viewRoster) throw new ForbiddenException('Sem permissão para ver a escala')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BadRequestException('Data inválida')
+    const day = toDbDate(date)
+    const scopes = (await this.prisma.scopeOperator.findMany({ where: { branchId: crew.branchId }, select: { scopeId: true } })).map(s => s.scopeId)
+    const published = await this.prisma.dailyOperation.count({ where: { scopeId: { in: scopes }, date: day, status: { in: ['PUBLISHED', 'CLOSED'] } } })
+    if (!published) throw new NotFoundException('Escala do dia ainda não publicada')
+    return day
   }
 
   // ── requests ──────────────────────────────────────────────────────────────

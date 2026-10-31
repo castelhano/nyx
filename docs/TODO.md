@@ -6,7 +6,6 @@
 
 
 ## Alto
-[ ] Na tela do condutor implementar solicitação de troca de turno...
 [ ] Na tela do condutor, ao selecionar um dia mostrar detalhamento da operação, viagens, itinerário, observações, marcos, etc
 [ ] Como implementar escalas 5x2? (3 moldes simulados)
 ## Medio
