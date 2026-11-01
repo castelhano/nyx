@@ -10,6 +10,7 @@ import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
 import { cn, extractError } from '@/lib/utils'
 import { resolveIcon } from '@/lib/icons'
+import { inputBaseCls } from '@/components/ui/input'
 import { localToday } from '@/lib/plan-vigence'
 
 // widget 'rest-cycle' — RestPattern.pattern as a calendar of Monday-to-Sunday weeks, day 0 on
@@ -37,6 +38,80 @@ const addDays = (day: string, n: number) => {
   return d.toISOString().slice(0, 10)
 }
 const weekday = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay()
+
+const OkIcon   = resolveIcon('CheckCircle')
+const WarnIcon = resolveIcon('AlertTriangle')
+
+const fmtNum = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1).replace('.', ','))
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a)
+
+interface Balance {
+  // groups off per weekday (index = getUTCDay), averaged per week over the whole rotation
+  groupsOff: number[]
+  // share of the crew off per weekday — groups of equal size, and weighted by the saved counts
+  shareOff:  number[]
+  realOff:   number[] | null
+  checks:    { ok: boolean; text: string }[]
+}
+
+// The structural balance of a cycle: depends only on the pattern, its groups and the anchor's
+// weekday — counts (crew per group) add the weighted row. Holidays ignored.
+function cycleBalance(pattern: string, offsets: number[], anchorWd: number, counts: number[] | null): Balance {
+  const n = pattern.length
+  // whole weeks of the rotation, so each weekday is seen equally often
+  const period = (n * 7) / gcd(n, 7)
+  const weeks = period / 7
+  const total = counts?.reduce((a, b) => a + b, 0) ?? 0
+  const groupsOff = Array(7).fill(0), realOff = Array(7).fill(0)
+  for (let d = 0; d < period; d++) {
+    const wd = (anchorWd + d) % 7
+    offsets.forEach((o, g) => {
+      if (pattern[(d + o) % n] !== 'F') return
+      groupsOff[wd]++
+      if (counts) realOff[wd] += counts[g]
+    })
+  }
+  const avg = groupsOff.map(x => x / weeks)
+
+  // the longest run of working days, wrapping into the next cycle
+  let maxRun = 0, run = 0
+  for (let i = 0; i < 2 * n; i++) {
+    run = pattern[i % n] === 'T' ? run + 1 : 0
+    maxRun = Math.max(maxRun, run)
+  }
+
+  const checks: Balance['checks'] = []
+  const [sat, sun] = [avg[6], avg[0]]
+  if (sat !== sun) {
+    const odd = n % 7 === 0 && offsets.length > 1 && offsets[1] === 7 && (n / 7) % 2 === 1
+    checks.push({ ok: false, text: `Sábado tem ${fmtNum(sat)} grupo(s) de folga e domingo ${fmtNum(sun)}${odd ? ` — um ciclo de ${n / 7} semanas (ímpar) não alterna sábado e domingo por igual` : ''}` })
+  } else if (sat > 0) {
+    checks.push({ ok: true, text: `Sábado e domingo com ${fmtNum(sat)} grupo(s) de folga cada` })
+  }
+  checks.push(maxRun > 6
+    ? { ok: false, text: `Até ${maxRun} dias seguidos trabalhando` }
+    : { ok: true,  text: `Máximo de ${maxRun} dia(s) seguido(s) trabalhando` })
+  if (n % 7 === 0) {
+    // per Monday-to-Sunday week, as the grid shows it
+    const lead = (anchorWd + 6) % 7
+    const perWeek = Array.from({ length: n / 7 }, (_, r) =>
+      Array.from({ length: 7 }, (_, c) => pattern[(r * 7 + c - lead + n) % n]).filter(ch => ch === 'F').length)
+    const [lo, hi] = [Math.min(...perWeek), Math.max(...perWeek)]
+    checks.push(lo === hi
+      ? { ok: true,  text: `${lo} folga(s) em toda semana` }
+      : { ok: false, text: `Folgas por semana variam de ${lo} a ${hi}` })
+  } else {
+    const f = [...pattern].filter(ch => ch === 'F').length
+    checks.push({ ok: true, text: `Em média ${fmtNum(Math.round((f * 7 / n) * 10) / 10)} folga(s) por semana` })
+  }
+
+  return {
+    groupsOff: avg,
+    shareOff:  groupsOff.map(x => Math.round(x / (weeks * offsets.length) * 100)),
+    realOff:   counts && total > 0 ? realOff.map(x => Math.round(x / (weeks * total) * 100)) : null,
+    checks,
+  }
+}
 
 export function RestCycleWidget({ field, control, readonly }: { field: MetadataField; control: Control<any>; readonly?: boolean }) {
   const { id } = useParams<{ id?: string }>()
@@ -98,6 +173,8 @@ export function RestCycleWidget({ field, control, readonly }: { field: MetadataF
           const days = Array.from({ length: PREVIEW_DAYS }, (_, i) => addDays(today, i))
           const p = anchor && pattern.includes('F') ? { pattern, anchorDate: anchor, offOnHolidays: false } : null
           const grouped = counts?.reduce((a, b) => a + b, 0) ?? 0
+          const bal = p && anchor ? cycleBalance(pattern, offsets, weekday(anchor), counts) : null
+          const meanOff = bal ? bal.groupsOff.reduce((a, b) => a + b, 0) / 7 : 0
 
           return (
             <div className="space-y-4">
@@ -163,6 +240,17 @@ export function RestCycleWidget({ field, control, readonly }: { field: MetadataF
                     <CycleButton onClick={() => set(pattern.slice(0, -1))} disabled={pattern.length <= 1}>− dia</CycleButton>
                   </div>
                 )}
+                {/* the cycle as text — paste a sequence to load it into the grid */}
+                <input
+                  type="text"
+                  readOnly={readonly}
+                  value={pattern}
+                  onChange={e => set(e.target.value.toUpperCase().replace(/[^TF]/g, ''))}
+                  placeholder="Cole a sequência (ex.: TTTTTFF)"
+                  spellCheck={false}
+                  aria-label="Ciclo como texto"
+                  className={cn(inputBaseCls, 'w-full max-w-xl font-mono text-xs', readonly && 'opacity-60 cursor-not-allowed bg-muted')}
+                />
                 <p className="text-xs text-muted-foreground">
                   {pattern.length} dia(s) · {pattern.length - offCount} trabalhado(s) · {offCount} folga(s) ·{' '}
                   {offsets.length} grupo(s) {weekly ? 'a cada semana (mesmos dias da semana)' : 'a cada dia'}
@@ -171,6 +259,39 @@ export function RestCycleWidget({ field, control, readonly }: { field: MetadataF
                 </p>
                 {fieldState.error && <p className="text-xs text-destructive">{fieldState.error.message}</p>}
               </div>
+
+              {/* ── balance per weekday ── */}
+              {bal && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium">Folgas por dia da semana</p>
+                  <div className="inline-grid gap-1 text-xs" style={{ gridTemplateColumns: `4.5rem repeat(7, 2.5rem)` }}>
+                    <span />
+                    {COLUMNS.map(wd => <span key={wd} className="text-muted-foreground text-center">{WEEKDAY[wd]}</span>)}
+                    <span className="text-muted-foreground" title="Média por semana, com grupos do mesmo tamanho">Grupos</span>
+                    {COLUMNS.map(wd => (
+                      <span key={wd} className={cn('text-center tabular-nums', bal.groupsOff[wd] > meanOff + 1e-9 && 'font-medium text-amber-600 dark:text-amber-400')}>
+                        {fmtNum(bal.groupsOff[wd])}
+                      </span>
+                    ))}
+                    <span className="text-muted-foreground" title="% do quadro de folga, com grupos do mesmo tamanho">Quadro</span>
+                    {COLUMNS.map(wd => <span key={wd} className="text-center tabular-nums text-muted-foreground">{bal.shareOff[wd]}%</span>)}
+                    {bal.realOff && (
+                      <>
+                        <span className="text-muted-foreground" title="% do quadro de folga, com os operadores gravados em cada grupo">Real</span>
+                        {COLUMNS.map(wd => <span key={wd} className="text-center tabular-nums text-muted-foreground">{bal.realOff![wd]}%</span>)}
+                      </>
+                    )}
+                  </div>
+                  <ul className="space-y-1 text-xs">
+                    {bal.checks.map(c => (
+                      <li key={c.text} className={cn('flex items-start gap-1.5', c.ok ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>
+                        {c.ok ? <OkIcon className="w-3.5 h-3.5 mt-px shrink-0 text-emerald-600 dark:text-emerald-400" /> : <WarnIcon className="w-3.5 h-3.5 mt-px shrink-0" />}
+                        {c.text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* ── preview per group ── */}
               {p && (
