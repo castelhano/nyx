@@ -450,7 +450,11 @@ export class PortalService {
     const [board, permissions, { portalPreferredLines }] = await Promise.all([this.lines.board(crew.id), this.permissions(crew), this.rosterConfig.get(crew.branchId)])
     const entry = new Map(board.entries.map(e => [e.lineId, e]))
     const operable = (lineId: string) => (board.lineAccessMode === 'WHITELIST' ? entry.get(lineId)?.access === 'ENABLED' : entry.get(lineId)?.access !== 'BLOCKED')
-    const lines = board.lines.filter(l => operable(l.id)).map(l => ({ id: l.id, code: l.code, name: l.name, rank: entry.get(l.id)?.rank ?? null, priority: !!entry.get(l.id)?.priority }))
+    // onlyBranchLines: the board's Scope fallback (lines with no LineOperator) is left out
+    const branchLines = permissions.onlyBranchLines
+      ? new Set((await this.prisma.lineOperator.findMany({ where: { branchId: crew.branchId }, select: { lineId: true } })).map(r => r.lineId))
+      : null
+    const lines = board.lines.filter(l => operable(l.id) && (!branchLines || branchLines.has(l.id))).map(l => ({ id: l.id, code: l.code, name: l.name, rank: entry.get(l.id)?.rank ?? null, priority: !!entry.get(l.id)?.priority }))
     // his plantão preference (set by staff) takes one of the slots
     const slots = Math.max(0, board.maxPreferredLines - (board.standby.rank != null ? 1 : 0))
     const editable = permissions.editPreferredLines
@@ -471,6 +475,7 @@ export class PortalService {
     const current = await this.preferredLines(crew)
     if (!current.editable) throw new ForbiddenException('Sem permissão para editar as linhas preferidas')
     if (new Set(preferred).size !== preferred.length) throw new BadRequestException('Linha repetida')
+    if (preferred.some(id => !current.lines.some(l => l.id === id))) throw new BadRequestException('Linha não disponível')
     if (preferred.length > current.maxPreferredLines) throw new BadRequestException(`No máximo ${current.maxPreferredLines} linhas`)
     if (preferred.length < current.required) throw new BadRequestException(`Escolha ${current.required} linhas`)
     const board = await this.lines.board(crew.id)

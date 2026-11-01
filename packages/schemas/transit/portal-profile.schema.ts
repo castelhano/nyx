@@ -26,6 +26,8 @@ export const portalPermissionsSchema = z.object({
   requestShiftChange:     z.boolean().default(false).meta({ label: 'Pedir troca de turno' }),
   requestRestGroupChange: z.boolean().default(false).meta({ label: 'Pedir troca de grupo de folga' }),
   editPreferredLines: z.boolean().default(false).meta({ label: 'Editar linhas preferidas' }),
+  // only lines with a LineOperator row for his empresa — no Scope fallback
+  onlyBranchLines:    z.boolean().default(false).meta({ label: 'Limitar as linhas da empresa' }),
   editContact:        z.boolean().default(false).meta({ label: 'Pode atualizar dados de contato' }),
   // per absence type (its code)
   absenceLimits: z.record(z.string(), quotaSchema).default({})
