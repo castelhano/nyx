@@ -140,7 +140,7 @@ export default function VehiclePlanPage() {
     pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
-    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
+    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, stepPendingHistory,
     osoSavePrompt, handleResolveOsoSavePrompt, handleApplyOsoAttributes,
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
@@ -206,7 +206,7 @@ export default function VehiclePlanPage() {
     setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
     setSummaryLineIds, setRedistributeModal,
     blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
-    clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
+    clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, stepPendingHistory, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
     handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
   })

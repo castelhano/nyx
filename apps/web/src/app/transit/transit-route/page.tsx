@@ -23,6 +23,7 @@ import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } fro
 import { getRouteColor }                     from './types'
 import { resolveOrder }                      from './order'
 import { extractError } from '@/lib/utils'
+import { useUndoHistory, isEditableTarget } from '@/lib/use-undo-history'
 
 const MapCanvas = dynamic(() => import('./MapCanvas'), { ssr: false })
 
@@ -67,6 +68,9 @@ export default function TransitRoutePage() {
   // routes hidden from the map by the user (background context only — the
   // selected route always stays visible regardless of this set)
   const [hiddenRouteIds, setHiddenRouteIds] = useState<Set<string>>(new Set())
+  // ctrl+z / ctrl+shift+z over pendingPoints — snapshots of the whole array, so
+  // anchor chains between pending points stay consistent when stepping back
+  const history = useUndoHistory<PendingPoint[]>()
 
   const topbarState: TopbarState = suggestions !== null ? 'suggesting' : pendingPoints.length > 0 ? 'pending' : 'idle'
 
@@ -139,6 +143,7 @@ export default function TransitRoutePage() {
     params.set('routeId', id)
     router.replace(`/transit/transit-route?${params}`)
     setPendingPoints([])
+    history.clear()
     setSuggestions(null)
     setSuggestTarget(null)
     setRepositionKey(null)
@@ -172,6 +177,7 @@ export default function TransitRoutePage() {
   }
 
   function addPendingPoint(point: PendingPoint) {
+    history.push(pendingPoints)
     setPendingPoints((prev) => [...prev, point])
     setAddPointMode(false)
     setMapClickPos(null)
@@ -180,6 +186,7 @@ export default function TransitRoutePage() {
 
   function discardPending() {
     setPendingPoints([])
+    history.clear()
     setSuggestions(null)
     setRepositionKey(null)
   }
@@ -208,6 +215,7 @@ export default function TransitRoutePage() {
         toast.error('Este ponto usa uma localidade existente — a posição vem do cadastro de Localidade')
         return
       }
+      history.push(pendingPoints)
       setPendingPoints((prev) => prev.map((p) => (p._pendingId === key ? { ...p, lat, lng } : p)))
       return
     }
@@ -293,6 +301,7 @@ export default function TransitRoutePage() {
       }
       await Promise.all(ops)
       setPendingPoints([])
+      history.clear()
 
       // reprocess trajectory
       await apiPost(`/transit/transit-route/${routeId}/reprocess`)
@@ -360,6 +369,7 @@ export default function TransitRoutePage() {
       params.delete('routeId')
       router.replace(`/transit/transit-route?${params}`)
       setPendingPoints([])
+      history.clear()
       setSuggestions(null)
       toast.success('Sentido excluído')
     } catch (err) {
@@ -447,6 +457,31 @@ export default function TransitRoutePage() {
     icon:    Icons.Save,
     origin:  'transit/transit-route/page',
     enabled: !!routeId && pendingPoints.length > 0 && !isSaving,
+  })
+
+  function stepHistory(ev: KeyboardEvent, dir: 'undo' | 'redo') {
+    if (isEditableTarget(ev)) return
+    ev.preventDefault()
+    const snapshot = dir === 'undo' ? history.undo(pendingPoints) : history.redo(pendingPoints)
+    if (!snapshot) return
+    setPendingPoints(snapshot)
+    setRepositionKey(null)
+  }
+
+  useShortcut('ctrl+z', (ev) => stepHistory(ev, 'undo'), {
+    desc:           'Desfazer última alteração pendente',
+    icon:           Icons.Undo2,
+    origin:         'transit/transit-route/page',
+    enabled:        !!routeId && !isSaving && suggestions === null,
+    preventDefault: false,
+  })
+
+  useShortcut('ctrl+shift+z', (ev) => stepHistory(ev, 'redo'), {
+    desc:           'Refazer alteração desfeita',
+    icon:           Icons.Redo2,
+    origin:         'transit/transit-route/page',
+    enabled:        !!routeId && !isSaving && suggestions === null,
+    preventDefault: false,
   })
 
   useShortcut('q+[space]', () => setCanvasMode((prev) => (prev === 'ruler' ? 'map' : 'ruler')), {

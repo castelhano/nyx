@@ -117,6 +117,7 @@ const iconNames = [
   'Trash2',
   'TreePalm',
   'Undo2',
+  'Redo2',
   'Ungroup',
   'Truck',
   'Upload',

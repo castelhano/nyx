@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
+import { useUndoHistory } from '@/lib/use-undo-history'
 import { extractError } from '@/lib/utils'
 import { buildLineFreqIndex } from '../views/line-freq.view'
 import { useDeltaGroups } from './useDeltaGroups'
@@ -858,6 +859,70 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   ), [moveTargetBlockId])
 
   const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + pendingNewBlockIds.length + pendingBlockChanges.size + (pendingLineSchedulePin ? 1 : 0)
+
+  // ── undo/redo of pending edits (ctrl+z / ctrl+shift+z) ────────────────────
+  // Any render where some pending state changed records the previous state as one
+  // step — React batches every setter a single action calls (including the ones
+  // after its awaits), so one action = one step without instrumenting each handler.
+  // osoSyncedValues rides along so Salvar's OSO prompt stays right after an undo,
+  // and the focused segment too, so stepping back lands where the action happened.
+  const pendingSnapshot = useMemo(() => ({
+    pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds,
+    pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves,
+    pendingNewBlockIds, pendingBlockChanges, pendingLineSchedulePin, osoSyncedValues,
+  }), [
+    pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds,
+    pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves,
+    pendingNewBlockIds, pendingBlockChanges, pendingLineSchedulePin, osoSyncedValues,
+  ])
+  type HistoryEntry = { pending: typeof pendingSnapshot; focusedSegId: string | null }
+  const history     = useUndoHistory<HistoryEntry>()
+  const lastSeenRef = useRef<HistoryEntry>({ pending: pendingSnapshot, focusedSegId })
+  // Set by undo/redo/reset so the render they cause isn't recorded as a new step.
+  // Safe as a plain flag: every one of them hands at least one setter a new
+  // reference, so pendingSnapshot always changes and the effect always consumes it.
+  const skipRecordRef = useRef(false)
+
+  useEffect(() => {
+    const last = lastSeenRef.current
+    lastSeenRef.current = { pending: pendingSnapshot, focusedSegId }
+    if (last.pending === pendingSnapshot) return
+    if (skipRecordRef.current) { skipRecordRef.current = false; return }
+    history.push(last)
+  }, [pendingSnapshot, focusedSegId, history])
+
+  // after Salvar/Descartar — the steps no longer apply to what's persisted
+  function resetHistory() {
+    skipRecordRef.current = true
+    history.clear()
+  }
+
+  function stepPendingHistory(dir: 'undo' | 'redo') {
+    if (isSaving) return
+    const current = { pending: pendingSnapshot, focusedSegId }
+    const target  = dir === 'undo' ? history.undo(current) : history.redo(current)
+    if (!target) return
+    const p = target.pending
+    skipRecordRef.current = true
+    setPendingChanges(p.pendingChanges)
+    setPendingDeadrunChanges(p.pendingDeadrunChanges)
+    setPendingIntervalChanges(p.pendingIntervalChanges)
+    setPendingAdds(p.pendingAdds)
+    setPendingDeletes(p.pendingDeletes)
+    setPendingDeadrunDeletes(p.pendingDeadrunDeletes)
+    setPendingIntervalDeletes(p.pendingIntervalDeletes)
+    setPendingMoves(p.pendingMoves)
+    setPendingNewBlockIds(p.pendingNewBlockIds)
+    setPendingBlockChanges(p.pendingBlockChanges)
+    setPendingLineSchedulePin(p.pendingLineSchedulePin)
+    setOsoSyncedValues(p.osoSyncedValues)
+    // the selection (and a move target picked from it) may hold temp ids the
+    // restored state no longer has
+    setSelection(null)
+    setTripSeqAnchor(null)
+    setMoveTargetBlockId(null)
+    setFocusedSegId(target.focusedSegId)
+  }
 
   // Queued into pendingChanges like a time patch — mergedPlottedData already spreads
   // TripPatch onto trip, so a staged constraints value renders immediately without a
@@ -1872,6 +1937,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setPendingNewBlockIds([])
     setPendingBlockChanges(new Map())
     setOsoSyncedValues(new Map())
+    resetHistory()
   }
 
   async function handleToggleEditBar() {
@@ -2017,6 +2083,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       setPendingBlockChanges(new Map())
       setPendingLineSchedulePin(null)
       setOsoSyncedValues(new Map())
+      resetHistory()
       // Empty blocks never made it into `adds`, so the backend never created them —
       // drop them here too. Any that got a trip added into it already round-trips
       // as a real block through the refetch above.
@@ -2701,7 +2768,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     pendingCount, isSaving,
     stepMoveTarget,
     handleSelectionChange, handlePendingAdd, queueTripDeletes, clearAllPending, handleToggleEditBar,
-    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm,
+    handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, stepPendingHistory,
     osoSavePrompt, handleResolveOsoSavePrompt, handleApplyOsoAttributes,
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,

@@ -6,6 +6,7 @@ import { Icons } from '@/lib/icons'
 import { useShortcut } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
 import { useConfirm } from '@/lib/confirm-context'
+import { isEditableTarget } from '@/lib/use-undo-history'
 import { findAnchoredBreakIds, type TripPatch, type DeadrunPatch, type BlockFilter } from './useGanttEditor'
 import type { GanttBoardHandle } from '../components/GanttBoard'
 import type { GotoMode } from '../components/GotoBlockInput'
@@ -96,6 +97,7 @@ interface UseVehiclePlanShortcutsParams {
   clearAllPending:            () => void
   handleSavePendingWithConfirm:    () => void
   handleDiscardPendingWithConfirm: () => void
+  stepPendingHistory:         (dir: 'undo' | 'redo') => void
   handleToggleEditBar:        () => void
   handleSelectionChange:      (sel: Selection | null) => void
   vehiclesActionSpec:          GanttActionSpec<VehiclePlanGanttData>
@@ -118,7 +120,7 @@ export function useVehiclePlanShortcuts({
   setAddTripOpen, setLineFreqOpen, setLinesPanelOpen,
   setSummaryLineIds, setRedistributeModal,
   blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
-  clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, handleToggleEditBar,
+  clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, stepPendingHistory, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
   handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
 }: UseVehiclePlanShortcutsParams) {
@@ -206,6 +208,33 @@ export function useVehiclePlanShortcuts({
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen || linesPanelOpen,
     section: SEC_GERAL,
+  })
+
+  // preventDefault off: a focused form field keeps its native ctrl+z
+  useShortcut('ctrl+z', (ev) => {
+    if (isEditableTarget(ev)) return
+    ev.preventDefault()
+    stepPendingHistory('undo')
+  }, {
+    desc:           'Desfazer última alteração pendente',
+    icon:           Icons.Undo2,
+    origin:         'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled:        editBarOpen,
+    preventDefault: false,
+    section:        SEC_GERAL,
+  })
+
+  useShortcut('ctrl+shift+z', (ev) => {
+    if (isEditableTarget(ev)) return
+    ev.preventDefault()
+    stepPendingHistory('redo')
+  }, {
+    desc:           'Refazer alteração desfeita',
+    icon:           Icons.Redo2,
+    origin:         'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled:        editBarOpen,
+    preventDefault: false,
+    section:        SEC_GERAL,
   })
 
   useShortcut('q+n', () => setAddTripOpen(true), {
