@@ -5,7 +5,7 @@ import { pairRule, RosterModel, type RgDuty, type RgInput, type RgMember } from 
 const settings = rosterSettingsSchema.parse({})
 const duty = (id: string, day: number, signature: string): RgDuty => ({
   id, day, start: 360, end: 780, paid: 420, kind: 'NORMAL', signature, shift: null,
-  lineMinutes: [], vehicleTypes: [], operated: true, standby: false, preferred: [],
+  lineMinutes: [], vehicleTypes: [], standby: false, preferred: [],
 })
 const member = (over: Partial<RgMember> = {}): RgMember => ({
   id: 'm', code: '1', name: 'M', lineAccess: {}, prefGrade: {}, priorityGrade: {}, blockedVehicleTypes: [], overtimePreference: 'NEUTRAL',

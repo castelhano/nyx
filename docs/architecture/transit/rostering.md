@@ -49,8 +49,8 @@ listed in `CrewShiftBranch`. `restPatternId`: the default rest pattern of its cr
 - **`LineOperator`** — the empresas operating a line; none = any operator of the scope. Checked as
   `LINE_NOT_OPERATED` (warning) on blocks and duties. With `restrictToBranchLines` ("Consistir
   linha da empresa") the vehicle solver only gives an empresa blocks of lines it operates (hard
-  rule; `ScopeOperator.share` chooses among the allowed ones), and the roster generator only takes
-  duties of lines the empresa operates.
+  rule; `ScopeOperator.share` chooses among the allowed ones). The roster generator doesn't
+  re-check it: it takes the empresa's duties (`branchId`, set by the vehicle plan).
 
 ---
 
@@ -187,9 +187,9 @@ shift / fixed day off, `fixed` = holds a fixed duty). Fixed: locked, on a day no
 folga compensada or a day off entered by hand. Férias with a ferista: on those days he takes the
 titular's place (preferences, last duties, rest pattern).
 
-**Rules** (`pairRule`): a crew member must be free on the day and the duty's lines operated by the
-empresa (`restrictToBranchLines`). Configurable per empresa (`ruleModes`), BLOCK = never, WARN =
-only as a last resort (`WARN` cost each, the day shows the issue):
+**Rules** (`pairRule`): a crew member must be free on the day. Configurable per empresa
+(`ruleModes`), BLOCK = never, WARN = only as a last resort (`WARN` cost each, the day shows the
+issue):
 
 - `lineAccess`: a line he may not operate;
 - `vehicleType`: a vehicle type blocked for him;

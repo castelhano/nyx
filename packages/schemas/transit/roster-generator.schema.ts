@@ -31,8 +31,6 @@ export const rosterGeneratorParamsSchema = z.object({
   ensureMonthlyLoad:     z.boolean().default(true),
   // duty signature changes per crew member in the load period
   maxChanges:            z.number().int().min(0).max(31).default(4),
-  // only duties whose lines the empresa operates
-  restrictToBranchLines: z.boolean().default(true),
   // redoes the days' vehicles after the crew (every block's car released first)
   vehicles:              z.boolean().default(true),
   // also redo the PUBLISHED days (never the CLOSED ones) — changing as little as it can

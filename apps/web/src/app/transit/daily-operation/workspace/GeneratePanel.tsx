@@ -68,7 +68,7 @@ export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onPr
     : spanDays(from, to) > ROSTER_MAX_HORIZON_DAYS ? `No máximo ${ROSTER_MAX_HORIZON_DAYS} dias`
     : null
   const [opts, setOpts] = useState({
-    ensureMonthlyLoad: true, maxChanges: 4, restrictToBranchLines: true, vehicles: true, includePublished: false,
+    ensureMonthlyLoad: true, maxChanges: 4, vehicles: true, includePublished: false,
     extraStandby: [] as RosterExtraStandby[], compensate: true,
   })
   // the run's own — a run picked up from the server keeps what it was started with
@@ -204,7 +204,6 @@ export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onPr
       {!jobId && (
         <div className="space-y-2 text-xs">
           <Toggle label="Garantir carga" on={opts.ensureMonthlyLoad} set={v => setOpts(o => ({ ...o, ensureMonthlyLoad: v }))} />
-          <Toggle label="Consistir linha da empresa" on={opts.restrictToBranchLines} set={v => setOpts(o => ({ ...o, restrictToBranchLines: v }))} />
           <Toggle label="Alocar veículos" on={opts.vehicles} set={v => setOpts(o => ({ ...o, vehicles: v }))} />
           <Toggle label="Incluir dias publicados" on={opts.includePublished} set={v => setOpts(o => ({ ...o, includePublished: v }))} />
           <Toggle label="Compensar banco com a sobra" on={opts.compensate} set={v => setOpts(o => ({ ...o, compensate: v }))} />

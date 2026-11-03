@@ -13,7 +13,7 @@ const wide: ShiftWindow = {
 }
 const duty = (id: string, line: string, over: Partial<RgDuty> = {}): RgDuty => ({
   id, day: 0, start: 360, end: 780, paid: 420, kind: 'NORMAL', signature: `P#${id}`, shift: 'MAN',
-  lineMinutes: [{ lineId: line, minutes: 300 }], vehicleTypes: [], operated: true, standby: false, preferred: [], ...over,
+  lineMinutes: [{ lineId: line, minutes: 300 }], vehicleTypes: [], standby: false, preferred: [], ...over,
 })
 const plantao = (id: string, start: number) => duty(id, '__STANDBY__', { start, end: start + 420, standby: true, kind: 'STANDBY' })
 const member = (id: string, over: Partial<RgMember> = {}): RgMember => ({

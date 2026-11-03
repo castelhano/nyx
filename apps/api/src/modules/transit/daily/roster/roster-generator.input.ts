@@ -3,7 +3,6 @@ import type { PrismaService } from '../../../../prisma/prisma.service'
 import type { TransitCrewConfigService } from '../../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../../settings/transit-roster-config.service'
 import type { BankPosition } from '../../hour-bank/hour-bank.service'
-import { loadCrewBranchRules } from '../../timetabling/crew-plan/crew-branch-rules'
 import { addDays, dayOf, toDbDate, type Day } from '../../timetabling/plan-validity'
 import { crewLimit } from '../daily-checks'
 import { NOT_PUBLISHED, STANDBY_LINE, isChange, signatureGroup, type RgDuty, type RgFixed, type RgInput, type RgMember, type RgStatus } from './roster-generator.calc'
@@ -154,7 +153,6 @@ export async function loadRosterInput(
   const opDay = new Map(operations.map(o => [o.id, dayOf(o.date)]))
   const dutyIds = [...new Set([...duties.map(d => d.id), ...entries.flatMap(e => e.dailyDutyId ?? [])])]
   const facts = await dutyLines(prisma, dutyIds)
-  const { lineOperators } = await loadCrewBranchRules(prisma, { lineIds: [...new Set([...facts.values()].flatMap(f => f.lines.map(l => l.lineId)))] })
   // the logical duty each daily duty was copied from, and its crew plan — the duty's identity
   // across days (see RgDuty.signature)
   const sources = await prisma.dailyDuty.findMany({ where: { id: { in: dutyIds } }, select: { id: true, sourceDutyId: true } })
@@ -210,10 +208,6 @@ export async function loadRosterInput(
       vehicleTypes: f?.vehicleTypes ?? [],
       standby: d.kind === 'STANDBY',
       preferred: preferredOf(d.id, opDay.get(d.dailyOperationId)!),
-      operated: !params.restrictToBranchLines || (f?.lines ?? []).every(l => {
-        const ops = lineOperators.get(l.lineId)
-        return !ops?.length || ops.includes(branchId)
-      }),
     })
   }
 

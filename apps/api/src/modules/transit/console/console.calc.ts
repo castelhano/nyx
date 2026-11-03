@@ -148,7 +148,7 @@ function windowModel(input: ConsoleInput, crew: ConsoleCrew[]): RosterModel {
       duties.push({
         id: `${x.id}@${t}`, day: t, start: x.start, end: x.end, paid: x.paid, kind: x.kind, signature: x.id, shift: x.shiftId,
         lineMinutes: x.standby ? [{ lineId: STANDBY_LINE, minutes: x.end - x.start }] : x.lineMinutes,
-        vehicleTypes: x.vehicleTypes, operated: true, standby: x.standby, preferred: [],
+        vehicleTypes: x.vehicleTypes, standby: x.standby, preferred: [],
       })
     }
   })

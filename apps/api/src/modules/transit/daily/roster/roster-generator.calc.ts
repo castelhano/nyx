@@ -92,8 +92,6 @@ export interface RgDuty {
   shift:  string | null
   lineMinutes: { lineId: string; minutes: number }[]
   vehicleTypes: string[]
-  // every line operated by the empresa (restrictToBranchLines)
-  operated: boolean
   // a plantão (kind STANDBY)
   standby: boolean
   // the fixed crew members (indices) who should work it, in order — none: anyone
@@ -207,7 +205,7 @@ export const isChange = (last: Record<string, string>, sig: string) => {
 // skips the line, vehicle type and shift window rules
 export function pairRule(input: RgInput, mi: number, d: RgDuty): number {
   const m = input.members[mi]
-  if (m.status[d.day] !== 'free' || !d.operated) return -1
+  if (m.status[d.day] !== 'free') return -1
   const fixed = d.preferred.includes(mi)
   let warns = 0
   const rule = (broken: boolean, mode: 'BLOCK' | 'WARN') => {
@@ -297,8 +295,7 @@ export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holde
   input.duties.forEach((d, di) => {
     if (holder[di] >= 0) return
     let reason: string
-    if (!d.operated) reason = 'linha não operada pela empresa'
-    else if (model.candidates[di].length) {
+    if (model.candidates[di].length) {
       // someone could take it: either all of them hold another duty that day, or the rest
       // between days / the change limit kept the free ones off
       const idle = [...model.candidates[di]].filter(mi => assign[mi][d.day] < 0).length
