@@ -7,7 +7,7 @@ import { useConfirm } from '@/lib/confirm-context'
 import { WEEKDAY, cellSummary, clock, dutyName, fmtDay, hm, reveal, weekday, type BoardIndex, type RosterBoard, type RosterBoardDuty, type RosterBoardMember } from './board'
 
 // "Operadores" — the roster board: crew members × days. Keyboard first: arrows (shift extends),
-// Enter opens the day's duties, F launches a day off, Del clears, L locks, Ctrl+C / Ctrl+V copy a
+// Enter opens the day's duties (on a multi-cell selection only day offs / clear, for all of it), F launches a day off, Del clears, L locks, Ctrl+C / Ctrl+V copy a
 // block (the same duty numbers on the target days) — pasted on the same days onto other crew
 // members, an empty day moves and a filled one swaps; drag a cell onto another crew member's to
 // swap the day. Clearing, a paste over filled days and a swap ask for confirmation (Enter).
@@ -51,7 +51,8 @@ type Copied = { dr: number; dc: number; src: GridPos; value: { type: 'duty'; sco
 export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canEdit, busy, onCursor, actions, overlay, free }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const copied = useRef<Copied>([])
-  const [picker, setPicker] = useState<{ pos: GridPos; rect: DOMRect } | null>(null)
+  // cells: what a day off / clear applies to — the selection, or just pos
+  const [picker, setPicker] = useState<{ pos: GridPos; cells: GridPos[]; rect: DOMRect } | null>(null)
   const [drag, setDrag] = useState<GridPos | null>(null)
   const confirm = useConfirm()
   const single = dates.length === 1
@@ -135,9 +136,9 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
     if (await confirmed('Trocar o dia', `${fmtDay(date)}: ${who(a)} ⇄ ${who(b)}`, 'Trocar')) actions.swap(date, a, b)
   }
 
-  function openPicker(pos: GridPos) {
+  function openPicker(pos: GridPos, cells: GridPos[] = [pos]) {
     const el = wrapRef.current?.querySelector(`[data-cell="${pos.memberId}|${pos.date}"]`)
-    if (el && canEdit) setPicker({ pos, rect: el.getBoundingClientRect() })
+    if (el && canEdit) setPicker({ pos, cells, rect: el.getBoundingClientRect() })
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -154,7 +155,7 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
       case 'ArrowDown':  return move(1, 0)
       case 'ArrowLeft':  return move(0, -1)
       case 'ArrowRight': return move(0, 1)
-      case 'Enter':      e.preventDefault(); return openPicker(cur)
+      case 'Enter':      e.preventDefault(); return openPicker(cur, cursor ? selected() : [cur])
     }
     const key = e.key.toLowerCase()
     if ((e.ctrlKey || e.metaKey) && key === 'c') {
@@ -265,7 +266,8 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
                           s.off && 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
                           s.absence && (s.absence.vacation ? 'bg-teal-500/25 text-teal-800 dark:text-teal-200' : 'bg-violet-500/25'),
                           !hasContent && !s.absence && s.patternOff && 'text-amber-700/70 dark:text-amber-300/70',
-                          inSel(m.id, date) && 'bg-accent/40',
+                          // dark: primary, not accent — a green accent theme blends with the Sobra cells
+                          inSel(m.id, date) && 'bg-accent/40 dark:bg-primary/25',
                           isCursor && 'ring-2 ring-inset ring-primary',
                           drag?.memberId === m.id && drag.date === date && 'opacity-40',
                           proposed?.changed && 'outline outline-2 -outline-offset-2 outline-dashed outline-amber-500',
@@ -294,14 +296,14 @@ export function OperatorsGrid({ board, idx, dates, members, cursor, anchor, canE
 
       {picker && (
         <DutyPicker
-          board={board} idx={idx} pos={picker.pos} rect={picker.rect}
+          board={board} idx={idx} pos={picker.pos} count={picker.cells.length} rect={picker.rect}
           onClose={() => { setPicker(null); wrapRef.current?.focus() }}
           onPick={(choice) => {
             setPicker(null)
             wrapRef.current?.focus()
             if (choice.type === 'duty') actions.assign(choice.duty, picker.pos.memberId)
-            else if (choice.type === 'clear') actions.clear([picker.pos])
-            else actions.dayOff([picker.pos], choice.kind, choice.absenceTypeId)
+            else if (choice.type === 'clear') actions.clear(picker.cells)
+            else actions.dayOff(picker.cells, choice.kind, choice.absenceTypeId)
           }}
         />
       )}
@@ -350,20 +352,21 @@ function CellContent({ s, single }: { s: ReturnType<typeof cellSummary>; single:
 
 type Choice = { type: 'duty'; duty: RosterBoardDuty } | { type: 'off'; kind: 'DAY_OFF' | 'COMP_OFF'; absenceTypeId: string | null } | { type: 'clear' }
 
-// the day's duties for a crew member (free ones first), plus day off / clear
-function DutyPicker({ board, idx, pos, rect, onClose, onPick }: {
-  board: RosterBoard; idx: BoardIndex; pos: GridPos; rect: DOMRect; onClose: () => void; onPick: (c: Choice) => void
+// the day's duties for a crew member (free ones first), plus day off / clear — for several cells
+// (count > 1) only day off / clear: a duty goes to one crew member
+function DutyPicker({ board, idx, pos, count, rect, onClose, onPick }: {
+  board: RosterBoard; idx: BoardIndex; pos: GridPos; count: number; rect: DOMRect; onClose: () => void; onPick: (c: Choice) => void
 }) {
   const [q, setQ] = useState('')
   const [cur, setCur] = useState(0)
   const options = useMemo(() => {
-    const duties = board.duties
+    const duties = count > 1 ? [] : board.duties
       .filter(d => d.date === pos.date)
       .sort((a, b) => Number(!!a.crewMemberId) - Number(!!b.crewMemberId) || (a.start ?? 0) - (b.start ?? 0))
     const all: { key: string; label: string; detail: string; choice: Choice; taken?: string }[] = [
       // the day off types (system ones first)
       ...board.offTypes.map(t => ({ key: t.id, label: t.system ? (t.effect === 'COMP_OFF' ? 'FC' : 'F') : t.code, detail: t.name, choice: { type: 'off' as const, kind: t.effect, absenceTypeId: t.id } })),
-      { key: '-', label: 'Limpar o dia', detail: '', choice: { type: 'clear' } },
+      { key: '-', label: count > 1 ? `Limpar os ${count} dias` : 'Limpar o dia', detail: '', choice: { type: 'clear' } },
       ...duties.map(d => ({
         key: d.id, label: dutyName(d, board.multiScope),
         detail: [d.start != null && d.end != null ? `${clock(d.start)}–${clock(d.end)}` : '', d.lines.join(', '), d.shiftId ? idx.shiftCode.get(d.shiftId) : ''].filter(Boolean).join(' · '),
@@ -373,7 +376,7 @@ function DutyPicker({ board, idx, pos, rect, onClose, onPick }: {
     ]
     const s = q.trim().toLowerCase()
     return s ? all.filter(o => `${o.label} ${o.detail}`.toLowerCase().includes(s)) : all
-  }, [board, idx, pos, q])
+  }, [board, idx, pos, count, q])
 
   const top = Math.min(rect.bottom + 4, window.innerHeight - 330)
   const left = Math.min(rect.left, window.innerWidth - 340)
@@ -382,7 +385,7 @@ function DutyPicker({ board, idx, pos, rect, onClose, onPick }: {
       <div className="fixed inset-0 z-40" onMouseDown={onClose} />
       <div className="fixed z-50 w-80 rounded-lg border border-border bg-popover shadow-lg" style={{ top, left }}>
         <input
-          autoFocus value={q} placeholder="Tabela, horário ou linha…"
+          autoFocus value={q} placeholder={count > 1 ? `Folga para ${count} dias…` : 'Tabela, horário ou linha…'}
           onChange={e => { setQ(e.target.value); setCur(0) }}
           onKeyDown={e => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setCur(c => Math.min(options.length - 1, c + 1)) }
