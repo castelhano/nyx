@@ -112,11 +112,11 @@ function Timeline({ board, idx, duties, selectedId, onSelect }: Props) {
                 {d.pieces.map((p, i) => (
                   <span
                     key={i}
-                    className={cn('absolute top-1.5 bottom-1.5 rounded-sm px-1 text-[10px] leading-4 text-white truncate', lineColor(p.line))}
+                    className={cn('absolute top-1.5 bottom-1.5 rounded-sm px-1 text-[10px] leading-4 text-white truncate', lineColor(p.lines[0] ?? null))}
                     style={{ left: pct(p.start), width: `calc(${pct(p.end)} - ${pct(p.start)})` }}
-                    title={`${clock(p.start)}–${clock(p.end)} · ${p.line ?? ''}`}
+                    title={`${clock(p.start)}–${clock(p.end)} · ${p.lines.join(', ')}`}
                   >
-                    {p.line}
+                    {p.lines.join(' • ')}
                   </span>
                 ))}
               </div>

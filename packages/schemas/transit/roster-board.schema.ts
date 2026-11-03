@@ -19,8 +19,8 @@ export interface RosterBoardDay {
 export interface RosterBoardPiece {
   start: number
   end:   number
-  // the line with most trip minutes in the piece
-  line:  string | null
+  // the piece's trip lines, most minutes first
+  lines: string[]
   blockId: string | null
 }
 

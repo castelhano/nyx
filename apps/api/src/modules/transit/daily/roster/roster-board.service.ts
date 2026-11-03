@@ -96,14 +96,13 @@ export class RosterBoardService {
     const lineCode = new Map(lines.map(l => [l.id, l.code]))
     const tripsOf = new Map<string, typeof trips>()
     for (const t of trips) tripsOf.set(t.dailyBlockId!, [...(tripsOf.get(t.dailyBlockId!) ?? []), t])
-    const mainLine = (blockId: string | null, start: number, end: number) => {
+    const linesOf = (blockId: string | null, start: number, end: number) => {
       const minutes = new Map<string, number>()
       for (const t of tripsOf.get(blockId ?? '') ?? []) {
         const m = Math.min(t.endMinutes, end) - Math.max(t.startMinutes, start)
         if (m > 0 && t.lineId) minutes.set(t.lineId, (minutes.get(t.lineId) ?? 0) + m)
       }
-      const top = [...minutes.entries()].sort((a, b) => b[1] - a[1])[0]
-      return top ? lineCode.get(top[0]) ?? null : null
+      return [...minutes.entries()].sort((a, b) => b[1] - a[1]).flatMap(([id]) => lineCode.get(id) ?? [])
     }
 
     // ── crew members: the empresa's of the role, and anyone else holding a duty here ──
@@ -227,11 +226,11 @@ export class RosterBoardService {
           issues: (p.block.issues as DailyIssue[] | null) ?? [],
         })
       }
-      const pieces = d.pieces.filter(p => !p.isStale).map(p => ({ start: p.startMinutes, end: p.endMinutes, line: mainLine(p.dailyBlockId, p.startMinutes, p.endMinutes), blockId: p.dailyBlockId }))
+      const pieces = d.pieces.filter(p => !p.isStale).map(p => ({ start: p.startMinutes, end: p.endMinutes, lines: linesOf(p.dailyBlockId, p.startMinutes, p.endMinutes), blockId: p.dailyBlockId }))
       return {
         id: d.id, operationId: op.id, date: dayOf(op.date), scope: scopeName.get(op.scopeId) ?? '', number: d.dutyNumber, kind: d.kind, shiftId: d.shiftId,
         start: s?.startMinutes ?? null, end: s?.endMinutes ?? null, paid: s?.paidMinutes ?? 0,
-        lines: [...new Set(pieces.flatMap(p => p.line ?? []))],
+        lines: [...new Set(pieces.flatMap(p => p.lines))],
         pieces, blocks: [...blocks.values()],
         issues: (d.issues as DailyIssue[] | null) ?? [],
         crewMemberId: d.rosterEntries[0]?.crewMemberId ?? null,
