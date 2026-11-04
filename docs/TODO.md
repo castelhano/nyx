@@ -6,6 +6,7 @@
 
 
 ## Alto
+[ ] Edição da escala diária
 
 ## Medio
 [ ] Tipar parâmetro db/tx (PrismaService | Prisma.TransactionClient) nos services/utils que hoje usam `any` pra aceitar os dois — eslint tem no-unsafe-* desligado em apps/api por causa disso (eslint.config.mjs)
