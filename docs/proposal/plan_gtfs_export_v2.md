@@ -74,12 +74,14 @@ Para medir sem esse efeito, a comparação usou a distância dos pontos do Goal 
 O OSRM escolhe o caminho mais curto, enquanto o Goal tem itinerários reais de até 34,6 km contra
 17,3 km no nyx. A exportação funciona, mas o traçado só fica fiel depois de adicionar waypoints.
 
-### 2.4 Dados que precisam de acerto no nyx
+### 2.4 Divergências encontradas no banco de teste
+
+O banco analisado não é o oficial (D4). Esta lista serve de referência para a revisão da Etapa 1.
 
 | # | Problema | Efeito se exportar assim |
 |---|---|---|
 | 1 | 46 viagens da 311B estão nas rotas da 311; as rotas da 311B têm 0 viagens | a 311B some do Goal |
-| 2 | 032/033/034 usam minutos 30–270 (00:30); o Goal usa 24:30. A 031 já usa > 1440 | muda o dia de serviço das viagens; durações também divergem |
+| 2 | 032/033/034 às 00:30 no nyx e 24:30 no Goal | intencional (D2); as durações ainda divergem |
 | 3 | 031 tem 13 min de duração no nyx e 25–30 min no Goal, além de 2 viagens a mais | viagem irreal no Goal |
 | 4 | 380: 38 de 42 partidas diferem, a maioria em ~2 min, e há 1 viagem a mais | decidir qual lado está certo |
 | 5 | F01: 37 viagens no nyx e 38 no Goal, metade das partidas diferente | idem |
@@ -144,7 +146,7 @@ códigos batem; só `A06C` não existe no Goal. Veículos: 81 no Goal, 83 blocos
 | Horário intermediário | somar deltas e forçar a chegada | **escalar deltas pela duração** | a v1 jogaria todo o atraso na última perna (seção 2.6) |
 | `stops.txt` | só `isDepot=false` | **toda localidade usada** | 032/033/034 saem da garagem |
 | `route_id` | `TransitLine.id` | **código externo com fallback em `code`** | o Goal identifica as linhas por código |
-| `service_id` | `dayTypeId` | **`<operador>_<dia>_<carimbo>`** (`RAPIDO_UTIL_202611041830`) | o Goal exige nome único a cada carregamento |
+| `service_id` | `dayTypeId` | **`<operador>_<dia>_V<versão>`** (`RAPIDO_UTIL_V012`) | o Goal exige nome único por carga, e a versão facilita achar a última |
 | `block_id` | sempre | **opção, desligada por padrão** | hoje o feed não tem blocos (D3) |
 | UI | botão sem modal | **modal com opções e prévia** | agora há operador e período |
 | Módulo | `network/scope/gtfs` | `timetabling/gtfs` | lê planos de vários tipos de dia |
@@ -181,7 +183,7 @@ aceitar e houver uso.
 
 | Campo | Formato | Exemplo |
 |---|---|---|
-| `service_id` | `<ScopeOperator.abbr>_<DayType.name>_<AAAAMMDDHHmm>` | `RAPIDO_UTIL_202611041830` |
+| `service_id` | `<ScopeOperator.abbr>_<DayType.name>_V<versão com 3 dígitos>` | `RAPIDO_UTIL_V012` |
 | `trip_id` | `<DayType.code>_<route_id>_<blockNumber>_<BlockTrip.sequence>` | `U_A20_12_3` |
 | `trip_short_name` | igual ao `trip_id` | como no feed atual |
 | `direction_id` | `OUTBOUND`/`CIRCULAR` = 0, `INBOUND` = 1 | |
@@ -190,10 +192,40 @@ aceitar e houver uso.
 `trip_id` é único porque `(vehicleBlockId, sequence)` é único. Ele não é estável entre versões do
 plano, o que basta enquanto o Goal receber sempre o feed inteiro. A Etapa 0 confirma isso.
 
-**Nome único por carregamento:** o Goal recusou o feed A porque `RAPIDO_UTIL` já existia, e cada
-carregamento precisa de um nome inédito. O carimbo é a data e hora da geração, no fuso da operação,
-então não exige contador nem estado guardado. Duas gerações no mesmo minuto repetem o nome; o modal
-permite gerar de novo. Limites de tamanho e de caracteres do nome ainda não são conhecidos.
+**Nome único por carga:** o Goal recusou o feed A porque `RAPIDO_UTIL` já existia, e cada carga
+precisa de um nome inédito. Ao gerar o cenário, é preciso achar o último serviço na lista, por isso
+o nome leva uma versão sequencial em vez de carimbo de data. Limites de tamanho e de caracteres do
+nome ainda não são conhecidos; `RAPIDO_UTIL_202611041725A` foi aceito.
+
+A versão é persistida numa tabela de histórico de exportações, uma linha por feed baixado:
+
+```prisma
+model GtfsExport {
+  id              String   @id @default(uuid())
+  scopeOperatorId String
+  version         Int
+  periodStart     DateTime @db.Date
+  periodEnd       DateTime @db.Date
+  // vehicle plan used per day type: [{ dayTypeId, vehiclePlanId }]
+  plans           Json
+  // output report, section 4.6
+  report          Json?
+  createdAt       DateTime @default(now())
+
+  @@unique([scopeOperatorId, version])
+}
+```
+
+- **Uma versão por operador, por carga.** Um feed com vários tipos de dia usa a mesma versão em todos
+  (`RAPIDO_UTIL_V012`, `RAPIDO_SAB_V012`), então a versão identifica a carga. Se a carga levar só um
+  tipo de dia, os outros pulam o número, sem problema.
+- **Só a geração final consome versão.** A prévia não grava nada.
+- **O modal sugere a última + 1, e o campo é editável.** Isso cobre a troca do banco de teste pelo
+  oficial, um serviço com versão já usada no Goal ou uma carga recusada.
+- **Serve de rastreio:** mostra qual plano virou qual versão. Sem `userId`: o projeto pode usar a
+  auditoria padrão, se existir, ao implementar.
+- `db:export-transit` não cobre essa tabela. Num `db:reset`, a versão volta a 1, e o campo editável
+  resolve isso.
 
 ### 4.3 Horários
 
@@ -223,6 +255,10 @@ Por isso:
 - `EXTERNAL_SYSTEMS` continua sendo só a lista de layouts de plano.
 
 As linhas `031`–`034` precisam de código externo `31`–`34`, ou de renomeação no nyx.
+
+**Locais: o nyx é a origem oficial.** Todo `stop_id` usa o `code` da localidade, sem de-para com os
+códigos antigos do Goal. Localidade nova no nyx vira local novo no Goal na carga seguinte. Os locais
+antigos ficam no catálogo, sem uso nas novas rotas.
 
 ### 4.5 Escolha do que exportar
 
@@ -310,11 +346,38 @@ Modelo do Goal, pela especificação `ext-common`:
 
 Após a importação, repetir a foto da seção 2.7 e comparar.
 
+**Feed A carregado em 2026-11-04** (`RAPIDO_UTIL_202611041725A`, serviço 865 no Goal, tenant 1045, o
+mesmo dos cenários publicados). Comparação em `~/Downloads/goal-snapshot-pos-feed-a/`:
+
+- Carregou sem erro. O Goal aceitou 2 pontos em linha regular e `trip_id` e `stop_id` novos.
+- A carga **acrescenta, não substitui**: rotas de 132 para 134 (`A20_1_2`, `A20_2_2`) e locais de
+  1.352 para 1.354 (`A0519-002`, `A0320-001`). As rotas antigas da A20 seguem ativas. As demais 21
+  linhas não geraram rota nova: a sequência de pontos igual reaproveita a rota existente.
+- Cenário 3990: métricas idênticas às de antes, e a A20 segue com 61 viagens. Os seis cenários seguem
+  com o mesmo status e o mesmo número de linhas.
+- **O Goal usou o traçado para medir o km.** A tela do serviço 865 mostra, para a A20, 61 viagens,
+  389,2 km e 17:48 h. O feed dá 389,9 km pelo traçado (99,8%) e 125,2 km pelas retas entre os pontos;
+  o tempo bate exato. A API não mostra esse dado: `timetable` só existe em cenário, e
+  `GET /ext/v1|v2/section` veio vazio.
+- Como locais têm `placeCode` imutável, cada carga com código novo deixa resíduo no catálogo. Isso
+  pede o de-para de localidades (`externalCodes.GOAL`), mas com o cuidado abaixo.
+- **O km acompanha o traçado em recarga.** Excluído o serviço 865, as rotas e os locais novos ficaram.
+  Uma nova carga (serviço 890) com os mesmos pontos e 1 km a mais no traçado da ida deu 419,1 km
+  (196,2 + 222,9), contra 419,9 km esperados pelo shape. Editar traçado no nyx e recarregar funciona.
+- **Fluxo no Goal:** GTFS → serviço (oferta de horários) → cenário → escala lógica → escalas diárias.
+  O serviço só pode ser usado em cenário depois de publicado, e aí não pode mais ser excluído:
+  publicar só com a base oficial revisada. Um cenário é gerado a partir de um ou mais serviços e não
+  tem ligação com outros cenários nem com o serviço depois de gerado. Portanto, o cenário novo convive
+  com o 3990, e `trip_id` novos não afetam escalas existentes.
+- Ainda sem explicação: por que linhas antigas, como a 313 ida, têm km diferente do shape no cenário
+  3990. Não bloqueia o plano, porque as cargas novas seguem o shape.
+
 Verificar:
 
-- [ ] **Km da A20 ida no `timetable`:** ~5,6 km = usou o traçado; ~2,1 km = usou os pontos (D8).
+- [x] **Km da A20:** usou o traçado (389,2 km na tela, contra 389,9 km esperados).
+- [x] O km acompanha o shape quando os locais já existem no Goal (D8).
 - [ ] O cenário 3990 e a escala amarrada a ele continuam intactos?
-- [ ] Importar só a RAPIDO afeta as linhas e os cenários da VPAR?
+- [x] Importar só a RAPIDO não afeta a VPAR: no Goal, cada empresa tem cenário e GTFS próprios.
 - [ ] Aceita viagens com 2–3 pontos em linhas regulares?
 - [ ] Usa o `shapes.txt` recebido ou recalcula a partir dos pontos?
 - [ ] Aceita `stop_id` novos? O que acontece com os antigos?
@@ -327,24 +390,20 @@ Verificar:
 **Saída:** o resultado do km decide a D8. Se o Goal rejeitar poucos pontos ou medir por eles, este
 plano muda conforme a opção escolhida.
 
-### Etapa 1 — Acerto de dados
+### Etapa 1 — Revisão da base oficial
 
-Trabalho nas telas do nyx, sem código.
+Feita por você, antes da primeira carga oficial, e sem depender do código. Pode correr em paralelo.
+Usar a seção 2.4 como referência: viagens da 311B na rota certa, duração da 031, horários da 380 e
+da F01, viagens de outra empresa em bloco, traçados da seção 2.3 e waypoints da F01.
 
-- Mover as 46 viagens para as rotas da 311B.
-- Corrigir 032/033/034 (D2) e a duração da 031.
-- Conferir 380 e F01 contra a programação real.
-- Tratar C02 (D4) e revisar os traçados da seção 2.3.
-- Adicionar waypoints na F01.
-
-Os itens de viagem valem para o plano em que forem feitos. `db:export-transit` não cobre viagens, e
-um `db:reset` os perderia.
+`db:export-transit` não cobre viagens, e um `db:reset` as perderia.
 
 **Saída:** contagem de viagens por linha igual à do Goal, ou diferenças conhecidas e aceitas.
 
 ### Etapa 2 — Fundamentos
 
 - `EXTERNAL_CODE_SYSTEMS` + chave `GOAL`.
+- Tabela `GtfsExport` (seção 4.2). A migração é rodada por você.
 - `osoConfig` → `serviceMetadata` com os campos novos (6 arquivos usam o nome atual). A migração é
   rodada por você.
 - Tornar `matchesPattern` público, ou extrair como função pura.
@@ -374,8 +433,8 @@ Loader, builder, `gtfs-times.ts` e CSV, com specs para:
 
 ### Etapa 5 — Interface
 
-Modal com escopo, operador, período, tipos de dia e opção de `block_id`, mais prévia por linha,
-relatório e download.
+Modal com escopo, operador, período, tipos de dia, versão (sugerida e editável) e opção de
+`block_id`, mais prévia por linha, relatório e download.
 
 ### Etapa 6 — Validação ponta a ponta
 
@@ -404,10 +463,8 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
 
 | # | Pergunta | Recomendação |
 |---|---|---|
-| D2 | **032/033/034 às 00:30 ou 24:30?** | Usar 24:30 no nyx, como a 031, para manter um padrão de madrugada |
 | D3 | **`block_id` ligado ou não?** | Desligado até a Etapa 0 mostrar o efeito. 31 dos 83 blocos da RAPIDO cruzam linhas, então ligar pode amarrar o Goal |
-| D4 | **C02 no feed da RAPIDO?** | Mover as 2 viagens de bloco, se forem erro. Se a operação for real, a linha entra no feed |
-| D8 | **Se o Goal medir o km pelos pontos, o que fazer?** Opções: (a) cadastrar os pontos no nyx e enviar a sequência completa; (b) enviar waypoints como pontos, sem embarque (−19%); (c) gravar a distância dos trechos pela API (`POST /ext/v2/section`). | Decidir depois do teste. Se for preciso, preferir (a), que é a consistência que você já indicou. A (c) só vale se o Goal aceitar a escrita e o trecho por par de locais comportar as variantes da F01 |
+| D9 | **Rotas com o mesmo par de locais e km diferentes:** 031 × 309 (10,8 e 16,0 km; 8,1 e 11,8 km) e 311 × 311B (13,1 e 14,1 km; 15,4 e 15,9 km). O teste da A20 não cobre duas rotas do mesmo par no mesmo feed | Conferir na carga completa. Se uma herdar o km da outra, criar localidade própria no nyx em uma das duas |
 | D6 | **Exportar plano em rascunho?** A decisão da v1 é "apenas ativos", mas testar um rascunho no Goal antes de ativar pode ser útil | Manter só planos em vigor. Rever se fizer falta |
 | D7 | **Cores:** a paleta da v1 troca as cores atuais do Goal e cicla em 8 | Manter a v1, se a cor for só cosmética no Goal |
 
@@ -415,7 +472,13 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
 
 - **D1 — duração:** vale a do nyx. Os 5 min vêm da carga do Globus no Goal (fim de uma viagem = início
   da próxima), e o nyx normaliza isso de propósito.
-- **D5 — pontos:** o uso é só início e fim de escala, sem detalhe de pontos, então 2–3 pontos por
-  viagem atendem na operação, **desde que o km não dependa deles** (D8). Se for preciso ter os pontos
-  corretos, eles serão cadastrados no nyx como localidades, para manter a consistência, e aí entra o
-  de-para pelo código externo da localidade.
+- **D5 — pontos:** o uso é só início e fim de escala, sem detalhe de pontos, e o km não depende deles,
+  então 2–3 pontos por viagem atendem. Se for preciso ter os pontos corretos, eles serão cadastrados
+  no nyx como localidades.
+- **D8 — km:** o Goal mede pelo `shapes.txt`, na primeira carga e em recarga com os mesmos locais.
+  Testado só na A20.
+- **D2 — 032/033/034:** ficam às 00:30, de propósito, para o Goal gerar as sugestões de complemento
+  no mesmo dia. Só a 031 passa de 1440 min, porque inicia às 23:30 e vira o dia. O feed exporta o
+  horário do nyx como está.
+- **D4 — C02 e dados de teste:** o banco atual do nyx não é oficial e tem dados de teste, então
+  divergências como essa não serão corrigidas nele. Servem só para validar o processo.
