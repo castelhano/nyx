@@ -54,7 +54,7 @@ export class DayRepairService {
   private async crew(branchId: string, role: CrewRole, from: string, to: string) {
     const [{ input: rg, operationIds }, settings, bank] = await Promise.all([
       loadRosterInput(this.prisma, this.rosterConfig, this.crewConfig, {
-        branchId, role, from, to, ensureMonthlyLoad: true, maxChanges: 99, vehicles: false,
+        branchId, role, from, to, ensureMonthlyLoad: true, vehicles: false,
         includePublished: true, extraStandby: [], compensate: false,
       }, { published: true }),
       this.rosterConfig.get(branchId),

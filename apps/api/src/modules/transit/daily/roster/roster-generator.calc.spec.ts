@@ -15,21 +15,20 @@ const member = (over: Partial<RgMember> = {}): RgMember => ({
 })
 const input = (m: RgMember): RgInput => ({
   days: ['2026-10-01', '2026-10-02'], duties: [duty('a', 0, 'P#A'), duty('b', 1, 'P#B')], members: [m],
-  loadDaysBefore: 0, ensureMonthlyLoad: false, maxChanges: 0, lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes, range: settings.range,
+  loadDaysBefore: 0, ensureMonthlyLoad: false, lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes, range: settings.range,
   rest: { active: false, modifier: 1, floor: 600, idealMin: 660, idealMax: 960, ceiling: 960 },
   compensate: false, noComp: [false, false],
 })
 
 describe('ferista last duties (lastSwaps)', () => {
-  it('a table change past maxChanges is hard', () => {
+  it('a table change counts, without blocking the allocation', () => {
     const e = new RosterModel(input(member())).evaluate(0, Int32Array.from([0, 1]))
     expect(e.changes).toBe(1)
-    expect(e.hard).toBe(true)
+    expect(e.hard).toBe(false)
   })
   it("taking the titular's last duties on the swap day doesn't count as a change", () => {
     const e = new RosterModel(input(member({ lastSwaps: { 1: { P: 'P#B' } } }))).evaluate(0, Int32Array.from([0, 1]))
     expect(e.changes).toBe(0)
-    expect(e.hard).toBe(false)
   })
 })
 
@@ -61,13 +60,6 @@ describe('compensate — the hour bank decides who is left free', () => {
     const inp = one([0, 1])
     inp.members = inp.members.map(withStatus)
     expect(value(inp, [[0], [-1]])).toBeGreaterThan(value(inp, [[-1], [0]]))
-  })
-  it("doesn't count a one-off substitution against maxChanges", () => {
-    const days = ['2026-10-01', '2026-10-02', '2026-10-03']
-    const m = member({ status: ['free', 'free', 'free'], windows: [null, null, null], fixed: [null, null, null], licenseExpired: [false, false, false], courseExpired: [false, false, false], published: [-2, -2, -2], current: [-1, -1, -1] })
-    const base = { ...input(m), days, duties: [duty('a', 0, 'P#A'), duty('b', 1, 'P#B'), duty('c', 2, 'P#A')], noComp: [false, false, false] }
-    expect(new RosterModel(base).evaluate(0, Int32Array.from([0, 1, 2])).hard).toBe(true)
-    expect(new RosterModel({ ...base, compensate: true }).evaluate(0, Int32Array.from([0, 1, 2])).hard).toBe(false)
   })
 })
 
@@ -104,13 +96,6 @@ describe('fixed crew members', () => {
     expect(pairRule(inp, 0, inp.duties[0])).toBe(-1)
     inp.ruleModes = { ...settings.ruleModes, license: 'WARN' }
     expect(pairRule(inp, 0, inp.duties[0])).toBe(1)
-  })
-  it('a change into his fixed duty is not held by maxChanges', () => {
-    const inp = input(member())
-    inp.duties = [inp.duties[0], { ...inp.duties[1], preferred: [0] }]
-    const e = new RosterModel(inp).evaluate(0, Int32Array.from([0, 1]))
-    expect(e.changes).toBe(1)
-    expect(e.hard).toBe(false)
   })
 })
 

@@ -141,7 +141,6 @@ export function maxRun(pattern: string): number {
 // RgInput of the window: every day carries its day type's duties; the crew is free unless off by
 // the rest pattern. Only the fixed rules matter here (candidates) — the score fields are neutral.
 function windowModel(input: ConsoleInput, crew: ConsoleCrew[]): RosterModel {
-  const T = input.days.length
   const duties: RgDuty[] = []
   input.days.forEach((d, t) => {
     for (const x of input.duties.filter(x => x.dayTypeId === d.dayTypeId)) {
@@ -165,7 +164,7 @@ function windowModel(input: ConsoleInput, crew: ConsoleCrew[]): RosterModel {
   }))
   const neutral = { active: false, modifier: 0, floor: 0, idealMin: 0, idealMax: 0, ceiling: 0 }
   const rg: RgInput = {
-    days: input.days.map(d => d.day), duties, members, loadDaysBefore: 0, ensureMonthlyLoad: false, maxChanges: T,
+    days: input.days.map(d => d.day), duties, members, loadDaysBefore: 0, ensureMonthlyLoad: false,
     lineAccessMode: input.lineAccessMode, ruleModes: input.ruleModes,
     range: { priorityLine: neutral, driverPrefLine: neutral, shiftFit: neutral, loadDeficit: neutral, overtimePref: neutral, tableChanges: neutral, publishedChanges: neutral },
     rest: neutral, compensate: false, noComp: input.days.map(() => true),

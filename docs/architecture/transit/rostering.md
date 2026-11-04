@@ -219,7 +219,7 @@ issue):
 | `shiftFit` | average minutes away from the shift's ideal start / end |
 | `loadDeficit` | % below the period load, pro rata to the horizon (`ensureMonthlyLoad`) |
 | `overtimePref` | minutes above the load, for who avoids overtime (load off) |
-| `tableChanges` | duty changes in the load period (`maxChanges`) |
+| `tableChanges` | duty changes in the load period — a cost, never a limit |
 | `publishedChanges` | days whose duty changes on a PUBLISHED day (`includePublished`) |
 
 **Continuity.** A duty's identity across days is its signature `crewPlanId#logical duty`; a change

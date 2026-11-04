@@ -25,7 +25,7 @@ const member = (id: string, over: Partial<RgMember> = {}): RgMember => ({
 // members hold the duties their `current` says; the targets are given
 const crewInput = (duties: RgDuty[], members: RgMember[], targets: CrewRepairTarget[], over: Partial<CrewRepairInput> = {}): CrewRepairInput => {
   const rg: RgInput = {
-    days: [DAY], duties, members, loadDaysBefore: 0, ensureMonthlyLoad: false, maxChanges: 99,
+    days: [DAY], duties, members, loadDaysBefore: 0, ensureMonthlyLoad: false,
     lineAccessMode: 'BLACKLIST', ruleModes: settings.ruleModes, range: settings.range,
     rest: { active: false, modifier: 1, floor: 600, idealMin: 660, idealMax: 960, ceiling: 960 }, compensate: false, noComp: [false],
   }

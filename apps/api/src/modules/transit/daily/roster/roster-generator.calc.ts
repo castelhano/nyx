@@ -22,8 +22,7 @@ import { hungarian } from './hungarian'
 // (roster.range + the crew interShiftRest ideal) on the 0–9999 scale of the other solvers. Each
 // level outweighs everything below it: the first fixed crew member keeps his duty even breaking a
 // WARN rule, and the next one listed only takes it when he can't (day off, absence, a BLOCK rule).
-// A fixed crew member isn't held by the line, vehicle type and shift window rules, nor by
-// maxChanges on his duty.
+// A fixed crew member isn't held by the line, vehicle type and shift window rules on his duty.
 // Redoing PUBLISHED days (includePublished), each day whose duty differs from the published one
 // costs range.publishedChanges — the search changes the published roster only where it pays off.
 // BLOCK rules and the always-blocking ones are hard: never assigned.
@@ -161,7 +160,6 @@ export interface RgInput {
   // days of the load window before the horizon (pro rata of the target during construction)
   loadDaysBefore: number
   ensureMonthlyLoad: boolean
-  maxChanges: number
   lineAccessMode: RosterSettings['lineAccessMode']
   ruleModes: RosterSettings['ruleModes']
   range:     RosterSettings['range']
@@ -297,9 +295,9 @@ export function diagnoseShortage(model: RosterModel, assign: Int32Array[], holde
     let reason: string
     if (model.candidates[di].length) {
       // someone could take it: either all of them hold another duty that day, or the rest
-      // between days / the change limit kept the free ones off
+      // between days kept the free ones off
       const idle = [...model.candidates[di]].filter(mi => assign[mi][d.day] < 0).length
-      reason = idle ? 'interjornada ou limite de trocas impede os livres'
+      reason = idle ? 'interjornada impede os livres'
         : d.standby ? 'plantão — ninguém sobrou depois das tabelas'
         : `faltam operadores — os ${model.candidates[di].length} que poderiam cobrir já estão em outras tabelas`
     } else {
@@ -393,11 +391,8 @@ export class RosterModel {
     let last = { ...m.lastSignatures }
     let prevEnd = m.prevEnd, prevFixed = true
     let warns = 0, hard = false, workedDays = 0, pin = 0
-    let prefNum = 0, prefDen = 0, prioNum = 0, prioDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0, newChanges = 0
+    let prefNum = 0, prefDen = 0, prioNum = 0, prioDen = 0, shiftSum = 0, shiftN = 0, restSum = 0, restN = 0
     let publishedDays = 0, publishedChanged = 0
-    // compensate: a one-off substitution (a different duty, back to the usual one the next worked
-    // day) doesn't count against maxChanges — its two changes still weigh in the score
-    let exempt = 0, subFrom: string | null = null
     for (let t = 0; t < this.T; t++) {
       if (m.published[t] === NOT_PUBLISHED || m.status[t] !== 'free') continue
       publishedDays++
@@ -412,7 +407,7 @@ export class RosterModel {
     }
 
     for (let t = 0; t < this.T; t++) {
-      let start: number, end: number, paid: number, sig: string, isFixed: boolean, pinned = false
+      let start: number, end: number, paid: number, sig: string, isFixed: boolean
       last = lastOn(m, t, last)
       const f = m.status[t] === 'fixed' ? m.fixed[t] : null
       const di = row[t]
@@ -421,7 +416,6 @@ export class RosterModel {
       } else if (di >= 0) {
         const d = input.duties[di]
         start = d.start; end = d.end; paid = d.paid; sig = d.signature; isFixed = false
-        pinned = d.preferred.includes(mi)
         pin += pinCost(d, mi)
         // a blocked pair (only in an allocation made by hand) counts as one broken rule
         const rule = this.ruleOf(mi, di)
@@ -439,22 +433,12 @@ export class RosterModel {
       workedDays++
       if (prevEnd != null) restCheck(1440 + start - prevEnd, isFixed && prevFixed)
       worked += paid
-      const group = signatureGroup(sig)
-      const change = isChange(last, sig)
-      if (change) {
-        changes++
-        if (!isFixed) newChanges++
-        // a change into his fixed duty doesn't count against maxChanges
-        if (pinned) exempt++
-        else if (input.compensate && subFrom === sig) exempt += 2
-      }
-      subFrom = change && !isFixed ? last[group] : null
-      last[group] = sig
+      if (isChange(last, sig)) changes++
+      last[signatureGroup(sig)] = sig
       prevEnd = end
       prevFixed = isFixed
     }
     if (prevEnd != null && m.nextStart != null) restCheck(1440 + m.nextStart - prevEnd, prevFixed)
-    if (newChanges > 0 && changes - exempt > input.maxChanges) hard = true
 
     // the folgas compensadas take their days off the target
     const comp = walkComps(input, m, row)
@@ -498,7 +482,6 @@ export function construct(model: RosterModel): RgResult {
 
   // carried state
   const worked  = input.members.map(m => m.workedBefore)
-  const changes = input.members.map(m => m.changesBefore)
   const last    = input.members.map(m => ({ ...m.lastSignatures }))
   const prevEnd = input.members.map(m => m.prevEnd)
   const r = input.range
@@ -536,9 +519,7 @@ export function construct(model: RosterModel): RgResult {
             if (input.ruleModes.interShiftRest === 'BLOCK') return
             x += WARN
           }
-          const change = isChange(last[mi], d.signature)
-          if (change && changes[mi] >= input.maxChanges && !d.preferred.includes(mi)) return
-          if (change && r.tableChanges.active) x += r.tableChanges.modifier
+          if (r.tableChanges.active && isChange(last[mi], d.signature)) x += r.tableChanges.modifier
           if (r.priorityLine.active && model.hasPriority[mi]) {
             const q = lineShare(m.priorityGrade, d)
             x += r.priorityLine.modifier * (1 - (q.den ? q.num / q.den : 0))
@@ -583,7 +564,6 @@ export function construct(model: RosterModel): RgResult {
       const cur = f ?? (di >= 0 ? { start: input.duties[di].start, end: input.duties[di].end, paid: input.duties[di].paid, signature: input.duties[di].signature } : null)
       if (!cur) { prevEnd[mi] = null; continue }
       worked[mi] += cur.paid
-      if (isChange(last[mi], cur.signature) && !(di >= 0 && input.duties[di].preferred.includes(mi))) changes[mi]++
       last[mi][signatureGroup(cur.signature)] = cur.signature
       prevEnd[mi] = cur.end
     }

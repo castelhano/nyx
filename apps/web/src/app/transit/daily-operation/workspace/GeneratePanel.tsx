@@ -68,7 +68,7 @@ export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onPr
     : spanDays(from, to) > ROSTER_MAX_HORIZON_DAYS ? `No máximo ${ROSTER_MAX_HORIZON_DAYS} dias`
     : null
   const [opts, setOpts] = useState({
-    ensureMonthlyLoad: true, maxChanges: 4, vehicles: true, includePublished: false,
+    ensureMonthlyLoad: true, vehicles: true, includePublished: false,
     extraStandby: [] as RosterExtraStandby[], compensate: false,
   })
   // the run's own — a run picked up from the server keeps what it was started with
@@ -178,7 +178,6 @@ export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onPr
     reset()
   }
 
-  const num = 'h-7 w-14 border border-input rounded-sm text-xs bg-input-bg px-1.5 text-right'
   const date = 'h-7 border border-input rounded-sm text-xs bg-input-bg px-1.5'
   return (
     <section className="rounded-lg border border-primary/50 p-3 space-y-3 text-sm">
@@ -214,11 +213,6 @@ export function GeneratePanel({ branchId, role, from: viewFrom, to: viewTo, onPr
             </p>
           )}
           <ExtraStandbyEditor value={opts.extraStandby} from={from} to={to} onChange={extraStandby => setOpts(o => ({ ...o, extraStandby }))} />
-          <label className="flex items-center gap-2">
-            <input type="number" min={0} max={31} value={opts.maxChanges} className={num}
-              onChange={e => setOpts(o => ({ ...o, maxChanges: Math.max(0, Math.min(31, Math.round(Number(e.target.value) || 0))) }))} />
-            máx. de trocas de tabela por operador no período da carga
-          </label>
           <p className="text-muted-foreground">
             Cria os dias que faltam. Alocações travadas, {opts.includePublished ? '' : 'dias publicados, '}dias encerrados, folgas compensadas e folgas lançadas à mão ficam como estão.
             {opts.includePublished && ' Nos dias publicados muda o mínimo possível — cada mudança fica registrada.'}

@@ -344,7 +344,6 @@ export async function loadRosterInput(
       days, duties: rgDuties, members: rgMembers,
       loadDaysBefore: daysBetween(loadStart, from),
       ensureMonthlyLoad: params.ensureMonthlyLoad,
-      maxChanges: params.maxChanges,
       lineAccessMode: settings.lineAccessMode,
       ruleModes: settings.ruleModes,
       range: settings.range,
