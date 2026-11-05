@@ -259,7 +259,7 @@ export default function LineScheduleDetailPage() {
   const { data: routesPage } = useQuery({
     queryKey: ['transit', 'transit-route', lineId],
     queryFn:  async () => {
-      const res = await apiFetch(`/transit/transit-route?lineId=${lineId}&pageSize=20`)
+      const res = await apiFetch(`/transit/transit-route?lineId=${lineId}&pageSize=100&sortField=direction&sortOrder=desc`)
       if (!res.ok) throw new Error('Failed to fetch routes')
       return res.json() as Promise<{ data: Route[] }>
     },
@@ -406,6 +406,14 @@ export default function LineScheduleDetailPage() {
     }
     return [...byText.values()]
   }, [draft])
+
+  // the direction alone can't tell apart several routes running the same way (F01 has 17 "Ida")
+  function routeLabel(routeId: string): string {
+    const route = routes.find(r => r.id === routeId)
+    if (!route) return ''
+    const shared = routes.filter(r => r.direction === route.direction).length > 1
+    return shared ? route.name : DIRECTION_LABELS[route.direction]
+  }
 
   function switchTab(routeId: string) {
     setViewRouteId(routeId)
@@ -1065,21 +1073,21 @@ export default function LineScheduleDetailPage() {
 
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 overflow-y-auto p-6 flex flex-col">
-              <div className="flex border-b border-border mb-4">
+              <div className="flex flex-wrap border-b border-border mb-4">
                 {routes.map(route => (
                   <button
                     key={route.id}
                     type="button"
                     onClick={() => switchTab(route.id)}
                     className={cn(
-                      'flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                      'flex items-center gap-1.5 px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
                       route.id === viewRouteId
                         ? 'border-ring text-ring'
                         : 'border-transparent text-muted-foreground hover:text-foreground',
                     )}
                   >
                     <Icons.Route className="w-3.5 h-3.5" />
-                    {DIRECTION_LABELS[route.direction]}
+                    {routeLabel(route.id)}
                     <span className="text-xs font-normal text-muted-foreground">({departuresFor(route.id).length})</span>
                   </button>
                 ))}
@@ -1151,7 +1159,7 @@ export default function LineScheduleDetailPage() {
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold flex items-center gap-1.5">
                       <Icons.Timer className="w-3.5 h-3.5 text-muted-foreground" />
-                      Nova(s) partida(s) — {DIRECTION_LABELS[routes.find(r => r.id === pendingNew.routeId)?.direction ?? 'OUTBOUND']}
+                      Nova(s) partida(s) — {routeLabel(pendingNew.routeId)}
                     </h3>
                     <button
                       type="button"
@@ -1333,7 +1341,7 @@ export default function LineScheduleDetailPage() {
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold flex items-center gap-1.5">
                       <Icons.Timer className="w-3.5 h-3.5 text-muted-foreground" />
-                      {DIRECTION_LABELS[routes.find(r => r.id === focused.routeId)?.direction ?? 'OUTBOUND']}
+                      {routeLabel(focused.routeId)}
                     </h3>
                     <div className="flex items-center gap-1">
                       <button
