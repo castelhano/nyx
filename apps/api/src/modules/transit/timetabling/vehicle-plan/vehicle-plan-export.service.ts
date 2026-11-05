@@ -33,7 +33,7 @@ export class VehiclePlanExportService {
       lines.map((l: any) => [l.id, l]),
     )
 
-    const scope     = await db.scope.findUniqueOrThrow({ where: { id: plan.scopeId }, select: { name: true, logoUrl: true, osoConfig: true } })
+    const scope     = await db.scope.findUniqueOrThrow({ where: { id: plan.scopeId }, select: { name: true, logoUrl: true, serviceMetadata: true } })
     const metadata  = scope.serviceMetadata ?? {}
     const scopeConfig = {
       name:       scope.name,

@@ -33,7 +33,7 @@ async function main() {
         select:  { id: true, scopeId: true },
       })
 
-  const scope = await prisma.scope.findUniqueOrThrow({ where: { id: plan.scopeId }, select: { name: true, logoUrl: true, osoConfig: true } })
+  const scope = await prisma.scope.findUniqueOrThrow({ where: { id: plan.scopeId }, select: { name: true, logoUrl: true, serviceMetadata: true } })
 
   const assembled = await assembleOso(prisma, plan.id, line.id)
   const layouts    = await resolveLayouts(prisma, assembled)
