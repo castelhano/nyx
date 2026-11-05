@@ -41,7 +41,7 @@ export interface RenderOsoSheetInput {
   observations:  OsoObservations
   scope:         OsoScopeConfig
   // LineSchedule.validFrom pinned to this line in this plan (VehiclePlanLine.lineScheduleId) —
-  // its year is printed in A3, null while no approved schedule is pinned yet
+  // printed in the Início field and its year in A3, null while no approved schedule is pinned yet
   validFrom?:    Date | null
 }
 
@@ -773,7 +773,7 @@ function renderOsoSheet(
   setCell(ws, addr(6, r43 + 1), '', { border: { top: THIN, bottom: THIN } })
   setCell(ws, addr(7, r43 + 1), extensionUtilTotal, { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: THIN, bottom: THIN, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 1, 8, r43 + 1) })
   setCell(ws, addr(9, r43 + 1), 'Início:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: THIN, bottom: HAIR, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 1, 9, r43 + 2) })
-  setCell(ws, addr(10, r43 + 1), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: THIN, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
+  setCell(ws, addr(10, r43 + 1), validFrom ?? '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'dd/mm/yyyy', border: { top: THIN, bottom: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 1, 11, r43 + 2) })
   obsLine(r43 + 1, obsSlots[0], { left: MEDIUM })
 
   // Extensão Ociosa (km) — 3 rows reserved for up to 3 operators running the line, each with
@@ -794,7 +794,7 @@ function renderOsoSheet(
   setCell(ws, addr(6, r43 + 3), '', { border: { top: HAIR } })
   setCell(ws, addr(7, r43 + 3), ocB?.km ?? '', { font: baseFont({ bold: true }), numFmt: '0.00', border: { top: HAIR, left: HAIR, right: MEDIUM }, merge: rangeAddr(7, r43 + 3, 8, r43 + 3) })
   setCell(ws, addr(9, r43 + 3), 'Término:', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, border: { top: HAIR, bottom: MEDIUM, left: MEDIUM, right: HAIR }, merge: rangeAddr(9, r43 + 3, 9, r43 + 4) })
-  setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'd/m/yyyy', border: { top: HAIR, bottom: MEDIUM, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
+  setCell(ws, addr(10, r43 + 3), '', { font: baseFont(), align: { horizontal: 'center', vertical: 'middle' }, numFmt: 'dd/mm/yyyy', border: { top: HAIR, bottom: MEDIUM, left: HAIR, right: MEDIUM }, merge: rangeAddr(10, r43 + 3, 11, r43 + 4) })
   obsLine(r43 + 3, obsSlots[2], { left: MEDIUM })
   setCell(ws, addr(20, r43 + 2), '', { border: { top: THIN, left: MEDIUM, right: MEDIUM, bottom: MEDIUM }, merge: rangeAddr(20, r43 + 2, 21, r43 + 4) })
 
