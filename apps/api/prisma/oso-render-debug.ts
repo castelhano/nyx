@@ -41,7 +41,7 @@ async function main() {
   const summary      = await computeOsoSummary(prisma, assembled)
   const observations = computeOsoObservations(assembled)
 
-  const osoConfig = (scope.osoConfig as any) ?? {}
+  const metadata = (scope.serviceMetadata as any) ?? {}
   const workbook = await renderOsoWorkbook(prisma, [{
     lineCode: line.code,
     lineName: line.name,
@@ -49,8 +49,8 @@ async function main() {
     scope: {
       name:       scope.name,
       logoUrl:    scope.logoUrl,
-      organName:  osoConfig.organName,
-      signatures: osoConfig.signatures ?? [],
+      organName:  metadata.organName,
+      signatures: metadata.signatures ?? [],
     },
   }])
 

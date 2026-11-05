@@ -320,3 +320,16 @@ export interface ResourceMetadata {
   defaultFilters?:   Record<string, string>  // filtros pré-aplicados na lista; o usuário pode modificar/limpar
   import?:           ImportMeta           // present when the schema declares importKey
 }
+
+// Route colors shared by the map and the GTFS export, so an exported line keeps the color
+// seen in the app. `mark` is the darker shade for points/waypoints/arrows.
+export const ROUTE_COLOR_PALETTE: { value: string; mark: string }[] = [
+  { value: '#2a78d6', mark: '#1a569e' }, // blue
+  { value: '#eb6834', mark: '#c0410e' }, // orange
+  { value: '#1baf7a', mark: '#118159' }, // aqua
+  { value: '#eda100', mark: '#ab7400' }, // yellow
+  { value: '#e87ba4', mark: '#de2168' }, // magenta
+  { value: '#008300', mark: '#005e00' }, // green
+  { value: '#4a3aa7', mark: '#33277b' }, // violet
+  { value: '#e34948', mark: '#bf1918' }, // red
+]

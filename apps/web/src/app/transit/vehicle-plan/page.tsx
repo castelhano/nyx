@@ -17,6 +17,7 @@ import { useConfirm } from '@/lib/confirm-context'
 import { useToast } from '@/lib/toast-context'
 import { Button } from '@/components/ui/button'
 import { PlanCompareModal } from './components/PlanCompareModal'
+import { GtfsExportModal } from './components/GtfsExportModal'
 
 type Row = Record<string, unknown>
 
@@ -37,6 +38,7 @@ export default function VehiclePlanListPage() {
   // plans picked for "Comparar" — same scope + day type, up to 3
   const [selected,    setSelected]    = useState<Row[]>([])
   const [compareOpen, setCompareOpen] = useState(false)
+  const [gtfsOpen,    setGtfsOpen]    = useState(false)
   const selection = useMemo(() => ({
     max:       3,
     selected,
@@ -69,6 +71,7 @@ export default function VehiclePlanListPage() {
     ...(meta?.permissions?.create !== false
       ? [{ label: 'Importar', icon: Icons.Upload, onClick: () => { setImportPlanId(null); setImportOpen(true) }, variant: 'ghost' as const }]
       : []),
+    { label: 'GTFS', icon: Icons.Package, onClick: () => setGtfsOpen(true), variant: 'ghost' as const },
     ...(meta?.allowCsv ? [{ label: 'CSV', icon: Icons.Download, onClick: handleDownloadCsv, variant: 'ghost' as const }] : []),
   ], [meta?.permissions?.create, meta?.allowCsv])
 
@@ -163,6 +166,7 @@ export default function VehiclePlanListPage() {
           </Button>
         </div>
       )}
+      {gtfsOpen && <GtfsExportModal onClose={() => setGtfsOpen(false)} />}
       {compareOpen && (
         <PlanCompareModal planIds={selected.map(r => String(r.id))} onClose={() => setCompareOpen(false)} />
       )}

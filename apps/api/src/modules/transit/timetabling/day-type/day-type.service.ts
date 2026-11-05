@@ -166,7 +166,7 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
     }
   }
 
-  private matchesPattern(date: Date, pattern: DayTypePattern): boolean {
+  matchesPattern(date: Date, pattern: DayTypePattern): boolean {
     const isoDay = isoWeekday(date)
 
     if (pattern.type === 'weekdays') {

@@ -1,3 +1,5 @@
+import { ROUTE_COLOR_PALETTE } from '@nyx/types'
+
 export type RouteDirection = 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
 
 export interface RouteLocalityLocality {
@@ -78,16 +80,7 @@ export interface PendingPoint {
 // color (CreateRouteModal) — needed when a line has more than one sentido in the
 // same direction, since they'd otherwise share DIR_COLOR. `mark` is the paired
 // darker shade for points/waypoints/arrows, same relationship as DIR_MARK_COLOR.
-export const ROUTE_COLOR_PALETTE: { value: string; mark: string }[] = [
-  { value: '#2a78d6', mark: '#1a569e' }, // blue
-  { value: '#eb6834', mark: '#c0410e' }, // orange
-  { value: '#1baf7a', mark: '#118159' }, // aqua
-  { value: '#eda100', mark: '#ab7400' }, // yellow
-  { value: '#e87ba4', mark: '#de2168' }, // magenta
-  { value: '#008300', mark: '#005e00' }, // green
-  { value: '#4a3aa7', mark: '#33277b' }, // violet
-  { value: '#e34948', mark: '#bf1918' }, // red
-]
+export { ROUTE_COLOR_PALETTE }
 
 // Direction defaults reuse ROUTE_COLOR_PALETTE hues exactly (not just similar tones)
 // so the "Automático" swatch can be matched by value and excluded from the palette

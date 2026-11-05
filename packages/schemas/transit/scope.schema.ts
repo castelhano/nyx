@@ -20,7 +20,7 @@ export const scopeSchema = withMeta(
     }),
 
     // grantor's logo for this scope, printed in the exported OSO's header
-    // (docs/proposal/plan_oso_export_v1.md) — kept out of osoConfig because AutoForm's
+    // (docs/proposal/plan_oso_export_v1.md) — kept out of serviceMetadata because AutoForm's
     // File-to-URL swap on submit only scans the payload's root level, not Json fields
     logoUrl: z.string().optional().meta({
       label:          'Logo',
@@ -28,9 +28,10 @@ export const scopeSchema = withMeta(
       listVisibility: 'never',
     }),
 
-    // grantor name and fixed signatures printed on the exported OSO — see
-    // docs/proposal/plan_oso_export_v1.md
-    osoConfig: z.object({
+    // Data about the grantor used by the exports. Flat on purpose: the grantor's name is one
+    // field shared by the OSO header and GTFS agency_name (docs/proposal/plan_oso_export_v1.md,
+    // docs/proposal/plan_gtfs_export_v2.md)
+    serviceMetadata: z.object({
       organName: z.string().optional().meta({ label: 'Nome do Órgão' }),
       signatures: z.array(
         z.object({
@@ -38,8 +39,12 @@ export const scopeSchema = withMeta(
           name: z.string().meta({ label: 'Nome' }),
         }),
       ).default([]).meta({ label: 'Assinaturas' }),
+      agencyId:       z.string().optional().meta({ label: 'GTFS: agency_id' }),
+      agencyUrl:      z.string().optional().meta({ label: 'GTFS: agency_url' }),
+      agencyTimezone: z.string().optional().meta({ label: 'GTFS: agency_timezone' }),
+      routeType:      z.number().int().optional().meta({ label: 'GTFS: route_type' }),
     }).optional().meta({
-      label:          'Config. OSO',
+      label:          'Metadados do Serviço',
       widget:         'object-editor',
       showInForm:     true,
       listVisibility: 'never',

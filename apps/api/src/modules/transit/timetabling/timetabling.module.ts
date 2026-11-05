@@ -13,9 +13,10 @@ import { CrewSolverModule } from './crew-solver/crew-solver.module'
 import { VehicleSolverModule } from './vehicle-solver/vehicle-solver.module'
 import { PlanCsvModule } from './plan-csv/plan-csv.module'
 import { CrewShiftModule } from './crew-shift/crew-shift.module'
+import { GtfsExportModule } from './gtfs/gtfs-export.module'
 
 @Module({
-  imports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule, VehicleSwapModule, CrewSolverModule, VehicleSolverModule, PlanCsvModule, CrewShiftModule],
+  imports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule, VehicleSwapModule, CrewSolverModule, VehicleSolverModule, PlanCsvModule, CrewShiftModule, GtfsExportModule],
   exports: [DayTypeModule, LineScheduleModule, LineDepartureModule, TripModule, VehiclePlanModule, CalendarExceptionModule, IntervalTypeModule, DopModule, CrewPlanModule],
 })
 export class TimetablingModule {}

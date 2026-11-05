@@ -108,7 +108,7 @@ async function main() {
       code: i.code, name: i.name, isPaid: i.isPaid, minMinutes: i.minMinutes, maxMinutes: i.maxMinutes, notes: i.notes,
     })),
     scopes: scopes.map(s => ({
-      name: s.name, description: s.description, osoConfig: s.osoConfig,
+      name: s.name, description: s.description, serviceMetadata: s.serviceMetadata,
       logo: readLogo(s.logoUrl),
       operators: s.operators.map(o => ({ branchTaxId: o.branch.taxId, abbr: o.abbr, share: o.share })),
     })),

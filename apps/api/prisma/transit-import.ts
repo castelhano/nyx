@@ -28,7 +28,8 @@ interface Fixture {
   localities: Array<{ code: string; abbr: string | null; name: string; lat: number | null; lng: number | null; isDepot: boolean; notes: string | null; snapInfo: unknown; externalCodes?: unknown; depot?: { operators?: string[] } | null }>
   dayTypes: Array<{ code: string; name: string; description?: string | null; pattern: unknown; priority: number; sortOrder: number }>
   intervalTypes: Array<{ code: string; name: string; isPaid: boolean; minMinutes: number | null; maxMinutes: number | null; notes: string | null }>
-  scopes: Array<{ name: string; description: string | null; osoConfig: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
+  // osoConfig: fixtures exported before the rename to serviceMetadata
+  scopes: Array<{ name: string; description: string | null; serviceMetadata?: unknown; osoConfig?: unknown; logo: { path: string; data: string } | null; operators: Array<{ branchTaxId: string; abbr: string; share: number }> }>
   lines: Array<{ code: string; name: string; type: string; isActive: boolean; scopeName: string | null; parentLineCode: string | null; notes: string | null; metrics: unknown; vehicleTypes?: unknown; externalCodes?: unknown; operatorTaxIds?: string[] }>
   routes: Array<{ lineCode: string; direction: string; ordinal: number; name: string; originCode: string; destinationCode: string; isActive: boolean; isPrimary: boolean; color?: string | null; homeDepotCode?: string | null }>
   routeLocalities: Array<{ lineCode: string; direction: string; routeOrdinal: number; routeName: string; sequence: number; localityCode: string | null; lat: number | null; lng: number | null; deltaMinutes: number | null; deltaKm: number | null; deltaSource: string; geometry: unknown; allowsCrewChange: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean; includeInOso?: boolean }>
@@ -94,8 +95,8 @@ async function main() {
     const logoUrl = writeLogo(s.logo)
     const scope = await prisma.scope.upsert({
       where:  { name: s.name },
-      update: { description: s.description, osoConfig: s.osoConfig as Prisma.InputJsonValue, logoUrl },
-      create: { name: s.name, description: s.description, osoConfig: s.osoConfig as Prisma.InputJsonValue, logoUrl },
+      update: { description: s.description, serviceMetadata: (s.serviceMetadata ?? s.osoConfig) as Prisma.InputJsonValue, logoUrl },
+      create: { name: s.name, description: s.description, serviceMetadata: (s.serviceMetadata ?? s.osoConfig) as Prisma.InputJsonValue, logoUrl },
     })
     scopeMap.set(s.name, scope.id)
 

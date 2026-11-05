@@ -1,7 +1,7 @@
 # Proposta — Exportador GTFS para o Goal (feed completo gerado pelo nyx)
 
-**Status: plano para aprovação.** Feeds da Etapa 0 gerados, aguardando importação no Goal; há
-decisões pendentes (seção 8).
+**Status: implementado (Etapas 2 a 5), aguardando migração e validação na tela.** Feed A testado no
+Goal; há decisões pendentes (seção 8). Mudanças feitas na implementação estão na seção 9.
 
 Substitui `docs/proposal/brainchild/plan_gtfs_export_v1.md`. As decisões da v1 continuam valendo,
 exceto as listadas na seção 3.
@@ -76,7 +76,7 @@ O OSRM escolhe o caminho mais curto, enquanto o Goal tem itinerários reais de a
 
 ### 2.4 Divergências encontradas no banco de teste
 
-O banco analisado não é o oficial (D4). Esta lista serve de referência para a revisão da Etapa 1.
+Esta lista veio do banco de teste (D4). A versão vigente, com a base oficial, está na seção 2.8.
 
 | # | Problema | Efeito se exportar assim |
 |---|---|---|
@@ -135,6 +135,63 @@ demais sugerem). Isso decide a D8.
 ficam a quilômetros e precisam de revisão manual, ou não existem lá. Linhas: fora `031`–`034`, os
 códigos batem; só `A06C` não existe no Goal. Veículos: 81 no Goal, 83 blocos no nyx.
 
+### 2.8 Auditoria da base oficial (`apps/api/bkp/nyx_oficial.dump`, 2026-11-04)
+
+Base candidata a oficial, comparada com os seis cenários do Goal (U, S, D × RAPIDO, VPAR).
+
+**Íntegro:** nenhuma viagem fora de bloco, em dois blocos, com chegada antes da partida, em rota
+inativa ou duplicada; nenhuma perna sem geometria ou tempo; nenhuma localidade sem coordenada;
+nenhum bloco com sobreposição real de horário. 113 das 144 combinações de linha, dia e empresa têm
+partidas 100% iguais às do Goal.
+
+**Bloqueia a exportação:**
+
+- Os 3 planos estão em `DRAFT`, sem vigência, e há 0 planos de tripulação. O feed depende de plano em
+  vigor (seção 4.5).
+- O banco está 2 migrações atrás do código: `20261030222030` e `20261031022141`.
+- `externalCodes` está vazio em todas as linhas: `031`–`034` ainda sem o código `31`–`34`.
+
+**Divergências de viagens com o Goal:**
+
+| Dia | Empresa | Linha | Goal | nyx | Observação |
+|---|---|---|---|---|---|
+| U | RAPIDO | 311 / 311B | 28 / 46 | 74 / 0 | total igual; viagens da 311B na rota da 311 |
+| S | RAPIDO | 311 / 311B | 52 / 4 | 36 / 20 | total igual; divisão diferente |
+| D | RAPIDO | 311 / 311B | 52 / 4 | 56 / 0 | total igual |
+| U | RAPIDO | 380 | 42 | 43 | só 4 partidas iguais; 23 intervalos abaixo de 3 min |
+| U, S | RAPIDO | F01 | 38 | 37 | ~metade das partidas iguais |
+| S, D | RAPIDO | A15 | 62 | 50 | só 3 partidas iguais |
+| U | RAPIDO | C02 | 0 | 2 | 2 viagens em bloco da RAPIDO; na VPAR, 44 × 42 |
+| todos | RAPIDO | 031 | 7 | 9 | 13 min no nyx, 25–30 min no Goal |
+| S | RAPIDO | 032, 033 | 4 | 2 | |
+| todos | RAPIDO | 032, 033, 034 | | | durações diferem de 10 a 40 min |
+| U | VPAR | A02 | 38 | 36 | |
+| todos | VPAR | A17 | 58–59 | 59–60 | 1 viagem a mais no nyx |
+| U | VPAR | A22B | 54 | 54 | 49 partidas iguais |
+| D | VPAR | R03 | 0 | 4 | linha sem viagens no Goal aos domingos |
+
+**Dúvidas esclarecidas:**
+
+- **Intervalo entre viagens:** o ideal é no mínimo 5 min, mas valores menores podem existir. Dia útil
+  tem 5 min (2.374 casos), sábado e domingo têm 3 min (2.774), e há 34 intervalos de 0 a 2 min (23 na
+  380, 6 na 410). O exportador não valida nem altera intervalos.
+- **`operationalDayStartHour = 3`:** nada usa hoje, além da tela de configurações. Fica como está,
+  para uso futuro.
+- **`share` dos operadores** soma 54% porque há mais duas operadoras fora do nyx e do Goal, por ora.
+
+**Pendências fora do GTFS:**
+
+- **`BlockTrip.sequence` não é cronológico** em 46 blocos (821 viagens): mover uma viagem de bloco a
+  coloca no fim (`max + 1`, `block-mutation.utils.ts`), sem reordenar. O exportador ordena por horário.
+  O efeito real está em `block-deadrun.utils.ts` e `findAnchoredDeadrunIds` (`useGanttEditor.ts`): a
+  viagem de referência de `ACCESS` e `RETURN` é a primeira e a última por `sequence`. Em bloco fora de
+  ordem, editar uma viagem pode levar o deslocamento errado junto. O ponto de `DISPLACEMENT` já ordena
+  por horário. `block-issues` já recebe a ordem por `sequence`, e não foi analisado a fundo.
+- **Dump versionado:** `nyx_oficial.dump` está no git e contém a base inteira.
+
+Os totais do cadastro são iguais aos do banco de teste (55 linhas, 136 rotas, 1.226 pernas). A
+comparação de traçados da seção 2.3 não foi refeita linha a linha.
+
 ---
 
 ## 3. O que muda em relação à v1
@@ -184,13 +241,13 @@ aceitar e houver uso.
 | Campo | Formato | Exemplo |
 |---|---|---|
 | `service_id` | `<ScopeOperator.abbr>_<DayType.name>_V<versão com 3 dígitos>` | `RAPIDO_UTIL_V012` |
-| `trip_id` | `<DayType.code>_<route_id>_<blockNumber>_<BlockTrip.sequence>` | `U_A20_12_3` |
+| `trip_id` | `<DayType.code>_<route_id>_<blockNumber>_<posição da viagem no bloco, por horário>` | `U_A20_12_3` |
 | `trip_short_name` | igual ao `trip_id` | como no feed atual |
 | `direction_id` | `OUTBOUND`/`CIRCULAR` = 0, `INBOUND` = 1 | |
 | `block_id` (opcional) | `<DayType.code>_<blockNumber>` | `U_12` |
 
-`trip_id` é único porque `(vehicleBlockId, sequence)` é único. Ele não é estável entre versões do
-plano, o que basta enquanto o Goal receber sempre o feed inteiro. A Etapa 0 confirma isso.
+`trip_id` é único porque a posição é única dentro do bloco, e ela vem da ordem por `departureMinutes`,
+não de `sequence` (seção 2.8). Ele não é estável entre versões do plano, o que basta enquanto o Goal receber sempre o feed inteiro. A Etapa 0 confirma isso.
 
 **Nome único por carga:** o Goal recusou o feed A porque `RAPIDO_UTIL` já existia, e cada carga
 precisa de um nome inédito. Ao gerar o cenário, é preciso achar o último serviço na lista, por isso
@@ -466,7 +523,7 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
 | D3 | **`block_id` ligado ou não?** | Desligado até a Etapa 0 mostrar o efeito. 31 dos 83 blocos da RAPIDO cruzam linhas, então ligar pode amarrar o Goal |
 | D9 | **Rotas com o mesmo par de locais e km diferentes:** 031 × 309 (10,8 e 16,0 km; 8,1 e 11,8 km) e 311 × 311B (13,1 e 14,1 km; 15,4 e 15,9 km). O teste da A20 não cobre duas rotas do mesmo par no mesmo feed | Conferir na carga completa. Se uma herdar o km da outra, criar localidade própria no nyx em uma das duas |
 | D6 | **Exportar plano em rascunho?** A decisão da v1 é "apenas ativos", mas testar um rascunho no Goal antes de ativar pode ser útil | Manter só planos em vigor. Rever se fizer falta |
-| D7 | **Cores:** a paleta da v1 troca as cores atuais do Goal e cicla em 8 | Manter a v1, se a cor for só cosmética no Goal |
+| D7 | **Cores:** o catálogo de linhas do Goal manteve as cores após a carga. Falta ver se o serviço mostra a cor do feed | Manter a v1, se a cor for só cosmética no Goal |
 
 ### Decididas
 
@@ -482,3 +539,42 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
   horário do nyx como está.
 - **D4 — C02 e dados de teste:** o banco atual do nyx não é oficial e tem dados de teste, então
   divergências como essa não serão corrigidas nele. Servem só para validar o processo.
+
+---
+
+## 9. Implementação (2026-11-04)
+
+Validado num banco descartável com o dump oficial, planos ativados e metadados preenchidos: feed da
+RAPIDO com 2.478 viagens (1.289 U, 689 S, 500 D) e 23 linhas. Versão repetida é recusada, e plano fora
+da vigência bloqueia. No validador oficial do GTFS (`gtfs-validator` 7.1.0), o único erro foi a URL de
+teste `https://mtu`. Os avisos são `feed_info` ausente, `route_long_name` contendo o código (formato
+do Goal) e período sem cobertura nos próximos 7 dias.
+
+Diferenças em relação às seções anteriores:
+
+- **Código externo `GOAL` só na linha** (`lineExternalCodesSchema`). Localidades e tipos de ausência
+  seguem com `externalCodesSchema`, porque o `stop_id` é sempre o `code` da localidade.
+- **`route_text_color` não é exportado.** O Goal nunca recebeu essa coluna, então o feed mantém as
+  colunas já testadas. O cálculo por luminância da v1 fica de fora.
+- **Sem aviso de código externo em fallback:** com o nyx como origem, o normal é o fallback, e o aviso
+  sairia em quase todas as linhas.
+- **Metadados de agência obrigatórios:** `agencyId`, `agencyUrl` e `agencyTimezone` em branco bloqueiam
+  a exportação.
+- **`agency_name` vem de `organName`:** na base oficial é "Semob", e no feed do Goal é "MTU.". Sem
+  efeito conhecido, mas não testado.
+- **`GET /transit/gtfs/options`** foi acrescentado, para a lista de operadores e a próxima versão.
+- **Tipos de dia sem padrão** (`FERIAS`, `ESPECIAL`) não aparecem no modal.
+- **Migração `20261104230000_gtfs_export`** escrita à mão com `RENAME COLUMN`: a gerada pelo Prisma
+  apagaria `osoConfig`.
+
+### Primeira carga pelo modal (2026-11-04)
+
+`RAPIDO_UTIL_V001`, `RAPIDO_SABADO_V001` e `RAPIDO_DOMINGO_V001`, período de 2026-10-01 a 2026-12-04,
+importados sem erro. Pela API: rotas de 134 para 201 (67 novas, com 2 ou 3 pontos), locais de 1.354 para
+1.392 (os 40 do feed presentes), catálogo de linhas e cores sem mudança, seis cenários sem mudança e km
+do 3990 igual. Os km e viagens do serviço só podem ser conferidos na tela.
+
+**Em aberto:** a A20 ganhou `A20_1_3` e `A20_2_3`, com os mesmos pontos e o mesmo `shape_id` de
+`A20_1_2` e `A20_2_2`. Ou seja, a mesma sequência nem sempre reaproveita a rota. Se cada carga criar
+rotas novas para todas as linhas, o catálogo cresce 67 rotas por carga. Testar recarregando sem alterar
+nada (V002) e perguntar ao suporte qual é a chave da rota.

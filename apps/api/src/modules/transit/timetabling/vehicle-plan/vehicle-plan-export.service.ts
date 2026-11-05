@@ -34,12 +34,12 @@ export class VehiclePlanExportService {
     )
 
     const scope     = await db.scope.findUniqueOrThrow({ where: { id: plan.scopeId }, select: { name: true, logoUrl: true, osoConfig: true } })
-    const osoConfig = scope.osoConfig ?? {}
+    const metadata  = scope.serviceMetadata ?? {}
     const scopeConfig = {
       name:       scope.name,
       logoUrl:    scope.logoUrl,
-      organName:  osoConfig.organName,
-      signatures: osoConfig.signatures ?? [],
+      organName:  metadata.organName,
+      signatures: metadata.signatures ?? [],
     }
 
     // the LineSchedule pinned to this line within this plan (VehiclePlanLine.lineScheduleId)

@@ -807,7 +807,7 @@ function renderOsoSheet(
   setCell(ws, addr(8, r43 + 4), '', { border: { top: HAIR, bottom: MEDIUM, right: MEDIUM } })
   obsLine(r43 + 4, obsSlots[3], { bottom: MEDIUM, left: MEDIUM })
 
-  // --- signatures (Scope.osoConfig.signatures — rule 11) ---
+  // --- signatures (Scope.serviceMetadata.signatures — rule 11) ---
   const sigRow = resumoStart + RESUMO_ROWS + SIGNATURE_GAP
   const [sig1, sig2] = scope.signatures
   if (sig1) {

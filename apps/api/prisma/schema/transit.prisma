@@ -577,8 +577,9 @@ model Scope {
   description String?
   // grantor's logo, printed in the exported OSO's header
   logoUrl     String?
-  // ScopeOsoConfig (packages/schemas/transit/scope.schema.ts) — { organName?, signatures: [{role, name}] }
-  osoConfig   Json?
+  // packages/schemas/transit/scope.schema.ts — { organName?, signatures: [{role, name}],
+  // agencyId?, agencyUrl?, agencyTimezone?, routeType? }
+  serviceMetadata Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -601,11 +602,32 @@ model ScopeOperator {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  scope  Scope  @relation(fields: [scopeId], references: [id], onDelete: Cascade)
-  branch Branch @relation("BranchScopeOperators", fields: [branchId], references: [id])
+  scope       Scope        @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  branch      Branch       @relation("BranchScopeOperators", fields: [branchId], references: [id])
+  gtfsExports GtfsExport[]
 
   @@unique([scopeId, branchId])
   @@map("transit_scope_operators")
+}
+
+// One downloaded GTFS feed (docs/proposal/plan_gtfs_export_v2.md). `version` goes into the
+// service_id: Goal refuses a repeated name, and it's how the latest load is told apart there.
+model GtfsExport {
+  id              String   @id @default(uuid())
+  scopeOperatorId String
+  version         Int
+  periodStart     DateTime @db.Date
+  periodEnd       DateTime @db.Date
+  // [{ dayTypeId, vehiclePlanId }] — which plan became this version, per day type
+  plans           Json
+  // GtfsReport (packages/schemas/transit/gtfs-export.schema.ts) as of the download
+  report          Json
+  createdAt       DateTime @default(now())
+
+  scopeOperator ScopeOperator @relation(fields: [scopeOperatorId], references: [id], onDelete: Cascade)
+
+  @@unique([scopeOperatorId, version])
+  @@map("transit_gtfs_exports")
 }
 
 // Join table — which lines are materialized in a VehiclePlan, plus per-plan schedule
