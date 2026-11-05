@@ -22,6 +22,29 @@ export interface LineDepartureForSwitch {
   }
 }
 
+// One operational departure, as both LineDeparture and TransitTrip identify it.
+export interface DepartureKey {
+  routeId:          string
+  departureMinutes: number
+}
+
+/** Counts how a target schedule differs from the line's current trips, by the same
+ *  {routeId, departureMinutes} key the server's drift check uses (recomputeLineDrift).
+ *  Zero on both sides means linking that schedule leaves the line without drift, so
+ *  there's nothing to recreate. */
+export function compareDepartures(
+  departures: DepartureKey[],
+  trips:      DepartureKey[],
+): { missing: number; extra: number } {
+  const keyOf         = (d: DepartureKey) => `${d.routeId}:${d.departureMinutes}`
+  const departureKeys = new Set(departures.map(keyOf))
+  const tripKeys      = new Set(trips.map(keyOf))
+  return {
+    missing: [...departureKeys].filter(k => !tripKeys.has(k)).length,
+    extra:   [...tripKeys].filter(k => !departureKeys.has(k)).length,
+  }
+}
+
 export interface ScheduleSwitchResult {
   blocks:   FixedTripCandidate[][]
   warnings: string[]

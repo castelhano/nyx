@@ -11,7 +11,7 @@ import { useConfirm } from '@/lib/confirm-context'
 import { useShortcutContext } from '@/lib/keywatch'
 import type { LineMetrics, GanttBlock } from '../views/vehicles.view'
 import type { PendingAddEntry } from './AddTripModal'
-import { computeScheduleSwitch, type LineDepartureForSwitch } from '../switch-schedule-logic'
+import { compareDepartures, computeScheduleSwitch, type LineDepartureForSwitch } from '../switch-schedule-logic'
 
 interface LineScheduleRow {
   id:          string
@@ -31,6 +31,26 @@ interface RouteRow {
 interface LocalityRow {
   id:   string
   name: string
+}
+
+interface DepartureRow {
+  id:                   string
+  routeId:              string
+  departureMinutes:     number
+  requiredVehicleType?: string | null
+  stopPattern?:         'LOCAL' | 'LIMITED' | 'EXPRESS'
+}
+
+// A target OSO whose departures differ from the line's current trips, waiting for the
+// user to pick between linking it as is and recreating the trips from it.
+interface SwitchChoice {
+  line:      PlanLineInfo
+  idx:       number
+  targetId:  string
+  targetRef: string
+  rows:      DepartureRow[]
+  missing:   number
+  extra:     number
 }
 
 export interface PlanLineInfo {
@@ -96,6 +116,7 @@ export function SwitchLineScheduleModal({
   // writes directly. One line at a time: hasPendingChanges (from the staged diff)
   // already blocks starting another switch until the user saves or discards.
   const [switchingTo, setSwitchingTo] = useState<{ lineId: string; lineScheduleId: string } | null>(null)
+  const [switchChoice, setSwitchChoice] = useState<SwitchChoice | null>(null)
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -230,29 +251,50 @@ export function SwitchLineScheduleModal({
     }
   }
 
-  // Switches a line to a different OSO version — never writes directly. Stages the
-  // line's current trips in this plan as pending deletes, the target schedule's
-  // departures as pending adds (grouped into blocks, not one-per-trip), and the
-  // schedule pin as pending too, all only taking effect when the user saves the
-  // Gantt's normal pending-changes flow.
+  function lineTrips(lineId: string) {
+    return blocks.flatMap(b => b.blockTrips).filter(bt => bt.trip.route.line.id === lineId).map(bt => bt.trip)
+  }
+
+  // Links a line to another OSO — never writes directly. When the OSO has exactly the
+  // line's current departures there's nothing to recreate, so only the pin is staged;
+  // otherwise the user chooses between handleLinkOnly and handleRecreateTrips.
   async function handleSwitchTo(l: PlanLineInfo, idx: number, targetId: string, targetRef: string) {
     if (switchingTo || hasPendingChanges) return
 
-    const ok = await confirm({
-      title:        'Trocar quadro de horários',
-      description:  `As viagens da linha ${l.line.code} neste plano serão apagadas e recriadas a partir da OSO ${targetRef}, com o ciclo atualizado — ficam pendentes até você salvar.`,
-      confirmLabel: 'Trocar',
-      variant:      'safeConfirm',
-    })
-    if (!ok) return
-
+    setSwitchChoice(null)
     setSwitchingTo({ lineId: l.lineId, lineScheduleId: targetId })
     try {
       const depRes = await apiFetch(`/transit/line-departure?lineScheduleId=${targetId}&pageSize=999`)
       if (!depRes.ok) throw new Error('Erro ao buscar partidas da OSO')
       const depJson = await depRes.json()
-      const rows: Array<{ id: string; routeId: string; departureMinutes: number; requiredVehicleType?: string | null; stopPattern?: 'LOCAL' | 'LIMITED' | 'EXPRESS' }> = depJson.data ?? []
+      const rows: DepartureRow[] = depJson.data ?? []
 
+      const { missing, extra } = compareDepartures(rows, lineTrips(l.lineId))
+      if (missing === 0 && extra === 0) handleLinkOnly(l.lineId, targetId, targetRef)
+      else setSwitchChoice({ line: l, idx, targetId, targetRef, rows, missing, extra })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao trocar OSO')
+    } finally {
+      setSwitchingTo(null)
+    }
+  }
+
+  // Stages only the pin — the plan's trips and blocks stay as they are, and the save
+  // flags the line as drifted if the departures differ.
+  function handleLinkOnly(lineId: string, targetId: string, targetRef: string) {
+    onScheduleSwitchStaged(lineId, targetId)
+    toast.success(`OSO ${targetRef} pronta para vínculo — salve para aplicar`)
+    onClose()
+  }
+
+  // Stages the line's current trips in this plan as pending deletes, the target
+  // schedule's departures as pending adds (grouped into blocks, not one-per-trip), and
+  // the schedule pin as pending too, all only taking effect when the user saves the
+  // Gantt's normal pending-changes flow.
+  async function handleRecreateTrips({ line: l, idx, targetId, targetRef, rows }: SwitchChoice) {
+    setSwitchChoice(null)
+    setSwitchingTo({ lineId: l.lineId, lineScheduleId: targetId })
+    try {
       const routes     = routesQueries[idx].data ?? []
       const routeById  = new Map(routes.map(r => [r.id, r]))
       const localityById = new Map(localities.map(loc => [loc.id, loc.name]))
@@ -301,10 +343,7 @@ export function SwitchLineScheduleModal({
         }
       }
 
-      const currentTripIds = blocks
-        .flatMap(b => b.blockTrips)
-        .filter(bt => bt.trip.route.line.id === l.lineId)
-        .map(bt => bt.trip.id)
+      const currentTripIds = lineTrips(l.lineId).map(t => t.id)
       if (currentTripIds.length > 0) onQueueTripDeletes(currentTripIds)
 
       onScheduleSwitchStaged(l.lineId, targetId)
@@ -334,7 +373,7 @@ export function SwitchLineScheduleModal({
           {hasPendingChanges && (
             <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
               <Icons.AlertCircle className="w-4 h-4 shrink-0" />
-              Salve ou descarte as alterações pendentes do Gantt antes de trocar de OSO.
+              Salve ou descarte as alterações pendentes do Gantt antes de vincular outra OSO.
             </div>
           )}
 
@@ -455,6 +494,7 @@ export function SwitchLineScheduleModal({
                 ) : history.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Nenhuma OSO disponível para esta linha</p>
                 ) : (
+                  <>
                   <div className="flex flex-wrap gap-1.5">
                     {history.map(h => {
                       const isActive     = h.id === l.lineScheduleId
@@ -477,6 +517,27 @@ export function SwitchLineScheduleModal({
                       )
                     })}
                   </div>
+                  {switchChoice?.line.lineId === l.lineId && (
+                    <div className="mt-2 rounded-md border border-border bg-muted/30 px-3 py-2 space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        A OSO {switchChoice.targetRef} difere do plano: {switchChoice.missing} partida(s) fora do plano e {switchChoice.extra} viagem(ns) fora da OSO.
+                        Só vincular mantém viagens e carros, e a linha fica marcada como divergente.
+                        Recriar apaga as viagens da linha e as refaz em carros novos a partir da OSO.
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="cancel" size="sm" tabIndex={-1} onClick={() => setSwitchChoice(null)}>
+                          Cancelar
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => handleRecreateTrips(switchChoice)}>
+                          Recriar viagens
+                        </Button>
+                        <Button type="button" size="sm" onClick={() => handleLinkOnly(l.lineId, switchChoice.targetId, switchChoice.targetRef)}>
+                          Só vincular
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             )

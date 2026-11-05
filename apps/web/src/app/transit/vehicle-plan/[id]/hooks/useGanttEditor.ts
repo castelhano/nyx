@@ -259,7 +259,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // Salvar simply has no pendingAdds entry referencing it and is dropped.
   const [pendingNewBlockIds,    setPendingNewBlockIds]    = useState<string[]>([])
   // Pins which LineSchedule version governs a line within this plan — set by
-  // SwitchLineScheduleModal alongside the trip adds/deletes it stages, travels with
+  // SwitchLineScheduleModal, with or without trip adds/deletes staged alongside it
+  // (a link-only pin leaves the trips untouched), travels with
   // the rest of the diff on Salvar (see applyDiff's lineSchedulePins step) instead
   // of writing VehiclePlanLine immediately, so a Descartar never leaves the line
   // pinned to a schedule whose departures don't match what's actually persisted.
