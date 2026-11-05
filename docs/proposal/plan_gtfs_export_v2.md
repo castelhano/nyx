@@ -523,7 +523,6 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
 | D3 | **`block_id` ligado ou não?** | Desligado até a Etapa 0 mostrar o efeito. 31 dos 83 blocos da RAPIDO cruzam linhas, então ligar pode amarrar o Goal |
 | D9 | **Rotas com o mesmo par de locais e km diferentes:** 031 × 309 (10,8 e 16,0 km; 8,1 e 11,8 km) e 311 × 311B (13,1 e 14,1 km; 15,4 e 15,9 km). O teste da A20 não cobre duas rotas do mesmo par no mesmo feed | Conferir na carga completa. Se uma herdar o km da outra, criar localidade própria no nyx em uma das duas |
 | D6 | **Exportar plano em rascunho?** A decisão da v1 é "apenas ativos", mas testar um rascunho no Goal antes de ativar pode ser útil | Manter só planos em vigor. Rever se fizer falta |
-| D7 | **Cores:** o catálogo de linhas do Goal manteve as cores após a carga. Falta ver se o serviço mostra a cor do feed | Manter a v1, se a cor for só cosmética no Goal |
 
 ### Decididas
 
@@ -532,6 +531,8 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
 - **D5 — pontos:** o uso é só início e fim de escala, sem detalhe de pontos, e o km não depende deles,
   então 2–3 pontos por viagem atendem. Se for preciso ter os pontos corretos, eles serão cadastrados
   no nyx como localidades.
+- **D7 — cores:** mantida a paleta por posição. A cor do feed não altera o catálogo de linhas do Goal
+  nem gera rotas repetidas, então não é preciso fixá-la por linha.
 - **D8 — km:** o Goal mede pelo `shapes.txt`, na primeira carga e em recarga com os mesmos locais.
   Testado só na A20.
 - **D2 — 032/033/034:** ficam às 00:30, de propósito, para o Goal gerar as sugestões de complemento
@@ -577,11 +578,14 @@ do 3990 igual. Os km e viagens do serviço só podem ser conferidos na tela.
 Tela do Goal, serviço 915: A20 com 61 viagens, 389,2 km e 17:48, iguais ao esperado. Os serviços ficam
 como "Validado" até a publicação.
 
-**Em aberto:** a A20 foi a única linha com rota repetida: `A20_1_3` e `A20_2_3` têm os mesmos pontos e o
+**Rotas repetidas:** a A20 foi a única linha com rota repetida: `A20_1_3` e `A20_2_3` têm os mesmos pontos e o
 mesmo `shape_id` de `A20_1_2` e `A20_2_2`. O serviço 890 já tinha sido excluído, então não foi trava. A
 diferença é o nome e a cor em `routes.txt`: o feed A levava os do Goal, e o V001 leva os do nyx
 ("A20 - Alim Cpa 1 • Vila Da Serra"). Hipótese: esses campos entram na identidade da rota, e uma carga
-igual reaproveita. Confirmar recarregando sem alterar nada (V002): as rotas devem seguir em 201.
+igual reaproveita. Confirmada na prática: a V002, sem alterações e só com dia útil (65 das 67 rotas), manteve 201 rotas
+e 1.392 locais.
+A cor não entra na identidade: 14 das 22 linhas mudaram de cor entre V001 e V002, sem rota nova.
+Por exclusão, o nome causou a repetição da A20: renomear uma linha gera rota nova só para ela.
 
 **Escrita pela API:** a especificação tem 115 operações de escrita, entre elas `POST /ext/v1/place`,
 `/ext/v2/route`, `/ext/v2/section` e `/ext/v3/trip`. O e-mail do Goal lista só consultas, e o token não
