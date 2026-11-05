@@ -6,6 +6,10 @@
 
 
 ## Alto
+[ ] Na lista de OSOs deixa filtro de ativos true por default
+[ ] Versionamento do GTFS, entendo que cada daytype deveria ter seu versionamento para ficar consistente
+[ ] Ao remover pontos na Seq da edição de rotas, contador nao pode ajustar na lista antes de gravar, pois perde a referencia no mapa
+[ ] Modal de exportar OSO, linhas filhas nao são mostradas na lista, sao geradas junto com as pai
 [ ] Edição da escala diária
 
 ## Medio
