@@ -574,7 +574,15 @@ importados sem erro. Pela API: rotas de 134 para 201 (67 novas, com 2 ou 3 ponto
 1.392 (os 40 do feed presentes), catálogo de linhas e cores sem mudança, seis cenários sem mudança e km
 do 3990 igual. Os km e viagens do serviço só podem ser conferidos na tela.
 
-**Em aberto:** a A20 ganhou `A20_1_3` e `A20_2_3`, com os mesmos pontos e o mesmo `shape_id` de
-`A20_1_2` e `A20_2_2`. Ou seja, a mesma sequência nem sempre reaproveita a rota. Se cada carga criar
-rotas novas para todas as linhas, o catálogo cresce 67 rotas por carga. Testar recarregando sem alterar
-nada (V002) e perguntar ao suporte qual é a chave da rota.
+Tela do Goal, serviço 915: A20 com 61 viagens, 389,2 km e 17:48, iguais ao esperado. Os serviços ficam
+como "Validado" até a publicação.
+
+**Em aberto:** a A20 foi a única linha com rota repetida: `A20_1_3` e `A20_2_3` têm os mesmos pontos e o
+mesmo `shape_id` de `A20_1_2` e `A20_2_2`. O serviço 890 já tinha sido excluído, então não foi trava. A
+diferença é o nome e a cor em `routes.txt`: o feed A levava os do Goal, e o V001 leva os do nyx
+("A20 - Alim Cpa 1 • Vila Da Serra"). Hipótese: esses campos entram na identidade da rota, e uma carga
+igual reaproveita. Confirmar recarregando sem alterar nada (V002): as rotas devem seguir em 201.
+
+**Escrita pela API:** a especificação tem 115 operações de escrita, entre elas `POST /ext/v1/place`,
+`/ext/v2/route`, `/ext/v2/section` e `/ext/v3/trip`. O e-mail do Goal lista só consultas, e o token não
+traz permissão que indique leitura ou escrita. Nenhuma escrita foi tentada.
