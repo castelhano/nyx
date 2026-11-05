@@ -102,6 +102,8 @@ async function computeExtensionOciosaKm(prisma: PrismaService, assembled: OsoAss
 
   const legsByOperator = new Map<string, { depotId: string; accessOriginId: string; returnDestId: string }[]>()
   for (const carro of assembled.carros) {
+    // a REFORÇO doesn't leave the depot for this line — it's already out on another one
+    if (carro.ordinal === null) continue
     const tripEvents = carro.events.filter(e => e.kind === 'trip')
     const depotId = depotByBlock.get(carro.blockId)
     if (tripEvents.length === 0 || !depotId) continue
@@ -175,9 +177,10 @@ export async function computeOsoSummary(
       }
       for (const e of tripEvents) km += extensionUtilKm[e.direction] ?? 0
     }
-    km += carros.length * (extensionOciosaByOperator.get(operatorLabel) ?? 0)
+    const fleet = carros.filter(c => c.ordinal !== null).length
+    km += fleet * (extensionOciosaByOperator.get(operatorLabel) ?? 0)
 
-    operators.push({ operatorLabel, trips, fleet: carros.length, operatingMinutes, km })
+    operators.push({ operatorLabel, trips, fleet, operatingMinutes, km })
   }
   const extensionOciosaKm = operators.map(o => ({ operatorLabel: o.operatorLabel, km: extensionOciosaByOperator.get(o.operatorLabel) ?? 0 }))
 

@@ -1,6 +1,7 @@
 import { PrismaService } from '../../../../../prisma/prisma.service'
 import { findDeadrunIdsAnchoredToTrips } from '../block-deadrun.utils'
 import { findIntervalIdsAnchoredToTrips } from '../block-interval.utils'
+import { assignOrdinals, mergeContinuations } from './oso-carro-roles'
 import type { TripMarking } from '@nyx/schemas'
 
 // Fixed constant, never persisted — regra 6 of docs/proposal/plan_trip_markings_v1.md.
@@ -27,6 +28,8 @@ export interface OsoTripEvent {
   direction:        OsoDirection
   departureMinutes: number
   arrivalMinutes:   number
+  originLocalityId:      string
+  destinationLocalityId: string
   // TransitTrip.markings, raw (regra 3/4 of plan_trip_markings_v1.md) — un-collapsed, the
   // renderer resolves per-channel winner for the cell, oso-observations.ts flattens every
   // entry's legendText regardless of which one won a channel
@@ -59,8 +62,11 @@ export interface OsoIntervalEvent {
 export type OsoEvent = OsoTripEvent | OsoDeadrunEvent | OsoIntervalEvent
 
 export interface OsoCarro {
+  // the first block, when more than one continues into this carro (oso-carro-roles.ts)
   blockId:       string
   blockNumber:   number
+  // position in the header, null on a REFORÇO — which is also out of the fleet
+  ordinal:       number | null
   // ScopeOperator.abbr for this block's branch within the plan's scope (fallback:
   // Branch.name) — printed as the "E" row. null when the block has no branch assigned.
   operatorLabel:    string | null
@@ -84,7 +90,7 @@ export interface OsoAssembled {
   // the requested line's family: its parent (or itself, if it has none) + all siblings
   // sharing that parent (TransitLine.parentLineId) — see "What already exists" in the plan doc
   family:        OsoLineFamilyMember[]
-  // numbered by the order of each carro's first productive trip (rule 6) — index 0 is "1º"
+  // in the order of each carro's first productive trip (rule 6) — ordinal holds the printed number
   carros:        OsoCarro[]
 }
 
@@ -135,7 +141,7 @@ export async function assembleOso(
               departureMinutes: true,
               arrivalMinutes:   true,
               markings:         true,
-              route:            { select: { id: true, lineId: true, direction: true } },
+              route:            { select: { id: true, lineId: true, direction: true, originLocalityId: true, destinationLocalityId: true } },
             },
           },
         },
@@ -189,6 +195,8 @@ export async function assembleOso(
         direction:        bt.trip.route.direction,
         departureMinutes: bt.trip.departureMinutes,
         arrivalMinutes:   bt.trip.arrivalMinutes,
+        originLocalityId:      bt.trip.route.originLocalityId,
+        destinationLocalityId: bt.trip.route.destinationLocalityId,
         markings:         bt.trip.markings ?? undefined,
       })
     }
@@ -251,6 +259,7 @@ export async function assembleOso(
     carros.push({
       blockId:       block.id,
       blockNumber:   block.blockNumber,
+      ordinal:       null,
       operatorLabel:    branchId ? (abbrByBranch.get(branchId) ?? nameByBranch.get(branchId) ?? null) : null,
       operatorFullName: branchId ? (legalNameByBranch.get(branchId) ?? null) : null,
       events,
@@ -264,5 +273,5 @@ export async function assembleOso(
     return aFirst - bFirst
   })
 
-  return { vehiclePlanId, scopeId: plan.scopeId, family, carros }
+  return { vehiclePlanId, scopeId: plan.scopeId, family, carros: assignOrdinals(mergeContinuations(carros)) }
 }

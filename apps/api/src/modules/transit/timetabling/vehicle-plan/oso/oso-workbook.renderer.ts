@@ -579,14 +579,13 @@ function renderOsoSheet(
 
     let col = FIRST_DATA_COL
     for (const blockId of band.blockIds) {
-      const carroIndex = assembled.carros.findIndex(c => c.blockId === blockId)
-      const carro       = assembled.carros[carroIndex]
+      const carro       = assembled.carros.find(c => c.blockId === blockId)!
       const layout       = layouts.get(blockId)!
       const G            = layout.columns.length
       const width         = G * layout.tripsPerRow
       const rows          = rowsByBlockId.get(blockId)!
 
-      setCell(ws, addr(col, gridStart - 2), carroIndex + 1, {
+      setCell(ws, addr(col, gridStart - 2), carro.ordinal ?? 'REFORÇO', {
         font: baseFont({ bold: true }), numFmt: '0º', fill: TAN_FILL, border: BOX,
         merge: rangeAddr(col, gridStart - 2, col + width - 1, gridStart - 2),
       })
