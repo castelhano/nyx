@@ -3,12 +3,12 @@ import type { OsoCarro, OsoEvent, OsoTripEvent } from './oso-assembler'
 import { assignOrdinals, mergeContinuations, operatingMinutes } from './oso-carro-roles'
 
 const trip = (departureMinutes: number, arrivalMinutes: number, originLocalityId: string, destinationLocalityId: string): OsoTripEvent => ({
-  kind: 'trip', tripId: `t${departureMinutes}`, routeId: 'r', lineId: 'l', direction: 'OUTBOUND',
+  kind: 'trip', tripId: `t${departureMinutes}`, routeId: 'r', lineId: 'l', direction: 'OUTBOUND', sheetDirection: 'OUTBOUND',
   departureMinutes, arrivalMinutes, originLocalityId, destinationLocalityId,
 })
 const reco = (at: number): OsoEvent => ({ kind: 'deadrun', id: `r${at}`, type: 'RETURN', departureMinutes: at, arrivalMinutes: at })
 const carro = (blockId: string, events: OsoEvent[], operatorLabel = 'VPAR'): OsoCarro => ({
-  blockId, blockNumber: 0, ordinal: null, operatorLabel, operatorFullName: null, events,
+  blockId, blockNumber: 0, ordinal: null, operatorLabel, operatorFullName: null, leavesForOtherLine: false, comesFromOtherLine: false, events,
 })
 
 describe('mergeContinuations', () => {
@@ -46,6 +46,38 @@ describe('mergeContinuations', () => {
     expect(merged.map(c => c.blockId)).toEqual(['far', 'near'])
     expect(merged[0].events).toHaveLength(3)
     expect(merged[1].events).toHaveLength(1)
+  })
+})
+
+describe('mergeContinuations across a pause', () => {
+  const morning = (over: Partial<OsoCarro> = {}) => ({ ...carro('am', [trip(400, 460, 'V', 'S'), trip(470, 530, 'S', 'V'), reco(530)]), leavesForOtherLine: true, ...over })
+  const afternoon = (over: Partial<OsoCarro> = {}) => ({ ...carro('pm', [trip(970, 1030, 'V', 'S'), trip(1040, 1100, 'S', 'V'), reco(1100)]), comesFromOtherLine: true, ...over })
+
+  it('joins a morning block leaving for another line with an afternoon one coming from it, stopping at a RECO', () => {
+    const [joined, ...rest] = mergeContinuations([morning(), afternoon()])
+    expect(rest).toEqual([])
+    expect(joined.events.filter(e => e.kind === 'deadrun')).toHaveLength(2)
+    expect(operatingMinutes(joined)).toBe(130 + 130)
+  })
+
+  it('needs both blocks swapping lines', () => {
+    expect(mergeContinuations([morning({ leavesForOtherLine: false }), afternoon()])).toHaveLength(2)
+    expect(mergeContinuations([morning(), afternoon({ comesFromOtherLine: false })])).toHaveLength(2)
+  })
+
+  it('leaves a lone trip apart, it stays a REFORÇO', () => {
+    const lone = { ...carro('lone', [trip(400, 460, 'V', 'S')]), leavesForOtherLine: true }
+    expect(mergeContinuations([lone, afternoon()])).toHaveLength(2)
+  })
+
+  it('needs the same terminal', () => {
+    const elsewhere = afternoon({ events: [trip(970, 1030, 'X', 'S'), trip(1040, 1100, 'S', 'V')] })
+    expect(mergeContinuations([morning(), elsewhere])).toHaveLength(2)
+  })
+
+  it('stays off for a line with several routes per direction', () => {
+    const otherRoute = morning({ events: [{ ...trip(400, 460, 'V', 'S'), routeId: 'r2' }, trip(470, 530, 'S', 'V')] })
+    expect(mergeContinuations([otherRoute, afternoon()])).toHaveLength(2)
   })
 })
 

@@ -122,6 +122,11 @@ export async function resolveLayouts(
 ): Promise<Map<string, OsoCarroLayout>> {
   const routeMeta = await loadRouteMeta(prisma, assembled.family.map(l => l.id))
   const routeMetaById = new Map(routeMeta.map(r => [r.id, r]))
+  // headers always read the base line — a variant's own terminal goes in the legend
+  const baseRoutes = routeMeta.filter(r => r.lineId === assembled.baseLineId)
+  const baseRouteFor = (direction: OsoDirection) => (
+    baseRoutes.find(r => r.direction === direction && r.isPrimary) ?? baseRoutes.find(r => r.direction === direction)
+  )
 
   // pass 1 — per carro, the route to use per direction, filling in the missing leg of the
   // pair (if any) so a single-direction carro still resolves both columns; no DB calls here
@@ -129,7 +134,8 @@ export async function resolveLayouts(
   for (const carro of assembled.carros) {
     const routeByDirection = new Map<OsoDirection, string>()
     for (const e of carro.events) {
-      if (e.kind === 'trip' && !routeByDirection.has(e.direction)) routeByDirection.set(e.direction, e.routeId)
+      if (e.kind !== 'trip' || routeByDirection.has(e.sheetDirection)) continue
+      routeByDirection.set(e.sheetDirection, e.childLineCode ? (baseRouteFor(e.sheetDirection)?.id ?? e.routeId) : e.routeId)
     }
 
     if (!routeByDirection.has('CIRCULAR')) {
@@ -167,7 +173,7 @@ export async function resolveLayouts(
     // rule 4 — cycles run vs. the band's row budget decides if this carro alone needs a
     // second block of the same columns; approximated as the fullest direction's trip count
     const cycles = directions.length > 0
-      ? Math.max(...directions.map(d => tripEvents.filter(e => e.direction === d).length))
+      ? Math.max(...directions.map(d => tripEvents.filter(e => e.sheetDirection === d).length))
       : 0
     const tripsPerRow: 1 | 2 = cycles > MAX_ROWS_PER_BAND ? 2 : 1
 

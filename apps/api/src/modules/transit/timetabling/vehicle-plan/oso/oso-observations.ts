@@ -15,6 +15,8 @@ import type { TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 export interface OsoObservationLine {
   legendText: string
+  // a variant's line code, with the same dark swatch as its trips on the grid
+  dark?:      boolean
   fontStyle?: TripMarkingFontStyle
   bgColor?:   TripMarkingBgColor
 }
@@ -26,6 +28,11 @@ export interface OsoObservations {
 export function computeOsoObservations(assembled: OsoAssembled): OsoObservations {
   const seen  = new Set<string>()
   const lines: OsoObservationLine[] = []
+
+  for (const member of assembled.family) {
+    const runs = assembled.carros.some(c => c.events.some(e => e.kind === 'trip' && e.childLineCode === member.code))
+    if (runs) lines.push({ legendText: member.code, dark: true })
+  }
 
   for (const carro of assembled.carros) {
     for (const e of carro.events) {

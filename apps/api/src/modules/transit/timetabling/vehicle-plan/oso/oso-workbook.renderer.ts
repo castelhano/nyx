@@ -2,12 +2,13 @@ import fs from 'fs'
 import path from 'path'
 import ExcelJS from 'exceljs'
 import { PrismaService } from '../../../../../prisma/prisma.service'
-import type { OsoAssembled, OsoCarro, OsoEvent, OsoTripEvent } from './oso-assembler'
+import type { OsoAssembled, OsoCarro, OsoDirection, OsoEvent, OsoTripEvent } from './oso-assembler'
 import type { OsoBand } from './oso-banding'
 import type { OsoCarroLayout, OsoColumn } from './oso-layout.resolver'
 import type { OsoSummary } from './oso-summary'
 import type { OsoObservations } from './oso-observations'
 import { operatingMinutes } from './oso-carro-roles'
+import { buildFrequencyPanels, type OsoFrequencyColumn, type OsoFrequencyPanel } from './oso-frequency'
 import type { TripMarking, TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 // Layer 6 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — the only layer
@@ -53,6 +54,9 @@ const TAN_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { a
 // cells hold which literal value at generation time (colors read straight from its dxf rules)
 const RECO_FILL:   ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
 const INTERV_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFCC66' } }
+// a variant's trips (206B) — fixed, not one of the user-picked marking colors below
+const DARK_FILL:   ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF404040' } }
+const DARK_FONT:   Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' } }
 
 // Trip markings palette (docs/proposal/plan_trip_markings_v1.md, regra 5) — fechada, 6
 // cores, deliberadamente fora da família amarelo/laranja/bege de RECO_FILL/INTERV_FILL/
@@ -269,11 +273,13 @@ interface SlotValue {
   minutes:    number
   fontStyle?: TripMarkingFontStyle
   bgColor?:   TripMarkingBgColor
+  dark?:      boolean
 }
 type Slot = SlotValue | 'RECO' | 'INTERV' | null
 
 function tripSlot(col: OsoColumn, e: OsoTripEvent, minutesBeforeDestination: Map<string, number>): SlotValue {
-  return { minutes: columnValue(col, e, minutesBeforeDestination), ...resolveMarkingStyle(e.markings) }
+  const dark = col.timing !== 'ARRIVAL' && e.childLineCode !== undefined
+  return { minutes: columnValue(col, e, minutesBeforeDestination), ...resolveMarkingStyle(e.markings), dark }
 }
 
 // blank spacer row after an INTERV, or after a RECO that still has events following it
@@ -321,28 +327,40 @@ function buildCarroRows(
 
   let cur: Slot[] = new Array(G).fill(null)
   let pending = false
-  // last productive trip's arrival, tracked so a RECO/INTERV/DISPLACEMENT always has
-  // something to report besides its own label/value
+  // a contraflow return holding the ida's place on a row, the next volta completes it
+  let holdingIda = false
+  // where the carro last got to, tracked so a RECO/INTERV always has a time beside it — a
+  // DISPLACEMENT counts: the carro only reaches the terminal when it ends
   let lastArrival: number | null = null
 
-  const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false }
+  const flush = () => { rows.push(cur); cur = new Array(G).fill(null); pending = false; holdingIda = false }
 
   for (const [idx, e] of carro.events.entries()) {
-    if (e.kind === 'trip' && e.direction === firstDir) {
-      if (pending) flush()
+    if (e.kind === 'trip' && e.sheetDirection === firstDir) {
+      if (pending || holdingIda) flush()
       firstCols.forEach((col, i) => { cur[i] = tripSlot(col, e, minutesBeforeDestination) })
       pending = true
       lastArrival = e.arrivalMinutes
-    } else if (e.kind === 'trip' && e.direction === secondDir) {
+    } else if (e.kind === 'trip' && e.sheetDirection === secondDir) {
       secondCols.forEach((col, i) => { cur[firstCols.length + i] = tripSlot(col, e, minutesBeforeDestination) })
       lastArrival = e.arrivalMinutes
       flush()
+    } else if (e.kind === 'deadrun' && e.type === 'DISPLACEMENT') {
+      // the contraflow return runs the opposite way of what just ran, so it takes that
+      // direction's cell on the same row, like any other trip of the cycle
+      const slot: Slot = { minutes: e.departureMinutes, ...resolveMarkingStyle(e.markings) }
+      lastArrival = e.arrivalMinutes
+      if (pending) {
+        cur[firstCols.length] = slot
+        flush()
+      } else {
+        if (holdingIda) flush()
+        cur[0] = slot
+        holdingIda = true
+      }
     } else if (e.kind === 'deadrun' || e.kind === 'interval') {
-      const slot: Slot = e.kind === 'interval'
-        ? 'INTERV'
-        : e.type === 'DISPLACEMENT'
-          ? { minutes: e.departureMinutes, ...resolveMarkingStyle(e.markings) }
-          : 'RECO'
+      const slot: Slot = e.kind === 'interval' ? 'INTERV' : 'RECO'
+      if (holdingIda) flush()
       if (pending) {
         // a lone ida with no matching volta: the trip must still run to completion before the
         // vehicle garages, so its own arrival goes in the volta slot of THIS row (self-paired,
@@ -389,6 +407,69 @@ function colLetter(n: number): string {
 }
 function addr(col: number, row: number): string { return `${colLetter(col)}${row}` }
 function rangeAddr(c1: number, r1: number, c2: number, r2: number): string { return `${addr(c1, r1)}:${addr(c2, r2)}` }
+
+// Planner's view beside the sheet, past the print area: each service's departures and their
+// headway. Rows only line up with the grid by being on the same sheet, so nothing here can
+// depend on the bands — it starts at the header and runs as far down as it needs.
+const PANELS_FIRST_COL  = 24 // column X
+const PANEL_TITLE_ROW   = HEADER_ROWS - 1
+const PANEL_SPACER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD8E4BC' } }
+const PANEL_DIRECTION_LABELS: Record<OsoDirection, string> = { OUTBOUND: 'IDA', INBOUND: 'VOLTA', CIRCULAR: 'CIRCULAR' }
+
+function renderFrequencyPanels(ws: ExcelJS.Worksheet, panels: OsoFrequencyPanel[]): void {
+  if (panels.length === 0) return
+
+  const headerCell = (col: number, label: string) => setCell(ws, addr(col, PANEL_TITLE_ROW + 1), label, { font: baseFont({ bold: true, size: 9 }), fill: TAN_FILL, border: { top: THIN, bottom: THIN, left: THIN, right: THIN } })
+  const dataCell   = (col: number, row: number, value: ExcelJS.CellValue, opts: Parameters<typeof setCell>[3] = {}) => setCell(ws, addr(col, row), value, { border: { left: THIN, right: THIN }, ...opts })
+  const firstDataRow = PANEL_TITLE_ROW + 2
+
+  function renderColumn(column: OsoFrequencyColumn, freqCol: number, timeCol: number, dark: boolean) {
+    headerCell(freqCol, 'FREQ')
+    headerCell(timeCol, PANEL_DIRECTION_LABELS[column.direction])
+    ws.getColumn(freqCol).width = 8
+    ws.getColumn(timeCol).width = 9
+    column.departures.forEach((minutes, i) => {
+      const previous = column.departures[i - 1]
+      dataCell(freqCol, firstDataRow + i, previous === undefined ? '' : duration(minutes - previous), { font: baseFont(), numFmt: 'hh:mm' })
+      dataCell(timeCol, firstDataRow + i, timeOfDay(minutes), { font: dark ? { ...baseFont(), ...DARK_FONT } : baseFont({ bold: true }), fill: dark ? DARK_FILL : undefined, numFmt: 'hh:mm' })
+    })
+  }
+
+  let col = PANELS_FIRST_COL
+  let lastCol = col
+  for (const panel of panels) {
+    const dark  = panel.title !== null
+    const [first, second] = panel.columns
+    const width = second ? 6 : 2
+    const end   = col + width - 1
+    const rows  = Math.max(...panel.columns.map(c => c.departures.length))
+    const title = panel.title ?? 'FREQUENCIA'
+
+    setCell(ws, addr(col, PANEL_TITLE_ROW), title, { font: { ...baseFont({ size: 10 }), ...DARK_FONT }, fill: DARK_FILL, merge: rangeAddr(col, PANEL_TITLE_ROW, end, PANEL_TITLE_ROW) })
+
+    if (second) {
+      renderColumn(first, col, col + 2, dark)
+      renderColumn(second, col + 5, col + 3, dark)
+      for (const spacer of [col + 1, col + 4]) {
+        ws.getColumn(spacer).width = 2.5
+        headerCell(spacer, '::')
+        for (let i = 0; i < rows; i++) dataCell(spacer, firstDataRow + i, '', { fill: PANEL_SPACER_FILL })
+      }
+      setCell(ws, addr(col + 2, PANEL_TITLE_ROW - 1), first.departures.length, { font: baseFont({ bold: true }) })
+      setCell(ws, addr(col + 3, PANEL_TITLE_ROW - 1), second.departures.length, { font: baseFont({ bold: true }) })
+      setCell(ws, addr(end, PANEL_TITLE_ROW - 1), panel.trips, { font: baseFont(), numFmt: '0.0' })
+    } else {
+      renderColumn(first, col, col + 1, dark)
+      setCell(ws, addr(end, PANEL_TITLE_ROW - 1), panel.trips, { font: baseFont(), numFmt: '0.0' })
+    }
+
+    lastCol = end
+    ws.getColumn(end + 1).width = 3
+    col = end + 2
+  }
+
+  setCell(ws, addr(lastCol, PANEL_TITLE_ROW - 2), panels.reduce((sum, p) => sum + p.trips, 0), { font: baseFont({ bold: true, italic: true }), numFmt: '0.0' })
+}
 
 function renderOsoSheet(
   ws:     ExcelJS.Worksheet,
@@ -613,9 +694,9 @@ function renderOsoSheet(
               })
             } else if (value !== null) {
               setCell(ws, cellAddr, timeOfDay(value.minutes), {
-                font:   markingFontOpts(value.fontStyle),
+                font:   value.dark ? DARK_FONT : markingFontOpts(value.fontStyle),
                 numFmt: 'hh:mm',
-                fill:   value.bgColor ? BG_COLOR_FILLS[value.bgColor] : undefined,
+                fill:   value.dark ? DARK_FILL : value.bgColor ? BG_COLOR_FILLS[value.bgColor] : undefined,
                 border: { left: j === 0 ? MEDIUM : THIN, right: j === G - 1 ? MEDIUM : THIN, top: THIN, bottom: THIN },
               })
             } else {
@@ -728,7 +809,7 @@ function renderOsoSheet(
     return lines
   }
 
-  type ObsSlot = { text: string; isFirst: boolean; fontStyle?: TripMarkingFontStyle; bgColor?: TripMarkingBgColor }
+  type ObsSlot = { text: string; isFirst: boolean; dark?: boolean; fontStyle?: TripMarkingFontStyle; bgColor?: TripMarkingBgColor }
   const obsSlots: (ObsSlot | undefined)[] = []
   outer: for (const item of observations.lines) {
     const wrapped = wrapObsLegend(item.legendText)
@@ -738,16 +819,16 @@ function renderOsoSheet(
         prev.text = prev.text.replace(/…$/, '') + '…'
         break outer
       }
-      obsSlots.push({ text: wrapped[i], isFirst: i === 0, fontStyle: item.fontStyle, bgColor: item.bgColor })
+      obsSlots.push({ text: wrapped[i], isFirst: i === 0, dark: item.dark, fontStyle: item.fontStyle, bgColor: item.bgColor })
     }
   }
   while (obsSlots.length < OBS_SLOTS) obsSlots.push(undefined)
 
   function obsLine(row: number, slot: ObsSlot | undefined, extraBorder: Partial<ExcelJS.Borders>) {
     setCell(ws, addr(12, row), slot?.isFirst ? 'LEG' : '', {
-      font:   { ...markingFontOpts(slot?.fontStyle), size: 7 },
+      font:   { ...(slot?.dark ? DARK_FONT : markingFontOpts(slot?.fontStyle)), size: 7 },
       align:  { horizontal: 'center', vertical: 'top' },
-      fill:   slot?.isFirst && slot.bgColor ? BG_COLOR_FILLS[slot.bgColor] : undefined,
+      fill:   slot?.isFirst && slot.dark ? DARK_FILL : slot?.isFirst && slot.bgColor ? BG_COLOR_FILLS[slot.bgColor] : undefined,
       border: extraBorder,
     })
     setCell(ws, addr(13, row), slot?.text ?? '', {
@@ -815,7 +896,10 @@ function renderOsoSheet(
     setCell(ws, addr(14, sigRow + 1), sig2.role, { font: baseFont(), merge: rangeAddr(14, sigRow + 1, 18, sigRow + 1) })
   }
 
-  ws.pageSetup.printArea = rangeAddr(1, 1, LAST_DATA_COL, sigRow + 1)
+  // exceljs only prefixes the column with $, and LibreOffice ignores the mixed reference that
+  // leaves — the frequency panels below would land on the PDF
+  ws.pageSetup.printArea = `${colLetter(1)}$1:${colLetter(LAST_DATA_COL)}$${sigRow + 1}`
+  renderFrequencyPanels(ws, buildFrequencyPanels(assembled))
 }
 
 export async function renderOsoWorkbook(

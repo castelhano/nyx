@@ -26,10 +26,16 @@ export interface OsoTripEvent {
   routeId:          string
   lineId:           string
   direction:        OsoDirection
+  // the side of the sheet it prints on — the trip's own direction, unless it's a variant
+  // running the base line's way under the opposite label (A22C's volta leaves from the
+  // A22B's ida terminal)
+  sheetDirection:   OsoDirection
   departureMinutes: number
   arrivalMinutes:   number
   originLocalityId:      string
   destinationLocalityId: string
+  // the variant's code when this isn't the base line — highlighted and named in the legend
+  childLineCode?:   string
   // TransitTrip.markings, raw (regra 3/4 of plan_trip_markings_v1.md) — un-collapsed, the
   // renderer resolves per-channel winner for the cell, oso-observations.ts flattens every
   // entry's legendText regardless of which one won a channel
@@ -73,6 +79,9 @@ export interface OsoCarro {
   // Company.legalName (via Branch.companyId) — printed once in the header's "Operadora:"
   // line, distinct from the abbreviated operatorLabel used throughout the grid/RESUMO
   operatorFullName: string | null
+  // does the block run another line after / before this family's trips (oso-carro-roles.ts)
+  leavesForOtherLine: boolean
+  comesFromOtherLine: boolean
   // chronological, filtered to events belonging to the line family (rule 6/8) — a
   // RETURN deadrun or interval only appears here when it's anchored (see
   // block-deadrun.utils.ts / block-interval.utils.ts) to one of this family's trips
@@ -90,6 +99,9 @@ export interface OsoAssembled {
   // the requested line's family: its parent (or itself, if it has none) + all siblings
   // sharing that parent (TransitLine.parentLineId) — see "What already exists" in the plan doc
   family:        OsoLineFamilyMember[]
+  // the family member the sheet is built around: the parent, or a variant running on its own
+  // (A22C on weekends) — null when nothing runs
+  baseLineId:    string | null
   // in the order of each carro's first productive trip (rule 6) — ordinal holds the printed number
   carros:        OsoCarro[]
 }
@@ -111,6 +123,29 @@ export async function resolveLineFamily(prisma: PrismaService, lineId: string): 
   ])
 
   return [root, ...children.filter((c: OsoLineFamilyMember) => c.id !== root.id)]
+}
+
+// tags what isn't the base line and places it on the sheet — a variant whose trip leaves from
+// the base line's terminal of the opposite direction prints on that side
+async function markVariantTrips(db: any, carros: OsoCarro[], family: OsoLineFamilyMember[], baseLineId: string | null): Promise<void> {
+  if (!baseLineId || family.length === 1) return
+
+  const baseRoutes = await db.transitRoute.findMany({
+    where:   { lineId: baseLineId, direction: { in: ['OUTBOUND', 'INBOUND'] } },
+    orderBy: { isPrimary: 'asc' },
+    select:  { direction: true, originLocalityId: true },
+  })
+  const baseOrigin = new Map<OsoDirection, string>(baseRoutes.map((r: any) => [r.direction, r.originLocalityId]))
+  const codeByLine = new Map(family.map(l => [l.id, l.code]))
+
+  for (const e of carros.flatMap(c => c.events)) {
+    if (e.kind !== 'trip' || e.lineId === baseLineId) continue
+    e.childLineCode = codeByLine.get(e.lineId)
+    const opposite: OsoDirection = e.direction === 'OUTBOUND' ? 'INBOUND' : 'OUTBOUND'
+    if (e.direction !== 'CIRCULAR' && baseOrigin.get(e.direction) !== e.originLocalityId && baseOrigin.get(opposite) === e.originLocalityId) {
+      e.sheetDirection = opposite
+    }
+  }
 }
 
 export async function assembleOso(
@@ -193,6 +228,7 @@ export async function assembleOso(
         routeId:          bt.trip.route.id,
         lineId:           bt.trip.route.lineId,
         direction:        bt.trip.route.direction,
+        sheetDirection:   bt.trip.route.direction,
         departureMinutes: bt.trip.departureMinutes,
         arrivalMinutes:   bt.trip.arrivalMinutes,
         originLocalityId:      bt.trip.route.originLocalityId,
@@ -201,27 +237,26 @@ export async function assembleOso(
       })
     }
 
+    const chronological = [...(block.blockTrips as any[])].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
+
     // the block's own true last trip of this family, chronologically — once it arrives, this
     // family is recolhida in this block (real or synthetic RETURN below marks that same point).
     // A DISPLACEMENT anchored at/after that arrival isn't repositioning within this family's
     // service anymore, it's the block heading off into another line entirely, so it's not part
     // of this OSO — only a DISPLACEMENT that still has a family trip ahead of it belongs here.
-    const allBlockTripsForAnchor = block.blockTrips as any[]
-    const lastFamilyBlockTripForAnchor = [...allBlockTripsForAnchor].reverse().find(bt => familyLineIds.has(bt.trip.route.lineId))
+    const lastFamilyBlockTripForAnchor = chronological.filter(bt => familyLineIds.has(bt.trip.route.lineId)).at(-1)
     const familyClosesAt = lastFamilyBlockTripForAnchor?.trip.arrivalMinutes as number | undefined
 
-    // findDeadrunIdsAnchoredToTrips ties every RETURN to the block's last trip, so a block
-    // ending on another line would lose this family's own garagings in the middle of the day
-    const returnsAfterFamilyTrip = (dr: any) => {
-      const previous = allBlockTripsForAnchor
-        .filter(bt => bt.trip.arrivalMinutes <= dr.departureMinutes)
-        .reduce<any>((latest, bt) => (!latest || bt.trip.arrivalMinutes > latest.trip.arrivalMinutes ? bt : latest), null)
-      return previous !== null && familyLineIds.has(previous.trip.route.lineId)
+    // a RECO belongs to this sheet only right after one of its trips — not the positional anchor
+    // of findDeadrunIdsAnchoredToTrips, which ties every RETURN to the block's last trip
+    const returnsFromFamilyTrip = (dr: any) => {
+      const previous = chronological.filter(bt => bt.trip.arrivalMinutes <= dr.departureMinutes).at(-1)
+      return previous !== undefined && familyLineIds.has(previous.trip.route.lineId)
     }
 
     for (const dr of block.blockDeadruns as any[]) {
       if (dr.type !== 'RETURN' && dr.type !== 'DISPLACEMENT') continue
-      if (!anchoredDeadrunIdSet.has(dr.id) && !(dr.type === 'RETURN' && returnsAfterFamilyTrip(dr))) continue
+      if (dr.type === 'RETURN' ? !returnsFromFamilyTrip(dr) : !anchoredDeadrunIdSet.has(dr.id)) continue
       if (dr.type === 'DISPLACEMENT' && familyClosesAt !== undefined && dr.departureMinutes >= familyClosesAt) continue
       events.push({
         kind:             'deadrun',
@@ -250,10 +285,10 @@ export async function assembleOso(
     // From this line's own OSO there's no more of it left in the block, so that's exactly
     // "recolhida" as far as this sheet is concerned: a synthetic RETURN closes the family's
     // event stream here instead of leaving its last trip open-ended with no volta/RECO at all.
-    const lastBlockTripId    = allBlockTripsForAnchor[allBlockTripsForAnchor.length - 1]?.trip.id as string | undefined
+    const lastBlockTripId    = chronological.at(-1)?.trip.id as string | undefined
     const lastFamilyBlockTrip = lastFamilyBlockTripForAnchor
-    const closedByRealReturn = events.some(e => e.kind === 'deadrun' && e.type === 'RETURN' && e.departureMinutes >= (familyClosesAt ?? Infinity))
-    if (lastFamilyBlockTrip && lastFamilyBlockTrip.trip.id !== lastBlockTripId && !closedByRealReturn) {
+    const alreadyClosed = events.some(e => e.kind !== 'trip' && e.departureMinutes >= (familyClosesAt ?? Infinity))
+    if (lastFamilyBlockTrip && lastFamilyBlockTrip.trip.id !== lastBlockTripId && !alreadyClosed) {
       events.push({
         kind:             'deadrun',
         id:                `synthetic-reco-${block.id}-${lastFamilyBlockTrip.trip.id}`,
@@ -264,6 +299,11 @@ export async function assembleOso(
     }
 
     events.sort((a, b) => a.departureMinutes - b.departureMinutes)
+    // productive -> RECO -> interval shows the RECO alone: the carro is already in the garage
+    const shownEvents = events.filter((e, i) => !(e.kind === 'interval' && events[i - 1]?.kind === 'deadrun' && (events[i - 1] as OsoDeadrunEvent).type === 'RETURN'))
+
+    const familyTrips = chronological.filter(bt => familyLineIds.has(bt.trip.route.lineId))
+    const otherTrips  = chronological.filter(bt => !familyLineIds.has(bt.trip.route.lineId))
 
     const branchId = block.branchId as string | null
     carros.push({
@@ -272,7 +312,9 @@ export async function assembleOso(
       ordinal:       null,
       operatorLabel:    branchId ? (abbrByBranch.get(branchId) ?? nameByBranch.get(branchId) ?? null) : null,
       operatorFullName: branchId ? (legalNameByBranch.get(branchId) ?? null) : null,
-      events,
+      leavesForOtherLine: otherTrips.some(bt => bt.trip.departureMinutes >= (familyClosesAt ?? Infinity)),
+      comesFromOtherLine: otherTrips.some(bt => bt.trip.arrivalMinutes <= familyTrips[0].trip.departureMinutes),
+      events: shownEvents,
     })
   }
 
@@ -283,5 +325,9 @@ export async function assembleOso(
     return aFirst - bFirst
   })
 
-  return { vehiclePlanId, scopeId: plan.scopeId, family, carros: assignOrdinals(mergeContinuations(carros)) }
+  const lineIdsRunning = new Set(carros.flatMap(c => c.events).flatMap(e => (e.kind === 'trip' ? [e.lineId] : [])))
+  const baseLineId = family.find(l => lineIdsRunning.has(l.id))?.id ?? null
+  await markVariantTrips(db, carros, family, baseLineId)
+
+  return { vehiclePlanId, scopeId: plan.scopeId, family, baseLineId, carros: assignOrdinals(mergeContinuations(carros)) }
 }
