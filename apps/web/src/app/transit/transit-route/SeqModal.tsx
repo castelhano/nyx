@@ -48,6 +48,8 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
     base.splice(insertAt, 0, targetRow(insertTarget))
     return base
   })
+  // a removed point stays on its row until the save, so the list keeps matching the map
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
   const [saving,  setSaving]  = useState(false)
 
   useShortcutContext('seq_md')
@@ -60,54 +62,70 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const lastIdx     = draft.length - 1
-  const hasChanges  = draft.length !== localities.length || draft.some((rl, i) => rl.id !== localities[i].id)
+  // the order being built — positions and the save read this, removed rows don't count
+  const live        = draft.filter((rl) => !removedIds.has(rl.id))
+  const lastIdx     = live.length - 1
+  const hasChanges  = live.length !== localities.length || live.some((rl, i) => rl.id !== localities[i].id)
+  // same 0-indexed numbering as the map (MapCanvas), which only changes after the save
+  const mapNumber   = new Map(localities.map((rl, i) => [rl.id, i]))
 
-  function moveUp(idx: number) {
+  // moves shift the live rows around the removed ones, which keep their place in the list
+  function reorder(change: (rows: RouteLocality[]) => RouteLocality[]) {
     setDraft((prev) => {
-      if (idx <= 1) return prev
-      const next = [...prev]
-      ;[next[idx - 1], next[idx]] = [next[idx], next[idx - 1]]
+      const moved = change(prev.filter((rl) => !removedIds.has(rl.id)))
+      let next = 0
+      return prev.map((rl) => (removedIds.has(rl.id) ? rl : moved[next++]))
+    })
+  }
+
+  function moveUp(pos: number) {
+    reorder((rows) => {
+      if (pos <= 1) return rows
+      const next = [...rows]
+      ;[next[pos - 1], next[pos]] = [next[pos], next[pos - 1]]
       return next
     })
   }
 
-  function moveDown(idx: number) {
-    setDraft((prev) => {
-      if (idx >= prev.length - 2) return prev
-      const next = [...prev]
-      ;[next[idx + 1], next[idx]] = [next[idx], next[idx + 1]]
+  function moveDown(pos: number) {
+    reorder((rows) => {
+      if (pos >= rows.length - 2) return rows
+      const next = [...rows]
+      ;[next[pos + 1], next[pos]] = [next[pos], next[pos + 1]]
       return next
     })
   }
 
-  function moveTo(idx: number, targetPos: number) {
-    setDraft((prev) => {
-      const n = prev.length
-      const target = Math.min(Math.max(Math.round(targetPos), 1), n - 2)
-      if (target === idx) return prev
-      const next = [...prev]
-      const [item] = next.splice(idx, 1)
+  function moveTo(pos: number, targetPos: number) {
+    reorder((rows) => {
+      const target = Math.min(Math.max(Math.round(targetPos), 1), rows.length - 2)
+      if (target === pos) return rows
+      const next = [...rows]
+      const [item] = next.splice(pos, 1)
       next.splice(target, 0, item)
       return next
     })
   }
 
-  function removeAt(idx: number) {
-    setDraft((prev) => prev.filter((_, i) => i !== idx))
+  function toggleRemoved(id: string) {
+    setRemovedIds((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
   }
 
   async function handleSave() {
     setSaving(true)
     try {
       const originalIds = new Set(localities.map((rl) => rl.id))
-      const draftIds    = new Set(draft.map((rl) => rl.id))
-      const deletedIds  = [...originalIds].filter((id) => !draftIds.has(id))
+      const liveIds     = new Set(live.map((rl) => rl.id))
+      const deletedIds  = [...originalIds].filter((id) => !liveIds.has(id))
       const hasDeletion = deletedIds.length > 0
 
       await Promise.all(deletedIds.map((id) => apiDelete(`/transit/route-locality/${id}`)))
 
-      const withSeq = draft.map((rl, i) => ({ rl, seq: i + 1 }))
+      const withSeq = live.map((rl, i) => ({ rl, seq: i + 1 }))
       const newRow  = withSeq.find(({ rl }) => rl.id === NEW_ID)
       const changed = withSeq.filter(({ rl, seq }) => rl.id !== NEW_ID && rl.sequence !== seq)
 
@@ -157,11 +175,13 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
         )}
 
         <div className="max-h-96 overflow-y-auto border border-border rounded-sm">
-          {draft.map((rl, idx) => {
-            const isOrigin = idx === 0
-            const isDest   = idx === lastIdx
-            const isLocked = isOrigin || isDest
-            const isNew    = rl.id === NEW_ID
+          {draft.map((rl) => {
+            const isRemoved = removedIds.has(rl.id)
+            const pos       = live.indexOf(rl)
+            const isOrigin  = pos === 0
+            const isDest    = pos === lastIdx
+            const isLocked  = isOrigin || isDest
+            const isNew     = rl.id === NEW_ID
 
             return (
               <div
@@ -173,40 +193,44 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
                   color={isNew ? SUGGEST_COLOR : color}
                   size={16}
                 />
-                <span className="w-6 text-xs text-muted-foreground text-center shrink-0">{idx}</span>
-                <span className="flex-1 text-sm truncate">{label(rl)}</span>
+                <span className="w-6 text-xs text-muted-foreground text-center shrink-0">{mapNumber.get(rl.id) ?? '–'}</span>
+                <span className={`flex-1 text-sm truncate ${isRemoved ? 'line-through text-muted-foreground' : ''}`}>{label(rl)}</span>
                 {isNew && (
                   <span className="text-[10px] text-violet-600 dark:text-violet-400 uppercase shrink-0 px-1.5 font-medium">
                     Novo
                   </span>
                 )}
 
-                {isLocked ? (
+                {isRemoved ? (
+                  <Button type="button" variant="rowAction" size="icon" disabled={disabled} title="Desfazer remoção" onClick={() => toggleRemoved(rl.id)}>
+                    <Icons.Undo2 className="w-3.5 h-3.5" />
+                  </Button>
+                ) : isLocked ? (
                   <span className="text-[10px] text-muted-foreground uppercase shrink-0 px-1.5">
                     {isOrigin ? 'Origem' : 'Destino'}
                   </span>
                 ) : (
                   <>
                     <input
-                      key={`pos-${rl.id}-${idx}`}
+                      key={`pos-${rl.id}-${pos}`}
                       type="number"
                       className="w-14 h-7 px-1 text-xs text-center border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                      defaultValue={idx}
+                      defaultValue={pos}
                       min={1}
                       max={lastIdx - 1}
                       disabled={disabled}
                       onBlur={(e) => {
                         const v = Number(e.target.value)
-                        if (!Number.isNaN(v)) moveTo(idx, v)
+                        if (!Number.isNaN(v)) moveTo(pos, v)
                       }}
                     />
-                    <Button type="button" variant="rowAction" size="icon" disabled={disabled || idx <= 1} onClick={() => moveUp(idx)}>
+                    <Button type="button" variant="rowAction" size="icon" disabled={disabled || pos <= 1} onClick={() => moveUp(pos)}>
                       <Icons.ArrowUp className="w-3.5 h-3.5" />
                     </Button>
-                    <Button type="button" variant="rowAction" size="icon" disabled={disabled || idx >= lastIdx - 1} onClick={() => moveDown(idx)}>
+                    <Button type="button" variant="rowAction" size="icon" disabled={disabled || pos >= lastIdx - 1} onClick={() => moveDown(pos)}>
                       <Icons.ArrowDown className="w-3.5 h-3.5" />
                     </Button>
-                    <Button type="button" variant="rowAction" size="icon" disabled={disabled} onClick={() => removeAt(idx)}>
+                    <Button type="button" variant="rowAction" size="icon" disabled={disabled} onClick={() => toggleRemoved(rl.id)}>
                       <Icons.Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </>
