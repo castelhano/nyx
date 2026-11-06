@@ -15,7 +15,8 @@ export class VehiclePlanExportController {
 
   // Lines available for OSO export: every TransitLine of the plan's scope (not just the
   // ones currently loaded in the Gantt — see plan_oso_export_v1.md "Frontend"), flagged
-  // with whether they have any BlockTrip in this plan yet.
+  // with whether they have any BlockTrip in this plan yet. A variant prints on its parent's
+  // sheet, so it's only listed when it runs on its own in this plan (A22C on weekends).
   @Get('lines')
   async lines(@Param('id') id: string) {
     const db   = this.prisma as any
@@ -24,7 +25,7 @@ export class VehiclePlanExportController {
     const [lines, tripLines] = await Promise.all([
       db.transitLine.findMany({
         where:   { scopeId: plan.scopeId },
-        select:  { id: true, code: true, name: true },
+        select:  { id: true, code: true, name: true, parentLineId: true },
         orderBy: { code: 'asc' },
       }),
       db.blockTrip.findMany({
@@ -35,7 +36,9 @@ export class VehiclePlanExportController {
     ])
 
     const linesWithTrips = new Set<string>(tripLines.map((bt: any) => bt.trip.route.lineId))
-    return lines.map((l: any) => ({ ...l, hasTrips: linesWithTrips.has(l.id) }))
+    return lines
+      .filter((l: any) => !l.parentLineId || (linesWithTrips.has(l.id) && !linesWithTrips.has(l.parentLineId)))
+      .map(({ parentLineId: _parentLineId, ...l }: any) => ({ ...l, hasTrips: linesWithTrips.has(l.id) }))
   }
 
   @Post('export')
