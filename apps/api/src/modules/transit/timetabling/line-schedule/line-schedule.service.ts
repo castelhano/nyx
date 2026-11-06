@@ -8,7 +8,7 @@ import {
 import { generateDraftRef } from './line-schedule.util'
 import { recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import type { PlanActivationPreview } from '@nyx/schemas'
-import { activationEffect, applyEffect, assertRetroactiveAllowed, parseStartDate, toDbDate } from '../plan-validity'
+import { activationEffect, applyEffect, assertRetroactiveAllowed, localToday, parseStartDate, toDbDate } from '../plan-validity'
 import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
 
 export interface SaveDeparturesBatchDto {
@@ -27,6 +27,23 @@ export interface SaveDeparturesBatchResult {
 export class LineScheduleService extends BaseService<LineSchedule, CreateLineScheduleDto, UpdateLineScheduleDto> {
   constructor(prisma: PrismaService) {
     super(prisma, 'lineSchedule', lineScheduleSchema, 'transit')
+  }
+
+  // "Ativas": approved, plus what's outside that status but still in play — a superseded version
+  // running until its end date, and any version an active plan is pinned to (a draft in use)
+  protected override buildFilterWhere(query: Record<string, unknown>) {
+    const { f_isCurrent, ...rest } = query as Record<string, string | undefined>
+    const isCurrent = {
+      OR: [
+        { status: 'APPROVED' },
+        { status: 'SUPERSEDED', validTo: { gte: toDbDate(localToday()) } },
+        { vehiclePlanLines: { some: { vehiclePlan: { status: 'ACTIVE' } } } },
+      ],
+    }
+    return {
+      ...super.buildFilterWhere(rest),
+      ...(f_isCurrent === 'true' ? isCurrent : f_isCurrent === 'false' ? { NOT: isCurrent } : {}),
+    }
   }
 
   override create(dto: CreateLineScheduleDto): Promise<LineSchedule> {

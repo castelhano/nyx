@@ -133,8 +133,20 @@ export const vehiclePlanSchema = withMeta(
         SUPERSEDED: 'Substituído',
       },
       optionColors: {
-        ACTIVE: 'success',
+        DRAFT:      'warning',
+        ACTIVE:     'success',
+        SUPERSEDED: 'muted',
       },
+    }),
+
+    // filter only — hides what already ended, see VehiclePlanService
+    isCurrent: z.boolean().optional().meta({
+      label:          'Situação',
+      listVisibility: 'never',
+      showInForm:     false,
+      sortable:       false,
+      computed:       true,
+      filter:         { type: 'boolean', allLabel: 'Todos', trueLabel: 'Vigentes', falseLabel: 'Histórico' },
     }),
 
     validFrom: z.date().optional().nullable().meta({
@@ -184,6 +196,7 @@ export const vehiclePlanSchema = withMeta(
     nameField:   'status',
     icon:        'LayoutList',
     defaultSort: { field: 'generatedAt', order: 'desc' },
+    defaultFilters: { isCurrent: 'true' },
     rowActions: [
       {
         action:     'duplicate',

@@ -17,7 +17,7 @@ export interface PaginationQuery {
 export type FilterDef =
   | { type: 'text' }
   | { type: 'select' }
-  | { type: 'boolean' }
+  | { type: 'boolean'; allLabel?: string; trueLabel?: string; falseLabel?: string }
   | { type: 'number_range' }
   | { type: 'date_range' }
   | { type: 'relation'; endpoint: string; labelField: string; dependsOn?: string }

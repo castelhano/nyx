@@ -27,7 +27,7 @@ import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { validateNewBundles } from './trip-bundle.utils'
 import { selectLineCopy } from './line-copy.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
-import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, parseStartDate, toDbDate } from '../plan-validity'
+import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, localToday, parseStartDate, toDbDate } from '../plan-validity'
 import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
 
 // A trip patch touching any attribute kept in sync with the OSO's LineDeparture
@@ -96,10 +96,18 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   protected override buildFilterWhere(query: Record<string, unknown>) {
-    const { f_branchId, ...rest } = query as Record<string, string | undefined>
+    const { f_branchId, f_isCurrent, ...rest } = query as Record<string, string | undefined>
+    // "Vigentes": a superseded plan stays until its end date, it may still be the one running
+    const isCurrent = {
+      OR: [
+        { status: { in: ['DRAFT', 'ACTIVE'] } },
+        { status: 'SUPERSEDED', validTo: { gte: toDbDate(localToday()) } },
+      ],
+    }
     return {
       ...super.buildFilterWhere(rest),
       ...(f_branchId ? { scope: { operators: { some: { branchId: f_branchId } } } } : {}),
+      ...(f_isCurrent === 'true' ? isCurrent : f_isCurrent === 'false' ? { NOT: isCurrent } : {}),
     }
   }
 

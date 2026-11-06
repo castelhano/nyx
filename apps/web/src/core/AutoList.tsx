@@ -176,9 +176,9 @@ function FilterBar({
         if (filter.type === 'boolean') {
           return (
             <Select key={field.name} id={`filter-${field.name}`} size="sm" value={values[key] ?? ''} onChange={(e) => onChange(key, e.target.value)} wrapperClassName={stacked ? 'w-full' : undefined} keybind={field.keybind}>
-              <option value="">{field.label}</option>
-              <option value="true">Sim</option>
-              <option value="false">Não</option>
+              <option value="">{filter.allLabel ?? field.label}</option>
+              <option value="true">{filter.trueLabel ?? 'Sim'}</option>
+              <option value="false">{filter.falseLabel ?? 'Não'}</option>
             </Select>
           )
         }

@@ -31,12 +31,29 @@ export const lineScheduleSchema = withMeta(
       listVisibility: 'visible',
       filter:         true,
       showInForm:     false,
+      widget:         'badge',
       optionLabels: {
         DRAFT:      'Rascunho',
         APPROVED:   'Aprovado',
         SUPERSEDED: 'Substituído',
         ARCHIVED:   'Arquivado',
       },
+      optionColors: {
+        DRAFT:      'warning',
+        APPROVED:   'success',
+        SUPERSEDED: 'muted',
+        ARCHIVED:   'muted',
+      },
+    }),
+
+    // filter only — what still matters today, see LineScheduleService
+    isCurrent: z.boolean().optional().meta({
+      label:          'Situação',
+      listVisibility: 'never',
+      showInForm:     false,
+      sortable:       false,
+      computed:       true,
+      filter:         { type: 'boolean', allLabel: 'Todas', trueLabel: 'Ativas', falseLabel: 'Inativas' },
     }),
 
     validFrom: z.date().optional().nullable().meta({
@@ -80,6 +97,7 @@ export const lineScheduleSchema = withMeta(
     nameField:   'approvalRef',
     icon:        'CalendarSync',
     defaultSort: { field: 'createdAt', order: 'desc' },
+    defaultFilters: { isCurrent: 'true' },
     breadcrumb:  [
       { resource: 'transit-line', contextField: 'lineId', listLabel: 'Linhas', nameField: 'code', keybind: 'f10', overflow: true },
     ],
