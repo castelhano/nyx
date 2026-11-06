@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { OsoCarro, OsoEvent, OsoTripEvent } from './oso-assembler'
-import { assignOrdinals, mergeContinuations } from './oso-carro-roles'
+import { assignOrdinals, mergeContinuations, operatingMinutes } from './oso-carro-roles'
 
 const trip = (departureMinutes: number, arrivalMinutes: number, originLocalityId: string, destinationLocalityId: string): OsoTripEvent => ({
   kind: 'trip', tripId: `t${departureMinutes}`, routeId: 'r', lineId: 'l', direction: 'OUTBOUND',
@@ -65,5 +65,29 @@ describe('assignOrdinals', () => {
       carro('b', [trip(10, 20, 'V', 'S')]),
     ]))
     expect(joined.ordinal).toBe(1)
+  })
+})
+
+describe('operatingMinutes', () => {
+  it('stops at a RECO and restarts on the next trip', () => {
+    const c = carro('a', [trip(333, 518, 'V', 'I'), reco(518), trip(1040, 1133, 'V', 'I'), reco(1133)])
+    expect(operatingMinutes(c)).toBe(278)
+  })
+
+  it('keeps counting through an INTERV, which leaves the carro out', () => {
+    const interval: OsoEvent = { kind: 'interval', id: 'i', intervalTypeId: 't', departureMinutes: 100, arrivalMinutes: 200 }
+    expect(operatingMinutes(carro('a', [trip(0, 100, 'V', 'I'), interval, trip(200, 300, 'I', 'V')]))).toBe(300)
+  })
+
+  it('counts a carro with no closing RECO up to its last arrival', () => {
+    expect(operatingMinutes(carro('a', [trip(0, 19, 'S', 'V')]))).toBe(19)
+  })
+
+  it('runs across a continuation, whose RECO was dropped', () => {
+    const [joined] = mergeContinuations([
+      carro('a', [trip(0, 100, 'S', 'V'), reco(100)]),
+      carro('b', [trip(100, 200, 'V', 'S'), reco(200)]),
+    ])
+    expect(operatingMinutes(joined)).toBe(200)
   })
 })

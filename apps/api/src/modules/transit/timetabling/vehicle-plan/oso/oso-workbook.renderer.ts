@@ -7,6 +7,7 @@ import type { OsoBand } from './oso-banding'
 import type { OsoCarroLayout, OsoColumn } from './oso-layout.resolver'
 import type { OsoSummary } from './oso-summary'
 import type { OsoObservations } from './oso-observations'
+import { operatingMinutes } from './oso-carro-roles'
 import type { TripMarking, TripMarkingFontStyle, TripMarkingBgColor } from '@nyx/schemas'
 
 // Layer 6 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — the only layer
@@ -627,16 +628,12 @@ function renderOsoSheet(
       }
 
       const tripCount = carro.events.filter(e => e.kind === 'trip').length / 2
-      const trips = carro.events.filter((e): e is OsoTripEvent => e.kind === 'trip')
-      const operatingMinutes = trips.length > 0
-        ? Math.max(...trips.map(e => e.arrivalMinutes)) - Math.min(...trips.map(e => e.departureMinutes))
-        : 0
 
       // each carro's own E/V/H block is boxed off (medium left/right) from its neighbors,
       // not just separated by the band-wide thin gridline frameRow already drew
       setCell(ws, addr(col, eRow), carro.operatorLabel ?? '', { font: baseFont({ bold: true }), border: { top: MEDIUM, bottom: THIN, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, eRow, col + width - 1, eRow) })
       setCell(ws, addr(col, vRow), tripCount, { font: baseFont({ bold: true }), numFmt: '0.0', border: { top: THIN, bottom: THIN, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, vRow, col + width - 1, vRow) })
-      setCell(ws, addr(col, hRow), duration(operatingMinutes), { font: baseFont({ bold: true }), numFmt: '[h]:mm', border: { top: THIN, bottom: MEDIUM, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, hRow, col + width - 1, hRow) })
+      setCell(ws, addr(col, hRow), duration(operatingMinutes(carro)), { font: baseFont({ bold: true }), numFmt: '[h]:mm', border: { top: THIN, bottom: MEDIUM, left: MEDIUM, right: MEDIUM }, merge: rangeAddr(col, hRow, col + width - 1, hRow) })
 
       col += width
     }

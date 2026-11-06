@@ -57,6 +57,26 @@ export function mergeContinuations(carros: OsoCarro[]): OsoCarro[] {
   return merged
 }
 
+// the H of a carro: what the sheet shows of it, period by period — a RECO stops the clock and
+// the next trip restarts it, so time in the garage never counts. An INTERV doesn't stop it (the
+// carro is still out) and neither does a stretch on another line, which the sheet doesn't show
+export function operatingMinutes(carro: OsoCarro): number {
+  let total = 0
+  let start: number | null = null
+  let end = 0
+
+  for (const e of carro.events) {
+    if (e.kind === 'trip') {
+      start ??= e.departureMinutes
+      end = Math.max(end, e.arrivalMinutes)
+    } else if (e.kind === 'deadrun' && e.type === 'RETURN' && start !== null) {
+      total += end - start
+      start = null
+    }
+  }
+  return start === null ? total : total + end - start
+}
+
 export function assignOrdinals(carros: OsoCarro[]): OsoCarro[] {
   let next = 1
   return carros.map(carro => ({ ...carro, ordinal: tripsOf(carro).length === 1 ? null : next++ }))

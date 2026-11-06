@@ -210,9 +210,18 @@ export async function assembleOso(
     const lastFamilyBlockTripForAnchor = [...allBlockTripsForAnchor].reverse().find(bt => familyLineIds.has(bt.trip.route.lineId))
     const familyClosesAt = lastFamilyBlockTripForAnchor?.trip.arrivalMinutes as number | undefined
 
+    // findDeadrunIdsAnchoredToTrips ties every RETURN to the block's last trip, so a block
+    // ending on another line would lose this family's own garagings in the middle of the day
+    const returnsAfterFamilyTrip = (dr: any) => {
+      const previous = allBlockTripsForAnchor
+        .filter(bt => bt.trip.arrivalMinutes <= dr.departureMinutes)
+        .reduce<any>((latest, bt) => (!latest || bt.trip.arrivalMinutes > latest.trip.arrivalMinutes ? bt : latest), null)
+      return previous !== null && familyLineIds.has(previous.trip.route.lineId)
+    }
+
     for (const dr of block.blockDeadruns as any[]) {
       if (dr.type !== 'RETURN' && dr.type !== 'DISPLACEMENT') continue
-      if (!anchoredDeadrunIdSet.has(dr.id)) continue
+      if (!anchoredDeadrunIdSet.has(dr.id) && !(dr.type === 'RETURN' && returnsAfterFamilyTrip(dr))) continue
       if (dr.type === 'DISPLACEMENT' && familyClosesAt !== undefined && dr.departureMinutes >= familyClosesAt) continue
       events.push({
         kind:             'deadrun',
@@ -243,7 +252,8 @@ export async function assembleOso(
     // event stream here instead of leaving its last trip open-ended with no volta/RECO at all.
     const lastBlockTripId    = allBlockTripsForAnchor[allBlockTripsForAnchor.length - 1]?.trip.id as string | undefined
     const lastFamilyBlockTrip = lastFamilyBlockTripForAnchor
-    if (lastFamilyBlockTrip && lastFamilyBlockTrip.trip.id !== lastBlockTripId) {
+    const closedByRealReturn = events.some(e => e.kind === 'deadrun' && e.type === 'RETURN' && e.departureMinutes >= (familyClosesAt ?? Infinity))
+    if (lastFamilyBlockTrip && lastFamilyBlockTrip.trip.id !== lastBlockTripId && !closedByRealReturn) {
       events.push({
         kind:             'deadrun',
         id:                `synthetic-reco-${block.id}-${lastFamilyBlockTrip.trip.id}`,

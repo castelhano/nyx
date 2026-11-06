@@ -1,5 +1,6 @@
 import { PrismaService } from '../../../../../prisma/prisma.service'
 import type { OsoAssembled, OsoDirection } from './oso-assembler'
+import { operatingMinutes as carroOperatingMinutes } from './oso-carro-roles'
 
 // Layer 4 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — recomputes in
 // TS the RESUMO aggregates the legacy spreadsheet did with Excel formulas (COUNT, MAX-MIN,
@@ -13,7 +14,7 @@ export interface OsoOperatorSummary {
   // unpaired leg (a single-trip reinforcement carro) printed as V=0,5. Can be fractional.
   trips:            number
   fleet:            number // distinct carros for this operator
-  operatingMinutes: number // sum, per carro, of (last trip arrival - first trip departure)
+  operatingMinutes: number // sum of each carro's H, the periods the sheet shows (oso-carro-roles.ts)
   km:               number // revenue km (per-trip extensionKm by direction) + deadhead km (fleet x line's own average)
 }
 
@@ -170,11 +171,7 @@ export async function computeOsoSummary(
     for (const carro of carros) {
       const tripEvents = carro.events.filter(e => e.kind === 'trip')
       trips += tripEvents.length / 2
-      if (tripEvents.length > 0) {
-        const first = Math.min(...tripEvents.map(e => e.departureMinutes))
-        const last  = Math.max(...tripEvents.map(e => e.arrivalMinutes))
-        operatingMinutes += last - first
-      }
+      operatingMinutes += carroOperatingMinutes(carro)
       for (const e of tripEvents) km += extensionUtilKm[e.direction] ?? 0
     }
     const fleet = carros.filter(c => c.ordinal !== null).length
