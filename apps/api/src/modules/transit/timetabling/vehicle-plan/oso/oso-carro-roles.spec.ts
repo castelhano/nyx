@@ -106,9 +106,15 @@ describe('operatingMinutes', () => {
     expect(operatingMinutes(c)).toBe(278)
   })
 
-  it('keeps counting through an INTERV, which leaves the carro out', () => {
+  it('stops at an INTERV too', () => {
     const interval: OsoEvent = { kind: 'interval', id: 'i', intervalTypeId: 't', departureMinutes: 100, arrivalMinutes: 200 }
-    expect(operatingMinutes(carro('a', [trip(0, 100, 'V', 'I'), interval, trip(200, 300, 'I', 'V')]))).toBe(300)
+    expect(operatingMinutes(carro('a', [trip(0, 100, 'V', 'I'), interval, trip(200, 300, 'I', 'V')]))).toBe(200)
+  })
+
+  it('closes the period where a contraflow return arrives, the time the sheet prints', () => {
+    const displacement: OsoEvent = { kind: 'deadrun', id: 'd', type: 'DISPLACEMENT', departureMinutes: 101, arrivalMinutes: 120 }
+    const interval: OsoEvent = { kind: 'interval', id: 'i', intervalTypeId: 't', departureMinutes: 120, arrivalMinutes: 200 }
+    expect(operatingMinutes(carro('a', [trip(0, 100, 'V', 'I'), displacement, interval, trip(200, 300, 'I', 'V')]))).toBe(220)
   })
 
   it('counts a carro with no closing RECO up to its last arrival', () => {

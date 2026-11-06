@@ -82,9 +82,10 @@ export function mergeContinuations(carros: OsoCarro[]): OsoCarro[] {
   return merged
 }
 
-// the H of a carro: what the sheet shows of it, period by period — a RECO stops the clock and
-// the next trip restarts it, so time in the garage never counts. An INTERV doesn't stop it (the
-// carro is still out) and neither does a stretch on another line, which the sheet doesn't show
+// the H of a carro: what the sheet shows of it, period by period — a RECO or an INTERV stops the
+// clock at the time printed beside it and the next trip restarts it. A contraflow return counts,
+// the sheet closes the period where it arrives. A stretch on another line with no RECO keeps
+// running, since the sheet shows those trips in sequence
 export function operatingMinutes(carro: OsoCarro): number {
   let total = 0
   let start: number | null = null
@@ -94,7 +95,9 @@ export function operatingMinutes(carro: OsoCarro): number {
     if (e.kind === 'trip') {
       start ??= e.departureMinutes
       end = Math.max(end, e.arrivalMinutes)
-    } else if (e.kind === 'deadrun' && e.type === 'RETURN' && start !== null) {
+    } else if (e.kind === 'deadrun' && e.type === 'DISPLACEMENT') {
+      end = Math.max(end, e.arrivalMinutes)
+    } else if (start !== null) {
       total += end - start
       start = null
     }
