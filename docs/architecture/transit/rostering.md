@@ -293,6 +293,8 @@ WARN rules leaves only for someone without any pendência. Plantões aren't targ
    hour bank first), or take someone off a plantão of the duty's shift, from the time with the most
    plantões.
 
+Calling in someone on a day off (overtime) is not an option.
+
 **Vehicles** (`vehicle-repair.calc.ts`) — targets: no car, unavailable, wrong type, other
 empresa's, the same car on two blocks (it stays where it suits best). A free car by the vehicle
 step's preference (`carCost`); else a **type swap**: a block running a car that fits the target and
@@ -311,10 +313,11 @@ staff JWT):
   logins limited per IP. Token signed with `PORTAL_JWT_SECRET`.
 - **Guard** (`PortalGuard`): the token's version, an active employee; until the PIN is changed only
   the change-PIN route answers, and with unread notifications only the notification routes.
-- **Permissions** (`PortalProfile` per empresa, `isDefault` for who has none;
-  `CrewMember.portalOverride` replaces the fields it sets): see the roster, request absences
+- **Permissions** (`PortalProfile` per empresa, `isDefault` for who has none — no default: only
+  see the roster; `CrewMember.portalOverride` replaces the fields it sets): see the roster, request absences
   (requestable types) / time windows, edit preferred lines; quotas per absence type and for time
-  windows, per week, month (load period) or year — requests from the portal and those entered by
+  windows (no max = no quota), per week (Monday–Sunday), month (load period) or calendar year,
+  counted by the occurrence's `startDate` — requests from the portal and those entered by
   staff on his behalf, requested or approved, count; a portal request over the quota is refused, one
   launched on his behalf passes with a warning on the launch form (`transit/crew-member/:id/portal-quotas`).
 - **Requests**: one day each, `REQUESTED`, what was asked kept (`createFromPortal`); approval stays
@@ -345,7 +348,10 @@ staff JWT):
   notes. **Trip map** (`GET /portal/roster/:date/trip/:eventId/map`, `trip-map.tsx`): only a trip
   of his own pieces — the route's legs (`RouteLocality.geometry`, straight lines where missing),
   stops, relief points; his position (`watchPosition`, HTTPS only) with the straight-line distance
-  to where he takes / hands over the vehicle, screen kept on (Wake Lock).
+  to where he takes / hands over the vehicle, screen kept on (Wake Lock). No background tracking:
+  the position stops with the screen off or the browser in the background. Tiles come from the
+  public OpenStreetMap server, which forbids this use in production — switch to a provider
+  (MapTiler, Stadia…) or an own server first.
 
 ---
 
