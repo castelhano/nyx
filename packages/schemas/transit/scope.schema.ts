@@ -30,7 +30,7 @@ export const scopeSchema = withMeta(
 
     // Data about the grantor used by the exports. Flat on purpose: the grantor's name is one
     // field shared by the OSO header and GTFS agency_name (docs/proposal/plan_oso_export_v1.md,
-    // docs/proposal/plan_gtfs_export_v2.md)
+    // docs/architecture/transit/gtfs-export.md)
     serviceMetadata: z.object({
       organName: z.string().optional().meta({ label: 'Nome do Órgão' }),
       signatures: z.array(

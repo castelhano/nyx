@@ -11,7 +11,7 @@ export const EXTERNAL_SYSTEM_LABEL: Record<ExternalSystem, string> = {
 }
 
 // Systems a record can hold a code for — wider than EXTERNAL_SYSTEMS: Goal receives a GTFS
-// feed (docs/proposal/plan_gtfs_export_v2.md), not a plan layout.
+// feed (docs/architecture/transit/gtfs-export.md), not a plan layout.
 export const EXTERNAL_CODE_SYSTEMS = ['GLOBUS', 'GOAL'] as const
 export type ExternalCodeSystem = typeof EXTERNAL_CODE_SYSTEMS[number]
 

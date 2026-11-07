@@ -24,8 +24,8 @@ interface ResolvedExport {
   feed:     GtfsFeed
 }
 
-// docs/proposal/plan_gtfs_export_v2.md — a whole feed of one operator, generated from the plans
-// in force at the start of the period.
+// docs/architecture/transit/gtfs-export.md — one operator's feed of a day type, generated from the
+// plan in force at the start of the period.
 @Injectable()
 export class GtfsExportService {
   constructor(

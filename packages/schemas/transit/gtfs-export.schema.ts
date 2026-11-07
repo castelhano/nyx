@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-// GTFS feed for Goal (docs/proposal/plan_gtfs_export_v2.md).
+// GTFS feed for Goal (docs/architecture/transit/gtfs-export.md).
 
 const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 

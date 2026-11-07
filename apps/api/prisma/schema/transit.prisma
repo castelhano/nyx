@@ -611,7 +611,7 @@ model ScopeOperator {
   @@map("transit_scope_operators")
 }
 
-// One downloaded GTFS feed (docs/proposal/plan_gtfs_export_v2.md).
+// One downloaded GTFS feed (docs/architecture/transit/gtfs-export.md).
 model GtfsExport {
   id              String   @id @default(uuid())
   scopeOperatorId String

@@ -4,7 +4,7 @@ export interface TimedStop {
   deltaMinutes: number | null
 }
 
-// docs/proposal/plan_gtfs_export_v2.md §4.3 — the trip's departure and arrival are authoritative.
+// docs/architecture/transit/gtfs-export.md (Times) — the trip's departure and arrival are authoritative.
 // Deltas are free-flow OSRM times, so they only give each locality's share of the trip: walking
 // them and forcing the arrival would pile the whole difference on the last leg.
 // Returns the seconds of each locality, in route order; null when the deltas are all zero.

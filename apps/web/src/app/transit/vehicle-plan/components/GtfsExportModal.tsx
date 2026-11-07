@@ -13,7 +13,7 @@ import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import { useToast } from '@/lib/toast-context'
 import { cn, extractError } from '@/lib/utils'
 
-// Whole GTFS feed of an operator for Goal (docs/proposal/plan_gtfs_export_v2.md). The preview is
+// GTFS feed of an operator and day type for Goal (docs/architecture/transit/gtfs-export.md). The preview is
 // mandatory: Goal keeps every load, so the report is read before the version is used up.
 
 const CONTEXT = 'gtfs_export_md'
