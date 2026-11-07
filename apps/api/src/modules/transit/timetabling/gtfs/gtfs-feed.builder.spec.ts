@@ -21,10 +21,10 @@ function route(id: string, overrides: Partial<GtfsRoute> = {}): GtfsRoute {
 function input(overrides: Partial<GtfsFeedInput> = {}): GtfsFeedInput {
   return {
     agency: { id: '1045', name: 'MTU', url: 'https://mtu', timezone: 'America/Cuiaba' },
-    routeType: 3, operatorAbbr: 'RAPIDO', version: 12, periodStart: '2026-11-03', periodEnd: '2026-11-30', includeBlocks: false,
+    routeType: 3, operatorAbbr: 'RAPIDO', periodStart: '2026-11-03', periodEnd: '2026-11-30', blockIdMode: 'none',
     routes: new Map([['r1', route('r1')]]),
     services: [{
-      dayType: { code: 'U', name: 'UTIL', pattern: { type: 'weekdays', days: [1, 2, 3, 4, 5] } }, dates: [], otherOperatorTrips: {},
+      dayType: { code: 'U', name: 'UTIL', pattern: { type: 'weekdays', days: [1, 2, 3, 4, 5] } }, version: 12, dates: [], otherOperatorTrips: {},
       blocks: [{ blockNumber: 7, trips: [{ routeId: 'r1', departureMinutes: 600, arrivalMinutes: 620 }] }],
     }],
     ...overrides,
@@ -96,8 +96,30 @@ describe('buildGtfsFeed', () => {
 
   it('leaves block_id out unless asked', () => {
     expect(buildGtfsFeed(input()).files.trips.fields).not.toContain('block_id')
-    const feed = buildGtfsFeed(input({ includeBlocks: true }))
+    const feed = buildGtfsFeed(input({ blockIdMode: 'all' }))
     expect(rows(feed, 'trips')[0].block_id).toBe('U_7')
+  })
+
+  describe('block_id of grouped trips only', () => {
+    const trip = (departureMinutes: number, bundleId?: string) => ({ routeId: 'r1', departureMinutes, arrivalMinutes: departureMinutes + 20, bundleId })
+    const feedOf = (trips: ReturnType<typeof trip>[]) => buildGtfsFeed(input({
+      blockIdMode: 'bundled',
+      services: [{ ...input().services[0], blocks: [{ blockNumber: 7, trips }] }],
+    }))
+    const ids = (feed: ReturnType<typeof buildGtfsFeed>) => rows(feed, 'trips').map(t => t.block_id)
+
+    it('gives each group its own id, by departure, and none to the trips between them', () => {
+      expect(ids(feedOf([trip(900, 'b'), trip(600, 'a'), trip(700), trip(630, 'a'), trip(930, 'b')])))
+        .toEqual(['U_7_1', 'U_7_1', undefined, 'U_7_2', 'U_7_2'])
+    })
+
+    it('skips a group of a single trip, without using up a number', () => {
+      expect(ids(feedOf([trip(600, 'solo'), trip(700, 'a'), trip(730, 'a')]))).toEqual([undefined, 'U_7_1', 'U_7_1'])
+    })
+
+    it('leaves the column out when no trip has one', () => {
+      expect(feedOf([trip(600)]).files.trips.fields).not.toContain('block_id')
+    })
   })
 
   it('maps directions to 0/1', () => {

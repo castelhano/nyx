@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { Prisma } from '@prisma/client'
 import archiver from 'archiver'
 import {
-  gtfsExportRequestSchema,
+  gtfsExportRequestSchema, gtfsFileName,
   type DayTypePattern, type GtfsOptions, type GtfsPreview, type GtfsReport,
 } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
@@ -19,9 +19,9 @@ interface ScopeMetadata { organName?: string; agencyId?: string; agencyUrl?: str
 interface ResolvedExport {
   request: ReturnType<typeof gtfsExportRequestSchema.parse>
   // a plan per day type; empty when blocked
-  plans:   { dayTypeId: string; vehiclePlanId: string }[]
-  abbr:    string
-  feed:    GtfsFeed
+  plans:    { dayTypeId: string; vehiclePlanId: string; version: number }[]
+  fileName: string
+  feed:     GtfsFeed
 }
 
 // docs/proposal/plan_gtfs_export_v2.md — a whole feed of one operator, generated from the plans
@@ -34,23 +34,23 @@ export class GtfsExportService {
   ) {}
 
   async options(): Promise<GtfsOptions> {
-    const [operators, dayTypes] = await Promise.all([
+    const [operators, dayTypes, latest] = await Promise.all([
       this.prisma.scopeOperator.findMany({
         orderBy: { abbr: 'asc' },
-        select: {
-          id: true, abbr: true,
-          scope:       { select: { name: true } },
-          gtfsExports: { orderBy: { version: 'desc' }, take: 1, select: { version: true } },
-        },
+        select:  { id: true, abbr: true, scope: { select: { name: true } } },
       }),
       this.prisma.dayType.findMany({ orderBy: { sortOrder: 'asc' }, select: { id: true, code: true, name: true, pattern: true } }),
+      this.prisma.gtfsExportDayType.groupBy({ by: ['scopeOperatorId', 'dayTypeId'], _max: { version: true } }),
     ])
 
     return {
       // no pattern (a JSON null here) means no dates to put in the calendar
       dayTypes:  dayTypes.filter(d => d.pattern).map(({ id, code, name }) => ({ id, code, name })),
       operators: operators.map(o => ({
-        id: o.id, abbr: o.abbr, scopeName: o.scope.name, nextVersion: (o.gtfsExports[0]?.version ?? 0) + 1,
+        id: o.id, abbr: o.abbr, scopeName: o.scope.name,
+        nextVersions: Object.fromEntries(
+          latest.filter(l => l.scopeOperatorId === o.id).map(l => [l.dayTypeId, (l._max.version ?? 0) + 1]),
+        ),
       })),
     }
   }
@@ -61,11 +61,12 @@ export class GtfsExportService {
       lines:      feed.lines,
       report:     feed.report,
       serviceIds: [...new Set(feed.files.trips?.rows.map(r => r.service_id))],
+      blockTrips: feed.files.trips?.rows.filter(r => r.block_id).length ?? 0,
     }
   }
 
   async export(body: unknown): Promise<{ fileName: string; zip: Buffer }> {
-    const { request, plans, abbr, feed } = await this.resolve(body)
+    const { request, plans, fileName, feed } = await this.resolve(body)
     const { blockers, errors } = feed.report
 
     if (blockers.length) throw new BadRequestException(blockers.join(' '))
@@ -77,19 +78,18 @@ export class GtfsExportService {
       await this.prisma.gtfsExport.create({
         data: {
           scopeOperatorId: request.scopeOperatorId,
-          version:         request.version,
           periodStart:     toDbDate(request.periodStart),
           periodEnd:       toDbDate(request.periodEnd),
-          plans,
           report:          feed.report as unknown as Prisma.InputJsonValue,
+          dayTypes:        { create: plans.map(p => ({ ...p, scopeOperatorId: request.scopeOperatorId })) },
         },
       })
     } catch (e) {
-      if ((e as { code?: string }).code === 'P2002') throw new ConflictException(`A versão ${request.version} já foi usada por este operador`)
+      if ((e as { code?: string }).code === 'P2002') throw new ConflictException('Essa versão já foi usada por este operador neste tipo de dia')
       throw e
     }
 
-    return { fileName: `gtfs-${abbr}-V${String(request.version).padStart(3, '0')}.zip`, zip }
+    return { fileName, zip }
   }
 
   private async resolve(body: unknown): Promise<ResolvedExport> {
@@ -103,10 +103,13 @@ export class GtfsExportService {
     })
     const metadata = (operator.scope.serviceMetadata ?? {}) as ScopeMetadata
 
+    const versions = new Map(request.dayTypes.map(d => [d.id, d.version]))
+    const dayTypeIds = [...versions.keys()]
     const [dayTypes, published] = await Promise.all([
-      this.prisma.dayType.findMany({ where: { id: { in: request.dayTypeIds } }, orderBy: { sortOrder: 'asc' } }),
-      loadPublishedPlans(this.prisma, operator.scopeId, request.dayTypeIds),
+      this.prisma.dayType.findMany({ where: { id: { in: dayTypeIds } }, orderBy: { sortOrder: 'asc' } }),
+      loadPublishedPlans(this.prisma, operator.scopeId, dayTypeIds),
     ])
+    const fileName = gtfsFileName(operator.abbr, dayTypes.map(d => ({ code: d.code, version: versions.get(d.id)! })))
 
     const blockers: string[] = []
     if (!metadata.agencyId || !metadata.agencyUrl || !metadata.agencyTimezone) {
@@ -123,18 +126,19 @@ export class GtfsExportService {
       if (!dayType.pattern) blockers.push(`${dayType.name}: tipo de dia sem padrão de dias.`)
       if (!inForce) blockers.push(`${dayType.name}: nenhum plano em vigor em ${request.periodStart}.`)
       if (next) blockers.push(`${dayType.name}: outro plano entra em vigor em ${dayOf(next.validFrom!)}, dentro do período.`)
-      if (inForce) plans.push({ dayTypeId: dayType.id, vehiclePlanId: inForce.id })
+      if (inForce) plans.push({ dayTypeId: dayType.id, vehiclePlanId: inForce.id, version: versions.get(dayType.id)! })
     }
 
     if (blockers.length) {
-      return { request, plans: [], abbr: operator.abbr, feed: { files: {}, lines: [], report: emptyReport(blockers) } }
+      return { request, plans: [], fileName, feed: { files: {}, lines: [], report: emptyReport(blockers) } }
     }
 
-    const services: GtfsService[] = await Promise.all(plans.map(async ({ dayTypeId, vehiclePlanId }) => {
+    const services: GtfsService[] = await Promise.all(plans.map(async ({ dayTypeId, vehiclePlanId, version }) => {
       const dayType = dayTypes.find(d => d.id === dayTypeId)!
       const pattern = dayType.pattern as unknown as DayTypePattern
       return {
         dayType: { code: dayType.code, name: dayType.name, pattern: pattern },
+        version,
         dates:   pattern.type === 'weekdays' ? [] : this.datesOf(pattern, request.periodStart, request.periodEnd),
         ...await loadOperatorTrips(this.prisma, vehiclePlanId, operator.branchId),
       }
@@ -151,15 +155,14 @@ export class GtfsExportService {
       },
       routeType:     metadata.routeType ?? DEFAULT_ROUTE_TYPE,
       operatorAbbr:  operator.abbr,
-      version:       request.version,
       periodStart:   request.periodStart,
       periodEnd:     request.periodEnd,
-      includeBlocks: request.includeBlocks,
+      blockIdMode:   request.blockIdMode,
       services,
       routes:        await loadRoutes(this.prisma, routeIds),
     })
 
-    return { request, plans, abbr: operator.abbr, feed }
+    return { request, plans, fileName, feed }
   }
 
   private datesOf(pattern: DayTypePattern, start: string, end: string): string[] {

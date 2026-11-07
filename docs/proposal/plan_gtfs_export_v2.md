@@ -204,7 +204,7 @@ comparação de traçados da seção 2.3 não foi refeita linha a linha.
 | `stops.txt` | só `isDepot=false` | **toda localidade usada** | 032/033/034 saem da garagem |
 | `route_id` | `TransitLine.id` | **código externo com fallback em `code`** | o Goal identifica as linhas por código |
 | `service_id` | `dayTypeId` | **`<operador>_<dia>_V<versão>`** (`RAPIDO_UTIL_V012`) | o Goal exige nome único por carga, e a versão facilita achar a última |
-| `block_id` | sempre | **opção, desligada por padrão** | hoje o feed não tem blocos (D3) |
+| `block_id` | sempre | **opção: nenhum, somente agrupados (padrão) ou todos** | amarra só as viagens de um grupo, sem prender o Goal aos blocos inteiros (D3) |
 | UI | botão sem modal | **modal com opções e prévia** | agora há operador e período |
 | Módulo | `network/scope/gtfs` | `timetabling/gtfs` | lê planos de vários tipos de dia |
 
@@ -244,7 +244,8 @@ aceitar e houver uso.
 | `trip_id` | `<DayType.code>_<route_id>_<blockNumber>_<posição da viagem no bloco, por horário>` | `U_A20_12_3` |
 | `trip_short_name` | igual ao `trip_id` | como no feed atual |
 | `direction_id` | `OUTBOUND`/`CIRCULAR` = 0, `INBOUND` = 1 | |
-| `block_id` (opcional) | `<DayType.code>_<blockNumber>` | `U_12` |
+| `block_id` (todos) | `<DayType.code>_<blockNumber>` | `U_12` |
+| `block_id` (somente agrupados) | `<DayType.code>_<blockNumber>_<grupo no bloco>`; grupo de uma viagem fica sem | `U_12_1` |
 
 `trip_id` é único porque a posição é única dentro do bloco, e ela vem da ordem por `departureMinutes`,
 não de `sequence` (seção 2.8). Ele não é estável entre versões do plano, o que basta enquanto o Goal receber sempre o feed inteiro. A Etapa 0 confirma isso.
@@ -260,24 +261,33 @@ A versão é persistida numa tabela de histórico de exportações, uma linha po
 model GtfsExport {
   id              String   @id @default(uuid())
   scopeOperatorId String
-  version         Int
   periodStart     DateTime @db.Date
   periodEnd       DateTime @db.Date
-  // vehicle plan used per day type: [{ dayTypeId, vehiclePlanId }]
-  plans           Json
   // output report, section 4.6
   report          Json?
   createdAt       DateTime @default(now())
+  dayTypes        GtfsExportDayType[]
+}
 
-  @@unique([scopeOperatorId, version])
+model GtfsExportDayType {
+  id              String @id @default(uuid())
+  gtfsExportId    String
+  scopeOperatorId String
+  dayTypeId       String
+  vehiclePlanId   String
+  version         Int
+
+  @@unique([scopeOperatorId, dayTypeId, version])
 }
 ```
 
-- **Uma versão por operador, por carga.** Um feed com vários tipos de dia usa a mesma versão em todos
-  (`RAPIDO_UTIL_V012`, `RAPIDO_SAB_V012`), então a versão identifica a carga. Se a carga levar só um
-  tipo de dia, os outros pulam o número, sem problema.
+- **Uma versão por operador e tipo de dia.** Cada tipo de dia conta as próprias cargas, porque os
+  planos mudam em ritmos diferentes (`RAPIDO_UTIL_V012`, `RAPIDO_SABADO_V004`). A versão conta cargas,
+  não alterações do plano: reenviar um dia sem mudança pede número novo, porque o Goal recusa nome
+  repetido. Cada carga leva um único tipo de dia, porque é o que o Goal espera, e o arquivo leva o
+  código e a versão dele (`gtfs-RAPIDO-U012.zip`).
 - **Só a geração final consome versão.** A prévia não grava nada.
-- **O modal sugere a última + 1, e o campo é editável.** Isso cobre a troca do banco de teste pelo
+- **O modal sugere a última + 1 de cada tipo de dia, e os campos são editáveis.** Isso cobre a troca do banco de teste pelo
   oficial, um serviço com versão já usada no Goal ou uma carga recusada.
 - **Serve de rastreio:** mostra qual plano virou qual versão. Sem `userId`: o projeto pode usar a
   auditoria padrão, se existir, ao implementar.
@@ -319,8 +329,8 @@ antigos ficam no catálogo, sem uso nas novas rotas.
 
 ### 4.5 Escolha do que exportar
 
-Entradas: escopo, operador, período (início e fim) e tipos de dia. Padrão: todos os tipos de dia que
-tenham plano em vigor.
+Entradas: escopo, operador, período (início e fim) e um tipo de dia. O modal abre sem nenhum marcado:
+cada carga é uma escolha, e consome a versão do dia.
 
 1. Para cada tipo de dia, pegar o plano não-`DRAFT` em vigor no início do período.
 2. Se outro plano entrar em vigor dentro do período, **bloquear** com aviso: um feed só representa
@@ -490,7 +500,7 @@ Loader, builder, `gtfs-times.ts` e CSV, com specs para:
 
 ### Etapa 5 — Interface
 
-Modal com escopo, operador, período, tipos de dia, versão (sugerida e editável) e opção de
+Modal com escopo, operador, período, tipos de dia, versão (sugerida e editável) e modo de
 `block_id`, mais prévia por linha, relatório e download.
 
 ### Etapa 6 — Validação ponta a ponta
@@ -520,7 +530,7 @@ Etapa 0 → (1 e 2 em paralelo) → 3 → 4 → 5 → 6.
 
 | # | Pergunta | Recomendação |
 |---|---|---|
-| D3 | **`block_id` ligado ou não?** | Desligado até a Etapa 0 mostrar o efeito. 31 dos 83 blocos da RAPIDO cruzam linhas, então ligar pode amarrar o Goal |
+| D3 | **`block_id` ligado ou não?** | Decidido: padrão em somente agrupados. 31 dos 83 blocos da RAPIDO cruzam linhas, então enviar todos pode amarrar o Goal |
 | D9 | **Rotas com o mesmo par de locais e km diferentes:** 031 × 309 (10,8 e 16,0 km; 8,1 e 11,8 km) e 311 × 311B (13,1 e 14,1 km; 15,4 e 15,9 km). O teste da A20 não cobre duas rotas do mesmo par no mesmo feed | Conferir na carga completa. Se uma herdar o km da outra, criar localidade própria no nyx em uma das duas |
 | D6 | **Exportar plano em rascunho?** A decisão da v1 é "apenas ativos", mas testar um rascunho no Goal antes de ativar pode ser útil | Manter só planos em vigor. Rever se fizer falta |
 

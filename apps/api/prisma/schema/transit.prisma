@@ -347,6 +347,7 @@ model DayType {
   calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
   serviceRequirements          LineServiceRequirement[]
   dailyOperations              DailyOperation[]
+  gtfsExports                  GtfsExportDayType[]
 
   @@map("transit_day_types")
 }
@@ -610,24 +611,38 @@ model ScopeOperator {
   @@map("transit_scope_operators")
 }
 
-// One downloaded GTFS feed (docs/proposal/plan_gtfs_export_v2.md). `version` goes into the
-// service_id: Goal refuses a repeated name, and it's how the latest load is told apart there.
+// One downloaded GTFS feed (docs/proposal/plan_gtfs_export_v2.md).
 model GtfsExport {
   id              String   @id @default(uuid())
   scopeOperatorId String
-  version         Int
   periodStart     DateTime @db.Date
   periodEnd       DateTime @db.Date
-  // [{ dayTypeId, vehiclePlanId }] — which plan became this version, per day type
-  plans           Json
   // GtfsReport (packages/schemas/transit/gtfs-export.schema.ts) as of the download
   report          Json
   createdAt       DateTime @default(now())
 
-  scopeOperator ScopeOperator @relation(fields: [scopeOperatorId], references: [id], onDelete: Cascade)
+  scopeOperator ScopeOperator       @relation(fields: [scopeOperatorId], references: [id], onDelete: Cascade)
+  dayTypes      GtfsExportDayType[]
 
-  @@unique([scopeOperatorId, version])
   @@map("transit_gtfs_exports")
+}
+
+// A day type in a feed and the plan that became this version. Each day type of an operator counts
+// its own loads: `version` goes into the service_id, Goal refuses a repeated name, and it's how the
+// latest load is told apart there.
+model GtfsExportDayType {
+  id              String @id @default(uuid())
+  gtfsExportId    String
+  scopeOperatorId String
+  dayTypeId       String
+  vehiclePlanId   String
+  version         Int
+
+  gtfsExport GtfsExport @relation(fields: [gtfsExportId], references: [id], onDelete: Cascade)
+  dayType    DayType    @relation(fields: [dayTypeId], references: [id])
+
+  @@unique([scopeOperatorId, dayTypeId, version])
+  @@map("transit_gtfs_export_day_types")
 }
 
 // Join table — which lines are materialized in a VehiclePlan, plus per-plan schedule

@@ -13,7 +13,7 @@ export async function loadOperatorTrips(
     select: {
       blockNumber: true,
       branchId:    true,
-      blockTrips:  { select: { trip: { select: { routeId: true, departureMinutes: true, arrivalMinutes: true, route: { select: { line: { select: { code: true } } } } } } } },
+      blockTrips:  { select: { trip: { select: { routeId: true, departureMinutes: true, arrivalMinutes: true, bundleId: true, route: { select: { line: { select: { code: true } } } } } } } },
     },
   })
 
@@ -29,7 +29,7 @@ export async function loadOperatorTrips(
     otherOperatorTrips,
     blocks: blocks.filter(b => b.branchId === branchId).map(b => ({
       blockNumber: b.blockNumber,
-      trips: b.blockTrips.map(({ trip }) => ({ routeId: trip.routeId, departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes })),
+      trips: b.blockTrips.map(({ trip }) => ({ routeId: trip.routeId, departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes, bundleId: trip.bundleId })),
     })),
   }
 }

@@ -1,4 +1,4 @@
-import { gtfsServiceId, resolveExternalCode, type GtfsLineSummary, type GtfsReport } from '@nyx/schemas'
+import { gtfsServiceId, resolveExternalCode, type GtfsBlockIdMode, type GtfsLineSummary, type GtfsReport } from '@nyx/schemas'
 import { ROUTE_COLOR_PALETTE } from '@nyx/types'
 import type { GtfsTable } from './gtfs-csv'
 import { gtfsTime, localityTimes } from './gtfs-times'
@@ -22,11 +22,19 @@ export interface GtfsRoute {
   stops:     GtfsRouteStop[]
 }
 
+export interface GtfsBlockTrip {
+  routeId:          string
+  departureMinutes: number
+  arrivalMinutes:   number
+  bundleId?:        string | null
+}
+
 export interface GtfsService {
   dayType: { code: string; name: string; pattern: GtfsPattern }
+  version: number
   // month_window day types: their days in the period (YYYY-MM-DD)
   dates:   string[]
-  blocks:  { blockNumber: number; trips: { routeId: string; departureMinutes: number; arrivalMinutes: number }[] }[]
+  blocks:  { blockNumber: number; trips: GtfsBlockTrip[] }[]
   // line code → trips of the line run by other operators in this plan
   otherOperatorTrips: Record<string, number>
 }
@@ -35,10 +43,9 @@ export interface GtfsFeedInput {
   agency:        { id: string; name: string; url: string; timezone: string }
   routeType:     number
   operatorAbbr:  string
-  version:       number
   periodStart:   string
   periodEnd:     string
-  includeBlocks: boolean
+  blockIdMode:   GtfsBlockIdMode
   services:      GtfsService[]
   routes:        Map<string, GtfsRoute>
 }
@@ -105,12 +112,29 @@ function routesTable(input: GtfsFeedInput, usedLines: Map<string, GtfsRoute['lin
   return { fields: ['route_id', 'agency_id', 'route_short_name', 'route_long_name', 'route_type', 'route_color'], rows }
 }
 
+// A trip group is a block of its own: two groups on one vehicle don't tie together what runs
+// between them. A group of a single trip has nothing to link. `trips` in departure order.
+function tripBlockIds(mode: GtfsBlockIdMode, blockId: string, trips: GtfsBlockTrip[]): (string | undefined)[] {
+  if (mode === 'none') return trips.map(() => undefined)
+  if (mode === 'all')  return trips.map(() => blockId)
+
+  const sizes = new Map<string, number>()
+  for (const { bundleId } of trips) {
+    if (bundleId) sizes.set(bundleId, (sizes.get(bundleId) ?? 0) + 1)
+  }
+  const groups = [...sizes].filter(([, size]) => size > 1).map(([bundleId]) => bundleId)
+  return trips.map(t => {
+    const group = groups.indexOf(t.bundleId ?? '')
+    return group === -1 ? undefined : `${blockId}_${group + 1}`
+  })
+}
+
 function calendarTables(input: GtfsFeedInput): Record<string, GtfsTable> {
   const calendar: Record<string, string>[] = []
   const dates:    Record<string, string>[] = []
 
   for (const service of input.services) {
-    const serviceId = gtfsServiceId(input.operatorAbbr, service.dayType.name, input.version)
+    const serviceId = gtfsServiceId(input.operatorAbbr, service.dayType.name, service.version)
     const { pattern } = service.dayType
     if (pattern.type === 'weekdays') {
       calendar.push({
@@ -147,12 +171,13 @@ export function buildGtfsFeed(input: GtfsFeedInput): GtfsFeed {
   const lines      = new Map<string, GtfsLineSummary>()
 
   for (const service of input.services) {
-    const serviceId = gtfsServiceId(input.operatorAbbr, service.dayType.name, input.version)
+    const serviceId = gtfsServiceId(input.operatorAbbr, service.dayType.name, service.version)
     const tripsByLine = new Map<string, number>()
 
     for (const block of service.blocks) {
       // departure order, not BlockTrip.sequence: a trip moved between blocks goes to the end of it
-      const ordered = [...block.trips].sort((a, b) => a.departureMinutes - b.departureMinutes)
+      const ordered  = [...block.trips].sort((a, b) => a.departureMinutes - b.departureMinutes)
+      const blockIds = tripBlockIds(input.blockIdMode, `${service.dayType.code}_${block.blockNumber}`, ordered)
 
       ordered.forEach((trip, i) => {
         const route = compile(trip.routeId)
@@ -173,7 +198,7 @@ export function buildGtfsFeed(input: GtfsFeedInput): GtfsFeed {
           trip_short_name: tripId,
           direction_id:    DIRECTION_ID[route.route.direction],
           shape_id:        route.route.id,
-          ...(input.includeBlocks ? { block_id: `${service.dayType.code}_${block.blockNumber}` } : {}),
+          ...(blockIds[i] ? { block_id: blockIds[i]! } : {}),
         })
 
         route.stops.filter(s => s.locality).forEach((stop, position) => {
@@ -227,7 +252,7 @@ export function buildGtfsFeed(input: GtfsFeedInput): GtfsFeed {
         })),
       },
       trips: {
-        fields: ['route_id', 'service_id', 'trip_id', 'trip_short_name', 'direction_id', 'shape_id', ...(input.includeBlocks ? ['block_id'] : [])],
+        fields: ['route_id', 'service_id', 'trip_id', 'trip_short_name', 'direction_id', 'shape_id', ...(trips.some(t => t.block_id) ? ['block_id'] : [])],
         rows:   trips,
       },
     },

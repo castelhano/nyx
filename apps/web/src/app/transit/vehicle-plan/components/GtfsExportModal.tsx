@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { GtfsExportRequest, GtfsOptions, GtfsPreview } from '@nyx/schemas'
+import { gtfsFileName, type GtfsBlockIdMode, type GtfsExportRequest, type GtfsOptions, type GtfsPreview } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { apiFetch } from '@/lib/auth'
 import { useConfirm } from '@/lib/confirm-context'
 import { Icons } from '@/lib/icons'
@@ -65,18 +64,20 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
 
   // null = not chosen yet, falls back to the default from the options
   const [operatorChoice, setOperatorId] = useState<string | null>(null)
-  const [dayTypeChoice, setDayTypeIds]  = useState<string[] | null>(null)
-  const [versionChoice, setVersion]     = useState<number | null>(null)
+  // Goal takes one day type per load; none picked at first, each load is a choice
+  const [dayTypeIds, setDayTypeIds]     = useState<string[]>([])
+  const [versionChoice, setVersions]    = useState<Record<string, number>>({})
   const [periodStart, setPeriodStart]   = useState(() => daysAhead(0))
   const [periodEnd, setPeriodEnd]       = useState(() => daysAhead(DEFAULT_PERIOD_DAYS))
-  const [includeBlocks, setIncludeBlocks] = useState(false)
+  const [blockIdMode, setBlockIdMode] = useState<GtfsBlockIdMode>('bundled')
   const [preview, setPreview] = useState<GtfsPreview | null>(null)
   const [busy, setBusy]       = useState(false)
 
   const operatorId = operatorChoice ?? options?.operators[0]?.id ?? ''
   const operator   = options?.operators.find(o => o.id === operatorId)
-  const dayTypeIds = dayTypeChoice ?? options?.dayTypes.map(d => d.id) ?? []
-  const version    = versionChoice ?? operator?.nextVersion ?? 1
+  const dayTypes   = (options?.dayTypes ?? [])
+    .filter(d => dayTypeIds.includes(d.id))
+    .map(d => ({ ...d, version: versionChoice[d.id] ?? operator?.nextVersions[d.id] ?? 1 }))
 
   // any parameter change invalidates what was previewed
   function changeParam(apply: () => void) {
@@ -84,7 +85,10 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
     setPreview(null)
   }
 
-  const request: GtfsExportRequest = { scopeOperatorId: operatorId, periodStart, periodEnd, dayTypeIds, version, includeBlocks }
+  const request: GtfsExportRequest = {
+    scopeOperatorId: operatorId, periodStart, periodEnd, blockIdMode,
+    dayTypes: dayTypes.map(({ id, version }) => ({ id, version })),
+  }
 
   async function handlePreview() {
     setBusy(true)
@@ -124,7 +128,7 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
       }
       const url = URL.createObjectURL(await res.blob())
       const a   = Object.assign(document.createElement('a'), {
-        href: url, download: `gtfs-${operator?.abbr}-V${String(version).padStart(3, '0')}.zip`,
+        href: url, download: gtfsFileName(operator?.abbr ?? '', dayTypes),
       })
       document.body.appendChild(a)
       a.click()
@@ -144,7 +148,7 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
   })
 
   function toggleDayType(id: string) {
-    changeParam(() => setDayTypeIds(dayTypeIds.includes(id) ? dayTypeIds.filter(d => d !== id) : [...dayTypeIds, id]))
+    changeParam(() => setDayTypeIds(dayTypeIds.includes(id) ? [] : [id]))
   }
 
   const totals = preview?.lines.reduce((sum, l) => ({ trips: sum.trips + l.trips, km: sum.km + l.km }), { trips: 0, km: 0 })
@@ -163,7 +167,7 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div className="grid grid-cols-[8rem_1fr] items-center gap-x-3 gap-y-3 text-sm">
             <label className="font-medium">Operador</label>
-            <Select size="sm" value={operatorId} onChange={e => changeParam(() => { setOperatorId(e.target.value); setVersion(null) })} wrapperClassName="max-w-xs">
+            <Select size="sm" value={operatorId} onChange={e => changeParam(() => { setOperatorId(e.target.value); setVersions({}) })} wrapperClassName="max-w-xs">
               {options?.operators.map(o => <option key={o.id} value={o.id}>{o.abbr} · {o.scopeName}</option>)}
             </Select>
 
@@ -174,7 +178,7 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
               <Input size="sm" type="date" value={periodEnd} onChange={e => changeParam(() => setPeriodEnd(e.target.value))} className="max-w-40" />
             </div>
 
-            <label className="font-medium">Tipos de dia</label>
+            <label className="font-medium">Tipo de dia</label>
             <div className="flex flex-wrap gap-2">
               {options?.dayTypes.map(d => (
                 <button
@@ -191,21 +195,36 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
 
-            <label className="font-medium">Versão</label>
-            <Input
-              size="sm"
-              type="number"
-              min={1}
-              value={version}
-              onChange={e => changeParam(() => setVersion(Math.max(1, Number(e.target.value) || 1)))}
-              className="max-w-24"
-            />
+            {dayTypes.length > 0 && (
+              <>
+                <label className="font-medium">Versão</label>
+                <div className="flex flex-wrap gap-4">
+                  {dayTypes.map(d => (
+                    <label key={d.id} className="flex items-center gap-2 text-muted-foreground">
+                      {d.name}
+                      <Input
+                        size="sm"
+                        type="number"
+                        min={1}
+                        value={d.version}
+                        onChange={e => {
+                          const version = Math.max(1, Number(e.target.value) || 1)
+                          changeParam(() => setVersions(prev => ({ ...prev, [d.id]: version })))
+                        }}
+                        className="w-20"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
 
-            <label className="font-medium">Blocos</label>
-            <div className="flex items-center gap-2">
-              <Switch checked={includeBlocks} onToggle={() => changeParam(() => setIncludeBlocks(v => !v))} />
-              <span className="text-muted-foreground">Enviar block_id</span>
-            </div>
+            <label className="font-medium">Enviar block_id</label>
+            <Select size="sm" value={blockIdMode} onChange={e => changeParam(() => setBlockIdMode(e.target.value as GtfsBlockIdMode))} wrapperClassName="max-w-xs">
+              <option value="none">Nenhum</option>
+              <option value="bundled">Somente agrupados</option>
+              <option value="all">Todos</option>
+            </Select>
           </div>
 
           {preview && (
@@ -218,7 +237,7 @@ export function GtfsExportModal({ onClose }: { onClose: () => void }) {
                 <>
                   <p className="text-sm">
                     <span className="font-medium">{preview.serviceIds.join(', ')}</span>
-                    <span className="text-muted-foreground"> · {totals?.trips} viagens · {totals?.km.toFixed(1)} km</span>
+                    <span className="text-muted-foreground"> · {totals?.trips} viagens · {totals?.km.toFixed(1)} km · {preview.blockTrips} com block_id</span>
                   </p>
                   <table className="w-full text-sm">
                     <thead>
