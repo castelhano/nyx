@@ -6,7 +6,6 @@
 
 
 ## Alto
-[ ] Versionamento do GTFS, entendo que cada daytype deveria ter seu versionamento para ficar consistente
 [ ] Edição da escala diária
 
 ## Medio
@@ -14,7 +13,6 @@
 
 ## Baixo
 [ ] Separar conceito de preparo e conclusao de servico
-[-] Converter exports para GTFS format (plano em docs/proposal/plan_gtfs_export_v1.md)
 [-] Unificar metodo de geração de CSV entre listpages (fragmentado em cada pagina hoje)
 
 
