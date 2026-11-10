@@ -7,6 +7,9 @@
 
 ## Alto
 [ ] Edição da escala diária
+[ ] Revisar "carga semanal" mostrada na escala diaria (geração semanal), mostra "44:18/49:00" como chegou na conta que um condutor tem 49:00 semanais? 
+[ ] Painel de escala, retirar todas as analises de dias materializados, e criar visao de distribuição de habilitação / preferencias de linhas
+[ ] Nos solver, adicionar opção de continuar a partir do cenário atual
 [ ] Demanda linha, registrar data de atualizaça+ão e algum eventual metadado relevante
 ## Medio
 [ ] Tipar parâmetro db/tx (PrismaService | Prisma.TransactionClient) nos services/utils que hoje usam `any` pra aceitar os dois — eslint tem no-unsafe-* desligado em apps/api por causa disso (eslint.config.mjs)
