@@ -7,7 +7,7 @@
 
 ## Alto
 [ ] Edição da escala diária
-
+[ ] Demanda linha, registrar data de atualizaça+ão e algum eventual metadado relevante
 ## Medio
 [ ] Tipar parâmetro db/tx (PrismaService | Prisma.TransactionClient) nos services/utils que hoje usam `any` pra aceitar os dois — eslint tem no-unsafe-* desligado em apps/api por causa disso (eslint.config.mjs)
 
