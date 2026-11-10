@@ -3,7 +3,9 @@
   "compilerOptions": {
     "noEmit": false,
     "rootDir": "src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // dev resolves @nyx/* to the package sources; the build takes their compiled dist
+    "paths": {}
   },
   "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }

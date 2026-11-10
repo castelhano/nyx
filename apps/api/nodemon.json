@@ -1,7 +1,14 @@
 {
-  "watch": ["src", "../../packages/schemas", "../../packages/types"],
+  "watch": [
+    "src",
+    "../../packages/schemas",
+    "../../packages/types"
+  ],
   "ext": "ts,json",
-  "ignore": ["src/**/*.spec.ts"],
+  "ignore": [
+    "src/**/*.spec.ts",
+    "../../packages/*/dist"
+  ],
   "exec": "node -r @swc-node/register -r tsconfig-paths/register src/main.ts",
   "stdin": false
 }

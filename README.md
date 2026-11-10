@@ -343,7 +343,7 @@ sudo apt install libreoffice
 | Command      | Description                              |
 |--------------|------------------------------------------|
 | `pnpm dev`   | Start all apps in development mode       |
-| `pnpm build` | Not usable yet: it also runs the API's `nest build`, which fails (see [Production](#production)) |
+| `pnpm build` | Build the shared packages, the API and the web for production (see [Production](#production)) |
 | `pnpm lint`  | Run the linter across all workspaces     |
 
 ### API (`apps/api/`)
@@ -360,6 +360,8 @@ Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
 | `pnpm db:export-transit` | Export the transit cadastro tables to `prisma/fixtures/transit.json` |
 | `pnpm db:import-transit` | Import `prisma/fixtures/transit.json` back into the database |
 | `pnpm db:reset`          | Destructive: wipe the database, reapply migrations, and restore all seed data + the transit fixture |
+| `pnpm build`             | Compile the API to `dist/` (needs the shared packages built; the root `pnpm build` does it) |
+| `pnpm start`             | Run the compiled API (`node dist/main.js`) |
 
 > `db:migrate` chains `prisma migrate dev && prisma generate` because Prisma 7 no longer runs `generate` automatically after migrations.
 
@@ -372,12 +374,18 @@ pnpm install --frozen-lockfile
 cd apps/api
 pnpm exec prisma migrate deploy   # applies pending migrations, never creates new ones
 pnpm db:generate                  # Prisma client is gitignored, always generated on the host
-cd ../web
-pnpm build                        # next build; every page is server-rendered on demand
+cd ../..
+pnpm build                        # packages, then API and web (Turbo orders them)
 ```
 
-- **Web:** run `pnpm exec next start` from `apps/web/`.
-- **API:** there is no compiled build. `nest build` fails, because `@nyx/schemas` and `@nyx/types` are TypeScript sources outside the API's `rootDir`, so the API runs from its sources like in development: `node -r @swc-node/register -r tsconfig-paths/register src/main.ts` from `apps/api/`.
+Then run, each from its app folder:
+
+| App | Command | Runs |
+|-----|---------|------|
+| API | `pnpm start` (`apps/api/`) | `node dist/main.js`. Run it from `apps/api/`, since uploads are resolved from the working directory |
+| Web | `pnpm start` (`apps/web/`) | `next start`; every page is server-rendered on demand |
+
+- **Shared packages:** `@nyx/schemas` and `@nyx/types` compile to `dist/` (CommonJS + `.d.ts`), which is what the API build and `node dist/main.js` load. In development nothing needs building: the API (nodemon, tsx scripts, vitest) and Next resolve `@nyx/*` to the package sources through `paths`, and `apps/api/tsconfig.build.json` clears those `paths` so the build takes the compiled packages.
 - **`/api`:** route it to the API through nginx or the load balancer and remove the rewrite in `apps/web/next.config.js`, which only exists for development.
 - **Never** run `db:migrate` (`migrate dev`) or `db:reset` in production.
 

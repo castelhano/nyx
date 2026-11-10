@@ -2,9 +2,10 @@
   "name": "@nyx/schemas",
   "version": "0.0.1",
   "private": true,
-  "main": "./index.ts",
-  "types": "./index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint ."
   },
   "dependencies": {
