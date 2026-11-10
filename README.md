@@ -8,7 +8,7 @@ Full-stack monorepo with NestJS (API) and Next.js (Web), managed via pnpm worksp
 nyx/
 ├── apps/
 │   ├── api/        # NestJS + Prisma 7 + PostgreSQL (backend)
-│   └── web/        # Next.js 14 + Tailwind (frontend)
+│   └── web/        # Next.js 16 + Tailwind (frontend)
 ├── packages/
 │   ├── schemas/    # Shared Zod schemas
 │   └── types/      # Shared TypeScript types
@@ -64,7 +64,7 @@ cd apps/api
 pnpm db:migrate
 ```
 
-> `db:migrate` runs `prisma migrate dev && prisma generate`. The generated client (`src/generated/prisma/`) is gitignored and must always be built locally — it is never committed to the repository.
+> `db:migrate` runs `prisma migrate dev && prisma generate` — development only; production uses `migrate deploy` (see [Production](#production)). The generated client (`src/generated/prisma/`) is gitignored and must always be built locally — it is never committed to the repository.
 
 ### 5. Seed the database
 
@@ -343,7 +343,7 @@ sudo apt install libreoffice
 | Command      | Description                              |
 |--------------|------------------------------------------|
 | `pnpm dev`   | Start all apps in development mode       |
-| `pnpm build` | Build all apps for production            |
+| `pnpm build` | Not usable yet: it also runs the API's `nest build`, which fails (see [Production](#production)) |
 | `pnpm lint`  | Run the linter across all workspaces     |
 
 ### API (`apps/api/`)
@@ -352,7 +352,7 @@ Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
 
 | Command                 | Description                                              |
 |--------------------------|-----------------------------------------------------------|
-| `pnpm db:migrate`        | Apply pending migrations and regenerate Prisma client      |
+| `pnpm db:migrate`        | Development only: create/apply migrations and regenerate Prisma client |
 | `pnpm db:push`           | Push schema changes without a migration file (prototyping/provider switch only) |
 | `pnpm db:generate`       | Regenerate the Prisma client after manual schema edits      |
 | `pnpm db:seed`           | Create the default admin account                           |
@@ -360,14 +360,31 @@ Run these from `apps/api/` or prefix with `pnpm --filter @nyx/api`.
 | `pnpm db:export-transit` | Export the transit cadastro tables to `prisma/fixtures/transit.json` |
 | `pnpm db:import-transit` | Import `prisma/fixtures/transit.json` back into the database |
 | `pnpm db:reset`          | Destructive: wipe the database, reapply migrations, and restore all seed data + the transit fixture |
-| `pnpm build`             | Compile NestJS for production                               |
 
 > `db:migrate` chains `prisma migrate dev && prisma generate` because Prisma 7 no longer runs `generate` automatically after migrations.
+
+---
+
+## Production
+
+```bash
+pnpm install --frozen-lockfile
+cd apps/api
+pnpm exec prisma migrate deploy   # applies pending migrations, never creates new ones
+pnpm db:generate                  # Prisma client is gitignored, always generated on the host
+cd ../web
+pnpm build                        # next build; every page is server-rendered on demand
+```
+
+- **Web:** run `pnpm exec next start` from `apps/web/`.
+- **API:** there is no compiled build. `nest build` fails, because `@nyx/schemas` and `@nyx/types` are TypeScript sources outside the API's `rootDir`, so the API runs from its sources like in development: `node -r @swc-node/register -r tsconfig-paths/register src/main.ts` from `apps/api/`.
+- **`/api`:** route it to the API through nginx or the load balancer and remove the rewrite in `apps/web/next.config.js`, which only exists for development.
+- **Never** run `db:migrate` (`migrate dev`) or `db:reset` in production.
 
 ---
 
 ## Tech stack
 
 - **Backend:** NestJS · Prisma ORM 7 · PostgreSQL · JWT · CASL (authorization)
-- **Frontend:** Next.js 14 · React 18 · Tailwind CSS · TanStack Query/Table · React Hook Form · Zod
+- **Frontend:** Next.js 16 · React 19 · Tailwind CSS 4 · TanStack Query/Table · React Hook Form · Zod
 - **Tooling:** pnpm workspaces · Turborepo · TypeScript 5
