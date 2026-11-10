@@ -2,7 +2,7 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 import { vehicleTypeSchema, VEHICLE_TYPE_LABELS } from './vehicle-type'
-import { lineExternalCodesSchema } from './plan-export/external-system'
+import { transitExternalCodesSchema } from './plan-export/external-system'
 
 const windowEntrySchema = z.object({
   from:            z.number().min(0).max(23.5).default(0).meta({ label: 'De',             min: 0, max: 23.5 }),
@@ -136,7 +136,7 @@ export const lineSchema = withMeta(
     }),
 
     // code of this line in each external system the plan is exported to — blank uses `code`
-    externalCodes: lineExternalCodesSchema,
+    externalCodes: transitExternalCodesSchema,
 
     notes: z.string().optional().meta({
       label:          'Observações',

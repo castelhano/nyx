@@ -77,3 +77,18 @@ export const updateTravelTimeSchema  = createTravelTimeSchema.partial()
 export type TravelTime          = z.infer<typeof travelTimeSchema>
 export type CreateTravelTimeDto = z.infer<typeof createTravelTimeSchema>
 export type UpdateTravelTimeDto = z.infer<typeof updateTravelTimeSchema>
+
+// Idle matrix export (docs/architecture/transit/osrm.md "Idle matrix export")
+export interface IdleMatrixLocality {
+  code: string
+  name: string
+}
+
+export interface IdleMatrixExport {
+  csv:  string
+  rows: number
+  // in the matrix, but no trip of a plan in force starts or ends there
+  omitted: IdleMatrixLocality[]
+  // depots exported with the nyx code, for lack of one in the requested code system
+  depotsWithoutCode: IdleMatrixLocality[]
+}

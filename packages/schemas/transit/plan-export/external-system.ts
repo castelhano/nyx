@@ -15,6 +15,11 @@ export const EXTERNAL_SYSTEM_LABEL: Record<ExternalSystem, string> = {
 export const EXTERNAL_CODE_SYSTEMS = ['GLOBUS', 'GOAL'] as const
 export type ExternalCodeSystem = typeof EXTERNAL_CODE_SYSTEMS[number]
 
+export const EXTERNAL_CODE_SYSTEM_LABEL: Record<ExternalCodeSystem, string> = {
+  GLOBUS: 'Globus',
+  GOAL:   'Goal',
+}
+
 const EXTERNAL_CODES_META = {
   label:          'Códigos Externos',
   widget:         'object-editor',
@@ -23,17 +28,19 @@ const EXTERNAL_CODES_META = {
   listVisibility: 'never',
 } as const
 
-const globusCode = z.string().max(20).optional().meta({ label: 'Globus' })
+const globusCode = z.string().max(20).optional().meta({ label: EXTERNAL_CODE_SYSTEM_LABEL.GLOBUS })
 
 // Per-system code of a record (TransitLocality, TransitLine) — one key per system, so the
 // object-editor renders one input each and no key is ever typed by hand. Blank falls back
 // to the record's own `code`.
 export const externalCodesSchema = z.object({ GLOBUS: globusCode }).optional().meta(EXTERNAL_CODES_META)
 
-// Lines also map to Goal; localities don't, there the GTFS stop_id is always the nyx code
-export const lineExternalCodesSchema = z.object({
+// Lines and localities also map to Goal: a line's code is the GTFS route_id; a locality's is
+// used by the idle matrix for depots (docs/architecture/transit/osrm.md). The GTFS stop_id is
+// always the nyx code.
+export const transitExternalCodesSchema = z.object({
   GLOBUS: globusCode,
-  GOAL:   z.string().max(20).optional().meta({ label: 'Goal' }),
+  GOAL:   z.string().max(20).optional().meta({ label: EXTERNAL_CODE_SYSTEM_LABEL.GOAL }),
 }).optional().meta(EXTERNAL_CODES_META)
 
 export type ExternalCodes = z.infer<typeof externalCodesSchema>

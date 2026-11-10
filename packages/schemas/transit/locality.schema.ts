@@ -2,7 +2,7 @@ import { z } from 'zod'
 import '../zod-meta'
 import { withMeta } from '../with-meta'
 import { vehicleTypeSchema } from './vehicle-type'
-import { externalCodesSchema } from './plan-export/external-system'
+import { transitExternalCodesSchema } from './plan-export/external-system'
 
 export const snapInfoSchema = z.object({
   lat:       z.number(),
@@ -94,7 +94,7 @@ export const localitySchema = withMeta(
     }),
 
     // code of this locality in each external system the plan is exported to — blank uses `code`
-    externalCodes: externalCodesSchema,
+    externalCodes: transitExternalCodesSchema,
 
     snapInfo: snapInfoSchema.nullable().optional().meta({ showInForm: false, listVisibility: 'never' }),
 

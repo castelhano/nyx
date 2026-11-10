@@ -119,6 +119,15 @@ None of this shows in the code. Tested on 2026-11-04, unless stated otherwise.
 
 ---
 
+## Idle matrix
+
+Goal takes the idle matrix as a separate load: a matrix is created in Goal by hand and the file is imported into it, so the file name doesn't matter. The export is generic, see [osrm.md](osrm.md#idle-matrix-export); for Goal, pick **Goal** as the depot codes.
+
+- Goal refuses a row whose place it doesn't have (`Parada inicial ausente`), and knows its depots by its own codes (`G1`, `G2`), kept in the locality's `externalCodes.GOAL`.
+- Checked on 2026-11-09 against the matrix built by hand (`AMTU_OC_V001`): the 3,906 pairs that remain are identical. The 254 dropped rows were the ones Goal refused, for Monte Sinai and Barreiro Branco, which have no trips.
+
+---
+
 ## Decisions
 
 - **Duration:** nyx's stands. Goal's first load came from Globus, where a trip ends when the next starts, and nyx normalizes that on purpose, leaving at least 5 minutes.
@@ -130,6 +139,8 @@ None of this shows in the code. Tested on 2026-11-04, unless stated otherwise.
 
 ## Open
 
+- **Depot as place and depot:** the matrix has no pair between `G1` and `A0318-001`, the same garage under its two codes, since the matrix has no row from a locality to itself. Check whether Goal asks for it.
+- **380 route `1590`:** Goal's support mentioned a missing shape for it. It's Goal's id for `380_2_2`, defined with its trace in the problem the engine received, and every trip of the feed has its shape. Waiting for details.
 - **Routes with the same pair of places and different km:** 031 × 309 and 311 × 311B. The A20 test doesn't cover two routes of one pair in the same feed, so check it on the full load. If one inherits the other's km, give one of them its own locality in nyx.
 - **`block_id` in Goal:** the effect on schedule composition was never tested.
 - **End-to-end test:** change a line's timetable and another's route, generate, import, and check the other lines stay intact.

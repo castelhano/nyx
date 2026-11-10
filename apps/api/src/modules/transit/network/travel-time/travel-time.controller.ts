@@ -1,5 +1,5 @@
-import { Controller, Post, Patch, HttpCode, UseGuards, Request, Body } from '@nestjs/common'
-import { TravelTime, CreateTravelTimeDto, UpdateTravelTimeDto } from '@nyx/schemas'
+import { Controller, Get, Post, Patch, HttpCode, UseGuards, Request, Body, Query, BadRequestException } from '@nestjs/common'
+import { TravelTime, CreateTravelTimeDto, UpdateTravelTimeDto, EXTERNAL_CODE_SYSTEMS, type ExternalCodeSystem, type IdleMatrixExport } from '@nyx/schemas'
 import { BaseController } from '../../../../core/base.controller'
 import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
@@ -37,6 +37,15 @@ export class TravelTimeController extends BaseController<TravelTime, CreateTrave
     this.jobService.run(job.id, () => this.osrm.generateMatrix({ source }))
 
     return { jobId: job.id }
+  }
+
+  // two segments, so BaseController's GET :id never takes it
+  @Get('export/idle-matrix')
+  idleMatrix(@Query('depotCodes') depotCodes?: string): Promise<IdleMatrixExport> {
+    if (depotCodes && !(EXTERNAL_CODE_SYSTEMS as readonly string[]).includes(depotCodes)) {
+      throw new BadRequestException(`Sistema de códigos desconhecido: ${depotCodes}`)
+    }
+    return this.travelTimeService.idleMatrix(depotCodes as ExternalCodeSystem | undefined)
   }
 
   @Patch('set-source')

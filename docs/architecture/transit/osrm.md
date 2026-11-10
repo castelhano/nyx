@@ -154,3 +154,20 @@ POST /transit/travel-time-matrix/generate
 | Vehicle plan import — normalization pass | Duration lookup to inject synthetic access / return deadruns |
 | Vehicle plan scoring (`scorePlan`) | Distance lookup for dead-run km computation |
 | Route Locality (`deltaMinutes`) | Fallback travel-time between waypoints when no explicit value is set |
+| Idle matrix export | Empty trips between places, for systems that schedule from a GTFS load (below) |
+
+---
+
+## Idle matrix export
+
+Systems that build schedules from a GTFS load also need the empty trips between places (matriz de ociosos), loaded as a separate file. The **CSV** button of the travel time matrix opens a menu with **Matriz de ociosos**, a modal whose only choice is the code system depots go under (nyx or one of `EXTERNAL_CODE_SYSTEMS`), served by `GET /transit/travel-time-matrix/export/idle-matrix?depotCodes=<system>` (`network/travel-time/idle-matrix.ts`, a pure function).
+
+```
+Departure;Destination;Distance;Slot start time;Slot end time;Time
+A0025-001;A0119-001;8.74;00:00;36:00;00:29:00
+```
+
+- **Time** is `baseMinutes × speedRatio`, rounded to the minute, in one slot covering the operational day (`00:00`–`36:00`). **Distance** is `distanceKm` with up to two decimals and no trailing zeros.
+- **Only places a GTFS load creates.** The receiving system refuses a row whose place it doesn't have, and a GTFS load only creates trip endpoints, by the nyx code. So a locality goes in when a trip of a plan in force today starts or ends there, of any operator, since one matrix serves every load of the tenant. Depots always go in.
+- **Depot codes:** without `depotCodes`, depots go under the nyx code. With it, under the locality's `externalCodes.<system>`, falling back to the nyx code. A depot that is also a trip endpoint goes under both codes, since the receiving system has it as a place too.
+- **Before the download**, a confirmation lists the localities left out (no trip in a plan in force) and the depots without a code in the chosen system. That's where the warning lives: the GTFS doesn't know the matrix.

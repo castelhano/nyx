@@ -16,6 +16,7 @@ import { useConfirm }      from '@/lib/confirm-context'
 import { extractError }    from '@/lib/utils'
 import { useJobProgress }  from '@/lib/use-job-progress'
 import { JobProgressBar }  from '@/components/ui/job-progress-bar'
+import { IdleMatrixModal } from './IdleMatrixModal'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'travel-time-matrix'
@@ -28,6 +29,7 @@ export default function TravelTimeMatrixPage() {
   const { guardNode, meta } = usePageGuard(DOMAIN, RESOURCE)
 
   const [jobId, setJobId] = useState<string | null>(null)
+  const [idleMatrixOpen, setIdleMatrixOpen] = useState(false)
 
   const { job, isRunning, isCompleted, isFailed } = useJobProgress(jobId, (j) => {
     if (j.status === 'COMPLETED') {
@@ -139,6 +141,7 @@ export default function TravelTimeMatrixPage() {
       icon:    Icons.Download,
       onClick: handleDownloadCsv,
       variant: 'ghost' as const,
+      menu:    [{ label: 'Matriz de ociosos', icon: Icons.Download, onClick: () => setIdleMatrixOpen(true) }],
     }] : []),
   ], [meta?.permissions?.create, meta?.allowCsv, isRunning])
 
@@ -179,6 +182,7 @@ export default function TravelTimeMatrixPage() {
         resource={RESOURCE}
         onEdit={(id) => router.push(`/${DOMAIN}/${RESOURCE}/${id}`)}
       />
+      {idleMatrixOpen && <IdleMatrixModal onClose={() => setIdleMatrixOpen(false)} />}
     </div>
   )
 }
