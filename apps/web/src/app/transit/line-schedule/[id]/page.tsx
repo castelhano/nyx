@@ -265,7 +265,15 @@ export default function LineScheduleDetailPage() {
     },
     enabled: !!lineId,
   })
-  const routes = useMemo(() => routesPage?.data ?? [], [routesPage])
+  // One route per direction: tabs read Ida → Volta → Circular. Several routes sharing a
+  // direction keep the API order.
+  const routes = useMemo(() => {
+    const data = routesPage?.data ?? []
+    const directions = new Set(data.map(r => r.direction))
+    if (directions.size < data.length) return data
+    const order: Record<Route['direction'], number> = { OUTBOUND: 0, INBOUND: 1, CIRCULAR: 2 }
+    return [...data].sort((a, b) => order[a.direction] - order[b.direction])
+  }, [routesPage])
 
   const { data: dayTypesPage } = useQuery({
     queryKey: ['transit', 'day-type', 'all'],
