@@ -220,7 +220,7 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
       if (worstOf(cur, target.id) >= 0) break
       const m = crew.find(x => x.id === r.crewMemberId)
       const from = m?.shiftId ? shiftById.get(m.shiftId) : undefined
-      if (!m || !from || !inSupply(m) || taken.has(m.id) || from.id === target.id || worstOf(cur, from.id) <= 0 || blockedFrom(input, m, target)) continue
+      if (!m || !from || !inSupply(m) || taken.has(m.id) || from.id === target.id || worstOf(cur, from.id) < 0 || blockedFrom(input, m, target)) continue
       const offset = groupIn(m, target, crew.filter(x => inSupply(x) && x.shiftId === target.id))
       const trial = crew.map(x => (x.id === m.id ? moved(x, target, offset) : x))
       const after = shiftBalances(input, trial)
@@ -229,7 +229,10 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
       taken.add(m.id)
       moves.push(toMove(m, from, target, offset, [`Pedido na fila desde ${fmtDay(r.createdAt.slice(0, 10))}`]))
     }
-    const donors = input.shifts.filter(s => s.id !== target.id && worstOf(balance, s.id) > 0).sort((a, b) => worstOf(balance, b.id) - worstOf(balance, a.id))
+    // a donor at 0 on its worst day may still spare someone: with rest groups the worst day is its
+    // smallest group, and one of a bigger group leaves it as it is — the trial below decides, so
+    // the balance comes in one suggestion instead of a bit more each time it's asked again
+    const donors = input.shifts.filter(s => s.id !== target.id && worstOf(balance, s.id) >= 0).sort((a, b) => worstOf(balance, b.id) - worstOf(balance, a.id))
     for (const donor of donors) {
       if (worstOf(shiftBalances(input, crew), target.id) >= 0) break
       const able: ConsoleCrew[] = []
@@ -241,7 +244,7 @@ export function suggestShifts(input: ConsoleInput, rules: RebalanceRules): Conso
       const left: ConsoleCrew[] = []
       for (const m of rank(able, rules)) {
         const cur = shiftBalances(input, crew)
-        if (worstOf(cur, target.id) >= 0 || worstOf(cur, donor.id) <= 0) { left.push(m); continue }
+        if (worstOf(cur, target.id) >= 0) { left.push(m); continue }
         const offset = groupIn(m, target, crew.filter(x => inSupply(x) && x.shiftId === target.id))
         const trial = crew.map(x => (x.id === m.id ? moved(x, target, offset) : x))
         const after = shiftBalances(input, trial)

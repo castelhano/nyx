@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rosterSettingsSchema, type RebalanceRules } from '@nyx/schemas'
-import { changeRequestRows, impact, suggestGroups, suggestLine, suggestProfiles, suggestRequest, suggestShifts } from './console.actions'
+import { applyMoves, changeRequestRows, impact, suggestGroups, suggestLine, suggestProfiles, suggestRequest, suggestShifts } from './console.actions'
 import type { ConsoleCrew, ConsoleDuty, ConsoleInput } from './console.calc'
 
 const settings = rosterSettingsSchema.parse({})
@@ -73,6 +73,34 @@ describe('balancear turnos', () => {
     const m = inp.crew.find(x => x.id === 'MAN6')!
     const imp = impact(inp, 'shifts', [{ crewMemberId: m.id, to: 'MAN', offset: 6 }], addDays(START, 8), 0)
     expect(imp.warnings.some(w => /dias seguidos/.test(w))).toBe(true)
+  })
+})
+
+describe('balancear turnos — revezamento de fim de semana', () => {
+  // Sáb-Dom revezado: in each weekend only one of the two groups works Saturday and the other
+  // Sunday, so a shift's worst Saturday is its smaller group. MAN 5/4 for 6 duties on Saturday
+  // needs 6/6 (+1 A, +2 B); TAR 6/5 for 4 can give 2 of A and 1 of B — three moves in all.
+  const weekend = { id: 'sd', name: 'Sab-Dom Revezado', cycle: { pattern: 'TTTTTTFTTTTTFT', anchorDate: START, offOnHolidays: false }, staggered: false }
+  const inGroups = (s: typeof MAN, a: number, b: number) => crewOf(a + b, { ...s, pattern: weekend }, i => ({
+    pattern: weekend, offset: i < a ? 0 : 7, shiftSince: `2025-${String(i % 12 + 1).padStart(2, '0')}-01`,
+  }))
+  const mix = (sh: typeof MAN, n: Record<string, number>) => Object.entries(n).flatMap(([t, k]) => dutiesOf(sh, k).filter(d => d.dayTypeId === t))
+  const scenario = () => {
+    const inp = input([...inGroups(MAN, 5, 4), ...inGroups(TAR, 6, 5)], [...mix(MAN, { UTIL: 8, SAB: 6, DOM: 4 }), ...mix(TAR, { UTIL: 8, SAB: 4, DOM: 4 })])
+    return { ...inp, shifts: inp.shifts.map(s => ({ ...s, pattern: weekend })), patterns: [weekend] }
+  }
+
+  it('reaches the balance in one suggestion: asking again suggests nothing', () => {
+    const inp = scenario()
+    const first = suggestShifts(inp, rules)
+    expect(first.moves.filter(m => m.from !== m.to)).toHaveLength(3)
+    const after = applyMoves(inp, 'shifts', first.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset })))
+    expect(suggestShifts(after, rules).moves).toHaveLength(0)
+  })
+
+  it('moves each crew member at most once', () => {
+    const ids = suggestShifts(scenario(), rules).moves.map(m => m.crewMemberId)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })
 

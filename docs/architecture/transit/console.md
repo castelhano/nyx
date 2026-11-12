@@ -150,7 +150,11 @@ window) — a shift without duties gets no one. His group: the one lowering the 
 best worst day, then the emptiest (no stacking when the groups tie). Shift, pattern ("do turno" =
 none of his own) and group are editable per row.
 
-**Shifts.** Short shifts by worst balance; donors are the shifts with spare crew, never left short.
+**Shifts.** Short shifts by worst balance; donors are the shifts not short, never left short. A
+donor at 0 still gives when the move leaves its worst day as it is: with rest groups the worst day
+is the smallest group, so one of a bigger group is spare (Sáb-Dom revezado: each weekend day only
+one group works). Requiring a positive worst day stopped the suggestion halfway, and each new ask
+gave a bit more.
 A move is kept when it lowers the destination's shortage (Σ duties missing crew over the window —
 one person rarely lifts the worst day, as he's off on one of them); his group in the destination is
 the one that lowers it most. Moves are dropped from the end while the crew would cover fewer duties
