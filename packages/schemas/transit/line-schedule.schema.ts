@@ -109,6 +109,7 @@ export const lineScheduleSchema = withMeta(
         permission: 'create',
         method:     'POST',
         endpoint:   (row) => `/transit/line-schedule/${row.id}/duplicate`,
+        opensCreated: true,
       },
     ],
   },

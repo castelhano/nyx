@@ -243,6 +243,7 @@ export interface RowActionDef {
   method?:           'POST' | 'PATCH' | 'DELETE'
   endpointTemplate?: string
   body?:             Record<string, unknown>
+  opensCreated?:     boolean  // the endpoint returns a new record of this resource: open it instead of refreshing the list
   visibleWhen?:      { field: string; value: unknown }
   confirm?:          { title: string; description?: string; confirmLabel?: string; variant?: 'destructive' | 'default' }
 }

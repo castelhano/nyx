@@ -32,6 +32,8 @@ export type RowActionInput = {
   method?:      'POST' | 'PATCH' | 'DELETE'
   endpoint?:    (row: Record<string, unknown>) => string
   body?:        Record<string, unknown>
+  // the endpoint returns a new record of this resource (e.g. duplicate): open it on success
+  opensCreated?: boolean
   visibleWhen?: { field: string; value: unknown }
   // asks before running (the confirm modal)
   confirm?:     { title: string; description?: string; confirmLabel?: string; variant?: 'destructive' | 'default' }

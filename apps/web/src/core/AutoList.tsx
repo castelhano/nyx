@@ -446,6 +446,12 @@ export function AutoList({ domain, resource, onEdit, onAction, filters, selectio
           throw json
         }
         queryClient.invalidateQueries({ queryKey: [domain, resource] })
+        if (action.opensCreated) {
+          const created = await res.json()
+          toast.success(msgs.created())
+          router.push(`/${domain}/${resource}/${created.id}`)
+          return
+        }
         const successMsg = action.method === 'DELETE' ? msgs.deleted() : msgs.updated()
         toast.success(successMsg)
       } catch (err) {

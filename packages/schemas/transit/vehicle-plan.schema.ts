@@ -205,6 +205,7 @@ export const vehiclePlanSchema = withMeta(
         permission: 'create',
         method:     'POST',
         endpoint:   (row) => `/transit/vehicle-plan/${row.id}/duplicate`,
+        opensCreated: true,
       },
       {
         // Sem visibleWhen — disponível em qualquer status, inclusive ACTIVE (ao
