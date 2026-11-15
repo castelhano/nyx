@@ -126,7 +126,7 @@ export interface RgMember {
   courseExpired:  boolean[]
   // load window = load period start .. horizon end, reduced by absences / compensatory days off
   targetMinutes: number
-  // the target of one day — a folga compensada given by the generator takes it off
+  // the journey (one worked day: weekly / days per week) — a folga compensada takes it off the target
   dayLoad: number
   // the hour bank at the horizon's start (compensate) — none: outside the bank
   bank?: { expiring: number; lot: number; negative: number; journey: number }

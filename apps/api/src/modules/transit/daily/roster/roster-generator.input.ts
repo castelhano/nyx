@@ -48,7 +48,6 @@ export async function loadRosterInput(
 
   const settings = await rosterConfig.get(branchId)
   const periodStart = loadPeriodStart(from, settings.loadPeriodStartDay)
-  const periodDays  = daysBetween(periodStart, loadPeriodStart(addDays(periodStart, 32), settings.loadPeriodStartDay))
   const historyFrom = [periodStart, addDays(from, -HISTORY_DAYS)].sort()[0]
 
   const operators = await prisma.scopeOperator.findMany({ where: { branchId }, select: { scopeId: true, scope: { select: { _count: { select: { operators: true } } } } } })
@@ -76,7 +75,7 @@ export async function loadRosterInput(
       employee: {
         select: {
           code: true, fullName: true, preferredName: true,
-          contracts: { where: { status: 'ACTIVE' }, orderBy: { startDate: 'desc' }, take: 1, select: { weeklyHours: true } },
+          contracts: { where: { status: 'ACTIVE' }, orderBy: { startDate: 'desc' }, take: 1, select: { weeklyHours: true, workDaysPerWeek: true } },
         },
       },
       restPattern: { select: { id: true, pattern: true, anchorDate: true, offOnHolidays: true } },
@@ -297,15 +296,20 @@ export async function loadRosterInput(
       if (s?.startMinutes != null) nextStart = Math.min(nextStart ?? Infinity, s.startMinutes)
     }
 
-    // the target: monthly load pro rata over the load window, minus absences / compensatory days off
-    const weekly  = m.weeklyHours ?? m.employee.contracts[0]?.weeklyHours ?? settings.defaultWeeklyHours
-    const window  = daysBetween(loadStart, addDays(to, 1))
-    const reduced = new Set<Day>()
+    // the target: weekly load spread over the calendar days of the load window (days off included,
+    // so 42h → 6:00 a calendar day → 42:00 a week); an absence takes a calendar day off, a
+    // compensatory day off takes a worked day (the journey: 42h / 6 = 7:00)
+    const contract     = m.employee.contracts[0]
+    const weekly       = m.weeklyHours ?? contract?.weeklyHours ?? settings.defaultWeeklyHours
+    const calendarRate = weekly * 60 / 7
+    const dayLoad      = weekly * 60 / (contract?.workDaysPerWeek ?? 6)
+    const window       = daysBetween(loadStart, addDays(to, 1))
+    let absent = 0, comps = 0
     for (let d = loadStart; d <= to; d = addDays(d, 1)) {
-      if (reducesLoad(d) || mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d && !(e.source === 'GENERATED' && d >= from))) reduced.add(d)
+      if (reducesLoad(d)) absent++
+      else if (mine.some(e => e.kind === 'COMP_OFF' && dayOf(e.date) === d && !(e.source === 'GENERATED' && d >= from))) comps++
     }
-    const dayLoad = weekly * 5 * 60 / periodDays
-    const targetMinutes = dayLoad * Math.max(0, window - reduced.size)
+    const targetMinutes = Math.max(0, calendarRate * (window - absent) - dayLoad * comps)
 
     const prefGrade: Record<string, number> = {}
     for (const l of m.lines) {
