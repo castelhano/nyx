@@ -1,10 +1,11 @@
 import {
   nextRestDay, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks,
-  type ConsoleActionKind, type ConsoleChangeRequest, type ConsoleImpact, type ConsoleMove, type ConsoleSuggestion, type RebalanceRules,
+  consoleBenchKey, type ConsoleActionKind, type ConsoleChangeRequest, type ConsoleImpact, type ConsoleMove, type ConsoleSuggestion, type RebalanceRules,
 } from '@nyx/schemas'
 import { addDays, type Day } from '../timetabling/plan-validity'
+import { STANDBY_LINE } from '../daily/roster/roster-generator.calc'
 import {
-  canOperate, idealGroupCounts, inSupply, lineRows, staffing,
+  WindowCover, canOperate, canOperateLine, dutyLines, idealGroupCounts, inSupply, lineAnalysis, lineDemand, mayTake, shiftLineDuties, staffing, worksDay,
   type ConsoleCrew, type ConsoleInput, type ConsolePattern,
 } from './console.calc'
 
@@ -58,20 +59,25 @@ export function applyMoves(input: ConsoleInput, kind: ConsoleActionKind, items: 
     const added = items.flatMap(i => newcomer(input, i.crewMemberId, shiftById.get(i.to)!, i.offset, i.patternId ? patternById.get(i.patternId) ?? null : undefined) ?? [])
     return { ...input, crew: [...input.crew, ...added] }
   }
+  if (kind === 'lines' || kind === 'priority') {
+    // a crew member may get several lines
+    return {
+      ...input,
+      crew: input.crew.map(m => items.filter(i => i.crewMemberId === m.id && i.lineId).reduce((x, i) => {
+        if (kind === 'priority') return { ...x, priorityLines: [...new Set([...x.priorityLines, i.lineId!])] }
+        const lineAccess = { ...x.lineAccess }
+        if (mark) lineAccess[i.lineId!] = mark
+        else delete lineAccess[i.lineId!]
+        return { ...x, lineAccess }
+      }, m)),
+    }
+  }
   const by = new Map(items.map(i => [i.crewMemberId, i]))
   return {
     ...input,
     crew: input.crew.map(m => {
       const i = by.get(m.id)
-      if (!i) return m
-      if (kind === 'lines' && i.lineId) {
-        const lineAccess = { ...m.lineAccess }
-        if (mark) lineAccess[i.lineId] = mark
-        else delete lineAccess[i.lineId]
-        return { ...m, lineAccess }
-      }
-      if (kind === 'priority' && i.lineId) return { ...m, priorityLines: [...new Set([...m.priorityLines, i.lineId])] }
-      return moved(m, shiftById.get(i.to)!, i.offset, i.patternId ? patternById.get(i.patternId) ?? null : undefined)
+      return i ? moved(m, shiftById.get(i.to)!, i.offset, i.patternId ? patternById.get(i.patternId) ?? null : undefined) : m
     }),
   }
 }
@@ -357,7 +363,7 @@ export function suggestGroups(input: ConsoleInput, rules: RebalanceRules, shiftI
   if (!shift) return empty('groups', 'Grupos de folga', 'Turno não encontrado')
   const team = input.crew.filter(m => inSupply(m) && m.shiftId === shiftId)
   const spreading = rules.criteria.some(c => c.key === 'lineSpread' && c.active)
-  const shiftLines = new Set(lineRows(input).filter(r => r.shiftId === shiftId).map(r => r.lineId))
+  const shiftLines = new Set([...shiftLineDuties(input, shiftId).keys()].filter(l => l !== STANDBY_LINE))
   const lineCode = new Map(input.lines.map(l => [l.id, l.code]))
   const linesOf = (m: ConsoleCrew) => [...new Set([...m.priorityLines, ...m.prefLines])].filter(l => shiftLines.has(l))
   const moves: ConsoleMove[] = [], benchList: ConsoleMove[] = []
@@ -432,41 +438,137 @@ export function suggestGroups(input: ConsoleInput, rules: RebalanceRules, shiftI
 
 // ── lines: enable, or make it a priority line ───────────────────────────────
 
-// lines: the shift's crew who can't operate the line yet (access) — those who already prefer it
-// first; priority: those who can, without it as a priority or preferred line
-export function suggestLine(input: ConsoleInput, rules: RebalanceRules, kind: 'lines' | 'priority', shiftId: string, lineId: string): ConsoleSuggestion {
+// the crew member with the line enabled (his record, by the empresa's mode)
+function enabled(m: ConsoleCrew, lineId: string, mode: ConsoleInput['lineAccessMode']): ConsoleCrew {
+  const lineAccess = { ...m.lineAccess }
+  if (mode === 'WHITELIST') lineAccess[lineId] = 'ENABLED'
+  else delete lineAccess[lineId]
+  return { ...m, lineAccess }
+}
+// his rank for the line (0 = 1st); not preferred: Infinity
+const prefRank = (m: ConsoleCrew, lineId: string) => (m.prefLines.includes(lineId) ? m.prefLines.indexOf(lineId) : Infinity)
+
+// Equilibrar linhas: per line × shift below the margin on any day (the enabled working against the
+// day's duties + lineMarginPct), the shift's crew who'd take its duties with the line enabled — one
+// at a time, who lifts the most days below the margin; ties: who prefers it (1st first), then the
+// selection rule. Every line of every shift, or one (shiftId + lineId). Over all of them, a second
+// pass on the duties nobody can take jointly (crew enabled in several lines counts in each one):
+// an idle crew member fit for one but for its lines gets them. Never disables anyone.
+export function suggestLines(input: ConsoleInput, rules: RebalanceRules, shiftId?: string | null, lineId?: string | null): ConsoleSuggestion {
+  const mode = input.lineAccessMode
+  const lineCode = new Map(input.lines.map(l => [l.id, l.code]))
+  const shiftName = new Map(input.shifts.map(s => [s.id, s.name]))
+  const one = !!(shiftId && lineId)
+  const title = one ? `Habilitar linha ${lineCode.get(lineId ?? '') ?? '?'} · ${shiftName.get(shiftId ?? '') ?? '?'}` : 'Equilibrar linhas'
+  // the plantão is not a line record — unblocking it is the crew member's own setting
+  const targets = lineAnalysis(input).rows.filter(r => r.lineId !== STANDBY_LINE && r.marginGap < 0 && (!one || (r.shiftId === shiftId && r.lineId === lineId)))
+  let crew = input.crew
+  const moves: ConsoleMove[] = [], bench: ConsoleSuggestion['bench'] = {}, excluded: ConsoleSuggestion['excluded'] = []
+  const toMove = (m: ConsoleCrew, sid: string, lid: string, why: string[]): ConsoleMove => {
+    const code = lineCode.get(lid) ?? '?', k = prefRank(m, lid)
+    return {
+      crewMemberId: m.id, code: m.code, name: m.name, from: sid, to: sid, offset: null, lineId: lid,
+      groupLabel: null, patternName: null, groupOptions: [], change: one ? `habilitar ${code}` : `habilitar ${code} · ${shiftName.get(sid)}`,
+      reasons: [...(k < Infinity ? [`Prefere ${code} (${k + 1}ª)`] : []), ...why, ...reasons(m, rules)],
+    }
+  }
+  const order = new Map(rank(input.crew, rules).map((m, i) => [m.id, i]))
+
+  for (const r of targets) {
+    const code = lineCode.get(r.lineId) ?? '?'
+    const duties = shiftLineDuties(input, r.shiftId).get(r.lineId) ?? []
+    const team = crew.filter(m => inSupply(m) && m.shiftId === r.shiftId)
+    const demand = lineDemand(input, duties, team)
+    const short = demand.map((x, t) => (x.need ? x.ideal - team.filter(m => duties.some(d => mayTake(m, d, mode)) && worksDay(m, input.days[t].day)).length : 0))
+    const pool = team.filter(m => {
+      if (duties.some(d => mayTake(m, d, mode))) return false
+      if (duties.some(d => mayTake(enabled(m, r.lineId, mode), d, mode))) return true
+      const types = [...new Set(duties.flatMap(d => d.vehicleTypes))]
+      const reason = types.length && types.every(v => m.blockedVehicleTypes.includes(v))
+        ? `${code}: tipo de veículo bloqueado (${types.filter(v => m.blockedVehicleTypes.includes(v)).join(', ')})`
+        : `${code}: as tabelas também pedem ${[...new Set(duties.flatMap(dutyLines).filter(l => l !== r.lineId && !canOperateLine(m, l, mode)))].map(l => lineCode.get(l) ?? 'plantão').join(', ')}`
+      if (one) excluded.push({ crewMemberId: m.id, code: m.code, name: m.name, reason })
+      return false
+    })
+    const gain = (m: ConsoleCrew) => short.reduce((n, x, t) => n + (x > 0 && worksDay(m, input.days[t].day) ? 1 : 0), 0)
+    const picked: ConsoleCrew[] = []
+    for (;;) {
+      const best = pool.filter(m => !picked.includes(m) && gain(m) > 0)
+        .sort((a, b) => gain(b) - gain(a) || prefRank(a, r.lineId) - prefRank(b, r.lineId) || order.get(a.id)! - order.get(b.id)!)[0]
+      if (!best) break
+      const days = gain(best)
+      picked.push(best)
+      short.forEach((x, t) => { if (x > 0 && worksDay(best, input.days[t].day)) short[t]-- })
+      moves.push(toMove(best, r.shiftId, r.lineId, [`${days} dia(s) abaixo da margem`]))
+    }
+    const key = consoleBenchKey({ from: r.shiftId, to: r.shiftId, lineId: r.lineId })
+    bench[key] = rank(pool.filter(m => !picked.includes(m)), rules).sort((a, b) => prefRank(a, r.lineId) - prefRank(b, r.lineId)).map(m => toMove(m, r.shiftId, r.lineId, []))
+    const ids = new Set(picked.map(m => m.id))
+    crew = crew.map(m => (ids.has(m.id) ? enabled(m, r.lineId, mode) : m))
+  }
+
+  // the joint pass: per day, duties nobody holds where an idle crew member is fit but for the lines
+  let joint = 0
+  if (!one) {
+    const supply = crew.filter(inSupply)
+    const cover = new WindowCover({ ...input, crew }, supply)
+    const open = cover.unheld()
+    if (open.length) {
+      const free = new WindowCover({ ...input, crew }, supply.map(m => ({ ...m, lineAccess: Object.fromEntries(input.lines.map(l => [l.id, 'ENABLED' as const])) })))
+      const used = new Set<string>()
+      for (const { si, t, duty } of open) {
+        if (!duty.shiftId || duty.standby) continue
+        const fit = free.candidatesOf(si).filter(mi => cover.idle(mi, t) && !used.has(`${mi}@${t}`))
+          .map(mi => supply[mi]).filter(m => m.shiftId === duty.shiftId && !m.blockedVehicleTypes.some(v => duty.vehicleTypes.includes(v)))
+        const missing = (m: ConsoleCrew) => dutyLines(duty).filter(l => !canOperateLine(m, l, mode))
+        const best = fit.filter(m => missing(m).length && !missing(m).includes(STANDBY_LINE))
+          .sort((a, b) => missing(a).length - missing(b).length || order.get(a.id)! - order.get(b.id)!)[0]
+        if (!best) continue
+        used.add(`${supply.indexOf(best)}@${t}`)
+        for (const l of missing(best)) {
+          if (moves.some(x => x.crewMemberId === best.id && x.lineId === l)) continue
+          moves.push(toMove(best, duty.shiftId, l, ['Cobre tabela que falta no conjunto das linhas']))
+          joint++
+        }
+      }
+    }
+  }
+
+  const summary = moves.length
+    ? `${moves.length} habilitação(ões)${targets.length ? ` em ${targets.length} linha(s) · turno abaixo da margem` : ''}${joint ? ` — ${joint} pelo conjunto das linhas` : ''}`
+    : targets.length ? 'Ninguém do turno trabalhando nos dias abaixo da margem pode receber a linha' : one ? 'A linha já tem a margem em todos os dias' : 'Todas as linhas com a margem em todos os dias'
+  return { kind: 'lines', title, summary, moves, bench, excluded }
+}
+
+// Linha prioritária: the lines fewer crew chose (preferred in any rank, or priority) than the
+// seats they keep busy — someone who didn't choose them will take them. Up to the seats, among who
+// may already take its duties: first who has no preference, then whose 1st choice is contested
+// (he'd lose it anyway), then the selection rule.
+export function suggestPriority(input: ConsoleInput, rules: RebalanceRules, shiftId: string, lineId: string): ConsoleSuggestion {
   const shift = input.shifts.find(s => s.id === shiftId)
   const code = input.lines.find(l => l.id === lineId)?.code ?? '?'
-  const title = kind === 'lines' ? `Habilitar linha ${code}` : `Linha ${code} prioritária`
-  if (!shift) return empty(kind, title, 'Turno não encontrado')
-  const row = lineRows(input).find(l => l.shiftId === shiftId && l.lineId === lineId)
-  // lines: up to the margin (need + lineMarginPct); priority: up to the need
-  const need = row ? (kind === 'lines' ? row.ideal - row.enabled : row.need - row.bonded) : 0
+  const title = `Linha ${code} prioritária · ${shift?.name ?? '?'}`
+  if (!shift) return empty('priority', title, 'Turno não encontrado')
+  const rows = lineAnalysis(input).rows.filter(r => r.shiftId === shiftId)
+  const row = rows.find(r => r.lineId === lineId)
   const team = input.crew.filter(m => inSupply(m) && m.shiftId === shiftId)
-  const lineTypes = new Set(input.duties.filter(d => d.shiftId === shiftId && d.lineMinutes.some(l => l.lineId === lineId)).flatMap(d => d.vehicleTypes))
-  const excluded: ConsoleSuggestion['excluded'] = []
-  const pool = team.filter(m => {
-    if (kind === 'lines' && canOperate(m, lineId, input.lineAccessMode)) return false
-    if (kind === 'priority' && (!canOperate(m, lineId, input.lineAccessMode) || m.priorityLines.includes(lineId) || m.prefLines.includes(lineId))) return false
-    const blocked = [...lineTypes].filter(t => m.blockedVehicleTypes.includes(t))
-    if (blocked.length && blocked.length === lineTypes.size) {
-      excluded.push({ crewMemberId: m.id, code: m.code, name: m.name, reason: `Tipo de veículo bloqueado (${blocked.join(', ')})` })
-      return false
-    }
-    return true
-  })
-  const prefers = (m: ConsoleCrew) => (m.prefLines.includes(lineId) ? 0 : 1)
-  const ranked = rank(pool, rules).sort((a, b) => prefers(a) - prefers(b))
+  const bonded = (m: ConsoleCrew) => m.prefLines.includes(lineId) || m.priorityLines.includes(lineId)
+  const need = row ? Math.max(0, row.seats - team.filter(bonded).length) : 0
+  const duties = shiftLineDuties(input, shiftId).get(lineId) ?? []
+  const contested = new Set(rows.filter(r => r.demand === 'CONTESTED').map(r => r.lineId))
+  const tier = (m: ConsoleCrew) => (!m.prefLines.length ? 0 : contested.has(m.prefLines[0]) ? 1 : 2)
+  const pool = rank(team.filter(m => !bonded(m) && duties.some(d => mayTake(m, d, input.lineAccessMode))), rules).sort((a, b) => tier(a) - tier(b))
+  const lineCode = new Map(input.lines.map(l => [l.id, l.code]))
   const toMove = (m: ConsoleCrew): ConsoleMove => ({
     crewMemberId: m.id, code: m.code, name: m.name, from: shiftId, to: shiftId, offset: null, lineId,
-    groupLabel: null, patternName: null, groupOptions: [], change: kind === 'lines' ? `habilitar ${code}` : `${code} prioritária`,
-    reasons: [...(m.prefLines.includes(lineId) ? [`Prefere ${code}`] : []), ...reasons(m, rules)],
+    groupLabel: null, patternName: null, groupOptions: [], change: `${code} prioritária`,
+    reasons: [...(tier(m) === 0 ? ['Sem preferências'] : tier(m) === 1 ? [`1ª escolha ${lineCode.get(m.prefLines[0]) ?? 'plantão'} disputada`] : []), ...reasons(m, rules)],
   })
-  const n = Math.max(0, Math.min(need, ranked.length))
+  const n = Math.min(need, pool.length)
   return {
-    kind, title,
-    summary: need > 0 ? `${n} de ${need} ${kind === 'lines' ? 'para a margem' : 'necessário(s)'} no turno ${shift.name}` : `A linha ${code} já tem ${kind === 'lines' ? 'a margem' : 'o necessário'} no turno ${shift.name}`,
-    moves: ranked.slice(0, n).map(toMove), bench: { [`${shiftId}>${shiftId}`]: ranked.slice(n).map(toMove) }, excluded,
+    kind: 'priority', title,
+    summary: need > 0 ? `${n} de ${need} para as vagas da linha no turno ${shift.name}` : `A linha ${code} já tem preferências para as vagas no turno ${shift.name}`,
+    moves: pool.slice(0, n).map(toMove), bench: { [consoleBenchKey({ from: shiftId, to: shiftId, lineId })]: pool.slice(n).map(toMove) }, excluded: [],
   }
 }
 
@@ -706,8 +808,8 @@ function transitionRun(before: ConsoleCrew, after: ConsoleCrew, effective: Day):
   return best
 }
 
-// what the moves do to the planning — `generated`: generated days on/after the effective date
-export function impact(input: ConsoleInput, kind: ConsoleActionKind, items: MoveItem[], effective: Day, generated: number): ConsoleImpact {
+// what the moves do to the planning
+export function impact(input: ConsoleInput, kind: ConsoleActionKind, items: MoveItem[], effective: Day): ConsoleImpact {
   const before = staffing(input)
   const next = applyMoves(input, kind, items)
   const after = staffing(next)
@@ -731,26 +833,22 @@ export function impact(input: ConsoleInput, kind: ConsoleActionKind, items: Move
     }
   }
   if (kind === 'lines' || kind === 'priority') {
-    const rows = lineRows(next)
+    const was = lineAnalysis(input).rows, now = lineAnalysis(next).rows
     for (const id of new Set(items.flatMap(i => (i.lineId ? [`${i.to}|${i.lineId}`] : [])))) {
       const [shiftId, lineId] = id.split('|')
-      const b = lineRows(input).find(l => l.shiftId === shiftId && l.lineId === lineId)
-      const a = rows.find(l => l.shiftId === shiftId && l.lineId === lineId)
+      const b = was.find(l => l.shiftId === shiftId && l.lineId === lineId)
+      const a = now.find(l => l.shiftId === shiftId && l.lineId === lineId)
       if (!b || !a) continue
+      const where = `Linha ${a.lineCode} · ${shiftName.get(shiftId)}`
       notes.push(kind === 'lines'
-        ? `Linha ${a.lineCode} · ${shiftName.get(shiftId)}: habilitados ${b.enabled} → ${a.enabled} (necessário ${a.need})`
-        : `Linha ${a.lineCode} · ${shiftName.get(shiftId)}: com vínculo ${b.bonded} → ${a.bonded} (necessário ${a.need})`)
+        ? `${where}: habilitados ${b.enabled} → ${a.enabled}; pior dia ${b.worstWorking} → ${a.worstWorking} trabalhando (margem ${a.worstIdeal})`
+        : `${where}: prioritárias ${b.priority} → ${a.priority} (vagas ${a.seats})`)
     }
-    notes.push(kind === 'lines' ? 'Vale já para a próxima geração de escala' : 'A linha prioritária pesa antes das preferências do operador na próxima geração')
   }
-  if (kind === 'groups') notes.push('O grupo de folga novo vale para a próxima geração de escala — os dias já gerados ficam como estão')
   if (kind === 'shifts' && items.some(i => { const m = input.crew.find(x => x.id === i.crewMemberId)!; return i.offset != null && i.offset !== m.offset }) && effective > input.today) {
     notes.push(`O grupo de folga novo vale para a próxima geração de escala, mesmo antes de ${fmtDay(effective)}`)
   }
   if (kind === 'profiles') notes.push(`Os perfis começam no turno em ${fmtDay(effective)}; linhas e demais dados ficam para o cadastro do operador`)
-  if (generated > 0 && (kind === 'shifts' || kind === 'groups')) {
-    notes.push(`${generated} dia(s) já gerado(s)${kind === 'shifts' ? ` a partir de ${fmtDay(effective)}` : ''} seguem com o quadro antigo — gere de novo na Escala para aplicar`)
-  }
 
   return {
     rows: after.rows.map(r => {

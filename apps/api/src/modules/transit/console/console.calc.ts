@@ -1,6 +1,6 @@
 import {
-  CONSOLE_SECTIONS, CONSOLE_FUTURE_DAYS, DAILY_ISSUE_LABEL, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks, shiftFits,
-  type ConsoleAlert, type ConsoleChangeRequest, type ConsoleCrewData, type ConsoleDailyError, type ConsoleGroupPattern, type ConsoleGroups, type ConsoleLineRow,
+  CONSOLE_SECTIONS, CONSOLE_FUTURE_DAYS, restGroupIndex, restGroupLabel, restGroupOffsets, restPatternWorks, shiftFits,
+  type ConsoleAlert, type ConsoleChangeRequest, type ConsoleCrewData, type ConsoleGroupPattern, type ConsoleGroups, type ConsoleLineRow, type ConsoleLines,
   type ConsolePlanRow, type ConsoleSection, type ConsoleSectionStatus, type ConsoleShift, type ConsoleShiftsAnalysis, type ConsoleSnapshot,
   type ConsoleSizing, type ConsoleStaffing, type RestCycle, type RosterSettings, type ShiftWindow,
 } from '@nyx/schemas'
@@ -50,6 +50,7 @@ export interface ConsoleCrew {
   ownPattern: boolean
   offset:    number
   lineAccess:    Record<string, 'ENABLED' | 'BLOCKED'>
+  // preferred lines by rank (1st first), the plantão (STANDBY_LINE) among them
   prefLines:     string[]
   priorityLines: string[]
   blockedVehicleTypes: string[]
@@ -104,7 +105,6 @@ export interface ConsoleInput {
   bankCompPct:    number
   noProfile:   ConsoleCrewData['noProfile']
   fixedCar:    ConsoleCrewData['fixedCar']
-  dailyErrors: ConsoleDailyError[]
   // open change requests, oldest first
   requests:    ConsoleRequestInput[]
 }
@@ -115,7 +115,6 @@ export const inSupply = (m: ConsoleCrew) => m.rosterable && !!m.shiftId && !m.aw
 const worksOn = (m: ConsoleCrew, day: Day, offset = m.offset) => !m.pattern || restPatternWorks(m.pattern.cycle, offset, day)
 // rounded up, ignoring float noise (12 × 7/6 is 14, not 15)
 const ceil = (x: number) => Math.ceil(x - 1e-9)
-const dominantLine = (d: ConsoleDuty) => d.lineMinutes.reduce<{ lineId: string; minutes: number } | null>((a, l) => (!a || l.minutes > a.minutes ? l : a), null)?.lineId ?? null
 
 // days of the cycle per day worked — 6x1 → 7/6; no pattern: 7/6
 function cycleFactor(crew: ConsoleCrew[]): number {
@@ -372,6 +371,12 @@ export class WindowCover {
 
   // the shifts whose duties the member may take on day t
   servable(mi: number, t: number): Set<string | null> { return new Set(this.members[mi].slots[t].map(si => this.slots[si].duty.shiftId)) }
+  // the duty-days nobody holds
+  unheld(): { si: number; t: number; duty: ConsoleDuty }[] {
+    return this.slots.flatMap((s, si) => (this.holder[si] < 0 ? [{ si, ...s }] : []))
+  }
+  // the members who may take the slot (by the generator's rules)
+  candidatesOf(si: number): number[] { return this.cands[si] }
   // whether the member works day t without a duty
   idle(mi: number, t: number): boolean { return !this.removed[mi] && this.members[mi].works[t] && this.dutyOf[mi][t] < 0 }
 }
@@ -642,35 +647,114 @@ function groups(input: ConsoleInput): ConsoleGroups[] {
 
 // ── E: lines per shift ──────────────────────────────────────────────────────
 
+// by his record (CrewMemberLine.access) and the empresa's mode
 export function canOperate(m: ConsoleCrew, lineId: string, mode: RosterSettings['lineAccessMode']): boolean {
   return mode === 'WHITELIST' ? m.lineAccess[lineId] === 'ENABLED' : m.lineAccess[lineId] !== 'BLOCKED'
 }
 
-// per shift, never the whole day — spare crew in one shift doesn't cover another's shortage
-export function lineRows(input: ConsoleInput): ConsoleLineRow[] {
+// the lines a duty runs — the plantão as a line
+export const dutyLines = (d: ConsoleDuty) => (d.standby ? [STANDBY_LINE] : d.lineMinutes.map(l => l.lineId))
+
+// may operate the line by his record — the plantão: unless blocked
+export function canOperateLine(m: ConsoleCrew, lineId: string, mode: RosterSettings['lineAccessMode']): boolean {
+  return lineId === STANDBY_LINE ? !m.standbyBlocked : canOperate(m, lineId, mode)
+}
+
+// may take the duty: every line it runs (as the generator) and a vehicle type he doesn't block
+export function mayTake(m: ConsoleCrew, d: ConsoleDuty, mode: RosterSettings['lineAccessMode']): boolean {
+  return dutyLines(d).every(l => canOperateLine(m, l, mode)) && !d.vehicleTypes.some(v => m.blockedVehicleTypes.includes(v))
+}
+
+// per shift, the duties of each line it runs (a duty with two lines counts for both)
+export function shiftLineDuties(input: ConsoleInput, shiftId: string): Map<string, ConsoleDuty[]> {
+  const out = new Map<string, ConsoleDuty[]>()
+  for (const d of input.duties.filter(x => x.shiftId === shiftId)) for (const l of new Set(dutyLines(d))) out.set(l, [...(out.get(l) ?? []), d])
+  return out
+}
+
+// per day of the window: the line's duties, and what the line asks of the shift's crew working that
+// day — its duties and its margin, never more than who works: a day the shift lacks people (a
+// Domingo Fixo shift with Sunday duties) is the headcount's (Demanda × quadro), not the lines'
+export function lineDemand(input: ConsoleInput, duties: ConsoleDuty[], team: ConsoleCrew[]): { duties: number; need: number; ideal: number }[] {
+  const perType = new Map<string, number>()
+  for (const d of duties) perType.set(d.dayTypeId, (perType.get(d.dayTypeId) ?? 0) + 1)
+  return input.days.map(d => {
+    const n = perType.get(d.dayTypeId) ?? 0
+    const working = n ? team.filter(m => worksOn(m, d.day)).length : 0
+    return { duties: n, need: Math.min(n, working), ideal: Math.min(ceil(n * (1 + input.lineMarginPct / 100)), working) }
+  })
+}
+
+export const worksDay = worksOn
+
+function groupLabelOf(m: ConsoleCrew, patterns: number): string {
+  if (!m.pattern) return 'sem regime'
+  const idx = restGroupIndex({ pattern: m.pattern.cycle.pattern, staggered: m.pattern.staggered }, m.offset)
+  const g = idx == null ? 'fora dos grupos' : restGroupLabel(idx)
+  return patterns > 1 ? `${m.pattern.name} · ${g}` : g
+}
+
+// Per shift, never the whole day — spare crew in one shift doesn't cover another's shortage. Day by
+// day over the window: the enabled working (rest pattern and group) against the line's duties, so
+// the enabled all in one group show short on that group's day off.
+export function lineAnalysis(input: ConsoleInput): ConsoleLines {
   const supply = input.crew.filter(inSupply)
-  const code = new Map(input.lines.map(l => [l.id, l.code]))
-  const out: ConsoleLineRow[] = []
+  const code = new Map<string, string>([...input.lines.map(l => [l.id, l.code] as const), [STANDBY_LINE, 'Plantão']])
+  const rows: ConsoleLineRow[] = []
+  const conflicts: ConsoleLines['conflicts'] = []
   for (const s of input.shifts) {
     const team = supply.filter(m => m.shiftId === s.id)
     const factor = cycleFactor(team)
-    const byLine = new Map<string, ConsoleDuty[]>()
-    for (const d of input.duties.filter(x => x.shiftId === s.id && !x.standby)) {
-      const l = dominantLine(d)
-      if (l) byLine.set(l, [...(byLine.get(l) ?? []), d])
-    }
+    const patterns = new Set(team.flatMap(m => (m.pattern ? [m.pattern.id] : []))).size
+    const byLine = shiftLineDuties(input, s.id)
+    const works = team.map(m => input.days.map(d => worksOn(m, d.day)))
+    const ranks = Math.max(1, ...team.map(m => m.prefLines.length))
     for (const [lineId, duties] of byLine) {
-      const count = Math.max(...input.dayTypes.map(t => duties.filter(d => d.dayTypeId === t.id).length))
-      // may take at least one of the line's duties: access, and a vehicle type he doesn't block
-      const able = team.filter(m => canOperate(m, lineId, input.lineAccessMode) && duties.some(d => !d.vehicleTypes.some(v => m.blockedVehicleTypes.includes(v))))
-      const need = ceil(count * factor)
-      out.push({
-        lineId, lineCode: code.get(lineId) ?? '?', shiftId: s.id, duties: count, need, ideal: ceil(need * (1 + input.lineMarginPct / 100)), enabled: able.length,
-        bonded: able.filter(m => m.priorityLines.includes(lineId) || m.prefLines.includes(lineId)).length, gap: able.length - need,
+      const able = team.map(m => duties.some(d => mayTake(m, d, input.lineAccessMode)))
+      const demand = lineDemand(input, duties, team)
+      let gap = Infinity, marginGap = Infinity, worst = -1
+      demand.forEach((x, t) => {
+        if (!x.need) return
+        const working = team.reduce((n, _, i) => n + (able[i] && works[i][t] ? 1 : 0), 0)
+        if (working - x.ideal < marginGap || (working - x.ideal === marginGap && x.need > demand[worst].need)) { marginGap = working - x.ideal; worst = t }
+        gap = Math.min(gap, working - x.need)
+      })
+      const busiest = Math.max(0, ...demand.map(x => x.duties))
+      const seats = ceil(busiest * factor)
+      const prefs = Array.from({ length: ranks }, (_, k) => team.filter(m => m.prefLines[k] === lineId).length)
+      const priority = team.filter(m => m.priorityLines.includes(lineId)).length
+      const bonded = team.filter(m => m.prefLines.includes(lineId) || m.priorityLines.includes(lineId)).length
+      const groupCount = new Map<string, number>()
+      team.forEach((m, i) => { if (able[i]) groupCount.set(groupLabelOf(m, patterns), (groupCount.get(groupLabelOf(m, patterns)) ?? 0) + 1) })
+      rows.push({
+        lineId, lineCode: code.get(lineId) ?? '?', shiftId: s.id, duties: busiest, enabled: able.filter(Boolean).length,
+        worstDay: worst >= 0 ? input.days[worst].day : null,
+        worstDuties: worst >= 0 ? demand[worst].need : 0,
+        worstWorking: worst >= 0 ? team.reduce((n, _, i) => n + (able[i] && works[i][worst] ? 1 : 0), 0) : 0,
+        worstIdeal: worst >= 0 ? demand[worst].ideal : 0,
+        gap: gap === Infinity ? 0 : gap, marginGap: marginGap === Infinity ? 0 : marginGap,
+        groups: [...groupCount].map(([label, enabled]) => ({ label, enabled })).sort((a, b) => a.label.localeCompare(b.label)),
+        seats, prefs, priority,
+        demand: prefs[0] > seats ? 'CONTESTED' : bonded < seats ? 'SHORT' : 'BALANCED',
       })
     }
+
+    // records the generator ignores: preferred / priority lines he can't operate or without duties here
+    for (const m of team) {
+      const seen = new Set<string>()
+      for (const [lineId, kind] of [...m.prefLines.map(l => [l, 'preferida'] as const), ...m.priorityLines.map(l => [l, 'prioritária'] as const)]) {
+        if (seen.has(lineId)) continue
+        seen.add(lineId)
+        const lineCode = code.get(lineId) ?? '?'
+        const reason = !canOperateLine(m, lineId, input.lineAccessMode)
+          ? (lineId === STANDBY_LINE ? 'plantão preferido, mas bloqueado para ele' : `linha ${kind}, mas não habilitada para ele`)
+          : !byLine.has(lineId) ? `${lineId === STANDBY_LINE ? 'plantão preferido' : `linha ${kind}`} sem tabela no turno ${s.name}` : null
+        if (reason) conflicts.push({ ...ref(m), lineCode, reason })
+      }
+    }
   }
-  return out.sort((a, b) => a.gap - b.gap || a.lineCode.localeCompare(b.lineCode))
+  rows.sort((a, b) => a.gap - b.gap || a.marginGap - b.marginGap || a.lineCode.localeCompare(b.lineCode))
+  return { rows, conflicts }
 }
 
 // ── alerts ──────────────────────────────────────────────────────────────────
@@ -719,10 +803,11 @@ function alerts(input: ConsoleInput, s: Omit<ConsoleSnapshot, 'alerts' | 'status
   }
   const longRuns = new Map(s.groups.flatMap(g => g.patterns.filter(p => p.maxRun > 6).map(p => [p.patternId, p] as const)))
   for (const p of longRuns.values()) push({ code: 'REST_RUN_LONG', severity: 'warning', section: 'groups', text: `Regime ${p.name}: até ${p.maxRun} dias seguidos de trabalho`, link: { kind: 'rest-pattern', id: p.patternId } })
-  for (const l of s.crewData.lines) {
-    const where = `Linha ${l.lineCode} · ${shiftName.get(l.shiftId)}`
-    if (l.gap < 0) push({ code: 'LINE_SHORT', severity: 'error', section: 'crew', text: `${where}: ${l.enabled} habilitados para ${l.need} necessários` })
-    else if (l.enabled < l.ideal) push({ code: 'LINE_MARGIN', severity: 'warning', section: 'crew', text: `${where}: ${l.enabled} habilitados — abaixo da margem (${l.ideal} para ${l.need} necessários)` })
+  for (const l of s.lines.rows) {
+    const where = `${l.lineId === STANDBY_LINE ? 'Plantão' : `Linha ${l.lineCode}`} · ${shiftName.get(l.shiftId)}`
+    const day = l.worstDay ? ` em ${l.worstDay.slice(8, 10)}/${l.worstDay.slice(5, 7)}` : ''
+    if (l.gap < 0) push({ code: 'LINE_SHORT', severity: 'error', section: 'lines', text: `${where}: dia com menos habilitados trabalhando que tabelas${day} (${l.worstWorking} para ${l.worstDuties})` })
+    else if (l.marginGap < 0) push({ code: 'LINE_MARGIN', severity: 'info', section: 'lines', text: `${where}: ${l.worstWorking} habilitados trabalhando${day} — abaixo da margem (${l.worstIdeal} para ${l.worstDuties} tabelas)` })
   }
   if (s.crewData.noProfile.length) push({ code: 'NO_PROFILE', severity: 'warning', section: 'crew', text: `${s.crewData.noProfile.length} funcionário(s) com cargo da função e sem perfil de operador` })
   if (s.crewData.noShift.length) push({ code: 'NO_SHIFT', severity: 'warning', section: 'crew', text: `${s.crewData.noShift.length} operador(es) sem turno vigente` })
@@ -733,13 +818,6 @@ function alerts(input: ConsoleInput, s: Omit<ConsoleSnapshot, 'alerts' | 'status
   if (asked) push({ code: 'CHANGE_REQUESTED', severity: 'info', section: 'requests', text: `${asked} pedido(s) de troca de turno ou grupo aguardando análise` })
   const ready = s.requests.filter(r => r.status === 'QUEUED' && r.ready).length
   if (ready) push({ code: 'CHANGE_READY', severity: 'warning', section: 'requests', text: `${ready} pedido(s) na fila já podem ser atendidos` })
-  for (const d of s.dailyErrors) {
-    const when = daysAhead(input.today, d.date) <= 1 ? 'Amanhã' : `${d.date.slice(8, 10)}/${d.date.slice(5, 7)}`
-    push({
-      code: 'DAILY_ERROR', severity: 'error', section: 'daily', link: { kind: 'escala', date: d.date },
-      text: `${when}: ${[...d.issues.map(i => `${i.count} ${i.label.toLowerCase()}`), ...(d.outdated ? ['desatualizado'] : [])].join(', ')}`,
-    })
-  }
   const rank = { error: 0, warning: 1, info: 2 }
   return out.sort((a, b) => rank[a.severity] - rank[b.severity])
 }
@@ -768,7 +846,6 @@ export function computeConsole(input: ConsoleInput, requests: ConsoleChangeReque
     away:      input.crew.filter(m => m.away).map(m => ({ ...ref(m), reason: m.away!.reason, until: m.away!.until })),
     vacation:  input.crew.filter(m => m.vacation).map(m => ({ ...ref(m), until: m.vacation!.until, cover: m.vacation!.cover })),
     fixedCar:  input.fixedCar,
-    lines:     lineRows(input),
   }
   const typeDays = new Map<string, number>()
   for (const d of input.days) typeDays.set(d.dayTypeId, (typeDays.get(d.dayTypeId) ?? 0) + 1)
@@ -784,11 +861,9 @@ export function computeConsole(input: ConsoleInput, requests: ConsoleChangeReque
     groups: groups(input),
     crew: { active: input.crew.filter(inSupply).length, away: crewData.away.length, vacation: crewData.vacation.length },
     crewData,
-    dailyErrors: input.dailyErrors,
+    lines: lineAnalysis(input),
     requests,
   }
   const list = alerts(input, base)
   return { ...base, alerts: list, status: sectionStatus(list) }
 }
-
-export const dailyIssueLabel = (code: string) => (DAILY_ISSUE_LABEL as Record<string, string>)[code] ?? code

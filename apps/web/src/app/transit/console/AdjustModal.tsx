@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import {
-  CONSOLE_ACTION_DATED, CONSOLE_ACTION_LABEL, CONSOLE_NO_PLAN, REBALANCE_CRITERION_LABEL,
+  CONSOLE_ACTION_DATED, CONSOLE_ACTION_LABEL, CONSOLE_NO_PLAN, REBALANCE_CRITERION_LABEL, consoleBenchKey,
   type ConsoleActionKind, type ConsoleImpact, type ConsoleMove, type ConsoleSnapshot, type ConsoleSuggestion, type RebalanceRules, type RosterAdjustmentRow,
 } from '@nyx/schemas'
 import { Button } from '@/components/ui/button'
@@ -25,12 +25,13 @@ const ORIGIN = 'apps/web/src/app/transit/console/AdjustModal.tsx'
 const CONFIRM_TEXT: Record<ConsoleActionKind, (n: number, date: string) => string> = {
   shifts:   (n, d) => `Confirmar muda o turno de ${n} operador(es) a partir de ${d}.`,
   groups:   n => `Confirmar muda o grupo de folga de ${n} operador(es) — vale para a próxima geração.`,
-  lines:    n => `Confirmar habilita a linha para ${n} operador(es).`,
+  lines:    n => `Confirmar faz ${n} habilitação(ões) de linha.`,
   priority: n => `Confirmar torna a linha prioritária para ${n} operador(es).`,
   profiles: (n, d) => `Confirmar cria ${n} perfil(is) de operador, no turno a partir de ${d}.`,
 }
 
-// what to adjust — groups: a shift; lines / priority: a shift and a line; requestId (shifts / groups):
+// what to adjust — groups: a shift; lines / priority: a shift and a line (lines with neither: every
+// line of every shift); requestId (shifts / groups):
 // grant that change request — the suggestion is his move alone; with pairId, the swap with its
 // mirror request (both moves)
 export interface ConsoleAction { kind: ConsoleActionKind; shiftId?: string; lineId?: string; requestId?: string; pairId?: string }
@@ -119,7 +120,7 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
 
   const setRows = (next: typeof rows, nextBench = bench) => setEdit({ rows: next, bench: nextBench })
   function swap(i: number, memberId: string) {
-    const cur = rows[i].move, key = `${cur.from}>${cur.to}`
+    const cur = rows[i].move, key = consoleBenchKey(cur)
     const pool = bench[key] ?? []
     const pick = pool.find(b => b.crewMemberId === memberId)
     if (!pick) return
@@ -274,9 +275,9 @@ export function AdjustModal({ action, snapshot, rule, canApply, onEditRule, onAp
                   </thead>
                   <tbody>
                     {rows.map((r, i) => {
-                      const alts = bench[`${r.move.from}>${r.move.to}`] ?? []
+                      const alts = bench[consoleBenchKey(r.move)] ?? []
                       return (
-                        <tr key={r.move.crewMemberId} className={cn('border-b border-border/60 [&>td]:py-1.5 [&>td]:px-2 align-middle', !r.on && 'opacity-45')}>
+                        <tr key={r.move.crewMemberId + (r.move.lineId ?? '')} className={cn('border-b border-border/60 [&>td]:py-1.5 [&>td]:px-2 align-middle', !r.on && 'opacity-45')}>
                           <td><input type="checkbox" checked={r.on} onChange={() => setRows(rows.map((x, k) => (k === i ? { ...x, on: !x.on } : x)))} /></td>
                           <td className="whitespace-nowrap"><span className="font-mono text-xs text-muted-foreground me-2">{r.move.code}</span>{r.move.name}</td>
                           <td className="whitespace-nowrap">

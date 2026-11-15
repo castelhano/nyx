@@ -17,8 +17,7 @@ line, and is what's left over (vacations aside) well spread over the shifts?
 - It **never rosters anyone**. Allocation stays with the generator and the Escala screen; the
   Painel adjusts crew records (shift, rest group, pattern, line access / priority, new profiles)
   so the generator works on balanced ground.
-- Generated days only show up as a warning (planned days up to 30 days ahead with error issues
-  or outdated), linking to the Escala.
+- It never reads generated days — the Escala screen is where they are checked.
 - Context: **scope + empresa + role** (an empresa operating more than one scope is a
   configuration alert — the crew isn't split per scope).
 
@@ -28,7 +27,7 @@ line, and is what's left over (vacations aside) well spread over the shifts?
 
 ```
 console/
-  console.input.ts     Prisma → ConsoleInput (plans, duties, crew, window, records, generated days)
+  console.input.ts     Prisma → ConsoleInput (plans, duties, crew, window, records)
   console.calc.ts      ConsoleInput → ConsoleSnapshot (pure): staffing, coverage, shifts, groups,
                        lines, crew records, alerts, menu status
   console.actions.ts   the adjustments (pure): suggestions per kind, crew after the moves, impact
@@ -100,13 +99,20 @@ every plan.
 whose days off have the most to spare, then the one he's already in, then the emptier). Weekday
 chart of supply × demand, longest run of days worked in the cycle.
 
-**Lines per shift** (never the whole day — spare crew in the morning don't cover the afternoon):
-each duty counts for its dominant line; `need` = duties of the busiest day type × cycle factor;
-`enabled` = crew of the shift who may operate it (line access mode + vehicle types); `ideal` = need
-+ `transit.roster.lineMarginPct` (default 20%, room for vacations and absences). Enabled below the
-need is an error (`LINE_SHORT`), below the margin a warning (`LINE_MARGIN`); "Habilitar" suggests up
-to the margin. `bonded` = those with it as a priority (empresa) or preferred (crew member) line —
-informative only, listed collapsed: the generator spreads the lines without preferences.
+**Lines per shift** (`lineAnalysis`, the "Linhas" section — never the whole day: spare crew in the
+morning don't cover the afternoon). The plantão is one more line (`STANDBY_LINE`). A duty counts for
+every line it runs, and who may take it needs all of them plus a vehicle type he doesn't block —
+as the generator. Day by day over the window: the enabled **working** (rest pattern and group)
+against the line's duties of the day, so enabled crew all in one group show short on its day off.
+The day's duties (and the margin) never count above the shift's crew working that day: a day the
+shift lacks people — a Domingo Fixo shift with Sunday duties — is the headcount's (Demanda × quadro,
+the shift suggestion), not something enabling a line can fix.
+`gap` = the fewest working − duties (< 0: `LINE_SHORT`, error); `marginGap` = against the duties +
+`transit.roster.lineMarginPct` (< 0: `LINE_MARGIN`, info); the worst day is the one of the margin.
+Preferences: per rank (1st, 2nd…) and priority lines against the `seats` (busiest day × cycle
+factor): **CONTESTED** when more choose it first than its seats, **SHORT** when preferred (any rank) +
+priority fall below them, **BALANCED** otherwise. `conflicts`: preferred / priority lines he can't
+operate or with no duty in his shift, the plantão preferred but blocked — the generator ignores them.
 
 **Alerts** (`CONSOLE_ALERT_CODES`) are pure functions over the blocks, each with severity and the
 menu section it opens; the menu status is the worst severity per section.
@@ -125,7 +131,7 @@ after), listed in "Ajustes". No undo — reverting is a new adjustment the other
 |---|---|---|
 | `shifts` | `CrewMemberShift` from the date (`startShift`, replacing a link scheduled later) + group | yes |
 | `groups` | `CrewMember.restOffset` (and `restPatternId` when the row switches pattern) | no — next generation |
-| `lines` | `CrewMemberLine.access` by the empresa's mode | no |
+| `lines` | `CrewMemberLine.access` by the empresa's mode — one line × shift, or all of them | no |
 | `priority` | `CrewMemberLine.priority` | no |
 | `profiles` | new `CrewMember` + its first `CrewMemberShift` | yes |
 
@@ -143,6 +149,18 @@ default place (`withAllCriteria`).
 demand left is the plantões. None at all: every suggestion is refused (`CONSOLE_NO_PLAN`), except new
 profiles, whose shift is then picked by hand ("Aplicar aos selecionados" sets shift, pattern and
 group for every selected row). Some only: the suggestion notes the day types left out.
+
+**Lines** (`suggestLines` — "Equilibrar linhas", or "Habilitar" on one row). Per line × shift below the
+margin on any day, the shift's crew who'd take its duties with that line enabled (who'd need
+another line too is excluded, with the reason), one at a time: who lifts the most days below the
+margin; ties: who prefers it (1st first), then the selection rule. For all lines, a joint pass
+follows: per-line counts take crew enabled in several lines once in each, so on the duties the
+crew can't cover together (`WindowCover`), an idle crew member fit but for the lines gets them.
+Never disables anyone; the plantão is left out (unblocking it is the crew member's setting).
+
+**Priority lines** (`suggestPriority`, rows SHORT). Up to the seats, among who may already take its
+duties and doesn't have it: who has no preference first, then whose 1st choice is contested, then
+the selection rule.
 
 **Profiles.** One employee at a time: where he lowers the shortage the most (ties: the worst day);
 with no shortage left, the shift with the thinnest crew for its duties (crew ÷ duties over the

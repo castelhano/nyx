@@ -3,11 +3,11 @@
 // Painel de Escala — the analyses of the snapshot (GET /transit/console). Layout validated in the
 // prototype: KPIs and alerts on top, a side menu with each analysis' status, the chosen one beside.
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import {
-  CONSOLE_SECTIONS, CONSOLE_SECTION_LABEL,
-  type ConsoleAlert, type ConsoleLink, type ConsoleSection, type ConsoleSectionStatus, type ConsoleSeverity, type ConsoleSnapshot,
+  CONSOLE_SECTIONS, CONSOLE_SECTION_LABEL, CONSOLE_STANDBY_LINE,
+  type ConsoleAlert, type ConsoleLineRow, type ConsoleLink, type ConsoleSection, type ConsoleSectionStatus, type ConsoleSeverity, type ConsoleSnapshot,
 } from '@nyx/schemas'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ export const signed  = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0
 // the page's context, for the links that go to the Escala
 export interface ConsoleCtx { branchId: string; role: string; onSection: (s: ConsoleSection) => void }
 
-export function hrefOf(link: ConsoleLink, ctx: ConsoleCtx): string | null {
+export function hrefOf(link: ConsoleLink): string | null {
   switch (link.kind) {
     case 'vehicle-plan':      return `/transit/vehicle-plan/${link.id}`
     case 'crew-plan':         return `/transit/crew-plan/${link.id}`
@@ -31,20 +31,19 @@ export function hrefOf(link: ConsoleLink, ctx: ConsoleCtx): string | null {
     case 'crew-shift':        return `/transit/crew-shift/${link.id}`
     case 'rest-pattern':      return `/transit/rest-pattern/${link.id}`
     case 'employee':          return `/hr/employee/${link.id}`
-    case 'escala':            return `/transit/daily-operation?${new URLSearchParams({ empresa: ctx.branchId, funcao: ctx.role, data: link.date, modo: 'dia' })}`
     case 'section':           return null
   }
 }
 
 export function GoTo({ link, ctx, label }: { link: ConsoleLink; ctx: ConsoleCtx; label: string }) {
-  const href = hrefOf(link, ctx)
+  const href = hrefOf(link)
   const cls = 'inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground whitespace-nowrap'
   if (!href) return <button type="button" onClick={() => link.kind === 'section' && ctx.onSection(link.section)} className={cls}>{label}</button>
   return <Link href={href} className={cls}>{label}<Icons.ExternalLink className="w-3 h-3" /></Link>
 }
 
 const LINK_LABEL: Record<ConsoleLink['kind'], string> = {
-  'vehicle-plan': 'Planejamento', 'crew-plan': 'Escala lógica', escala: 'Escala', 'crew-member': 'Operador', 'crew-member-lines': 'Linhas',
+  'vehicle-plan': 'Planejamento', 'crew-plan': 'Escala lógica', 'crew-member': 'Operador', 'crew-member-lines': 'Linhas',
   'crew-shift': 'Turno', 'rest-pattern': 'Regime', employee: 'Funcionário', section: 'Abrir',
 }
 
@@ -66,7 +65,7 @@ export function ConsoleSkeleton() {
   const bar = 'rounded-sm bg-muted animate-pulse'
   return (
     <div className="space-y-4" role="status" aria-live="polite" aria-label="Calculando o quadro">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {Array.from({ length: 5 }, (_, i) => (
           <div key={i} className="rounded-lg border border-border bg-card px-4 py-3 space-y-2">
             <div className={cn(bar, 'h-3 w-20')} />
@@ -98,8 +97,8 @@ const SEV: Record<ConsoleSeverity, { icon: LucideIcon; cls: string }> = {
 }
 
 export const SECTION_ICON: Record<ConsoleSection, LucideIcon> = {
-  plans: Icons.Layers, staffing: Icons.Users, shifts: Icons.Clock, groups: Icons.CalendarRange,
-  crew: Icons.IdCard, requests: Icons.ArrowLeftRight, daily: Icons.CalendarX, adjust: Icons.ClipboardList,
+  plans: Icons.Layers, staffing: Icons.Users, shifts: Icons.Clock, groups: Icons.CalendarRange, lines: Icons.Route,
+  crew: Icons.IdCard, requests: Icons.ArrowLeftRight, adjust: Icons.ClipboardList,
 }
 
 // the day types the analyses show: those with days in the window or an effective plan
@@ -135,10 +134,9 @@ export function KpiStrip({ snapshot }: { snapshot: ConsoleSnapshot }) {
       ? { label: `Cobríveis · ${main.t.name}`, value: `${main.x.coverable}/${main.x.demand}`, detail: 'tabelas, pelo encaixe de horário', bad: main.x.coverable < main.x.demand }
       : { label: 'Cobríveis', value: '—', detail: 'sem plano efetivo' },
     { label: 'Operadores', value: String(snapshot.crew.active), detail: `${snapshot.crew.away} afastados · ${snapshot.crew.vacation} de férias` },
-    { label: 'Dias gerados c/ erro', value: String(snapshot.dailyErrors.length), detail: 'não publicados, até 30 dias', bad: snapshot.dailyErrors.length > 0 },
   ]
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {tiles.map(t => (
         <div key={t.label} className="rounded-lg border border-border bg-card px-4 py-3">
           <div className="text-xs text-muted-foreground">{t.label}</div>
@@ -517,27 +515,120 @@ export function GroupsSection({ snapshot, onSuggest }: { snapshot: ConsoleSnapsh
   )
 }
 
-// ── E: crew records ─────────────────────────────────────────────────────────
+// ── E: lines per shift ──────────────────────────────────────────────────────
 
-// how far the bonded crew is from the margin: none / under half / under it / there
-function BondBadge({ bonded, ideal }: { bonded: number; ideal: number }) {
-  const missing = ideal - bonded
-  if (missing <= 0) return <Badge label="vínculo ok" color="success" />
-  const share = bonded / ideal
-  return <Badge label={`faltam ${missing} · ${Math.round(share * 100)}%`} color={share === 0 ? 'destructive' : share < 0.5 ? 'warning' : 'info'} />
+const DEMAND: Record<ConsoleLineRow['demand'], { label: string; color: string; title: string }> = {
+  CONTESTED: { label: 'disputada', color: 'warning', title: 'Mais operadores a escolhem em 1º lugar que as vagas — alguém não vai ser atendido' },
+  SHORT:     { label: 'pouco escolhida', color: 'info', title: 'Preferências e prioritárias abaixo das vagas — vai para quem não a escolheu' },
+  BALANCED:  { label: 'equilibrada', color: 'muted', title: 'Preferências e prioritárias cobrem as vagas' },
 }
+const ordinal = (k: number) => `${k + 1}ª`
+
+export function LinesSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnapshot; ctx: ConsoleCtx; onAction?: (a: ConsoleAction) => void }) {
+  const shiftName = new Map(snapshot.shifts.map(s => [s.id, s.name]))
+  const { rows, conflicts } = snapshot.lines
+  const [open, setOpen] = useState<string | null>(null)
+  const [showFine, setShowFine] = useState(false)
+  const issue = (l: ConsoleLineRow) => l.marginGap < 0 || l.demand !== 'BALANCED'
+  const shown = showFine ? rows : rows.filter(issue)
+  const fine = rows.length - rows.filter(issue).length
+  const below = rows.filter(l => l.marginGap < 0 && l.lineId !== CONSOLE_STANDBY_LINE).length
+
+  return (
+    <Card title="Linhas por turno" icon={Icons.Route} aside={
+      onAction && <Button size="sm" variant="outline" disabled={!below} onClick={() => onAction({ kind: 'lines' })} title={below ? undefined : 'Todas as linhas com a margem em todos os dias'}><Icons.Sparkles className="w-3.5 h-3.5" />Equilibrar linhas</Button>
+    }>
+      <p className="text-xs text-muted-foreground mb-2">
+        Dia a dia na janela: habilitados trabalhando (regime e grupo) contra as tabelas do dia — o pior dia decide. Uma tabela com duas linhas pede as duas; sobra num turno não cobre falta em outro.
+      </p>
+      {!rows.length && <p className="text-muted-foreground">Nenhuma tabela com linha no planejamento efetivo.</p>}
+      {rows.length > 0 && (
+        <table className="w-full text-sm tabular-nums">
+          <thead className="text-xs text-muted-foreground">
+            <tr className="[&>th]:pb-1 [&>th]:font-medium [&>th]:px-1.5">
+              <th className="w-5" />
+              <th className="text-left">Linha · turno</th>
+              <th className="text-right" title="Tabelas do turno com a linha, no dia mais cheio">Tabelas</th>
+              <th className="text-right" title="Operadores do turno que podem pegar as tabelas da linha">Habilitados</th>
+              <th className="text-right" title="O dia com menos habilitados trabalhando contra a margem: trabalhando / tabelas do dia">Pior dia</th>
+              <th className="text-right" title="Tabelas do pior dia + a margem da empresa">Margem</th>
+              <th />
+              <th className="text-left ps-4!" title="Operadores do turno com a linha por ordem de preferência, e prioritárias (empresa) — contra as vagas: o dia mais cheio × o ciclo do regime">Preferências / vagas</th>
+              {onAction && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map(l => {
+              const key = l.lineId + l.shiftId
+              const standby = l.lineId === CONSOLE_STANDBY_LINE
+              const d = DEMAND[l.demand]
+              return (
+                <Fragment key={key}>
+                  <tr className="border-t border-border/60 [&>td]:py-1 [&>td]:px-1.5">
+                    <td>
+                      <button type="button" onClick={() => setOpen(open === key ? null : key)} className="text-muted-foreground hover:text-foreground" aria-label="Habilitados por grupo de folga">
+                        {open === key ? <Icons.ChevronDown className="w-3.5 h-3.5" /> : <Icons.ChevronRight className="w-3.5 h-3.5" />}
+                      </button>
+                    </td>
+                    <td className="whitespace-nowrap"><span className="font-medium">{l.lineCode}</span> · {shiftName.get(l.shiftId)}</td>
+                    <td className="text-right">{l.duties}</td>
+                    <td className="text-right">{l.enabled}</td>
+                    <td className={cn('text-right whitespace-nowrap', l.gap < 0 ? 'text-destructive font-medium' : l.marginGap < 0 && 'text-amber-600 dark:text-amber-400')}>
+                      {l.worstWorking} / {l.worstDuties}{l.worstDay && <span className="ms-1 text-[11px] text-muted-foreground font-normal">{fmtDay(l.worstDay)}</span>}
+                    </td>
+                    <td className="text-right text-muted-foreground">{l.worstIdeal}</td>
+                    <td className="text-right">
+                      {l.gap < 0 ? <Badge label={`faltam ${-l.gap}`} color="destructive" /> : l.marginGap < 0 ? <Badge label={`margem: faltam ${-l.marginGap}`} color="warning" /> : null}
+                    </td>
+                    <td className="ps-4! whitespace-nowrap">
+                      <span className="text-xs text-muted-foreground me-2">
+                        {l.prefs.map((n, k) => `${ordinal(k)} ${n}`).join(' · ')}{!standby && ` · prior. ${l.priority}`} / <b className="font-medium text-foreground">{l.seats}</b>
+                      </span>
+                      <span title={d.title}><Badge label={d.label} color={d.color} /></span>
+                    </td>
+                    {onAction && (
+                      <td className="text-right whitespace-nowrap space-x-3">
+                        {!standby && l.marginGap < 0 && <button type="button" className="text-xs font-medium hover:underline" onClick={() => onAction({ kind: 'lines', shiftId: l.shiftId, lineId: l.lineId })}>Habilitar</button>}
+                        {!standby && l.demand === 'SHORT' && <button type="button" className="text-xs font-medium hover:underline" onClick={() => onAction({ kind: 'priority', shiftId: l.shiftId, lineId: l.lineId })}>Prioritárias</button>}
+                      </td>
+                    )}
+                  </tr>
+                  {open === key && (
+                    <tr>
+                      <td />
+                      <td colSpan={onAction ? 8 : 7} className="pb-2 px-1.5">
+                        <div className="flex flex-wrap gap-1.5 text-xs">
+                          <span className="text-muted-foreground">Habilitados por grupo:</span>
+                          {l.groups.length ? l.groups.map(g => <span key={g.label} className="rounded-sm bg-muted px-1.5 py-0.5">{g.label} <b className="font-medium">{g.enabled}</b></span>) : <span className="text-muted-foreground">ninguém</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {fine > 0 && (
+        <button type="button" onClick={() => setShowFine(v => !v)} className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          {showFine ? <Icons.ChevronDown className="w-3.5 h-3.5" /> : <Icons.ChevronRight className="w-3.5 h-3.5" />}
+          {showFine ? 'Ocultar' : 'Mostrar'} {fine} linha · turno sem pendência
+        </button>
+      )}
+
+      <ul className="mt-5 space-y-1">
+        <RecordRow label="Preferências e prioritárias que o gerador ignora" severity="info" ctx={ctx}
+          items={conflicts.map(c => ({ key: `${c.id}-${c.lineCode}`, text: `${c.code} ${c.name} — ${c.lineCode}: ${c.reason}`, link: { kind: 'crew-member-lines', id: c.id } }))} />
+      </ul>
+    </Card>
+  )
+}
+
+// ── F: crew records ─────────────────────────────────────────────────────────
 
 export function CrewSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnapshot; ctx: ConsoleCtx; onAction?: (a: ConsoleAction) => void }) {
   const d = snapshot.crewData
-  const shiftById = new Map(snapshot.shifts.map(s => [s.id, s]))
-  // habilitação: below the need (error), below the margin (warning), fine; the bond (priority /
-  // preferred) is only informative — the generator spreads the lines without it
-  const short  = d.lines.filter(l => l.gap < 0)
-  const margin = d.lines.filter(l => l.gap >= 0 && l.enabled < l.ideal)
-  // the most short of bonded crew (against the margin) first
-  const fine   = d.lines.filter(l => l.enabled >= l.ideal).sort((a, b) => (b.ideal - b.bonded) - (a.ideal - a.bonded) || a.lineCode.localeCompare(b.lineCode))
-  const [showFine, setShowFine] = useState(false)
-
   const rows: { label: string; items: { key: string; text: string; link: ConsoleLink }[]; severity: 'warning' | 'info'; action?: ReactNode }[] = [
     {
       label: 'Funcionários sem perfil de operador', severity: 'warning',
@@ -556,87 +647,6 @@ export function CrewSection({ snapshot, ctx, onAction }: { snapshot: ConsoleSnap
       <ul className="space-y-1">
         {rows.map(r => <RecordRow key={r.label} {...r} ctx={ctx} />)}
       </ul>
-
-      <div className="mt-5">
-        <div className="flex items-baseline gap-2 mb-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Habilitação por linha e turno</h3>
-          <span className="text-[11px] text-muted-foreground">sobra num turno não cobre falta em outro</span>
-        </div>
-        {short.length + margin.length ? (
-          <table className="w-full text-sm tabular-nums">
-            <thead className="text-xs text-muted-foreground">
-              <tr className="[&>th]:pb-1 [&>th]:font-medium [&>th]:px-1.5">
-                <th className="text-left">Linha · turno</th>
-                <th className="text-right" title="Tabelas do turno com a linha como dominante, no tipo de dia mais cheio">Tabelas</th>
-                <th className="text-right" title="Operadores para cobrir todo dia (ciclo do regime)">Necessário</th>
-                <th className="text-right" title="Necessário + a margem da empresa (férias, faltas)">Com margem</th>
-                <th className="text-right" title="Operadores do turno que podem operar a linha">Habilitados</th>
-                <th />
-                {onAction && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {[...short, ...margin].map(l => (
-                <tr key={l.lineId + l.shiftId} className="border-t border-border/60 [&>td]:py-1 [&>td]:px-1.5">
-                  <td className="whitespace-nowrap"><span className="font-medium">{l.lineCode}</span> · {shiftById.get(l.shiftId)?.name}</td>
-                  <td className="text-right">{l.duties}</td>
-                  <td className="text-right">{l.need}</td>
-                  <td className="text-right text-muted-foreground">{l.ideal}</td>
-                  <td className={cn('text-right font-medium', l.gap < 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400')}>{l.enabled}</td>
-                  <td className="text-right">
-                    {l.gap < 0 ? <Badge label={`faltam ${-l.gap}`} color="destructive" /> : <Badge label={`margem: faltam ${l.ideal - l.enabled}`} color="warning" />}
-                  </td>
-                  {onAction && (
-                    <td className="text-right whitespace-nowrap">
-                      <button type="button" className="text-xs font-medium hover:underline" onClick={() => onAction({ kind: 'lines', shiftId: l.shiftId, lineId: l.lineId })}>Habilitar</button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="flex items-center gap-2 text-muted-foreground"><Icons.CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />Todas as linhas com habilitados suficientes, com margem, em cada turno.</p>
-        )}
-        {fine.length > 0 && (
-          <div className="mt-2 text-xs">
-            <button type="button" onClick={() => setShowFine(v => !v)} className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
-              {showFine ? <Icons.ChevronDown className="w-3.5 h-3.5" /> : <Icons.ChevronRight className="w-3.5 h-3.5" />}
-              {fine.length} linha · turno ok
-            </button>
-            {showFine && (
-              <table className="mt-1 ms-5 text-xs tabular-nums text-muted-foreground">
-                <thead>
-                  <tr className="[&>th]:pb-0.5 [&>th]:pe-4 [&>th]:font-medium [&>th]:text-left">
-                    <th>Linha · turno</th><th>Habilitados</th><th>Com margem</th>
-                    <th title="Com a linha prioritária (empresa) ou preferida (operador) — informativo: o gerador distribui as linhas sem isso">Vinculados</th>
-                    <th />
-                    {onAction && <th />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {fine.map(l => (
-                    <tr key={l.lineId + l.shiftId} className="[&>td]:py-0.5 [&>td]:pe-4">
-                      <td className="whitespace-nowrap"><span className="text-foreground">{l.lineCode}</span> · {shiftById.get(l.shiftId)?.name}</td>
-                      <td>{l.enabled}</td>
-                      <td>{l.ideal}</td>
-                      <td>{l.bonded} de {l.need}</td>
-                      <td><BondBadge bonded={l.bonded} ideal={l.ideal} /></td>
-                      {onAction && (
-                        <td>
-                          {l.bonded < l.need && (
-                            <button type="button" className="font-medium hover:underline hover:text-foreground" onClick={() => onAction({ kind: 'priority', shiftId: l.shiftId, lineId: l.lineId })}>Prioritárias</button>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-      </div>
     </Card>
   )
 }
@@ -661,35 +671,5 @@ function RecordRow({ label, items, severity, ctx, action }: { label: string; ite
         </ul>
       )}
     </li>
-  )
-}
-
-// ── F: generated days with errors ───────────────────────────────────────────
-
-export function DailySection({ snapshot, ctx }: { snapshot: ConsoleSnapshot; ctx: ConsoleCtx }) {
-  const ahead = (d: string) => Math.round((Date.parse(d) - Date.parse(snapshot.today)) / 86_400_000)
-  return (
-    <Card title="Dias gerados com erro" icon={Icons.CalendarX} aside={<span className="text-xs text-muted-foreground">planejados, até 30 dias — corrigir na Escala</span>}>
-      {!snapshot.dailyErrors.length && (
-        <p className="flex items-center gap-2 text-muted-foreground"><Icons.CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />Nenhum dia gerado com erro.</p>
-      )}
-      <ul className="space-y-2">
-        {snapshot.dailyErrors.map(d => (
-          <li key={d.operationId} className="flex items-start gap-3">
-            <div className="w-16 shrink-0">
-              <div className="font-medium tabular-nums">{fmtDay(d.date)}</div>
-              <div className="text-[11px] text-muted-foreground">{ahead(d.date) === 0 ? 'hoje' : ahead(d.date) === 1 ? 'amanhã' : `em ${ahead(d.date)} dias`}</div>
-            </div>
-            <div className="flex-1 space-y-1">
-              {d.outdated && <div className="text-xs text-amber-700 dark:text-amber-400">{d.outdated}</div>}
-              <div className="flex flex-wrap gap-1">
-                {d.issues.map(i => <Badge key={i.code} label={`${i.count} ${i.label.toLowerCase()}`} color="destructive" />)}
-              </div>
-            </div>
-            <GoTo link={{ kind: 'escala', date: d.date }} ctx={ctx} label="Escala" />
-          </li>
-        ))}
-      </ul>
-    </Card>
   )
 }

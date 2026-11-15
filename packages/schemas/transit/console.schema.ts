@@ -23,7 +23,7 @@ export type Console = z.infer<typeof consoleSchema>
 
 // ── snapshot (computed, never persisted) ─────────────────────────────────────
 
-export const CONSOLE_SECTIONS = ['plans', 'staffing', 'shifts', 'groups', 'crew', 'requests', 'daily', 'adjust'] as const
+export const CONSOLE_SECTIONS = ['plans', 'staffing', 'shifts', 'groups', 'lines', 'crew', 'requests', 'adjust'] as const
 export type ConsoleSection = typeof CONSOLE_SECTIONS[number]
 
 export const CONSOLE_SECTION_LABEL: Record<ConsoleSection, string> = {
@@ -31,9 +31,9 @@ export const CONSOLE_SECTION_LABEL: Record<ConsoleSection, string> = {
   staffing: 'Demanda × quadro',
   shifts:   'Distribuição de turnos',
   groups:   'Grupos de folga',
+  lines:    'Linhas',
   crew:     'Cadastro do quadro',
   requests: 'Pedidos de troca',
-  daily:    'Dias gerados com erro',
   adjust:   'Ajustes',
 }
 
@@ -44,7 +44,6 @@ export const CONSOLE_ALERT_CODES = [
   'GROUPS_OFF_DEMAND', 'REST_RUN_LONG',
   'LINE_SHORT', 'LINE_MARGIN', 'NO_PROFILE', 'NO_SHIFT', 'NO_PATTERN', 'FIXED_CAR_CONFLICT', 'AWAY',
   'CHANGE_REQUESTED', 'CHANGE_READY',
-  'DAILY_ERROR',
 ] as const
 export type ConsoleAlertCode = typeof CONSOLE_ALERT_CODES[number]
 
@@ -54,7 +53,6 @@ export type ConsoleSeverity = 'error' | 'warning' | 'info'
 export type ConsoleLink =
   | { kind: 'vehicle-plan'; id: string }
   | { kind: 'crew-plan'; id: string }
-  | { kind: 'escala'; date: string }
   | { kind: 'crew-member'; id: string }
   | { kind: 'crew-member-lines'; id: string }
   | { kind: 'crew-shift'; id: string }
@@ -203,22 +201,51 @@ export interface ConsoleGroups {
   worstIdeal: number
 }
 
-// E — crew records
+// E — lines per shift (the plantão as one more line). A duty counts for every line it runs, and
+// who may take it needs every one of them (as the generator). Over the reference window, day by day.
 export interface ConsoleLineRow {
+  // the plantão: CONSOLE_STANDBY_LINE
   lineId:   string
   lineCode: string
   shiftId:  string
-  // duties of the shift whose dominant line it is, on its busiest day type
+  // duties of the shift on the line, on its busiest day
   duties:   number
-  need:     number
-  // need + the empresa's margin (transit.roster.lineMarginPct)
-  ideal:    number
-  // crew of the shift who may operate it (line access + vehicle type)
+  // crew of the shift who may take at least one of its duties (access to all its lines, vehicle type)
   enabled:  number
-  // of those, who has it as a priority or preferred line
-  bonded:   number
-  gap:      number
+  // the worst day — the fewest enabled working against the margin; its duties (never more than the
+  // shift's crew working: a day short of people is the headcount's) and enabled working
+  worstDay: string | null
+  worstDuties: number
+  worstWorking: number
+  // the day's duties + the empresa's margin (transit.roster.lineMarginPct), on the worst day — capped
+  // as the duties
+  worstIdeal: number
+  // the fewest enabled working − duties over the days (< 0: a day short) and − duties with margin
+  gap:       number
+  marginGap: number
+  // the enabled per rest group ("A", "6x1 · B"; null: no pattern)
+  groups:   { label: string; enabled: number }[]
+  // the crew the line keeps busy: busiest day × the cycle (6x1: 7/6)
+  seats:    number
+  // crew of the shift with it as a preferred line, by rank (1st, 2nd…), and as a priority line
+  prefs:    number[]
+  priority: number
+  // CONTESTED: more 1st choices than seats; SHORT: preferred (any rank) + priority below the seats —
+  // someone who didn't choose it will take it; BALANCED otherwise
+  demand:   'CONTESTED' | 'BALANCED' | 'SHORT'
 }
+
+// a crew record the generator ignores silently: a preferred / priority line he can't operate, or
+// with no duty in his shift; the plantão preferred but blocked
+export interface ConsoleLineConflict extends ConsoleCrewRef { lineCode: string; reason: string }
+
+export interface ConsoleLines {
+  rows:      ConsoleLineRow[]
+  conflicts: ConsoleLineConflict[]
+}
+
+// = the roster generator's STANDBY_LINE
+export const CONSOLE_STANDBY_LINE = '__STANDBY__'
 
 export interface ConsoleCrewData {
   noProfile: { employeeId: string; code: string; name: string; jobTitle: string; role: string; hireDate: string }[]
@@ -231,16 +258,6 @@ export interface ConsoleCrewData {
   // on férias now — info only, never out of the supply
   vacation:  (ConsoleCrewRef & { until: string; cover: string | null })[]
   fixedCar:  (ConsoleCrewRef & { vehicleCode: string; reason: string })[]
-  lines:     ConsoleLineRow[]
-}
-
-// F — generated days with errors
-export interface ConsoleDailyError {
-  operationId: string
-  date:        string
-  // why the copy is no longer what's in force (outdated) — null when it is
-  outdated:    string | null
-  issues:      { code: string; label: string; count: number }[]
 }
 
 // An open CrewChangeRequest of the empresa's crew of the role — oldest first
@@ -285,7 +302,7 @@ export interface ConsoleSnapshot {
   groups:   ConsoleGroups[]
   crew:     { active: number; away: number; vacation: number }
   crewData: ConsoleCrewData
-  dailyErrors: ConsoleDailyError[]
+  lines:    ConsoleLines
   requests: ConsoleChangeRequest[]
   alerts:   ConsoleAlert[]
   status:   Record<ConsoleSection, ConsoleSectionStatus>

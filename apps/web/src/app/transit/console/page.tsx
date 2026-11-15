@@ -17,7 +17,7 @@ import { apiFetch } from '@/lib/auth'
 import { cn, extractError } from '@/lib/utils'
 import { useToast } from '@/lib/toast-context'
 import {
-  AlertsCard, ConsoleSkeleton, CrewSection, DailySection, GroupsSection, KpiStrip, PlansSection, SectionNav, ShiftsSection, StaffingSection,
+  AlertsCard, ConsoleSkeleton, CrewSection, GroupsSection, LinesSection, KpiStrip, PlansSection, SectionNav, ShiftsSection, StaffingSection,
   type ConsoleCtx,
 } from './sections'
 import { AdjustModal, type ConsoleAction } from './AdjustModal'
@@ -145,12 +145,12 @@ export default function ConsolePage() {
                 {section === 'staffing' && <StaffingSection snapshot={snapshot} onSuggest={() => setAction({ kind: 'shifts' })} />}
                 {section === 'shifts'   && <ShiftsSection key={snapshot.scopeId} snapshot={snapshot} />}
                 {section === 'groups'   && <GroupsSection key={snapshot.scopeId} snapshot={snapshot} onSuggest={shiftId => setAction({ kind: 'groups', shiftId })} />}
+                {section === 'lines'    && <LinesSection snapshot={snapshot} ctx={ctx} onAction={setAction} />}
                 {section === 'crew'     && <CrewSection snapshot={snapshot} ctx={ctx} onAction={setAction} />}
                 {section === 'requests' && (
                   <RequestsSection snapshot={snapshot} canReview={canUpdate}
                     onGrant={(r, swap) => setAction({ kind: r.kind === 'SHIFT' ? 'shifts' : 'groups', shiftId: r.shiftId ?? undefined, requestId: r.id, pairId: swap ? r.swapWith?.requestId : undefined })} />
                 )}
-                {section === 'daily'    && <DailySection snapshot={snapshot} ctx={ctx} />}
                 {section === 'adjust'   && <AdjustmentsSection snapshot={snapshot} />}
               </div>
             </div>

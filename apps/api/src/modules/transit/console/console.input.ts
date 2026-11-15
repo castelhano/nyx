@@ -1,14 +1,14 @@
 import { BadRequestException } from '@nestjs/common'
-import { bestShift, CREW_ROLE_PREFIX, CREW_ROLES, type ConsoleDailyError, type ConsolePlanRow, type CrewRole, type DailySummary, type DutySummary } from '@nyx/schemas'
+import { bestShift, CREW_ROLE_PREFIX, CREW_ROLES, type ConsolePlanRow, type CrewRole, type DutySummary } from '@nyx/schemas'
 import type { PrismaService } from '../../../prisma/prisma.service'
 import type { TransitCrewConfigService } from '../settings/transit-crew-config.service'
 import type { TransitRosterConfigService } from '../settings/transit-roster-config.service'
 import type { DayTypeService } from '../timetabling/day-type/day-type.service'
 import { addDays, dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
-import { outdatedOperations } from '../daily/daily-outdated'
 import { OPEN_CHANGE, changeRequestSelect, changeText, settleChangeRequests } from '../crew/crew-member/crew-change-request'
 import { parseDay } from '../timetabling/dop/dop-resolution'
-import { dailyIssueLabel, type ConsoleCrew, type ConsoleDuty, type ConsoleInput, type ConsolePattern } from './console.calc'
+import { STANDBY_LINE } from '../daily/roster/roster-generator.calc'
+import { type ConsoleCrew, type ConsoleDuty, type ConsoleInput, type ConsolePattern } from './console.calc'
 
 // What the Painel de Escala reads from the database — one load per request, the figures in
 // console.calc.ts. Always the planned side: the effective plans (no validTo) and the crew as it
@@ -16,14 +16,6 @@ import { dailyIssueLabel, type ConsoleCrew, type ConsoleDuty, type ConsoleInput,
 
 // the reference window — 5 weeks: cycles of 7, 14 and 28 days and a month's start/end inside
 export const CONSOLE_WINDOW_DAYS = 35
-// generated days ahead the Painel warns about
-export const CONSOLE_DAILY_DAYS = 30
-// the day's issues that make a generated day show up (errors of crew, vehicles and coverage)
-const DAILY_ERROR_CODES = new Set([
-  'DUTY_UNASSIGNED', 'RESERVE_SHORT', 'BLOCK_NO_VEHICLE', 'BLOCK_NO_CREW', 'VEHICLE_DOUBLE', 'VEHICLE_UNAVAILABLE',
-  'CREW_ABSENT', 'CREW_ON_DAY_OFF', 'CREW_INACTIVE', 'SHIFT_WINDOW', 'CREW_WINDOW', 'LINE_NOT_ALLOWED', 'VEHICLE_TYPE_BLOCKED', 'INTER_SHIFT_REST',
-])
-
 export interface ConsoleParams { branchId: string; role: CrewRole; scopeId?: string | null }
 
 const patternSelect = { id: true, name: true, pattern: true, anchorDate: true, offOnHolidays: true, staggered: true } as const
@@ -206,7 +198,7 @@ export async function loadConsoleInput(
     where:   { role, employee: { branchId, status: 'ACTIVE' } },
     orderBy: { employee: { code: 'asc' } },
     select: {
-      id: true, isRosterable: true, notBeforeMinutes: true, notAfterMinutes: true, restOffset: true, blockedVehicleTypes: true, standbyBlocked: true, weeklyHours: true,
+      id: true, isRosterable: true, notBeforeMinutes: true, notAfterMinutes: true, restOffset: true, blockedVehicleTypes: true, standbyBlocked: true, standbyRank: true, weeklyHours: true,
       preferredVehicle: { select: { id: true, code: true, status: true, branchId: true } },
       employee: {
         select: {
@@ -262,7 +254,9 @@ export async function loadConsoleInput(
       pattern: pattern ? asPattern(pattern) : null, ownPattern: !!m.restPattern,
       offset: m.restOffset,
       lineAccess: Object.fromEntries(m.lines.filter(l => l.access).map(l => [l.lineId, l.access!])),
-      prefLines: m.lines.filter(l => l.rank != null).map(l => l.lineId),
+      // by rank, the plantão among them
+      prefLines: [...m.lines.flatMap(l => (l.rank != null ? [{ id: l.lineId, rank: l.rank }] : [])), ...(m.standbyRank != null ? [{ id: STANDBY_LINE, rank: m.standbyRank }] : [])]
+        .sort((a, b) => a.rank - b.rank).map(l => l.id),
       priorityLines: m.lines.filter(l => l.priority).map(l => l.lineId),
       blockedVehicleTypes: m.blockedVehicleTypes, standbyBlocked: m.standbyBlocked, rosterable: m.isRosterable,
       away: away ? { reason: away.absenceType?.name ?? 'Afastamento', until: dayOf(away.endDate) } : null,
@@ -310,20 +304,6 @@ export async function loadConsoleInput(
     createdAt: r.createdAt.toISOString(), shiftId: r.shiftId, restPatternId: r.restPatternId, restOffset: r.restOffset,
   }))
 
-  // ── generated days with errors ──
-  const operations = await prisma.dailyOperation.findMany({
-    where:   { scopeId: scope.id, status: 'PLANNED', date: { gte: date, lte: toDbDate(addDays(today, CONSOLE_DAILY_DAYS)) } },
-    orderBy: { date: 'asc' },
-    select:  { id: true, date: true, sources: true, summary: true },
-  })
-  const outdated = await outdatedOperations(prisma, operations)
-  const dailyErrors: ConsoleDailyError[] = operations.flatMap(o => {
-    const counts: Record<string, number> = (o.summary as DailySummary | null)?.issues ?? {}
-    const issues = Object.entries(counts).filter(([code, n]) => n > 0 && DAILY_ERROR_CODES.has(code)).map(([code, count]) => ({ code, label: dailyIssueLabel(code), count }))
-    const why = outdated.get(o.id) ?? null
-    return issues.length || why ? [{ operationId: o.id, date: dayOf(o.date), outdated: why, issues }] : []
-  })
-
   return {
     scopeId: scope.id, branchId, role, today,
     scopes: operated.map(o => ({ id: o.scope.id, name: o.scope.name })),
@@ -331,6 +311,6 @@ export async function loadConsoleInput(
     lines: lines.map(l => ({ id: l.id, code: l.code })),
     lineAccessMode: settings.lineAccessMode, lineMarginPct: settings.lineMarginPct, ruleModes: settings.ruleModes,
     restFloor: crewSettings.range.interShiftRest.floor, bankCompPct: settings.hourBankCompPct,
-    noProfile, fixedCar, dailyErrors, requests,
+    noProfile, fixedCar, requests,
   }
 }

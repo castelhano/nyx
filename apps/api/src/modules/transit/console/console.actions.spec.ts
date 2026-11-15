@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rosterSettingsSchema, type RebalanceRules } from '@nyx/schemas'
-import { applyMoves, changeRequestRows, impact, suggestGroups, suggestLine, suggestProfiles, suggestRequest, suggestShifts } from './console.actions'
+import { applyMoves, changeRequestRows, impact, suggestGroups, suggestLines, suggestPriority, suggestProfiles, suggestRequest, suggestShifts } from './console.actions'
 import type { ConsoleCrew, ConsoleDuty, ConsoleInput } from './console.calc'
 
 const settings = rosterSettingsSchema.parse({})
@@ -33,7 +33,7 @@ const input = (crew: ConsoleCrew[], duties: ConsoleDuty[]): ConsoleInput => ({
   days: Array.from({ length: 14 }, (_, i) => ({ day: addDays(START, i), weekday: i % 7, dayTypeId: typeOf(i % 7) })),
   dayTypes: [{ id: 'UTIL', code: 'U', name: 'Útil' }, { id: 'SAB', code: 'S', name: 'Sábado' }, { id: 'DOM', code: 'D', name: 'Domingo' }],
   shifts: [MAN, TAR], plans: [], duties, crew, patterns: [sixOne], lines: [{ id: 'L1', code: '101' }],
-  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100, noProfile: [], fixedCar: [], dailyErrors: [], requests: [],
+  lineAccessMode: 'BLACKLIST', lineMarginPct: 20, ruleModes: settings.ruleModes, restFloor: 660, bankCompPct: 100, noProfile: [], fixedCar: [], requests: [],
 })
 const rules: RebalanceRules = { criteria: [{ key: 'shiftTenure', active: true }, { key: 'hireDate', active: true }] }
 
@@ -61,17 +61,16 @@ describe('balancear turnos', () => {
   it('the impact shows the short shift improving', () => {
     const inp = base()
     const s = suggestShifts(inp, rules)
-    const imp = impact(inp, 'shifts', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset })), addDays(START, 7), 3)
+    const imp = impact(inp, 'shifts', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset })), addDays(START, 7))
     const man = imp.rows.find(r => r.shiftId === 'MAN')!
     expect(man.cells.UTIL.after).toBeGreaterThan(man.cells.UTIL.before)
-    expect(imp.notes.some(n => n.includes('3 dia(s) já gerado(s)'))).toBe(true)
   })
 
   it('warns about a long run of days worked when the group changes', () => {
     const inp = base()
     // MAN6 is off on Sunday (offset 0); off on Monday from Tuesday the 13th: works Mon 12 … Sun 18 = 7
     const m = inp.crew.find(x => x.id === 'MAN6')!
-    const imp = impact(inp, 'shifts', [{ crewMemberId: m.id, to: 'MAN', offset: 6 }], addDays(START, 8), 0)
+    const imp = impact(inp, 'shifts', [{ crewMemberId: m.id, to: 'MAN', offset: 6 }], addDays(START, 8))
     expect(imp.warnings.some(w => /dias seguidos/.test(w))).toBe(true)
   })
 })
@@ -115,7 +114,7 @@ describe('grupos de folga por demanda', () => {
     expect(s.moves.every(m => m.from === 'MAN' && m.to === 'MAN')).toBe(true)
     expect(s.moves.filter(m => m.offset === 0).length).toBeGreaterThanOrEqual(5)
     expect(s.patterns?.map(p => p.id)).toEqual(['p6'])
-    const imp = impact(inp, 'groups', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset })), START, 0)
+    const imp = impact(inp, 'groups', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: m.offset })), START)
     expect(imp.rows.find(r => r.shiftId === 'MAN')!.cells.UTIL.after).toBeGreaterThan(imp.rows.find(r => r.shiftId === 'MAN')!.cells.UTIL.before)
   })
 })
@@ -141,21 +140,44 @@ describe('grupos de folga × linhas vinculadas', () => {
 })
 
 describe('linhas', () => {
-  it('enables the line for the crew of the short shift, those who prefer it first', () => {
+  it('enables the line up to the margin on every day, those who prefer it first', () => {
     const enabled: ConsoleCrew['lineAccess'] = { L1: 'ENABLED' }
     const crew = crewOf(7, MAN, i => ({ lineAccess: i < 2 ? enabled : {}, prefLines: i === 5 ? ['L1'] : [] }))
     const inp: ConsoleInput = { ...input(crew, dutiesOf(MAN, 4)), lineAccessMode: 'WHITELIST' }
-    const s = suggestLine(inp, rules, 'lines', 'MAN', 'L1')
-    // need 5 (4 × 7/6), margin 6 (+20%), 2 enabled → 4
+    const s = suggestLines(inp, rules, 'MAN', 'L1')
+    // margin 5 a day (4 + 20%), each one off on a different day: 6 enabled → 4 more
     expect(s.moves).toHaveLength(4)
     expect(s.moves[0].crewMemberId).toBe('MAN5')
-    const imp = impact(inp, 'lines', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: null, lineId: 'L1' })), START, 0)
-    expect(imp.notes[0]).toMatch(/habilitados 2 → 6/)
+    const imp = impact(inp, 'lines', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: null, lineId: 'L1' })), START)
+    expect(imp.notes[0]).toMatch(/habilitados 2 → 6; pior dia 1 → 5/)
   })
-  it('suggests priority lines up to the need, among who already operates it', () => {
-    const inp = input(crewOf(7, MAN), dutiesOf(MAN, 4))
-    const s = suggestLine(inp, rules, 'priority', 'MAN', 'L1')
-    expect(s.moves).toHaveLength(5)
+
+  it('balances every line of every shift at once, a crew member taking several', () => {
+    const lines = (l: string): ConsoleDuty[] => dutiesOf(MAN, 2).map(d => ({ ...d, id: `${d.id}-${l}`, lineMinutes: [{ lineId: l, minutes: 300 }] }))
+    const inp: ConsoleInput = { ...input(crewOf(7, MAN), [...lines('L1'), ...lines('L2')]), lineAccessMode: 'WHITELIST', lines: [{ id: 'L1', code: '101' }, { id: 'L2', code: '102' }] }
+    const s = suggestLines(inp, rules)
+    expect(new Set(s.moves.map(m => m.lineId))).toEqual(new Set(['L1', 'L2']))
+    const after = applyMoves(inp, 'lines', s.moves.map(m => ({ crewMemberId: m.crewMemberId, to: m.to, offset: null, lineId: m.lineId })))
+    expect(after.crew.some(m => m.lineAccess.L1 === 'ENABLED' && m.lineAccess.L2 === 'ENABLED')).toBe(true)
+  })
+
+  it('enables the idle crew for the duties nobody covers jointly, each line fine alone', () => {
+    // 3 + 3 duties a day; 5 enabled in both (4–5 working: each line has its margin), 3 in none
+    const lines = (l: string): ConsoleDuty[] => dutiesOf(MAN, 3).map(d => ({ ...d, id: `${d.id}-${l}`, lineMinutes: [{ lineId: l, minutes: 300 }] }))
+    const both: ConsoleCrew['lineAccess'] = { L1: 'ENABLED', L2: 'ENABLED' }
+    const crew = crewOf(8, MAN, i => ({ lineAccess: i < 5 ? both : {} }))
+    const inp: ConsoleInput = { ...input(crew, [...lines('L1'), ...lines('L2')]), lineAccessMode: 'WHITELIST', lines: [{ id: 'L1', code: '101' }, { id: 'L2', code: '102' }] }
+    const s = suggestLines(inp, rules)
+    expect(s.moves.length).toBeGreaterThan(0)
+    expect(s.moves.every(m => Number(m.crewMemberId.slice(3)) >= 5 && m.reasons.includes('Cobre tabela que falta no conjunto das linhas'))).toBe(true)
+  })
+
+  it('suggests priority lines up to the seats, who has no preference first', () => {
+    const inp = input(crewOf(7, MAN, i => ({ prefLines: i < 3 ? ['L1'] : [] })), dutiesOf(MAN, 4))
+    const s = suggestPriority(inp, rules, 'MAN', 'L1')
+    // seats 5, 3 already prefer it
+    expect(s.moves).toHaveLength(2)
+    expect(s.moves[0].reasons[0]).toBe('Sem preferências')
   })
 })
 
@@ -166,7 +188,7 @@ describe('perfis', () => {
     const s = suggestProfiles(inp, rules)
     expect(s.moves).toHaveLength(1)
     expect(s.moves[0].to).toBe('MAN')
-    const imp = impact(inp, 'profiles', [{ crewMemberId: 'e1', to: 'MAN', offset: s.moves[0].offset }], addDays(START, 3), 0)
+    const imp = impact(inp, 'profiles', [{ crewMemberId: 'e1', to: 'MAN', offset: s.moves[0].offset }], addDays(START, 3))
     expect(imp.totals.UTIL.after).toBeGreaterThanOrEqual(imp.totals.UTIL.before)
   })
 
@@ -211,7 +233,7 @@ describe('perfis', () => {
     expect(s.moves[0].shiftOptions?.every(o => o.patternId === 'p6' && o.offset != null)).toBe(true)
     expect(s.patterns?.map(p => p.id)).toEqual(['p6', 'p5'])
     // in TAR with 5x2: works 5 of 7 days — the impact counts him with his own pattern
-    const imp = impact(inp, 'profiles', [{ crewMemberId: 'e1', to: 'TAR', offset: 0, patternId: 'p5' }], START, 0)
+    const imp = impact(inp, 'profiles', [{ crewMemberId: 'e1', to: 'TAR', offset: 0, patternId: 'p5' }], START)
     const tar = imp.rows.find(r => r.shiftId === 'TAR')!
     expect(tar.cells.SAB.after).toBe(tar.cells.SAB.before)
     expect(tar.cells.UTIL.after).toBe(tar.cells.UTIL.before + 1)

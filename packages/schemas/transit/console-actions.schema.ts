@@ -59,7 +59,7 @@ export interface ConsoleSuggestion {
   title:    string
   summary:  string
   moves:    ConsoleMove[]
-  // eligible crew members not picked, per `${from}>${to}` — what a swap in the list chooses from
+  // eligible crew members not picked, per consoleBenchKey — what a swap in the list chooses from
   bench:    Record<string, ConsoleMove[]>
   // left out by the fixed filters, with the reason
   excluded: { crewMemberId: string; code: string; name: string; reason: string }[]
@@ -69,7 +69,11 @@ export interface ConsoleSuggestion {
   patterns?: { id: string; name: string; groupOptions: { offset: number; label: string }[] }[]
 }
 
-// what a suggestion is about — groups: the shift; lines / priority: the shift and the line
+// the bench a move's swap picks from: per shift move, and per line for lines / priority
+export const consoleBenchKey = (m: Pick<ConsoleMove, 'from' | 'to' | 'lineId'>) => `${m.from}>${m.to}${m.lineId ? `|${m.lineId}` : ''}`
+
+// what a suggestion is about — groups: the shift; lines / priority: the shift and the line (lines
+// with neither: every line of every shift)
 export const consoleSuggestSchema = z.object({
   branchId: z.uuid(),
   role:     z.enum(['DRIVER', 'FARE_COLLECTOR', 'ASSISTANT']).default('DRIVER'),

@@ -14,7 +14,7 @@ import { CrewMemberShiftService } from '../crew/crew-member/crew-member-shift.se
 import { dayOf, localToday, toDbDate } from '../timetabling/plan-validity'
 import { computeConsole, type ConsoleCrew, type ConsoleInput } from './console.calc'
 import { loadConsoleInput, type ConsoleParams } from './console.input'
-import { changeRequestRows, impact, planned, suggestGroups, suggestLine, suggestProfiles, suggestRequest, suggestShifts, type MoveItem } from './console.actions'
+import { changeRequestRows, impact, planned, suggestGroups, suggestLines, suggestPriority, suggestProfiles, suggestRequest, suggestShifts, type MoveItem } from './console.actions'
 import { changeRequestSelect, notifyChange, reviewMessage, settleChangeRequests } from '../crew/crew-member/crew-change-request'
 
 // Painel de Escala — no model and no CRUD, like the DOP: registers itself for discovery / CASL and
@@ -59,20 +59,18 @@ export class ConsoleService {
     if (dto.requestId && (kind === 'shifts' || kind === 'groups')) return suggestRequest(input, rules, dto.requestId, dto.pairId)
     if (kind === 'shifts') return suggestShifts(input, rules)
     if (kind === 'profiles') return suggestProfiles(input, rules)
+    if (kind === 'lines') return suggestLines(input, rules, dto.shiftId, dto.lineId)
     if (!dto.shiftId) throw new BadRequestException('Informe o turno')
     if (kind === 'groups') return suggestGroups(input, rules, dto.shiftId)
     if (!dto.lineId) throw new BadRequestException('Informe a linha')
-    return suggestLine(input, rules, kind, dto.shiftId, dto.lineId)
+    return suggestPriority(input, rules, dto.shiftId, dto.lineId)
   }
 
   async preview(kind: ConsoleActionKind, dto: ConsoleActionDto): Promise<ConsoleImpact> {
     const input = await this.input(dto)
     const effective = this.effectiveOf(kind, dto)
     const items = this.check(kind, input, dto)
-    const generated = await this.prisma.dailyOperation.count({
-      where: { scopeId: input.scopeId, status: { not: 'CLOSED' }, date: { gte: toDbDate(kind === 'groups' ? localToday() : effective) } },
-    })
-    return impact(input, kind, items, effective, generated)
+    return impact(input, kind, items, effective)
   }
 
   // No undo: reverting is a new adjustment the other way — every one is logged (RosterAdjustment)
