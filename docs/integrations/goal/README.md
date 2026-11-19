@@ -60,7 +60,7 @@ responseMode: SYNC
 
 - The token lasts **5 minutes** (`exp − iat = 300 s`). A long paged read must renew it.
 - The token carries only generic Keycloak roles; nothing in it says read or write. Access is decided by the API.
-- **Secrets never go in the repository.** The client secret and the Swagger login were sent by Goal and are kept outside it. When nyx calls the API, they come from the environment:
+- **Secrets never go in the repository.** The client secret and the Swagger login were sent by Goal and live in `apps/api/.env` (git-ignored); `apps/api/.env.example` lists the variables without the secrets. Code that calls the API reads them from the environment:
 
 | Variable | Value |
 |---|---|
@@ -69,6 +69,7 @@ responseMode: SYNC
 | `GOAL_CLIENT_ID` | `external-client` |
 | `GOAL_CLIENT_SECRET` | from Goal |
 | `GOAL_TENANT_ID` | `1045` |
+| `GOAL_SWAGGER_USER` / `GOAL_SWAGGER_PASSWORD` | Swagger login, to download the specification |
 
 ---
 
@@ -88,7 +89,8 @@ Nyx code doesn't call the API yet. The reads so far were ad hoc scripts, with th
 When Goal changes the API, fetch it again and regenerate the index:
 
 ```bash
-curl -u '<swagger user>:<password>' \
+source apps/api/.env
+curl -u "$GOAL_SWAGGER_USER:$GOAL_SWAGGER_PASSWORD" \
   https://api-lat.goalbus.goalsystems.com/api-integration/v3/api-docs/ext-common \
   | python3 -m json.tool --indent 2 > docs/integrations/goal/openapi/ext-common.json
 node docs/integrations/goal/openapi/build-index.mjs
