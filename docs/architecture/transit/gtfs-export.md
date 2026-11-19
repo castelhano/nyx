@@ -106,16 +106,7 @@ A route with a missing trace is left out, never drawn as a straight line. There 
 
 ## How Goal behaves
 
-None of this shows in the code. Tested on 2026-11-04, unless stated otherwise.
-
-- **Flow:** GTFS → service (timetable offer) → scenario → logical schedule → daily schedules. A published service can't be deleted anymore, so publish only reviewed data.
-- **Unique name:** a repeated service name is refused, which is why it carries the version.
-- **Loads add, they don't replace.** New routes and places stay in the catalog even after the service is deleted, and `placeCode` is immutable.
-- **Routes are reused** when the stop sequence and the name match. Renaming a line creates a new route for it. Color isn't part of the identity. Reloading all but two routes of V001 with no changes created none.
-- **Km comes from `shapes.txt`, not the stops.** A20: 389.2 km on screen against 389.9 km from the trace and 125.2 km from straight lines. It follows the trace on reload too, so editing a route in nyx and reloading works. Tested on the A20 only.
-- **Two or three stops per trip are enough.** Stops only mark the start and end of a schedule, and km doesn't depend on them. Goal accepted new `stop_id`s and `trip_id`s.
-- **A scenario is independent:** it has no link to other scenarios or to its service once generated, so a new one lives alongside the existing ones.
-- **API:** reads were used. The specification lists write operations, none tried.
+Moved to [docs/integrations/goal/behavior.md](../../integrations/goal/behavior.md), with the rest of what's known about Goal: its API ([api.md](../../integrations/goal/api.md)) and the questions open with its support.
 
 ---
 
