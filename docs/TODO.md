@@ -6,9 +6,10 @@
 
 
 ## Alto
+[ ] Tela de ajuste de ciclo, adicionar controle para filtro de daytype (somente dias uteis;sabados;etc) e ja integrar com layout Cittati
 [ ] Edição da escala diária
 ## Medio
-[ ] Demanda linha, registrar data de atualizaça+ão e algum eventual metadado relevante
+[ ] Demanda linha, registrar data de atualização e algum eventual metadado relevante
 [ ] Tipar parâmetro db/tx (PrismaService | Prisma.TransactionClient) nos services/utils que hoje usam `any` pra aceitar os dois — eslint tem no-unsafe-* desligado em apps/api por causa disso (eslint.config.mjs)
 
 ## Baixo
