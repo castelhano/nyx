@@ -39,7 +39,7 @@
   - departureTime/Hour ← `Real. Início` (HH:MM)
   - cycleMinutes ← `Tempo Real.` (minutos inteiros; bate com Real. Fim − Real. Início em ~99% das linhas, já trata a virada da meia-noite)
   - vehicle ← `Veículo`; driver ← `Motorista` (`Cobrador` sempre vazio)
-  - edited ← não existe; o mais próximo é `Motivo` preenchido
+  - edited ← não se aplica: viagem com ponto inicial/final diferente do mais frequente do dia, ou com `Motivo` preenchido, é **descartada** (ver regras abaixo)
 - Observado
   - 1.885 linhas sem `Tempo Real.`: viagens não realizadas, 498 delas com início e sem fim → descartar
   - `Tempo Real.` mín 1, p1 9, mediana 47, p99 89, máx 118 → há ciclos curtos espúrios (provável falha de GPS)
@@ -55,8 +55,18 @@
 
 ## Regras de dados sugeridas (Cittati)
 - Considerar só viagens com `Tempo Real.` > 0
-- Piso para ciclo espúrio: descartar abaixo de X% do `Tempo Prev.` (ex.: 40%) ou abaixo de um mínimo fixo
-- Excluir viagens com `Motivo` "FEZ 50pp TRAJETO" e "ITINERARIO"; marcar `Motivo` preenchido como `edited`, para a interface continuar igual
+- **Edição na Cittati**: não se cria nem se altera viagem; a única interação é trocar o ponto inicial e/ou final (ex.: veículo não completou a linha → o ponto final vira o último ponto atendido). Viagem com ponto trocado = `edited`
+  - O arquivo (e o BI: `nomePontoTP`/`nomePontoTS`) só traz o ponto efetivo, não o planejado → a referência é o ponto mais frequente de cada **(data, linha, sentido)**
+  - Agrupar por data, não só por linha+sentido: a A07 trocou o nome do terminal no cadastro ("T CPA 1" em 10–11/11, "TERMINAL CPA I" a partir de 12/11); por linha+sentido isso marcaria 48 viagens como editadas sem que tivessem sido
+  - Resultado na amostra: 53 viagens realizadas com ponto trocado (~0,7%), concentradas em 10–12/11 e 14–15/11 (fase de implantação), quase todas com ciclo bem abaixo do previsto. O ciclo de 1 min (206 IDA 12/11 22:54, fim em "R.OBIDOS") e o de 5 min (309 IDA 11/11 19:52, início em "DROGARIA ESTER") estão entre elas
+  - Caso a observar: 309 VOLTA com fim em "PN204355385" se repete 12x em 10–12/11 com ciclos próximos do previsto → pode ser uma variante legítima, não edição
+- **Sem piso fixo ou percentual de ciclo**: as linhas alimentadoras curtas têm ciclo real legítimo de 7–14 min (A07, A15 VOLTA com 8 de 26 previstos, A20, A08); um piso cortaria viagens válidas. O filtro de ciclo espúrio passa a ser o flag de edição
+- `Motivo`: só 18 linhas preenchidas ("FEZ 50pp TRAJETO", "ITINERARIO", "GPS INOPERANTE/COM FALHA"); tratar como `edited` também
+- **Decisão: viagem editada é descartada** (não só marcada) — distorce muito o ciclo. Mostrar na tela quantas foram descartadas e por quê
+- Empate no ponto mais frequente (linha com poucas viagens no dia, ex.: 031 com ~5/sentido) → não marcar ninguém como editada
+- **Referência pelo cadastro nyx não compensa** (conferido no banco em 2026-11-20): os pontos terminais existem em `TransitRoute.originLocality/destinationLocality`, mas com outros códigos/nomes (nyx "Est Bispo A" / B1014-001 × Cittati "PN204353598"; "Term Cpa 1 - A" × "TERMINAL CPA I")
+  - A coluna `Atendimento` do arquivo parece com o nome da origem no nyx ("Res Picolli", "Altos da Gloria 2"), mas não bate sempre (A07: Atendimento "Term Cpa 3"/"Est Bispo", nyx Term Cpa 1 / S Dourada) e não muda quando o ponto é editado → não serve
+  - Daria para mapear o nome Cittati em `TransitLocality.externalCodes` (`{ CITTATI }`, já existe para GLOBUS), mas são ~70 nomes e quebra quando a Cittati renomeia ponto (caso A07); o ponto mais frequente do dia se adapta sozinho
 - `Viagem Extra` = "Sim": marcar ou excluir (decidir quando aparecer)
 - No BI: viagemRealizada='Sim', tempoViagemRealizado > 0, excluir problemaHardware=1
 
@@ -83,6 +93,4 @@
 - Dados do BI começam em 03/11/2026 e só ficam confiáveis a partir de ~meados de novembro; refresh diário às 02:00 (D-1)
 
 ## Pendente para decidir
-- Como os códigos 031, A06 e 206B estão cadastrados no nyx
-- Critério final de piso de ciclo e de exclusão por `Motivo`
-- Equivalente de "editada" com a Cittati (confirmar com eles o significado de justificaViagem/justificadoInicio e `Motivo`)
+- ~~Códigos de linha~~: conferido no banco — o nyx guarda igual ao arquivo ("031", "206B", "A06"...); o adapter Cittati só faz trim, sem `Number()`. As 17 linhas do arquivo existem no nyx, com rotas OUTBOUND/INBOUND (206B só OUTBOUND)
