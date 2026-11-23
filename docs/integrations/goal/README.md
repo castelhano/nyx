@@ -14,7 +14,7 @@ Goal (GoalBus, by Goal Systems) is the scheduling system the operation uses: it 
 | Timetable offer (service) | nyx → Goal | GTFS file, imported by hand — [gtfs-export.md](../../architecture/transit/gtfs-export.md) | In use |
 | Idle matrix (matriz de ociosos) | nyx → Goal | CSV file, imported by hand — [osrm.md](../../architecture/transit/osrm.md#idle-matrix-export) | In use |
 | Scenario validation (trips, vehicles, duties, balance) | Goal → nyx | API reads | Planned |
-| Daily roster adjustment (compensation day off + reserve swap) | nyx ↔ Goal | API reads + writes | Depends on write access |
+| Daily roster adjustment (compensation day off) | nyx ↔ Goal | API reads + absence writes; the reserve is put in the duty by hand, in Daily Operation | Planned |
 
 Goal leaves gaps the operation has to fill outside it: it has no hour bank, doesn't balance reserves against the bank, and its scenarios need checking against what was planned. Those analyses run in nyx even if the API stays read-only: reading is enough to validate and summarize.
 
@@ -36,7 +36,7 @@ Goal leaves gaps the operation has to fill outside it: it has no hour bank, does
 
 ## Environments
 
-One tenant, `1045` (MTU), in the `lat` region. It holds both operators (RAPIDO and VPAR) and is the production environment: everything there is real. A test environment was asked for (see [questions.md](questions.md)).
+One tenant, `1045` (MTU), in the `lat` region. It holds both operators (RAPIDO and VPAR) and is the production environment: everything there is real. Goal has no test environment (2026-11-23).
 
 | What | Address |
 |---|---|
@@ -78,9 +78,16 @@ responseMode: SYNC
 | Access | Status |
 |---|---|
 | Read | Works — scenarios, timetable, catalog and metrics were read during the GTFS validation (2026-11-04 to 2026-11-05) |
-| Write | Unknown. The specification lists 115 write operations; Goal's e-mail listed only reads; none was tried. Goal is deciding whether to grant it or build the routine themselves |
+| Write | Granted: GET, POST, PUT and DELETE on the operations the API offers (Goal, 2026-11-23). None tried yet, and with no test environment every write lands in production |
 
 Nyx code doesn't call the API yet. The reads so far were ad hoc scripts, with the user's approval each time.
+
+### Working with the API
+
+- **Everything is production.** There is no test environment.
+- **Reads:** run them only when the user approves.
+- **Writes:** only on an explicit request from the user, one at a time, never as a trial. Deleting a wrong absence doesn't give the task back, so a mistake has to be fixed by hand in Daily Operation.
+- **Network:** retry with a pause when the TLS handshake times out. Renew the token in long reads.
 
 ---
 

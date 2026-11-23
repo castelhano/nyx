@@ -53,10 +53,27 @@ Configured in the web app (Configuração de ausência). The "ID do GoalBus Moto
 | Name | Short name | Globus code | Category | Unit | Notes |
 |---|---|---|---|---|---|
 | FOLGA CLT | FOLGA CLT | 1 | Livre | whole day | shown in the driver app |
-| COMPENSACAO | COMP | 2 | Livre | whole day | at most 3 days; shown in the driver app |
+| COMPENSACAO | COMP | 2 | Livre | whole day | at most 3 days in the driver's request app, no limit through the API; shown in the driver app |
 | FERIAS | FERIAS | 0 | Pura | whole day | worth 07:00 of work |
 
-`COMPENSACAO` is the day off nyx would give from the hour bank.
+`COMPENSACAO` is the day off nyx would give from the hour bank. Goal is still confirming that its short name for the API is `COMP` (2026-11-23).
+
+---
+
+## Daily operation
+
+Stated by Goal's support on 2026-11-23, not tested yet.
+
+- **Assigning a task** that already exists to a person, such as a reserve, is done only in the Daily Operation module. No API call does it. `POST /ext/v1/task` creates a new task with no driver, listed as available there.
+- **An absence over a task:** an absence can be given for a future date where the person already has a task. If the absence type is set to remove the previous assignment, the task is left without a driver and the planner picks a replacement in Daily Operation.
+- **Deleting an absence** doesn't give the task back to the original driver.
+- **Notifications:** the people involved are told in GoalBus Driver, both of an absence given through the API and of a task reassigned in Daily Operation.
+- **`staff/assignment`** returns what was published in Rostering and is available in Daily Operation, not drafts.
+- **Reserves (`STAND_BY`):** a person with a working day in the roster and no task, who can cover a vacancy. A presentation place can't be set for a reserve today.
+- **`staffCode`** is the "Código" column of Goal's driver registry, which holds the employee number (matrícula) at MTU.
+- **The 3-day limit of `COMPENSACAO`** applies only in the driver's request app. The API doesn't enforce it, so nyx has to keep its own limit.
+- **Filtering by company:** Goal will adjust the Rostering rules to the two depots of each company, so the roster can be filtered by depot.
+- **No test environment:** every write lands in production.
 
 ---
 

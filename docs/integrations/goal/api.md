@@ -1,7 +1,7 @@
 # Goal API — map by use case
 
 > Curated from `openapi/ext-common.json` (OTTO-Integration 1.0). Every operation is listed in [endpoints.md](endpoints.md); this file says what each relevant one is for.
-> "Read" and "write" below follow the HTTP method. Write access isn't confirmed (see [README.md](README.md#access-status)).
+> "Read" and "write" below follow the HTTP method. Both are granted, and there is no test environment (see [README.md](README.md#access-status)).
 
 ---
 
@@ -46,13 +46,21 @@ What Goal generated from a service. Read-only, and the base of the planned valid
 
 ## 2. Daily operation — roster
 
-The daily schedules generated from a logical schedule, per person and per vehicle. The planned adjustment: read the reserves, choose who gets a compensation day off by the hour bank kept in nyx, give that day off and put a reserve in the duty that opened.
+The daily schedules generated from a logical schedule, per person and per vehicle.
+
+The planned adjustment, as the operation does it:
+
+1. The daily schedules are generated in Goal, which puts everyone left over as a reserve (`STAND_BY`).
+2. Nyx compares the reserves of the day with how many the operation needs. The surplus is the number of compensation days off to give.
+3. Nyx chooses who gets them by the balance of the hour bank it keeps ([rostering.md](../../architecture/transit/rostering.md)). Goal has no hour bank.
+4. Nyx gives each one a `COMPENSACAO` day off through `POST /ext/v2/absence`. Nyx must enforce its own limit on them, since the API doesn't.
+5. The planner puts one of the remaining reserves in each duty that opened, in Daily Operation. The API can't do this step.
 
 ### Reads
 
 | Call | Returns |
 |---|---|
-| `GET /ext/v1/staff/assignment?startDate&endDate` | Per staff member and day: `assignmentType` — `TASK`, `DAY_OFF`, `STAND_BY`, `ABSENCE`, `UNASSIGNED`, `INCIDENCE`, `REMOVE_ABSENCE`, `ON_LEAVE` — with times, places, `tripCode`. Filters: `depotCodes`, `businessUnitCodes`, `workingGroupCodes`, `staffCodes`, `assignmentTypes` |
+| `GET /ext/v1/staff/assignment?startDate&endDate` | Per staff member and day: `assignmentType` — `TASK`, `DAY_OFF`, `STAND_BY`, `ABSENCE`, `UNASSIGNED`, `INCIDENCE`, `REMOVE_ABSENCE`, `ON_LEAVE` — with times, places, `tripCode`. Only what was published in Rostering. Filters: `depotCodes` (one company once Goal adjusts the Rostering rules), `businessUnitCodes`, `workingGroupCodes`, `staffCodes`, `assignmentTypes` |
 | `GET /ext/v1/standBy?startDate&endDate&limit` | Standbys (reserves): `code`, `date`, places, `shiftName`, `hourly` |
 | `GET /ext/v1/task?startDate&endDate` | Tasks (duties of the day): places, times, `drivingTime`, `paidTime`, `breakTime`, `overTime`, `nightTime`, `amplitude`, `workingTime`, `lineName`, `serviceName`, `shiftCode` |
 | `GET /ext/v1/task/event` | Events of tasks (trips, breaks…), by `taskCodes`, `tripCode` or `eventType` |
@@ -72,7 +80,7 @@ The daily schedules generated from a logical schedule, per person and per vehicl
 | `PUT /ext/v1/dailyWorkReport`, `/statusUpdate`, `/batchValidation` | Changes reports and their status |
 | `POST /ext/v1/task`, `PUT /ext/v1/task`, `POST /ext/v1/task/delete` | Creates, versions or deletes tasks. The `PUT` keeps the assignment as is |
 
-**Gap:** no call assigns a person to a task or removes a standby. `staff/assignment` and `standBy` are read-only, and `TaskDto` has no person. Giving the day off is possible; putting the reserve in its place isn't, by the specification. Asked to Goal.
+**Not in the API:** assigning a person to a task or removing a standby. Goal confirmed it (2026-11-23): that's done only in Daily Operation. `POST /ext/v1/task` creates a new task with no driver, so it can't fill an existing one. Giving the day off goes through the API; putting the reserve in its place stays manual.
 
 ---
 
