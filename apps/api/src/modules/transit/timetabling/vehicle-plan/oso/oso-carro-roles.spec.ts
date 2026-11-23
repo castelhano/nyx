@@ -81,6 +81,62 @@ describe('mergeContinuations across a pause', () => {
   })
 })
 
+describe('mergeContinuations filling a pause', () => {
+  // R03: carro 1 runs both peaks with a RECO between them, a midday block fits in that pause
+  const peaks = (blockId = 'peaks', over: Partial<OsoCarro> = {}) => carro(blockId, [
+    trip(300, 380, 'A', 'M'), trip(385, 470, 'M', 'A'), reco(471),
+    trip(1080, 1160, 'A', 'M'), trip(1165, 1250, 'M', 'A'), reco(1251),
+  ], over.operatorLabel ?? 'VPAR')
+  const midday = (events = [trip(660, 740, 'A', 'M'), trip(745, 830, 'M', 'A'), reco(831)], operatorLabel = 'VPAR') =>
+    carro('midday', events, operatorLabel)
+
+  it('runs a block fitting whole inside the pause in that carro, between its RECOs', () => {
+    const [joined, ...rest] = mergeContinuations([peaks(), midday()])
+    expect(rest).toEqual([])
+    expect(joined.blockId).toBe('peaks')
+    expect(joined.events.map(e => `${e.kind}@${e.departureMinutes}`)).toEqual([
+      'trip@300', 'trip@385', 'deadrun@471', 'trip@660', 'trip@745', 'deadrun@831', 'trip@1080', 'trip@1165', 'deadrun@1251',
+    ])
+    expect(operatingMinutes(joined)).toBe(170 * 3)
+  })
+
+  it('closes the filled block with a RECO when it had none', () => {
+    const [joined] = mergeContinuations([peaks(), midday([trip(660, 740, 'A', 'M'), trip(745, 830, 'M', 'A')])])
+    expect(joined.events.filter(e => e.kind === 'deadrun')).toHaveLength(3)
+  })
+
+  it('asks for 30 minutes on an end at a different terminal', () => {
+    const otherStart = (departure: number) => midday([trip(departure, departure + 80, 'X', 'M'), trip(departure + 85, 830, 'M', 'A')])
+    expect(mergeContinuations([peaks(), otherStart(500)])).toHaveLength(1)
+    expect(mergeContinuations([peaks(), otherStart(499)])).toHaveLength(2)
+    const otherEnd = (arrival: number) => midday([trip(660, 740, 'A', 'M'), trip(745, arrival, 'M', 'X')])
+    expect(mergeContinuations([peaks(), otherEnd(1050)])).toHaveLength(1)
+    expect(mergeContinuations([peaks(), otherEnd(1051)])).toHaveLength(2)
+  })
+
+  it('needs the block whole inside the pause', () => {
+    expect(mergeContinuations([peaks(), midday([trip(460, 540, 'A', 'M'), trip(545, 630, 'M', 'A')])])).toHaveLength(2)
+    expect(mergeContinuations([peaks(), midday([trip(660, 740, 'A', 'M'), trip(1000, 1090, 'M', 'A')])])).toHaveLength(2)
+  })
+
+  it('prefers the carro whose terminals match, then the tighter pause', () => {
+    const elsewhere = carro('elsewhere', [trip(310, 390, 'B', 'M'), trip(395, 470, 'M', 'B'), reco(471), trip(1080, 1160, 'B', 'M'), trip(1165, 1250, 'M', 'B')])
+    const wider = carro('wider', [trip(200, 280, 'A', 'M'), trip(285, 370, 'M', 'A'), reco(371), trip(1100, 1180, 'A', 'M'), trip(1185, 1270, 'M', 'A')])
+    expect(mergeContinuations([wider, peaks(), elsewhere, midday()]).find(c => c.events.some(e => e.departureMinutes === 660))!.blockId).toBe('peaks')
+    expect(mergeContinuations([elsewhere, midday()])).toHaveLength(1)
+  })
+
+  it('keeps a lone trip as REFORÇO and another company apart', () => {
+    expect(mergeContinuations([peaks(), midday([trip(660, 740, 'A', 'M'), reco(741)])])).toHaveLength(2)
+    expect(mergeContinuations([peaks(), midday(undefined, 'RAPIDO')])).toHaveLength(2)
+  })
+
+  it('stays off for a line with several routes per direction', () => {
+    const otherRoute = midday([{ ...trip(660, 740, 'A', 'M'), routeId: 'r2' }, trip(745, 830, 'M', 'A')])
+    expect(mergeContinuations([peaks(), otherRoute])).toHaveLength(2)
+  })
+})
+
 describe('assignOrdinals', () => {
   it('numbers carros in order, skipping a single trip as REFORÇO', () => {
     const numbered = assignOrdinals([

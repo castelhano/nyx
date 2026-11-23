@@ -6,11 +6,16 @@ import type { OsoCarro, OsoEvent, OsoTripEvent } from './oso-assembler'
 //     carro on paper, even though the plan splits them (usually for a crew reason). Either
 //     straight away, or after a pause when one block goes off to another line in the morning
 //     and the other comes from another line in the afternoon
+//   - filling a pause: a block that fits whole inside another carro's RECO pause runs in that
+//     carro on paper (R03: a midday block between the morning and evening peaks of carro 1)
 //   - REFORÇO: a carro with a single one-way trip of the line is reinforcement. It still prints
 //     and counts its trip and hours, but takes no ordinal and is out of the fleet
 
 // tolerance between the arrival and the next departure — the plan's usual layover
 const CONTINUATION_MAX_GAP_MINUTES = 5
+
+// filling a pause across different terminals needs time to get from one to the other
+const PAUSE_FILL_MIN_GAP_OTHER_TERMINAL = 30
 
 function tripsOf(carro: OsoCarro): OsoTripEvent[] {
   return carro.events.filter((e): e is OsoTripEvent => e.kind === 'trip')
@@ -79,7 +84,81 @@ export function mergeContinuations(carros: OsoCarro[]): OsoCarro[] {
     merged.push(head)
   }
 
-  return merged
+  return allowPause ? fillPauses(merged) : merged
+}
+
+interface Pause {
+  // index of the RECO opening the pause in the carro's events
+  recoIndex:  number
+  startsAt:   number
+  endsAt:     number
+  startLocalityId: string
+  endLocalityId:   string
+}
+
+// a RECO with trips of the line on both sides — the carro is away and comes back later
+function pausesOf(carro: OsoCarro): Pause[] {
+  const pauses: Pause[] = []
+  carro.events.forEach((e, i) => {
+    if (e.kind !== 'deadrun' || e.type !== 'RETURN') return
+    const before = carro.events.slice(0, i).filter((x): x is OsoTripEvent => x.kind === 'trip').at(-1)
+    const after  = carro.events.slice(i + 1).find((x): x is OsoTripEvent => x.kind === 'trip')
+    if (!before || !after) return
+    pauses.push({
+      recoIndex:       i,
+      startsAt:        before.arrivalMinutes,
+      endsAt:          after.departureMinutes,
+      startLocalityId: before.destinationLocalityId,
+      endLocalityId:   after.originLocalityId,
+    })
+  })
+  return pauses
+}
+
+// a whole carro of 2+ trips fitting inside another one's pause runs there on paper. Fitting is
+// the rule; a matching terminal at each end only ranks the candidates, a different one asks
+// for a wider gap on that end. Lone trips stay out, they're REFORÇO
+function fillPauses(carros: OsoCarro[]): OsoCarro[] {
+  let result = [...carros]
+
+  for (const tail of carros) {
+    const trips = tripsOf(tail)
+    if (trips.length < 2 || !result.includes(tail)) continue
+    const first = trips[0]
+    const last  = trips.at(-1)!
+
+    const best = result
+      .filter(head => head !== tail && head.operatorLabel === tail.operatorLabel)
+      .flatMap(head => pausesOf(head).map(pause => {
+        const sameStart = pause.startLocalityId === first.originLocalityId
+        const sameEnd   = pause.endLocalityId === last.destinationLocalityId
+        const gapStart  = first.departureMinutes - pause.startsAt
+        const gapEnd    = pause.endsAt - last.arrivalMinutes
+        const fits = gapStart >= (sameStart ? 0 : PAUSE_FILL_MIN_GAP_OTHER_TERMINAL)
+          && gapEnd >= (sameEnd ? 0 : PAUSE_FILL_MIN_GAP_OTHER_TERMINAL)
+        return { head, pause, fits, matches: Number(sameStart) + Number(sameEnd), slack: gapStart + gapEnd }
+      }))
+      .filter(c => c.fits)
+      .sort((a, b) => b.matches - a.matches || a.slack - b.slack)[0]
+    if (!best) continue
+
+    // the tail's positioning before its first trip goes away, as on a continuation, and it
+    // always closes with a RECO so the head's pause reads on both sides of it
+    const tailEvents = tail.events.slice(tail.events.findIndex(e => e.kind === 'trip'))
+    const closing = tailEvents.at(-1)
+    if (!(closing?.kind === 'deadrun' && closing.type === 'RETURN')) {
+      tailEvents.push({ kind: 'deadrun', id: `pause-${tail.blockId}-${best.head.blockId}`, type: 'RETURN', departureMinutes: last.arrivalMinutes, arrivalMinutes: last.arrivalMinutes })
+    }
+
+    const { head, pause } = best
+    const filled: OsoCarro = {
+      ...head,
+      events: [...head.events.slice(0, pause.recoIndex + 1), ...tailEvents, ...head.events.slice(pause.recoIndex + 1)],
+    }
+    result = result.filter(c => c !== tail).map(c => (c === head ? filled : c))
+  }
+
+  return result
 }
 
 // the H of a carro: what the sheet shows of it, period by period — a RECO or an INTERV stops the
