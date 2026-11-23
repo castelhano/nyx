@@ -6,7 +6,7 @@ import { Icons } from '@/lib/icons'
 import { useShortcutContext } from '@/lib/keywatch'
 import { useToast } from '@/lib/toast-context'
 import { extractError } from '@/lib/utils'
-import { apiPost, apiPatch, apiDelete } from './api'
+import { apiPost, apiPatch, apiDelete, reprocessRoute, type ExtensionChange } from './api'
 import { StopGlyph } from './StopGlyph'
 import { SUGGEST_COLOR, type RouteLocality, type SuggestedLocality } from './types'
 
@@ -20,7 +20,8 @@ interface Props {
   disabled: boolean            // true while there are unsaved pending points on the main screen
   insertTarget?: SuggestedLocality | null  // suggested point to pre-insert and let the user position before saving
   onClose: () => void
-  onSaved: () => void
+  // the reprocess's official extension change, when the save reprocessed and the km moved
+  onSaved: (change: ExtensionChange | null) => void
 }
 
 function label(rl: RouteLocality): string {
@@ -144,12 +145,13 @@ export function SeqModal({ routeId, localities, color, disabled, insertTarget, o
         await Promise.all(changed.map(({ rl, seq }) => apiPatch(`/transit/route-locality/${rl.id}`, { sequence: seq })))
       }
 
+      let change: ExtensionChange | null = null
       if (hasDeletion || changed.length > 0 || newRow) {
         // deletion merges legs — force a full recompute, overriding MANUAL overrides on the affected legs
-        await apiPost(`/transit/transit-route/${routeId}/reprocess`, hasDeletion ? { forceAll: true } : undefined)
+        change = await reprocessRoute(routeId, hasDeletion ? { forceAll: true } : undefined)
       }
 
-      onSaved()
+      onSaved(change)
       onClose()
     } catch (err) {
       toast.error(extractError(err as Record<string, unknown>, 'Erro ao salvar sequência'))

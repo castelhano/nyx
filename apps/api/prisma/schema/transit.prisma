@@ -175,8 +175,33 @@ model TransitLine {
   serviceRequirements LineServiceRequirement[]
   operators           LineOperator[]
   crewMembers         CrewMemberLine[]
+  revisions           LineRevision[]
 
   @@map("transit_lines")
+}
+
+// A recorded change to the line's official trajectory, effective from validFrom on — history
+// only, nothing reads it to compute km (each VehiclePlan keeps the km it was calculated with,
+// and a closed plan can no longer be recalculated). Registered from the route screen when the
+// primary route's extension changes; edits of the same day merge into one revision.
+model LineRevision {
+  id          String   @id @default(uuid())
+  lineId      String
+  validFrom   DateTime @db.Date
+  description String
+  // ofício / process number from the managing body, when there is one
+  approvalRef String?
+  // LineRevisionExtension (packages/schemas/transit/line-revision.schema.ts) — the official
+  // extension per direction before and after: { "OUTBOUND": { "from": 16.5, "to": 16.8 } };
+  // from is null when the direction had no official km yet
+  extensionKm Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  line TransitLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, validFrom])
+  @@map("transit_line_revisions")
 }
 
 // A departure the line's schedule must cover on a day type / direction — e.g. a school

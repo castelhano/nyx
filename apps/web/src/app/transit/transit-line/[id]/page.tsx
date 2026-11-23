@@ -19,6 +19,7 @@ import { extractError }       from '@/lib/utils'
 import { Button }             from '@/components/ui/button'
 import { DemandChartModal, type DemandData } from '../DemandChartModal'
 import { VehicleTypesField } from './VehicleTypesField'
+import { LineHistoryModal } from './LineHistoryModal'
 
 const DOMAIN   = 'transit'
 const RESOURCE = 'transit-line'
@@ -33,6 +34,7 @@ export default function TransitLineDetailPage() {
   const [isPending,    setIsPending]    = useState(false)
   const [resetSignal,  setResetSignal]  = useState(0)
   const [chartOpen,    setChartOpen]    = useState(false)
+  const [historyOpen,  setHistoryOpen]  = useState(false)
   const { toast }  = useToast()
   const confirm    = useConfirm()
   const queryClient = useQueryClient()
@@ -246,8 +248,12 @@ export default function TransitLineDetailPage() {
         resetSignal={resetSignal}
         customFields={{ vehicleTypes: VehicleTypesField }}
         groupSlots={{
-          Metricas: (hasDemand || hasWindows) ? (
+          Metricas: !isNew ? (
             <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+                <Icons.History className="w-3.5 h-3.5" />
+                Histórico
+              </Button>
               {hasDemand && (
                 <Button type="button" variant="outline" size="sm" onClick={() => setChartOpen(true)}>
                   <Icons.BarChart2 className="w-3.5 h-3.5" />
@@ -267,6 +273,10 @@ export default function TransitLineDetailPage() {
 
       {chartOpen && hasDemand && (
         <DemandChartModal demand={demand!} onClose={() => setChartOpen(false)} />
+      )}
+
+      {historyOpen && (
+        <LineHistoryModal lineId={id} onClose={() => setHistoryOpen(false)} />
       )}
     </div>
   )

@@ -132,3 +132,8 @@ export function getCoord(rl: RouteLocality): { lat: number; lng: number } | null
   }
   return null
 }
+
+// official extension of one direction before and after the edits of this screen — from is
+// null when the direction had no official km yet (LineRevisionExtension in @nyx/schemas)
+export interface ExtensionKmChange { from: number | null; to: number }
+export type ExtensionChanges = Partial<Record<RouteDirection, ExtensionKmChange>>

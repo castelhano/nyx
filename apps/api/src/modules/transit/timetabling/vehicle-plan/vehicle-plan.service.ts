@@ -27,7 +27,7 @@ import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { validateNewBundles } from './trip-bundle.utils'
 import { selectLineCopy } from './line-copy.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
-import { activationEffect, applyEffect, assertRetroactiveAllowed, fmtDay, localToday, parseStartDate, toDbDate } from '../plan-validity'
+import { activationEffect, applyEffect, assertRetroactiveAllowed, dayOf, fmtDay, localToday, parseStartDate, toDbDate } from '../plan-validity'
 import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
 
 // A trip patch touching any attribute kept in sync with the OSO's LineDeparture
@@ -209,7 +209,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const [plan, blocks, matrix, planLines, { settings: planningCfg }, maxStandMinutes, bundleSizes, lineOperators] = await Promise.all([
       db.vehiclePlan.findUnique({
         where:  { id: planId },
-        select: { dayType: { select: { code: true } }, scope: { select: { operators: { select: { branchId: true, share: true } } } } },
+        select: { validTo: true, dayType: { select: { code: true } }, scope: { select: { operators: { select: { branchId: true, share: true } } } } },
       }),
       db.vehicleBlock.findMany({ where: { vehiclePlanId: planId }, include: SCORING_BLOCK_INCLUDE }),
       db.travelTimeMatrix.findMany(),
@@ -224,6 +224,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     ])
 
     if (!plan) return
+    // a plan that already ended keeps the summary it ran with — recalculating would re-read
+    // today's line data (e.g. TransitLine.metrics.extensionKm after a trajectory change) and
+    // rewrite the km of days already operated
+    if (plan.validTo && dayOf(plan.validTo) < localToday()) {
+      throw new BadRequestException(`Plano encerrado em ${fmtDay(dayOf(plan.validTo))} — não pode mais ser recalculado`)
+    }
 
     const matrixKm: Record<string, number> = {}
     for (const m of matrix) matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm

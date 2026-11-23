@@ -30,6 +30,14 @@ export interface RouteLocalityWithLocality {
 interface StopFlags { allowsCrewChange?: boolean; allowsMealBreak?: boolean; allowsVehicleStand?: boolean }
 export interface RouteEndpointFlags { origin?: StopFlags; destination?: StopFlags }
 
+// the primary route's official extension changed — see syncOfficialExtension
+export interface ExtensionChange {
+  lineId:    string
+  direction: string
+  fromKm:    number | null
+  toKm:      number
+}
+
 export interface SuggestedLocality {
   id: string
   name: string
@@ -139,29 +147,38 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
   }
 
   // when the route is primary and propagateExtensionToOfficialKm is on, mirrors its
-  // computed extension into TransitLine.metrics.extensionKm for the direction
-  private async syncOfficialExtension(routeId: string): Promise<void> {
+  // computed extension into TransitLine.metrics.extensionKm for the direction. Returns the
+  // before/after when the official km actually changed — the route screen offers to record
+  // it as a LineRevision
+  private async syncOfficialExtension(routeId: string): Promise<ExtensionChange | null> {
     const route = await this.prisma.transitRoute.findUnique({
       where:  { id: routeId },
       select: {
         lineId:     true,
         direction:  true,
         isPrimary:  true,
+        line:       { select: { metrics: true } },
         localities: { orderBy: { sequence: 'asc' }, select: { sequence: true, deltaKm: true } },
       },
     })
-    if (!route?.isPrimary) return
+    if (!route?.isPrimary) return null
 
     const { propagateExtensionToOfficialKm } = await this.generalConfig.get()
-    if (!propagateExtensionToOfficialKm) return
+    if (!propagateExtensionToOfficialKm) return null
 
     // sequence 1 is the origin and carries no incoming leg — every other stop must
     // have a computed deltaKm or the trajectory isn't fully generated yet
     const legs = route.localities.filter((rl) => rl.sequence > 1)
-    if (legs.length === 0 || legs.some((rl) => rl.deltaKm == null)) return
+    if (legs.length === 0 || legs.some((rl) => rl.deltaKm == null)) return null
 
     const computedKm = legs.reduce((sum, rl) => sum + rl.deltaKm!, 0)
+    // same rounding applyExtensions stores
+    const toKm   = Math.round(computedKm * 100) / 100
+    const fromKm = (route.line.metrics as { extensionKm?: Record<string, number> } | null)?.extensionKm?.[route.direction] ?? null
+    if (fromKm === toKm) return null
+
     await this.lineService.applyExtensions([{ lineId: route.lineId, direction: route.direction, computedKm }])
+    return { lineId: route.lineId, direction: route.direction, fromKm, toKm }
   }
 
   async getTrajectory(routeId: string): Promise<RouteLocalityWithLocality[]> {
@@ -185,9 +202,9 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
 
   // forceAll overwrites MANUAL overrides too (and resets them to OSRM) — used when a
   // point is deleted, since the legs around it no longer represent the same trip
-  async reprocess(routeId: string, opts: { forceAll?: boolean } = {}): Promise<void> {
+  async reprocess(routeId: string, opts: { forceAll?: boolean } = {}): Promise<ExtensionChange | null> {
     const localities = await this.getTrajectory(routeId)
-    if (localities.length < 2) return
+    if (localities.length < 2) return null
 
     const coords = this.coordsFromLocalities(localities)
     const result = await this.osrm.getRoute(coords)
@@ -210,7 +227,7 @@ export class RouteService extends BaseService<Route, CreateRouteDto, UpdateRoute
         return this.prisma.routeLocality.update({ where: { id: rl.id }, data: updates })
       }),
     )
-    await this.syncOfficialExtension(routeId)
+    return this.syncOfficialExtension(routeId)
   }
 
   async reprocessLegs(routeId: string, affectedSequences: number[], opts: { forceAll?: boolean } = {}): Promise<void> {

@@ -20,6 +20,7 @@ import { useRelationLabel } from './useRelationLabel'
 import { ObjectEditorWidget } from './ObjectEditorWidget'
 import { RestCycleWidget } from './RestCycleWidget'
 import { RestGroupWidget } from './RestGroupWidget'
+import { KmChangeWidget } from './KmChangeWidget'
 
 // react-leaflet touches `window` at import time — must stay client-only
 const MapPickerModal = dynamic(
@@ -668,6 +669,7 @@ function MapPickerFieldWidget({
 export function FieldRenderer({ field, register, control, readonly, error, autoFocus, bare }: Props) {
   if (field.widget === 'rest-cycle' && control) return <RestCycleWidget field={field} control={control} readonly={readonly} />
   if (field.widget === 'rest-group' && control) return <RestGroupWidget field={field} control={control} readonly={readonly} />
+  if (field.widget === 'km-change' && control) return <KmChangeWidget field={field} control={control} />
 
   if (field.widget === 'map-picker' && control) {
     return (

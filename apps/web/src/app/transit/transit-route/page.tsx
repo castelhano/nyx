@@ -18,8 +18,10 @@ import { RulerCanvas }                       from './RulerCanvas'
 import { CreateRouteModal }                  from './CreateRouteModal'
 import { AddPointModal }                     from './AddPointModal'
 import { SeqModal }                          from './SeqModal'
-import { apiPost, apiPatch, apiDelete }      from './api'
-import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality } from './types'
+import { RegisterRevisionModal, fmtKm }      from './RegisterRevisionModal'
+import { apiPost, apiPatch, apiDelete, reprocessRoute, type ExtensionChange } from './api'
+import type { TransitRoute, RouteLocality, PendingPoint, SuggestedLocality, ExtensionChanges, RouteDirection } from './types'
+import { DIR_LABEL }                         from './types'
 import { getRouteColor }                     from './types'
 import { resolveOrder }                      from './order'
 import { extractError } from '@/lib/utils'
@@ -71,6 +73,18 @@ export default function TransitRoutePage() {
   // ctrl+z / ctrl+shift+z over pendingPoints — snapshots of the whole array, so
   // anchor chains between pending points stay consistent when stepping back
   const history = useUndoHistory<PendingPoint[]>()
+  // official km changes of this line's primary routes since the last registered revision —
+  // `from` stays the km before the first edit, `to` follows the latest (see trackExtension)
+  const [extChanges,   setExtChanges]   = useState<ExtensionChanges>({})
+  const [revisionOpen, setRevisionOpen] = useState(false)
+  // another line on the same page instance starts with nothing to register
+  const [prevLineId,   setPrevLineId]   = useState(lineId)
+  if (lineId !== prevLineId) {
+    setPrevLineId(lineId)
+    setExtChanges({})
+    setRevisionOpen(false)
+  }
+  const hasExtChanges = Object.keys(extChanges).length > 0
 
   const topbarState: TopbarState = suggestions !== null ? 'suggesting' : pendingPoints.length > 0 ? 'pending' : 'idle'
 
@@ -163,6 +177,29 @@ export default function TransitRoutePage() {
     toast.success('Sentido salvo')
   }
 
+  // ── official extension changes (LineRevision) ─────────────────────────────
+
+  // a trajectory is edited in several steps (save, reposition, sequence, suggestions) — they
+  // add up to one change: asks once, then the banner keeps it until registered or dismissed
+  function trackExtension(change: ExtensionChange | null) {
+    if (!change) return
+    queryClient.invalidateQueries({ queryKey: ['transit', 'transit-line', lineId] })
+    const dir  = change.direction as RouteDirection
+    const next = { ...extChanges }
+    const from = next[dir] ? next[dir]!.from : change.fromKm
+    if (from === change.toKm) delete next[dir]
+    else next[dir] = { from, to: change.toKm }
+    if (!hasExtChanges && Object.keys(next).length > 0) setRevisionOpen(true)
+    setExtChanges(next)
+  }
+
+  function handleRevisionSaved() {
+    setRevisionOpen(false)
+    setExtChanges({})
+    queryClient.invalidateQueries({ queryKey: ['transit', 'line-revision'] })
+    toast.success('Alteração de trajeto registrada')
+  }
+
   // ── pending points ────────────────────────────────────────────────────────
 
   function activateAddPoint() {
@@ -233,7 +270,7 @@ export default function TransitRoutePage() {
       if (!ok) return
       try {
         await apiPatch(`/transit/transit-locality/${rl.localityId}`, { lat, lng })
-        await apiPost(`/transit/transit-route/${routeId}/reprocess`)
+        trackExtension(await reprocessRoute(routeId))
         queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
         toast.success('Parada reposicionada e trajetória reprocessada')
       } catch (err) {
@@ -244,7 +281,7 @@ export default function TransitRoutePage() {
 
     try {
       await apiPatch(`/transit/route-locality/${rl.id}`, { lat, lng })
-      await apiPost(`/transit/transit-route/${routeId}/reprocess`)
+      trackExtension(await reprocessRoute(routeId))
       queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
       toast.success('Waypoint reposicionado e trajetória reprocessada')
     } catch (err) {
@@ -304,7 +341,7 @@ export default function TransitRoutePage() {
       history.clear()
 
       // reprocess trajectory
-      await apiPost(`/transit/transit-route/${routeId}/reprocess`)
+      trackExtension(await reprocessRoute(routeId))
       queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
       toast.success('Trajetória salva e reprocessada')
     } catch (err) {
@@ -320,7 +357,7 @@ export default function TransitRoutePage() {
     if (!routeId) return
     setIsReprocessing(true)
     try {
-      await apiPost(`/transit/transit-route/${routeId}/reprocess`)
+      trackExtension(await reprocessRoute(routeId))
       queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
       toast.success('Trajetória reprocessada')
     } catch (err) {
@@ -404,7 +441,8 @@ export default function TransitRoutePage() {
 
   // after persisting a suggested point, sequences shifted — re-fetch so the
   // remaining candidates' insertAfterSequence stays accurate
-  function handleSuggestionSaved() {
+  function handleSuggestionSaved(change: ExtensionChange | null) {
+    trackExtension(change)
     setSuggestTarget(null)
     queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
     toast.success('Ponto inserido na sequência')
@@ -518,13 +556,13 @@ export default function TransitRoutePage() {
     section: SEC_MAPA,
   })
 
-  // warn on navigate with pending
+  // warn on navigate with pending points or an unregistered extension change
   useEffect(() => {
-    if (pendingPoints.length === 0) return
+    if (pendingPoints.length === 0 && !hasExtChanges) return
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-  }, [pendingPoints.length])
+  }, [pendingPoints.length, hasExtChanges])
 
   // Esc cancels "adicionar ponto" (covers both waiting for the map click and the
   // modal already open) and "reposicionar ponto" (point selected, awaiting destination click).
@@ -591,6 +629,23 @@ export default function TransitRoutePage() {
           Seq
         </Button>
       </div>
+
+      {/* official extension changed, not yet recorded as a LineRevision */}
+      {hasExtChanges && !revisionOpen && (
+        <div className="mx-6 mb-2 px-3 py-1.5 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 rounded-sm text-xs text-sky-700 dark:text-sky-300 shrink-0 flex items-center gap-3">
+          <span>
+            Extensão oficial alterada —{' '}
+            {(Object.entries(extChanges) as [RouteDirection, NonNullable<ExtensionChanges[RouteDirection]>][])
+              .map(([dir, km]) => `${DIR_LABEL[dir]} ${fmtKm(km.from)} → ${fmtKm(km.to)}`).join(' · ')}
+          </span>
+          <button type="button" className="ml-auto font-medium underline underline-offset-2" onClick={() => setRevisionOpen(true)}>
+            Registrar alteração
+          </button>
+          <button type="button" className="hover:opacity-70" title="Não registrar" onClick={() => setExtChanges({})}>
+            <Icons.X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* stale trajectory badge */}
       {routeId && pendingPoints.length > 0 && (
@@ -672,10 +727,20 @@ export default function TransitRoutePage() {
           disabled={pendingPoints.length > 0}
           insertTarget={suggestTarget}
           onClose={() => { setShowSeq(false); setSuggestTarget(null) }}
-          onSaved={suggestTarget ? handleSuggestionSaved : () => {
+          onSaved={suggestTarget ? handleSuggestionSaved : (change) => {
+            trackExtension(change)
             queryClient.invalidateQueries({ queryKey: ['transit', 'trajectory', routeId] })
             toast.success('Sequência atualizada')
           }}
+        />
+      )}
+
+      {revisionOpen && hasExtChanges && lineId && (
+        <RegisterRevisionModal
+          lineId={lineId}
+          changes={extChanges}
+          onClose={() => setRevisionOpen(false)}
+          onSaved={handleRevisionSaved}
         />
       )}
     </div>
