@@ -1,6 +1,6 @@
 import { PrismaService } from '../../../../../prisma/prisma.service'
-import type { OsoAssembled, OsoDirection } from './oso-assembler'
-import { operatingMinutes as carroOperatingMinutes } from './oso-carro-roles'
+import type { OsoAssembled, OsoCarro, OsoDirection, OsoTripEvent } from './oso-assembler'
+import { hasSeveralRoutesPerDirection, operatingMinutes as carroOperatingMinutes } from './oso-carro-roles'
 
 // Layer 4 of the OSO export pipeline (docs/proposal/plan_oso_export_v1.md) — recomputes in
 // TS the RESUMO aggregates the legacy spreadsheet did with Excel formulas (COUNT, MAX-MIN,
@@ -191,31 +191,47 @@ export async function computeOsoSummary(
     { trips: 0, fleet: 0, operatingMinutes: 0, km: 0 },
   )
 
-  // rule 10 — cycle time: ida departure -> the departure of the carro's next trip after its
-  // volta (ida + folga + volta + folga antes da próxima partida). Two earlier attempts each
-  // got half of this wrong: measuring the gap to the carro's own *next same-direction* trip
-  // needs 2 trips in one direction from a single carro, so a carro doing exactly one round
-  // trip in a window contributed zero samples despite running one real cycle (confirmed: line
-  // 302 lost 4 of its real clusters this way); measuring ida-departure -> volta-arrival alone
-  // fixed that but dropped the trailing folga, undercounting every sample by however long that
-  // layover is (confirmed against line 250: 37' one-way leg, ~79' without the folga, ~85'-92'
-  // real cycle). This version pairs each ida with the very next trip (so a lone round trip
-  // still counts), then extends to the departure of whatever trip follows the volta when one
-  // exists in this carro — only the carro's last cycle of the day (nothing scheduled after)
-  // falls back to volta-arrival, since there's no next departure to measure against. CIRCULAR
-  // has no separate legs, so its own trip duration already is the full cycle.
-  //
-  // A pattern isn't one number — a line can genuinely run more than one cycle time (peak vs.
-  // off-peak, say), and the OSO is meant to show that (confirmed: a real RESUMO prints "84'
-  // 92' 80'" for a single-pattern line). So within each pattern, durations are clustered by
-  // proximity (gap <= CLUSTER_GAP_MINUTES — the kind of rounding noise a human curating this
-  // by hand would merge on sight) instead of collapsed to one mode; a cluster under
-  // CLUSTER_MIN_TRIPS is a stray outlier and is dropped, matching how the user does this by
-  // hand today.
-  const byPattern = new Map<string, number[]>()
+  const cycleTimesMinutes = computeCycleTimes(assembled.carros)
 
-  for (const carro of assembled.carros) {
-    const tripEvents = carro.events.filter(e => e.kind === 'trip')
+  return { operators, totals, cycleTimesMinutes, extensionUtilKm, extensionOciosaKm }
+}
+
+// rule 10 — cycle time: ida departure -> the departure of the carro's next trip after its
+// volta (ida + folga + volta + folga antes da próxima partida). Two earlier attempts each
+// got half of this wrong: measuring the gap to the carro's own *next same-direction* trip
+// needs 2 trips in one direction from a single carro, so a carro doing exactly one round
+// trip in a window contributed zero samples despite running one real cycle (confirmed: line
+// 302 lost 4 of its real clusters this way); measuring ida-departure -> volta-arrival alone
+// fixed that but dropped the trailing folga, undercounting every sample by however long that
+// layover is (confirmed against line 250: 37' one-way leg, ~79' without the folga, ~85'-92'
+// real cycle). This version pairs each ida with the very next trip (so a lone round trip
+// still counts), then extends to the departure of whatever trip follows the volta when one
+// exists in this carro — only the carro's last cycle of the day (nothing scheduled after)
+// falls back to volta-arrival, since there's no next departure to measure against. CIRCULAR
+// has no separate legs, so its own trip duration already is the full cycle.
+//
+// A cycle whose volta is followed by a RECO or an INTERV before the next trip isn't measured
+// to that trip, the pause isn't folga. Ending it at the volta's arrival would leave it without
+// its folga instead, so it's set aside and only used by the fallback below.
+//
+// A pattern isn't one number — a line can genuinely run more than one cycle time (peak vs.
+// off-peak, say), and the OSO is meant to show that (confirmed: a real RESUMO prints "84'
+// 92' 80'" for a single-pattern line). So within each pattern, durations are clustered by
+// proximity (gap <= CLUSTER_GAP_MINUTES — the kind of rounding noise a human curating this
+// by hand would merge on sight) instead of collapsed to one mode; a cluster under
+// CLUSTER_MIN_TRIPS is a stray outlier and is dropped, matching how the user does this by
+// hand today.
+//
+// A line with too few trips to reach CLUSTER_MIN_TRIPS anywhere (R03: three round trips, each
+// ending in a RECO) shows the mode of every sample, set-aside ones included, rather than
+// nothing — except a line with several routes per direction (F01), whose mixed routes have no
+// single cycle to show
+export function computeCycleTimes(carros: OsoCarro[]): number[] {
+  const byPattern = new Map<string, number[]>()
+  const beforePause: number[] = []
+
+  for (const carro of carros) {
+    const tripEvents = carro.events.filter((e): e is OsoTripEvent => e.kind === 'trip')
 
     for (const e of tripEvents.filter(e => e.direction === 'CIRCULAR')) {
       if (!byPattern.has(e.routeId)) byPattern.set(e.routeId, [])
@@ -233,21 +249,31 @@ export async function computeOsoSummary(
       const b = legs[i + 1]
       if (b.direction === anchorDirection) continue // two idas in a row, no volta between
 
-      const next     = legs[i + 2]
-      const cycleEnd = next ? next.departureMinutes : b.arrivalMinutes
+      const next = legs[i + 2]
+      const pausesBeforeNext = next !== undefined && carro.events
+        .slice(carro.events.indexOf(b) + 1, carro.events.indexOf(next))
+        .some(e => e.kind === 'interval' || (e.kind === 'deadrun' && e.type === 'RETURN'))
+      if (pausesBeforeNext) {
+        beforePause.push(b.arrivalMinutes - a.departureMinutes)
+        continue
+      }
 
+      const cycleEnd = next ? next.departureMinutes : b.arrivalMinutes
       if (!byPattern.has(a.routeId)) byPattern.set(a.routeId, [])
       byPattern.get(a.routeId)!.push(cycleEnd - a.departureMinutes)
     }
   }
 
   const clusters = [...byPattern.values()].flatMap(clusterDurations)
-  const cycleTimesMinutes = [...new Set(
+  if (clusters.length === 0) {
+    const samples = [...[...byPattern.values()].flat(), ...beforePause]
+    return samples.length > 0 && !hasSeveralRoutesPerDirection(carros) ? [mode(samples)] : []
+  }
+
+  return [...new Set(
     clusters
       .sort((a, b) => b.count - a.count)
       .slice(0, 6)
       .map(c => c.value),
   )].sort((a, b) => a - b)
-
-  return { operators, totals, cycleTimesMinutes, extensionUtilKm, extensionOciosaKm }
 }
