@@ -11,7 +11,8 @@ import type { VehicleSolverSummary } from '../src/modules/transit/timetabling/ve
 // prints the plan as it is, the construction and the improved proposal side by side, plus a
 // check of the proposal (every trip once, hard rules, capacity). A fixed seed repeats a run.
 // Nothing is written.
-// Usage: pnpm vehicle:solver-bench <vehiclePlanId> [seconds=60] [seed=1] [--scratch]
+// Usage: pnpm vehicle:solver-bench <vehiclePlanId> [seconds=60] [seed=1] [--scratch] (start from a
+//        new construction instead of the plan's blocks)
 //        [--cycle=<seconds>] [--trace] (current/best score every 2 s) [--numbering]
 //        [--settings='{"range":{"lineTransfer":{"modifier":30}}}'] (deep-merged over the settings)
 
@@ -68,15 +69,15 @@ async function main() {
   const settingsArg = args.find(a => a.startsWith('--settings='))?.slice(11)
   if (settingsArg) Object.assign(settings, merge(settings, JSON.parse(settingsArg)))
 
-  const base = args.includes('--scratch') ? 'scratch' : 'complete'
-  const { input, baseline } = await loadVehicleSolverInput(prisma, general, planId, settings, settings, { base, direction: 'balanced' })
+  const start = args.includes('--scratch') ? 'scratch' : 'current'
+  const { input, baseline } = await loadVehicleSolverInput(prisma, general, planId, settings, settings, { start, direction: 'balanced' })
   await prisma.$disconnect()
   console.log(`${input.trips.length} viagens a distribuir, ${input.locked.length} carros travados, ${input.depots.length} garagens, ${input.operators.length} empresas`)
 
   const model = new VehicleModel(input)
   let t0 = Date.now()
-  const construction = constructBlocks(model)
-  console.log(`construção: ${Date.now() - t0} ms`)
+  const { blocks: construction, from, brokenLinks, fallback } = constructBlocks(model)
+  console.log(`ponto de partida: ${from === 'current' ? `plano atual (${brokenLinks.length} encadeamentos desfeitos${brokenLinks.length ? `: ${brokenLinks.join(', ')}` : ''})` : 'construção'}${fallback ? ` — ${fallback}` : ''}, ${Date.now() - t0} ms`)
   const built = summarizeProposal(model, construction)
 
   t0 = Date.now()
@@ -99,7 +100,7 @@ async function main() {
   const table = [rows(baseline), rows(built), rows(improved)]
   const keys = [...new Set(table.flatMap(r => Object.keys(r)))]
   const w = Math.max(...keys.map(k => k.length))
-  console.log(`\n${''.padEnd(w)}  ${'Atual'.padStart(16)}  ${'Construção'.padStart(16)}  ${'Melhorada'.padStart(16)}`)
+  console.log(`\n${''.padEnd(w)}  ${'Atual'.padStart(16)}  ${(from === 'current' ? 'Partida' : 'Construção').padStart(16)}  ${'Melhorada'.padStart(16)}`)
   for (const k of keys) console.log(`${k.padEnd(w)}  ${table.map(r => (r[k] ?? '—').padStart(16)).join('  ')}`)
 
   if (args.includes('--numbering')) {

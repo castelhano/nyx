@@ -9,8 +9,9 @@
 
 The solver distributes **every trip of a `VehiclePlan`** (all its lines) into vehicle blocks and decides, for each block, its **operator** (`branchId`), **depot** and **vehicle type**. It mirrors the crew solver (`crew-solver/`):
 
-- runs in a **worker thread**, streams progress over **SSE**;
-- **one mode**: a greedy construction gives the first proposal in milliseconds, then a continuous improvement (simulated annealing) runs until stopped, out of time or without improvement;
+- runs in **worker threads**, streams progress over **SSE**;
+- **two starting points** (`start`): the plan's current blocks (**current**, the default — refine them) or a greedy construction (**scratch** — after a settings change, or to get away from the current structure); from there a continuous improvement (simulated annealing) runs until stopped, out of time or without improvement. "Melhorias" count from the starting point;
+- **several searches side by side**: a generation runs `max(1, min(general.solverMaxSearches, cpus − 1))` workers from different seeds, all from the same starting point, and keeps the best proposal of them all;
 - **the generation belongs to the plan**, not to the screen: it keeps running when the modal closes, the plan screen picks it up again, and the topbar lists it (background generations);
 - **the solver optimizes what the screen shows**: proposals are scored by the same `PlanScoreState` that `VehiclePlanService.recalculate()` uses, over blocks materialized exactly as they will be persisted — the score of a proposal is the score the plan gets once applied.
 
@@ -35,7 +36,7 @@ vehicle-plan/scoring/
   plan-scoring.calc.ts               PlanScoreState (incremental), scoreFromAggregates
 ```
 
-Bench (nothing is written): `pnpm vehicle:solver-bench <vehiclePlanId> [seconds] [seed] [--scratch] [--trace] [--cycle=s] [--settings=json]` — prints the plan, the construction and the improved proposal side by side (with each criterion's loss) and checks the proposal (every trip once, hard rules, capacity, no modeling issues).
+Bench (nothing is written): `pnpm vehicle:solver-bench <vehiclePlanId> [seconds] [seed] [--scratch] (start from the construction) [--trace] [--cycle=s] [--settings=json]` — prints the plan, the starting point and the improved proposal side by side (with each criterion's loss) and checks the proposal (every trip once, hard rules, capacity, no modeling issues).
 
 ---
 
@@ -81,14 +82,14 @@ A block = its trips + operator + depot + vehicle type, always held **materialize
 
 | Rule | Description |
 |---|---|
-| Chaining | same place: `cur.dep − prev.arr ≥ minLayoverMinutes`; elsewhere: `cur.dep ≥ prev.arr + 1 + matrix(prev.dest → cur.origin)` |
+| Chaining | same place: `cur.dep − prev.arr ≥ minLayoverMinutes` — or ≥ 0 when the plan already has those two trips back to back (start current); elsewhere: `cur.dep ≥ prev.arr + 1 + matrix(prev.dest → cur.origin)` |
 | Depot reach | depot → first trip and last trip → depot exist in the matrix |
 | Vehicle type | one type accepted by every trip (required type, else the line's allowed) |
 | Depot × operator | the block's operator is in the depot's `operators` (or the list is empty) |
 | Capacity | blocks per depot, total and per type ≤ `max` |
 | Span | a construction chain / a merge never spans beyond `range.minBlockDuration.ceiling` |
 | Stand | a stop of the interval threshold or more stays only where the vehicle may stand — the arriving trip's destination point or the next trip's origin point; elsewhere it goes back to the block's depot and out again, and with no time for that round trip the trips can't follow each other |
-| Locked | `VehicleBlock.constraints.locked` blocks stay as they are (base "Respeita travados") |
+| Locked | `VehicleBlock.constraints.locked` blocks always stay as they are |
 | Trip group | a group's members stay together, back to back, in one block — nothing between them (see Trip groups) |
 
 ### Materialization
@@ -138,7 +139,9 @@ The **direction** param reweights the copy the search optimizes (`fleet`: `ancho
 
 1. **Chains** — trips by departure, each to the open chain with the lowest cost (wait + displacement + line change + narrowing the chain's vehicle types), else a new chain.
 2. **Placement** — most restricted chains first (fewest types), then the longest: for each operator, the best depot × type that fits the capacity; the operator furthest below its share target wins (with shares), else the least deadrun km. A chain no depot can take is an error ("Nenhuma garagem atende…").
-3. **Seed** — the plan's current blocks, split where a link breaks a rule and re-placed when needed; used instead when it scores better.
+With `start: current` the first proposal is the plan's blocks instead (`seedBlocks`): each one split where a link breaks a rule — the trips the plan already runs back to back at the same place stay linked below the minimum layover (`keptLinks`, e.g. a trip that runs on as another line) —, kept in its depot when that still holds, else placed again; trips no block has (added since) are chained and placed as above. Each broken link costs a vehicle (joining the piece to another block was tried and scored worse) and is reported (`start.brokenLinks`, "F01 16:20 → 309 16:44") — fix them or generate from scratch. Falls back to the construction (`start.fallback`) when the plan has no blocks to rebuild or one of them can't be placed anywhere.
+
+Measured on the dev plans: a plan the solver produced starts exactly where it was applied; a plan with broken links (matrix or rules changed since) pays a vehicle for each and can end below a run from scratch; after a settings change (line transfers weighing much more) a run from the old blocks stayed well behind one from scratch (≈80 vs ≈35 line transfers on a 102-vehicle plan).
 
 ---
 
@@ -166,15 +169,15 @@ In memory, one per plan (a new start replaces it), kept 30 min after the run end
 
 | Endpoint | |
 |---|---|
-| `POST :id/solver/start` | `{ jobId, params: { base: 'complete' \| 'scratch', direction: 'balanced' \| 'fleet' \| 'km' } }` |
-| `GET :id/solver/stream?jobId&token` | SSE: the job's state first (best proposal without blocks, last progress, its end), then live |
+| `POST :id/solver/start` | `{ jobId, params: { start: 'current' \| 'scratch', direction: 'balanced' \| 'fleet' \| 'km' } }` |
+| `GET :id/solver/stream?jobId&token` | SSE: the job's state first (starting point, best proposal without blocks, last progress, its end), then live |
 | `POST :id/solver/stop` | ends the run keeping the best proposal |
-| `GET :id/solver/current` | `{ job }` — params, progress, end, `baseline` (the plan as it was), `affectedCrewPlans` |
+| `GET :id/solver/current` | `{ job }` — params, progress, end, `baseline` (the plan as it was), `start`, `affectedCrewPlans` |
 | `POST :id/solver/discard` | forgets it |
 | `POST :id/solver/accept` | applies the best proposal |
 | `GET transit/vehicle-solver/jobs` | every plan's generation (topbar) |
 
-Worker → host: `progress { elapsed, attempts, improvements, bestScore, sinceImprovement }`, `proposal { index, summary, blocks }`, `done { stopReason }`, `error { message }`.
+Worker → host: `start { from, brokenLinks, fallback, summary }` (once), `progress { elapsed, attempts, improvements, bestScore, sinceImprovement }`, `proposal { index, summary, rank, blocks }`, `done { stopReason }`, `error { message }`. The host keeps the first `start`, a proposal only when its `rank` (the raw score the search optimizes) beats the job's best, sums the progress, and ends the job with the last search (an error only when they all failed).
 
 ### Applying
 
@@ -184,7 +187,7 @@ Checks the plan still has the trips the generation read, then in one transaction
 
 ## Frontend
 
-`vehicle-plan/[id]/components/OptimizeModal.tsx` — tabs **Config** (`PlanningSettingsEditor`, customize/save/restore), **Painel** (base, direction) and **Cenários** (run stats; plan × proposal: score, fleet, km, issues, fleet per operator and per depot/type, each criterion; crew plans affected; Parar / Descartar / Aplicar). The plan page polls `solver/current` while running (topbar button "Gerando… mm:ss"), `?optimize=1` opens Cenários (from the topbar's background generations).
+`vehicle-plan/[id]/components/OptimizeModal.tsx` — tabs **Config** (`PlanningSettingsEditor`, customize/save/restore), **Painel** (start, direction) and **Cenários** (starting point with its broken links or fallback; run stats; plan × proposal: score, fleet, km, issues, fleet per operator and per depot/type, each criterion; crew plans affected; Parar / Descartar / Aplicar — the best proposal can be applied even when it's below the plan, the analyst decides). The plan page polls `solver/current` while running (topbar button "Gerando… mm:ss"), `?optimize=1` opens Cenários (from the topbar's background generations).
 
 ---
 

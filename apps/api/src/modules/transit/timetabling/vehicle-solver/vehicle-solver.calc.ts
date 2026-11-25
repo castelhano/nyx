@@ -90,7 +90,7 @@ export interface LockedBlock {
   aggregate:   BlockAggregate
 }
 
-// the plan's current (rebuilt-part) blocks — a starting point when they keep every rule
+// the plan's current (non-locked) blocks — the search's starting point with start: current
 export interface SeedBlock {
   depotId:     string
   branchId:    string | null
@@ -106,7 +106,9 @@ export interface VehicleSolverInput {
   // the trips to place (all of the plan's but the locked blocks')
   trips:     SolverTrip[]
   locked:    LockedBlock[]
+  // empty with start: scratch
   seed:      SeedBlock[]
+  start:     'current' | 'scratch'
   // every trip of the plan, locked ones included (the fleet floor)
   planTrips: { departureMinutes: number; arrivalMinutes: number }[]
   matrix:    Record<string, { minutes: number; km: number }>
@@ -182,6 +184,10 @@ export class VehicleModel {
   // operators a block may have — [null] when the Scope has none
   readonly branches:   (string | null)[]
   private readonly depotsByBranch = new Map<string | null, SolverDepot[]>()
+  // `${prev.id}>${cur.id}` of the seed's back-to-back trips at the same place: such a link stays
+  // allowed below the minimum layover — the plan has it on purpose (e.g. a trip that runs on as
+  // another line), and splitting it would cost a vehicle
+  private readonly keptLinks = new Set<string>()
 
   constructor(readonly input: VehicleSolverInput) {
     this.tripById  = new Map(input.trips.map(t => [t.id, t]))
@@ -193,6 +199,10 @@ export class VehicleModel {
     this.branches   = input.operators.length ? input.operators : [null]
     for (const b of this.branches) {
       this.depotsByBranch.set(b, input.depots.filter(d => !b || !d.operators.length || d.operators.includes(b)))
+    }
+    for (const s of input.seed) {
+      const units = [...new Set(s.tripIds.flatMap(id => this.unitOf.get(id) ?? []))].sort((a, b) => a.dep - b.dep)
+      for (let i = 1; i < units.length; i++) if (units[i - 1].dest === units[i].origin) this.keptLinks.add(`${units[i - 1].id}>${units[i].id}`)
     }
   }
 
@@ -243,7 +253,7 @@ export class VehicleModel {
   private standMinutes(prev: SolverTrip, cur: SolverTrip): number | null {
     if (prev.dest === cur.origin) {
       const stop = cur.dep - prev.arr
-      return stop >= this.minLayover ? stop : null
+      return stop >= this.minLayover || (stop >= 0 && this.keptLinks.has(`${prev.id}>${cur.id}`)) ? stop : null
     }
     const e = this.edge(prev.dest, cur.origin)
     if (!e) return null
@@ -405,9 +415,9 @@ const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')
 // vehicle type; a trip that would restrict a chain's types (or a restricted chain taking a trip
 // that isn't) costs more, so the few restricted trips tend to stay among themselves instead of
 // tying many vehicles to a scarce type.
-function buildChains(model: VehicleModel): SolverTrip[][] {
+function buildChains(model: VehicleModel, from: SolverTrip[] = model.input.trips): SolverTrip[][] {
   const chains: { trips: SolverTrip[]; types: Set<VehicleTypeValue> | null; branches: Set<string> | null }[] = []
-  const trips = [...model.input.trips].sort((a, b) => a.dep - b.dep || a.arr - b.arr)
+  const trips = [...from].sort((a, b) => a.dep - b.dep || a.arr - b.arr)
   for (const t of trips) {
     let best: (typeof chains)[number] | null = null
     let bestCost = Infinity
@@ -436,15 +446,17 @@ function buildChains(model: VehicleModel): SolverTrip[][] {
 }
 
 // operator, depot and type per chain: the operator furthest below its share target (when the
-// Scope has shares), else the cheapest placement
-function placeChains(model: VehicleModel, chains: SolverTrip[][]): WorkBlock[] {
+// Scope has shares), else the cheapest placement. `placed`: blocks already there (they hold
+// capacity and count in the shares)
+function placeChains(model: VehicleModel, chains: SolverTrip[][], placed: WorkBlock[] = []): WorkBlock[] {
   const cap = model.newCapacity()
+  for (const b of placed) cap.add(b.depotId, b.vehicleType)
   const shares = model.input.shares
   const sharedOps = model.branches.filter(b => b && (shares[b] ?? 0) > 0) as string[]
   const shareTotal = sharedOps.reduce((s, b) => s + shares[b], 0)
-  const total = chains.length + model.input.locked.length
+  const total = chains.length + model.input.locked.length + placed.length
   const assigned = new Map<string | null, number>()
-  for (const l of model.input.locked) assigned.set(l.branchId, (assigned.get(l.branchId) ?? 0) + 1)
+  for (const l of [...model.input.locked, ...placed]) assigned.set(l.branchId, (assigned.get(l.branchId) ?? 0) + 1)
   const deficit = (b: string | null) => sharedOps.length > 1 && b && shares[b]
     ? (shares[b] / shareTotal) * total - (assigned.get(b) ?? 0)
     : -Infinity
@@ -482,39 +494,45 @@ function placeChains(model: VehicleModel, chains: SolverTrip[][]): WorkBlock[] {
   return blocks
 }
 
-// The plan's current blocks as a starting point: each one split where a link breaks a rule
-// (too short a layover, an impossible displacement, no common vehicle type), kept in its depot
-// when that still holds, else placed again. Null when they don't cover every trip.
-function seedBlocks(model: VehicleModel): WorkBlock[] | null {
-  const { seed, trips } = model.input
-  if (!seed.length) return null
+// The plan's current blocks as the starting point: each one split where a link breaks a rule
+// (too short a layover — except the ones it already has back to back at the same place, see
+// keptLinks —, an impossible displacement, no common vehicle type), kept in its depot when that
+// still holds, else placed again (each split costs a vehicle: joining the piece to another block
+// was tried and scored worse). Trips no block has (added since) are chained and placed like the
+// construction does. A string when a block can't be placed anywhere.
+function seedBlocks(model: VehicleModel): { blocks: WorkBlock[]; brokenLinks: string[] } | string {
   const cap = model.newCapacity()
   const covered = new Set<string>()
   const blocks: WorkBlock[] = []
-  for (const s of seed) {
-    const found = s.tripIds.map(id => model.unitOf.get(id))
-    if (found.some(t => !t)) return null
+  const brokenLinks: string[] = []
+  for (const s of model.input.seed) {
     // a group split across blocks goes whole to the first one
-    const ordered = [...new Set(found as SolverTrip[])].filter(t => !covered.has(t.id)).sort((a, b) => a.dep - b.dep)
+    const ordered = [...new Set(s.tripIds.flatMap(id => model.unitOf.get(id) ?? []))].filter(t => !covered.has(t.id)).sort((a, b) => a.dep - b.dep)
     if (!ordered.length) continue
     for (const t of ordered) covered.add(t.id)
     const runs: SolverTrip[][] = [[ordered[0]]]
     for (let i = 1; i < ordered.length; i++) {
       const run = runs[runs.length - 1]
-      if (model.canFollow(run[run.length - 1], ordered[i]) && model.typeCandidates([...run, ordered[i]]).length) run.push(ordered[i])
-      else runs.push([ordered[i]])
+      const prev = run[run.length - 1], cur = ordered[i]
+      if (model.canFollow(prev, cur) && model.typeCandidates([...run, cur]).length) run.push(cur)
+      else {
+        runs.push([cur])
+        brokenLinks.push(`${expand(prev)[expand(prev).length - 1].lineCode} ${clock(prev.arr)} → ${cur.lineCode} ${clock(cur.dep)}`)
+      }
     }
     for (const run of runs) {
       const keep = model.typeCandidates(run).includes(s.vehicleType) && model.depotAllows(s.depotId, s.branchId) && model.branchAllows(run, s.branchId) && cap.fits(s.depotId, s.vehicleType)
       const b = (keep ? model.build(run, s.branchId, s.depotId, s.vehicleType) : null)
         ?? model.place(run, s.branchId, cap)
         ?? model.branches.map(br => model.place(run, br, cap)).find(Boolean)
-      if (!b) return null
+      if (!b) return `o carro atual que começa às ${clock(run[0].dep)} não cabe em nenhuma garagem (capacidade, garagens das empresas ou matriz de tempos)`
       cap.add(b.depotId, b.vehicleType)
       blocks.push(b)
     }
   }
-  return covered.size === trips.length ? blocks : null
+  const loose = model.input.trips.filter(t => !covered.has(t.id))
+  if (loose.length) blocks.push(...placeChains(model, buildChains(model, loose), blocks))
+  return { blocks, brokenLinks }
 }
 
 export function rawScoreOf(model: VehicleModel, blocks: WorkBlock[]): number {
@@ -523,12 +541,18 @@ export function rawScoreOf(model: VehicleModel, blocks: WorkBlock[]): number {
   return state.rawScore()
 }
 
-// The first proposal: the greedy construction, or the plan as it is when that scores better
-export function constructBlocks(model: VehicleModel): WorkBlock[] {
-  if (!model.input.trips.length) return []
-  const built = placeChains(model, buildChains(model))
-  const seed  = seedBlocks(model)
-  return seed && rawScoreOf(model, seed) > rawScoreOf(model, built) ? seed : built
+// The first proposal and where it came from: the plan's blocks (start: current), else the
+// greedy construction — also when the plan has no blocks to rebuild or one of them can't be placed
+export function constructBlocks(model: VehicleModel): { blocks: WorkBlock[]; from: 'current' | 'construction'; brokenLinks: string[]; fallback: string | null } {
+  const { start, seed, trips } = model.input
+  if (!trips.length) return { blocks: [], from: 'construction', brokenLinks: [], fallback: null }
+  let fallback: string | null = null
+  if (start === 'current') {
+    const seeded = seed.length ? seedBlocks(model) : 'o planejamento não tem carros a refazer'
+    if (typeof seeded !== 'string') return { ...seeded, from: 'current', fallback: null }
+    fallback = seeded
+  }
+  return { blocks: placeChains(model, buildChains(model)), from: 'construction', brokenLinks: [], fallback }
 }
 
 // ── output ───────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ const DEFAULT_STAND_THRESHOLD = 120
 
 // Everything the vehicle solver needs for one plan, in a few queries: its trips (with their
 // line's vehicle types and whether the vehicle may stand at their ends), its blocks (locked ones fixed, the rest
-// as a possible starting point), the matrix, the depots and the Scope's operators/shares.
+// the starting point with start: current), the matrix, the depots and the Scope's operators/shares.
 // Also the plan as it is, summarized the way a proposal is (`baseline`).
 export async function loadVehicleSolverInput(
   prisma:        PrismaService,
@@ -92,13 +92,13 @@ export async function loadVehicleSolverInput(
     vehicleType: b.vehicleType, branchId: b.branchId,
     blockTrips: b.blockTrips, blockDeadruns: b.blockDeadruns, blockIntervals: b.blockIntervals,
   }, matrixKm)
-  const isLocked = (b: (typeof blockRows)[number]) => params.base === 'complete' && !!(b.constraints as { locked?: boolean } | null)?.locked
+  const isLocked = (b: (typeof blockRows)[number]) => !!(b.constraints as { locked?: boolean } | null)?.locked
 
   const locked: LockedBlock[] = withTrips.filter(isLocked).map(b => ({
     depotId: b.depotId, branchId: b.branchId, vehicleType: b.vehicleType, hasIssues: b.hasIssues, aggregate: aggregateOf(b),
   }))
   const lockedTripIds = new Set(withTrips.filter(isLocked).flatMap(b => b.blockTrips.map(bt => bt.tripId)))
-  const seed: SeedBlock[] = withTrips.filter(b => !isLocked(b)).map(b => ({
+  const seed: SeedBlock[] = params.start === 'scratch' ? [] : withTrips.filter(b => !isLocked(b)).map(b => ({
     depotId: b.depotId, branchId: b.branchId, vehicleType: b.vehicleType, tripIds: b.blockTrips.map(bt => bt.tripId),
   }))
 
@@ -120,7 +120,7 @@ export async function loadVehicleSolverInput(
   const shares = operatorShares(plan.scope.operators)
   const planTrips = tripRows.map(t => ({ departureMinutes: t.departureMinutes, arrivalMinutes: t.arrivalMinutes }))
   const input: VehicleSolverInput = {
-    settings, reportSettings, trips, locked, seed, planTrips, matrix, depots,
+    settings, reportSettings, trips, locked, seed, start: params.start, planTrips, matrix, depots,
     operators: plan.scope.operators.map(o => o.branchId),
     shares,
     interval:        intervalType ? { min: intervalType.minMinutes ?? 0, max: intervalType.maxMinutes ?? Infinity } : null,

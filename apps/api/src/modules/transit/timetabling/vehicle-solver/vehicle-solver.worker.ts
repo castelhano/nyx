@@ -1,10 +1,11 @@
 import { workerData, parentPort, isMainThread } from 'worker_threads'
-import { VehicleModel, constructBlocks, summarizeProposal, toProposalBlocks, SolverError, type VehicleSolverInput, type WorkBlock } from './vehicle-solver.calc'
+import { VehicleModel, constructBlocks, rawScoreOf, summarizeProposal, toProposalBlocks, SolverError, type WorkBlock } from './vehicle-solver.calc'
 import { VehicleImprover } from './vehicle-solver.improve'
-import type { VehicleSolverCommand, VehicleSolverMessage } from './vehicle-solver.types'
+import type { VehicleSolverCommand, VehicleSolverMessage, VehicleSolverWorkerData } from './vehicle-solver.types'
 
-// Runs the vehicle solver off the main thread: the construction (first proposal in seconds),
-// then the continuous improvement in short slices — between them the event loop turns, so a
+// Runs one search of the vehicle solver off the main thread: the starting point (the plan's
+// blocks or the construction — first proposal in seconds, announced as 'start'), then the
+// continuous improvement from its own seed in short slices — between them the event loop turns, so a
 // 'stop' from the host gets through. A better proposal goes out at most once a second; the run
 // ends on 'stop', the time limit or no improvement (settings.stopMaxTotalMinutes /
 // stopNoImprovementMinutes), always posting the best one found first.
@@ -16,7 +17,7 @@ const EMIT_MS     = 1000
 const PROGRESS_MS = 500
 
 const post  = (msg: VehicleSolverMessage) => parentPort!.postMessage(msg)
-const input = workerData as VehicleSolverInput
+const { input, seed } = workerData as VehicleSolverWorkerData
 const started = Date.now()
 let stopped = false
 parentPort!.on('message', (cmd: VehicleSolverCommand) => { if (cmd?.type === 'stop') stopped = true })
@@ -28,15 +29,16 @@ try {
   const model = new VehicleModel(input)
   let index = 0
   const propose = (blocks: WorkBlock[]) =>
-    post({ type: 'proposal', proposal: { index: ++index, summary: summarizeProposal(model, blocks), blocks: toProposalBlocks(blocks) } })
+    post({ type: 'proposal', proposal: { index: ++index, summary: summarizeProposal(model, blocks), rank: rawScoreOf(model, blocks), blocks: toProposalBlocks(blocks) } })
 
-  const construction = constructBlocks(model)
+  const { blocks: construction, ...from } = constructBlocks(model)
+  post({ type: 'start', start: { ...from, summary: summarizeProposal(model, construction) } })
   propose(construction)
 
   const maxMs  = input.settings.stopMaxTotalMinutes * 60_000
   const idleMs = input.settings.stopNoImprovementMinutes * 60_000
   // one cooling cycle per half of the no-improvement window (see VehicleImprover)
-  const improver = new VehicleImprover(model, construction, Math.min(maxMs, idleMs / 2))
+  const improver = new VehicleImprover(model, construction, Math.min(maxMs, idleMs / 2), seed)
   let emitted = 0, lastEmit = 0, lastProgress = 0
 
   const emitBest = () => {

@@ -19,9 +19,11 @@ import { PlanningSettingsEditor, PLANNING_CRITERIA_LABEL } from '../../../settin
 //            customized they are editable (diffed against the inherited ones) and "Restaurar
 //            padrão" drops the copy. Unsaved changes must be saved or discarded before
 //            leaving the tab; read-only while a generation runs (the solver already read them).
-//  Painel    solver parameters; "Gerar" starts a run (SSE) and jumps to Cenários.
-//  Cenários  the run's best proposal next to the plan as it was, then "Aplicar" — the plan's
-//            blocks are replaced in place (locked ones kept). A new run replaces it.
+//  Painel    solver parameters (start from the plan's blocks or from scratch, direction);
+//            "Gerar" starts a run (SSE) and jumps to Cenários.
+//  Cenários  where the search started, the run's best proposal next to the plan as it was —
+//            even when it's worse, the analyst decides —, then "Aplicar": the plan's blocks are
+//            replaced in place (locked ones kept). A new run replaces it.
 //            See docs/architecture/transit/solver.md.
 // The generation belongs to the plan: closing the modal (or leaving the page) leaves it
 // running on the server; reopening picks it up (`job`, from GET …/solver/current) and the stream
@@ -38,7 +40,7 @@ const TABS: { value: OptimizeTab; label: string }[] = [
 interface SettingsView { settings: PlanningSettings; isCustom: boolean; inherited: PlanningSettings }
 
 interface Params {
-  base:      'complete' | 'scratch'
+  start:     'current' | 'scratch'
   direction: 'balanced' | 'fleet' | 'km'
 }
 
@@ -55,12 +57,22 @@ interface Summary {
   criteria:     { key: string; weight: number; value: number }[]
 }
 
+// VehicleSolverStart — where the search started
+interface Start {
+  from:        'current' | 'construction'
+  // "F01 16:20 → 309 16:44" — each one a vehicle more
+  brokenLinks: string[]
+  fallback:    string | null
+  summary:     Summary
+}
+
 type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'
 
 // elapsed / sinceImprovement in ms
 type Progress = { elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
 
 type Message =
+  | { type: 'start'; start: Start }
   | ({ type: 'progress' } & Progress)
   | { type: 'proposal'; proposal: { index: number; summary: Summary } }
   | { type: 'done'; stopReason: StopReason; elapsed: number; attempts: number }
@@ -96,6 +108,7 @@ export interface SolverJob {
   progress:          Progress | null
   hasProposal:       boolean
   baseline:          Summary
+  start:             Start | null
   affectedCrewPlans: number
 }
 
@@ -161,11 +174,12 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
   const isCustom = !!settingsView?.isCustom
 
   // ── generation ──
-  const [params, setParams]         = useState<Params>(job?.params ?? { base: 'complete', direction: 'balanced' })
+  const [params, setParams]         = useState<Params>({ start: 'current', direction: 'balanced', ...job?.params })
   const [jobId, setJobId]           = useState<string | null>(job?.jobId ?? null)
   const [running, setRunning]       = useState(job?.running ?? false)
   const [proposal, setProposal]     = useState<{ index: number; summary: Summary } | null>(null)
   const [baseline, setBaseline]     = useState<Summary | null>(job?.baseline ?? null)
+  const [start, setStart]           = useState<Start | null>(job?.start ?? null)
   const [affected, setAffected]     = useState(job?.affectedCrewPlans ?? 0)
   const [error, setError]           = useState<string | null>(job?.error ?? null)
   const [accepting, setAccepting]   = useState(false)
@@ -181,6 +195,7 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
     esRef.current = es
     es.onmessage = (ev) => {
       const msg = JSON.parse(ev.data) as Message
+      if (msg.type === 'start') setStart(msg.start)
       if (msg.type === 'proposal') setProposal(msg.proposal)
       if (msg.type === 'progress') setProgress(msg)
       if (msg.type === 'done') setStopReason(msg.stopReason)
@@ -232,7 +247,7 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
     if (!jobId) return
     await apiFetch(`${solverBase}/discard`, { method: 'POST', body: JSON.stringify({ jobId }) }).catch(() => null)
     esRef.current?.close()
-    setJobId(null); setRunning(false); setProposal(null); setBaseline(null); setProgress(null); setStopReason(null); setError(null)
+    setJobId(null); setRunning(false); setProposal(null); setBaseline(null); setStart(null); setProgress(null); setStopReason(null); setError(null)
     onJobChanged()
   }
 
@@ -277,7 +292,7 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
   // a new run replaces the previous one (the server drops it)
   async function handleStart() {
     esRef.current?.close()
-    setError(null); setProposal(null); setBaseline(null); setJobId(null); setProgress(null); setStopReason(null)
+    setError(null); setProposal(null); setBaseline(null); setStart(null); setJobId(null); setProgress(null); setStopReason(null)
     setTab('scenarios')
     const id  = crypto.randomUUID()
     const res = await apiFetch(`${solverBase}/start`, { method: 'POST', body: JSON.stringify({ jobId: id, params }) })
@@ -292,7 +307,7 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
     if (!jobId) return
     const ok = await confirm({
       title:        'Aplicar proposta',
-      description:  `Os carros deste planejamento serão substituídos pela proposta${params.base === 'complete' ? ' (os travados são mantidos)' : ''}.`
+      description:  `Os carros deste planejamento serão substituídos pela proposta${lockedCount ? ' (os travados são mantidos)' : ''}.`
         + (affected ? ` ${affected} ${affected === 1 ? 'escala tem' : 'escalas têm'} pegadas nesses carros e ${affected === 1 ? 'ficará' : 'ficarão'} com pegadas desvinculadas.` : ''),
       confirmLabel: 'Aplicar',
     })
@@ -384,13 +399,19 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
           {tab === 'panel' && (
             <div className="max-w-xl space-y-4 text-sm">
               <div className="space-y-1.5">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" checked={params.base === 'complete'} onChange={() => setParams(p => ({ ...p, base: 'complete' }))} />
-                  Respeita travados ({lockedCount})
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-1" checked={params.start === 'current'} onChange={() => setParams(p => ({ ...p, start: 'current' }))} />
+                  <span>
+                    Partir do planejamento atual
+                    <span className="block text-xs text-muted-foreground">Refina os carros como estão — mantém os encadeamentos que o planejamento já tem e só conta como melhoria o que superar o ponto de partida.</span>
+                  </span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" checked={params.base === 'scratch'} onChange={() => setParams(p => ({ ...p, base: 'scratch' }))} />
-                  Completa (refaz todos os carros)
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-1" checked={params.start === 'scratch'} onChange={() => setParams(p => ({ ...p, start: 'scratch' }))} />
+                  <span>
+                    Do zero
+                    <span className="block text-xs text-muted-foreground">Monta os carros de novo — indicado depois de mudar a configuração (ex.: troca de linha), para não ficar preso à estrutura atual.</span>
+                  </span>
                 </label>
               </div>
               <div className="flex items-center gap-3">
@@ -402,7 +423,7 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
               <p className="text-xs text-muted-foreground">
                 O solver distribui todas as viagens do planejamento — de todas as linhas — em carros, decidindo empresa, garagem e tipo de veículo,
                 com as regras da aba Config, a participação das empresas no escopo, as garagens e capacidades cadastradas e os tipos de veículo das linhas.
-                O resultado substitui os carros deste planejamento{params.base === 'complete' ? ' — os travados são mantidos' : ''}.
+                O resultado substitui os carros deste planejamento{lockedCount ? ` — os travados (${lockedCount}) são mantidos` : ''}.
                 {jobId && ' Gerar novamente descarta o cenário atual.'}
               </p>
             </div>
@@ -412,6 +433,19 @@ export function OptimizeModal({ planId, initialTab, job, lockedCount, onJobChang
             <div className="max-w-3xl space-y-5">
               {!jobId && !error && (
                 <p className="text-sm text-muted-foreground">Nenhum cenário gerado. Use o Painel para gerar uma proposta.</p>
+              )}
+              {jobId && start && (
+                <p className="text-xs text-muted-foreground">
+                  Ponto de partida: {start.from === 'current' ? 'planejamento atual' : 'nova construção'} · nota {start.summary.score.toLocaleString('pt-BR')} · {start.summary.fleetCount} carros
+                  {start.from === 'current' && start.brokenLinks.length > 0 && (
+                    <span className="block text-amber-700 dark:text-amber-400">
+                      {start.brokenLinks.length} {start.brokenLinks.length === 1 ? 'encadeamento do planejamento não atende' : 'encadeamentos do planejamento não atendem'} às regras
+                      atuais (intervalo, matriz de tempos, ponto de parada) e {start.brokenLinks.length === 1 ? 'foi desfeito' : 'foram desfeitos'} — cada um custa um carro.
+                      Corrija-os ou gere do zero: {start.brokenLinks.slice(0, 8).join(' · ')}{start.brokenLinks.length > 8 ? ' …' : ''}
+                    </span>
+                  )}
+                  {start.fallback && <span className="block text-amber-700 dark:text-amber-400">Não foi possível partir do planejamento atual: {start.fallback}.</span>}
+                </p>
               )}
               {jobId && (
                 <div className="grid grid-cols-4 gap-2 text-xs">
