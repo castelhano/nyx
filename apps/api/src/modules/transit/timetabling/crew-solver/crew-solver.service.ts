@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { CREW_ROLES, type CrewRole, type CrewSettings } from '@nyx/schemas'
 import { PrismaService } from '../../../../prisma/prisma.service'
+import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { loadCrewSolverInput } from './crew-solver.input'
 import { solverRank } from '../crew-plan/crew-scoring.calc'
@@ -26,11 +27,11 @@ import {
 // run ends.
 //
 // The improvement is a random search and two seeds can end ~30 duties apart, so a generation
-// runs SEARCHES workers from different seeds side by side: the job keeps the best proposal of
-// them all, its progress sums them up and it ends when the last one does.
+// runs several workers from different seeds side by side (general.solverMaxSearches, capped at
+// the cores − 1): the job keeps the best proposal of them all, its progress sums them up and it
+// ends when the last one does.
 
 const KEEP_MS = 30 * 60 * 1000
-const SEARCHES = Math.max(1, Math.min(4, availableParallelism() - 1))
 
 type Done = Extract<CrewSolverMessage, { type: 'done' | 'error' }>
 type Progress = Extract<CrewSolverMessage, { type: 'progress' }>
@@ -92,6 +93,7 @@ export class CrewSolverService {
   constructor(
     private readonly prisma:    PrismaService,
     private readonly crewPlans: CrewPlanService,
+    private readonly generalConfig: TransitGeneralConfigService,
   ) {}
 
   async start(crewPlanId: string, jobId: string, rawParams?: Partial<CrewSolverParams>): Promise<void> {
@@ -101,10 +103,12 @@ export class CrewSolverService {
     const input = await loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction), { limitToCrew: params.limitToCrew })
     if (params.base === 'scratch') input.locked = []
 
+    const { solverMaxSearches } = await this.generalConfig.get()
+    const searches = Math.max(1, Math.min(solverMaxSearches, availableParallelism() - 1))
     const isTs    = __filename.endsWith('.ts')
     const seed    = Date.now()
     // the construction has no seed: without the improvement one search is enough
-    const workers = Array.from({ length: params.optimize ? SEARCHES : 1 }, (_, i) => new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
+    const workers = Array.from({ length: params.optimize ? searches : 1 }, (_, i) => new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
       workerData: { input, seed: seed + i * 7919, optimize: params.optimize } satisfies CrewSolverWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
     }))

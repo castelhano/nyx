@@ -335,6 +335,24 @@ export default function TransitSettingsPage() {
           </div>
           <div className="flex items-center justify-between gap-6 px-4 py-3">
             <div>
+              <p className="text-sm font-medium">Buscas em Paralelo do Otimizador</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Máximo de buscas simultâneas por geração (uma thread cada). Mais buscas dão um resultado mais estável no mesmo tempo, com mais uso de CPU. Nunca passa dos núcleos do servidor menos um.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Stepper
+                value={general?.solverMaxSearches ?? 4}
+                onChange={(v) => setGeneral((prev) => prev ? { ...prev, solverMaxSearches: v } : null)}
+                min={1}
+                max={16}
+                disabled={!general}
+              />
+              <span className="text-sm text-muted-foreground w-6"></span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div>
               <p className="text-sm font-medium">Distância de Sugestão de Pontos</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Raio de busca por localidades próximas à trajetória ao sugerir pontos de parada

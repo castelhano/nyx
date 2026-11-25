@@ -3,10 +3,11 @@ import { CrewSolverController } from './crew-solver.controller'
 import { CrewSolverJobsController } from './crew-solver-jobs.controller'
 import { CrewSolverService } from './crew-solver.service'
 import { CrewPlanModule } from '../crew-plan/crew-plan.module'
+import { TransitSettingsModule } from '../../settings/transit-settings.module'
 import { CaslModule } from '../../../../auth/casl.module'
 
 @Module({
-  imports:     [CrewPlanModule, CaslModule],
+  imports:     [CrewPlanModule, TransitSettingsModule, CaslModule],
   controllers: [CrewSolverController, CrewSolverJobsController],
   providers:   [CrewSolverService],
 })

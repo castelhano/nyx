@@ -12,6 +12,9 @@ export const generalSettingsSchema = withMeta(z.object({
   // multiplier applied to OSRM-reported durations when (re)generating the travel-time
   // matrix — compensates for OSRM's free-flow estimate running faster than real traffic
   baseSpeedRatio:                 z.number().min(0.5).max(3.0).default(1.1),
+  // most searches a solver generation runs side by side (one worker thread each); the engine
+  // never goes past the server's cores − 1 (at least 1), whatever is set here
+  solverMaxSearches:              z.number().int().min(1).max(16).default(4),
   // IntervalType used when auto-detecting long gaps between block events (import,
   // Finalizar Plano) and converting them into a BlockInterval — see
   // docs/proposal/plan_block_interval_autodetect_v1.md

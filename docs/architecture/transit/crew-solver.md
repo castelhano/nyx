@@ -11,7 +11,7 @@ The solver decides **who drives what**: it covers every stretch the vehicles of 
 
 - runs in **worker threads**, streams progress over **SSE**;
 - **one mode**: a greedy construction gives the first proposal in milliseconds, then a continuous improvement (simulated annealing) runs until stopped, out of time or without improvement;
-- **several searches side by side**: a generation runs up to 4 workers from different seeds and keeps the best proposal of them all;
+- **several searches side by side**: a generation runs several workers from different seeds (`general.solverMaxSearches`, default 4) and keeps the best proposal of them all;
 - **the generation belongs to the crew plan**, not to the screen: it keeps running when the modal closes, the plan screen picks it up again, and the topbar lists it (background generations);
 - **the solver optimizes what the screen shows**: every duty is evaluated by `evaluateDuty` and every plan by `CrewScoreAggregate` — the same code `CrewPlanService.recalculate()` uses for hand-built plans.
 
@@ -206,7 +206,7 @@ Every duty a move builds follows the hard rules (`build`); a move that breaks on
 
 ## Jobs and protocol
 
-`CrewSolverService.start` loads the input once and starts `min(4, cpus − 1)` workers from different seeds. Each worker: construction → proposal 1, then improvement in 50 ms slices (the event loop turns between them, so `stop` gets through), a better proposal at most once a second, progress every 500 ms; it ends on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes`, posting its best first. With `optimize: false` there is a single worker and it ends (`finished`) right after proposal 1.
+`CrewSolverService.start` loads the input once and starts `max(1, min(general.solverMaxSearches, cpus − 1))` workers from different seeds (Configurações › Geral › Buscas em Paralelo do Otimizador). Each worker: construction → proposal 1, then improvement in 50 ms slices (the event loop turns between them, so `stop` gets through), a better proposal at most once a second, progress every 500 ms; it ends on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes`, posting its best first. With `optimize: false` there is a single worker and it ends (`finished`) right after proposal 1.
 
 The job combines them:
 
