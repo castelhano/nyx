@@ -15,6 +15,9 @@ if (isMainThread) process.exit(1)
 const SLICE_MS    = 50
 const EMIT_MS     = 1000
 const PROGRESS_MS = 500
+// a cooling cycle never lasts longer than this — with a long no-improvement window (a run left
+// overnight) the search would otherwise stay hot for hours before going back to its best
+const MAX_CYCLE_MS = 30 * 60_000
 
 const post  = (msg: CrewSolverMessage) => parentPort!.postMessage(msg)
 const { input, seed, optimize } = workerData as CrewSolverWorkerData
@@ -35,8 +38,8 @@ function improve(initial: SolverDuty[]) {
   let index = 1
   const maxMs  = input.settings.stopMaxTotalMinutes * 60_000
   const idleMs = input.settings.stopNoImprovementMinutes * 60_000
-  // one cooling cycle per half of the no-improvement window (see CrewImprover)
-  const improver = new CrewImprover(input, initial, Math.min(maxMs, idleMs / 2), seed)
+  // one cooling cycle per half of the no-improvement window, at most MAX_CYCLE_MS (see CrewImprover)
+  const improver = new CrewImprover(input, initial, Math.min(maxMs, idleMs / 2, MAX_CYCLE_MS), seed)
   let emitted = 0, lastEmit = 0, lastProgress = 0
 
   const emitBest = () => {

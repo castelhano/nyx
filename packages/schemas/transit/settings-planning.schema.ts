@@ -75,8 +75,8 @@ export const planningSettingsSchema = withMeta(z.object({
   // "Consistir linha da empresa" — a hard rule of the vehicle solver: a block only goes to an
   // empresa that operates every line of its trips (LineOperator; a line with none: any)
   restrictToBranchLines:    z.boolean().default(false),
-  stopNoImprovementMinutes: z.number().int().min(1).max(60).default(10),
-  stopMaxTotalMinutes:      z.number().int().min(1).max(1440).default(240),
+  stopNoImprovementMinutes: z.number().int().min(1).max(1440).default(10),
+  stopMaxTotalMinutes:      z.number().int().min(1).max(4320).default(240),
 
   range: z.object({
     lineTransfer:         rangeCriterionSchema,

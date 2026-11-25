@@ -553,7 +553,7 @@ export default function CrewPlanPage() {
       // a generation in progress or waiting to be used shows here; clicking picks it up
       label:    solverJob?.running
         ? `Gerando… ${fmtClock(solverJob.progress?.elapsed ?? 0)}`
-        : solverJob?.hasProposal ? 'Otimizar • proposta pronta' : 'Otimizar',
+        : 'Otimizar',
       icon:     solverJob?.running ? Icons.Loader2 : Icons.Sparkles,
       size:     'sm' as const,
       variant:  'ghost' as const,

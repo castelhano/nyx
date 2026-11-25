@@ -44,8 +44,8 @@ const LINE_FLEET_META: Record<'fleetUsage', { label: string; unit: string; hint:
 }
 
 const STOP_PARAMS: { key: 'stopNoImprovementMinutes' | 'stopMaxTotalMinutes'; label: string; hint: string; unit: string; max: number }[] = [
-  { key: 'stopNoImprovementMinutes', label: 'Parar sem Melhora',       unit: 'min',         max: 60,   hint: 'Encerra se nenhuma solução melhor for encontrada neste intervalo' },
-  { key: 'stopMaxTotalMinutes',      label: 'Tempo Máximo de Geração', unit: 'min',         max: 1440, hint: 'Encerra independentemente do resultado após este tempo' },
+  { key: 'stopNoImprovementMinutes', label: 'Parar sem Melhora',       unit: 'min',         max: 1440, hint: 'Encerra se nenhuma solução melhor for encontrada neste intervalo' },
+  { key: 'stopMaxTotalMinutes',      label: 'Tempo Máximo de Geração', unit: 'min',         max: 4320, hint: 'Encerra independentemente do resultado após este tempo' },
 ]
 
 const lineRanges = (line: PlanningSettings['line']): Record<LineRangeKey, RangeCriterion> => ({

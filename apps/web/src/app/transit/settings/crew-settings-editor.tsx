@@ -37,8 +37,8 @@ const CREW_PARAMS: { key: 'signOnMinutes' | 'signOffMinutes' | 'handoverMinutes'
   { key: 'maxContinuousDrivingMinutes', label: 'Direção Contínua Máxima',   unit: DURATION_UNIT, max: 1440, hint: 'Tempo máximo ao volante sem intervalo' },
   { key: 'nightStartHour',              label: 'Início do Período Noturno', unit: 'h',   max: 23,   hint: 'Hora de início da janela noturna (informativo)' },
   { key: 'nightEndHour',                label: 'Fim do Período Noturno',    unit: 'h',   max: 23,   hint: 'Hora de fim da janela noturna (informativo)' },
-  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: 'min',         max: 1440, hint: 'Duração máxima da geração da escala' },
-  { key: 'stopNoImprovementMinutes',    label: 'Parar sem Melhora',         unit: 'min', max: 60,   hint: 'Encerra a geração após este tempo sem encontrar escala melhor' },
+  { key: 'stopMaxTotalMinutes',         label: 'Tempo Máximo de Geração',   unit: 'min',         max: 4320, hint: 'Duração máxima da geração da escala' },
+  { key: 'stopNoImprovementMinutes',    label: 'Parar sem Melhora',         unit: 'min', max: 1440, hint: 'Encerra a geração após este tempo sem encontrar escala melhor' },
 ]
 
 // without a continuous meal range.mealBreak is never measured (see crew-scoring.calc.ts)

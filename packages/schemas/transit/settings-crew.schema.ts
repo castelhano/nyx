@@ -87,8 +87,8 @@ export const crewSettingsSchema = withMeta(z.object({
     .default({ mode: 'required', form: 'continuous', fractionedMinTotal: 30, fractionedMinLongest: 15 }),
   // crew solver's continuous improvement: stops after this long, or this long without a better
   // proposal (same fields as the planning settings)
-  stopMaxTotalMinutes:         z.number().int().min(1).max(1440).default(5),
-  stopNoImprovementMinutes:    z.number().int().min(1).max(60).default(1),
+  stopMaxTotalMinutes:         z.number().int().min(1).max(4320).default(5),
+  stopNoImprovementMinutes:    z.number().int().min(1).max(1440).default(1),
 
   range: z.object({
     workTime:       rangeCriterionSchema,

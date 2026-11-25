@@ -633,7 +633,7 @@ export default function VehiclePlanPage() {
       ...(canEdit ? [{
         label:    solverJob?.running
           ? `Gerando… ${fmtClock(solverJob.progress?.elapsed ?? 0)}`
-          : solverJob?.hasProposal ? 'Otimizar • proposta pronta' : 'Otimizar',
+          : 'Otimizar',
         icon:     solverJob?.running ? Icons.Loader2 : Icons.Sparkles,
         onClick:  () => setOptimizeTab(solverJob ? 'scenarios' : 'panel'),
         disabled: isPending || pendingCount > 0,
