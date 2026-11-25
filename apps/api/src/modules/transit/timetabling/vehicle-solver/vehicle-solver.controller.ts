@@ -47,7 +47,7 @@ export class VehicleSolverController {
   @HttpCode(200)
   async discard(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body('jobId') jobId: string) {
     await this.assert(req.user, 'update')
-    this.solver.discard(id, jobId)
+    await this.solver.discard(id, jobId)
     return { ok: true }
   }
 

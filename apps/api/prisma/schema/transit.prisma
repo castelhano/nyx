@@ -590,6 +590,7 @@ model VehiclePlan {
   blocks  VehicleBlock[]
   trips   TransitTrip[]
   crewPlans CrewPlan[]
+  solverRun SolverRun?
 
   @@map("transit_vehicle_plans")
 }
@@ -1191,8 +1192,57 @@ model CrewPlan {
 
   vehiclePlan VehiclePlan @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
   duties      Duty[]
+  solverRun   SolverRun?
 
   @@map("transit_crew_plans")
+}
+
+enum SolverRunKind {
+  VEHICLE
+  CREW
+}
+
+enum SolverRunStatus {
+  RUNNING
+  DONE
+  ERROR
+  // the API lost the run (restart) — the best proposal saved until then stays usable
+  INTERRUPTED
+}
+
+// A solver generation ("Otimizar") — one per plan, outliving the API process: the best proposal
+// is saved as the run goes and stays until applied, discarded or replaced by a new generation of
+// the plan. Only the live part (worker threads, SSE) is in memory. See
+// docs/architecture/transit/solver.md › Persistence.
+model SolverRun {
+  // the client's jobId
+  id            String          @id
+  kind          SolverRunKind
+  vehiclePlanId String?         @unique
+  crewPlanId    String?         @unique
+  status        SolverRunStatus @default(RUNNING)
+  // VehicleSolverParams / CrewSolverParams
+  params        Json
+  // hash of what the generation read — applying refuses a plan that changed since
+  fingerprint   String
+  // vehicle: VehicleSolverSummary of the plan as it was, and VehicleSolverStart
+  baseline      Json?
+  start         Json?
+  // the last progress message and the best proposal, whole (blocks / duties) — saved at most
+  // every 30 s while running, and when the run ends
+  progress      Json?
+  best          Json?
+  stopReason    String?
+  error         String?
+  userId        String?
+  startedAt     DateTime        @default(now())
+  endedAt       DateTime?
+  updatedAt     DateTime        @updatedAt
+
+  vehiclePlan VehiclePlan? @relation(fields: [vehiclePlanId], references: [id], onDelete: Cascade)
+  crewPlan    CrewPlan?    @relation(fields: [crewPlanId], references: [id], onDelete: Cascade)
+
+  @@map("transit_solver_runs")
 }
 
 // A duty ("tabela") — one crew member's workday within a CrewPlan: pieces of vehicle

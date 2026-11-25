@@ -66,7 +66,8 @@ interface Start {
   summary:     Summary
 }
 
-type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'
+// interrupted: the server restarted during the run — the best proposal saved until then stays
+type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | 'interrupted'
 
 // elapsed / sinceImprovement in ms
 type Progress = { elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
@@ -83,6 +84,7 @@ const STOP_LABEL: Record<StopReason, string> = {
   user_stopped:   'Interrompido',
   max_time:       'Tempo máximo atingido',
   no_improvement: 'Sem melhora',
+  interrupted:    'Interrompido pelo servidor',
 }
 
 const DIRECTIONS: { value: Params['direction']; label: string }[] = [

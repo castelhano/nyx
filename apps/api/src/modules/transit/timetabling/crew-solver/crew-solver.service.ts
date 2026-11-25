@@ -4,11 +4,13 @@ import * as path from 'path'
 import { availableParallelism } from 'os'
 import { Observable, Subject } from 'rxjs'
 import { randomUUID } from 'crypto'
-import { Prisma } from '@prisma/client'
+import { Prisma, type SolverRun } from '@prisma/client'
 import { CREW_ROLES, type CrewRole, type CrewSettings } from '@nyx/schemas'
+import type { AuthUser } from '@nyx/types'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
+import { SAVE_MS, SolverRunStore, fingerprintOf, stopReasonOf, type SolverRunPatch } from '../solver-run/solver-run.store'
 import { loadCrewSolverInput } from './crew-solver.input'
 import { solverRank } from '../crew-plan/crew-scoring.calc'
 import {
@@ -16,22 +18,23 @@ import {
   type CrewSolverMessage, type CrewSolverParams, type CrewSolverProposal, type CrewSolverWorkerData,
 } from './crew-solver.types'
 
-// "Otimizar › Gerar escala" — runs the crew solver in a worker thread, streams progress
-// over SSE and turns the chosen proposal into a new DRAFT crew plan version.
+// "Otimizar › Gerar escala" — runs the crew solver in worker threads, streams progress
+// over SSE and turns the chosen proposal into duties (in place on a DRAFT, else a new version).
 //
 // A generation belongs to the crew plan, not to the screen that started it: it keeps running
 // when the modal closes or the page is left, and the plan screen finds it again (current) —
 // one per crew plan, a new start replaces it. A client connecting to the stream gets the
-// job's state first (best proposal, last progress, how it ended) and then what comes next.
-// Jobs live in memory (a restart loses them), until accepted, discarded or 30 min after the
-// run ends.
+// generation's state first (best proposal, last progress, how it ended) and then what comes next.
+//
+// It is saved (SolverRun, SolverRunStore) as it goes and stays until accepted, discarded or
+// replaced — a run left overnight is there in the morning, and one the API lost on a restart
+// comes back INTERRUPTED with the best proposal saved until then. Memory holds only the live
+// run (workers, SSE); once it ends and its last write lands, the saved row is all there is.
 //
 // The improvement is a random search and two seeds can end ~30 duties apart, so a generation
 // runs several workers from different seeds side by side (general.solverMaxSearches, capped at
 // the cores − 1): the job keeps the best proposal of them all, its progress sums them up and it
 // ends when the last one does.
-
-const KEEP_MS = 30 * 60 * 1000
 
 type Done = Extract<CrewSolverMessage, { type: 'done' | 'error' }>
 type Progress = Extract<CrewSolverMessage, { type: 'progress' }>
@@ -41,31 +44,48 @@ type StopReason = Extract<CrewSolverMessage, { type: 'done' }>['stopReason']
 const STOP_PRIORITY: StopReason[] = ['user_stopped', 'max_time', 'no_improvement', 'finished']
 
 interface Job {
-  id:         string
-  crewPlanId: string
-  params:     CrewSolverParams
-  workers:    Worker[]
+  id:          string
+  crewPlanId:  string
+  params:      CrewSolverParams
+  fingerprint: string
+  workers:     Worker[]
   // per worker: its last progress and how it ended
-  runs:       { progress: Progress | null; end: Done | null }[]
-  proposals:  number
-  startedAt:  number
-  best:       CrewSolverProposal | null
-  progress:   Progress | null
+  runs:        { progress: Progress | null; end: Done | null }[]
+  proposals:   number
+  startedAt:   number
+  best:        CrewSolverProposal | null
+  progress:    Progress | null
   // how it ended — null while running
-  end:        Done | null
-  endedAt:    number | null
-  live$:      Subject<CrewSolverMessage>
+  end:         Done | null
+  endedAt:     number | null
+  savedAt:     number
+  live$:       Subject<CrewSolverMessage>
+}
+
+// a generation as the screens see it — the live job, else its saved row
+interface View {
+  id:          string
+  crewPlanId:  string
+  params:      CrewSolverParams
+  fingerprint: string
+  running:     boolean
+  startedAt:   number
+  endedAt:     number | null
+  stopReason:  StopReason | null
+  error:       string | null
+  progress:    Progress | null
+  best:        CrewSolverProposal | null
 }
 
 // what the plan screen needs to pick a generation up again
 export interface CrewSolverJobState {
-  jobId:     string
-  params:    CrewSolverParams
-  startedAt: number
-  running:   boolean
-  stopReason: Extract<CrewSolverMessage, { type: 'done' }>['stopReason'] | null
-  error:     string | null
-  progress:  Extract<CrewSolverMessage, { type: 'progress' }> | null
+  jobId:       string
+  params:      CrewSolverParams
+  startedAt:   number
+  running:     boolean
+  stopReason:  StopReason | null
+  error:       string | null
+  progress:    Progress | null
   hasProposal: boolean
 }
 
@@ -78,7 +98,7 @@ export interface CrewSolverJobListItem {
   startedAt:   number
   endedAt:     number | null
   elapsed:     number
-  stopReason:  CrewSolverJobState['stopReason']
+  stopReason:  StopReason | null
   error:       string | null
   hasProposal: boolean
 }
@@ -87,23 +107,59 @@ export interface CrewSolverJobListItem {
 export class CrewSolverService {
   private readonly logger = new Logger(CrewSolverService.name)
   private readonly jobs   = new Map<string, Job>()
-  // crewPlanId → its generation's jobId
+  // crewPlanId → its live generation's jobId
   private readonly current = new Map<string, string>()
 
   constructor(
-    private readonly prisma:    PrismaService,
-    private readonly crewPlans: CrewPlanService,
+    private readonly prisma:        PrismaService,
+    private readonly crewPlans:     CrewPlanService,
     private readonly generalConfig: TransitGeneralConfigService,
+    private readonly saved:         SolverRunStore,
   ) {}
 
-  async start(crewPlanId: string, jobId: string, rawParams?: Partial<CrewSolverParams>): Promise<void> {
+  // What a proposal is built on: the vehicle plan's blocks as the crew sees them (trips,
+  // deadruns, intervals) and, with base complete, the locked duties it keeps
+  private async fingerprint(crewPlanId: string, params: CrewSolverParams): Promise<string> {
+    const plan = await this.prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true } })
+    if (!plan) throw new NotFoundException('crewPlan not found')
+    const [blocks, locked] = await Promise.all([
+      this.prisma.vehicleBlock.findMany({
+        where:   { vehiclePlanId: plan.vehiclePlanId },
+        orderBy: { id: 'asc' },
+        select: {
+          id: true, depotId: true, branchId: true,
+          blockTrips:     { orderBy: { sequence: 'asc' }, select: { tripId: true, trip: { select: { departureMinutes: true, arrivalMinutes: true, routeId: true } } } },
+          blockDeadruns:  { orderBy: { departureMinutes: 'asc' }, select: { type: true, departureMinutes: true, arrivalMinutes: true, originLocalityId: true, destinationLocalityId: true } },
+          blockIntervals: { orderBy: { departureMinutes: 'asc' }, select: { departureMinutes: true, arrivalMinutes: true } },
+        },
+      }),
+      params.base === 'complete'
+        ? this.prisma.duty.findMany({
+            where:   { crewPlanId, constraints: { path: ['locked'], equals: true } },
+            orderBy: { id: 'asc' },
+            select:  { id: true, pieces: { orderBy: { sequence: 'asc' }, select: { vehicleBlockId: true, startMinutes: true, endMinutes: true } } },
+          })
+        : Promise.resolve([]),
+    ])
+    return fingerprintOf([blocks, locked])
+  }
+
+  async start(crewPlanId: string, jobId: string, rawParams: Partial<CrewSolverParams> | undefined, user: AuthUser | undefined): Promise<void> {
     if (!jobId) throw new BadRequestException('jobId obrigatório')
     const params = { ...DEFAULT_CREW_SOLVER_PARAMS, ...rawParams }
     const { settings } = await this.crewPlans.resolveSettings(crewPlanId)
-    const input = await loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction), { limitToCrew: params.limitToCrew })
+    const [input, fingerprint, { solverMaxSearches }] = await Promise.all([
+      loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction), { limitToCrew: params.limitToCrew }),
+      this.fingerprint(crewPlanId, params),
+      this.generalConfig.get(),
+    ])
     if (params.base === 'scratch') input.locked = []
 
-    const { solverMaxSearches } = await this.generalConfig.get()
+    // one generation per crew plan: a new one replaces the previous (its row too)
+    const previous = this.current.get(crewPlanId)
+    if (previous) this.drop(previous)
+    await this.saved.begin('CREW', crewPlanId, jobId, { params, fingerprint, userId: user?.id })
+
     const searches = Math.max(1, Math.min(solverMaxSearches, availableParallelism() - 1))
     const isTs    = __filename.endsWith('.ts')
     const seed    = Date.now()
@@ -112,17 +168,14 @@ export class CrewSolverService {
       workerData: { input, seed: seed + i * 7919, optimize: params.optimize } satisfies CrewSolverWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
     }))
-    // one generation per crew plan: a new one replaces the previous
-    const previous = this.current.get(crewPlanId)
-    if (previous) this.drop(previous)
-
     const job: Job = {
-      id: jobId, crewPlanId, params, workers, runs: workers.map(() => ({ progress: null, end: null })), proposals: 0,
-      startedAt: Date.now(), best: null, progress: null, end: null, endedAt: null, live$: new Subject(),
+      id: jobId, crewPlanId, params, fingerprint, workers, runs: workers.map(() => ({ progress: null, end: null })), proposals: 0,
+      startedAt: Date.now(), best: null, progress: null, end: null, endedAt: null, savedAt: Date.now(), live$: new Subject(),
     }
     this.jobs.set(jobId, job)
     this.current.set(crewPlanId, jobId)
 
+    // the last write, then memory lets go — the row is the generation from here on
     const finish = (end: Done) => {
       if (job.end) return
       job.end = end
@@ -130,7 +183,8 @@ export class CrewSolverService {
       job.live$.next(end)
       job.live$.complete()
       for (const w of workers) void w.terminate()
-      setTimeout(() => { if (this.jobs.get(jobId) === job) this.drop(jobId) }, KEEP_MS)
+      const patch: SolverRunPatch = end.type === 'done' ? { status: 'DONE', stopReason: end.stopReason } : { status: 'ERROR', error: end.message }
+      void this.save(job, patch).then(() => { if (this.jobs.get(jobId) === job) this.drop(jobId) })
     }
     // a search ended: the generation ends with the last one — an error only when they all failed
     const ended = (i: number, end: Done) => {
@@ -163,6 +217,7 @@ export class CrewSolverService {
           job.progress = combineProgress(job.runs.flatMap(r => r.progress ?? []))
           job.live$.next(job.progress)
         }
+        void this.checkpoint(job)
       })
       worker.on('error', err => {
         this.logger.error(`Crew solver worker error for job ${jobId}`, err)
@@ -171,48 +226,72 @@ export class CrewSolverService {
     })
   }
 
-  // the crew plan's generation (running, or ended and not yet accepted/discarded)
-  getCurrent(crewPlanId: string): CrewSolverJobState | null {
+  // the best proposal and the progress, at most every SAVE_MS while the run goes
+  private checkpoint(job: Job): Promise<void> {
+    return Date.now() - job.savedAt < SAVE_MS ? Promise.resolve() : this.save(job)
+  }
+
+  private save(job: Job, patch: SolverRunPatch = {}): Promise<void> {
+    job.savedAt = Date.now()
+    return this.saved.save(job.id, { progress: job.progress, best: job.best, ...patch })
+  }
+
+  private async view(crewPlanId: string): Promise<View | null> {
     const job = this.jobs.get(this.current.get(crewPlanId) ?? '')
-    if (!job) return null
+    if (job) return viewOfJob(job)
+    const run = await this.saved.find('CREW', crewPlanId)
+    return run && viewOfRun(run)
+  }
+
+  private async viewById(jobId: string): Promise<View | null> {
+    const job = this.jobs.get(jobId)
+    if (job) return viewOfJob(job)
+    const run = await this.saved.get(jobId)
+    return run?.crewPlanId ? viewOfRun(run) : null
+  }
+
+  // the crew plan's generation (running, or ended and not yet accepted/discarded)
+  async getCurrent(crewPlanId: string): Promise<CrewSolverJobState | null> {
+    const v = await this.view(crewPlanId)
+    if (!v) return null
     return {
-      jobId: job.id, params: job.params, startedAt: job.startedAt, running: !job.end,
-      stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
-      error:      job.end?.type === 'error' ? job.end.message : null,
-      progress: job.progress, hasProposal: !!job.best,
+      jobId: v.id, params: v.params, startedAt: v.startedAt, running: v.running, stopReason: v.stopReason, error: v.error,
+      progress: v.progress, hasProposal: !!v.best,
     }
   }
 
   // every crew plan's generation — running, or ended and not yet used — newest first
   async listJobs(): Promise<CrewSolverJobListItem[]> {
-    const jobs = [...this.current.values()].flatMap(id => this.jobs.get(id) ?? [])
-    if (!jobs.length) return []
+    const runs = await this.saved.list('CREW')
+    if (!runs.length) return []
     const plans = await this.prisma.crewPlan.findMany({
-      where:  { id: { in: jobs.map(j => j.crewPlanId) } },
+      where:  { id: { in: runs.flatMap(r => r.crewPlanId ?? []) } },
       select: { id: true, description: true, vehiclePlan: { select: { scope: { select: { name: true } }, dayType: { select: { name: true } } } } },
     })
     const byId = new Map(plans.map(p => [p.id, p]))
-    return jobs
-      .map(job => {
-        const p = byId.get(job.crewPlanId)
-        return {
-          jobId: job.id, crewPlanId: job.crewPlanId,
-          planLabel: p ? [p.description || 'Escala', p.vehiclePlan.scope?.name, p.vehiclePlan.dayType?.name].filter(Boolean).join(' · ') : 'Escala',
-          running: !job.end, startedAt: job.startedAt, endedAt: job.endedAt,
-          elapsed: (job.endedAt ?? Date.now()) - job.startedAt,
-          stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
-          error:      job.end?.type === 'error' ? job.end.message : null,
-          hasProposal: !!job.best,
-        }
-      })
-      .sort((a, b) => b.startedAt - a.startedAt)
+    return runs.map(run => {
+      const job = this.jobs.get(run.id)
+      const v = job ? viewOfJob(job) : viewOfRun(run)
+      const p = byId.get(v.crewPlanId)
+      return {
+        jobId: v.id, crewPlanId: v.crewPlanId,
+        planLabel: p ? [p.description || 'Escala', p.vehiclePlan.scope?.name, p.vehiclePlan.dayType?.name].filter(Boolean).join(' · ') : 'Escala',
+        running: v.running, startedAt: v.startedAt, endedAt: v.endedAt,
+        elapsed: (v.endedAt ?? Date.now()) - v.startedAt,
+        stopReason: v.stopReason, error: v.error, hasProposal: !!v.best,
+      }
+    })
   }
 
   // stops the run if needed and forgets it
-  discard(crewPlanId: string, jobId: string): void {
-    if (this.jobs.get(jobId)?.crewPlanId === crewPlanId) this.drop(jobId)
+  async discard(crewPlanId: string, jobId: string): Promise<void> {
+    const v = await this.viewById(jobId)
+    if (v?.crewPlanId !== crewPlanId) return
+    this.drop(jobId)
+    await this.saved.remove(jobId)
   }
 
+  // the live part only — the saved row stays
   private drop(jobId: string): void {
     const job = this.jobs.get(jobId)
     if (!job) return
@@ -224,28 +303,35 @@ export class CrewSolverService {
     if (this.current.get(job.crewPlanId) === jobId) this.current.delete(job.crewPlanId)
   }
 
-  // the job's state first (best proposal, last progress, its end), then what comes next;
-  // proposals go out without their duties — the client only shows the summary
+  // the generation's state first (best proposal, last progress, its end), then what comes next
+  // while it runs; proposals go out without their duties — the client only shows the summary
   stream(jobId: string): Observable<{ data: string }> {
-    const job = this.jobs.get(jobId)
-    if (!job) return new Observable(s => s.complete())
     const out = (msg: CrewSolverMessage) => ({
       data: JSON.stringify(msg.type === 'proposal' ? { ...msg, proposal: { ...msg.proposal, duties: undefined } } : msg),
     })
     return new Observable(subscriber => {
-      if (job.best)     subscriber.next(out({ type: 'proposal', proposal: job.best }))
-      if (job.progress) subscriber.next(out(job.progress))
-      if (job.end) {
-        subscriber.next(out(job.end))
+      let sub: { unsubscribe(): void } | null = null
+      let closed = false
+      void (async () => {
+        const job = this.jobs.get(jobId)
+        const v = job ? viewOfJob(job) : await this.viewById(jobId).catch(() => null)
+        if (closed) return
+        if (!v) return subscriber.complete()
+        if (v.best)     subscriber.next(out({ type: 'proposal', proposal: v.best }))
+        if (v.progress) subscriber.next(out(v.progress))
+        if (job && !job.end) {
+          sub = job.live$.subscribe({
+            next:     msg => subscriber.next(out(msg)),
+            error:    err => subscriber.error(err),
+            complete: () => subscriber.complete(),
+          })
+          return
+        }
+        if (v.error) subscriber.next(out({ type: 'error', message: v.error }))
+        else if (v.stopReason) subscriber.next(out({ type: 'done', stopReason: v.stopReason, elapsed: (v.endedAt ?? v.startedAt) - v.startedAt, attempts: v.progress?.attempts ?? 0 }))
         subscriber.complete()
-        return
-      }
-      const sub = job.live$.subscribe({
-        next:     msg => subscriber.next(out(msg)),
-        error:    err => subscriber.error(err),
-        complete: () => subscriber.complete(),
-      })
-      return () => sub.unsubscribe()
+      })()
+      return () => { closed = true; sub?.unsubscribe() }
     })
   }
 
@@ -259,12 +345,16 @@ export class CrewSolverService {
   // the roles asked for. A DRAFT crew plan gets them in place (every other duty goes); from an
   // ACTIVE one a new DRAFT version is created — simulations don't pile up as versions. Duty
   // numbers: locked ones keep theirs, the rest take the free numbers in start order; a replica
-  // takes its driver's number when free.
+  // takes its driver's number when free. Refused when the vehicle blocks or the locked duties
+  // changed since the generation read them (fingerprint).
   async accept(crewPlanId: string, jobId: string, description?: string): Promise<{ id: string; inPlace: boolean }> {
-    const job = this.jobs.get(jobId)
-    if (!job || job.crewPlanId !== crewPlanId) throw new NotFoundException('Geração não encontrada ou expirada')
-    if (!job.best) throw new BadRequestException('Nenhuma proposta disponível ainda')
-    const { best, params } = job
+    const v = await this.viewById(jobId)
+    if (!v || v.crewPlanId !== crewPlanId) throw new NotFoundException('Geração não encontrada ou expirada')
+    const { best, params } = v
+    if (!best) throw new BadRequestException('Nenhuma proposta disponível ainda')
+    if (await this.fingerprint(crewPlanId, params) !== v.fingerprint) {
+      throw new BadRequestException('Os carros do planejamento ou as jornadas travadas mudaram desde a geração — gere novamente')
+    }
     this.drop(jobId)
 
     const src = await this.prisma.crewPlan.findUnique({
@@ -357,8 +447,30 @@ export class CrewSolverService {
       ...(inPlace ? [this.prisma.crewPlan.update({ where: { id: crewPlanId }, data: { generatedAt: new Date() } })] : []),
     ])
 
+    await this.saved.remove(jobId)
     await this.crewPlans.recalculate(planId)
     return { id: planId, inPlace }
+  }
+}
+
+function viewOfJob(job: Job): View {
+  return {
+    id: job.id, crewPlanId: job.crewPlanId, params: job.params, fingerprint: job.fingerprint, running: !job.end,
+    startedAt: job.startedAt, endedAt: job.endedAt,
+    stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
+    error:      job.end?.type === 'error' ? job.end.message : null,
+    progress: job.progress, best: job.best,
+  }
+}
+
+// a row still RUNNING without its live job is another process's run, or one this process is
+// about to mark INTERRUPTED — shown as running
+function viewOfRun(run: SolverRun): View {
+  return {
+    id: run.id, crewPlanId: run.crewPlanId!, params: run.params as unknown as CrewSolverParams, fingerprint: run.fingerprint,
+    running: run.status === 'RUNNING', startedAt: run.startedAt.getTime(), endedAt: run.endedAt?.getTime() ?? null,
+    stopReason: stopReasonOf(run), error: run.error,
+    progress: run.progress as Progress | null, best: run.best as CrewSolverProposal | null,
   }
 }
 

@@ -20,7 +20,7 @@ interface ApiJob {
   startedAt:   number
   endedAt:     number | null
   elapsed:     number
-  stopReason:  'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | null
+  stopReason:  'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | 'interrupted' | null
   error:       string | null
   hasProposal: boolean
 }
@@ -42,15 +42,19 @@ const clock = (ms: number) => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
+// a generation is kept until used — it may have ended hours or days ago
 const ago = (ts: number) => {
   const min = Math.floor((Date.now() - ts) / 60_000)
-  return min < 1 ? 'agora' : `há ${min} min`
+  if (min < 1) return 'agora'
+  if (min < 60) return `há ${min} min`
+  const h = Math.floor(min / 60)
+  return h < 24 ? `há ${h} h` : `há ${Math.floor(h / 24)} d`
 }
 
 function status(j: BackgroundJob): string {
   if (j.running)     return `gerando ${clock(j.elapsed)}`
   if (j.error)       return 'erro'
-  if (j.hasProposal) return `proposta pronta${j.endedAt ? ` · ${ago(j.endedAt)}` : ''}`
+  if (j.hasProposal) return `proposta pronta${j.stopReason === 'interrupted' ? ' (interrompida)' : ''}${j.endedAt ? ` · ${ago(j.endedAt)}` : ''}`
   return 'sem proposta'
 }
 

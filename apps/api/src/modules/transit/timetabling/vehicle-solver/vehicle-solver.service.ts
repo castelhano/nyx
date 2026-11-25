@@ -4,12 +4,13 @@ import * as path from 'path'
 import { availableParallelism } from 'os'
 import { Observable, Subject } from 'rxjs'
 import { randomUUID } from 'crypto'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, SolverRun } from '@prisma/client'
 import type { PlanningSettings } from '@nyx/schemas'
 import type { AuthUser } from '@nyx/types'
 import { PrismaService } from '../../../../prisma/prisma.service'
 import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { VehiclePlanService } from '../vehicle-plan/vehicle-plan.service'
+import { SAVE_MS, SolverRunStore, fingerprintOf, stopReasonOf, type SolverRunPatch } from '../solver-run/solver-run.store'
 import { loadVehicleSolverInput } from './vehicle-solver.input'
 import {
   DEFAULT_VEHICLE_SOLVER_PARAMS,
@@ -17,22 +18,23 @@ import {
   type VehicleSolverSummary, type VehicleSolverWorkerData,
 } from './vehicle-solver.types'
 
-// "Otimizar" of the vehicle plan — runs the vehicle solver in a worker thread, streams progress
+// "Otimizar" of the vehicle plan — runs the vehicle solver in worker threads, streams progress
 // over SSE and applies the chosen proposal to the (DRAFT) plan in place.
 //
 // A generation belongs to the plan, not to the screen that started it: it keeps running when
 // the modal closes or the page is left, and the plan screen finds it again (current) — one per
-// plan, a new start replaces it. A client connecting to the stream gets the job's state first
-// (where it started, best proposal, last progress, how it ended) and then what comes next.
-// Jobs live in memory (a restart loses them), until applied, discarded or 30 min after the run
-// ends.
+// plan, a new start replaces it. A client connecting to the stream gets the generation's state
+// first (where it started, best proposal, last progress, how it ended) and then what comes next.
+//
+// It is saved (SolverRun, SolverRunStore) as it goes and stays until applied, discarded or
+// replaced — a run left overnight is there in the morning, and one the API lost on a restart
+// comes back INTERRUPTED with the best proposal saved until then. Memory holds only the live
+// run (workers, SSE); once it ends and its last write lands, the saved row is all there is.
 //
 // The improvement is a random search and two seeds can end a vehicle or two apart, so a
 // generation runs several workers from different seeds side by side (general.solverMaxSearches,
 // capped at the cores − 1): they all start from the same point, the job keeps the best proposal
 // of them all, its progress sums them up and it ends when the last one does.
-
-const KEEP_MS = 30 * 60 * 1000
 
 type Done = Extract<VehicleSolverMessage, { type: 'done' | 'error' }>
 type Progress = Extract<VehicleSolverMessage, { type: 'progress' }>
@@ -42,23 +44,42 @@ type StopReason = Extract<VehicleSolverMessage, { type: 'done' }>['stopReason']
 const STOP_PRIORITY: StopReason[] = ['user_stopped', 'max_time', 'no_improvement', 'finished']
 
 interface Job {
-  id:        string
-  planId:    string
-  params:    VehicleSolverParams
-  workers:   Worker[]
+  id:          string
+  planId:      string
+  params:      VehicleSolverParams
+  fingerprint: string
+  workers:     Worker[]
   // per worker: its last progress and how it ended
-  runs:      { progress: Progress | null; end: Done | null }[]
-  proposals: number
-  startedAt: number
-  baseline:  VehicleSolverSummary
+  runs:        { progress: Progress | null; end: Done | null }[]
+  proposals:   number
+  startedAt:   number
+  baseline:    VehicleSolverSummary
   // the same in every search
-  start:     VehicleSolverStart | null
-  best:      VehicleSolverProposal | null
-  progress:  Progress | null
+  start:       VehicleSolverStart | null
+  best:        VehicleSolverProposal | null
+  progress:    Progress | null
   // how it ended — null while running
-  end:       Done | null
-  endedAt:   number | null
-  live$:     Subject<VehicleSolverMessage>
+  end:         Done | null
+  endedAt:     number | null
+  savedAt:     number
+  live$:       Subject<VehicleSolverMessage>
+}
+
+// a generation as the screens see it — the live job, else its saved row
+interface View {
+  id:          string
+  planId:      string
+  params:      VehicleSolverParams
+  fingerprint: string
+  running:     boolean
+  startedAt:   number
+  endedAt:     number | null
+  stopReason:  StopReason | null
+  error:       string | null
+  progress:    Progress | null
+  baseline:    VehicleSolverSummary
+  start:       VehicleSolverStart | null
+  best:        VehicleSolverProposal | null
 }
 
 // what the plan screen needs to pick a generation up again
@@ -67,7 +88,7 @@ export interface VehicleSolverJobState {
   params:      VehicleSolverParams
   startedAt:   number
   running:     boolean
-  stopReason:  Extract<VehicleSolverMessage, { type: 'done' }>['stopReason'] | null
+  stopReason:  StopReason | null
   error:       string | null
   progress:    Progress | null
   hasProposal: boolean
@@ -88,7 +109,7 @@ export interface VehicleSolverJobListItem {
   startedAt:   number
   endedAt:     number | null
   elapsed:     number
-  stopReason:  VehicleSolverJobState['stopReason']
+  stopReason:  StopReason | null
   error:       string | null
   hasProposal: boolean
 }
@@ -97,13 +118,14 @@ export interface VehicleSolverJobListItem {
 export class VehicleSolverService {
   private readonly logger = new Logger(VehicleSolverService.name)
   private readonly jobs   = new Map<string, Job>()
-  // planId → its generation's jobId
+  // planId → its live generation's jobId
   private readonly current = new Map<string, string>()
 
   constructor(
     private readonly prisma:        PrismaService,
     private readonly generalConfig: TransitGeneralConfigService,
     private readonly vehiclePlans:  VehiclePlanService,
+    private readonly saved:         SolverRunStore,
   ) {}
 
   // The solver rewrites blocks of every operator of the Scope — only a user with access to all
@@ -121,14 +143,41 @@ export class VehicleSolverService {
     }
   }
 
+  // What a proposal is built on: the trips (times, routes, groups) and the locked blocks — the
+  // rest of the plan is what the proposal replaces
+  private async fingerprint(planId: string): Promise<string> {
+    const [trips, blocks] = await Promise.all([
+      this.prisma.transitTrip.findMany({
+        where:   { vehiclePlanId: planId },
+        select:  { id: true, departureMinutes: true, arrivalMinutes: true, routeId: true, bundleId: true, requiredVehicleType: true },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.vehicleBlock.findMany({
+        where:   { vehiclePlanId: planId },
+        select:  { id: true, constraints: true, blockTrips: { select: { tripId: true }, orderBy: { tripId: 'asc' } } },
+        orderBy: { id: 'asc' },
+      }),
+    ])
+    const locked = blocks.filter(b => (b.constraints as { locked?: boolean } | null)?.locked).map(b => [b.id, b.blockTrips.map(t => t.tripId)])
+    return fingerprintOf([trips, locked])
+  }
+
   async start(planId: string, jobId: string, rawParams: Partial<VehicleSolverParams> | undefined, user: AuthUser | undefined): Promise<void> {
     if (!jobId) throw new BadRequestException('jobId obrigatório')
     await this.assertCanSolve(planId, user)
     const params = { ...DEFAULT_VEHICLE_SOLVER_PARAMS, ...rawParams }
     const { settings } = await this.vehiclePlans.resolveSettings(planId)
-    const { input, baseline } = await loadVehicleSolverInput(this.prisma, this.generalConfig, planId, settings, withDirection(settings, params.direction), params)
+    const [{ input, baseline }, fingerprint, { solverMaxSearches }] = await Promise.all([
+      loadVehicleSolverInput(this.prisma, this.generalConfig, planId, settings, withDirection(settings, params.direction), params),
+      this.fingerprint(planId),
+      this.generalConfig.get(),
+    ])
 
-    const { solverMaxSearches } = await this.generalConfig.get()
+    // one generation per plan: a new one replaces the previous (its row too)
+    const previous = this.current.get(planId)
+    if (previous) this.drop(previous)
+    await this.saved.begin('VEHICLE', planId, jobId, { params, fingerprint, baseline, userId: user?.id })
+
     const searches = Math.max(1, Math.min(solverMaxSearches, availableParallelism() - 1))
     const isTs    = __filename.endsWith('.ts')
     const seed    = Date.now()
@@ -136,17 +185,15 @@ export class VehicleSolverService {
       workerData: { input, seed: seed + i * 7919 } satisfies VehicleSolverWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
     }))
-    // one generation per plan: a new one replaces the previous
-    const previous = this.current.get(planId)
-    if (previous) this.drop(previous)
-
     const job: Job = {
-      id: jobId, planId, params, workers, runs: workers.map(() => ({ progress: null, end: null })), proposals: 0,
-      startedAt: Date.now(), baseline, start: null, best: null, progress: null, end: null, endedAt: null, live$: new Subject(),
+      id: jobId, planId, params, fingerprint, workers, runs: workers.map(() => ({ progress: null, end: null })), proposals: 0,
+      startedAt: Date.now(), baseline, start: null, best: null, progress: null, end: null, endedAt: null, savedAt: Date.now(),
+      live$: new Subject(),
     }
     this.jobs.set(jobId, job)
     this.current.set(planId, jobId)
 
+    // the last write, then memory lets go — the row is the generation from here on
     const finish = (end: Done) => {
       if (job.end) return
       job.end = end
@@ -154,7 +201,8 @@ export class VehicleSolverService {
       job.live$.next(end)
       job.live$.complete()
       for (const w of workers) void w.terminate()
-      setTimeout(() => { if (this.jobs.get(jobId) === job) this.drop(jobId) }, KEEP_MS)
+      const patch: SolverRunPatch = end.type === 'done' ? { status: 'DONE', stopReason: end.stopReason } : { status: 'ERROR', error: end.message }
+      void this.save(job, patch).then(() => { if (this.jobs.get(jobId) === job) this.drop(jobId) })
     }
     // a search ended: the generation ends with the last one — an error only when they all failed
     const ended = (i: number, end: Done) => {
@@ -180,15 +228,18 @@ export class VehicleSolverService {
           if (job.start) return
           job.start = msg.start
           job.live$.next(msg)
+          void this.saved.save(jobId, { start: job.start })
         } else if (msg.type === 'proposal') {
           // only a better proposal than every search's so far goes out (they all start alike)
           if (job.best && msg.proposal.rank <= job.best.rank) return
           job.best = { ...msg.proposal, index: ++job.proposals }
           job.live$.next({ type: 'proposal', proposal: job.best })
+          void this.checkpoint(job)
         } else {
           job.runs[i].progress = msg
           job.progress = combineProgress(job.runs.flatMap(r => r.progress ?? []))
           job.live$.next(job.progress)
+          void this.checkpoint(job)
         }
       })
       worker.on('error', err => {
@@ -198,15 +249,37 @@ export class VehicleSolverService {
     })
   }
 
+  // the best proposal and the progress, at most every SAVE_MS while the run goes
+  private checkpoint(job: Job): Promise<void> {
+    return Date.now() - job.savedAt < SAVE_MS ? Promise.resolve() : this.save(job)
+  }
+
+  private save(job: Job, patch: SolverRunPatch = {}): Promise<void> {
+    job.savedAt = Date.now()
+    return this.saved.save(job.id, { progress: job.progress, best: job.best, ...patch })
+  }
+
+  private async view(planId: string): Promise<View | null> {
+    const job = this.jobs.get(this.current.get(planId) ?? '')
+    if (job) return viewOfJob(job)
+    const run = await this.saved.find('VEHICLE', planId)
+    return run && viewOfRun(run)
+  }
+
+  private async viewById(jobId: string): Promise<View | null> {
+    const job = this.jobs.get(jobId)
+    if (job) return viewOfJob(job)
+    const run = await this.saved.get(jobId)
+    return run?.vehiclePlanId ? viewOfRun(run) : null
+  }
+
   // the plan's generation (running, or ended and not yet applied/discarded)
   async getCurrent(planId: string): Promise<VehicleSolverJobState | null> {
-    const job = this.jobs.get(this.current.get(planId) ?? '')
-    if (!job) return null
+    const v = await this.view(planId)
+    if (!v) return null
     return {
-      jobId: job.id, params: job.params, startedAt: job.startedAt, running: !job.end,
-      stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
-      error:      job.end?.type === 'error' ? job.end.message : null,
-      progress: job.progress, hasProposal: !!job.best, baseline: job.baseline, start: job.start,
+      jobId: v.id, params: v.params, startedAt: v.startedAt, running: v.running, stopReason: v.stopReason, error: v.error,
+      progress: v.progress, hasProposal: !!v.best, baseline: v.baseline, start: v.start,
       affectedCrewPlans: await this.affectedCrewPlans(planId),
     }
   }
@@ -222,34 +295,36 @@ export class VehicleSolverService {
 
   // every plan's generation — running, or ended and not yet used — newest first
   async listJobs(): Promise<VehicleSolverJobListItem[]> {
-    const jobs = [...this.current.values()].flatMap(id => this.jobs.get(id) ?? [])
-    if (!jobs.length) return []
+    const runs = await this.saved.list('VEHICLE')
+    if (!runs.length) return []
     const plans = await this.prisma.vehiclePlan.findMany({
-      where:  { id: { in: jobs.map(j => j.planId) } },
+      where:  { id: { in: runs.flatMap(r => r.vehiclePlanId ?? []) } },
       select: { id: true, description: true, scope: { select: { name: true } }, dayType: { select: { name: true } } },
     })
     const byId = new Map(plans.map(p => [p.id, p]))
-    return jobs
-      .map(job => {
-        const p = byId.get(job.planId)
-        return {
-          jobId: job.id, planId: job.planId,
-          planLabel: p ? [p.description || 'Planejamento', p.scope?.name, p.dayType?.name].filter(Boolean).join(' · ') : 'Planejamento',
-          running: !job.end, startedAt: job.startedAt, endedAt: job.endedAt,
-          elapsed: (job.endedAt ?? Date.now()) - job.startedAt,
-          stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
-          error:      job.end?.type === 'error' ? job.end.message : null,
-          hasProposal: !!job.best,
-        }
-      })
-      .sort((a, b) => b.startedAt - a.startedAt)
+    return runs.map(run => {
+      const job = this.jobs.get(run.id)
+      const v = job ? viewOfJob(job) : viewOfRun(run)
+      const p = byId.get(v.planId)
+      return {
+        jobId: v.id, planId: v.planId,
+        planLabel: p ? [p.description || 'Planejamento', p.scope?.name, p.dayType?.name].filter(Boolean).join(' · ') : 'Planejamento',
+        running: v.running, startedAt: v.startedAt, endedAt: v.endedAt,
+        elapsed: (v.endedAt ?? Date.now()) - v.startedAt,
+        stopReason: v.stopReason, error: v.error, hasProposal: !!v.best,
+      }
+    })
   }
 
   // stops the run if needed and forgets it
-  discard(planId: string, jobId: string): void {
-    if (this.jobs.get(jobId)?.planId === planId) this.drop(jobId)
+  async discard(planId: string, jobId: string): Promise<void> {
+    const v = await this.viewById(jobId)
+    if (v?.planId !== planId) return
+    this.drop(jobId)
+    await this.saved.remove(jobId)
   }
 
+  // the live part only — the saved row stays
   private drop(jobId: string): void {
     const job = this.jobs.get(jobId)
     if (!job) return
@@ -261,30 +336,37 @@ export class VehicleSolverService {
     if (this.current.get(job.planId) === jobId) this.current.delete(job.planId)
   }
 
-  // the job's state first (where it started, best proposal, last progress, its end), then what
-  // comes next;
-  // proposals go out without their blocks — the client only shows the summary
+  // the generation's state first (where it started, best proposal, last progress, its end), then
+  // what comes next while it runs; proposals go out without their blocks — the client only shows
+  // the summary
   stream(jobId: string): Observable<{ data: string }> {
-    const job = this.jobs.get(jobId)
-    if (!job) return new Observable(s => s.complete())
     const out = (msg: VehicleSolverMessage) => ({
       data: JSON.stringify(msg.type === 'proposal' ? { ...msg, proposal: { ...msg.proposal, blocks: undefined } } : msg),
     })
     return new Observable(subscriber => {
-      if (job.start)    subscriber.next(out({ type: 'start', start: job.start }))
-      if (job.best)     subscriber.next(out({ type: 'proposal', proposal: job.best }))
-      if (job.progress) subscriber.next(out(job.progress))
-      if (job.end) {
-        subscriber.next(out(job.end))
+      let sub: { unsubscribe(): void } | null = null
+      let closed = false
+      void (async () => {
+        const job = this.jobs.get(jobId)
+        const v = job ? viewOfJob(job) : await this.viewById(jobId).catch(() => null)
+        if (closed) return
+        if (!v) return subscriber.complete()
+        if (v.start)    subscriber.next(out({ type: 'start', start: v.start }))
+        if (v.best)     subscriber.next(out({ type: 'proposal', proposal: v.best }))
+        if (v.progress) subscriber.next(out(v.progress))
+        if (job && !job.end) {
+          sub = job.live$.subscribe({
+            next:     msg => subscriber.next(out(msg)),
+            error:    err => subscriber.error(err),
+            complete: () => subscriber.complete(),
+          })
+          return
+        }
+        if (v.error) subscriber.next(out({ type: 'error', message: v.error }))
+        else if (v.stopReason) subscriber.next(out({ type: 'done', stopReason: v.stopReason, elapsed: (v.endedAt ?? v.startedAt) - v.startedAt, attempts: v.progress?.attempts ?? 0 }))
         subscriber.complete()
-        return
-      }
-      const sub = job.live$.subscribe({
-        next:     msg => subscriber.next(out(msg)),
-        error:    err => subscriber.error(err),
-        complete: () => subscriber.complete(),
-      })
-      return () => sub.unsubscribe()
+      })()
+      return () => { closed = true; sub?.unsubscribe() }
     })
   }
 
@@ -297,32 +379,23 @@ export class VehicleSolverService {
   // The proposal replaces the plan's rebuilt blocks in place: the locked ones stay with their
   // numbers, the rest go — with their trips, deadruns and intervals
   // — and the proposal's blocks take the free numbers in its order (main line, then start —
-  // toProposalBlocks). Then recalculate().
+  // toProposalBlocks). Then recalculate(). Refused when the plan changed since the generation
+  // read it (trips, locked blocks — fingerprint).
   async accept(planId: string, jobId: string, user: AuthUser | undefined): Promise<void> {
-    const job = this.jobs.get(jobId)
-    if (!job || job.planId !== planId) throw new NotFoundException('Geração não encontrada ou expirada')
-    if (!job.best) throw new BadRequestException('Nenhuma proposta disponível ainda')
+    const v = await this.viewById(jobId)
+    if (!v || v.planId !== planId) throw new NotFoundException('Geração não encontrada ou expirada')
+    const { best } = v
+    if (!best) throw new BadRequestException('Nenhuma proposta disponível ainda')
     await this.assertCanSolve(planId, user)
-    const { best } = job
 
-    const [blocks, planTripIds, general] = await Promise.all([
-      this.prisma.vehicleBlock.findMany({
-        where:  { vehiclePlanId: planId },
-        select: { id: true, blockNumber: true, constraints: true, blockTrips: { select: { tripId: true } } },
-      }),
-      this.prisma.transitTrip.findMany({ where: { vehiclePlanId: planId }, select: { id: true } }),
+    const [blocks, fingerprint, general] = await Promise.all([
+      this.prisma.vehicleBlock.findMany({ where: { vehiclePlanId: planId }, select: { id: true, blockNumber: true, constraints: true } }),
+      this.fingerprint(planId),
       this.generalConfig.get(),
     ])
+    if (fingerprint !== v.fingerprint) throw new BadRequestException('O planejamento mudou desde a geração — gere novamente')
     const kept = blocks.filter(b => !!(b.constraints as { locked?: boolean } | null)?.locked)
     const keptIds = new Set(kept.map(b => b.id))
-
-    // the plan must still be the one the generation read: same trips, same locked blocks
-    const proposed = best.blocks.flatMap(b => b.tripIds)
-    const covered  = new Set([...proposed, ...kept.flatMap(b => b.blockTrips.map(bt => bt.tripId))])
-    if (covered.size !== planTripIds.length || proposed.length + kept.reduce((s, b) => s + b.blockTrips.length, 0) !== covered.size
-      || planTripIds.some(t => !covered.has(t.id))) {
-      throw new BadRequestException('O planejamento mudou desde a geração — gere novamente')
-    }
     // a trip group's own intervals keep their type
     if (best.blocks.some(b => b.intervals.some(iv => !iv.intervalTypeId)) && !general.defaultIntervalTypeId) {
       throw new BadRequestException('Tipo de intervalo padrão não configurado')
@@ -359,7 +432,30 @@ export class VehicleSolverService {
       this.prisma.blockDeadrun.createMany({ data: deadrunRows }),
       this.prisma.blockInterval.createMany({ data: intervalRows }),
     ])
+    await this.saved.remove(jobId)
     await this.vehiclePlans.recalculate(planId)
+  }
+}
+
+function viewOfJob(job: Job): View {
+  return {
+    id: job.id, planId: job.planId, params: job.params, fingerprint: job.fingerprint, running: !job.end,
+    startedAt: job.startedAt, endedAt: job.endedAt,
+    stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
+    error:      job.end?.type === 'error' ? job.end.message : null,
+    progress: job.progress, baseline: job.baseline, start: job.start, best: job.best,
+  }
+}
+
+// a row still RUNNING without its live job is another process's run, or one this process is
+// about to mark INTERRUPTED — shown as running
+function viewOfRun(run: SolverRun): View {
+  return {
+    id: run.id, planId: run.vehiclePlanId!, params: run.params as unknown as VehicleSolverParams, fingerprint: run.fingerprint,
+    running: run.status === 'RUNNING', startedAt: run.startedAt.getTime(), endedAt: run.endedAt?.getTime() ?? null,
+    stopReason: stopReasonOf(run), error: run.error,
+    progress: run.progress as Progress | null, baseline: run.baseline as unknown as VehicleSolverSummary,
+    start: run.start as VehicleSolverStart | null, best: run.best as VehicleSolverProposal | null,
   }
 }
 

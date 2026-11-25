@@ -69,7 +69,8 @@ export type VehicleSolverMessage =
   | { type: 'progress'; elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
   | { type: 'start'; start: VehicleSolverStart }
   | { type: 'proposal'; proposal: VehicleSolverProposal }
-  | { type: 'done'; stopReason: 'finished' | 'user_stopped' | 'max_time' | 'no_improvement'; elapsed: number; attempts: number }
+  // interrupted: the API lost the run (restart) — only a saved run ends so, never a worker
+  | { type: 'done'; stopReason: 'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | 'interrupted'; elapsed: number; attempts: number }
   | { type: 'error'; message: string }
 
 // host → worker

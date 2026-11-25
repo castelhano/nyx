@@ -20,7 +20,7 @@ export class CrewSolverController {
   @HttpCode(200)
   async start(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body() body: { jobId: string; params?: Partial<CrewSolverParams> }) {
     await this.assert(req.user, 'create')
-    await this.solver.start(id, body?.jobId, body?.params)
+    await this.solver.start(id, body?.jobId, body?.params, req.user)
     return { ok: true }
   }
 
@@ -40,14 +40,14 @@ export class CrewSolverController {
   @Get(':id/solver/current')
   async current(@Req() req: { user?: AuthUser }, @Param('id') id: string) {
     await this.assert(req.user, 'read')
-    return { job: this.solver.getCurrent(id) }
+    return { job: await this.solver.getCurrent(id) }
   }
 
   @Post(':id/solver/discard')
   @HttpCode(200)
   async discard(@Req() req: { user?: AuthUser }, @Param('id') id: string, @Body('jobId') jobId: string) {
     await this.assert(req.user, 'create')
-    this.solver.discard(id, jobId)
+    await this.solver.discard(id, jobId)
     return { ok: true }
   }
 

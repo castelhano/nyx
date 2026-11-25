@@ -165,7 +165,7 @@ Stops on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes` without a b
 
 ## Jobs and protocol
 
-In memory, one per plan (a new start replaces it), kept 30 min after the run ends or until applied/discarded.
+One per plan (a new start replaces it), kept until applied, discarded or replaced — see Persistence.
 
 | Endpoint | |
 |---|---|
@@ -178,6 +178,22 @@ In memory, one per plan (a new start replaces it), kept 30 min after the run end
 | `GET transit/vehicle-solver/jobs` | every plan's generation (topbar) |
 
 Worker → host: `start { from, brokenLinks, fallback, summary }` (once), `progress { elapsed, attempts, improvements, bestScore, sinceImprovement }`, `proposal { index, summary, rank, blocks }`, `done { stopReason }`, `error { message }`. The host keeps the first `start`, a proposal only when its `rank` (the raw score the search optimizes) beats the job's best, sums the progress, and ends the job with the last search (an error only when they all failed).
+
+### Persistence
+
+A generation is a `SolverRun` row (`transit_solver_runs`, shared with the crew solver — `kind`, `vehiclePlanId` / `crewPlanId` unique, cascades with the plan), written by `SolverRunStore` (`timetabling/solver-run/`):
+
+- **start**: the plan's previous row goes and a new one is created — params, `fingerprint`, `baseline`;
+- **while running**: `start` as soon as it comes, then the best proposal (whole, with its blocks) and the progress at most every 30 s (`SAVE_MS`);
+- **end**: status `DONE` (stop reason) or `ERROR`, the last best and progress; then memory lets the job go — from there on the row is the generation (current, stream replay, topbar list, apply);
+- **restart**: on boot the rows still `RUNNING` become `INTERRUPTED` (stop reason `interrupted`) — their workers are gone, the best proposal saved until then can still be applied;
+- **apply / discard** delete the row. Nothing expires: a run left overnight is there in the morning.
+
+Writes of one run are queued (a checkpoint in flight never lands over the end); a row deleted meanwhile (replaced) is just not written. Only the live part (workers, SSE subject) is in memory — a run still running in another API instance shows as running but streams only what was saved.
+
+**Fingerprint** — a hash of what the proposal is built on: the plan's trips (times, route, group, required type) and its locked blocks (their trips). Applying recomputes it and refuses a plan that changed since ("O planejamento mudou desde a geração — gere novamente").
+
+**Cooling cycle** — `min(stopMaxTotalMinutes, stopNoImprovementMinutes ÷ 2, 30 min)`: with the long windows a run left overnight uses (up to 1440 min without improvement, 4320 in total) the search still goes back to its best every 30 min.
 
 ### Applying
 
