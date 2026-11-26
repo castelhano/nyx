@@ -29,13 +29,13 @@ export class LineScheduleService extends BaseService<LineSchedule, CreateLineSch
     super(prisma, 'lineSchedule', lineScheduleSchema, 'transit')
   }
 
-  // "Ativas": approved, plus what's outside that status but still in play — a superseded version
-  // running until its end date, and any version an active plan is pinned to (a draft in use)
+  // "Vigentes": drafts and approved, plus a superseded version still running until its end date,
+  // and any version an active plan is pinned to — same rule as the plans' list
   protected override buildFilterWhere(query: Record<string, unknown>) {
     const { f_isCurrent, ...rest } = query as Record<string, string | undefined>
     const isCurrent = {
       OR: [
-        { status: 'APPROVED' },
+        { status: { in: ['DRAFT', 'APPROVED'] } },
         { status: 'SUPERSEDED', validTo: { gte: toDbDate(localToday()) } },
         { vehiclePlanLines: { some: { vehiclePlan: { status: 'ACTIVE' } } } },
       ],

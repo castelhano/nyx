@@ -53,7 +53,7 @@ export const lineScheduleSchema = withMeta(
       showInForm:     false,
       sortable:       false,
       computed:       true,
-      filter:         { type: 'boolean', allLabel: 'Todas', trueLabel: 'Ativas', falseLabel: 'Inativas' },
+      filter:         { type: 'boolean', allLabel: 'Todas', trueLabel: 'Vigentes', falseLabel: 'Histórico' },
     }),
 
     validFrom: z.date().optional().nullable().meta({
