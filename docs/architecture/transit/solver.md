@@ -67,7 +67,7 @@ VehiclePlan.settings ?? Settings(transit.planning, Scope) ?? global
 | Trip required type | `TransitTrip.requiredVehicleType` | hard rule, overrides the line |
 | Stand points | `RouteLocality.allowsVehicleStand` ("Permite parada (carro)" on the route's point, default off) | where a vehicle may stand in an interval |
 | Default interval type | general `defaultIntervalTypeId` | its `minMinutes` (else 120) splits a turnaround from an interval; intervals are placed from it on |
-| Matrix | `TravelTimeMatrix` (minutes = ⌈base × speedRatio⌉) | deadruns, reachability |
+| Matrix | `TravelTimeMatrix` (minutes = round(base × speedRatio), as the plan editor) | deadruns, reachability |
 | Trip groups | `bundleId` on `TransitTrip`, `BlockDeadrun`, `BlockInterval` | members sharing it are one fixed unit (see Trip groups) |
 
 `TransitRoute.homeDepot` is not used by the solver (only by the schedule generator).
@@ -91,6 +91,8 @@ A block = its trips + operator + depot + vehicle type, always held **materialize
 | Stand | a stop of the interval threshold or more stays only where the vehicle may stand — the arriving trip's destination point or the next trip's origin point; elsewhere it goes back to the block's depot and out again, and with no time for that round trip the trips can't follow each other |
 | Locked | `VehicleBlock.constraints.locked` blocks always stay as they are |
 | Trip group | a group's members stay together, back to back, in one block — nothing between them (see Trip groups) |
+
+The plan screen's issues (`validateBlock`, packages/schemas/transit/block-validation.ts) flag two of these rules on the persisted blocks, so what the solver would break shows before optimizing: **DEADRUN_TOO_SHORT** — a deadrun faster than the matrix (rounded as the plan editor builds deadruns, `Math.round` — the solver's own matrix minutes too) — and **STAND_NOT_ALLOWED** — a stop of the default interval type's min or more where no route lets the vehicle stand. The minimum layover is not flagged: same-place links below it are often on purpose (a trip running on as another line), and starting from the current plan keeps them.
 
 ### Materialization
 

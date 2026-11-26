@@ -78,7 +78,9 @@ export async function loadVehicleSolverInput(
   const matrixKm: Record<string, number> = {}
   for (const m of matrixRows) {
     const key = `${m.originId}:${m.destinationId}`
-    matrix[key]   = { minutes: Math.ceil(m.baseMinutes * m.speedRatio), km: m.distanceKm }
+    // rounded as the plan editor builds its deadruns (block-mutation.utils) and the plan's issues
+    // check them (DEADRUN_TOO_SHORT) — what the screen accepts, the solver accepts
+    matrix[key]   = { minutes: Math.round(m.baseMinutes * m.speedRatio), km: m.distanceKm }
     matrixKm[key] = m.distanceKm
   }
 
