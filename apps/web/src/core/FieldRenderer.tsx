@@ -587,7 +587,7 @@ function ChipMultiSelect({
                   onClick={() => toggle(opt.id)}
                   disabled={readonly}
                   className={cn(
-                    'px-3 py-1 rounded-sm border text-sm transition-colors cursor-pointer',
+                    'min-w-16 px-3 py-1 rounded-sm border text-sm text-center transition-colors cursor-pointer',
                     checked
                       ? 'bg-accent text-accent-foreground border-accent'
                       : 'bg-background text-muted-foreground hover:bg-muted',

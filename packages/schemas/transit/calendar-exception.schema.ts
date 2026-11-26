@@ -20,8 +20,9 @@ export const calendarExceptionSchema = withMeta(
       keybind:        'v',
     }),
 
-    // every line of the scope, including lines created later
-    scopeId: z.uuid().optional().meta({
+    // every line of the scope, including lines created later. Either scopeId or lineIds,
+    // never both and never neither (enforced by the service)
+    scopeId: z.uuid().nullable().optional().meta({
       label:          'Escopo',
       widget:         'select',
       resource:       'scope',
@@ -29,31 +30,42 @@ export const calendarExceptionSchema = withMeta(
       labelField:     'name',
       listVisibility: 'visible',
       filter:         { type: 'relation', endpoint: 'transit/scope', labelField: 'name' },
-      helpText:       'A troca vale para todas as linhas do escopo.',
+      helpText:       'Inclui linhas criadas depois.',
       keybind:        'e',
     }),
 
+    // only these lines — backed by LineCalendarExceptionLine
+    lineIds: z.array(z.uuid()).default([]).meta({
+      label:          'Linhas',
+      widget:         'multi-select',
+      resource:       'transit-line',
+      domain:         'transit',
+      labelField:     'code',
+      listVisibility: 'hidden',
+      helpText:       'Use escopo ou linhas, não os dois.',
+      keybind:        'l',
+    }),
+
     sourceDayTypeId: z.uuid().optional().meta({
-      label:          'Tipo de Dia Substituído',
+      label:          'De',
       widget:         'select',
       resource:       'day-type',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
       filter:         { type: 'relation', endpoint: 'transit/day-type', labelField: 'name' },
-      helpText:       'Qual tipo de dia será substituído no período. Vazio = todos os dias.',
+      helpText:       'Vazio = todos os dias.',
       keybind:        's',
     }),
 
     overrideDayTypeId: z.uuid().meta({
-      label:          'Tipo de Dia de Substituição',
+      label:          'Para',
       widget:         'select',
       resource:       'day-type',
       domain:         'transit',
       labelField:     'name',
       listVisibility: 'visible',
       filter:         { type: 'relation', endpoint: 'transit/day-type', labelField: 'name' },
-      helpText:       'Tipo de dia que será aplicado no lugar.',
       keybind:        'o',
     }),
 

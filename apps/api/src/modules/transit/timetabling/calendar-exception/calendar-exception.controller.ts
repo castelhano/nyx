@@ -5,7 +5,7 @@ import { CaslAbilityFactory } from '../../../../auth/casl.factory'
 import { JwtAuthGuard } from '../../../../auth/policies.guard'
 import { CalendarExceptionService } from './calendar-exception.service'
 
-@Controller('transit/calendar-exception')
+@Controller('transit/line-calendar-exception')
 @UseGuards(JwtAuthGuard)
 export class CalendarExceptionController extends BaseController<CalendarException, CreateCalendarExceptionDto, UpdateCalendarExceptionDto> {
   constructor(
