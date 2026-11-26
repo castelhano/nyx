@@ -1,0 +1,272 @@
+# Plano — Planejamentos de dias especiais (Férias, Especial)
+
+**Status: plano fechado, pronto para implementar.** Nada foi implementado.
+
+**Sem produção:** o sistema ainda não está em produção (posição de 2026-11-26). As migrações deste plano
+não precisam preencher dados.
+
+Convenções: comentários em snippets Prisma/TS em inglês; texto em pt-BR.
+
+---
+
+## Objetivo
+
+Montar o planejamento de um dia especial (Férias, Especial) a partir de um planejamento convencional
+(Útil, Sábado, Domingo). Só algumas linhas mudam; as outras continuam seguindo a OSO do dia
+convencional, **sem duplicar essa OSO**.
+
+O planejamento especial é **completo**: tem todas as linhas do escopo, com carros, interlinhas e
+escala próprios. Assim o solver remonta o dia inteiro, e o diário usa um planejamento só nos dias
+especiais.
+
+## Como está hoje
+
+- `DayType` F e E têm `pattern = null`: só entram em vigor por `LineCalendarException`, nunca pela data.
+- O diário ([daily-materialize.ts](../../apps/api/src/modules/transit/daily/daily-materialize.ts))
+  resolve o tipo de dia por linha e já monta dias mistos (várias origens em `DailyOperation.sources`).
+  Um planejamento F só com as linhas alteradas funciona, mas parte os interlinhas e as jornadas que
+  cruzam os dois planejamentos, e o solver nunca vê o dia inteiro.
+- `VehiclePlanLine.lineScheduleId` só aceita OSO do tipo de dia do planejamento
+  ([vehicle-plan.service.ts:661](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L661)).
+- `duplicate()` mantém o `dayTypeId` e não tem parâmetro para trocá-lo.
+- O `update` genérico deixa trocar o `dayTypeId` do planejamento sem tocar nas viagens nem nos
+  vínculos, o que deixa o planejamento inconsistente.
+
+## Decisões
+
+| Tema | Decisão |
+|---|---|
+| Tipo de dia da OSO vs. do planejamento | Separados. As viagens têm sempre o tipo de dia do planejamento (quando rodam); o vínculo da linha diz qual OSO as governa |
+| Tipo base | `VehiclePlan.baseDayTypeId`, no planejamento e não no `DayType` (um Especial pode derivar de U, S ou D) |
+| Quem pode misturar | Só planejamentos de tipo de dia **sem padrão**. O tipo base precisa **ter padrão**. Planejamentos U/S/D ficam como hoje (`baseDayTypeId = null`) |
+| OSO que uma linha pode vincular | Do tipo de dia do planejamento ou do tipo base |
+| OSO emprestada | Nunca é escrita a partir do planejamento especial (propagação bloqueada). Se diverge, a saída é criar a OSO do tipo especial |
+| Nova OSO no planejamento especial | Sempre do tipo de dia do planejamento (já é o comportamento de `createLineSchedule` / `activateNewLineSchedule`) |
+| Duplicar | Aceita `dayTypeId` de destino: o mesmo da origem (como hoje) ou um tipo sem padrão quando a origem tem padrão (vira `baseDayTypeId`) |
+| Troca de tipo de dia depois de criado | Proibida no `update` (`dayTypeId` e `baseDayTypeId`) |
+| Ativação do especial | Exige todas as linhas ativas do escopo no planejamento |
+| Vigência do especial | Como hoje: aberta a partir de uma data. Quem decide os dias em que roda é a exceção de calendário |
+| Exceção de calendário | Ganha `scopeId` opcional: vale para todas as linhas do escopo, inclusive as criadas depois |
+| Linha sem planejamento no tipo resolvido | Diário e DOP caem no planejamento do tipo de dia do padrão da data, em vez de deixar a linha sem planejamento |
+
+## Fluxo do usuário
+
+1. No planejamento U, **Duplicar como dia especial** → escolhe Férias. Sai uma cópia completa com
+   `dayTypeId = F`, `baseDayTypeId = U`, viagens com `dayTypeId = F`, e todos os vínculos nas OSOs U.
+2. Nas linhas que mudam:
+   - **a OSO F já existe** → troca de OSO (`SwitchLineScheduleModal`), que lista as OSOs F e U da
+     linha. Escolhendo a F, as viagens são recriadas a partir dela;
+   - **a OSO F não existe** → edita as viagens; a linha diverge da OSO U; **Nova OSO** cria uma F em DRAFT.
+3. Roda o solver de veículos e depois o de escala sobre o planejamento F.
+4. Cadastra a exceção de calendário do período (`U → F`, escopo inteiro).
+5. Ativa o planejamento F.
+
+---
+
+## Etapas
+
+### 0. Migração
+
+```prisma
+model VehiclePlan {
+  // ...
+  // the conventional day type a special plan (dayType without pattern) derives from — its lines may
+  // pin this day type's OSOs as well as their own. null on conventional plans (U/S/D)
+  baseDayTypeId String?
+  baseDayType   DayType? @relation("VehiclePlanBaseDayType", fields: [baseDayTypeId], references: [id])
+}
+
+model DayType {
+  // ...
+  vehiclePlans     VehiclePlan[]
+  baseVehiclePlans VehiclePlan[] @relation("VehiclePlanBaseDayType")
+}
+
+model LineCalendarException {
+  // ...
+  // set → applies to every line of the scope (lines left empty); null → the listed lines only
+  scopeId String?
+  scope   Scope?  @relation(fields: [scopeId], references: [id])
+}
+```
+
+A relação já existente `VehiclePlan.dayType` passa a precisar de nome explícito (duas relações com
+`DayType`). No `Scope`, adicionar o lado inverso `calendarExceptions LineCalendarException[]`.
+
+`pnpm db:migrate` fica com o usuário.
+
+### 1. Schema Zod
+
+[packages/schemas/transit/vehicle-plan.schema.ts](../../packages/schemas/transit/vehicle-plan.schema.ts):
+
+- `baseDayTypeId: z.uuid().nullable().optional()` com `widget: 'select'`, `resource: 'day-type'`,
+  label "Tipo de dia base", `listVisibility: 'hidden'`. Só leitura no form (o valor sai da criação ou
+  do duplicar).
+- `dayTypeId`: só leitura no form de edição (fica editável só na criação).
+
+[calendar-exception.schema.ts](../../packages/schemas/transit/) (achar o arquivo do `calendarExceptionSchema`):
+`scopeId` opcional (select de escopo). Validação: `scopeId` **ou** linhas, nunca os dois e nunca nenhum.
+
+### 2. Regra dos tipos de dia (backend)
+
+Um helper novo, por exemplo `vehicle-plan/plan-day-type.utils.ts`:
+
+```ts
+// a plan's day type pair: conventional (patterned, no base) or special (no pattern, patterned base)
+export async function assertPlanDayTypes(db, dayTypeId: string, baseDayTypeId: string | null): Promise<void>
+
+// the day types whose OSOs the plan's lines may pin
+export function pinnableDayTypeIds(plan: { dayTypeId: string; baseDayTypeId: string | null }): string[] {
+  return plan.baseDayTypeId ? [plan.dayTypeId, plan.baseDayTypeId] : [plan.dayTypeId]
+}
+```
+
+Regras do `assertPlanDayTypes`:
+- tipo **com** padrão → `baseDayTypeId` precisa ser `null`;
+- tipo **sem** padrão → `baseDayTypeId` obrigatório, e o tipo base precisa ter padrão.
+
+Onde aplicar:
+- `VehiclePlanService.create`: valida o par.
+- `VehiclePlanService.update` ([:119](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L119)):
+  remove `dayTypeId` e `baseDayTypeId` do DTO, como já faz com `summary`/`constraints`/`settings`.
+  Recusar com 400 se vierem diferentes do atual é mais claro que ignorar em silêncio.
+
+### 3. Duplicar com tipo de dia de destino
+
+`POST /vehicle-plan/:id/duplicate` aceita body opcional `{ dayTypeId?: string }`.
+
+Em `duplicate()` ([:474](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L474)):
+- sem `dayTypeId`, ou igual ao da origem → como hoje (copia também o `baseDayTypeId` da origem);
+- diferente → só aceita se o destino **não** tem padrão e a origem **tem** padrão. O novo planejamento
+  recebe `dayTypeId = destino` e `baseDayTypeId = origem.dayTypeId`. Qualquer outra combinação → 400
+  (F → E, por exemplo, fica fora da v1);
+- as viagens criadas usam `dayTypeId` do novo planejamento, e não `bt.trip.dayTypeId` (linha 563 hoje);
+- os vínculos (`lineScheduleId`, `isDrifted`, `hasAttributeDrift`) são copiados como estão: as OSOs da
+  origem são do tipo base, que é permitido;
+- `description` padrão: `"<descrição> (Férias)"` com o nome do tipo de destino, em vez de "(cópia)".
+
+O `summary`, os `issues` dos blocos e a escala não mudam com a troca de tipo de dia: copiar como hoje.
+
+### 4. Vínculo da linha com OSO de outro tipo de dia
+
+Trocar a igualdade `schedule.dayTypeId === plan.dayTypeId` por `pinnableDayTypeIds(plan).includes(...)`:
+
+- `copyLineFrom` ([:661](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L661)):
+  a OSO escolhida pode ser do tipo base. A checagem de `approvalRef` duplicado (linha 665) continua com
+  `plan.dayTypeId`, porque a OSO nova é sempre do tipo do planejamento.
+- O caminho que grava a troca de OSO (o `apply-diff` chamado pelo `switch-schedule-logic.ts`): achar
+  onde o novo `lineScheduleId` é validado e aplicar a mesma regra.
+- Front, [SwitchLineScheduleModal.tsx:142](../../apps/web/src/app/transit/vehicle-plan/[id]/components/SwitchLineScheduleModal.tsx#L142):
+  busca as OSOs da linha nos dois tipos (duas queries, ou `f_dayTypeId` com lista se o `BaseService`
+  aceitar). Cada OSO mostra um selo com o tipo de dia. A prop `dayTypeId` do modal vira a lista de
+  `pinnableDayTypeIds` (ou recebe também o `baseDayTypeId`).
+
+Sem mudança, conferir só se não filtram por `plan.dayTypeId` no lugar errado:
+- `createLineSchedule` e `activateNewLineSchedule` criam com `plan.dayTypeId`: correto, a OSO nova é F.
+- `syncLineSchedule` ("Atualizar da OSO"), OSO → planejamento: funciona com qualquer OSO vinculada.
+- `recomputeLineDrift` / [trip-mutation.utils.ts:44](../../apps/api/src/modules/transit/timetabling/trip/trip-mutation.utils.ts#L44):
+  filtra as viagens por `plan.dayTypeId`, e as viagens do especial são F. Compara com as partidas da
+  OSO vinculada, seja qual for o tipo dela.
+
+### 5. Bloquear a propagação para a OSO emprestada
+
+Em `applyDiff` ([:986–1015](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L986)),
+os `pins` que recebem propagação ganham `lineSchedule: { status: { in: [...] }, dayTypeId: plan.dayTypeId }`
+(carregar o `dayTypeId` do planejamento no início do `applyDiff`, se ainda não estiver). A viagem
+continua alterada no planejamento; a linha fica com `hasAttributeDrift`.
+
+No payload das linhas do planejamento (perto de [:1612](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L1612)),
+adicionar `lineScheduleDayTypeId` (ou `isBorrowed: boolean`). No front:
+- a opção de propagar some para essas linhas;
+- a linha mostra o selo "OSO de <tipo base>" ao lado da OSO.
+
+### 6. Ativação
+
+Em `activate()` ([:1683](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L1683)), quando o planejamento tem `baseDayTypeId`:
+- **bloqueia** se faltar alguma linha ativa do escopo (`transitLine` com `scopeId` e `isActive`). A
+  mensagem lista os códigos;
+- `uncoveredRequirementWarnings`: agrupar as linhas pelo tipo de dia da OSO vinculada e chamar uma vez
+  por grupo. As linhas emprestadas são checadas contra os requisitos do tipo base, e linhas sem OSO
+  usam `plan.dayTypeId`.
+
+A regra de vigência (`activationEffect`, por escopo + `dayTypeId`) não muda.
+
+### 7. Exceção de calendário para o escopo inteiro
+
+`DayTypeService.resolveDayType` e `buildDayTypeResolver`
+([day-type.service.ts](../../apps/api/src/modules/transit/timetabling/day-type/day-type.service.ts)):
+a condição `lines: { some: { lineId } }` passa a ser
+`OR: [{ lines: { some: { lineId } } }, { scopeId: line.scopeId }]`.
+
+- `resolveDayType(date, lineId)` precisa do `scopeId` da linha: uma consulta a mais, ou receber o
+  `scopeId` como parâmetro opcional (o diário já tem).
+- `buildDayTypeResolver(from, to, lineIds)` carrega os `scopeId` das linhas uma vez. No filtro em
+  memória, `e.scopeId === scopeOf(lineId) || e.lines.some(...)`.
+- Precedência (incondicional → padrão → condicional) e desempate (`validFrom desc`): iguais.
+
+Se uma exceção de linha e uma de escopo valem no mesmo dia para a mesma linha, a regra atual já
+resolve: a mais recente por `validFrom` ganha, dentro de cada passo.
+
+### 8. Fallback no diário e no DOP
+
+Quando a linha resolve para um tipo sem padrão e nenhum planejamento em vigor desse tipo tem a linha,
+usar o planejamento do tipo de dia **do padrão da data** (`resolveByPattern`), em vez de pular a linha.
+
+- [daily-materialize.ts](../../apps/api/src/modules/transit/daily/daily-materialize.ts#L36):
+  `findActivePlan(plans, dt.id, ...) ?? (dt.pattern ? null : findActivePlan(plans, base.id, ...))`.
+  A origem registrada em `sources` usa `dayTypeId: base.id`, então fica visível que a linha rodou o
+  convencional.
+- [dop.service.ts](../../apps/api/src/modules/transit/timetabling/dop/dop.service.ts) e
+  [dop-crew.service.ts](../../apps/api/src/modules/transit/timetabling/dop/dop-crew.service.ts):
+  mesmo fallback onde procuram o planejamento do tipo resolvido.
+
+Com o planejamento especial completo e a exceção de escopo, o fallback não deveria disparar. Ele
+cobre configuração errada e mantém funcionando o uso parcial que já existe hoje.
+
+### 9. Pontos menores
+
+- [console.input.ts:189](../../apps/api/src/modules/transit/console/console.input.ts#L189):
+  `linesWithoutPlan` cruza OSO com planejamento pelo tipo de dia. Revisar para que uma linha emprestada
+  não apareça como sem planejamento.
+- Comparativo (`getLineComparison` / `getPlanComparison`): continua comparando com o planejamento ativo
+  do mesmo tipo de dia. Para o primeiro planejamento F não há comparativo, o que é aceitável na v1.
+
+### 10. Front — duplicar como dia especial
+
+A `rowAction` "Duplicar" do schema não pede parâmetro (`RowActionInput` não tem formulário) e fica
+como está.
+
+Na página do planejamento (`apps/web/src/app/transit/vehicle-plan/[id]/page.tsx`), ação nova na
+topbar, **Duplicar como dia especial**, visível só quando o tipo de dia do planejamento tem padrão:
+- modal com um select dos tipos de dia **sem padrão**;
+- chama `POST /duplicate` com `{ dayTypeId }` e abre o planejamento criado;
+- modal hand-rolled, sem lib de primitivos.
+
+O cabeçalho do planejamento especial mostra o tipo base ("Férias · base Útil").
+
+---
+
+## Fora do escopo
+
+- **GTFS:** a exportação recusa tipo de dia sem padrão
+  ([gtfs-export.service.ts:126](../../apps/api/src/modules/transit/timetabling/gtfs/gtfs-export.service.ts#L126)).
+  Exportar dias especiais pediria `calendar_dates` gerado a partir das exceções. Fica para depois.
+- Duplicar entre dois especiais (F → E) e reaproveitar as OSOs F nessa cópia.
+- Revincular em lote as linhas emprestadas quando a OSO base ganha versão nova. Na v1 cada linha
+  mostra que a OSO vinculada foi substituída, como em qualquer planejamento.
+
+## Testes
+
+- `assertPlanDayTypes`: as quatro combinações (com/sem padrão × com/sem base) e base sem padrão.
+- `duplicate` U → F: `dayTypeId`/`baseDayTypeId` do novo planejamento, viagens com `dayTypeId = F`,
+  vínculos preservados; F → E e U → S recusados.
+- `update`: troca de `dayTypeId` recusada.
+- Vínculo: OSO do tipo base aceita no especial, recusada num planejamento U; OSO de terceiro tipo recusada.
+- `applyDiff`: com `propagateTripIds` numa linha emprestada, a OSO U não muda e a linha fica com
+  `hasAttributeDrift`.
+- `activate`: especial sem uma linha ativa do escopo é bloqueado; requisitos das linhas emprestadas
+  checados contra o tipo base.
+- `buildDayTypeResolver`: exceção por escopo pega linha do escopo e ignora linha de outro escopo;
+  precedência com exceção de linha.
+- `materializeDay`: linha resolvida para F sem planejamento F que a tenha cai no planejamento do
+  padrão, com `sources[].dayTypeId` do padrão.

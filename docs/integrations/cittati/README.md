@@ -80,11 +80,16 @@ Tested 2026-11-19 with the MTU account.
 
 So the only way to the data is the viewer's own query endpoint, the one the report's charts call. It accepts any combination of the model's columns, measures and filters, not just what the report pages show.
 
+Rechecked 2026-11-26:
+
+- `conceptualschema` now answers 200 with `schema: null` and `errorCode: OnPremises_Connection_Error_General` (`OnPremises_Connection_Error_Connection_String`), even right after `modelsAndExploration`. `querydata` kept working normally. Don't depend on the schema call at run time: check the expected columns in the query result instead, and fall back to the field list in `modelsAndExploration` (`queryRef` in each visual's `config`) to discover names.
+- **No CORS.** A preflight `OPTIONS` answers `405` (`allow: POST`) and no response carries `Access-Control-Allow-*`. A browser page from another origin can't call the BI. The call has to come from a server or a script, or from a page served by `bi.cittati.com.br` itself.
+
 ---
 
 ## Refresh
 
-The model is **Import** mode, refreshed by a schedule owned by Cittati (`Refresh 2h`, daily from 02:00). The last run is in `CacheRefreshPlans` → `LastRunTime` / `LastStatus` (on 2026-11-19: 05:09, `Completed Data Refresh`). Today's trips are not in the model; yesterday's are complete after the morning refresh.
+The model is **Import** mode, refreshed by a schedule owned by Cittati (`Refresh 2h`, daily from 02:00). The last run is in `CacheRefreshPlans` → `LastRunTime` / `LastStatus` (on 2026-11-19: 05:09, on 2026-11-26: 05:01, both `Completed Data Refresh`). Today's trips are not in the model; yesterday's are complete after the morning refresh.
 
 ---
 
@@ -203,7 +208,23 @@ Send the `RT` back as `Window.RestartTokens` to get the next page. **The first r
 - `Data` (datetime) comes as **epoch milliseconds at UTC midnight** — `1794873600000` = 2026-11-17. Read it as a calendar date, not as an instant in Cuiabá time.
 - `Data_Sem_Hora`, `Prev_Inicio_sem_segundos`, `Real_Inicio_sem_segundos` are **text** (`17/11/2026`, `17/11/2026 05:15`).
 - Percentage measures sometimes come as a number and sometimes as a numeric string (`"60.427350427350426"`) — parse both. They are 0–100, not 0–1.
-- Line numbers (`numeroLinha`) and vehicle numbers (`prefixo`) are text with leading zeros (`007`, `008A`).
+- Line numbers (`numeroLinha`) and vehicle numbers (`prefixo`) are text with leading zeros (`007`, `008A`). Expect stray values too (`501.` on Caribus).
+- `previstoTP` / `realizadoTP` / `previstoTS` / `realizadoTS` are epoch milliseconds holding **Cuiabá wall-clock time written as UTC**: `1795650253223` = `2026-11-25T23:44:13Z`, shown as `Real_Inicio_sem_segundos = 25/11/2026 23:44`. Read the UTC fields as local time, with no offset.
+- A missing real time is an **empty string** in the `*_sem_segundos` text columns and `null` in the epoch columns.
+- Flags come in two styles: `viagemRealizada`, `viagemExtra` and `justificaViagem` are text `Sim` / `Não`, while `partidaPerdida` and `problemaHardware` are integers `0` / `1`.
+- Some text values come with a broken encoding (`turno = 'Manh�'`). Compare on a prefix or an accent-stripped form, not on the exact text.
+
+### Aggregates
+
+Selecting columns plus one measure returns one row per distinct combination with the measure's value. That's the cheap way to profile a column over the whole period without pulling trips. For example, `motivo` + `viagemRealizada` + `_Previstos` came back as ~60 rows covering 2026-11-03 to 2026-11-25.
+
+```json
+"Select": [
+  { "Column":  { "Expression": { "SourceRef": { "Source": "f" } }, "Property": "motivo" },          "Name": "motivo" },
+  { "Column":  { "Expression": { "SourceRef": { "Source": "f" } }, "Property": "viagemRealizada" }, "Name": "realizada" },
+  { "Measure": { "Expression": { "SourceRef": { "Source": "f" } }, "Property": "_Previstos" },      "Name": "n" }
+]
+```
 
 ---
 
@@ -226,6 +247,23 @@ Send the `RT` back as `Window.RestartTokens` to get the next page. **The first r
 | Outcome flags | `viagemRealizada`, `partidaRegular`, `partidaAdiantado`, `partidaAtrasado`, `partidaPerdida`, `viagemExtra`, `problemaHardware`, `motivo`, `justificaViagem` |
 | Trip time | `tempoViagemPrevisto`, `tempoViagemRealizado`, `tempoViagemDiferenca`, per direction |
 | Idle / other | `ociosoPrev`, `ociosoReal`, `minutosOciosos`, `distanciaTerminalSaida`, `distanciaTerminalChegada`, `passageiros`, `toleranciaAtraso`, `toleranciaAdiantamento` |
+
+Observed on the trip columns (2026-11-25 and period aggregates as of 2026-11-26):
+
+| Column | What it holds |
+|---|---|
+| `Data_Sem_Hora` | The **operational day**: the trips of 25/11 run from about 04:30 to 26/11 03:30. Filter by it, not by the date part of the times. |
+| `posicao` | Text `'1'`, `'2'`… per line. It looks like the timetable slot (*tabela*); not confirmed. |
+| `idEscala` | One per line per day on Rápido (17 lines, 17 values), not one per vehicle or slot. |
+| `prefixo` | Filled on trips not done too: the planned vehicle. Empty on ~2% of trips, all of them not done. |
+| `viagemRealizada = Não` | Covers trips with **one of the two real times**: on Rápido 25/11, 375 not done = 229 with neither, 86 with only the end, 60 with only the start. Every `Sim` has both. |
+| `partidaPerdida` | `1` when there is no real start (most of the `Não`). |
+| `motivo` | Free text set by the operator, usually `NNN - DESCRIPTION`. Mostly null. Codes with `#` (`#01 - GPS INOPERANTE`, `#02 - GPS COM FALHA`, `#03 - FEZ 50pp TRAJETO`, `#04 - ERRO SISTEMA`, `#05- OMISSÃO`) are the most frequent; mechanical and operational codes (`200 - CATRACA TRAVADA`, `007 - FALTA CARRO`…) are rare. Spelling varies (`113 - SEM FORCA` / `113 - SEM FORÇA`, `107-Motor Esquentando`). A `motivo` appears on trips with `viagemRealizada = Sim` too. |
+| `justificaViagem` | Always `Não` over the whole period, including trips with a `motivo`. Not a usable flag. |
+| `passageiros` | Always null. The BI has no ridership. |
+| `irregularidadeTP` / `irregularidadeTS` | `Adiantado` / `Atrasado` / `Regular` / null. `irregularidadeTS` is filled on some trips not done. |
+| `nomePontoTS` | End point. One per line and direction in 248 of 252 combinations on 25/11. The exceptions are a dominant point plus a rare one (`720 IDA`: `PP3 BISPO` ×21, `PP2` ×1), which is what a trip closed early at another point looks like. `A02 IDA` had three points at similar counts: three routes of the same line. |
+| `nomeAtendimento` | The short name of the trip's direction **within its route**. In Cittati a line has one or more routes (each with a code and a suffix), and each route has a name for its outbound and one for its return direction; this column carries that name. The suffix itself isn't in the BI. Example `A02`, three routes: main route (no suffix) outbound `Term Cpa 1` / return `Pq Nacoes`; suffix 22 `Barreiro Branco` / `Terminal do Cpa 1`; suffix 21 `V Formosa` / `Term CPA 1`. Names still under review show as `Ida` / `Volta` / `Unico`. A name can repeat across directions of different routes (`Term Cpa 1` is the main route's outbound and, ignoring case, suffix 21's return), so identify a route by line + `Sentido` + `nomeAtendimento`, not by the name alone. Keyed that way, every combination on 25/11 had a single end point except three trips. `distanciaTerminalSaida` / `distanciaTerminalChegada` match the route's km in Cittati (A02 main route: 6,946 m / 11,932 m = 6.9 / 11.9 km) and work as a second check. |
 
 Measures: `_Previstos`, `_Realizados`, `_Perdidos`, `_total_regular`, `_total_adiantado`, `_total_atrasado`, `_percentual_partidas`, `_percentual_cumprimento_viagem`, `_percentual_pontualidade`, `_percentual_adiantamento`, `_percentual_atrasos`, `_tempo_medio_viagem_previsto`, `_tempo_medio_viagem_realizado`, `_tempomedio_diferenca`, plus `_ida` / `_volta` variants. Their DAX isn't exposed; what each one counts is inferred from the name (see [open questions](#open-questions)).
 
@@ -275,3 +313,6 @@ To ask Cittati:
 4. How are cumprimento, pontualidade, adiantamento and atraso computed — which tolerances, against which planned time (Goal's schedule, the timetable sent to them)?
 5. Where does the planned side come from, and how often is it updated?
 6. Can the refresh run more often than once a day?
+7. Is `idResumoViagem` stable across refreshes, so a trip can be found again the next day? Does a correction made in Cittati (a `motivo`, a changed end point) keep the same id?
+8. When the operator moves a trip's end point, is that recorded anywhere in the model (the original planned end point, a flag), or only as a different `nomePontoTS`?
+9. Is `posicao` the timetable slot?
