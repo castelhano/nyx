@@ -2,8 +2,10 @@
 
 **Status: plano fechado, pronto para implementar.** Nada foi implementado.
 
-**Sem produção:** o sistema ainda não está em produção (posição de 2026-11-26). As migrações deste plano
-não precisam preencher dados.
+**Produção:** existe base de produção. As colunas novas são opcionais e não precisam de preenchimento:
+os planejamentos U/S/D ficam com `baseDayTypeId = null`, que é o certo para eles. Antes de migrar,
+confirmar em produção que não há planejamento F/E (quebraria a regra da etapa 2) nem exceção de
+calendário. No dump de 2026-11-26 não havia nenhum dos dois.
 
 Convenções: comentários em snippets Prisma/TS em inglês; texto em pt-BR.
 
@@ -44,22 +46,29 @@ especiais.
 | Nova OSO no planejamento especial | Sempre do tipo de dia do planejamento (já é o comportamento de `createLineSchedule` / `activateNewLineSchedule`) |
 | Duplicar | Aceita `dayTypeId` de destino: o mesmo da origem (como hoje) ou um tipo sem padrão quando a origem tem padrão (vira `baseDayTypeId`) |
 | Troca de tipo de dia depois de criado | Proibida no `update` (`dayTypeId` e `baseDayTypeId`) |
-| Ativação do especial | Exige todas as linhas ativas do escopo no planejamento |
+| Linhas do especial | O planejamento especial é a referência do dia inteiro: linha fora dele **não opera** nos dias desse tipo |
+| Ativação do especial | Avisa (sem bloquear) as linhas ativas do escopo que ficaram fora do planejamento, para pegar esquecimento |
 | Vigência do especial | Como hoje: aberta a partir de uma data. Quem decide os dias em que roda é a exceção de calendário |
-| Exceção de calendário | Ganha `scopeId` opcional: vale para todas as linhas do escopo, inclusive as criadas depois |
-| Linha sem planejamento no tipo resolvido | Diário e DOP caem no planejamento do tipo de dia do padrão da data, em vez de deixar a linha sem planejamento |
+| Exceção de calendário | Ganha `scopeId` opcional: vale para todas as linhas do escopo, inclusive as criadas depois. Férias usa `sourceDayTypeId = U`, para sábados e domingos do período continuarem S e D |
+| Linha sem planejamento no tipo resolvido | Não opera no dia (comportamento atual do diário). **Sem fallback** para o tipo do padrão: ele faria voltar a rodar uma linha removida das férias |
+| Dia misto | A exceção pode mandar só parte das linhas para o especial. O diário junta os planejamentos como já faz hoje; interlinhas e jornadas entre eles vêm quebrados e o reparo é feito na escala diária |
 
 ## Fluxo do usuário
 
 1. No planejamento U, **Duplicar como dia especial** → escolhe Férias. Sai uma cópia completa com
    `dayTypeId = F`, `baseDayTypeId = U`, viagens com `dayTypeId = F`, e todos os vínculos nas OSOs U.
-2. Nas linhas que mudam:
+2. Remove do planejamento as linhas que não operam nas férias.
+3. Nas linhas que mudam:
    - **a OSO F já existe** → troca de OSO (`SwitchLineScheduleModal`), que lista as OSOs F e U da
      linha. Escolhendo a F, as viagens são recriadas a partir dela;
    - **a OSO F não existe** → edita as viagens; a linha diverge da OSO U; **Nova OSO** cria uma F em DRAFT.
-3. Roda o solver de veículos e depois o de escala sobre o planejamento F.
-4. Cadastra a exceção de calendário do período (`U → F`, escopo inteiro).
-5. Ativa o planejamento F.
+4. Roda o solver de veículos e depois o de escala sobre o planejamento F.
+5. Cadastra a exceção de calendário do período: escopo inteiro, `sourceDayTypeId = U`,
+   `overrideDayTypeId = F`.
+6. Ativa o planejamento F. O aviso lista as linhas do escopo que não operam nele.
+
+Nos dias úteis do período todas as linhas resolvem para F, e o diário usa só o planejamento F: as
+linhas que seguem a OSO U estão nele, as alteradas estão com a OSO F, as que não operam estão fora.
 
 ---
 
@@ -183,8 +192,9 @@ adicionar `lineScheduleDayTypeId` (ou `isBorrowed: boolean`). No front:
 ### 6. Ativação
 
 Em `activate()` ([:1683](../../apps/api/src/modules/transit/timetabling/vehicle-plan/vehicle-plan.service.ts#L1683)), quando o planejamento tem `baseDayTypeId`:
-- **bloqueia** se faltar alguma linha ativa do escopo (`transitLine` com `scopeId` e `isActive`). A
-  mensagem lista os códigos;
+- **avisa**, no preview da ativação (`PlanActivationPreview`, ao lado dos `requirementWarnings`), as
+  linhas ativas do escopo (`transitLine` com `scopeId` e `isActive`) que não estão no planejamento:
+  "não operam neste planejamento: 501, 720". Não bloqueia: linha fora do especial é linha que não opera;
 - `uncoveredRequirementWarnings`: agrupar as linhas pelo tipo de dia da OSO vinculada e chamar uma vez
   por grupo. As linhas emprestadas são checadas contra os requisitos do tipo base, e linhas sem OSO
   usam `plan.dayTypeId`.
@@ -207,21 +217,19 @@ a condição `lines: { some: { lineId } }` passa a ser
 Se uma exceção de linha e uma de escopo valem no mesmo dia para a mesma linha, a regra atual já
 resolve: a mais recente por `validFrom` ganha, dentro de cada passo.
 
-### 8. Fallback no diário e no DOP
+Para férias, a exceção é **condicional** (`sourceDayTypeId = U`). Uma incondicional
+(`sourceDayTypeId = null`) transformaria em F também os sábados e domingos do período.
 
-Quando a linha resolve para um tipo sem padrão e nenhum planejamento em vigor desse tipo tem a linha,
-usar o planejamento do tipo de dia **do padrão da data** (`resolveByPattern`), em vez de pular a linha.
+### 8. Diário e DOP — sem mudança
 
-- [daily-materialize.ts](../../apps/api/src/modules/transit/daily/daily-materialize.ts#L36):
-  `findActivePlan(plans, dt.id, ...) ?? (dt.pattern ? null : findActivePlan(plans, base.id, ...))`.
-  A origem registrada em `sources` usa `dayTypeId: base.id`, então fica visível que a linha rodou o
-  convencional.
-- [dop.service.ts](../../apps/api/src/modules/transit/timetabling/dop/dop.service.ts) e
-  [dop-crew.service.ts](../../apps/api/src/modules/transit/timetabling/dop/dop-crew.service.ts):
-  mesmo fallback onde procuram o planejamento do tipo resolvido.
+Linha que resolve para F e não está no planejamento F em vigor não entra no dia: é o `continue` atual
+de [daily-materialize.ts](../../apps/api/src/modules/transit/daily/daily-materialize.ts#L39), e é o
+comportamento certo para "não opera nas férias". **Não** adicionar fallback para o planejamento do tipo
+do padrão: ele faria voltar a rodar, pelo planejamento U, uma linha removida das férias.
 
-Com o planejamento especial completo e a exceção de escopo, o fallback não deveria disparar. Ele
-cobre configuração errada e mantém funcionando o uso parcial que já existe hoje.
+O dia misto (a exceção manda só parte das linhas para F, ou mistura U, F e E) continua como hoje: o
+diário junta os planejamentos, cada um trazendo só as viagens das próprias linhas; interlinhas e
+jornadas entre eles vêm quebrados (`BLOCK_REMOVED`), e o reparo é feito na escala diária.
 
 ### 9. Pontos menores
 
@@ -264,9 +272,9 @@ O cabeçalho do planejamento especial mostra o tipo base ("Férias · base Útil
 - Vínculo: OSO do tipo base aceita no especial, recusada num planejamento U; OSO de terceiro tipo recusada.
 - `applyDiff`: com `propagateTripIds` numa linha emprestada, a OSO U não muda e a linha fica com
   `hasAttributeDrift`.
-- `activate`: especial sem uma linha ativa do escopo é bloqueado; requisitos das linhas emprestadas
-  checados contra o tipo base.
+- `activate`: especial sem uma linha ativa do escopo ativa normalmente, com o aviso listando a linha;
+  requisitos das linhas emprestadas checados contra o tipo base.
 - `buildDayTypeResolver`: exceção por escopo pega linha do escopo e ignora linha de outro escopo;
   precedência com exceção de linha.
-- `materializeDay`: linha resolvida para F sem planejamento F que a tenha cai no planejamento do
-  padrão, com `sources[].dayTypeId` do padrão.
+- `materializeDay`: com exceção de escopo `U → F`, um dia útil do período usa só o planejamento F; uma
+  linha fora do planejamento F não entra no dia (não cai no U); um sábado do período continua no S.
