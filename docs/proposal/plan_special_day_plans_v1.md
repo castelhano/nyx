@@ -1,6 +1,7 @@
 # Plano — Planejamentos de dias especiais (Férias, Especial)
 
-**Status: plano fechado, pronto para implementar.** Nada foi implementado.
+**Status: implementado em 2026-11-26** (etapas 0–7, 9 e 10; a 8 não exige código). A migração ainda
+precisa ser rodada. Diferenças em relação ao plano original estão em "Ajustes na implementação", no fim.
 
 **Produção:** existe base de produção. As colunas novas são opcionais e não precisam de preenchimento:
 os planejamentos U/S/D ficam com `baseDayTypeId = null`, que é o certo para eles. Antes de migrar,
@@ -172,7 +173,9 @@ Trocar a igualdade `schedule.dayTypeId === plan.dayTypeId` por `pinnableDayTypeI
 
 Sem mudança, conferir só se não filtram por `plan.dayTypeId` no lugar errado:
 - `createLineSchedule` e `activateNewLineSchedule` criam com `plan.dayTypeId`: correto, a OSO nova é F.
-- `syncLineSchedule` ("Atualizar da OSO"), OSO → planejamento: funciona com qualquer OSO vinculada.
+- `syncLineSchedule` ("Sincronizar" na troca de OSO) vai do planejamento para a OSO: reescreve em
+  DRAFT as partidas da OSO vinculada. **Recusa** uma OSO de outro tipo de dia; numa linha emprestada,
+  a reconciliação cria uma OSO do tipo do planejamento (`activateNewLineSchedule`).
 - `recomputeLineDrift` / [trip-mutation.utils.ts:44](../../apps/api/src/modules/transit/timetabling/trip/trip-mutation.utils.ts#L44):
   filtra as viagens por `plan.dayTypeId`, e as viagens do especial são F. Compara com as partidas da
   OSO vinculada, seja qual for o tipo dela.
@@ -278,3 +281,20 @@ O cabeçalho do planejamento especial mostra o tipo base ("Férias · base Útil
   precedência com exceção de linha.
 - `materializeDay`: com exceção de escopo `U → F`, um dia útil do período usa só o planejamento F; uma
   linha fora do planejamento F não entra no dia (não cai no U); um sábado do período continua no S.
+
+## Ajustes na implementação
+
+- **`syncLineSchedule`** escreve na OSO (plano → OSO), ao contrário do que a etapa 4 dizia. Recusa OSO
+  emprestada, e o modal de troca usa "Nova OSO" (`activate-new-schedule`) nas linhas emprestadas.
+- **`applyDiff`** passou a validar `lineSchedulePins`: a OSO precisa ser da linha e de um tipo de dia
+  vinculável. Antes não havia checagem nenhuma.
+- **Console** (etapa 9): sem mudança. Ele cruza as OSOs de cada tipo de dia com o planejamento do
+  mesmo tipo; a linha emprestada não aparece como sem planejamento.
+- **Importação de planejamento:** criar um planejamento novo por importação só vale para tipo de dia
+  com padrão. Para um especial, criar o planejamento antes e importar nele.
+- **Novo planejamento** (`NewPlanForm`): com um tipo sem padrão, pede o tipo base.
+- **Exceção de calendário:** o form genérico não tinha como escolher linhas, então o `scopeId` é hoje o
+  único jeito de cadastrar uma exceção pela tela.
+- **Payload do Gantt:** traz `plan.baseDayType` e `lines[].isBorrowed`. A linha emprestada mostra o selo
+  "OSO de <base>" na troca de OSO, e a propagação de atributos não é oferecida para ela.
+

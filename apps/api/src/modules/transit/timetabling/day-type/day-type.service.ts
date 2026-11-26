@@ -39,7 +39,8 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
         validFrom:       { lte: dateOnly },
         OR:              [{ validTo: null }, { validTo: { gte: dateOnly } }],
         sourceDayTypeId: null,
-        lines:           { some: { lineId } },
+        // the line's own, or one for its whole scope
+        AND:             [{ OR: [{ lines: { some: { lineId } } }, { scope: { lines: { some: { id: lineId } } } }] }],
       },
       include:  { overrideDayType: true },
       orderBy:  { validFrom: 'desc' },
@@ -55,7 +56,8 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
         validFrom:       { lte: dateOnly },
         OR:              [{ validTo: null }, { validTo: { gte: dateOnly } }],
         sourceDayTypeId: base.id,
-        lines:           { some: { lineId } },
+        // the line's own, or one for its whole scope
+        AND:             [{ OR: [{ lines: { some: { lineId } } }, { scope: { lines: { some: { id: lineId } } } }] }],
       },
       include:  { overrideDayType: true },
       orderBy:  { validFrom: 'desc' },
@@ -126,6 +128,11 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
    * where the per-call version would issue up to 2 queries per pair.
    */
   async buildDayTypeResolver(from: Date, to: Date, lineIds: string[]): Promise<(date: Date, lineId: string) => DayType> {
+    const lines = lineIds.length > 0
+      ? await this.prisma.transitLine.findMany({ where: { id: { in: lineIds } }, select: { id: true, scopeId: true } })
+      : []
+    const scopeOf = new Map(lines.map(l => [l.id, l.scopeId]))
+    const scopeIds = [...new Set(lines.flatMap(l => l.scopeId ? [l.scopeId] : []))]
     const [patterns, exceptions] = await Promise.all([
       this.prisma.dayType.findMany({
         where:   { pattern: { not: Prisma.DbNull } },
@@ -136,7 +143,8 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
             where: {
               validFrom: { lte: to },
               OR:        [{ validTo: null }, { validTo: { gte: from } }],
-              lines:     { some: { lineId: { in: lineIds } } },
+              // the lines' own, or one for a whole scope of theirs
+              AND:       [{ OR: [{ lines: { some: { lineId: { in: lineIds } } } }, { scopeId: { in: scopeIds } }] }],
             },
             include: { overrideDayType: true, lines: { select: { lineId: true } } },
             orderBy: { validFrom: 'desc' },
@@ -151,7 +159,7 @@ export class DayTypeService extends BaseService<DayType, CreateDayTypeDto, Updat
       const applicable = exceptions.filter(e =>
         e.validFrom <= dateOnly
         && (e.validTo === null || e.validTo >= dateOnly)
-        && e.lines.some(l => l.lineId === lineId),
+        && ((!!e.scopeId && e.scopeId === scopeOf.get(lineId)) || e.lines.some(l => l.lineId === lineId)),
       )
 
       const unconditional = applicable.find(e => e.sourceDayTypeId === null)

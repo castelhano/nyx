@@ -29,6 +29,7 @@ import { LineFreqPanel, PANEL_WIDTH as LINE_FREQ_PANEL_WIDTH } from './component
 import { LinesPanel }        from './components/LinesPanel'
 import { SwitchLineScheduleModal } from './components/SwitchLineScheduleModal'
 import { CopyLineModal } from './components/CopyLineModal'
+import { DuplicateSpecialModal } from './components/DuplicateSpecialModal'
 import { ExportOsoModal } from './components/ExportOsoModal'
 import { PlanExportModal } from './components/PlanExportModal'
 import { FrequencyPanel }    from './components/FrequencyPanel'
@@ -431,6 +432,7 @@ export default function VehiclePlanPage() {
     }
   }
   const [activationOpen, setActivationOpen] = useState(false)
+  const [duplicateSpecialOpen, setDuplicateSpecialOpen] = useState(false)
 
   // ── Vehicles ⇄ Crew switch ──────────────────────────────────────────────────
   // Opens the plan's ACTIVE crew plan (else the latest); with none yet, offers to create
@@ -648,6 +650,14 @@ export default function VehiclePlanPage() {
         },
         overflow: true,
       }] : []),
+      // a conventional plan (no base) duplicated into a special one — Férias, Especial
+      ...(!isNew && canUpdate && ganttData?.plan?.dayType && !ganttData.plan.baseDayType ? [{
+        label:    'Duplicar como dia especial',
+        icon:     Icons.Copy,
+        onClick:  () => setDuplicateSpecialOpen(true),
+        disabled: pendingCount > 0,
+        overflow: true,
+      }] : []),
       // activate
       ...(!solverJob?.running && canEdit ? [{
         label:    isPending ? 'Ativando…' : 'Ativar',
@@ -666,7 +676,7 @@ export default function VehiclePlanPage() {
         overflow: true,
       }] : []),
     ]),
-  ], [isPending, isSaving, solverJob, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen, issueStatus])
+  ], [isPending, isSaving, solverJob, canUpdate, canEdit, canEditGantt, status, isNew, selectedLineIds, editBarOpen, pendingCount, linesPanelOpen, summaryLineIds, blockFilterOpen, issueStatus, ganttData?.plan?.dayType, ganttData?.plan?.baseDayType])
 
   // ── trip summary panel ────────────────────────────────────────────────────
   // Tracks the segment whose data the panel shows: the single selected/focused
@@ -775,6 +785,7 @@ export default function VehiclePlanPage() {
           dayTypeId={ganttData.plan.dayType.id}
           dayTypeCode={ganttData.plan.dayType.code}
           dayTypeName={ganttData.plan.dayType.name}
+          baseDayType={ganttData.plan.baseDayType ?? null}
           lines={planLines.filter(l => selectedLineIds.has(l.lineId))}
           blocks={ganttData.blocks}
           hasPendingChanges={pendingCount > 0}
@@ -790,11 +801,20 @@ export default function VehiclePlanPage() {
         />
       )}
 
+      {duplicateSpecialOpen && ganttData?.plan?.dayType && (
+        <DuplicateSpecialModal
+          planId={id}
+          dayTypeName={ganttData.plan.dayType.name}
+          onClose={() => setDuplicateSpecialOpen(false)}
+        />
+      )}
+
       {copyLineOpen && ganttData?.plan?.dayType && (
         <CopyLineModal
           planId={id}
           dayTypeId={ganttData.plan.dayType.id}
           dayTypeName={ganttData.plan.dayType.name}
+          baseDayType={ganttData.plan.baseDayType ?? null}
           initialLineId={selectedLineIds.size === 1 ? [...selectedLineIds][0] : undefined}
           planLineIds={new Set(planLines.map(l => l.lineId))}
           onCopied={async () => {
@@ -958,6 +978,9 @@ export default function VehiclePlanPage() {
                 ) : (
                   <Badge label={ganttData.plan.dayType.name.toUpperCase()} />
                 ))}
+                {ganttData?.plan?.baseDayType && (
+                  <span className="text-xs text-muted-foreground">base {ganttData.plan.baseDayType.name}</span>
+                )}
               </span>
             </div>
           )}

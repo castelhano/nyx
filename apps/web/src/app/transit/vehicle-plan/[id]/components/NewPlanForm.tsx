@@ -12,7 +12,7 @@ import { useShortcut }  from '@/lib/keywatch'
 
 const FORM_ID = 'new-vehicle-plan-form'
 
-interface DayType { id: string; name: string; code: string }
+interface DayType { id: string; name: string; code: string; pattern: unknown }
 interface ScopeOption { id: string; name: string }
 
 export function NewPlanForm() {
@@ -21,6 +21,8 @@ export function NewPlanForm() {
 
   const [scopeId,   setScopeId]   = useState('')
   const [dayTypeId, setDayTypeId] = useState('')
+  // special plans (day type without pattern): the conventional day type they derive from
+  const [baseDayTypeId, setBaseDayTypeId] = useState('')
   const [isPending, setIsPending] = useState(false)
 
   const { data: scopes = [] } = useQuery<ScopeOption[]>({
@@ -56,14 +58,17 @@ export function NewPlanForm() {
     if (!dayTypeId && dayTypes.length > 0) setDayTypeId(dayTypes[0].id)
   }, [dayTypes, dayTypeId])
 
+  const isSpecial = !!dayTypeId && !dayTypes.find(dt => dt.id === dayTypeId)?.pattern
+  const baseOptions = dayTypes.filter(dt => dt.pattern)
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!scopeId || !dayTypeId) return
+    if (!scopeId || !dayTypeId || (isSpecial && !baseDayTypeId)) return
     setIsPending(true)
     try {
       const res = await apiFetch('/transit/vehicle-plan', {
         method: 'POST',
-        body:   JSON.stringify({ scopeId, dayTypeId }),
+        body:   JSON.stringify({ scopeId, dayTypeId, ...(isSpecial ? { baseDayTypeId } : {}) }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -143,11 +148,35 @@ export function NewPlanForm() {
             <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           </div>
         </div>
+
+        {isSpecial && (
+          <div>
+            <label htmlFor="baseDayTypeId" className="text-sm font-medium">
+              Tipo de Dia Base <span className="ps-1">*</span>
+            </label>
+            <div className="relative mt-2">
+              <select
+                id="baseDayTypeId"
+                value={baseDayTypeId}
+                onChange={e => setBaseDayTypeId(e.target.value)}
+                required
+                className="w-full appearance-none border border-input rounded-sm text-sm bg-input-bg px-3 py-2 pe-8 focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+              >
+                <option value="">Selecione…</option>
+                {baseOptions.map(dt => (
+                  <option key={dt.id} value={dt.id}>{dt.name}</option>
+                ))}
+              </select>
+              <Icons.ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">As linhas podem continuar usando as OSOs deste tipo de dia.</p>
+          </div>
+        )}
         <div className="flex justify-end space-x-4">
           <Button type="button" className="w-full" size="default" variant='cancel' tabIndex={-1} onClick={handleCancel}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={isPending || !scopeId || !dayTypeId} className="w-full" size="default">
+          <Button type="submit" disabled={isPending || !scopeId || !dayTypeId || (isSpecial && !baseDayTypeId)} className="w-full" size="default">
           {isPending ? 'Gravando…' : 'Gravar'}
           </Button>
         </div>

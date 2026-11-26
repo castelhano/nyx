@@ -366,7 +366,8 @@ model DayType {
   updatedAt   DateTime @updatedAt
 
   trips                        TransitTrip[]
-  vehiclePlans                 VehiclePlan[]
+  vehiclePlans                 VehiclePlan[]           @relation("VehiclePlanDayType")
+  baseVehiclePlans             VehiclePlan[]           @relation("VehiclePlanBaseDayType")
   lineSchedules                LineSchedule[]
   calendarExceptionsAsOverride LineCalendarException[] @relation("ExceptionOverrideDayType")
   calendarExceptionsAsSource   LineCalendarException[] @relation("ExceptionSourceDayType")
@@ -386,12 +387,16 @@ model LineCalendarException {
   validTo           DateTime?
   sourceDayTypeId   String?
   overrideDayTypeId String
+  // set → applies to every line of the scope, including lines created later (lines left
+  // empty); null → the listed lines only
+  scopeId           String?
   notes             String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   sourceDayType   DayType?                   @relation("ExceptionSourceDayType", fields: [sourceDayTypeId], references: [id])
   overrideDayType DayType                    @relation("ExceptionOverrideDayType", fields: [overrideDayTypeId], references: [id])
+  scope           Scope?                     @relation(fields: [scopeId], references: [id])
   lines           LineCalendarExceptionLine[]
 
   @@map("transit_line_calendar_exceptions")
@@ -560,6 +565,10 @@ model VehiclePlan {
   id          String            @id @default(uuid())
   scopeId     String
   dayTypeId   String
+  // the conventional day type (with pattern) a special plan (day type without pattern —
+  // Férias, Especial) derives from: its lines may pin this day type's OSOs as well as
+  // their own. null on conventional plans (docs/proposal/plan_special_day_plans_v1.md)
+  baseDayTypeId String?
   description String?
   status      VehiclePlanStatus @default(DRAFT)
   // vigencia (dates, end inclusive) — set when the plan is activated; ACTIVE is the latest
@@ -585,7 +594,8 @@ model VehiclePlan {
   updatedAt   DateTime          @updatedAt
 
   scope   Scope             @relation(fields: [scopeId], references: [id], onDelete: Restrict)
-  dayType DayType           @relation(fields: [dayTypeId], references: [id])
+  dayType     DayType           @relation("VehiclePlanDayType", fields: [dayTypeId], references: [id])
+  baseDayType DayType?          @relation("VehiclePlanBaseDayType", fields: [baseDayTypeId], references: [id])
   lines   VehiclePlanLine[]
   blocks  VehicleBlock[]
   trips   TransitTrip[]
@@ -614,6 +624,7 @@ model Scope {
   operators    ScopeOperator[]
   vehiclePlans VehiclePlan[]
   dailyOperations DailyOperation[]
+  calendarExceptions LineCalendarException[]
 
   @@map("transit_scopes")
 }

@@ -20,6 +20,19 @@ export const calendarExceptionSchema = withMeta(
       keybind:        'v',
     }),
 
+    // every line of the scope, including lines created later
+    scopeId: z.uuid().optional().meta({
+      label:          'Escopo',
+      widget:         'select',
+      resource:       'scope',
+      domain:         'transit',
+      labelField:     'name',
+      listVisibility: 'visible',
+      filter:         { type: 'relation', endpoint: 'transit/scope', labelField: 'name' },
+      helpText:       'A troca vale para todas as linhas do escopo.',
+      keybind:        'e',
+    }),
+
     sourceDayTypeId: z.uuid().optional().meta({
       label:          'Tipo de Dia Substituído',
       widget:         'select',

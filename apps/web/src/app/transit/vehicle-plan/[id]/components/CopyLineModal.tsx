@@ -23,6 +23,7 @@ interface LineScheduleRow {
   id:          string
   status:      'DRAFT' | 'APPROVED' | 'SUPERSEDED' | 'ARCHIVED'
   approvalRef: string
+  dayTypeId:   string
 }
 
 interface CopyResult {
@@ -35,6 +36,8 @@ interface Props {
   planId:       string
   dayTypeId:    string
   dayTypeName:  string
+  // special plans: the base day type, whose OSOs the line may pin too
+  baseDayType?: { id: string; name: string } | null
   // the line selected in "Linhas", preselected when the source plan has it
   initialLineId?: string
   // lines already in this plan — copying one replaces its blocks
@@ -49,7 +52,7 @@ const NEW_SCHEDULE = '__new'
 
 const clock = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
-export function CopyLineModal({ planId, dayTypeId, dayTypeName, initialLineId, planLineIds, onCopied, onClose }: Props) {
+export function CopyLineModal({ planId, dayTypeId, dayTypeName, baseDayType, initialLineId, planLineIds, onCopied, onClose }: Props) {
   useShortcutContext('copy_line_md')
   const { toast }   = useToast()
   const confirm     = useConfirm()
@@ -82,12 +85,15 @@ export function CopyLineModal({ planId, dayTypeId, dayTypeName, initialLineId, p
   const source = sources.find(s => s.id === sourcePlanId)
 
   const { data: schedules = [], isLoading: loadingSchedules } = useQuery<LineScheduleRow[]>({
-    queryKey: ['transit', 'line-schedule', 'history', lineId, dayTypeId],
+    queryKey: ['transit', 'line-schedule', 'history', lineId, dayTypeId, baseDayType?.id ?? null],
     queryFn:  async () => {
-      const res = await apiFetch(`/transit/line-schedule?lineId=${lineId}&dayTypeId=${dayTypeId}&pageSize=999`)
-      if (!res.ok) return []
-      const json = await res.json()
-      return json.data ?? []
+      const dayTypeIds = baseDayType ? [dayTypeId, baseDayType.id] : [dayTypeId]
+      return (await Promise.all(dayTypeIds.map(async id => {
+        const res = await apiFetch(`/transit/line-schedule?lineId=${lineId}&dayTypeId=${id}&pageSize=999`)
+        if (!res.ok) return []
+        const json = await res.json()
+        return (json.data ?? []) as LineScheduleRow[]
+      }))).flat()
     },
     enabled: !!lineId,
   })
@@ -103,8 +109,10 @@ export function CopyLineModal({ planId, dayTypeId, dayTypeName, initialLineId, p
   // the approved OSO comes preselected; with none to link, a new one
   useEffect(() => {
     if (!lineId || loadingSchedules) return
-    setScheduleChoice(linkable.find(s => s.status === 'APPROVED')?.id ?? linkable[0]?.id ?? NEW_SCHEDULE)
-  }, [lineId, loadingSchedules, linkable])
+    // the plan's own day type first, then the base's (special plans)
+    const approved = linkable.filter(s => s.status === 'APPROVED')
+    setScheduleChoice(approved.find(s => s.dayTypeId === dayTypeId)?.id ?? approved[0]?.id ?? linkable[0]?.id ?? NEW_SCHEDULE)
+  }, [lineId, loadingSchedules, linkable, dayTypeId])
 
   const lineCode = source?.lines.find(l => l.lineId === lineId)?.code ?? ''
 
@@ -215,7 +223,7 @@ export function CopyLineModal({ planId, dayTypeId, dayTypeName, initialLineId, p
           </div>
 
           <div>
-            <label htmlFor="copySchedule" className="text-sm font-medium">OSO a vincular ({dayTypeName}) <span className="ps-0.5">*</span></label>
+            <label htmlFor="copySchedule" className="text-sm font-medium">OSO a vincular ({baseDayType ? `${dayTypeName} ou ${baseDayType.name}` : dayTypeName}) <span className="ps-0.5">*</span></label>
             <Select
               id="copySchedule"
               wrapperClassName="mt-2"
@@ -226,9 +234,11 @@ export function CopyLineModal({ planId, dayTypeId, dayTypeName, initialLineId, p
             >
               <option value="">{loadingSchedules ? 'Carregando…' : 'Selecione…'}</option>
               {linkable.map(s => (
-                <option key={s.id} value={s.id}>{s.approvalRef} ({SCHEDULE_STATUS[s.status]})</option>
+                <option key={s.id} value={s.id}>
+                  {s.approvalRef} ({SCHEDULE_STATUS[s.status]}{s.dayTypeId !== dayTypeId && baseDayType ? ` · ${baseDayType.name}` : ''})
+                </option>
               ))}
-              <option value={NEW_SCHEDULE}>Nova OSO a partir das viagens copiadas</option>
+              <option value={NEW_SCHEDULE}>Nova OSO de {dayTypeName} a partir das viagens copiadas</option>
             </Select>
             {scheduleChoice === NEW_SCHEDULE ? (
               <div className="mt-2">

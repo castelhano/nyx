@@ -7,6 +7,7 @@ import { activationEffect, applyEffect, localToday, toDbDate } from '../plan-val
 import { TransitPlanningConfigService } from '../../settings/transit-planning-config.service'
 import { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 import { parseVehiclePlanFile, parseHHMM } from './vehicle-plan-import.parser'
+import { assertPlanDayTypes } from './plan-day-type.utils'
 import { VEHICLE_BLOCK_ISSUE_LABEL, type VehicleBlockIssue } from '@nyx/schemas'
 
 interface ImportOutput {
@@ -271,6 +272,8 @@ export class VehiclePlanImportService {
       blockNumber = (maxBlock._max.blockNumber ?? 0) + 1
       plan = { id: planId }
     } else {
+      // a special plan (day type without pattern) needs its base: created first, then imported into
+      await assertPlanDayTypes(this.prisma, dayTypeId, null)
       plan = await (this.prisma as any).vehiclePlan.create({
         data: {
           scopeId,

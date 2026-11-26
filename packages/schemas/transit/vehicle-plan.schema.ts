@@ -101,6 +101,19 @@ export const vehiclePlanSchema = withMeta(
       keybind:        'd',
     }),
 
+    // special plans only (day type without pattern): the conventional day type whose OSOs its
+    // lines may also pin — docs/proposal/plan_special_day_plans_v1.md
+    baseDayTypeId: z.uuid().nullable().optional().meta({
+      label:          'Tipo de Dia Base',
+      widget:         'select',
+      resource:       'day-type',
+      domain:         'transit',
+      labelField:     'name',
+      listVisibility: 'hidden',
+      helpText:       'Só em Férias/Especial: o tipo de dia cujas OSOs as linhas podem continuar usando.',
+      keybind:        'b',
+    }),
+
     // filter only — plans whose scope the branch operates (ScopeOperator), see VehiclePlanService
     branchId: z.uuid().optional().meta({
       label:          'Operadora',

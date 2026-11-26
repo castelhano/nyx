@@ -93,8 +93,8 @@ export class VehiclePlanController extends BaseController<VehiclePlan, CreateVeh
 
   @Post(':id/duplicate')
   @HttpCode(201)
-  duplicate(@Param('id') id: string) {
-    return this.vehiclePlanService.duplicate(id)
+  duplicate(@Param('id') id: string, @Body() body?: { dayTypeId?: string }) {
+    return this.vehiclePlanService.duplicate(id, body?.dayTypeId)
   }
 
   @Post(':id/activate')

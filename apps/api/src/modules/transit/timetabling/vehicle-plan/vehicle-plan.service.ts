@@ -15,6 +15,7 @@ import type { VehiclePlanLineSummary } from '@nyx/schemas'
 import type { CrewPlanSummary } from '@nyx/schemas'
 import type { VehiclePlanDiff } from '@nyx/schemas'
 import type { PreviewLineScoreDto, PlanActivationPreview } from '@nyx/schemas'
+import type { AuthUser } from '@nyx/types'
 import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
@@ -26,6 +27,7 @@ import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
 import { validateNewBundles } from './trip-bundle.utils'
 import { selectLineCopy } from './line-copy.utils'
+import { assertPlanDayTypes, pinnableDayTypeIds } from './plan-day-type.utils'
 import { CrewPlanService } from '../crew-plan/crew-plan.service'
 import { activationEffect, applyEffect, assertRetroactiveAllowed, dayOf, fmtDay, localToday, parseStartDate, toDbDate } from '../plan-validity'
 import { uncoveredRequirementWarnings } from '../../network/line-service-requirement/line-service-requirement.util'
@@ -116,9 +118,22 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // generic PATCH here must not be able to overwrite them directly (they'd go stale
   // with no isStale marker to signal it). See docs/proposal/vehicle-plan-summary-
   // score-consolidation.md §2.3.
-  override async update(id: string, dto: UpdateVehiclePlanDto): Promise<VehiclePlan> {
-    const { summary: _summary, constraints: _constraints, settings: _settings, ...rest } = dto as any
-    return super.update(id, rest)
+  override async create(dto: CreateVehiclePlanDto, user?: AuthUser): Promise<VehiclePlan> {
+    await assertPlanDayTypes(this.prisma, dto.dayTypeId, dto.baseDayTypeId)
+    return super.create(dto, user)
+  }
+
+  // the day type (and base) are fixed at creation: the trips and the OSO pins depend on them
+  override async update(id: string, dto: UpdateVehiclePlanDto, user?: AuthUser): Promise<VehiclePlan> {
+    const { summary: _summary, constraints: _constraints, settings: _settings, dayTypeId, baseDayTypeId, ...rest } = dto as any
+    if (dayTypeId !== undefined || baseDayTypeId !== undefined) {
+      const plan = await this.prisma.vehiclePlan.findUnique({ where: { id }, select: { dayTypeId: true, baseDayTypeId: true } })
+      if (!plan) throw new NotFoundException('VehiclePlan not found')
+      if ((dayTypeId !== undefined && dayTypeId !== plan.dayTypeId) || (baseDayTypeId !== undefined && (baseDayTypeId ?? null) !== plan.baseDayTypeId)) {
+        throw new BadRequestException('O tipo de dia do planejamento não pode ser alterado — duplique o planejamento para outro tipo de dia')
+      }
+    }
+    return super.update(id, rest, user)
   }
 
   // Validation log for the per-line schedule generator (Fase 3, 100% client-side) —
@@ -471,7 +486,10 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     await this.prisma.vehiclePlan.update({ where: { id }, data: { constraints: { ...constraints, bundleCrew } } })
   }
 
-  async duplicate(planId: string): Promise<VehiclePlan> {
+  // dayTypeId: the copy's day type — the source's (plain copy) or, from a conventional plan, a day
+  // type without pattern: the copy becomes a special plan based on the source's day type, its
+  // lines keeping the source's OSOs (docs/proposal/plan_special_day_plans_v1.md)
+  async duplicate(planId: string, dayTypeId?: string): Promise<VehiclePlan> {
     const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
@@ -483,7 +501,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 sequence: true,
                 trip: {
                   select: {
-                    id: true, routeId: true, dayTypeId: true,
+                    id: true, routeId: true,
                     departureMinutes: true, arrivalMinutes: true,
                     requiredVehicleType: true, stopPattern: true, constraints: true, notes: true, markings: true, bundleId: true,
                   },
@@ -498,13 +516,29 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
 
+    const special = !!dayTypeId && dayTypeId !== plan.dayTypeId
+    const target  = special
+      ? { dayTypeId: dayTypeId!, baseDayTypeId: plan.dayTypeId as string }
+      : { dayTypeId: plan.dayTypeId as string, baseDayTypeId: plan.baseDayTypeId as string | null }
+    let suffix = 'cópia'
+    if (special) {
+      const [source, dest] = await Promise.all([
+        this.prisma.dayType.findUnique({ where: { id: plan.dayTypeId }, select: { pattern: true } }),
+        this.prisma.dayType.findUnique({ where: { id: dayTypeId }, select: { name: true } }),
+      ])
+      if (!source?.pattern) throw new BadRequestException('Só um planejamento de tipo de dia convencional pode ser duplicado para outro tipo de dia')
+      await assertPlanDayTypes(this.prisma, target.dayTypeId, target.baseDayTypeId)
+      suffix = dest!.name
+    }
+
     return this.prisma.$transaction(async tx => {
       const newPlan = await tx.vehiclePlan.create({
         data: {
-          scopeId:     plan.scopeId,
-          dayTypeId:   plan.dayTypeId,
+          scopeId:       plan.scopeId,
+          dayTypeId:     target.dayTypeId,
+          baseDayTypeId: target.baseDayTypeId,
           // a copy is told apart from its source (same rule as the crew plan's duplicate)
-          description: plan.description ? `${plan.description} (cópia)` : 'Cópia',
+          description: plan.description ? `${plan.description} (${suffix})` : suffix.charAt(0).toUpperCase() + suffix.slice(1),
           status:      'DRAFT',
           settings:    plan.settings    ?? undefined,
           summary:     plan.summary     ?? undefined,
@@ -560,7 +594,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
                 data: {
                   vehiclePlanId:       newPlan.id,
                   routeId:             bt.trip.routeId,
-                  dayTypeId:           bt.trip.dayTypeId,
+                  // the trips run on the copy's day type; the line's pin says which OSO governs them
+                  dayTypeId:           target.dayTypeId,
                   departureMinutes:    bt.trip.departureMinutes,
                   arrivalMinutes:      bt.trip.arrivalMinutes,
                   requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
@@ -647,7 +682,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     dto:    { sourcePlanId?: string; lineScheduleId?: string; newSchedule?: { approvalRef?: string } },
   ): Promise<{ blocks: number; trips: number; dissolvedBundles: { blockNumber: number; start: number }[]; lineScheduleId: string }> {
     const [plan, source] = await Promise.all([
-      this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { id: true, scopeId: true, dayTypeId: true, status: true, constraints: true } }),
+      this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { id: true, scopeId: true, dayTypeId: true, baseDayTypeId: true, status: true, constraints: true } }),
       dto.sourcePlanId ? this.prisma.vehiclePlan.findUnique({ where: { id: dto.sourcePlanId }, select: { id: true, scopeId: true, constraints: true } }) : null,
     ])
     if (!plan) throw new NotFoundException('VehiclePlan not found')
@@ -658,7 +693,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const approvalRef = dto.newSchedule?.approvalRef?.trim()
     if (dto.lineScheduleId) {
       const schedule = await this.prisma.lineSchedule.findUnique({ where: { id: dto.lineScheduleId }, select: { lineId: true, dayTypeId: true, status: true } })
-      if (!schedule || schedule.lineId !== lineId || schedule.dayTypeId !== plan.dayTypeId) throw new BadRequestException('OSO não é desta linha e tipo de dia')
+      if (!schedule || schedule.lineId !== lineId || !pinnableDayTypeIds(plan).includes(schedule.dayTypeId)) throw new BadRequestException('OSO não é desta linha e tipo de dia')
       if (schedule.status !== 'DRAFT' && schedule.status !== 'APPROVED') throw new BadRequestException('OSO substituída ou arquivada')
     } else if (!dto.newSchedule) {
       throw new BadRequestException('Escolha a OSO a vincular')
@@ -878,9 +913,21 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   async applyDiff(planId: string, diff: VehiclePlanDiff): Promise<{ blockIdMap: Record<string, string>; removedDuties: number }> {
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
-      select: { id: true, dayTypeId: true, status: true, scopeId: true },
+      select: { id: true, dayTypeId: true, baseDayTypeId: true, status: true, scopeId: true },
     })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
+    // a line pins an OSO of its own, of the plan's day type or of its base (special plans)
+    if (diff.lineSchedulePins.length > 0) {
+      const schedules = await this.prisma.lineSchedule.findMany({
+        where:  { id: { in: diff.lineSchedulePins.map(p => p.lineScheduleId) } },
+        select: { id: true, lineId: true, dayTypeId: true },
+      })
+      const allowed = pinnableDayTypeIds(plan)
+      for (const pin of diff.lineSchedulePins) {
+        const schedule = schedules.find(s => s.id === pin.lineScheduleId)
+        if (!schedule || schedule.lineId !== pin.lineId || !allowed.includes(schedule.dayTypeId)) throw new BadRequestException('OSO não é desta linha e tipo de dia')
+      }
+    }
     // ACTIVE plans allow punctual edits (trip moves/adds/deletes, markers, intervals)
     // straight from the Gantt — only bulk/structural flows (line regen, OSO sync,
     // solver) stay DRAFT-only, gated in their own methods.
@@ -1000,7 +1047,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             where:  {
               vehiclePlanId: planId,
               lineId:        { in: [...new Set(trips.map((t: any) => t.route.lineId))] },
-              lineSchedule:  { status: { in: ['DRAFT', 'APPROVED'] } },
+              // an OSO borrowed from the base day type is never written from a special plan:
+              // the trip stays changed here and the line gets hasAttributeDrift
+              lineSchedule:  { status: { in: ['DRAFT', 'APPROVED'] }, dayTypeId: plan.dayTypeId },
             },
             select: { lineId: true, lineScheduleId: true },
           })
@@ -1419,10 +1468,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const schedule = await db.lineSchedule.findUnique({
       where:  { id: vpl.lineScheduleId },
-      select: { id: true, status: true, approvalRef: true },
+      select: { id: true, status: true, approvalRef: true, dayTypeId: true },
     })
     if (!schedule) throw new NotFoundException('LineSchedule not found')
     if (schedule.status !== 'DRAFT') throw new BadRequestException('Only DRAFT schedules can be synced in place')
+    // an OSO borrowed from the base day type is never written from a special plan
+    if (schedule.dayTypeId !== plan.dayTypeId) throw new BadRequestException(`A OSO ${schedule.approvalRef} é de outro tipo de dia — crie uma OSO própria deste planejamento`)
 
     const existingTrips = await db.transitTrip.findMany({
       where: {
@@ -1590,7 +1641,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const plan = await this.prisma.vehiclePlan.findUnique({
       where:   { id: planId },
       include: {
-        dayType: { select: { id: true, name: true, code: true, color: true } },
+        dayType:     { select: { id: true, name: true, code: true, color: true } },
+        baseDayType: { select: { id: true, name: true, code: true, color: true } },
         scope: {
           include: {
             lines: { orderBy: { code: 'asc' }, select: { id: true, name: true, code: true, metrics: true } },
@@ -1598,7 +1650,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         },
         lines: {
           include: {
-            lineSchedule: { select: { id: true, status: true, approvalRef: true } },
+            lineSchedule: { select: { id: true, status: true, approvalRef: true, dayTypeId: true } },
           },
         },
       },
@@ -1628,6 +1680,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         isDrifted:         materialized?.isDrifted ?? false,
         hasAttributeDrift: materialized?.hasAttributeDrift ?? false,
         sharedPlanCount:   materialized?.lineScheduleId ? (sharedCountByScheduleId.get(materialized.lineScheduleId) ?? 0) : 0,
+        // pins an OSO of the base day type (special plans): never written from this plan
+        isBorrowed:        !!materialized?.lineSchedule && materialized.lineSchedule.dayTypeId !== plan.dayTypeId,
         summary:           materialized?.summary ?? null,
       }
     })
@@ -1680,7 +1734,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // written: the result is the preview.
   async activate(planId: string, startDate: unknown, confirm: boolean): Promise<PlanActivationPreview> {
     const start = parseStartDate(startDate)
-    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { status: true, scopeId: true, dayTypeId: true } })
+    const plan = await this.prisma.vehiclePlan.findUnique({ where: { id: planId }, select: { status: true, scopeId: true, dayTypeId: true, baseDayTypeId: true } })
     if (!plan) throw new NotFoundException('VehiclePlan not found')
     if (plan.status !== 'DRAFT') throw new BadRequestException('Só é possível ativar um planejamento em rascunho')
 
@@ -1700,21 +1754,38 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       : []
     const crewEffect = CrewPlanService.cascade(crewPlans, effect)
 
-    // the plan's trips against its lines' service requirements — warning only
+    // the plan's trips against its lines' service requirements — warning only. Each line is checked
+    // against the day type of the OSO it pins (a special plan's borrowed lines: the base's)
     const [planLines, blockTrips] = await Promise.all([
-      this.prisma.vehiclePlanLine.findMany({ where: { vehiclePlanId: planId }, select: { lineId: true } }),
+      this.prisma.vehiclePlanLine.findMany({ where: { vehiclePlanId: planId }, select: { lineId: true, lineSchedule: { select: { dayTypeId: true } } } }),
       this.prisma.blockTrip.findMany({
         where:  { vehicleBlock: { vehiclePlanId: planId } },
         select: { trip: { select: { id: true, routeId: true, departureMinutes: true, arrivalMinutes: true, route: { select: { lineId: true, direction: true } } } } },
       }),
     ])
-    const requirementWarnings = await uncoveredRequirementWarnings(
-      this.prisma, plan.dayTypeId, planLines.map(l => l.lineId),
-      blockTrips.map(({ trip }) => ({
-        id: trip.id, lineId: trip.route.lineId, direction: trip.route.direction, routeId: trip.routeId,
-        departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
-      })),
-    )
+    const trips = blockTrips.map(({ trip }) => ({
+      id: trip.id, lineId: trip.route.lineId, direction: trip.route.direction, routeId: trip.routeId,
+      departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
+    }))
+    const linesByDayType = new Map<string, string[]>()
+    for (const l of planLines) {
+      const dayTypeId = l.lineSchedule?.dayTypeId ?? plan.dayTypeId
+      linesByDayType.set(dayTypeId, [...(linesByDayType.get(dayTypeId) ?? []), l.lineId])
+    }
+    const requirementWarnings = (await Promise.all([...linesByDayType].map(([dayTypeId, lineIds]) => {
+      const ids = new Set(lineIds)
+      return uncoveredRequirementWarnings(this.prisma, dayTypeId, lineIds, trips.filter(t => ids.has(t.lineId)))
+    }))).flat()
+
+    // a special plan stands for the whole day: a line of the scope left out doesn't run on its days
+    const leftOut = plan.baseDayTypeId
+      ? await this.prisma.transitLine.findMany({
+          where:   { scopeId: plan.scopeId, isActive: true, id: { notIn: planLines.map(l => l.lineId) } },
+          orderBy: { code: 'asc' },
+          select:  { code: true },
+        })
+      : []
+    const leftOutWarning = leftOut.length ? [`Não operam neste planejamento: ${leftOut.map(l => l.code).join(', ')}`] : []
 
     if (confirm) {
       await this.prisma.$transaction(async (tx) => {
@@ -1728,7 +1799,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       ...effect,
       crewSuperseded: crewEffect.superseded,
       crewReverted:   crewEffect.reverted,
-      warnings: [`Lembre de ativar uma escala a partir de ${fmtDay(start)}`, ...requirementWarnings],
+      warnings: [`Lembre de ativar uma escala a partir de ${fmtDay(start)}`, ...leftOutWarning, ...requirementWarnings],
       applied: confirm,
     }
   }

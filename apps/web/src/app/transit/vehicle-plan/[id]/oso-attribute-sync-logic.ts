@@ -101,7 +101,7 @@ export interface OsoPropagationLine {
 
 /** Pending trip edits that saving with "replicar" would copy onto the OSO: a changed
  *  stopPattern/markings on a persisted trip whose time isn't changing too, on a line
- *  pinned to a DRAFT or APPROVED schedule — and not just a value "Atualizar da OSO"
+ *  pinned to a DRAFT or APPROVED schedule of the plan's own day type — and not just a value "Atualizar da OSO"
  *  staged (`osoSyncedValues`), nor one equal to what the trip already has. */
 export function findOsoPropagation(
   pendingChanges:  Map<string, TripPatch>,
@@ -126,8 +126,11 @@ export function findOsoPropagation(
       && !(synced && 'markings' in synced && sameMarkings(patch.markings, synced.markings))
     if (!stopPatternChanged && !markingsChanged) continue
 
-    const status = lineById.get(trip.route.line.id)?.lineSchedule?.status
+    const planLine = lineById.get(trip.route.line.id)
+    const status = planLine?.lineSchedule?.status
     if (status !== 'DRAFT' && status !== 'APPROVED') continue
+    // a borrowed OSO (base day type) is never written from a special plan
+    if (planLine?.isBorrowed) continue
     tripsByLine.set(trip.route.line.id, (tripsByLine.get(trip.route.line.id) ?? 0) + 1)
     tripIds.push(tripId)
   }

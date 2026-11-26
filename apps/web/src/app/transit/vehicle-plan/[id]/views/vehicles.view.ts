@@ -173,6 +173,8 @@ export interface VehiclePlanGanttData {
     status:  string
     summary: unknown
     dayType: { id: string; name: string; code: string; color: string | null } | null
+    // special plans (Férias, Especial): the conventional day type whose OSOs the lines may pin too
+    baseDayType?: { id: string; name: string; code: string; color: string | null } | null
     lines:   Array<{
       lineId:         string
       inPlan:         boolean
@@ -181,6 +183,8 @@ export interface VehiclePlanGanttData {
       hasAttributeDrift: boolean
       // other plans pinning the same lineSchedule
       sharedPlanCount:   number
+      // pins an OSO of the base day type — never written from this plan
+      isBorrowed?:       boolean
       summary:      VehiclePlanLineSummary | null
       line:         { id: string; code: string; name: string; metrics: LineMetrics | null }
       lineSchedule: { id: string; status: string; approvalRef: string | null } | null

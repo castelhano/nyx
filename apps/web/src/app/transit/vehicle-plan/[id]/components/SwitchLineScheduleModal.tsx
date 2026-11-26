@@ -19,6 +19,7 @@ interface LineScheduleRow {
   approvalRef: string
   approvedAt:  string | null
   createdAt:   string
+  dayTypeId:   string
 }
 
 interface RouteRow {
@@ -59,6 +60,8 @@ export interface PlanLineInfo {
   lineScheduleId: string | null
   lineSchedule:   { id: string; status: string; approvalRef: string | null } | null
   isDrifted?:     boolean
+  // pins an OSO of the plan's base day type (special plan) — never written from this plan
+  isBorrowed?:    boolean
 }
 
 interface Props {
@@ -66,6 +69,8 @@ interface Props {
   dayTypeId:         string
   dayTypeCode:       string
   dayTypeName?:      string
+  // special plans: the base day type, whose OSOs the lines may pin too
+  baseDayType?:      { id: string; name: string } | null
   lines:             PlanLineInfo[]
   blocks:            GanttBlock[]
   hasPendingChanges: boolean
@@ -90,7 +95,7 @@ const STATUS_CLASSES: Record<string, string> = {
 const ANALISE_CLASSES = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800'
 
 export function SwitchLineScheduleModal({
-  planId, dayTypeId, dayTypeCode, dayTypeName, lines, blocks, hasPendingChanges, onClose, onApplied,
+  planId, dayTypeId, dayTypeCode, dayTypeName, baseDayType, lines, blocks, hasPendingChanges, onClose, onApplied,
   onPendingAdd, onQueueTripDeletes, onScheduleSwitchStaged,
 }: Props) {
   useShortcutContext('switch_schedule_md')
@@ -137,13 +142,16 @@ export function SwitchLineScheduleModal({
 
   const historyQueries = useQueries({
     queries: lines.map(l => ({
-      queryKey: ['transit', 'line-schedule', 'history', l.lineId, dayTypeId],
+      queryKey: ['transit', 'line-schedule', 'history', l.lineId, dayTypeId, baseDayType?.id ?? null],
       queryFn:  async (): Promise<LineScheduleRow[]> => {
-        const res = await apiFetch(`/transit/line-schedule?lineId=${l.lineId}&dayTypeId=${dayTypeId}&pageSize=999`)
-        if (!res.ok) return []
-        const json = await res.json()
-        const rows: LineScheduleRow[] = json.data ?? []
-        return [...rows].sort((a, b) => {
+        const dayTypeIds = baseDayType ? [dayTypeId, baseDayType.id] : [dayTypeId]
+        const rows = (await Promise.all(dayTypeIds.map(async id => {
+          const res = await apiFetch(`/transit/line-schedule?lineId=${l.lineId}&dayTypeId=${id}&pageSize=999`)
+          if (!res.ok) return []
+          const json = await res.json()
+          return (json.data ?? []) as LineScheduleRow[]
+        }))).flat()
+        return rows.sort((a, b) => {
           const da = new Date(a.approvedAt ?? a.createdAt).getTime()
           const db = new Date(b.approvedAt ?? b.createdAt).getTime()
           return db - da
@@ -218,13 +226,16 @@ export function SwitchLineScheduleModal({
 
   async function handleReconcile(l: PlanLineInfo) {
     if (!l.lineSchedule || reconcilingLineId) return
-    const isDraft = l.lineSchedule.status === 'DRAFT'
+    // a borrowed OSO is never written from here: the line gets an OSO of this plan's day type
+    const isDraft = l.lineSchedule.status === 'DRAFT' && !l.isBorrowed
 
     const ok = await confirm({
-      title:        isDraft ? 'Sincronizar OSO' : 'Nova versão da OSO',
+      title:        isDraft ? 'Sincronizar OSO' : l.isBorrowed ? `Nova OSO de ${dayTypeName ?? 'este tipo de dia'}` : 'Nova versão da OSO',
       description:  isDraft
         ? `A OSO ${l.lineSchedule.approvalRef} será atualizada para corresponder ao plano atual. Essa ação não pode ser desfeita.`
-        : `A OSO ${l.lineSchedule.approvalRef} está ${STATUS_LABELS[l.lineSchedule.status]} e não pode ser alterada. Será criada nova OSO (rascunho), com partidas do plano.`,
+        : l.isBorrowed
+          ? `A OSO ${l.lineSchedule.approvalRef} é de ${baseDayType?.name ?? 'outro tipo de dia'} e não é alterada por este planejamento. Será criada uma OSO de ${dayTypeName ?? 'este tipo de dia'} (rascunho), com partidas do plano.`
+          : `A OSO ${l.lineSchedule.approvalRef} está ${STATUS_LABELS[l.lineSchedule.status]} e não pode ser alterada. Será criada nova OSO (rascunho), com partidas do plano.`,
       confirmLabel: isDraft ? 'Sincronizar' : 'Criar nova versão',
       variant:      'safeConfirm',
     })
@@ -395,6 +406,11 @@ export function SwitchLineScheduleModal({
                       <span className={`text-xs rounded-full border px-2 py-0.5 ${STATUS_CLASSES[l.lineSchedule.status]}`}>
                         {l.lineSchedule.approvalRef} - {STATUS_LABELS[l.lineSchedule.status]}
                       </span>
+                      {l.isBorrowed && baseDayType && (
+                        <span className="text-xs rounded-full border border-border bg-muted px-2 py-0.5 text-muted-foreground">
+                          OSO de {baseDayType.name}
+                        </span>
+                      )}
                       <a
                         href={`/transit/line-schedule/${l.lineSchedule.id}`}
                         target="_blank"
@@ -445,7 +461,7 @@ export function SwitchLineScheduleModal({
                     >
                       {reconcilingLineId === l.lineId
                         ? 'Aplicando…'
-                        : l.lineSchedule.status === 'DRAFT' ? 'Sincronizar' : 'Nova versão'}
+                        : l.isBorrowed ? 'Nova OSO' : l.lineSchedule.status === 'DRAFT' ? 'Sincronizar' : 'Nova versão'}
                     </Button>
                   </div>
                 )}
@@ -510,9 +526,12 @@ export function SwitchLineScheduleModal({
                               ? 'border-ring bg-accent font-medium'
                               : 'border-border hover:bg-muted/40'
                           }`}
-                          title={STATUS_LABELS[h.status]}
+                          title={h.dayTypeId === dayTypeId ? STATUS_LABELS[h.status] : `${STATUS_LABELS[h.status]} · ${baseDayType?.name ?? ''}`}
                         >
                           {isThisTarget ? 'Trocando…' : h.approvalRef}
+                          {h.dayTypeId !== dayTypeId && baseDayType && (
+                            <span className="ml-1 text-muted-foreground">· {baseDayType.name}</span>
+                          )}
                         </button>
                       )
                     })}
