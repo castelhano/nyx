@@ -857,34 +857,48 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   }
 
   // Shared by applyDiff's 'adds'/'moves' processing — resolves an existing block by id
-  // (scoped to this plan) or spawns a new one. The new block inherits empresa and depot
-  // from refBlockId (the block a move pulled its trips from), else from the plan's last
-  // block, else falls back to the scope's single empresa (if any) and the first depot.
-  private async resolveOrCreateBlock(tx: any, planId: string, blockId?: string, refBlockId?: string): Promise<string> {
+  // (scoped to this plan) or spawns a new one. A new block's empresa: the line's when it has a
+  // single operator (LineOperator), else that of refBlockId (the block a move pulled its trips
+  // from), else the scope's single empresa, else none (NO_COMPANY flags it). Its depot: the ref
+  // block's, else the route's home depot, else the one the plan's blocks of that empresa use the
+  // most — always among the depots the empresa may use (DepotConfig.operators), else the first.
+  private async resolveOrCreateBlock(
+    tx: any, planId: string, blockId?: string, refBlockId?: string, origin?: { lineId: string; homeDepotId: string | null },
+  ): Promise<string> {
     if (blockId) {
       const block = await tx.vehicleBlock.findFirst({ where: { id: blockId, vehiclePlanId: planId }, select: { id: true } })
       if (!block) throw new NotFoundException('VehicleBlock not found in this plan')
       return block.id
     }
 
-    const lastBlock = await tx.vehicleBlock.findFirst({
-      where:   { vehiclePlanId: planId },
-      orderBy: { blockNumber: 'desc' },
-      select:  { blockNumber: true, depotId: true, branchId: true },
-    })
-    const refBlock = refBlockId
-      ? await tx.vehicleBlock.findFirst({ where: { id: refBlockId, vehiclePlanId: planId }, select: { depotId: true, branchId: true } })
-      : lastBlock
+    const [lastBlock, refBlock, lineOperators] = await Promise.all([
+      tx.vehicleBlock.findFirst({ where: { vehiclePlanId: planId }, orderBy: { blockNumber: 'desc' }, select: { blockNumber: true } }),
+      refBlockId ? tx.vehicleBlock.findFirst({ where: { id: refBlockId, vehiclePlanId: planId }, select: { depotId: true, branchId: true } }) : null,
+      origin ? tx.lineOperator.findMany({ where: { lineId: origin.lineId }, select: { branchId: true }, take: 2 }) : [],
+    ])
+    const branchId: string | null = lineOperators.length === 1
+      ? lineOperators[0].branchId
+      : refBlock ? refBlock.branchId : await this.singleScopeBranchId(tx, planId)
 
-    let depotId: string
-    if (refBlock?.depotId) {
-      depotId = refBlock.depotId
-    } else {
-      const depot = await tx.transitLocality.findFirst({ where: { isDepot: true }, select: { id: true } })
-      if (!depot) throw new BadRequestException('No depot locality configured')
-      depotId = depot.id
+    const depots: { id: string; depot: unknown }[] = await tx.transitLocality.findMany({ where: { isDepot: true }, orderBy: { name: 'asc' }, select: { id: true, depot: true } })
+    if (depots.length === 0) throw new BadRequestException('No depot locality configured')
+    const allowed = depots.filter(d => {
+      const operators = (d.depot as { operators?: string[] } | null)?.operators ?? []
+      return !branchId || operators.length === 0 || operators.includes(branchId)
+    })
+    const isAllowed = (id: string | null | undefined) => !!id && allowed.some(d => d.id === id)
+    let depotId: string | undefined = isAllowed(refBlock?.depotId) ? refBlock!.depotId : isAllowed(origin?.homeDepotId) ? origin!.homeDepotId! : undefined
+    if (!depotId && branchId && allowed.length > 1) {
+      const usage = await tx.vehicleBlock.groupBy({
+        by:      ['depotId'],
+        where:   { vehiclePlanId: planId, branchId, depotId: { in: allowed.map(d => d.id) } },
+        _count:  { _all: true },
+        orderBy: { _count: { depotId: 'desc' } },
+        take:    1,
+      })
+      depotId = usage[0]?.depotId
     }
-    const branchId = refBlock ? refBlock.branchId : await this.singleScopeBranchId(tx, planId)
+    depotId ??= (allowed[0] ?? depots[0]).id
 
     const newBlock = await tx.vehicleBlock.create({
       data: { vehiclePlanId: planId, blockNumber: (lastBlock?.blockNumber ?? 0) + 1, depotId, branchId, vehicleType: 'STANDARD' },
@@ -892,8 +906,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     return newBlock.id
   }
 
-  // The plan scope's empresa when it has exactly one ScopeOperator — null otherwise,
-  // since with several there's no line→empresa link to pick one (NO_COMPANY flags it).
+  // The plan scope's empresa when it has exactly one ScopeOperator — null otherwise (NO_COMPANY
+  // flags it). resolveOrCreateBlock's fallback when the line doesn't settle the empresa.
   private async singleScopeBranchId(db: any, planId: string): Promise<string | null> {
     const operators = await db.scopeOperator.findMany({
       where:  { scope: { vehiclePlans: { some: { id: planId } } } },
@@ -941,12 +955,12 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // in newBlockIds by the time step 8 runs) and a block that was never backed by
       // any add (e.g. an empty block created client-side and only ever targeted by a
       // move — see useGanttEditor's handleCreateEmptyBlock).
-      const resolveBlockRef = async (ref: string, refBlockId?: string): Promise<string> => {
+      const resolveBlockRef = async (ref: string, refBlockId?: string, origin?: { lineId: string; homeDepotId: string | null }): Promise<string> => {
         if (!ref.startsWith('pending:')) return ref
         const tempId   = ref.slice('pending:'.length)
         const existing = newBlockIds.get(tempId)
         if (existing) return existing
-        const created = await this.resolveOrCreateBlock(tx, planId, undefined, refBlockId)
+        const created = await this.resolveOrCreateBlock(tx, planId, undefined, refBlockId, origin)
         newBlockIds.set(tempId, created)
         return created
       }
@@ -1119,15 +1133,19 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       // available to any later 'pending:<tempId>' entry in the same batch that
       // references it (mirrors the old client-side newBlockIds map).
       for (const entry of diff.adds) {
-        const rawBlockId = entry.blockId === 'new' ? undefined : await resolveBlockRef(entry.blockId)
+        // a trip's line and route pick a new block's empresa and depot (resolveOrCreateBlock)
+        const route = entry._kind === 'trip'
+          ? await tx.transitRoute.findUnique({
+              where:  { id: entry.routeId },
+              select: { lineId: true, originLocalityId: true, destinationLocalityId: true, homeDepotId: true },
+            })
+          : null
+        if (entry._kind === 'trip' && !route) throw new NotFoundException('Route not found')
+        const origin = route ? { lineId: route.lineId, homeDepotId: route.homeDepotId } : undefined
+        const rawBlockId = entry.blockId === 'new' ? undefined : await resolveBlockRef(entry.blockId, undefined, origin)
         let resolvedBlockId: string
 
         if (entry._kind === 'trip') {
-          const route = await tx.transitRoute.findUnique({
-            where:  { id: entry.routeId },
-            select: { lineId: true, originLocalityId: true, destinationLocalityId: true },
-          })
-          if (!route) throw new NotFoundException('Route not found')
 
           // Marks the line as present in the plan even without a pinned schedule —
           // isDrifted itself is left to step 9's final recomputation (this line is
@@ -1152,7 +1170,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
             },
           })
 
-          resolvedBlockId = await this.resolveOrCreateBlock(tx, planId, rawBlockId)
+          resolvedBlockId = await this.resolveOrCreateBlock(tx, planId, rawBlockId, undefined, origin)
           const maxSeq = await tx.blockTrip.aggregate({ where: { vehicleBlockId: resolvedBlockId }, _max: { sequence: true } })
           await tx.blockTrip.create({ data: { vehicleBlockId: resolvedBlockId, tripId: trip.id, sequence: (maxSeq._max.sequence ?? -1) + 1 } })
 
