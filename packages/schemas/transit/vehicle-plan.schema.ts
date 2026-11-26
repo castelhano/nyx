@@ -102,7 +102,7 @@ export const vehiclePlanSchema = withMeta(
     }),
 
     // special plans only (day type without pattern): the conventional day type whose OSOs its
-    // lines may also pin — docs/proposal/plan_special_day_plans_v1.md
+    // lines may also pin — docs/architecture/transit/day-types.md
     baseDayTypeId: z.uuid().nullable().optional().meta({
       label:          'Tipo de Dia Base',
       widget:         'select',
@@ -222,7 +222,7 @@ export const vehiclePlanSchema = withMeta(
       },
       {
         // asks for the day type, so it opens the plan with the modal — conventional plans only
-        // (no base): docs/proposal/plan_special_day_plans_v1.md
+        // (no base): docs/architecture/transit/day-types.md
         action:      'duplicate-special',
         label:       'Duplicar como dia especial',
         icon:        'Copy',

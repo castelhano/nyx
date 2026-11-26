@@ -488,7 +488,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
   // dayTypeId: the copy's day type — the source's (plain copy) or, from a conventional plan, a day
   // type without pattern: the copy becomes a special plan based on the source's day type, its
-  // lines keeping the source's OSOs (docs/proposal/plan_special_day_plans_v1.md)
+  // lines keeping the source's OSOs (docs/architecture/transit/day-types.md)
   async duplicate(planId: string, dayTypeId?: string): Promise<VehiclePlan> {
     const plan = await (this.prisma as any).vehiclePlan.findUnique({
       where:   { id: planId },

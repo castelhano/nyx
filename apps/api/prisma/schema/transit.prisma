@@ -567,7 +567,7 @@ model VehiclePlan {
   dayTypeId   String
   // the conventional day type (with pattern) a special plan (day type without pattern —
   // Férias, Especial) derives from: its lines may pin this day type's OSOs as well as
-  // their own. null on conventional plans (docs/proposal/plan_special_day_plans_v1.md)
+  // their own. null on conventional plans (docs/architecture/transit/day-types.md)
   baseDayTypeId String?
   description String?
   status      VehiclePlanStatus @default(DRAFT)

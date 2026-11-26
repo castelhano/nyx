@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 
-// Special day plans (docs/proposal/plan_special_day_plans_v1.md): a plan of a day type without
+// Special day plans (docs/architecture/transit/day-types.md): a plan of a day type without
 // pattern (Férias, Especial) derives from a conventional one (with pattern) — baseDayTypeId — and
 // its lines may pin that day type's OSOs as well as their own. Conventional plans have no base.
 

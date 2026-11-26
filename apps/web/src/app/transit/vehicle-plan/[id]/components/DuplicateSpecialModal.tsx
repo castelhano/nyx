@@ -20,7 +20,7 @@ interface Props {
 
 // Duplicates a conventional plan into a special one (day type without pattern — Férias,
 // Especial): the copy keeps every line, block and OSO pin, and its lines may later switch to
-// OSOs of the new day type (docs/proposal/plan_special_day_plans_v1.md)
+// OSOs of the new day type (docs/architecture/transit/day-types.md)
 export function DuplicateSpecialModal({ planId, dayTypeName, onClose }: Props) {
   useShortcutContext('duplicate_special_md')
   const router    = useRouter()
