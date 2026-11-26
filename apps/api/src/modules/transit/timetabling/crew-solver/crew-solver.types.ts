@@ -6,6 +6,9 @@ import type { CrewSolverInput, CrewUsage, SolverDuty } from './crew-solver.calc'
 export interface CrewSolverParams {
   // complete: keep the locked duties and cover the rest; scratch: vehicles only
   base:          'complete' | 'scratch'
+  // current: the search starts from the plan's duties (refine them; what they leave without a
+  // driver gets duties of its own first); scratch: from a new construction
+  start:         'current' | 'scratch'
   direction:     'balanced' | 'fewer_duties' | 'fewer_paid'
   fareCollector: boolean
   assistant:     boolean
@@ -16,7 +19,19 @@ export interface CrewSolverParams {
 }
 
 export const DEFAULT_CREW_SOLVER_PARAMS: CrewSolverParams = {
-  base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, limitToCrew: true,
+  base: 'complete', start: 'current', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, limitToCrew: true,
+}
+
+// where the search started — "Melhorias" count from here
+export interface CrewSolverStart {
+  from:          'current' | 'construction'
+  // duties the construction added for what the plan's duties left without a driver
+  filled:        number
+  // pieces of the plan's duties left out: stale, or on a block the vehicle plan no longer has
+  droppedPieces: number
+  // why the plan's duties couldn't be the start (start: current, from: construction)
+  fallback:      string | null
+  summary:       CrewPlanSummary
 }
 
 export interface CrewSolverProposal {
@@ -31,6 +46,7 @@ export interface CrewSolverProposal {
 // elapsed / sinceImprovement in ms; bestScore unrounded
 export type CrewSolverMessage =
   | { type: 'progress'; elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
+  | { type: 'start'; start: CrewSolverStart }
   | { type: 'proposal'; proposal: CrewSolverProposal }
   // interrupted: the API lost the run (restart) — only a saved run ends so, never a worker
   | { type: 'done'; stopReason: 'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | 'interrupted'; elapsed: number; attempts: number }
@@ -40,4 +56,4 @@ export type CrewSolverMessage =
 export type CrewSolverCommand = { type: 'stop' }
 
 // each worker of a generation searches from its own seed (see CrewSolverService.start)
-export interface CrewSolverWorkerData { input: CrewSolverInput; seed: number; optimize: boolean }
+export interface CrewSolverWorkerData { input: CrewSolverInput; seed: number; optimize: boolean; start: CrewSolverParams['start'] }

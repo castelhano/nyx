@@ -15,7 +15,7 @@ import { loadCrewSolverInput } from './crew-solver.input'
 import { solverRank } from '../crew-plan/crew-scoring.calc'
 import {
   DEFAULT_CREW_SOLVER_PARAMS,
-  type CrewSolverMessage, type CrewSolverParams, type CrewSolverProposal, type CrewSolverWorkerData,
+  type CrewSolverMessage, type CrewSolverParams, type CrewSolverProposal, type CrewSolverStart, type CrewSolverWorkerData,
 } from './crew-solver.types'
 
 // "Otimizar › Gerar escala" — runs the crew solver in worker threads, streams progress
@@ -24,7 +24,8 @@ import {
 // A generation belongs to the crew plan, not to the screen that started it: it keeps running
 // when the modal closes or the page is left, and the plan screen finds it again (current) —
 // one per crew plan, a new start replaces it. A client connecting to the stream gets the
-// generation's state first (best proposal, last progress, how it ended) and then what comes next.
+// generation's state first (where it started, best proposal, last progress, how it ended) and
+// then what comes next.
 //
 // It is saved (SolverRun, SolverRunStore) as it goes and stays until accepted, discarded or
 // replaced — a run left overnight is there in the morning, and one the API lost on a restart
@@ -53,6 +54,8 @@ interface Job {
   runs:        { progress: Progress | null; end: Done | null }[]
   proposals:   number
   startedAt:   number
+  // the same in every search
+  start:       CrewSolverStart | null
   best:        CrewSolverProposal | null
   progress:    Progress | null
   // how it ended — null while running
@@ -74,6 +77,7 @@ interface View {
   stopReason:  StopReason | null
   error:       string | null
   progress:    Progress | null
+  start:       CrewSolverStart | null
   best:        CrewSolverProposal | null
 }
 
@@ -87,6 +91,8 @@ export interface CrewSolverJobState {
   error:       string | null
   progress:    Progress | null
   hasProposal: boolean
+  // where the search started — null until the first search gets there
+  start:       CrewSolverStart | null
 }
 
 // one line of the app-wide background generations list (topbar)
@@ -149,11 +155,15 @@ export class CrewSolverService {
     const params = { ...DEFAULT_CREW_SOLVER_PARAMS, ...rawParams }
     const { settings } = await this.crewPlans.resolveSettings(crewPlanId)
     const [input, fingerprint, { solverMaxSearches }] = await Promise.all([
-      loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction), { limitToCrew: params.limitToCrew }),
+      loadCrewSolverInput(this.prisma, crewPlanId, withDirection(settings, params.direction), { limitToCrew: params.limitToCrew, current: params.start === 'current' }),
       this.fingerprint(crewPlanId, params),
       this.generalConfig.get(),
     ])
-    if (params.base === 'scratch') input.locked = []
+    if (params.base === 'scratch') {
+      // the locked driver duties are then part of what the search may change
+      if (params.start === 'current') input.current.push(...input.locked.filter(d => d.role === 'DRIVER'))
+      input.locked = []
+    }
 
     // one generation per crew plan: a new one replaces the previous (its row too)
     const previous = this.current.get(crewPlanId)
@@ -163,14 +173,14 @@ export class CrewSolverService {
     const searches = Math.max(1, Math.min(solverMaxSearches, availableParallelism() - 1))
     const isTs    = __filename.endsWith('.ts')
     const seed    = Date.now()
-    // the construction has no seed: without the improvement one search is enough
+    // the starting point has no seed: without the improvement one search is enough
     const workers = Array.from({ length: params.optimize ? searches : 1 }, (_, i) => new Worker(path.join(__dirname, `crew-solver.worker${isTs ? '.ts' : '.js'}`), {
-      workerData: { input, seed: seed + i * 7919, optimize: params.optimize } satisfies CrewSolverWorkerData,
+      workerData: { input, seed: seed + i * 7919, optimize: params.optimize, start: params.start } satisfies CrewSolverWorkerData,
       execArgv:   isTs ? ['-r', '@swc-node/register', '-r', 'tsconfig-paths/register'] : [],
     }))
     const job: Job = {
       id: jobId, crewPlanId, params, fingerprint, workers, runs: workers.map(() => ({ progress: null, end: null })), proposals: 0,
-      startedAt: Date.now(), best: null, progress: null, end: null, endedAt: null, savedAt: Date.now(), live$: new Subject(),
+      startedAt: Date.now(), start: null, best: null, progress: null, end: null, endedAt: null, savedAt: Date.now(), live$: new Subject(),
     }
     this.jobs.set(jobId, job)
     this.current.set(crewPlanId, jobId)
@@ -206,9 +216,15 @@ export class CrewSolverService {
     workers.forEach((worker, i) => {
       worker.on('message', (msg: CrewSolverMessage) => {
         if (msg.type === 'done' || msg.type === 'error') return ended(i, msg)
+        if (msg.type === 'start') {
+          if (job.start) return
+          job.start = msg.start
+          job.live$.next(msg)
+          void this.saved.save(jobId, { start: job.start })
+          return
+        }
         if (msg.type === 'proposal') {
-          // only a better proposal than every search's so far goes out (the construction is the
-          // same in all of them)
+          // only a better proposal than every search's so far goes out (they all start alike)
           if (job.best && rankOf(msg.proposal) <= rankOf(job.best)) return
           job.best = { ...msg.proposal, index: ++job.proposals }
           job.live$.next({ type: 'proposal', proposal: job.best })
@@ -256,7 +272,7 @@ export class CrewSolverService {
     if (!v) return null
     return {
       jobId: v.id, params: v.params, startedAt: v.startedAt, running: v.running, stopReason: v.stopReason, error: v.error,
-      progress: v.progress, hasProposal: !!v.best,
+      progress: v.progress, hasProposal: !!v.best, start: v.start,
     }
   }
 
@@ -303,7 +319,8 @@ export class CrewSolverService {
     if (this.current.get(job.crewPlanId) === jobId) this.current.delete(job.crewPlanId)
   }
 
-  // the generation's state first (best proposal, last progress, its end), then what comes next
+  // the generation's state first (where it started, best proposal, last progress, its end), then
+  // what comes next
   // while it runs; proposals go out without their duties — the client only shows the summary
   stream(jobId: string): Observable<{ data: string }> {
     const out = (msg: CrewSolverMessage) => ({
@@ -317,6 +334,7 @@ export class CrewSolverService {
         const v = job ? viewOfJob(job) : await this.viewById(jobId).catch(() => null)
         if (closed) return
         if (!v) return subscriber.complete()
+        if (v.start)    subscriber.next(out({ type: 'start', start: v.start }))
         if (v.best)     subscriber.next(out({ type: 'proposal', proposal: v.best }))
         if (v.progress) subscriber.next(out(v.progress))
         if (job && !job.end) {
@@ -459,7 +477,7 @@ function viewOfJob(job: Job): View {
     startedAt: job.startedAt, endedAt: job.endedAt,
     stopReason: job.end?.type === 'done' ? job.end.stopReason : null,
     error:      job.end?.type === 'error' ? job.end.message : null,
-    progress: job.progress, best: job.best,
+    progress: job.progress, start: job.start, best: job.best,
   }
 }
 
@@ -470,7 +488,7 @@ function viewOfRun(run: SolverRun): View {
     id: run.id, crewPlanId: run.crewPlanId!, params: run.params as unknown as CrewSolverParams, fingerprint: run.fingerprint,
     running: run.status === 'RUNNING', startedAt: run.startedAt.getTime(), endedAt: run.endedAt?.getTime() ?? null,
     stopReason: stopReasonOf(run), error: run.error,
-    progress: run.progress as Progress | null, best: run.best as CrewSolverProposal | null,
+    progress: run.progress as Progress | null, start: run.start as CrewSolverStart | null, best: run.best as CrewSolverProposal | null,
   }
 }
 

@@ -1,14 +1,15 @@
 import { workerData, parentPort, isMainThread } from 'worker_threads'
-import { solveCrewPlan, evaluateSolverDuties, crewUsage, type SolverDuty } from './crew-solver.calc'
+import { solveCrewPlan, seedCrewPlan, evaluateSolverDuties, crewUsage, type SolverDuty } from './crew-solver.calc'
 import { CrewImprover } from './crew-solver.improve'
 import type { CrewSolverCommand, CrewSolverMessage, CrewSolverWorkerData } from './crew-solver.types'
 
-// Runs the crew solver off the main thread: the construction (first proposal in milliseconds),
-// then the continuous improvement in short slices — between them the event loop turns, so a
+// Runs one search of the crew solver off the main thread: the starting point (the plan's duties
+// with their gaps covered, or the construction — first proposal in milliseconds, announced as
+// 'start'), then the continuous improvement in short slices — between them the event loop turns, so a
 // 'stop' from the host gets through. A better proposal goes out at most once a second; the run
 // ends on 'stop', the time limit or no improvement (settings.stopMaxTotalMinutes /
 // stopNoImprovementMinutes), always posting the best one found first. Without `optimize` the
-// run ends right after the construction.
+// run ends right after the starting point.
 
 if (isMainThread) process.exit(1)
 
@@ -20,15 +21,25 @@ const PROGRESS_MS = 500
 const MAX_CYCLE_MS = 30 * 60_000
 
 const post  = (msg: CrewSolverMessage) => parentPort!.postMessage(msg)
-const { input, seed, optimize } = workerData as CrewSolverWorkerData
+const { input, seed, optimize, start } = workerData as CrewSolverWorkerData
 const started = Date.now()
 let stopped = false
 parentPort!.on('message', (cmd: CrewSolverCommand) => { if (cmd?.type === 'stop') stopped = true })
 
 try {
-  const construction = solveCrewPlan(input)
-  post({ type: 'proposal', proposal: { index: 1, summary: construction.evaluation.summary, duties: construction.duties, crew: crewUsage(input, construction) } })
-  if (optimize) improve(construction.duties)
+  // the starting point: the plan's duties (start: current), else the construction
+  const seeded = start === 'current' ? seedCrewPlan(input) : null
+  const first = seeded ? evaluateSolverDuties(input, seeded.duties) : solveCrewPlan(input)
+  post({
+    type: 'start',
+    start: {
+      from: seeded ? 'current' : 'construction', filled: seeded?.filled ?? 0, droppedPieces: input.droppedPieces,
+      fallback: start === 'current' && !seeded ? 'a escala não tem jornadas de motorista a refazer' : null,
+      summary: first.evaluation.summary,
+    },
+  })
+  post({ type: 'proposal', proposal: { index: 1, summary: first.evaluation.summary, duties: first.duties, crew: crewUsage(input, first) } })
+  if (optimize) improve(first.duties)
   else post({ type: 'done', stopReason: 'finished', elapsed: Date.now() - started, attempts: 0 })
 } catch (err) {
   post({ type: 'error', message: err instanceof Error ? err.message : String(err) })

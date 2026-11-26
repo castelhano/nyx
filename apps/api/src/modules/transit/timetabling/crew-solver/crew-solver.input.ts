@@ -10,8 +10,10 @@ import type { CrewCapacity, CrewPin, CrewSolverInput, SolverBlock } from './crew
 // Everything solveCrewPlan needs for one crew plan, in a few queries: its VehiclePlan's
 // blocks (relief points, trips, deadruns), its locked duties, the meal break type and meal
 // stops, and the crew walking distances among the relief points' localities. limitToCrew: also
-// the empresas' active crew per shift (CrewCapacity).
-export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings, options: { limitToCrew?: boolean } = {}): Promise<CrewSolverInput> {
+// the empresas' active crew per shift (CrewCapacity). current: also the plan's other DRIVER
+// duties — the starting point of start: current (their stale pieces, or pieces on a block the
+// vehicle plan no longer has, left out and counted).
+export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: string, settings: CrewSettings, options: { limitToCrew?: boolean; current?: boolean } = {}): Promise<CrewSolverInput> {
   // the meal type only matters when meal breaks are placed (continuous form, allowed or required)
   const breaks = mealPolicy(settings.mealRule).breaks
   const mealTypeId = breaks ? settings.mealBreakIntervalTypeId : null
@@ -27,16 +29,18 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
   if (!plan) throw new NotFoundException('crewPlan not found')
   if (mealTypeId && !mealType) throw new BadRequestException('Tipo de intervalo de refeição não encontrado')
 
-  const [blockRows, lockedRows, mealStops, branchRules] = await Promise.all([
+  const dutySelect = {
+    id: true, role: true, kind: true, branchId: true, shiftId: true, shiftPinned: true, constraints: true,
+    pieces:     { where: { isStale: false }, orderBy: { startMinutes: 'asc' }, select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true } },
+    activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
+  } as const
+  const [blockRows, lockedRows, driverRows, mealStops, branchRules] = await Promise.all([
     prisma.vehicleBlock.findMany({ where: { vehiclePlanId: plan.vehiclePlanId }, select: { id: true } }),
-    prisma.duty.findMany({
-      where:  { crewPlanId, constraints: { path: ['locked'], equals: true } },
-      select: {
-        id: true, role: true, kind: true, branchId: true, shiftId: true, shiftPinned: true,
-        pieces:     { where: { isStale: false }, select: { id: true, vehicleBlockId: true, startMinutes: true, endMinutes: true, startLocalityId: true, endLocalityId: true } },
-        activities: { select: { id: true, type: true, intervalTypeId: true, startMinutes: true, endMinutes: true, intervalType: { select: { isPaid: true } } } },
-      },
-    }),
+    prisma.duty.findMany({ where: { crewPlanId, constraints: { path: ['locked'], equals: true } }, select: dutySelect }),
+    // all of them: a JSON filter for "not locked" would miss the null constraints
+    options.current
+      ? prisma.duty.findMany({ where: { crewPlanId, role: 'DRIVER' }, select: { ...dutySelect, _count: { select: { pieces: true } } } })
+      : Promise.resolve([]),
     prisma.routeLocality.findMany({ where: { allowsMealBreak: true, localityId: { not: null } }, select: { routeId: true, localityId: true } }),
     loadCrewBranchRules(prisma, { vehiclePlanId: plan.vehiclePlanId }),
   ])
@@ -58,16 +62,25 @@ export async function loadCrewSolverInput(prisma: PrismaService, crewPlanId: str
     loadCrewPins(prisma, blocks, (plan.vehiclePlan.constraints as VehiclePlanConstraints | null)?.bundleCrew ?? {}),
   ])
 
-  const locked: CrewCalcDuty[] = lockedRows.map(d => ({
+  const calcDuty = (d: (typeof lockedRows)[number]): CrewCalcDuty => ({
     id: d.id, role: d.role, kind: d.kind, branchId: d.branchId, shiftId: d.shiftId, shiftPinned: d.shiftPinned, pieces: d.pieces,
     activities: d.activities.map(a => ({
       id: a.id, type: a.type, intervalTypeId: a.intervalTypeId, startMinutes: a.startMinutes, endMinutes: a.endMinutes,
       isPaidBreak: a.type === 'BREAK' && !!a.intervalType?.isPaid,
     })),
-  }))
+  })
+  const locked = lockedRows.map(calcDuty)
+  const lockedIds = new Set(lockedRows.map(d => d.id))
+  const blockIds = new Set(blocks.map(b => b.id))
+  let droppedPieces = 0
+  const current = driverRows.filter(d => !lockedIds.has(d.id)).map(d => {
+    const pieces = d.pieces.filter(p => p.vehicleBlockId && blockIds.has(p.vehicleBlockId))
+    droppedPieces += d._count.pieces - pieces.length
+    return { ...calcDuty(d), pieces }
+  })
 
   return {
-    blocks, locked, settings,
+    blocks, locked, current, droppedPieces, settings,
     meal: mealTypeId && mealType ? {
       intervalTypeId: mealTypeId,
       // the type's own range; the CCT meal criterion only scores

@@ -42,6 +42,7 @@ interface SettingsView { settings: CrewSettings; isCustom: boolean; inherited: C
 
 interface Params {
   base:          'complete' | 'scratch'
+  start:         'current' | 'scratch'
   direction:     'balanced' | 'fewer_duties' | 'fewer_paid'
   fareCollector: boolean
   assistant:     boolean
@@ -61,6 +62,17 @@ interface CrewUsage {
 
 type Proposal = { index: number; summary: CrewPlanSummary; crew?: CrewUsage | null }
 
+// CrewSolverStart — where the search started
+interface Start {
+  from:          'current' | 'construction'
+  // duties added for what the plan's duties left without a driver
+  filled:        number
+  // pieces left out: stale, or on a block the vehicle plan no longer has
+  droppedPieces: number
+  fallback:      string | null
+  summary:       CrewPlanSummary
+}
+
 // interrupted: the server restarted during the run — the best proposal saved until then stays
 type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | 'interrupted'
 
@@ -68,6 +80,7 @@ type StopReason = 'finished' | 'user_stopped' | 'max_time' | 'no_improvement' | 
 type Progress = { elapsed: number; attempts: number; improvements: number; bestScore: number; sinceImprovement: number }
 
 type Message =
+  | { type: 'start'; start: Start }
   | ({ type: 'progress' } & Progress)
   | { type: 'proposal'; proposal: Proposal }
   | { type: 'done'; stopReason: StopReason; elapsed: number; attempts: number }
@@ -102,6 +115,7 @@ export interface SolverJob {
   error:       string | null
   progress:    Progress | null
   hasProposal: boolean
+  start:       Start | null
 }
 
 interface Props {
@@ -158,7 +172,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
   const isCustom = !!settingsView?.isCustom
 
   // ── generation ──
-  const [params, setParams]           = useState<Params>({ base: 'complete', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, limitToCrew: true, ...job?.params })
+  const [params, setParams]           = useState<Params>({ base: 'complete', start: 'current', direction: 'balanced', fareCollector: false, assistant: false, optimize: true, limitToCrew: true, ...job?.params })
   const [jobId, setJobId]             = useState<string | null>(job?.jobId ?? null)
   const [running, setRunning]         = useState(job?.running ?? false)
   const [proposal, setProposal]       = useState<Proposal | null>(null)
@@ -167,6 +181,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
   const [accepting, setAccepting]     = useState(false)
   const [progress, setProgress]       = useState<Progress | null>(job?.progress ?? null)
   const [stopReason, setStopReason]   = useState<StopReason | null>(job?.stopReason ?? null)
+  const [start, setStart]             = useState<Start | null>(job?.start ?? null)
   const esRef = useRef<EventSource | null>(null)
   useEffect(() => () => esRef.current?.close(), [])
 
@@ -177,6 +192,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
     esRef.current = es
     es.onmessage = (ev) => {
       const msg = JSON.parse(ev.data) as Message
+      if (msg.type === 'start') setStart(msg.start)
       if (msg.type === 'proposal') setProposal(msg.proposal)
       if (msg.type === 'progress') setProgress(msg)
       if (msg.type === 'done') setStopReason(msg.stopReason)
@@ -228,7 +244,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
     if (!jobId) return
     await apiFetch(`${solverBase}/discard`, { method: 'POST', body: JSON.stringify({ jobId }) }).catch(() => null)
     esRef.current?.close()
-    setJobId(null); setRunning(false); setProposal(null); setProgress(null); setStopReason(null); setError(null); setDescription('')
+    setJobId(null); setRunning(false); setProposal(null); setStart(null); setProgress(null); setStopReason(null); setError(null); setDescription('')
     onJobChanged()
   }
 
@@ -265,7 +281,7 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
   // a new run replaces the previous one (the server drops it)
   async function handleStart() {
     esRef.current?.close()
-    setError(null); setProposal(null); setDescription(''); setJobId(null); setProgress(null); setStopReason(null)
+    setError(null); setProposal(null); setStart(null); setDescription(''); setJobId(null); setProgress(null); setStopReason(null)
     setTab('scenarios')
     const id  = crypto.randomUUID()
     const res = await apiFetch(`${solverBase}/start`, { method: 'POST', body: JSON.stringify({ jobId: id, params }) })
@@ -375,13 +391,29 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
                 </div>
               )}
               <div className="space-y-1.5">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-1" checked={params.start === 'current'} onChange={() => setParams(p => ({ ...p, start: 'current' }))} />
+                  <span>
+                    Partir da escala atual
+                    <span className="block text-xs text-muted-foreground">Refina as jornadas como estão — o que ficou sem motorista ganha jornadas antes — e só conta como melhoria o que superar o ponto de partida.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" className="mt-1" checked={params.start === 'scratch'} onChange={() => setParams(p => ({ ...p, start: 'scratch' }))} />
+                  <span>
+                    Do zero
+                    <span className="block text-xs text-muted-foreground">Monta as jornadas de novo — indicado depois de mudar a configuração ou os carros, para não ficar preso à estrutura atual.</span>
+                  </span>
+                </label>
+              </div>
+              <div className="space-y-1.5">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" checked={params.base === 'complete'} onChange={() => setParams(p => ({ ...p, base: 'complete' }))} />
                   Respeita travadas ({lockedCount})
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" checked={params.base === 'scratch'} onChange={() => setParams(p => ({ ...p, base: 'scratch' }))} />
-                  Completa
+                  Completa (refaz também as travadas)
                 </label>
               </div>
               <div className="flex items-center gap-3">
@@ -419,6 +451,18 @@ export function OptimizeCrewModal({ crewPlanId, initialTab, planStatus, job, onJ
             <div className="max-w-2xl space-y-4">
               {!jobId && !error && (
                 <p className="text-sm text-muted-foreground">Nenhum cenário gerado. Use o Painel para gerar uma proposta.</p>
+              )}
+              {jobId && start && (
+                <p className="text-xs text-muted-foreground">
+                  Ponto de partida: {start.from === 'current' ? 'escala atual' : 'nova construção'} · {start.summary.dutyCount} jornadas · score sem teto {(start.summary.rawScore ?? start.summary.score).toLocaleString('pt-BR')}
+                  {start.from === 'current' && start.filled > 0 && ` · ${start.filled} ${start.filled === 1 ? 'jornada criada' : 'jornadas criadas'} para o que estava sem motorista`}
+                  {start.from === 'current' && start.droppedPieces > 0 && (
+                    <span className="block text-amber-700 dark:text-amber-400">
+                      {start.droppedPieces} {start.droppedPieces === 1 ? 'pegada da escala atual ficou' : 'pegadas da escala atual ficaram'} de fora (desatualizadas ou em carros que não existem mais) — o trecho delas foi coberto de novo.
+                    </span>
+                  )}
+                  {start.fallback && <span className="block text-amber-700 dark:text-amber-400">Não foi possível partir da escala atual: {start.fallback}.</span>}
+                </p>
               )}
               {jobId && (
                 <div className="grid grid-cols-4 gap-2 text-xs">

@@ -54,6 +54,10 @@ export interface CrewSolverInput {
   blocks:        SolverBlock[]
   // kept as they are — their live DRIVER pieces are already covered
   locked:        CrewCalcDuty[]
+  // the plan's other DRIVER duties — the starting point with start: current (seedCrewPlan),
+  // empty otherwise; droppedPieces: their pieces left out (stale, or on a block that's gone)
+  current:       CrewCalcDuty[]
+  droppedPieces: number
   settings:      CrewSettings
   meal:          SolverMeal | null
   mealStops:     Set<string>         // `${routeId}:${localityId}` of RouteLocality.allowsMealBreak
@@ -616,6 +620,24 @@ export function solveCrewPlan(input: CrewSolverInput): CrewSolverResult {
 
   // 4. evaluate with the crew plan's own calculation
   return evaluateSolverDuties(input, duties)
+}
+
+// The plan's own DRIVER duties as the starting point (start: current), and for what they leave
+// without a driver the construction's duties — it takes them as locked, so it covers only that.
+// The improvement never changes the coverage: a gap left here would stay. Null when the plan has
+// no duty to start from.
+export function seedCrewPlan(input: CrewSolverInput): { duties: SolverDuty[]; filled: number } | null {
+  const mealType = input.meal?.intervalTypeId
+  const own: SolverDuty[] = input.current
+    .filter((d): d is CrewCalcDuty & { kind: SolverDuty['kind'] } => d.kind !== 'STANDBY' && d.pieces.length > 0)
+    .map(d => ({
+      kind: d.kind, branchId: d.branchId,
+      pieces: d.pieces.map(p => ({ vehicleBlockId: p.vehicleBlockId!, startMinutes: p.startMinutes, endMinutes: p.endMinutes, startLocalityId: p.startLocalityId, endLocalityId: p.endLocalityId })),
+      breaks: mealType ? d.activities.filter(a => a.type === 'BREAK' && a.intervalTypeId === mealType).map(a => ({ startMinutes: a.startMinutes, endMinutes: a.endMinutes })) : [],
+    }))
+  if (!own.length) return null
+  const gaps = solveCrewPlan({ ...input, locked: [...input.locked, ...input.current] }).duties
+  return { duties: [...own, ...gaps], filled: gaps.length }
 }
 
 // Locked + solver duties through computeCrewPlan — the summary/score a proposal shows.

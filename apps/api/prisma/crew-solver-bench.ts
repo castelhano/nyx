@@ -3,13 +3,14 @@ import { PrismaService } from '../src/prisma/prisma.service'
 import { TransitCrewConfigService } from '../src/modules/transit/settings/transit-crew-config.service'
 import { CrewPlanService } from '../src/modules/transit/timetabling/crew-plan/crew-plan.service'
 import { loadCrewSolverInput } from '../src/modules/transit/timetabling/crew-solver/crew-solver.input'
-import { solveCrewPlan, evaluateSolverDuties, type CrewSolverResult } from '../src/modules/transit/timetabling/crew-solver/crew-solver.calc'
+import { solveCrewPlan, seedCrewPlan, evaluateSolverDuties, type CrewSolverResult } from '../src/modules/transit/timetabling/crew-solver/crew-solver.calc'
 import { CrewImprover } from '../src/modules/transit/timetabling/crew-solver/crew-solver.improve'
 
 // Runs the crew solver outside the API — construction, then continuous improvement — and
 // prints construction vs improved side by side. A fixed seed repeats a run, so weights and
 // moves can be compared. Nothing is written.
-// Usage: pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch]
+// Usage: pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch] (locked duties ignored)
+//        [--current] (start from the plan's duties instead of the construction)
 //        [--meal=none|allowed|continuous|fractioned] (overrides settings.mealRule: allowed =
 //        continuous allowed, continuous/fractioned = that form required)
 //        [--settings='{"range":{"tripperRatio":{"modifier":30}}}'] (deep-merged over the settings)
@@ -53,7 +54,8 @@ async function main() {
 
   const prisma = new PrismaService()
   const { settings } = await new CrewPlanService(prisma, new TransitCrewConfigService(prisma)).resolveSettings(crewPlanId)
-  const input = await loadCrewSolverInput(prisma, crewPlanId, settings)
+  const current = args.includes('--current')
+  const input = await loadCrewSolverInput(prisma, crewPlanId, settings, { current })
   if (args.includes('--scratch')) input.locked = []
   const merge = (a: any, b: any): any => (b && typeof b === 'object' && !Array.isArray(b)
     ? Object.fromEntries([...new Set([...Object.keys(a ?? {}), ...Object.keys(b)])].map(k => [k, k in b ? merge(a?.[k], b[k]) : a[k]]))
@@ -69,13 +71,14 @@ async function main() {
         form: mealArg === 'fractioned' ? 'fractioned' : 'continuous',
       }
     }
-    Object.assign(input, await loadCrewSolverInput(prisma, crewPlanId, settings), { locked: input.locked })
+    Object.assign(input, await loadCrewSolverInput(prisma, crewPlanId, settings, { current }), { locked: input.locked })
   }
   await prisma.$disconnect()
 
   let t = performance.now()
-  const construction = solveCrewPlan(input)
-  console.log(`construção: ${(performance.now() - t).toFixed(0)} ms`)
+  const seeded = current ? seedCrewPlan(input) : null
+  const construction = seeded ? evaluateSolverDuties(input, seeded.duties) : solveCrewPlan(input)
+  console.log(`${seeded ? `ponto de partida: escala atual (${seeded.filled} jornadas para descobertos, ${input.droppedPieces} pegadas descartadas)` : 'construção'}: ${(performance.now() - t).toFixed(0)} ms`)
 
   const maxMs = seconds * 1000
   const noImprovementMs = settings.stopNoImprovementMinutes * 60_000

@@ -10,7 +10,7 @@
 The solver decides **who drives what**: it covers every stretch the vehicles of a `VehiclePlan` need a driver for with DRIVER duties, whose pieces start and end at relief points. Vehicles are fixed — moving trips between vehicles is the vehicle solver's job (and "Reduzir trocas de carro").
 
 - runs in **worker threads**, streams progress over **SSE**;
-- **one mode**: a greedy construction gives the first proposal in milliseconds, then a continuous improvement (simulated annealing) runs until stopped, out of time or without improvement;
+- **two starting points** (`start`): the plan's own duties (**current**, the default — refine them) or a greedy construction (**scratch** — after a settings or vehicle change, or to get away from the current structure); from there a continuous improvement (simulated annealing) runs until stopped, out of time or without improvement. "Melhorias" count from the starting point;
 - **several searches side by side**: a generation runs several workers from different seeds (`general.solverMaxSearches`, default 4) and keeps the best proposal of them all;
 - **the generation belongs to the crew plan**, not to the screen: it keeps running when the modal closes, the plan screen picks it up again, and the topbar lists it (background generations);
 - **the solver optimizes what the screen shows**: every duty is evaluated by `evaluateDuty` and every plan by `CrewScoreAggregate` — the same code `CrewPlanService.recalculate()` uses for hand-built plans.
@@ -37,7 +37,7 @@ crew-plan/
 
 Scripts (nothing is written):
 
-- `pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch] [--meal=none|allowed|continuous|fractioned] [--settings=json]` — construction vs improved proposal side by side, with each criterion's loss. `--settings` is deep-merged over the plan's settings.
+- `pnpm crew:solver-bench <crewPlanId> [seconds=60] [seed=1] [--scratch] (locked duties ignored) [--current] (start from the plan's duties) [--meal=none|allowed|continuous|fractioned] [--settings=json]` — starting point vs improved proposal side by side, with each criterion's loss. `--settings` is deep-merged over the plan's settings.
 - `pnpm crew:score-check` — the incremental aggregate against the full calculation, for every crew plan.
 
 ---
@@ -162,6 +162,10 @@ The score is the weighted mean of the criteria values (0–1) on a 0–9999 scal
 
 ---
 
+## Starting from the plan's duties (`seedCrewPlan`)
+
+With `start: current` the first proposal is the plan's own DRIVER duties (not locked; with base scratch the locked ones too) — pieces that are stale or on a block the vehicle plan no longer has are left out (`start.droppedPieces`). The improvement never changes the coverage, so what they leave without a driver goes to the construction first: it runs with those duties as locked and covers only the gaps (`start.filled`). Falls back to the construction (`start.fallback`) when the plan has no driver duty to start from. Measured on the dev plans: a fully covered plan starts exactly where it is (55d6: 188 duties → 187 in 12 s); with 10 duties removed, 12 duties covered the gap, nothing left without a driver. From current gets there fast and never ends below the plan; from scratch sometimes finds a better plan in the end — both stay.
+
 ## Construction (`solveCrewPlan`)
 
 1. **Chains** — per block, the uncovered service spans (locked duties aside), joined across the vehicle's own intervals; across a depot stay only when it fits `splitInterval`, and then it can only be a split (the driver leaves the vehicle at the depot and comes back to it — never a meal inside the piece, never worked).
@@ -206,7 +210,7 @@ Every duty a move builds follows the hard rules (`build`); a move that breaks on
 
 ## Jobs and protocol
 
-`CrewSolverService.start` loads the input once and starts `max(1, min(general.solverMaxSearches, cpus − 1))` workers from different seeds (Configurações › Geral › Buscas em Paralelo do Otimizador). Each worker: construction → proposal 1, then improvement in 50 ms slices (the event loop turns between them, so `stop` gets through), a better proposal at most once a second, progress every 500 ms; it ends on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes`, posting its best first. With `optimize: false` there is a single worker and it ends (`finished`) right after proposal 1.
+`CrewSolverService.start` loads the input once and starts `max(1, min(general.solverMaxSearches, cpus − 1))` workers from different seeds (Configurações › Geral › Buscas em Paralelo do Otimizador). Each worker: the starting point (`start` message, then proposal 1), then improvement in 50 ms slices (the event loop turns between them, so `stop` gets through), a better proposal at most once a second, progress every 500 ms; it ends on `stop`, `stopMaxTotalMinutes` or `stopNoImprovementMinutes`, posting its best first. With `optimize: false` there is a single worker and it ends (`finished`) right after proposal 1.
 
 The job combines them:
 
@@ -231,9 +235,10 @@ A generation is saved as it runs (`SolverRun`, shared with the vehicle solver �
 | Param | Default | Effect |
 |---|---|---|
 | `base` | `complete` | **complete**: keeps the locked duties and covers the rest; **scratch**: vehicles only |
+| `start` | `current` | **current**: starts from the plan's duties (gaps covered first); **scratch**: from the construction |
 | `direction` | `balanced` | `fewer_duties` doubles `anchored.dutyCount.weight`; `fewer_paid` doubles `anchored.efficiency.weight` and `range.overtimeRatio.modifier` |
 | `fareCollector` / `assistant` | off | replicate the driver duties with role `FARE_COLLECTOR` / `ASSISTANT` (same pieces and breaks) |
-| `optimize` | on | off: only the construction (one worker, ends after proposal 1) |
+| `optimize` | on | off: only the starting point (one worker, ends after proposal 1) |
 
 ### Accepting
 
@@ -243,7 +248,7 @@ A DRAFT crew plan gets the duties **in place** (every other duty goes, locked on
 
 ## Frontend
 
-- `crew-plan/[id]/components/OptimizeCrewModal.tsx` — parameters, progress (SSE), best proposal against the current plan, "Criar versão".
+- `crew-plan/[id]/components/OptimizeCrewModal.tsx` — parameters (starting point, base, direction, roles…), where the search started (gaps covered, pieces left out, fallback), progress (SSE), best proposal against the current plan — it can be applied even when it's below the plan, "Criar versão".
 - Topbar of the crew plan: **Otimizar** split button — "Gerar escala" (main) and "Reduzir trocas de carro".
 - `components/layout/background-jobs.tsx` — generations running in the background.
 - `transit/settings/crew-settings-editor.tsx` — the settings (global / per Scope) and the plan's own copy (settings modal).
