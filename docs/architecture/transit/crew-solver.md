@@ -228,7 +228,7 @@ The job combines them:
 | `POST :id/solver/accept` | the best proposal becomes duties |
 | `GET transit/crew-solver/jobs` | every plan's generation (topbar) |
 
-A generation is saved as it runs (`SolverRun`, shared with the vehicle solver — see solver.md › Persistence) and kept until accepted, discarded or replaced; a restart leaves it `INTERRUPTED` with the best proposal saved until then. Accepting refuses a plan whose vehicle blocks (trips, deadruns, intervals) or locked duties (base complete) changed since the start (fingerprint). Access: `create` on `CrewPlan` (`read` for `current`).
+A generation is saved as it runs (`SolverRun`, shared with the vehicle solver — see solver.md › Persistence) and kept until accepted, discarded or replaced; a restart leaves it `INTERRUPTED` with the best proposal saved until then. Accepting refuses a plan whose vehicle blocks (trips, deadruns, intervals), locked duties (base complete) or, with start current, driver duties (pieces, breaks, kind, empresa) changed since the start (fingerprint) — an edit made after the generation is never silently replaced; from scratch the duties don't count (the proposal doesn't depend on them). Access: `create` on `CrewPlan` (`read` for `current`).
 
 ### Parameters
 

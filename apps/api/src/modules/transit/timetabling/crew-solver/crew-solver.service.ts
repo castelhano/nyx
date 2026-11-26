@@ -124,11 +124,13 @@ export class CrewSolverService {
   ) {}
 
   // What a proposal is built on: the vehicle plan's blocks as the crew sees them (trips,
-  // deadruns, intervals) and, with base complete, the locked duties it keeps
+  // deadruns, intervals), the locked duties it keeps (base complete) and, with start: current,
+  // the driver duties it started from — an edit to any of them after the generation makes
+  // applying refuse instead of silently replacing it
   private async fingerprint(crewPlanId: string, params: CrewSolverParams): Promise<string> {
     const plan = await this.prisma.crewPlan.findUnique({ where: { id: crewPlanId }, select: { vehiclePlanId: true } })
     if (!plan) throw new NotFoundException('crewPlan not found')
-    const [blocks, locked] = await Promise.all([
+    const [blocks, duties] = await Promise.all([
       this.prisma.vehicleBlock.findMany({
         where:   { vehiclePlanId: plan.vehiclePlanId },
         orderBy: { id: 'asc' },
@@ -139,15 +141,21 @@ export class CrewSolverService {
           blockIntervals: { orderBy: { departureMinutes: 'asc' }, select: { departureMinutes: true, arrivalMinutes: true } },
         },
       }),
-      params.base === 'complete'
-        ? this.prisma.duty.findMany({
-            where:   { crewPlanId, constraints: { path: ['locked'], equals: true } },
-            orderBy: { id: 'asc' },
-            select:  { id: true, pieces: { orderBy: { sequence: 'asc' }, select: { vehicleBlockId: true, startMinutes: true, endMinutes: true } } },
-          })
-        : Promise.resolve([]),
+      this.prisma.duty.findMany({
+        where:   { crewPlanId },
+        orderBy: { id: 'asc' },
+        select: {
+          id: true, role: true, kind: true, branchId: true, constraints: true,
+          pieces:     { orderBy: { sequence: 'asc' }, select: { vehicleBlockId: true, startMinutes: true, endMinutes: true, isStale: true } },
+          activities: { orderBy: { startMinutes: 'asc' }, select: { type: true, intervalTypeId: true, startMinutes: true, endMinutes: true } },
+        },
+      }),
     ])
-    return fingerprintOf([blocks, locked])
+    const read = duties.filter(d => {
+      const locked = !!(d.constraints as { locked?: boolean } | null)?.locked
+      return (params.base === 'complete' && locked) || (params.start === 'current' && d.role === 'DRIVER')
+    })
+    return fingerprintOf([blocks, read])
   }
 
   async start(crewPlanId: string, jobId: string, rawParams: Partial<CrewSolverParams> | undefined, user: AuthUser | undefined): Promise<void> {
@@ -363,15 +371,15 @@ export class CrewSolverService {
   // the roles asked for. A DRAFT crew plan gets them in place (every other duty goes); from an
   // ACTIVE one a new DRAFT version is created — simulations don't pile up as versions. Duty
   // numbers: locked ones keep theirs, the rest take the free numbers in start order; a replica
-  // takes its driver's number when free. Refused when the vehicle blocks or the locked duties
-  // changed since the generation read them (fingerprint).
+  // takes its driver's number when free. Refused when the vehicle blocks, the locked duties or
+  // (start: current) the driver duties changed since the generation read them (fingerprint).
   async accept(crewPlanId: string, jobId: string, description?: string): Promise<{ id: string; inPlace: boolean }> {
     const v = await this.viewById(jobId)
     if (!v || v.crewPlanId !== crewPlanId) throw new NotFoundException('Geração não encontrada ou expirada')
     const { best, params } = v
     if (!best) throw new BadRequestException('Nenhuma proposta disponível ainda')
     if (await this.fingerprint(crewPlanId, params) !== v.fingerprint) {
-      throw new BadRequestException('Os carros do planejamento ou as jornadas travadas mudaram desde a geração — gere novamente')
+      throw new BadRequestException('A escala ou os carros do planejamento mudaram desde a geração — gere novamente')
     }
     this.drop(jobId)
 
