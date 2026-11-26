@@ -1,4 +1,4 @@
-import { validateBlock, type VehicleBlockIssue } from '@nyx/schemas'
+import { validateBlock, type BlockValidationInput, type VehicleBlockIssue } from '@nyx/schemas'
 import type { TransitGeneralConfigService } from '../../settings/transit-general-config.service'
 
 // VehicleBlock.issues (packages/schemas/transit/block-validation.ts) — computed by
@@ -11,6 +11,24 @@ export async function defaultIntervalMaxMinutes(db: any, generalConfig: TransitG
   if (!defaultIntervalTypeId) return null
   const type = await db.intervalType.findUnique({ where: { id: defaultIntervalTypeId }, select: { maxMinutes: true } })
   return type?.maxMinutes ?? null
+}
+
+// STAND_NOT_ALLOWED: a stop of the default IntervalType's min or more (120 without one — the vehicle
+// solver's default) only where a route lets the vehicle stand (RouteLocality.allowsVehicleStand)
+export async function vehicleStandRule(db: any, generalConfig: TransitGeneralConfigService): Promise<NonNullable<BlockValidationInput['stand']>> {
+  const { defaultIntervalTypeId } = await generalConfig.get()
+  const [type, points] = await Promise.all([
+    defaultIntervalTypeId ? db.intervalType.findUnique({ where: { id: defaultIntervalTypeId }, select: { minMinutes: true } }) : null,
+    db.routeLocality.findMany({ where: { allowsVehicleStand: true, localityId: { not: null } }, select: { routeId: true, localityId: true } }),
+  ])
+  const allowed = new Set((points as { routeId: string; localityId: string }[]).map(p => `${p.routeId}:${p.localityId}`))
+  return { minMinutes: type?.minMinutes ?? 120, allowed: (routeId, localityId) => allowed.has(`${routeId}:${localityId}`) }
+}
+
+// DEADRUN_TOO_SHORT: the matrix's minutes rounded as block-mutation.utils builds the deadruns
+export function travelMinutesOf(matrix: { originId: string; destinationId: string; baseMinutes: number; speedRatio: number }[]): BlockValidationInput['travelMinutes'] {
+  const minutes = new Map(matrix.map(m => [`${m.originId}:${m.destinationId}`, Math.round(m.baseMinutes * m.speedRatio)]))
+  return (from, to) => minutes.get(`${from}:${to}`)
 }
 
 // members per group (trips, deadruns, intervals sharing a bundleId) in the plan — BUNDLE_BROKEN
@@ -42,24 +60,26 @@ export async function planLineOperators(db: any, planId: string): Promise<Map<st
 export interface IssueBlockRow {
   depotId:        string
   branchId:       string | null
-  blockTrips:     { trip: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null; route: { lineId?: string; originLocalityId: string; destinationLocalityId: string } } }[]
+  blockTrips:     { trip: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null; routeId?: string; route: { lineId?: string; originLocalityId: string; destinationLocalityId: string } } }[]
   blockDeadruns:  { type: string; departureMinutes: number; arrivalMinutes: number; originLocalityId: string; destinationLocalityId: string; bundleId?: string | null }[]
   blockIntervals: { departureMinutes: number; arrivalMinutes: number; bundleId?: string | null }[]
 }
 
-export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null, bundleSizes?: Map<string, number>, lineOperators?: Map<string, string[]>): VehicleBlockIssue[] {
+// the optional checks: absent ones are skipped
+export type BlockIssueRules = Pick<BlockValidationInput, 'bundleSizes' | 'lineOperators' | 'travelMinutes' | 'stand'>
+
+export function blockIssues(block: IssueBlockRow, maxStandMinutes: number | null, rules: BlockIssueRules = {}): VehicleBlockIssue[] {
   return validateBlock({
     depotId:  block.depotId,
     branchId: block.branchId,
     trips:   block.blockTrips.map(({ trip }) => ({
       departureMinutes: trip.departureMinutes, arrivalMinutes: trip.arrivalMinutes,
       originLocalityId: trip.route.originLocalityId, destinationLocalityId: trip.route.destinationLocalityId,
-      bundleId: trip.bundleId, lineId: trip.route.lineId,
+      bundleId: trip.bundleId, lineId: trip.route.lineId, routeId: trip.routeId,
     })),
     deadruns:  block.blockDeadruns,
     intervals: block.blockIntervals,
     maxStandMinutes,
-    bundleSizes,
-    lineOperators,
+    ...rules,
   })
 }

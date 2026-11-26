@@ -20,7 +20,7 @@ import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip, type DeadrunWindow } from './block-mutation.utils'
-import { blockIssues, defaultIntervalMaxMinutes, planBundleSizes, planLineOperators } from './block-issues.utils'
+import { blockIssues, defaultIntervalMaxMinutes, planBundleSizes, planLineOperators, travelMinutesOf, vehicleStandRule } from './block-issues.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, dissolveBundlesOf, recomputeLineDrift, recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
 import { findDeadrunIdsAnchoredToTrips } from './block-deadrun.utils'
@@ -46,6 +46,7 @@ const SCORING_BLOCK_INCLUDE = {
           departureMinutes:    true,
           arrivalMinutes:      true,
           bundleId:            true,
+          routeId:             true,
           route: {
             select: {
               lineId:                true,
@@ -206,7 +207,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // Accepts an optional transaction client so applyDiff can run this as the closing
   // step of its own atomic batch instead of opening a second transaction.
   async recalculate(planId: string, db: any = this.prisma): Promise<void> {
-    const [plan, blocks, matrix, planLines, { settings: planningCfg }, maxStandMinutes, bundleSizes, lineOperators] = await Promise.all([
+    const [plan, blocks, matrix, planLines, { settings: planningCfg }, maxStandMinutes, bundleSizes, lineOperators, stand] = await Promise.all([
       db.vehiclePlan.findUnique({
         where:  { id: planId },
         select: { validTo: true, dayType: { select: { code: true } }, scope: { select: { operators: { select: { branchId: true, share: true } } } } },
@@ -221,6 +222,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       defaultIntervalMaxMinutes(db, this.generalConfig),
       planBundleSizes(db, planId),
       planLineOperators(db, planId),
+      vehicleStandRule(db, this.generalConfig),
     ])
 
     if (!plan) return
@@ -233,6 +235,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const matrixKm: Record<string, number> = {}
     for (const m of matrix) matrixKm[`${m.originId}:${m.destinationId}`] = m.distanceKm
+    const travelMinutes = travelMinutesOf(matrix)
 
     const blocksWithTrips = blocks.filter((b: any) => b.blockTrips.length > 0)
 
@@ -331,7 +334,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           productiveKm:      a.productiveKm,
           deadrunKm:         a.deadrunKm,
         }
-        const issues = blockIssues(block, maxStandMinutes, bundleSizes, lineOperators)
+        const issues = blockIssues(block, maxStandMinutes, { bundleSizes, lineOperators, travelMinutes, stand })
         return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false, issues, hasIssues: issues.length > 0 } })
       }),
       ...blocks
