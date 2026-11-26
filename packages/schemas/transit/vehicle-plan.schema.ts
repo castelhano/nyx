@@ -221,6 +221,16 @@ export const vehiclePlanSchema = withMeta(
         opensCreated: true,
       },
       {
+        // asks for the day type, so it opens the plan with the modal — conventional plans only
+        // (no base): docs/proposal/plan_special_day_plans_v1.md
+        action:      'duplicate-special',
+        label:       'Duplicar como dia especial',
+        icon:        'Copy',
+        permission:  'create',
+        href:        (row) => `/transit/vehicle-plan/${row.id}?duplicateSpecial=1`,
+        visibleWhen: { field: 'baseDayTypeId', value: null },
+      },
+      {
         // Sem visibleWhen — disponível em qualquer status, inclusive ACTIVE (ao
         // contrário das demais rowActions abaixo, restritas a DRAFT).
         action:     'recalculate',

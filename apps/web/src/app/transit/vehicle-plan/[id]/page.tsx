@@ -72,7 +72,10 @@ export default function VehiclePlanPage() {
   const router      = useRouter()
   const confirm     = useConfirm()
   // ?optimize=1 (from the topbar's background generations) opens the optimize modal on Cenários
-  const optimizeFromUrl = useSearchParams().get('optimize') === '1'
+  const searchParams    = useSearchParams()
+  const optimizeFromUrl = searchParams.get('optimize') === '1'
+  // the list's "Duplicar como dia especial" opens the plan with the modal
+  const duplicateSpecialFromUrl = searchParams.get('duplicateSpecial') === '1'
 
   const isNew = id === 'new'
 
@@ -432,7 +435,8 @@ export default function VehiclePlanPage() {
     }
   }
   const [activationOpen, setActivationOpen] = useState(false)
-  const [duplicateSpecialOpen, setDuplicateSpecialOpen] = useState(false)
+  const [duplicateSpecialState, setDuplicateSpecialOpen] = useState<boolean | null>(null)
+  const duplicateSpecialOpen = duplicateSpecialState ?? duplicateSpecialFromUrl
 
   // ── Vehicles ⇄ Crew switch ──────────────────────────────────────────────────
   // Opens the plan's ACTIVE crew plan (else the latest); with none yet, offers to create
@@ -805,7 +809,10 @@ export default function VehiclePlanPage() {
         <DuplicateSpecialModal
           planId={id}
           dayTypeName={ganttData.plan.dayType.name}
-          onClose={() => setDuplicateSpecialOpen(false)}
+          onClose={() => {
+            setDuplicateSpecialOpen(false)
+            if (duplicateSpecialFromUrl) router.replace('?', { scroll: false })
+          }}
         />
       )}
 
