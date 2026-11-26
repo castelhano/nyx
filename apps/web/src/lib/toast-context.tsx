@@ -46,7 +46,8 @@ function nextId() { return `toast-${++_counter}` }
 const VARIANT_DEFAULTS: Record<Variant, Pick<ToastItem, 'autoDismiss' | 'autoDismissDelay'>> = {
   success: { autoDismiss: true,  autoDismissDelay: 6000 },
   info:    { autoDismiss: true,  autoDismissDelay: 6000 },
-  warning: { autoDismiss: true,  autoDismissDelay: 10000 },
+  // a warning asks for attention: it stays until closed, like an error
+  warning: { autoDismiss: false, autoDismissDelay: 10000 },
   error:   { autoDismiss: false, autoDismissDelay: 10000 },
 }
 
