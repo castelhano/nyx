@@ -247,8 +247,7 @@ export async function assembleOso(
     const lastFamilyBlockTripForAnchor = chronological.filter(bt => familyLineIds.has(bt.trip.route.lineId)).at(-1)
     const familyClosesAt = lastFamilyBlockTripForAnchor?.trip.arrivalMinutes as number | undefined
 
-    // a RECO belongs to this sheet only right after one of its trips — not the positional anchor
-    // of findDeadrunIdsAnchoredToTrips, which ties every RETURN to the block's last trip
+    // a RECO belongs to this sheet only right after one of its trips
     const returnsFromFamilyTrip = (dr: any) => {
       const previous = chronological.filter(bt => bt.trip.arrivalMinutes <= dr.departureMinutes).at(-1)
       return previous !== undefined && familyLineIds.has(previous.trip.route.lineId)
@@ -279,9 +278,8 @@ export async function assembleOso(
       })
     }
 
-    // a family trip that isn't the block's own true last trip never gets a real RETURN
-    // anchored to it (findDeadrunIdsAnchoredToTrips anchors RETURN only to the block's actual
-    // last trip, regardless of line) — the block simply keeps running other lines afterward.
+    // a family trip that isn't the block's own true last trip may have no RETURN after it —
+    // the block simply keeps running other lines afterward.
     // From this line's own OSO there's no more of it left in the block, so that's exactly
     // "recolhida" as far as this sheet is concerned: a synthetic RETURN closes the family's
     // event stream here instead of leaving its last trip open-ended with no volta/RECO at all.
