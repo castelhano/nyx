@@ -76,6 +76,7 @@ function markingFontOpts(fontStyle?: TripMarkingFontStyle): Partial<ExcelJS.Font
     case 'BOLD':          return { bold: true }
     case 'ITALIC':        return { italic: true }
     case 'BOLD_ITALIC':   return { bold: true, italic: true }
+    case 'BOLD_UNDERLINE': return { bold: true, underline: true }
     case 'UNDERLINE':     return { underline: true }
     case 'STRIKETHROUGH': return { strike: true }
     default:              return {}

@@ -288,6 +288,7 @@ function markingFontClass(style?: TripMarkingFontStyle): string {
     case 'BOLD':          return 'font-bold'
     case 'ITALIC':        return 'italic'
     case 'BOLD_ITALIC':   return 'font-bold italic'
+    case 'BOLD_UNDERLINE': return 'font-bold underline'
     case 'UNDERLINE':     return 'underline'
     case 'STRIKETHROUGH': return 'line-through'
     default:              return ''

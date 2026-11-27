@@ -6,7 +6,7 @@ import { z } from 'zod'
 // Never used for the DISPLACEMENT marking, which is a fixed constant in the OSO export
 // pipeline, never persisted (docs/proposal/trash/plan_trip_markings_v1.md, regra 6).
 
-export const TRIP_MARKING_FONT_STYLES = ['BOLD', 'ITALIC', 'BOLD_ITALIC', 'UNDERLINE', 'STRIKETHROUGH'] as const
+export const TRIP_MARKING_FONT_STYLES = ['BOLD', 'ITALIC', 'BOLD_ITALIC', 'BOLD_UNDERLINE', 'UNDERLINE', 'STRIKETHROUGH'] as const
 export const TRIP_MARKING_BG_COLORS   = ['AZUL', 'VERDE', 'ROSA', 'ROXO', 'CINZA', 'VERMELHO'] as const
 
 export const tripMarkingSchema = z.object({

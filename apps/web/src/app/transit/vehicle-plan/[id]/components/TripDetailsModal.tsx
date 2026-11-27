@@ -33,6 +33,7 @@ export const FONT_STYLE_OPTIONS: { value: TripMarkingFontStyle; label: string }[
   { value: 'BOLD',          label: 'Negrito' },
   { value: 'ITALIC',        label: 'Itálico' },
   { value: 'BOLD_ITALIC',   label: 'Negrito + itálico' },
+  { value: 'BOLD_UNDERLINE', label: 'Negrito + sublinhado' },
   { value: 'UNDERLINE',     label: 'Sublinhado' },
   { value: 'STRIKETHROUGH', label: 'Tachado' },
 ]
