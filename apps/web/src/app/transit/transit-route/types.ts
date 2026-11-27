@@ -42,6 +42,9 @@ export interface TransitRoute {
   // manual override for the trajectory color — null inherits DIR_COLOR[direction],
   // used when a line has more than one sentido in the same direction
   color: string | null
+  // depot new blocks of this route start from (VehiclePlanService.resolveOrCreateBlock and the
+  // line schedule generator) — null lets them pick one
+  homeDepotId: string | null
 }
 
 export interface GeoJSONLineString {

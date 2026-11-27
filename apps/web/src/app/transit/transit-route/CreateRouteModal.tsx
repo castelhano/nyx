@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Button }          from '@/components/ui/button'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { ColorPicker }     from '@/components/ui/color-picker'
@@ -31,6 +32,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
   const [destId,      setDestId]      = useState(route && route.direction !== 'CIRCULAR' ? route.destinationLocalityId : '')
   const [originLabelOverride, setOriginLabelOverride] = useState<string | null>(null)
   const [destLabelOverride,   setDestLabelOverride]   = useState<string | null>(null)
+  const [homeDepotId, setHomeDepotId] = useState(route?.homeDepotId ?? '')
   const [isPending,   setIsPending]   = useState(false)
   const [error,       setError]       = useState<string | null>(null)
 
@@ -56,6 +58,17 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
       setDestLoaded(true)
     }).catch(() => setDestLoaded(true))
   }, [route])
+
+  // same query (and cache) as the vehicle plan's block popover
+  const { data: depots } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['transit', 'transit-locality', 'select-list', 'depots'],
+    queryFn:  async () => {
+      const r = await apiFetch('/transit/transit-locality?pageSize=999&f_isDepot=true')
+      const j = await r.json()
+      return (j.data ?? []) as { id: string; name: string }[]
+    },
+    staleTime: 60_000,
+  })
 
   const { search: originSearch, setSearch: setOriginSearch, rows: originRows, isLoading: originLoading } =
     useComboboxSearch('transit', 'transit-locality')
@@ -104,6 +117,7 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
         lineId, direction, name: name.trim(), color,
         originLocalityId:      originId,
         destinationLocalityId: isCircular ? originId : destId,
+        homeDepotId:           homeDepotId || null,
       }
       // a circular route's single set of flags applies to both endpoint rows
       const endDestFlags = isCircular ? originFlags : destFlags
@@ -192,6 +206,18 @@ export function CreateRouteModal({ lineId, route, onClose, onSaved }: Props) {
             placeholder="Ex: Terminal → Shopping"
             autoFocus
           />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-sm font-medium">Depósito preferencial</label>
+          <select
+            value={homeDepotId}
+            onChange={(e) => setHomeDepotId(e.target.value)}
+            className="w-full h-9 px-3 text-sm border border-input rounded-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">— Nenhum (o plano escolhe)</option>
+            {depots?.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
         </div>
 
         <div className="space-y-1">
