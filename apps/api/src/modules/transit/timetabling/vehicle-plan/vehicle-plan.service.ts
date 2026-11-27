@@ -568,77 +568,81 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
         return bundleIdMap.get(id)
       }
 
+      // ids made here so each table is written with one createMany — one insert per trip
+      // ran past the transaction's timeout on large plans
+      const blockRows:    any[] = []
+      const tripRows:     any[] = []
+      const blockTripRows: { vehicleBlockId: string; tripId: string; sequence: number }[] = []
+      const deadrunRows:  any[] = []
+      const intervalRows: any[] = []
+
       for (const block of plan.blocks) {
-        const newBlock = await tx.vehicleBlock.create({
-          data: {
-            vehiclePlanId: newPlan.id,
-            branchId:      block.branchId ?? undefined,
-            blockNumber:   block.blockNumber,
-            depotId:       block.depotId,
-            vehicleType:   block.vehicleType,
-            summary:       block.summary ?? undefined,
-            constraints:   block.constraints ?? undefined,
-            issues:        block.issues ?? undefined,
-            hasIssues:     block.hasIssues,
-          },
+        const newBlockId = randomUUID()
+        blockRows.push({
+          id:            newBlockId,
+          vehiclePlanId: newPlan.id,
+          branchId:      block.branchId ?? undefined,
+          blockNumber:   block.blockNumber,
+          depotId:       block.depotId,
+          vehicleType:   block.vehicleType,
+          summary:       block.summary ?? undefined,
+          constraints:   block.constraints ?? undefined,
+          issues:        block.issues ?? undefined,
+          hasIssues:     block.hasIssues,
         })
 
-        if (block.blockTrips.length > 0) {
-          const newBlockTrips: { vehicleBlockId: string; tripId: string; sequence: number }[] = []
-
-          for (const bt of block.blockTrips as any[]) {
-            const origId = bt.trip.id
-            if (!tripIdMap.has(origId)) {
-              const newTrip = await tx.transitTrip.create({
-                data: {
-                  vehiclePlanId:       newPlan.id,
-                  routeId:             bt.trip.routeId,
-                  // the trips run on the copy's day type; the line's pin says which OSO governs them
-                  dayTypeId:           target.dayTypeId,
-                  departureMinutes:    bt.trip.departureMinutes,
-                  arrivalMinutes:      bt.trip.arrivalMinutes,
-                  requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
-                  stopPattern:         bt.trip.stopPattern ?? undefined,
-                  constraints:         bt.trip.constraints ?? undefined,
-                  notes:               bt.trip.notes ?? undefined,
-                  markings:            bt.trip.markings ?? undefined,
-                  bundleId:            copyBundle(bt.trip.bundleId),
-                },
-              })
-              tripIdMap.set(origId, newTrip.id)
-            }
-            newBlockTrips.push({ vehicleBlockId: newBlock.id, tripId: tripIdMap.get(origId)!, sequence: bt.sequence })
+        for (const bt of block.blockTrips as any[]) {
+          const origId = bt.trip.id
+          if (!tripIdMap.has(origId)) {
+            const newTripId = randomUUID()
+            tripRows.push({
+              id:                  newTripId,
+              vehiclePlanId:       newPlan.id,
+              routeId:             bt.trip.routeId,
+              // the trips run on the copy's day type; the line's pin says which OSO governs them
+              dayTypeId:           target.dayTypeId,
+              departureMinutes:    bt.trip.departureMinutes,
+              arrivalMinutes:      bt.trip.arrivalMinutes,
+              requiredVehicleType: bt.trip.requiredVehicleType ?? undefined,
+              stopPattern:         bt.trip.stopPattern ?? undefined,
+              constraints:         bt.trip.constraints ?? undefined,
+              notes:               bt.trip.notes ?? undefined,
+              markings:            bt.trip.markings ?? undefined,
+              bundleId:            copyBundle(bt.trip.bundleId),
+            })
+            tripIdMap.set(origId, newTripId)
           }
-
-          await tx.blockTrip.createMany({ data: newBlockTrips })
+          blockTripRows.push({ vehicleBlockId: newBlockId, tripId: tripIdMap.get(origId)!, sequence: bt.sequence })
         }
 
-        if (block.blockDeadruns.length > 0) {
-          await (tx as any).blockDeadrun.createMany({
-            data: block.blockDeadruns.map((d: any) => ({
-              vehicleBlockId:        newBlock.id,
-              type:                  d.type,
-              originLocalityId:      d.originLocalityId,
-              destinationLocalityId: d.destinationLocalityId,
-              departureMinutes:      d.departureMinutes,
-              arrivalMinutes:        d.arrivalMinutes,
-              bundleId:              copyBundle(d.bundleId),
-            })),
+        for (const d of block.blockDeadruns as any[]) {
+          deadrunRows.push({
+            vehicleBlockId:        newBlockId,
+            type:                  d.type,
+            originLocalityId:      d.originLocalityId,
+            destinationLocalityId: d.destinationLocalityId,
+            departureMinutes:      d.departureMinutes,
+            arrivalMinutes:        d.arrivalMinutes,
+            bundleId:              copyBundle(d.bundleId),
           })
         }
 
-        if (block.blockIntervals.length > 0) {
-          await (tx as any).blockInterval.createMany({
-            data: block.blockIntervals.map((bi: any) => ({
-              vehicleBlockId:   newBlock.id,
-              intervalTypeId:   bi.intervalTypeId,
-              departureMinutes: bi.departureMinutes,
-              arrivalMinutes:   bi.arrivalMinutes,
-              bundleId:         copyBundle(bi.bundleId),
-            })),
+        for (const bi of block.blockIntervals as any[]) {
+          intervalRows.push({
+            vehicleBlockId:   newBlockId,
+            intervalTypeId:   bi.intervalTypeId,
+            departureMinutes: bi.departureMinutes,
+            arrivalMinutes:   bi.arrivalMinutes,
+            bundleId:         copyBundle(bi.bundleId),
           })
         }
       }
+
+      if (blockRows.length)     await tx.vehicleBlock.createMany({ data: blockRows })
+      if (tripRows.length)      await tx.transitTrip.createMany({ data: tripRows })
+      if (blockTripRows.length) await tx.blockTrip.createMany({ data: blockTripRows })
+      if (deadrunRows.length)   await (tx as any).blockDeadrun.createMany({ data: deadrunRows })
+      if (intervalRows.length)  await (tx as any).blockInterval.createMany({ data: intervalRows })
 
       // the groups' crew members follow their groups' new ids
       const bundleCrew = (plan.constraints as VehiclePlanConstraints | null)?.bundleCrew
@@ -648,7 +652,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       }
 
       return newPlan as unknown as VehiclePlan
-    })
+    }, { timeout: 60_000 })
   }
 
   // "Copiar de outro planejamento" — the plans of the same scope a line can be copied from
