@@ -13,18 +13,19 @@ import { Icons }                from '@/lib/icons'
 import { apiFetch }             from '@/lib/auth'
 import { useToast }             from '@/lib/toast-context'
 import { useShortcutContext }   from '@/lib/keywatch'
-import type { CycleWindow, LineMetrics } from '../views/vehicles.view'
 import { getTravelTime }        from '../travel-time'
 import type { PendingAddEntry, PendingAddTrip, PendingAddDeadrun, PendingAddInterval } from './AddTripModal'
 import {
-  buildUnifiedWindows, absorbPartialGaps, mergeByTolerance, deriveFleetBands,
   updateWindowBoundary, computeBoundaryFlags, mergeWithNext, splitWindow, closeFrequency, totalCycleMinutes,
   effectiveCycleWindow, computeOfertaSeries, estimateGeneration, generateRounds, assignRoundsToBlocks,
   minutesToLabel, labelToMinutes, hourToLabel, labelToHour,
   TOLERANCE_MINUTES, TOLERANCE_LABELS, DEFAULT_MANEUVER_MARGIN_MINUTES,
+  checkServiceRequirements, routeStopFractions, serviceRequirementWindowText,
+  seedLineWindows, lineVehicleCapacity, planningSettingsSchema,
+  type LineGenMetrics, type LineVehicleTypes, type PlanningSettings, type VehicleTypeValue,
   type GenWindow, type Direction, type ToleranceLevel, type GeneratedBlock, type GeneratedLeg, type GenAnchor,
-} from '../line-generator-logic'
-import { checkServiceRequirements, routeStopFractions, serviceRequirementWindowText } from '@nyx/schemas'
+  type LineMetrics,
+} from '@nyx/schemas'
 import { useLineServiceRequirements } from '../../../use-line-service-requirements'
 import {
   detectDeltaGroups, resolveGroupOffsets, interleaveDeltaGroup, measureInterleaveShift, earliestCrossingMinutes,
@@ -59,11 +60,8 @@ interface LineRecord {
   code:    string
   name:    string
   parentLineId: string | null
-  metrics: {
-    windows?:      Record<string, Partial<Record<Direction, CycleWindow[]>>>
-    demand?:       Record<string, Partial<Record<Direction, Record<string, number>>>>
-    renewalIndex?: Partial<Record<Direction | 'overall', number>>
-  } | null
+  metrics: LineGenMetrics | null
+  vehicleTypes?: LineVehicleTypes | null
 }
 
 interface RouteRecord {
@@ -182,18 +180,6 @@ interface LineGenState {
   flexibleStart:       boolean
 }
 
-function seedWindowsFor(
-  line: LineRecord | undefined, dayTypeCode: string, tolerance: ToleranceLevel, vehicleCapacity: number,
-): GenWindow[] {
-  const windowsForDay = line?.metrics?.windows?.[dayTypeCode] ?? line?.metrics?.windows?.['U']
-  const base       = buildUnifiedWindows(windowsForDay?.OUTBOUND ?? [], windowsForDay?.INBOUND ?? [])
-  const absorbed   = absorbPartialGaps(base)
-  const toleranced = mergeByTolerance(absorbed, TOLERANCE_MINUTES[tolerance])
-  const demand  = line?.metrics?.demand?.[dayTypeCode] ?? {}
-  const renewal = line?.metrics?.renewalIndex?.overall ?? 0
-  return deriveFleetBands(toleranced, demand, vehicleCapacity, renewal)
-}
-
 // Reserved-counterflow windows carry no real cycle time for the non-operated
 // direction — this substitutes the resolved deadrun duration (manual override,
 // else whatever the matrix lookup has resolved to so far, else 0 while it's
@@ -205,11 +191,13 @@ function effectiveWindows(windows: GenWindow[], resolvedByWindowId: Map<string, 
     : w)
 }
 
-function makeInitialLineState(line: LineRecord | undefined, dayTypeCode: string): LineGenState {
-  const vehicleCapacity = 80
+function makeInitialLineState(
+  line: LineRecord | undefined, dayTypeCode: string, capacityByType: Record<VehicleTypeValue, number>,
+): LineGenState {
+  const vehicleCapacity = lineVehicleCapacity(capacityByType, line?.vehicleTypes?.preferred)
   const mergeTolerance: ToleranceLevel = 1
   return {
-    windows:             seedWindowsFor(line, dayTypeCode, mergeTolerance, vehicleCapacity),
+    windows:             seedLineWindows(line?.metrics, dayTypeCode, mergeTolerance, vehicleCapacity),
     mergeTolerance,
     vehicleCapacity,
     opStart:             240,  // 04:00
@@ -291,6 +279,19 @@ export function LineScheduleGeneratorModal({
   }, [lineQueries, lineIds])
   const lineLoading = lineQueries.some(q => q.isLoading)
   const lineError   = lineQueries.some(q => q.error)
+
+  // the plan's effective planning settings (same query as the optimize modal) — vehicle capacity
+  // per type seeds each line's supply; the schema defaults stand in when they can't be loaded
+  const settingsQuery = useQuery({
+    queryKey: ['transit', 'vehicle-plan', planId, 'settings'],
+    queryFn:  async (): Promise<{ settings: PlanningSettings }> => {
+      const res = await apiFetch(`/transit/vehicle-plan/${planId}/settings`)
+      if (!res.ok) throw new Error('Erro ao carregar configurações do plano')
+      return res.json()
+    },
+  })
+  const capacityByType = settingsQuery.data?.settings.vehicleCapacity
+    ?? (settingsQuery.isError ? planningSettingsSchema.parse({}).vehicleCapacity : undefined)
 
   const routesQueries = useQueries({
     queries: lineIds.map(lineId => ({
@@ -490,19 +491,20 @@ export function LineScheduleGeneratorModal({
   const directionsSeededRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
+    if (!capacityByType) return
     let changed = false
     const next = { ...lineStates }
     for (const lineId of lineIds) {
       const line = linesById.get(lineId)
       if (!line || seededRef.current.has(lineId)) continue
       seededRef.current.add(lineId)
-      next[lineId] = makeInitialLineState(line, dayTypeCode)
+      next[lineId] = makeInitialLineState(line, dayTypeCode, capacityByType)
       changed = true
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds each new line's state once, as its query arrives
     if (changed) setLineStates(next)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linesById, lineIds, dayTypeCode])
+  }, [linesById, lineIds, dayTypeCode, capacityByType])
 
   useEffect(() => {
     let changed = false
@@ -866,10 +868,10 @@ export function LineScheduleGeneratorModal({
     )
   }
   function changeTolerance(lineId: string, level: ToleranceLevel) {
-    updateLineState(lineId, st => ({ mergeTolerance: level, windows: seedWindowsFor(linesById.get(lineId), dayTypeCode, level, st.vehicleCapacity) }))
+    updateLineState(lineId, st => ({ mergeTolerance: level, windows: seedLineWindows(linesById.get(lineId)?.metrics, dayTypeCode, level, st.vehicleCapacity) }))
   }
   function resetWindows(lineId: string) {
-    updateLineState(lineId, st => ({ windows: seedWindowsFor(linesById.get(lineId), dayTypeCode, st.mergeTolerance, st.vehicleCapacity) }))
+    updateLineState(lineId, st => ({ windows: seedLineWindows(linesById.get(lineId)?.metrics, dayTypeCode, st.mergeTolerance, st.vehicleCapacity) }))
   }
   function addBlankWindow(lineId: string) {
     updateLineState(lineId, st => {

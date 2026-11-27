@@ -9,9 +9,9 @@ import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
-import type { GanttBlock, LineMetrics } from '../views/vehicles.view'
+import type { GanttBlock } from '../views/vehicles.view'
 import type { PendingAddEntry } from './AddTripModal'
-import { redistributeTrips, type Direction, type RedistributeTripCandidate } from '../line-generator-logic'
+import { redistributeTrips, type Direction, type LineMetrics, type RedistributeTripCandidate } from '@nyx/schemas'
 
 const DIR_LABEL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 const DIR_ORDER: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']

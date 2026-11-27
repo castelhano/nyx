@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Icons } from '@/lib/icons'
-import { minutesToLabel, labelToMinutes } from '../line-generator-logic'
+import { minutesToLabel, labelToMinutes } from '@nyx/schemas'
 import type { BlockFilter } from '../hooks/useGanttEditor'
 
 interface Props {

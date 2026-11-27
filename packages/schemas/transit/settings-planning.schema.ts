@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { withMeta } from '../with-meta'
+import { VEHICLE_TYPES } from './vehicle-type'
 
 // Banded reward — value maps to [0,1] via floor/idealMin/idealMax/ceiling, weighted
 // by `modifier` in the score's weighted average. Used both for criteria with a fixed
@@ -68,6 +69,12 @@ const lineDefault = {
   fleetUsage:           { active: true, idealMaxOverPercent: 10, ceilingOverPercent: 50, weight: 25 },
 }
 
+// nominal passengers per vehicle (seated + standing) of each type — supply for the line score
+// (occupancy, oferta × demanda), the line schedule generator and the goal planning analysis; a
+// plan works with types, never with a physical vehicle (Vehicle.totalCapacity is the fleet's
+// own, per vehicle). Defaults = the values the line score used while they were hardcoded
+const vehicleCapacityDefault = { STANDARD: 80, ARTICULATED: 120, BI_ARTICULATED: 160, MICRO_BUS: 30, MINIBUS: 20, VAN: 15 }
+
 export const planningSettingsSchema = withMeta(z.object({
   // least time a vehicle stays at the terminal between two trips at the same place — a hard
   // rule of the vehicle solver, and the import's normalization target
@@ -77,6 +84,9 @@ export const planningSettingsSchema = withMeta(z.object({
   restrictToBranchLines:    z.boolean().default(false),
   stopNoImprovementMinutes: z.number().int().min(1).max(1440).default(10),
   stopMaxTotalMinutes:      z.number().int().min(1).max(4320).default(240),
+
+  // own default: settings stored before it existed still parse
+  vehicleCapacity: z.record(z.enum(VEHICLE_TYPES), z.number().int().min(1).max(500)).default(vehicleCapacityDefault),
 
   range: z.object({
     lineTransfer:         rangeCriterionSchema,

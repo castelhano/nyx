@@ -4,6 +4,8 @@
     "module": "Preserve",
     "moduleResolution": "bundler",
     "noEmit": true,
+    // crypto.randomUUID (line generator) — a global in Node 19+ and in browsers
+    "types": ["node"],
     "paths": {
       "@nyx/types": ["../types/index.ts"]
     }

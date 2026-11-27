@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/auth'
 import { getTravelTime } from '../travel-time'
-import type { Direction } from '../line-generator-logic'
+import type { Direction } from '@nyx/schemas'
 import { detectDeltaGroups, resolveGroupOffsets, type RouteLegRef, type DeltaGroup } from '../multiline-delta-logic'
 import type { ResolvedDeltaGroup } from '../views/line-freq.view'
 

@@ -644,6 +644,14 @@ export default function VehiclePlanPage() {
         onClick:  () => setOptimizeTab(solverJob ? 'scenarios' : 'panel'),
         disabled: isPending || pendingCount > 0,
       }] : []),
+      // goal planning (docs/proposal/plan_goal_planning_v1.md) — only on a draft, like the other generators
+      ...(!isNew && canUpdate ? [{
+        label:    'Planejar por meta',
+        icon:     Icons.Target,
+        onClick:  () => router.push(`/transit/vehicle-plan/${id}/goal`),
+        disabled: status !== 'DRAFT' || pendingCount > 0,
+        overflow: true,
+      }] : []),
       // CSV export — reads the saved plan, so not with pending Gantt edits
       ...(!isNew ? [{
         label:    'Exportar Plano',

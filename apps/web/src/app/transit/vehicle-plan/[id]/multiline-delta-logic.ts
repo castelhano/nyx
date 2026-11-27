@@ -1,7 +1,7 @@
 // Pure helpers for multi-line delta-aware generation (Fase 4 — see
 // docs/proposal/plan_generate_multiline_delta_v1.md).
 
-import type { Direction, GeneratedRound } from './line-generator-logic'
+import type { Direction, GeneratedRound } from '@nyx/schemas'
 
 // One RouteLocality row, in the shape needed here (ordered stop/waypoint
 // sequence for a single route/direction). `localityId` null = OSRM waypoint,

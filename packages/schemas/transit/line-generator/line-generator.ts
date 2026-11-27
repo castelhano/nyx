@@ -1,8 +1,9 @@
 // Pure helpers for the per-line schedule generator (see
 // docs/proposal/vehicle-plan-line-schedule-generator.md).
 
-import type { CycleWindow, LineMetrics } from './views/vehicles.view'
-import { resolveCycleWindow } from './views/vehicles.view'
+import type { CycleWindow, LineMetrics } from './cycle-window'
+import { resolveCycleWindow } from './cycle-window'
+import type { VehicleTypeValue } from '../vehicle-type'
 
 export type Direction = 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
 
@@ -76,7 +77,7 @@ export function labelToMinutes(label: string): number {
 
 const SLOT_STEP = 0.5 // half-hour resolution, same granularity TransitLine.metrics.windows registers at
 
-// Mirrors resolveCycleWindow (vehicles.view.ts) exactly: `to` is inclusive —
+// Mirrors resolveCycleWindow (cycle-window.ts) exactly: `to` is inclusive —
 // it marks the last half-hour slot included, not an exclusive upper bound.
 // Using the same slot-quantized, inclusive check here is what makes two
 // windows like [0,4.5] and [5,5.5] read as contiguous (no slot falls between
@@ -383,6 +384,41 @@ export function deriveFleetBands(
     reservedFlow:             null,
     reservedOverrideMinutes:  null,
   }))
+}
+
+// The parts of TransitLine.metrics the generator seeds from (demand is not in the zod schema yet,
+// see TransitLine.metrics in transit.prisma).
+export interface LineGenMetrics {
+  windows?:      Record<string, Partial<Record<Direction, CycleWindow[]>>>
+  demand?:       Record<string, Partial<Record<Direction, Record<string, number>>>>
+  renewalIndex?: Partial<Record<Direction | 'overall', number>>
+}
+
+/** A line's generation bands for a day type, from its registered cycle windows and demand:
+ *  unified ida/volta timeline → partial gaps absorbed → merged by tolerance → fleet per band
+ *  from demand. Falls back to the 'U' (dia útil) windows like resolveCycleWindow does. */
+export function seedLineWindows(
+  metrics:         LineGenMetrics | null | undefined,
+  dayTypeCode:     string,
+  tolerance:       ToleranceLevel,
+  vehicleCapacity: number,
+): GenWindow[] {
+  const windowsForDay = metrics?.windows?.[dayTypeCode] ?? metrics?.windows?.['U']
+  const base       = buildUnifiedWindows(windowsForDay?.OUTBOUND ?? [], windowsForDay?.INBOUND ?? [])
+  const absorbed   = absorbPartialGaps(base)
+  const toleranced = mergeByTolerance(absorbed, TOLERANCE_MINUTES[tolerance])
+  const demand  = metrics?.demand?.[dayTypeCode] ?? {}
+  const renewal = metrics?.renewalIndex?.overall ?? 0
+  return deriveFleetBands(toleranced, demand, vehicleCapacity, renewal)
+}
+
+/** Passengers per vehicle the generator sizes a line's supply with: the planning settings'
+ *  capacity of the line's preferred vehicle type, else of STANDARD. */
+export function lineVehicleCapacity(
+  capacityByType: Record<VehicleTypeValue, number>,
+  preferredType:  VehicleTypeValue | null | undefined,
+): number {
+  return capacityByType[preferredType ?? 'STANDARD']
 }
 
 /** Updates a single row's `from` or `to`, pushing the touching boundary of

@@ -1,6 +1,6 @@
 'use client'
 
-import type { PlanningSettings, AnchoredCriterion, RangeCriterion } from '@nyx/schemas'
+import { VEHICLE_TYPES, VEHICLE_TYPE_LABELS, type PlanningSettings, type AnchoredCriterion, type RangeCriterion } from '@nyx/schemas'
 import { Icons } from '@/lib/icons'
 import { DurationInput } from '@/components/ui/duration-input'
 import { Switch } from '@/components/ui/switch'
@@ -159,6 +159,34 @@ export function PlanningSettingsEditor({ value, reference, onChange, disabled }:
                       disabled={disabled}
                     />}
                 <span className="text-sm text-muted-foreground w-8">{p.unit}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Vehicle capacity */}
+      <div className="flex flex-col gap-3">
+        <SectionHeader label="Capacidade por Tipo de Veículo" sub="Passageiros por carro (sentados + em pé) — oferta usada pelo gerador de tabelas" />
+        <div className="rounded-lg border border-border divide-y divide-border">
+          {VEHICLE_TYPES.map((type) => (
+            <div key={type} className="flex items-center justify-between gap-6 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <DiffDot
+                  show={!!reference && value.vehicleCapacity[type] !== reference.vehicleCapacity[type]}
+                  onRestore={restore(r => ({ vehicleCapacity: { ...value.vehicleCapacity, [type]: r.vehicleCapacity[type] } }))}
+                />
+                <p className="text-sm font-medium">{VEHICLE_TYPE_LABELS[type]}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <NumberInput
+                  value={value.vehicleCapacity[type]}
+                  onChange={(v) => onChange({ ...value, vehicleCapacity: { ...value.vehicleCapacity, [type]: Math.round(v) } })}
+                  min={1}
+                  max={500}
+                  disabled={disabled}
+                />
+                <span className="text-sm text-muted-foreground w-8">pass.</span>
               </div>
             </div>
           ))}

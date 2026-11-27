@@ -7,7 +7,7 @@
 // can locate a focusedSegId's line/direction/position in O(1) — no scan.
 
 import { DIRECTION_LABELS, type VehiclePlanGanttData } from './vehicles.view'
-import type { Direction } from '../line-generator-logic'
+import type { Direction } from '@nyx/schemas'
 
 export interface FreqTrip {
   id:        string

@@ -487,7 +487,7 @@ function lineServiceSpans(block: LineAggregateBlockInput): Map<string, Span[]> {
 }
 
 // vehicleTypeCapacity/renewal-adjusted supply per trip needs the caller's capacity
-// table (VEHICLE_TYPE_CAPACITY) — passed in rather than imported, to keep this module
+// table (planning settings vehicleCapacity) — passed in rather than imported, to keep this module
 // free of any transit-domain constant coupling beyond the aggregate shapes it defines.
 export function buildLineAggregates(
   blocks:              LineAggregateBlockInput[],

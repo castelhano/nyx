@@ -131,6 +131,8 @@ const iconNames = [
   'Zap',
   'ZoomIn',
   'ZoomOut',
+  'Target',
+  'Minus',
 ] as const
 
 export const Icons = Object.fromEntries(

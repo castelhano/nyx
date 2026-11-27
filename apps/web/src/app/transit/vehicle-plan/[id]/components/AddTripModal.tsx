@@ -8,8 +8,8 @@ import { apiFetch } from '@/lib/auth'
 import { useToast } from '@/lib/toast-context'
 import { useShortcut, useShortcutContext } from '@/lib/keywatch'
 import type { ShortcutSection } from '@/lib/keywatch'
-import type { GanttBlock, GanttBlockTrip, LineMetrics } from '../views/vehicles.view'
-import { resolveCycleWindow, resolveCycleMinutes } from '../views/vehicles.view'
+import type { GanttBlock, GanttBlockTrip } from '../views/vehicles.view'
+import { resolveCycleWindow, resolveCycleMinutes, type LineMetrics } from '@nyx/schemas'
 import { getTravelTime } from '../travel-time'
 
 // ── module-level cache — persists across modal opens within the session ────────

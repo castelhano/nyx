@@ -7,7 +7,7 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { TransitCrewConfigService }     from '../../settings/transit-crew-config.service'
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
-import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings, VEHICLE_TYPE_LABELS } from '@nyx/schemas'
+import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings, VEHICLE_TYPE_LABELS, VEHICLE_TYPES } from '@nyx/schemas'
 import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { VehiclePlanConstraints, VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
@@ -16,7 +16,6 @@ import type { CrewPlanSummary } from '@nyx/schemas'
 import type { VehiclePlanDiff } from '@nyx/schemas'
 import type { PreviewLineScoreDto, PlanActivationPreview } from '@nyx/schemas'
 import type { AuthUser } from '@nyx/types'
-import { VEHICLE_TYPE_CAPACITY } from './vehicle-plan.constants'
 import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
@@ -256,7 +255,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     // ── VehiclePlanLine.summary — always recomputed in full from raw trip data ──
     const dayTypeCode = plan.dayType?.code
-    const lineAgg      = buildLineAggregates(blocksWithTrips, matrixKm, dayTypeCode, VEHICLE_TYPE_CAPACITY)
+    const lineAgg      = buildLineAggregates(blocksWithTrips, matrixKm, dayTypeCode, planningCfg.vehicleCapacity)
 
     // ── idle km rated to each line — see scoring/idle-km-rateio.calc.ts ─────────
     // A block belongs 100% to one empresa (VehicleBlock.branchId) — no rateio needed
@@ -383,7 +382,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // vehicleType from (useGanttEditor.ts mergedPlottedData) — falls back to STANDARD
   // instead of silently zeroing capacity/supply for the whole line.
   private resolveVehicleType(vehicleType: string | undefined): string {
-    return vehicleType && vehicleType in VEHICLE_TYPE_CAPACITY ? vehicleType : 'STANDARD'
+    return vehicleType && (VEHICLE_TYPES as readonly string[]).includes(vehicleType) ? vehicleType : 'STANDARD'
   }
 
   // Stateless line-score preview — computes VehiclePlanLineSummary for a line's current
@@ -428,7 +427,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
     const { settings: planningCfg } = await this.resolveSettings(planId)
 
-    const lineAgg = buildLineAggregates(blockInputs, matrixKm, plan.dayType?.code, VEHICLE_TYPE_CAPACITY)
+    const lineAgg = buildLineAggregates(blockInputs, matrixKm, plan.dayType?.code, planningCfg.vehicleCapacity)
     return computeLineSummary(lineAgg.get(lineId), planningCfg.line)
   }
 
@@ -2045,7 +2044,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // summary doesn't carry (fleet/km by depot, vehicle type and empresa, vehicles in a
   // trip per hour, pending counts).
   private async planOverview(planId: string) {
-    const [plan, blocks] = await Promise.all([
+    const [plan, blocks, { settings: planningCfg }] = await Promise.all([
       this.prisma.vehiclePlan.findUnique({
         where:  { id: planId },
         select: {
@@ -2066,6 +2065,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           blockTrips:  { select: { trip: { select: { departureMinutes: true, arrivalMinutes: true, route: { select: { lineId: true, direction: true } } } } } },
         },
       }),
+      this.resolveSettings(planId),
     ])
     if (!plan) throw new NotFoundException('VehiclePlan not found')
 
@@ -2106,7 +2106,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       const trips = lineBlocks.flatMap(b => b.blockTrips
         .filter(bt => bt.trip.route.lineId === pl.lineId)
         .map(bt => ({ departureMinutes: bt.trip.departureMinutes, vehicleType: b.vehicleType as string, direction: bt.trip.route.direction as string })))
-      const series = this.computeHourlySeries(dayTypeCode, pl.line.metrics, trips, lineBlocks.map(b => b.vehicleType))
+      const series = this.computeHourlySeries(dayTypeCode, pl.line.metrics, trips, lineBlocks.map(b => b.vehicleType), planningCfg.vehicleCapacity)
       for (const h of series.hours) {
         supplyDemand[h.hour].demand += h.demand
         supplyDemand[h.hour].supply += h.supply
@@ -2140,6 +2140,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     lineMetrics:       unknown,
     trips:             { departureMinutes: number; vehicleType: string; direction: string }[],
     blockVehicleTypes: string[],
+    capacityByType:    Record<string, number>,
   ) {
     const metrics = lineMetrics as {
       renewalIndex?: { overall?: number }
@@ -2148,7 +2149,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
     const renewal     = metrics?.renewalIndex?.overall ?? 0
     const demandByDir = dayTypeCode ? metrics?.demand?.[dayTypeCode] : undefined
 
-    const capacity = (vehicleType: string) => (VEHICLE_TYPE_CAPACITY as Record<string, number>)[vehicleType] ?? 0
+    const capacity = (vehicleType: string) => capacityByType[vehicleType] ?? 0
 
     // Supply bucketed both overall (for the aggregate hours/kpis below) and per
     // direction (for the "Oferta · Demanda" tab's per-direction charts) — demand is
@@ -2223,7 +2224,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
   // — this plan's actual generated trips only (never the ACTIVE counterpart: unlike
   // the Comparativo tab, this is a single series for whichever plan is loaded, doc
   // decision). Supply buckets each trip's departure hour with the same
-  // capacity-per-trip formula recalculate uses for occupancyIndex (VEHICLE_TYPE_CAPACITY
+  // capacity-per-trip formula recalculate uses for occupancyIndex (planning settings' vehicleCapacity
   // × renewal); demand comes straight from the line's real imported demand curve.
   async getLineHourlySeries(planId: string, lineId: string) {
     const { plan, line } = await this.resolvePlanAndLine(planId, lineId)
@@ -2241,7 +2242,8 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       direction:         bt.trip.route.direction,
     }))
     const blockVehicleTypes = Array.from(new Map(blockTrips.map(bt => [bt.vehicleBlock.id, bt.vehicleBlock.vehicleType])).values())
-    return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes)
+    const { settings } = await this.resolveSettings(planId)
+    return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes, settings.vehicleCapacity)
   }
 
   // Stateless counterpart of getLineHourlySeries — same series/kpis, but computed from
@@ -2255,6 +2257,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
       return b.trips.map(t => ({ departureMinutes: t.departureMinutes, vehicleType, direction: t.direction }))
     })
     const blockVehicleTypes = dto.blocks.map(b => this.resolveVehicleType(b.vehicleType))
-    return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes)
+    const { settings } = await this.resolveSettings(planId)
+    return this.computeHourlySeries(plan.dayType?.code, line.metrics, trips, blockVehicleTypes, settings.vehicleCapacity)
   }
 }

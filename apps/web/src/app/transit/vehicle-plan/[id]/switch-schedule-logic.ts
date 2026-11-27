@@ -1,13 +1,12 @@
 // Pure computation for "trocar OSO" (line-schedule switch) inside a VehiclePlan's
-// Gantt — mirrors line-generator-logic.ts's separation (logic here, UI in
+// Gantt — mirrors line-generator.ts (packages/schemas)'s separation (logic here, UI in
 // SwitchLineScheduleModal.tsx). Unlike the schedule generator, trips here aren't
 // generated from frequency windows: they come 1:1 from the target LineSchedule's
 // approved LineDeparture rows, so departureMinutes is fixed and only
 // arrivalMinutes/block placement need computing.
 
-import { resolveCycleWindow, type LineMetrics } from './views/vehicles.view'
 import { getTravelTime } from './travel-time'
-import { assignFixedTripsToBlocks, type FixedTripCandidate } from './line-generator-logic'
+import { resolveCycleWindow, assignFixedTripsToBlocks, type LineMetrics, type FixedTripCandidate } from '@nyx/schemas'
 
 export interface LineDepartureForSwitch {
   id:                   string

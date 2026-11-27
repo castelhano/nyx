@@ -6,7 +6,6 @@
 
 
 ## Alto
-[ ] Troca de Dia Tipo (recurso pendente ainda) URGENTE
 [ ] Tela de ajuste de ciclo, adicionar controle para filtro de daytype (somente dias uteis;sabados;etc) e ja integrar com layout Cittati
 [ ] Gerador, receber direcionamento (aumentar x km, ou diminuir), frota, etc... com sugestão de linhas
 [ ] Edição da escala diária
