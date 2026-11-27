@@ -641,6 +641,9 @@ export interface GeneratedRound {
   id:                string
   legs:              GeneratedLeg[]
   readyAgainMinutes: number
+  // the vehicle ends its day after this round away from where the next one would start (the
+  // paired leg was dropped — see generateRounds' end-direction trim): no round follows it in a block
+  closesBlock?:      boolean
   // set on a round placed to cover a GenAnchor — how far it can still move (minutes) and keep
   // every anchor it covers inside its window; later passes (block assignment, multiline
   // interleave) must stay within it
@@ -736,10 +739,11 @@ function buildRound(
  *  the periodic step — the round's other direction is always derived
  *  (anchor leg's arrival + turnback), never generated independently, because
  *  in continuous operation with N vehicles the return headway is
- *  automatically equal to the outbound one. `lastTripDirection` doesn't
- *  participate in the calculation (the final round's direction already
- *  follows from the anchor/derived pair) — it's only used to warn when it
- *  diverges from what's configured. */
+ *  automatically equal to the outbound one. `lastTripDirection` picks which
+ *  leg the closing pass pulls onto `opEndMinutes`; when it equals
+ *  `firstTripDirection`, every paired leg departing after that end is dropped
+ *  (those vehicles recolhe from the far terminal), so nothing departs after
+ *  the configured end. */
 export function generateRounds(
   rows:               GenWindow[],
   opStartMinutes:     number,
@@ -895,6 +899,17 @@ export function generateRounds(
     applyAnchors(rows, rounds, anchors, firstTripDirection, pairedDirection, warnings)
   }
 
+  // Ending in the start direction: the closing pass put the last anchor-direction trip on
+  // opEndMinutes; a paired leg departing after it would be a trip past the configured end, so it's
+  // dropped and that vehicle recolhe from the far terminal (closesBlock) instead of running it.
+  if (pairedDirection && lastTripDirection === firstTripDirection) {
+    for (let i = 0; i < rounds.length; i++) {
+      const r = rounds[i]
+      if (r.legs.length < 2 || r.legs[1].departureMinutes <= opEndMinutes + 0.5) continue
+      rounds[i] = { ...r, legs: [r.legs[0]], readyAgainMinutes: r.legs[0].arrivalMinutes, closesBlock: true }
+    }
+  }
+
   const lastRoundFinal = rounds[rounds.length - 1]
   const lastLegDirection = lastRoundFinal?.legs[lastRoundFinal.legs.length - 1]?.direction
   if (lastLegDirection && lastLegDirection !== lastTripDirection) {
@@ -1035,7 +1050,7 @@ export function assignRoundsToBlocks(
   rounds:                GeneratedRound[],
   maneuverMarginMinutes: number,
 ): GeneratedBlock[] {
-  interface OpenBlock { block: GeneratedBlock; availableFrom: number }
+  interface OpenBlock { block: GeneratedBlock; availableFrom: number; closed: boolean }
   const open: OpenBlock[] = []
 
   for (const round of rounds) {
@@ -1043,13 +1058,13 @@ export function assignRoundsToBlocks(
 
     let chosen: OpenBlock | null = null
     for (const ob of open) {
-      if (ob.availableFrom <= anchorDep && (!chosen || ob.availableFrom > chosen.availableFrom)) chosen = ob
+      if (!ob.closed && ob.availableFrom <= anchorDep && (!chosen || ob.availableFrom > chosen.availableFrom)) chosen = ob
     }
 
     if (!chosen) {
       for (const ob of open) {
         // a round covering a service requirement only waits as long as it stays in its window
-        if (ob.availableFrom > anchorDep && ob.availableFrom - anchorDep <= Math.min(maneuverMarginMinutes, round.slack?.late ?? Infinity)) {
+        if (!ob.closed && ob.availableFrom > anchorDep && ob.availableFrom - anchorDep <= Math.min(maneuverMarginMinutes, round.slack?.late ?? Infinity)) {
           if (!chosen || ob.availableFrom < chosen.availableFrom) chosen = ob
         }
       }
@@ -1066,8 +1081,9 @@ export function assignRoundsToBlocks(
         : round
       chosen.block.rounds.push(placedRound)
       chosen.availableFrom = placedRound.readyAgainMinutes
+      chosen.closed        = !!placedRound.closesBlock
     } else {
-      open.push({ block: { id: crypto.randomUUID(), rounds: [round] }, availableFrom: round.readyAgainMinutes })
+      open.push({ block: { id: crypto.randomUUID(), rounds: [round] }, availableFrom: round.readyAgainMinutes, closed: !!round.closesBlock })
     }
   }
 

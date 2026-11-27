@@ -37,9 +37,9 @@ import {
 const DIR_LABEL: Record<Direction, string> = { OUTBOUND: 'Ida', INBOUND: 'Volta', CIRCULAR: 'Circular' }
 const DIR_ORDER: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
 
-// Every round generateRounds produces closes with this direction — a real trip, or a
-// reserved-counterflow deadrun when that side has no route of its own — whenever the
-// line isn't circular; a circular line's only leg is, naturally, itself.
+// The other direction of a round — a real trip, or a reserved-counterflow deadrun when that
+// side has no route of its own — whenever the line isn't circular; a circular line's only leg
+// is, naturally, itself. The default last-trip direction (a full last round).
 function pairedDirectionOf(d: Direction): Direction {
   return d === 'OUTBOUND' ? 'INBOUND' : d === 'INBOUND' ? 'OUTBOUND' : 'CIRCULAR'
 }
@@ -519,12 +519,12 @@ export function LineScheduleGeneratorModal({
       next[lineId] = {
         ...st,
         firstTripDirection,
-        // The generator always closes every round with the paired direction —
-        // as a real trip, or as a reserved-counterflow deadrun when that
-        // direction has no route of its own (see reservedFlow) — whenever the
-        // line isn't circular. Deriving it from firstTripDirection instead of
-        // checking for a registered INBOUND route is what keeps this correct
-        // for a line like 206B, which never registers that route at all.
+        // Default: the day closes on a full round, ending in the paired direction —
+        // as a real trip, or as a reserved-counterflow deadrun when that direction
+        // has no route of its own (see reservedFlow). Deriving it from
+        // firstTripDirection instead of checking for a registered INBOUND route is
+        // what keeps this correct for a line like 206B, which never registers that
+        // route at all. The Fim select can set it to firstTripDirection instead.
         lastTripDirection: pairedDirectionOf(firstTripDirection),
       }
       changed = true
@@ -1605,9 +1605,8 @@ export function LineScheduleGeneratorModal({
                                 value={st.firstTripDirection}
                                 onChange={e => {
                                   const dir = e.target.value as Direction
-                                  // lastTripDirection always tracks the paired direction — see
-                                  // pairedDirectionOf — so it can't drift out of sync with a manual
-                                  // change here and fire a spurious "last trip mismatch" warning.
+                                  // the last trip goes back to the default (a full last round); it
+                                  // can then be set to this same direction (see the Fim select)
                                   updateLineState(lineId, { firstTripDirection: dir, lastTripDirection: pairedDirectionOf(dir) })
                                 }}
                                 title="Sentido da primeira viagem do dia"
@@ -1628,11 +1627,14 @@ export function LineScheduleGeneratorModal({
                               />
                               <select
                                 value={st.lastTripDirection}
-                                disabled
-                                title="Sentido da última viagem do dia — sempre o par do sentido inicial (viagem real ou deslocamento reservado)"
-                                className="w-24 appearance-none rounded-sm border border-input bg-muted/30 px-2 py-1 text-sm text-muted-foreground disabled:cursor-default"
+                                onChange={e => updateLineState(lineId, { lastTripDirection: e.target.value as Direction })}
+                                disabled={st.firstTripDirection === 'CIRCULAR'}
+                                title="Sentido da última viagem do dia — no mesmo sentido da primeira, os retornos que sairiam depois do fim não são gerados (o carro recolhe do terminal oposto)"
+                                className="w-24 appearance-none rounded-sm border border-input bg-input-bg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:bg-muted/30 disabled:text-muted-foreground disabled:cursor-default"
                               >
-                                <option value={pairedDirectionOf(st.firstTripDirection)}>{DIR_LABEL[pairedDirectionOf(st.firstTripDirection)]}</option>
+                                {[...new Set([pairedDirectionOf(st.firstTripDirection), st.firstTripDirection])].map(d => (
+                                  <option key={d} value={d}>{DIR_LABEL[d]}</option>
+                                ))}
                               </select>
                             </label>
                           </div>
