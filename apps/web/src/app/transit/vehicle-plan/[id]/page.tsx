@@ -18,7 +18,7 @@ import { useGanttEditor, UNASSIGNED_BRANCH } from './hooks/useGanttEditor'
 import { useVehiclePlanShortcuts } from './hooks/useVehiclePlanShortcuts'
 import { useOsoCoverage } from './hooks/useOsoCoverage'
 import { useServiceRequirements } from './hooks/useServiceRequirements'
-import { ROUTE_DIRECTION_LABEL, vehicleBlockIssueText, serviceRequirementWindowText } from '@nyx/schemas'
+import { ROUTE_DIRECTION_LABEL, vehicleBlockIssueText, isVehicleBlockIssuePending, serviceRequirementWindowText } from '@nyx/schemas'
 import { GanttBoard }        from './components/GanttBoard'
 import type { GanttBoardHandle } from './components/GanttBoard'
 import { GanttActionBar }    from './components/GanttActionBar'
@@ -367,7 +367,7 @@ export default function VehiclePlanPage() {
       .sort((a, b) => a.blockNumber - b.blockNumber)
       .flatMap(b => {
         const lineIds = [...new Set(b.blockTrips.map(bt => bt.trip.route.line.id))]
-        return (b.issues ?? []).map(issue => ({
+        return (b.issues ?? []).filter(isVehicleBlockIssuePending).map(issue => ({
           label:    `Bloco ${b.blockNumber}`,
           detail:   vehicleBlockIssueText(issue),
           severity: 'error' as const,

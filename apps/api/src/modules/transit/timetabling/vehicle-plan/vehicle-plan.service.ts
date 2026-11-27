@@ -7,7 +7,7 @@ import { TransitPlanningConfigService } from '../../settings/transit-planning-co
 import { TransitCrewConfigService }     from '../../settings/transit-crew-config.service'
 import { JobService } from '../../../core/job/job.service'
 import { BaseService } from '../../../../core/base.service'
-import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings, VEHICLE_TYPE_LABELS, VEHICLE_TYPES } from '@nyx/schemas'
+import { vehiclePlanSchema, VehiclePlan, CreateVehiclePlanDto, UpdateVehiclePlanDto, sameMarkings, planningSettingsSchema, type PlanningSettings, VEHICLE_TYPE_LABELS, VEHICLE_TYPES, isVehicleBlockIssuePending } from '@nyx/schemas'
 import { generateDraftRef } from '../line-schedule/line-schedule.util'
 import type { VehiclePlanConstraints, VehiclePlanSummary } from '@nyx/schemas'
 import type { VehicleBlockSummary } from '@nyx/schemas'
@@ -349,7 +349,7 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
           deadrunKm:         a.deadrunKm,
         }
         const issues = blockIssues(block, maxStandMinutes, { bundleSizes, lineOperators, travelMinutes, stand })
-        return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false, issues, hasIssues: issues.length > 0 } })
+        return db.vehicleBlock.update({ where: { id: block.id }, data: { summary, isStale: false, issues, hasIssues: issues.some(isVehicleBlockIssuePending) } })
       }),
       ...blocks
         .filter((b: any) => b.blockTrips.length === 0 && (b.isStale || b.hasIssues))

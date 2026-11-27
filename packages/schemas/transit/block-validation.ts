@@ -41,6 +41,13 @@ export const VEHICLE_BLOCK_ISSUE_LABEL: Record<VehicleBlockIssueCode, string> = 
   LINE_NOT_OPERATED:     'Viagem de linha não operada pela empresa do carro',
 }
 
+// 'info' issues are kept in VehicleBlock.issues and shown on the block, but are not pending:
+// they don't set hasIssues nor count in the plan's pendências indicator
+export const VEHICLE_BLOCK_ISSUE_SEVERITY: Partial<Record<VehicleBlockIssueCode, 'info'>> = {
+  DEADRUN_TOO_SHORT: 'info',
+}
+export const isVehicleBlockIssuePending = (issue: { code: VehicleBlockIssueCode }) => VEHICLE_BLOCK_ISSUE_SEVERITY[issue.code] !== 'info'
+
 export const vehicleBlockIssueSchema = z.object({
   code:    z.enum(VEHICLE_BLOCK_ISSUE_CODES),
   // when it happens: the event it points at, or the stand's start (LONG_STAND, STAND_NOT_ALLOWED)

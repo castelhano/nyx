@@ -144,7 +144,11 @@ export function Dropdown({
   // Fecha e reposiciona no scroll / resize enquanto aberto
   useEffect(() => {
     if (!open) return
-    const onScroll = () => setOpen(false)
+    // the menu's own list scrolling (capture catches every element's scroll) must not close it
+    const onScroll = (e: Event) => {
+      if (contentRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
     const onResize = () => reposition()
     window.addEventListener('scroll', onScroll, { capture: true, passive: true })
     window.addEventListener('resize', onResize)
