@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal }        from 'react-dom'
+import { useQuery }            from '@tanstack/react-query'
 import {
   ResponsiveContainer,
   BarChart,
@@ -13,6 +14,7 @@ import {
 } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { cn }     from '@/lib/utils'
+import { apiFetch } from '@/lib/auth'
 
 type DirMap  = Record<string, number>              // hour → pax
 type DayData = Record<string, DirMap>              // direction → DirMap
@@ -24,6 +26,8 @@ const DIR_LABEL: Record<string, string> = {
   CIRCULAR: 'Circular',
 }
 
+const DIR_ORDER: Record<string, number> = { OUTBOUND: 0, INBOUND: 1, CIRCULAR: 2 }
+
 const BAR_COLOR = 'hsl(var(--ring))'
 
 interface Props {
@@ -31,24 +35,29 @@ interface Props {
   onClose: () => void
 }
 
+const sortDirs = (dirs: string[]) => [...dirs].sort((a, b) => (DIR_ORDER[a] ?? 99) - (DIR_ORDER[b] ?? 99))
+
 export function DemandChartModal({ demand, onClose }: Props) {
-  const dayCodes = Object.keys(demand)
+  // day types in their registered display order (U, S, D, F, E…); unknown codes last
+  const { data: dayTypesPage } = useQuery({
+    queryKey: ['transit', 'day-type', 'all'],
+    queryFn:  async () => {
+      const res = await apiFetch('/transit/day-type?pageSize=100')
+      if (!res.ok) throw new Error('Failed to fetch day types')
+      return res.json() as Promise<{ data: Array<{ code: string; sortOrder: number }> }>
+    },
+  })
+  const sortOrder = new Map((dayTypesPage?.data ?? []).map(dt => [dt.code, dt.sortOrder]))
+  const dayCodes  = Object.keys(demand).sort((a, b) => (sortOrder.get(a) ?? 999) - (sortOrder.get(b) ?? 999))
 
-  const [activeDay, setActiveDay]       = useState(dayCodes[0] ?? '')
-  const [activeDir, setActiveDir]       = useState(() =>
-    Object.keys(demand[dayCodes[0] ?? ''] ?? {})[0] ?? '',
-  )
+  // null until the user picks one: the first in order, which may only settle once
+  // the day types load
+  const [pickedDay, setActiveDay] = useState<string | null>(null)
+  const [pickedDir, setActiveDir] = useState<string | null>(null)
 
-  const dirs = activeDay ? Object.keys(demand[activeDay] ?? {}) : []
-
-  // Adjusting state during render instead of an effect (react.dev/learn/
-  // you-might-not-need-an-effect) — only reacts to activeDay actually changing,
-  // same as the effect's deliberately narrow [activeDay] deps did.
-  const [prevActiveDay, setPrevActiveDay] = useState(activeDay)
-  if (activeDay !== prevActiveDay) {
-    setPrevActiveDay(activeDay)
-    if (dirs.length && !dirs.includes(activeDir)) setActiveDir(dirs[0])
-  }
+  const activeDay = pickedDay ?? dayCodes[0] ?? ''
+  const dirs      = activeDay ? sortDirs(Object.keys(demand[activeDay] ?? {})) : []
+  const activeDir = pickedDir && dirs.includes(pickedDir) ? pickedDir : dirs[0] ?? ''
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -66,7 +75,7 @@ export function DemandChartModal({ demand, onClose }: Props) {
 
   function downloadCsv(dayCode: string) {
     const dayData  = demand[dayCode] ?? {}
-    const allDirs  = Object.keys(dayData)
+    const allDirs  = sortDirs(Object.keys(dayData))
     const allHours = [...new Set(allDirs.flatMap((d) => Object.keys(dayData[d]).map(Number)))]
       .sort((a, b) => a - b)
 
