@@ -26,6 +26,8 @@ export interface DotCluster {
 export interface CsvData {
   lines:      string[]
   byLine:     Map<string, Map<Direction, RawTrip[]>>
+  // line code (zero-stripped) → the code as the CSV spelled it ("31" → "031")
+  rawCodes:   Map<string, string>
   // distinct trip days (YYYY-MM-DD), ascending
   days:       string[]
   // "Data" of the first row with a usable trip — used to suggest a dayType

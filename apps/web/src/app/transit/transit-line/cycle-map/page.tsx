@@ -19,6 +19,8 @@ import { buildHourClusters, suggestCuts, computeWindows, suggestDayTypeCode, day
 import type { Window, Methodology }      from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
 import { DayFilter }                     from './DayFilter'
+import { LineMatchModal }                from './LineMatchModal'
+import { matchLines }                    from './line-match'
 import type { CsvData, Direction, DotCluster, RawTrip } from './types'
 
 const DIRECTIONS: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
@@ -39,6 +41,7 @@ interface DirState {
 interface LineRecord {
   id:      string
   code:    string
+  name?:   string
   metrics: {
     extensionKm?: Record<string, number>
     // keyed by dayTypeCode first (see LineService.applyWindows), then by direction
@@ -77,7 +80,11 @@ export default function CycleMapPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [csvData,        setCsvData]        = useState<CsvData | null>(null)
+  // CSV line code → system line (see matchLines)
   const [linesMap,       setLinesMap]       = useState<Map<string, LineRecord>>(new Map())
+  const [allLines,       setAllLines]       = useState<LineRecord[]>([])
+  // CSV lines with no system line, waiting for the user to pick one (or skip them)
+  const [unmatched,      setUnmatched]      = useState<Map<string, LineRecord | null> | null>(null)
   const [savedLines,     setSavedLines]     = useState<Set<string>>(new Set())
   const [lineIndex,      setLineIndex]      = useState(0)
   const [includeEdited,  setIncludeEdited]  = useState(true)
@@ -152,14 +159,13 @@ export default function CycleMapPage() {
       }
 
       // fetch all lines once to get IDs and existing metrics
-      let map: Map<string, LineRecord> = new Map()
+      let lines: LineRecord[] = []
       try {
         const res = await apiFetch('/transit/transit-line?pageSize=9999')
-        if (res.ok) {
-          const { data: lines } = await res.json() as { data: LineRecord[] }
-          map = new Map(lines.map(l => [l.code, l]))
-        }
+        if (res.ok) lines = (await res.json() as { data: LineRecord[] }).data
       } catch { /* fallback: no pre-fill */ }
+      const match = matchLines(data.lines, data.rawCodes, lines)
+      const map   = match.matched
 
       // suggest a dayType from the date of the CSV's first trip (dia útil/sábado/domingo
       // only — "Especial"/"Férias" have no weekday pattern to infer from); falls back to
@@ -172,6 +178,8 @@ export default function CycleMapPage() {
 
       setCsvData(data)
       setLinesMap(map)
+      setAllLines(lines)
+      setUnmatched(lines.length > 0 && match.unmatched.size > 0 ? match.unmatched : null)
       setSavedLines(new Set())
       setLineIndex(0)
       setDayTypeCodes(suggested ? [suggested] : [])
@@ -232,6 +240,28 @@ export default function CycleMapPage() {
     setSelectedDays(days)
     if (!csvData) return
     loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, dayTypeCodes[0] ?? '', days)
+  }
+
+  // ──────────────── unmatched lines ──────────────────────────
+
+  // a picked line is used for that CSV line from now on; a skipped one leaves the pool
+  function handleLineMatchApply(choices: Map<string, LineRecord | null>) {
+    setUnmatched(null)
+    if (!csvData) return
+    const map     = new Map(linesMap)
+    const skipped = [...choices].filter(([, rec]) => !rec).map(([code]) => code)
+    for (const [code, rec] of choices) if (rec) map.set(code, rec)
+    const saved = new Set([...savedLines, ...skipped])
+    const pool  = csvData.lines.filter(c => !saved.has(c))
+
+    setLinesMap(map)
+    setSavedLines(saved)
+    if (pool.length === 0) {
+      router.push('/transit/transit-line')
+      return
+    }
+    setLineIndex(0)
+    loadLineData(csvData, pool[0], includeEdited, map, dayTypeCodes[0] ?? '', selectedDays)
   }
 
   // ──────────────── includeEdited toggle ──────────────────────────
@@ -517,9 +547,14 @@ export default function CycleMapPage() {
                   size="sm"
                   className="w-36"
                 >
-                  {poolLines.map((code, i) => (
-                    <option key={code} value={i}>{code}</option>
-                  ))}
+                  {poolLines.map((code, i) => {
+                    const rec = linesMap.get(code)
+                    return (
+                      <option key={code} value={i}>
+                        {code}{rec && rec.code !== code ? ` → ${rec.code}` : !rec ? ' (sem linha)' : ''}
+                      </option>
+                    )
+                  })}
                 </Select>
                 <span className="text-xs text-muted-foreground">
                   {lineIndex + 1} de {totalLines}
@@ -618,6 +653,16 @@ export default function CycleMapPage() {
           </>
         )}
       </div>
+
+      {unmatched && csvData && (
+        <LineMatchModal
+          unmatched={unmatched}
+          rawCodes={csvData.rawCodes}
+          systemLines={allLines}
+          onApply={handleLineMatchApply}
+          onClose={() => setUnmatched(null)}
+        />
+      )}
 
       {/* save-all result modal */}
       {saveAllResult && typeof window !== 'undefined' && createPortal(

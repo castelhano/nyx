@@ -22,7 +22,7 @@ function mapDirection(trajeto: string): Direction | null {
 
 export function parseCsv(text: string): CsvData {
   const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean)
-  if (rows.length < 2) return { lines: [], byLine: new Map(), days: [], sampleDate: null }
+  if (rows.length < 2) return { lines: [], byLine: new Map(), rawCodes: new Map(), days: [], sampleDate: null }
 
   const firstRow   = rows[0]
   const semicolons = (firstRow.match(/;/g) ?? []).length
@@ -44,6 +44,7 @@ export function parseCsv(text: string): CsvData {
 
   const byLine     = new Map<string, Map<Direction, RawTrip[]>>()
   const days       = new Set<string>()
+  const rawCodes   = new Map<string, string>()
   let sampleDate: string | null = null
 
   for (let i = 1; i < rows.length; i++) {
@@ -78,6 +79,7 @@ export function parseCsv(text: string): CsvData {
       edited:        (c[iEditada] ?? '').toLowerCase() === 'sim',
     }
 
+    if (!rawCodes.has(lineCode)) rawCodes.set(lineCode, rawCode)
     if (!byLine.has(lineCode)) byLine.set(lineCode, new Map())
     const dm = byLine.get(lineCode)!
     if (!dm.has(dir)) dm.set(dir, [])
@@ -90,6 +92,7 @@ export function parseCsv(text: string): CsvData {
   return {
     lines:  Array.from(byLine.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     byLine,
+    rawCodes,
     days:   Array.from(days).sort(),
     sampleDate,
   }
