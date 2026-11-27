@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Icons }    from '@/lib/icons'
 import { cn }       from '@/lib/utils'
@@ -43,6 +43,17 @@ function fmtKm(km: number): string {
 export function BlockDetailPopover({ block, screenY, screenX, onClose, onUpdate }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const [isPending, setIsPending] = useState(false)
+
+  // opened at the row's top: near the board's bottom it would be clipped, so it's moved up
+  // just enough to fit (before paint — no flash at the clipped spot). Every render: the
+  // content grows once the depot/branch lists load.
+  useLayoutEffect(() => {
+    const el = ref.current
+    const parent = el?.offsetParent as HTMLElement | null
+    if (!el || !parent) return
+    const maxTop = parent.clientHeight - el.offsetHeight - 8
+    el.style.top = `${Math.max(0, Math.min(screenY, maxTop))}px`
+  })
 
   const [vehicleType, setVehicleType] = useState(block.vehicleType)
   const [depotId,     setDepotId]     = useState(block.depotId)
