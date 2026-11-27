@@ -15,10 +15,11 @@ import { useShortcut }                   from '@/lib/keywatch'
 import { apiFetch }                      from '@/lib/auth'
 import { useToast }                      from '@/lib/toast-context'
 import { parseCsv }                      from './csv-parser'
-import { buildHourClusters, suggestCuts, computeWindows, suggestDayTypeCode } from './cycle-utils'
+import { buildHourClusters, suggestCuts, computeWindows, suggestDayTypeCode, daysForDayTypes } from './cycle-utils'
 import type { Window, Methodology }      from './cycle-utils'
 import { CycleMapCanvas }                from './CycleMapCanvas'
-import type { CsvData, Direction, DotCluster } from './types'
+import { DayFilter }                     from './DayFilter'
+import type { CsvData, Direction, DotCluster, RawTrip } from './types'
 
 const DIRECTIONS: Direction[] = ['OUTBOUND', 'INBOUND', 'CIRCULAR']
 
@@ -55,6 +56,19 @@ interface DayType {
   code:    string
   name:    string
   pattern: unknown
+  color?:  string | null
+}
+
+// only the trips run on the days picked in the day filter
+function tripsOn(trips: RawTrip[] | undefined, days: Set<string>): RawTrip[] {
+  return trips ? trips.filter(t => days.has(t.day)) : []
+}
+
+// the CSV days matching the chosen day types; day types without a weekday pattern
+// (Férias, Especial) add nothing, and when nothing matches the current days stay
+function daysFor(data: CsvData, codes: string[], dayTypes: DayType[], current: Set<string>): Set<string> {
+  const matched = daysForDayTypes(data.days, codes, dayTypes)
+  return matched.length > 0 ? new Set(matched) : current
 }
 
 export default function CycleMapPage() {
@@ -74,6 +88,7 @@ export default function CycleMapPage() {
   const [dirStates,      setDirStates]      = useState<Map<Direction, DirState>>(new Map())
   const [dayTypes,       setDayTypes]       = useState<DayType[]>([])
   const [dayTypeCodes,   setDayTypeCodes]   = useState<string[]>([])
+  const [selectedDays,   setSelectedDays]   = useState<Set<string>>(new Set())
 
   const poolLines  = csvData ? csvData.lines.filter(code => !savedLines.has(code)) : []
 
@@ -93,13 +108,13 @@ export default function CycleMapPage() {
       icon:     Icons.Save,
       onClick:  handleSave,
       primary:  true,
-      disabled: saving || savingAll || dayTypeCodes.length === 0,
+      disabled: saving || savingAll || dayTypeCodes.length === 0 || selectedDays.size === 0,
       keybind:  'ALT+G',
     }, {
       label:    savingAll ? 'Salvando…' : 'Salvar todos',
       icon:     Icons.Layers,
       onClick:  handleSaveAll,
-      disabled: saving || savingAll || dayTypeCodes.length === 0,
+      disabled: saving || savingAll || dayTypeCodes.length === 0 || selectedDays.size === 0,
       overflow: true,
     }, {
       label:   'Remover',
@@ -114,7 +129,7 @@ export default function CycleMapPage() {
       onClick: advanceLine,
       variant: 'ghost' as const,
     }] : []),
-  ], [csvData, saving, savingAll, lineIndex, poolLines.length, dayTypeCodes])
+  ], [csvData, saving, savingAll, lineIndex, poolLines.length, dayTypeCodes, selectedDays])
 
   useShortcut('alt+g', handleSave,    { desc: 'Salvar e avançar linha', icon: Icons.Save })
   useShortcut('alt+j', advanceLine,   { desc: 'Próxima linha',           icon: Icons.ArrowRight })
@@ -153,13 +168,15 @@ export default function CycleMapPage() {
       // multi-select is for choosing extra targets to apply the *current* CSV's windows
       // to, not something a fresh CSV should inherit.
       const suggested = suggestDayTypeCode(data.sampleDate, dayTypes) ?? dayTypeCodes[0] ?? ''
+      const days      = daysFor(data, suggested ? [suggested] : [], dayTypes, new Set(data.days))
 
       setCsvData(data)
       setLinesMap(map)
       setSavedLines(new Set())
       setLineIndex(0)
       setDayTypeCodes(suggested ? [suggested] : [])
-      loadLineData(data, data.lines[0], includeEdited, map, suggested)
+      setSelectedDays(days)
+      loadLineData(data, data.lines[0], includeEdited, map, suggested, days)
     }
     reader.readAsText(file, 'latin1')
   }
@@ -170,6 +187,7 @@ export default function CycleMapPage() {
     withEdited:      boolean,
     map:             Map<string, LineRecord>,
     forDayTypeCode:  string,
+    days:            Set<string>,
   ) {
     const dirMap   = data.byLine.get(lineCode)
     if (!dirMap) return
@@ -178,8 +196,8 @@ export default function CycleMapPage() {
     const next     = new Map<Direction, DirState>()
 
     for (const dir of DIRECTIONS) {
-      const trips = dirMap.get(dir)
-      if (!trips || trips.length === 0) continue
+      const trips = tripsOn(dirMap.get(dir), days)
+      if (trips.length === 0) continue
 
       const hc              = buildHourClusters(trips, withEdited)
       const cuts            = suggestCuts(trips)
@@ -199,10 +217,21 @@ export default function CycleMapPage() {
 
   // the first selected day type is the "reference" whose previously saved windows
   // prefill the editing canvas — the rest are just extra save targets
+  // it also re-picks the analysed days, dropping any manual tweak made to them
   function handleDayTypesChange(codes: string[]) {
     setDayTypeCodes(codes)
     if (!csvData) return
-    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, codes[0] ?? '')
+    const days = daysFor(csvData, codes, dayTypes, selectedDays)
+    setSelectedDays(days)
+    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, codes[0] ?? '', days)
+  }
+
+  // ──────────────── day filter change ──────────────────────────
+
+  function handleDaysChange(days: Set<string>) {
+    setSelectedDays(days)
+    if (!csvData) return
+    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, dayTypeCodes[0] ?? '', days)
   }
 
   // ──────────────── includeEdited toggle ──────────────────────────
@@ -218,9 +247,9 @@ export default function CycleMapPage() {
     setDirStates(prev => {
       const updated = new Map(prev)
       for (const dir of DIRECTIONS) {
-        const trips    = dirMap.get(dir)
+        const trips    = tripsOn(dirMap.get(dir), selectedDays)
         const existing = prev.get(dir)
-        if (!trips || !existing) continue
+        if (trips.length === 0 || !existing) continue
         updated.set(dir, { ...existing, hourClusters: buildHourClusters(trips, next) })
       }
       return updated
@@ -238,7 +267,7 @@ export default function CycleMapPage() {
       return
     }
     setLineIndex(next)
-    loadLineData(csvData, poolLines[next], includeEdited, linesMap, dayTypeCodes[0] ?? '')
+    loadLineData(csvData, poolLines[next], includeEdited, linesMap, dayTypeCodes[0] ?? '', selectedDays)
   }
 
   // ──────────────── remove from pool ──────────────────────────
@@ -254,7 +283,7 @@ export default function CycleMapPage() {
     }
     const nextIdx = Math.min(lineIndex, newPool.length - 1)
     setLineIndex(nextIdx)
-    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCodes[0] ?? '')
+    loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCodes[0] ?? '', selectedDays)
   }
 
   // ──────────────── save ──────────────────────────
@@ -275,6 +304,10 @@ export default function CycleMapPage() {
       for (const [dir, state] of dirStates) {
         const w = computeWindows(state.hourClusters, state.cuts, state.subCuts, state.intervalMinutes, methodology)
         if (w.length > 0) windows[dir] = w
+      }
+      if (Object.keys(windows).length === 0) {
+        toast.error(`Linha ${lineCode} sem viagens nos dias selecionados`)
+        return
       }
 
       for (const code of dayTypeCodes) {
@@ -303,7 +336,7 @@ export default function CycleMapPage() {
 
       const nextIdx = Math.min(lineIndex, newPool.length - 1)
       setLineIndex(nextIdx)
-      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCodes[0] ?? '')
+      loadLineData(csvData, newPool[nextIdx], includeEdited, linesMap, dayTypeCodes[0] ?? '', selectedDays)
     } finally {
       setSaving(false)
     }
@@ -339,8 +372,8 @@ export default function CycleMapPage() {
           const dirMap = csvData.byLine.get(lineCode)
           if (dirMap) {
             for (const dir of DIRECTIONS) {
-              const trips = dirMap.get(dir)
-              if (!trips || trips.length === 0) continue
+              const trips = tripsOn(dirMap.get(dir), selectedDays)
+              if (trips.length === 0) continue
               const hc              = buildHourClusters(trips, includeEdited)
               const cuts            = suggestCuts(trips)
               const existingWindows = lineRec.metrics?.windows?.[dayTypeCodes[0]]?.[dir]
@@ -350,6 +383,11 @@ export default function CycleMapPage() {
               if (w.length > 0) windows[dir] = w
             }
           }
+        }
+
+        if (Object.keys(windows).length === 0) {
+          errors.push({ code: lineCode, message: 'Sem viagens nos dias selecionados' })
+          continue
         }
 
         const lineErrors: string[] = []
@@ -474,7 +512,7 @@ export default function CycleMapPage() {
                   onChange={e => {
                     const idx = Number(e.target.value)
                     setLineIndex(idx)
-                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap, dayTypeCodes[0] ?? '')
+                    loadLineData(csvData, poolLines[idx], includeEdited, linesMap, dayTypeCodes[0] ?? '', selectedDays)
                   }}
                   size="sm"
                   className="w-36"
@@ -498,6 +536,12 @@ export default function CycleMapPage() {
                   placeholder="Selecionar…"
                   size="sm"
                   containerClassName="w-48"
+                />
+                <DayFilter
+                  days={csvData.days}
+                  selected={selectedDays}
+                  dayTypes={dayTypes}
+                  onChange={handleDaysChange}
                 />
               </div>
 
@@ -535,6 +579,10 @@ export default function CycleMapPage() {
                 </span>
               </div>
             </div>
+
+            {dirStates.size === 0 && (
+              <p className="text-sm text-muted-foreground py-12 text-center">Linha sem viagens nos dias selecionados</p>
+            )}
 
             {/* direction panels */}
             {DIRECTIONS.map(dir => {

@@ -1,4 +1,5 @@
 import type { Direction, RawTrip, CsvData } from './types'
+import { toIsoDay } from './cycle-utils'
 
 function parseDurationMinutes(s: string): number {
   if (!s || s === '-') return -1
@@ -21,7 +22,7 @@ function mapDirection(trajeto: string): Direction | null {
 
 export function parseCsv(text: string): CsvData {
   const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean)
-  if (rows.length < 2) return { lines: [], byLine: new Map(), sampleDate: null }
+  if (rows.length < 2) return { lines: [], byLine: new Map(), days: [], sampleDate: null }
 
   const firstRow   = rows[0]
   const semicolons = (firstRow.match(/;/g) ?? []).length
@@ -42,6 +43,7 @@ export function parseCsv(text: string): CsvData {
   const iEditada = col('Viagem Editada')
 
   const byLine     = new Map<string, Map<Direction, RawTrip[]>>()
+  const days       = new Set<string>()
   let sampleDate: string | null = null
 
   for (let i = 1; i < rows.length; i++) {
@@ -65,6 +67,7 @@ export function parseCsv(text: string): CsvData {
 
     const trip: RawTrip = {
       date:          c[iData]    ?? '',
+      day:           toIsoDay(c[iData] ?? '') ?? '',
       lineCode,
       direction:     dir,
       departureHour: hourRaw % 24,
@@ -80,12 +83,14 @@ export function parseCsv(text: string): CsvData {
     if (!dm.has(dir)) dm.set(dir, [])
     dm.get(dir)!.push(trip)
 
+    if (trip.day) days.add(trip.day)
     if (sampleDate == null && trip.date) sampleDate = trip.date
   }
 
   return {
     lines:  Array.from(byLine.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     byLine,
+    days:   Array.from(days).sort(),
     sampleDate,
   }
 }

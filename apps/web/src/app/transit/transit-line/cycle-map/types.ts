@@ -2,6 +2,8 @@ export type Direction = 'OUTBOUND' | 'INBOUND' | 'CIRCULAR'
 
 export interface RawTrip {
   date:          string
+  // `date` normalized to YYYY-MM-DD ('' when unparseable) — what the day filter matches
+  day:           string
   lineCode:      string
   direction:     Direction
   departureHour: number
@@ -24,6 +26,8 @@ export interface DotCluster {
 export interface CsvData {
   lines:      string[]
   byLine:     Map<string, Map<Direction, RawTrip[]>>
+  // distinct trip days (YYYY-MM-DD), ascending
+  days:       string[]
   // "Data" of the first row with a usable trip — used to suggest a dayType
   sampleDate: string | null
 }

@@ -324,12 +324,9 @@ export interface DayTypeOption {
   pattern: unknown
 }
 
-/** Parses a CSV "Data" cell (DD/MM/YYYY or YYYY-MM-DD, optionally with a time
- *  part) into an ISO weekday (1=Monday..7=Sunday). Returns null for anything
- *  unparseable — the caller should fall back to no suggestion rather than
- *  guess. Built as UTC to avoid the local-timezone date shift a bare
- *  `new Date("YYYY-MM-DD")` construction is prone to. */
-export function parseIsoWeekday(dateStr: string): number | null {
+/** Normalizes a CSV "Data" cell (DD/MM/YYYY or YYYY-MM-DD, optionally with a
+ *  time part) to YYYY-MM-DD; null when unparseable. */
+export function toIsoDay(dateStr: string): string | null {
   const datePart = dateStr.trim().split(/\s+/)[0]
   const slash    = datePart.split('/')
   const dash     = datePart.split('-')
@@ -343,9 +340,39 @@ export function parseIsoWeekday(dateStr: string): number | null {
     return null
   }
   if (y < 100) y += 2000
-  if ([y, m, d].some(n => isNaN(n))) return null
+  if ([y, m, d].some(n => isNaN(n)) || m < 1 || m > 12 || d < 1 || d > 31) return null
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
 
-  const date = new Date(Date.UTC(y, m - 1, d))
+/** The first DayType whose weekday pattern covers the date's weekday — same
+ *  rule as suggestDayTypeCode. DayTypes without a weekday pattern never match. */
+export function dayTypeOfDay<T extends DayTypeOption>(isoDay: string, dayTypes: T[]): T | null {
+  const wd = parseIsoWeekday(isoDay)
+  if (wd == null) return null
+  return dayTypes.find(dt => {
+    const days = (dt.pattern as { days?: unknown } | null)?.days
+    return Array.isArray(days) && days.includes(wd)
+  }) ?? null
+}
+
+/** The days (YYYY-MM-DD) among `days` whose weekday falls under one of the
+ *  given day type codes. */
+export function daysForDayTypes(days: string[], codes: string[], dayTypes: DayTypeOption[]): string[] {
+  return days.filter(d => {
+    const dt = dayTypeOfDay(d, dayTypes)
+    return !!dt && codes.includes(dt.code)
+  })
+}
+
+/** Parses a CSV "Data" cell (DD/MM/YYYY or YYYY-MM-DD, optionally with a time
+ *  part) into an ISO weekday (1=Monday..7=Sunday). Returns null for anything
+ *  unparseable — the caller should fall back to no suggestion rather than
+ *  guess. Built as UTC to avoid the local-timezone date shift a bare
+ *  `new Date("YYYY-MM-DD")` construction is prone to. */
+export function parseIsoWeekday(dateStr: string): number | null {
+  const iso = toIsoDay(dateStr)
+  if (!iso) return null
+  const date = new Date(`${iso}T00:00:00Z`)
   if (isNaN(date.getTime())) return null
 
   const jsDay = date.getUTCDay() // 0=Sunday..6=Saturday
