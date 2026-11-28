@@ -706,7 +706,12 @@ function buildRound(
   if (pairedDirection) {
     const anchorTurnback = firstTripDirection === 'INBOUND' ? band.inboundInterval : band.outboundInterval
     const pairedDep   = anchorArr + anchorTurnback
-    const pairedBand  = windowAtMinutes(rows, pairedDep) ?? band
+    // the paired leg takes the cycle of the band it departs in — unless that band has no
+    // known cycle for its direction (e.g. a 0-fleet band between peaks of a peak-only
+    // line, with cycles registered only for the peaks): then the anchor's band's
+    const departBand  = windowAtMinutes(rows, pairedDep)
+    const knownThere  = departBand && (pairedDirection === 'INBOUND' ? departBand.inboundKnown : departBand.outboundKnown)
+    const pairedBand  = knownThere ? departBand : band
     const pairedMinutes  = pairedDirection === 'INBOUND' ? pairedBand.inboundMinutes  : pairedBand.outboundMinutes
     const pairedTurnback = pairedDirection === 'INBOUND' ? pairedBand.inboundInterval : pairedBand.outboundInterval
     const pairedArr = pairedDep + pairedMinutes

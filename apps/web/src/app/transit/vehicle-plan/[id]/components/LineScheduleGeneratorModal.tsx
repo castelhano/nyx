@@ -1837,14 +1837,15 @@ export function LineScheduleGeneratorModal({
                                         </td>
                                         <td className="px-2 py-2">
                                           <input
-                                            type="number" min={1}
+                                            type="number" min={0}
                                             value={w.fleetCount}
-                                            onChange={e => updateWindow(lineId, i, { fleetCount: Math.max(1, Number(e.target.value) || 1) })}
+                                            // 0 = no service in this band (e.g. a peak-only line between its peaks)
+                                            onChange={e => updateWindow(lineId, i, { fleetCount: Math.max(0, Number(e.target.value) || 0) })}
                                             className="w-14 rounded-sm border border-input bg-input-bg px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
                                           />
                                         </td>
                                         <td className="px-2 py-2 whitespace-nowrap text-muted-foreground">
-                                          {freqMin.toFixed(1)} min / {cycleTotal}&apos;
+                                          {w.fleetCount > 0 ? `${freqMin.toFixed(1)} min` : '—'} / {cycleTotal}&apos;
                                         </td>
                                         <td className="px-2 py-2">
                                           <div className="flex items-center justify-end gap-1">

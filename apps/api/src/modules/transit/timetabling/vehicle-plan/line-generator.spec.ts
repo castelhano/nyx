@@ -54,3 +54,28 @@ describe('generateRounds — last trip direction', () => {
     }
   })
 })
+
+// a peak-only line: 0-fleet bands between the peaks, cycles registered only for the peaks
+describe('generateRounds — peak-only line (0-fleet bands)', () => {
+  const band = (from: number, to: number, fleetCount: number, known: boolean): GenWindow => ({
+    id: `${from}`, from, to,
+    outboundMinutes: known ? 60 : 0, outboundKnown: known, outboundInterval: known ? 5 : 0,
+    inboundMinutes:  known ? 60 : 0, inboundKnown:  known, inboundInterval:  known ? 5 : 0,
+    fleetCount, reservedFlow: null, reservedOverrideMinutes: null,
+  })
+  const rows = [band(0, 5, 0, false), band(5, 9, 2, true), band(9, 16, 0, false), band(16, 20, 2, true), band(20, 24, 0, false)]
+  const { rounds, warnings } = generateRounds(rows, h('05:00'), h('19:30'), 'OUTBOUND', 'INBOUND')
+
+  it('departs nothing inside a 0-fleet band', () => {
+    const anchors = rounds.map(r => r.legs[0].departureMinutes)
+    expect(anchors.some(d => d >= h('09:00') && d < h('16:00'))).toBe(false)
+    expect(anchors.some(d => d < h('09:00'))).toBe(true)
+    expect(anchors.some(d => d >= h('16:00'))).toBe(true)
+  })
+
+  it('a return spilling into a 0-fleet band with no cycle keeps its peak band\'s cycle', () => {
+    const legs = rounds.flatMap(r => r.legs)
+    expect(legs.every(l => l.arrivalMinutes - l.departureMinutes === 60)).toBe(true)
+    expect(warnings.some(w => w.includes('Ciclo não confirmado'))).toBe(false)
+  })
+})
