@@ -583,7 +583,7 @@ export function useVehiclePlanShortcuts({
   })
 
   useShortcut('q+w+o', () => handleRenumberBlocks(), {
-    desc:    'Reordenar carros por linha e início (ao salvar)',
+    desc:    'Reordenar blocos por linha',
     icon:    Icons.ListOrdered,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit,
