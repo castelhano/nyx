@@ -28,12 +28,15 @@ export function AddPointModal({ existing, pending, prefillLat, prefillLng, prefi
   // includes pending (not-yet-saved) points so a chain of additions before
   // "Gravar" can anchor onto each other, not just onto persisted stops
   const orderedItems = resolveOrder(existing, pending)
-  const insertOptions = orderedItems.slice(0, -1).map((item, i) => ({
-    label: `${String(i + 1).padStart(2, '0')} - Após ${
-      item.type === 'existing'
-        ? (item.rl.locality?.abbr ?? `Ponto ${item.rl.sequence}`)
-        : `${item.p.localityName ?? 'Novo ponto'} (pendente)`
-    }`,
+  // numbered like the map (MapCanvas): a saved point's 0-indexed position among the route's
+  // saved points, origin = 0 — pending points aren't numbered there, so not here either
+  const mapIndex = new Map([...existing].sort((a, b) => a.sequence - b.sequence).map((rl, i) => [rl.id, i]))
+  const insertOptions = orderedItems.slice(0, -1).map((item) => ({
+    label: item.type === 'existing'
+      ? `${String(mapIndex.get(item.rl.id)).padStart(2, '0')} - Após ${
+          item.rl.locality?.abbr || item.rl.locality?.name || (item.rl.localityId ? 'ponto' : 'waypoint')
+        }`
+      : `↳ Após ${item.p.localityName ?? 'Novo ponto'} (pendente)`,
     value: item.key,
   }))
 
