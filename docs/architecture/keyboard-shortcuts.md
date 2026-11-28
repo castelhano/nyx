@@ -163,12 +163,13 @@ taxId: z.string().meta({ label: 'CNPJ Raiz', keybind: 'x' }),
 | `Z` | Redo (some OS/browser combinations) |
 
 **Potentially risky (avoid if alternatives exist):**
+| `V` | Special paste (read-only) |
 
 | Letter | Risk |
 |--------|------|
 | `M` | Guest profile switcher in some Chrome versions |
 
-**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `M` `O` `S` `U` `V` `X` `Y`
+**Confirmed safe:** `A` `C` `D` `E` `F` `G` `K` `L` `M` `O` `S` `U` `X` `Y`
 
 ---
 ### Standard combinations

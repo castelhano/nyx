@@ -6,7 +6,9 @@
 
 
 ## Alto
+[ ] Ao carregar um OSO no planejamento, incluir altomaticamente retornos reservados quando for eficiente
 [ ] Tela de ajuste de ciclo, adicionar controle para filtro de daytype (somente dias uteis;sabados;etc) e ja integrar com layout Cittati
+[ ] Revisar keybind, casos de tecla aparentemente presa
 [ ] Gerador, receber direcionamento (aumentar x km, ou diminuir), frota, etc... com sugestão de linhas
 [ ] Edição da escala diária
 ## Medio
