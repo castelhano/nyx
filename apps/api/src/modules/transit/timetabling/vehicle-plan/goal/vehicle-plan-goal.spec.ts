@@ -102,4 +102,19 @@ describe('goal analysis — fleet by frequency', () => {
     expect(ev.reached).toBe(true)
     expect(ev.levers.every(l => l.gain >= 1)).toBe(true)
   })
+  it('completes the goal with other lines when one is dropped, keeping the cuts in place', () => {
+    const demand = (v: number) => Object.fromEntries(Array.from({ length: 24 }, (_, h) => [String(h), v]))
+    const blocks = [...shuttle(L1, 6), ...shuttle(L2, 6)]
+    const ctx = buildGoalContext(blocks, [line(L1, metrics(demand(100))), line(L2, metrics(demand(200)))], criteria)
+    const g = goal(2)
+    const first = suggestGoalLevers(ctx, g)
+    expect(first.every(l => l.lineId === L1)).toBe(true)
+
+    // the user drops L1: what is left of the goal goes to L2
+    const kept = first.filter(l => l.lineId !== L1)
+    const next = suggestGoalLevers(ctx, { ...g, lockedLineIds: [L1] }, kept)
+    expect(next.length).toBeGreaterThan(0)
+    expect(next.every(l => l.lineId === L2)).toBe(true)
+    expect(evaluateGoal(ctx, g, next).reached).toBe(true)
+  })
 })

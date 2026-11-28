@@ -296,6 +296,10 @@ passo 2 já é a proposta: o usuário a revisa ali, e gerar grava no plano.
    nas faixas, gera as viagens (`generateRounds`, com os marcos como âncoras) e os blocos da
    linha (`assignRoundsToBlocks`), e substitui as viagens e os blocos da linha no plano. As
    outras linhas ficam como estão.
+   **Intervalo inteiro:** com a frota nova, `ciclo ÷ frota` pode não dar um intervalo inteiro (75 ÷ 4
+   = 18,75 min). O gerador ajusta o ciclo da faixa até o intervalo ficar inteiro, de preferência para
+   cima (76 min, intervalo de 19). Para baixo só quando subir passar do limite da dúvida 2, e no
+   máximo 3 min (72 min, intervalo de 18).
 2. **Empresa e garagem dos blocos novos.** Hoje o gerador cria blocos sem empresa (o `branchId` do
    diff está reservado e não é usado), e o solver é quem decide depois. Como o solver não faz parte
    desta rotina, a geração atribui:
@@ -442,6 +446,9 @@ sem gravar.
 
 1. **Custo**: a fórmula da seção 5 é um ponto de partida. A validação real é a etapa 1: rodar no
    banco de teste e comparar com as linhas que você escolheria cortar.
+2. **Ajuste do ciclo para cima** (seção 7.3): a partir de quantos minutos subir o ciclo é "muito"
+   e vale descer (até 3 min)? Subir até o intervalo inteiro seguinte acrescenta menos de 1 min por
+   carro da faixa (4 carros: até 3 min; 12 carros: até 11 min).
 2. **Empresa bloco a bloco** (seção 7.3): quando a proporção entre as empresas muda ao longo do dia,
    algum bloco pode não caber inteiro na sobra de uma empresa só. Nesse caso ele fica com a empresa
    que tem mais sobra no seu trecho mais longo, e a diferença aparece na verificação. A etapa 2
@@ -465,3 +472,15 @@ Com filtro de uma empresa (82 carros no pico), −5 carros: 8 cortes, só em lin
 Para validar com quem conhece a operação: se as linhas e faixas escolhidas são as que seriam
 cortadas na prática, e se o corte espalhado entre manhã e tarde faz sentido. Um carro a menos às
 07:00 sai de viagens iniciadas desde as 05:00, por causa do ciclo.
+
+**Ajustes depois da primeira revisão (2026-11-27):**
+
+- o filtro de empresas limita as linhas oferecidas no formulário e em "Adicionar linha" às que rodam
+  em blocos dessas empresas (`GET :id/goal/options` devolve as empresas de cada linha);
+- a curva ganhou a linha "Variação" (depois − antes por hora), destacada onde a frota cai;
+- o alerta "Intervalo irregular" virou "Frota divergente": vem do plano atual (a frota medida pela
+  frequência difere em mais de 1 carro da frota em serviço nos blocos), não do corte;
+- cada linha da sugestão pode ser desconsiderada. Os cortes dela ficam guardados e voltam ao
+  marcar de novo, mas não contam para a meta. "Completar meta" procura outras linhas para o que
+  faltou, mantendo os cortes atuais (`suggestGoalLevers` com cortes fixos); as linhas que entram
+  aparecem como "Substituta".

@@ -8,11 +8,12 @@ import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
-  evaluateGoal, hourToLabel, GOAL_NO_BRANCH,
+  evaluateGoal, suggestGoalLevers, hourToLabel, GOAL_NO_BRANCH,
   type VehiclePlanGoal, type VehiclePlanGoalInput, type GoalContext, type GoalLever, type GoalEvaluation,
   type GoalLeverDetail, type GoalLine, type GoalLineAlert,
 } from '@nyx/schemas'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -30,7 +31,7 @@ const FORM_ID = 'vehicle-plan-goal-form'
 
 interface GoalOptions {
   plan:     { id: string; description: string | null; status: string; dayTypeName: string }
-  lines:    { lineId: string; code: string; name: string }[]
+  lines:    { lineId: string; code: string; name: string; branchIds: string[] }[]
   branches: { id: string; name: string; abbr: string }[]
 }
 
@@ -59,7 +60,7 @@ const EMPTY_FORM: FormState = {
 const LINE_ALERT: Record<GoalLineAlert, string> = {
   NO_DEMAND: 'Sem demanda: impacto na ocupação não avaliado',
   NO_CYCLE:  'Sem ciclo cadastrado em parte do dia: essas faixas não entram na sugestão',
-  IRREGULAR: 'Intervalo irregular: a frota pela frequência difere em mais de 1 carro da frota em serviço',
+  IRREGULAR: 'Frota divergente: no plano atual, a frota medida pela frequência (ciclo ÷ intervalo) difere em mais de 1 carro da frota em serviço nos blocos — vem do plano, não do corte',
   LOCKED:    'Tem viagens em bloco travado: gerar a linha tira essas viagens do bloco',
   BUNDLED:   'Tem grupos de viagens: gerar a linha desfaz os grupos',
   DRIFTED:   'Já diverge da OSO: reforços e viagens editadas à mão saem ao gerar',
@@ -90,6 +91,10 @@ export default function VehiclePlanGoalPage() {
   const [analysis, setAnalysis]   = useState<GoalAnalysis | null>(null)
   const [levers, setLevers]       = useState<GoalLever[]>([])
   const [extraLines, setExtraLines] = useState<string[]>([])
+  // lines the user dropped from the suggestion — their cuts stay (re-checking brings them back)
+  // but don't count; lines added by "Completar meta" in their place
+  const [excludedLines, setExcludedLines]     = useState<string[]>([])
+  const [substituteLines, setSubstituteLines] = useState<string[]>([])
   const [isPending, setIsPending] = useState(false)
 
   const { data: options } = useQuery<GoalOptions>({
@@ -101,9 +106,10 @@ export default function VehiclePlanGoalPage() {
     },
   })
 
+  const activeLevers = useMemo(() => levers.filter(l => !excludedLines.includes(l.lineId)), [levers, excludedLines])
   const evaluation = useMemo(
-    () => (analysis ? evaluateGoal(analysis.context, analysis.goal, levers) : null),
-    [analysis, levers],
+    () => (analysis ? evaluateGoal(analysis.context, analysis.goal, activeLevers) : null),
+    [analysis, activeLevers],
   )
 
   const branchAbbr = (key: string) =>
@@ -121,6 +127,8 @@ export default function VehiclePlanGoalPage() {
       setAnalysis(result)
       setLevers(result.levers)
       setExtraLines([])
+      setExcludedLines([])
+      setSubstituteLines([])
     } finally {
       setIsPending(false)
     }
@@ -131,6 +139,37 @@ export default function VehiclePlanGoalPage() {
     setAnalysis(null)
     setLevers([])
     setExtraLines([])
+    setExcludedLines([])
+    setSubstituteLines([])
+  }
+
+  function toggleLine(lineId: string) {
+    setExcludedLines(prev => (prev.includes(lineId) ? prev.filter(x => x !== lineId) : [...prev, lineId]))
+  }
+
+  // fills what the dropped lines left of the goal with other lines, keeping the cuts in place
+  function completeGoal() {
+    if (!analysis) return
+    const goal  = { ...analysis.goal, lockedLineIds: [...analysis.goal.lockedLineIds, ...excludedLines] }
+    const next  = suggestGoalLevers(analysis.context, goal, activeLevers)
+    const added = [...new Set(next.map(l => l.lineId))].filter(lineId => !activeLevers.some(l => l.lineId === lineId))
+    if (next.length === activeLevers.length && next.every(n => activeLevers.some(a => a.lineId === n.lineId && a.bandIndex === n.bandIndex && a.cut === n.cut))) {
+      toast.error('Nenhuma outra linha consegue completar a meta dentro das restrições')
+      return
+    }
+    setLevers([...next, ...levers.filter(l => excludedLines.includes(l.lineId))])
+    setSubstituteLines(prev => [...new Set([...prev, ...added])])
+  }
+
+  // empresas filter → only lines run by one of them; selections outside it are dropped
+  const linesForBranches = (branchIds: string[]) => (options?.lines ?? [])
+    .filter(l => branchIds.length === 0 || l.branchIds.some(b => branchIds.includes(b)))
+  function changeForm(next: FormState) {
+    if (next.branchIds !== form.branchIds) {
+      const allowed = new Set(linesForBranches(next.branchIds).map(l => l.lineId))
+      next = { ...next, lineIds: next.lineIds.filter(x => allowed.has(x)), lockedLineIds: next.lockedLineIds.filter(x => allowed.has(x)) }
+    }
+    setForm(next)
   }
 
   function setCut(lineId: string, bandIndex: number, cut: number) {
@@ -157,7 +196,7 @@ export default function VehiclePlanGoalPage() {
   useShortcut('alt+v', backToPlan, { desc: 'Voltar ao plano', icon: Icons.ArrowLeft, origin: 'vehicle-plan/goal' })
   useShortcut('alt+l', reset, { desc: 'Limpar meta', icon: Icons.Undo2, display: false, origin: 'vehicle-plan/goal' })
 
-  const lineOptions   = (options?.lines ?? []).map(l => ({ id: l.lineId, label: l.code, secondary: l.name }))
+  const lineOptions   = linesForBranches(form.branchIds).map(l => ({ id: l.lineId, label: l.code, secondary: l.name }))
   const branchOptions = (options?.branches ?? []).map(b => ({ id: b.id, label: b.name, secondary: b.abbr }))
 
   return (
@@ -178,7 +217,7 @@ export default function VehiclePlanGoalPage() {
       )}
 
       <GoalForm
-        form={form} onChange={setForm} onSubmit={analyze}
+        form={form} onChange={changeForm} onSubmit={analyze}
         lineOptions={lineOptions} branchOptions={branchOptions}
       />
 
@@ -190,7 +229,11 @@ export default function VehiclePlanGoalPage() {
             evaluation={evaluation}
             levers={levers}
             extraLines={extraLines}
+            excludedLines={excludedLines}
+            substituteLines={substituteLines}
             onAddLine={lineId => setExtraLines(prev => [...prev, lineId])}
+            onToggleLine={toggleLine}
+            onComplete={completeGoal}
             onCut={setCut}
             branchAbbr={branchAbbr}
             filteredBranches={analysis.goal.branchIds}
@@ -323,18 +366,37 @@ function CurveTable({ evaluation }: { evaluation: GoalEvaluation }) {
               )
             })}
           </tr>
+          <tr className="border-t border-border">
+            <td className="px-2 py-1.5 text-muted-foreground">Variação</td>
+            {hours.map(h => {
+              const diff = at(evaluation.curveAfter, h) - at(evaluation.curveBefore, h)
+              return (
+                <td key={h} className={cn('px-1.5 py-1.5 text-center',
+                  diff < 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-muted-foreground')}>
+                  {diff === 0 ? '·' : diff}
+                </td>
+              )
+            })}
+          </tr>
         </tbody>
       </table>
     </div>
   )
 }
 
-function LeverList({ context, evaluation, levers, extraLines, onAddLine, onCut, branchAbbr, filteredBranches }: {
+function LeverList({
+  context, evaluation, levers, extraLines, excludedLines, substituteLines,
+  onAddLine, onToggleLine, onComplete, onCut, branchAbbr, filteredBranches,
+}: {
   context:          GoalContext
   evaluation:       GoalEvaluation
   levers:           GoalLever[]
   extraLines:       string[]
+  excludedLines:    string[]
+  substituteLines:  string[]
   onAddLine:        (lineId: string) => void
+  onToggleLine:     (lineId: string) => void
+  onComplete:       () => void
   onCut:            (lineId: string, bandIndex: number, cut: number) => void
   branchAbbr:       (key: string) => string
   filteredBranches: string[]
@@ -343,18 +405,28 @@ function LeverList({ context, evaluation, levers, extraLines, onAddLine, onCut, 
   const shown    = context.lines
     .filter(l => shownIds.includes(l.lineId))
     .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true }))
+  const runsFiltered = (l: GoalLine) => filteredBranches.length === 0
+    || l.bands.some(b => Object.keys(b.branchTrips).some(k => filteredBranches.includes(k)))
   const addable  = context.lines
-    .filter(l => !shownIds.includes(l.lineId) && l.bands.some(b => b.fleet > 1 && b.cycleMinutes > 0))
+    .filter(l => !shownIds.includes(l.lineId) && runsFiltered(l) && l.bands.some(b => b.fleet > 1 && b.cycleMinutes > 0))
     .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true }))
   const details  = new Map(evaluation.levers.map(d => [`${d.lineId}#${d.bandIndex}`, d]))
-  const totalCut = levers.reduce((s, l) => s + l.cut, 0)
+  const totalCut = levers.filter(l => !excludedLines.includes(l.lineId)).reduce((s, l) => s + l.cut, 0)
+  const counted  = shown.filter(l => !excludedLines.includes(l.lineId)).length
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-sm font-semibold">
-          Sugestão · {shown.length} linha(s), {totalCut} carro(s) a menos em faixas
+          Sugestão · {counted} linha(s), {totalCut} carro(s) a menos em faixas
+          {excludedLines.length > 0 && <span className="font-normal text-muted-foreground"> · {excludedLines.length} desconsiderada(s)</span>}
         </h2>
+        {!evaluation.reached && (
+          <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={onComplete}
+            title="Procura outras linhas para o que falta da meta, mantendo os cortes atuais e sem as linhas desconsideradas">
+            <Icons.Sparkles className="w-3.5 h-3.5 mr-1.5" />Completar meta
+          </Button>
+        )}
         {addable.length > 0 && (
           <div className="w-64">
             <Select value="" onChange={e => e.target.value && onAddLine(e.target.value)} size="sm">
@@ -377,6 +449,9 @@ function LeverList({ context, evaluation, levers, extraLines, onAddLine, onCut, 
           line={line}
           levers={levers}
           details={details}
+          excluded={excludedLines.includes(line.lineId)}
+          substitute={substituteLines.includes(line.lineId)}
+          onToggle={() => onToggleLine(line.lineId)}
           onCut={onCut}
           branchAbbr={branchAbbr}
           filteredBranches={filteredBranches}
@@ -386,10 +461,13 @@ function LeverList({ context, evaluation, levers, extraLines, onAddLine, onCut, 
   )
 }
 
-function LineCard({ line, levers, details, onCut, branchAbbr, filteredBranches }: {
+function LineCard({ line, levers, details, excluded, substitute, onToggle, onCut, branchAbbr, filteredBranches }: {
   line:             GoalLine
   levers:           GoalLever[]
   details:          Map<string, GoalLeverDetail>
+  excluded:         boolean
+  substitute:       boolean
+  onToggle:         () => void
   onCut:            (lineId: string, bandIndex: number, cut: number) => void
   branchAbbr:       (key: string) => string
   filteredBranches: string[]
@@ -401,9 +479,16 @@ function LineCard({ line, levers, details, onCut, branchAbbr, filteredBranches }
     .filter(({ band, i }) => band.fleet > 0 && band.cycleMinutes > 0 && (showAll || cutOf(i) > 0))
 
   return (
-    <div className="rounded-lg border border-border">
+    <div className={cn('rounded-lg border border-border', excluded && 'opacity-50')}>
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border">
+        <input
+          type="checkbox" checked={!excluded} onChange={onToggle}
+          title={excluded ? 'Considerar esta linha no ajuste' : 'Desconsiderar esta linha (os cortes dela deixam de contar para a meta)'}
+          className="h-4 w-4 accent-current cursor-pointer"
+        />
         <span className="text-sm font-semibold">{line.code}</span>
+        {excluded && <Badge label="Desconsiderada" color="muted" />}
+        {substitute && !excluded && <Badge label="Substituta" color="info" />}
         {line.alerts.map(a => (
           <span key={a} title={LINE_ALERT[a]} className="inline-flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-300">
             <Icons.AlertTriangle className="w-3.5 h-3.5" />{LINE_ALERT[a].split(':')[0]}

@@ -370,15 +370,18 @@ const maxHeadwayOf = (goal: VehiclePlanGoal, criteria: GoalCriteria) => goal.max
 
 /** Greedy: while a half hour is above the ceiling, take the cheapest car (per excess it relieves)
  *  out of a band touching one, tier by tier. Each pick recalculates the curve and the next cut
- *  of that band — cutting the same band again costs more by itself (occupancy and headway grow). */
-export function suggestGoalLevers(context: GoalContext, goal: VehiclePlanGoal): GoalLever[] {
+ *  of that band — cutting the same band again costs more by itself (occupancy and headway grow).
+ *  `fixed` cuts are kept and only completed — the screen's "complete the goal" after the user
+ *  drops a line (that line goes in goal.lockedLineIds). */
+export function suggestGoalLevers(context: GoalContext, goal: VehiclePlanGoal, fixed: GoalLever[] = []): GoalLever[] {
   const filter     = branchFilterOf(goal)
   const maxHeadway = maxHeadwayOf(goal, context.criteria)
   const inScope    = new Set(goal.lineIds)
   const locked     = new Set(goal.lockedLineIds)
-  const cuts: CutMap = new Map()
 
-  const ceiling = Math.max(...roundCurve(planCurve(context, cuts, filter))) - goal.amount
+  // the ceiling always comes from the plan as it is, not from the fixed cuts
+  const ceiling = Math.max(...roundCurve(planCurve(context, new Map(), filter))) - goal.amount
+  const cuts: CutMap = cutMapOf(fixed)
 
   for (let guard = 0; guard < 10_000; guard++) {
     const curve  = planCurve(context, cuts, filter)

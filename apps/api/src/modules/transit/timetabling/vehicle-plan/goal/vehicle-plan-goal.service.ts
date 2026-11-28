@@ -9,7 +9,8 @@ import { VehiclePlanService } from '../vehicle-plan.service'
 
 export interface GoalOptions {
   plan:     { id: string; description: string | null; status: string; dayTypeName: string }
-  lines:    { lineId: string; code: string; name: string }[]
+  // branchIds: the empresas whose blocks run the line in this plan
+  lines:    { lineId: string; code: string; name: string; branchIds: string[] }[]
   branches: { id: string; name: string; abbr: string }[]
 }
 
@@ -29,9 +30,9 @@ export class VehiclePlanGoalService {
     private readonly plans:  VehiclePlanService,
   ) {}
 
-  // what the goal form offers: the plan's lines and its scope's empresas
+  // what the goal form offers: the plan's lines (with the empresas running them) and its scope's empresas
   async options(planId: string): Promise<GoalOptions> {
-    const plan = await this.prisma.vehiclePlan.findUnique({
+    const [plan, runs] = await Promise.all([this.prisma.vehiclePlan.findUnique({
       where:  { id: planId },
       select: {
         id: true, description: true, status: true,
@@ -39,12 +40,24 @@ export class VehiclePlanGoalService {
         lines:   { select: { lineId: true, line: { select: { code: true, name: true } } } },
         scope:   { select: { operators: { select: { branchId: true, abbr: true, branch: { select: { name: true } } } } } },
       },
-    })
+    }), this.prisma.vehicleBlock.findMany({
+      where:  { vehiclePlanId: planId, branchId: { not: null } },
+      select: { branchId: true, blockTrips: { select: { trip: { select: { route: { select: { lineId: true } } } } } } },
+    })])
     if (!plan) throw new NotFoundException('VehiclePlan not found')
+
+    const branchesByLine = new Map<string, Set<string>>()
+    for (const block of runs) {
+      for (const { trip } of block.blockTrips) {
+        const set = branchesByLine.get(trip.route.lineId) ?? new Set<string>()
+        if (block.branchId) set.add(block.branchId)
+        branchesByLine.set(trip.route.lineId, set)
+      }
+    }
     return {
       plan:     { id: plan.id, description: plan.description, status: plan.status, dayTypeName: plan.dayType.name },
       lines:    plan.lines
-        .map(l => ({ lineId: l.lineId, code: l.line.code, name: l.line.name }))
+        .map(l => ({ lineId: l.lineId, code: l.line.code, name: l.line.name, branchIds: [...(branchesByLine.get(l.lineId) ?? [])] }))
         .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true })),
       branches: plan.scope.operators
         .map(o => ({ id: o.branchId, name: o.branch.name, abbr: o.abbr }))
