@@ -555,7 +555,7 @@ export default function VehiclePlanPage() {
           disabled: selectedLineIds.size === 0,
           menu: [
             {
-              label:    'Validar e consolidar plano',
+              label:    'Validar e consolidar plano (linhas selecionadas)',
               icon:     Icons.CheckCircle,
               onClick:  handleFinalizePlan,
               disabled: isPending,

@@ -1051,6 +1051,14 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // persisted until Salvar — same staged model as handleAdjustCycle above.
   async function handleFinalizePlan() {
     if (!canEditStructural || !ganttData) return
+    if (selectedLineIds.size === 0) {
+      toast.warning('Nenhuma linha selecionada')
+      return
+    }
+
+    // scope: the cars on the board — any trip of a selected line puts the whole car in,
+    // since access/return/intervals belong to the car, not the line
+    const scopedBlocks = ganttData.blocks.filter(b => b.blockTrips.some(bt => selectedLineIds.has(bt.trip.route.line.id)))
 
     // ── pass 1: saved blocks ──────────────────────────────────────────────────
     const alreadyPendingAccess = new Set(
@@ -1065,7 +1073,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
     type SavedCandidate = { block: typeof ganttData.blocks[0]; bt: typeof ganttData.blocks[0]['blockTrips'][0]; kind: 'ACCESS' | 'RETURN' }
     const savedCandidates: SavedCandidate[] = []
-    for (const block of ganttData.blocks) {
+    for (const block of scopedBlocks) {
       if (block.blockTrips.length === 0) continue
       const sorted = [...block.blockTrips].sort((a, b) => a.trip.departureMinutes - b.trip.departureMinutes)
       const first  = sorted[0]
@@ -1131,6 +1139,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     const pendingCandidates: PendingCandidate[] = []
     let skippedNoDepot = 0
     for (const entries of pendingTripGroups.values()) {
+      if (!entries.some(e => selectedLineIds.has(e.lineId))) continue
       const sorted = [...entries].sort((a, b) => a.departureMinutes - b.departureMinutes)
       const first  = sorted[0]
       const last   = sorted[sorted.length - 1]
@@ -1163,7 +1172,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     if (defaultIntervalType) {
       const min = defaultIntervalType.minMinutes ?? 0
       const max = defaultIntervalType.maxMinutes ?? Infinity
-      for (const block of ganttData.blocks) {
+      for (const block of scopedBlocks) {
         const events = [
           ...block.blockTrips.map(bt => ({ departureMinutes: bt.trip.departureMinutes, arrivalMinutes: bt.trip.arrivalMinutes })),
           ...block.blockDeadruns.map(dr => ({ departureMinutes: dr.departureMinutes, arrivalMinutes: dr.arrivalMinutes })),
@@ -1204,7 +1213,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
 
     // modeling errors as of the last save (VehicleBlock.issues) — the ones this run stages a
     // fix for (MISSING_ACCESS...) clear on Salvar, the rest are for review
-    const flagged = ganttData.blocks.filter(b => b.hasIssues).length
+    const flagged = scopedBlocks.filter(b => b.hasIssues).length
     const flaggedNote = flagged > 0 ? ` · ${flagged} ${flagged === 1 ? 'carro' : 'carros'} com pendências de lançamento (filtro "Com pendências")` : ''
 
     if (newDeadrunEntries.length === 0 && pendingUsable.length === 0 && intervalEntries.length === 0) {
