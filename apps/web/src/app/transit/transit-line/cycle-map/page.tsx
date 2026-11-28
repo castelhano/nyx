@@ -142,6 +142,12 @@ export default function CycleMapPage() {
   useShortcut('alt+j', advanceLine,   { desc: 'Próxima linha',           icon: Icons.ArrowRight })
   useShortcut('alt+;', handleRemove,  { desc: 'Remover do pool',         icon: Icons.Trash2 })
   useShortcut('alt+v', () => router.push('/transit/transit-line'), { desc: 'Voltar', icon: Icons.ArrowLeft, order: 2 })
+  useShortcut('alt+x', clearCuts,     { desc: 'Limpar janelas da linha', icon: Icons.Scissors })
+  // reloads the line in focus as freshly opened: suggested cuts, every dot back, saved interval
+  useShortcut('alt+l', () => {
+    if (!csvData || !poolLines[lineIndex]) return
+    loadLineData(csvData, poolLines[lineIndex], includeEdited, linesMap, dayTypeCodes[0] ?? '', selectedDays)
+  }, { display: false })
 
   // ──────────────── CSV load ──────────────────────────
 
@@ -451,6 +457,17 @@ export default function CycleMapPage() {
     })
     setLineIndex(0)
     setSaveAllResult({ saved, errors })
+  }
+
+  // ──────────────── clear cuts ──────────────────────────
+
+  // one window per direction (cuts and 30min sub-cuts gone); dots and interval untouched
+  function clearCuts() {
+    setDirStates(prev => {
+      const next = new Map(prev)
+      for (const [dir, s] of prev) next.set(dir, { ...s, cuts: [], subCuts: [] })
+      return next
+    })
   }
 
   // ──────────────── canvas callbacks ──────────────────────────
