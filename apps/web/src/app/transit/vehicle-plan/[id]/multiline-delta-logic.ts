@@ -182,6 +182,12 @@ export async function resolveGroupOffsets(
 
 export type PriorityMode = 'base' | 'delta'
 
+// The round's passenger leg in `direction` — a reserved-counterflow deadrun runs empty and
+// serves nobody on the trunk, so it never counts as a crossing at the delta.
+function productiveLeg(round: GeneratedRound, direction: Direction) {
+  return round.legs.find(l => l.direction === direction && !l.isDeadrun)
+}
+
 export interface InterleaveParams {
   perLineRounds:          Map<string, GeneratedRound[]> // already generated independently per line (Fase 3, unchanged)
   crossingOffsetMinutes:  Map<string, number>            // 4.2 offset, per line, for this direction's delta
@@ -207,8 +213,10 @@ interface CrossingEntry { lineId: string; roundIndex: number; crossingMinutes: n
  *  nudges them apart. In `base` mode both sides give way, proportionally to
  *  their own slack (a line with more room to move absorbs more of the
  *  adjustment) — so no single line always eats the correction. In `delta`
- *  mode the Principal line's rounds are the fixed reference: the other line
- *  absorbs the full adjustment (still capped by its own slack). Whenever the
+ *  mode the Principal line's rounds are the fixed reference: the other lines are
+ *  first spread evenly across each gap between two Principal crossings (giving up
+ *  their own frequency for the trunk's), then absorb whatever adjustment the sweep
+ *  still needs (still capped by their own slack). Whenever the
  *  cap isn't enough to fully resolve a pair, it degrades silently (partial
  *  intercalation) rather than warning — the user reviews and adjusts
  *  manually what matters.
@@ -227,7 +235,7 @@ export function interleaveDeltaGroup(params: InterleaveParams): Map<string, Gene
     const offset = crossingOffsetMinutes.get(lineId)
     perLineCrossings.set(lineId, rounds.map(r => {
       if (offset == null) return null
-      const leg = r.legs.find(l => l.direction === direction)
+      const leg = productiveLeg(r, direction)
       return leg ? leg.departureMinutes + offset : null
     }))
   }
@@ -251,6 +259,30 @@ export function interleaveDeltaGroup(params: InterleaveParams): Map<string, Gene
   const shift = new Map<string, number>()
   const key = (e: { lineId: string; roundIndex: number }) => `${e.lineId}:${e.roundIndex}`
   const currentTime = (e: CrossingEntry) => e.crossingMinutes + (shift.get(key(e)) ?? 0)
+
+  // delta mode: the Principal stays put and every other line gives up its own frequency
+  // for the trunk's — the crossings falling between two consecutive Principal crossings
+  // are spread evenly across that gap (one alone lands on its middle). Still capped by
+  // maxShiftFraction and a service requirement's window; crossings before the
+  // Principal's first or after its last have no gap to share and are left to the sweep.
+  if (mode === 'delta' && principalLineId) {
+    const principal = entries.filter(e => e.lineId === principalLineId).map(e => e.crossingMinutes)
+    for (let k = 0; k < principal.length - 1; k++) {
+      const from = principal[k]
+      const to   = principal[k + 1]
+      const inGap = entries.filter(e => e.lineId !== principalLineId && e.crossingMinutes >= from && e.crossingMinutes < to)
+      if (inGap.length === 0) continue
+      const step = (to - from) / (inGap.length + 1)
+      inGap.forEach((e, j) => {
+        const want  = from + step * (j + 1) - e.crossingMinutes
+        const cap   = e.naturalHeadway === Infinity ? Math.abs(want) : e.naturalHeadway * maxShiftFraction
+        const slack = perLineRounds.get(e.lineId)![e.roundIndex].slack
+        const moved = Math.max(-Math.min(cap, slack?.early ?? Infinity), Math.min(Math.min(cap, slack?.late ?? Infinity), want))
+        if (moved !== 0) shift.set(key(e), moved)
+      })
+    }
+    entries.sort((a, b) => currentTime(a) - currentTime(b))
+  }
 
   for (let i = 0; i < entries.length - 1; i++) {
     const a = entries[i]
@@ -328,7 +360,7 @@ export function earliestCrossingMinutes(
 ): number | null {
   let earliest: number | null = null
   for (const r of rounds) {
-    const leg = r.legs.find(l => l.direction === direction)
+    const leg = productiveLeg(r, direction)
     if (!leg) continue
     const crossing = leg.departureMinutes + offsetMinutes
     if (earliest == null || crossing < earliest) earliest = crossing
