@@ -149,7 +149,7 @@ export default function VehiclePlanPage() {
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
     vehiclesActionSpec,
-    handleAdjustCycle, handleFinalizePlan, handleDistributeHeadway, handleTripTimingOp,
+    handleAdjustCycle, handleFinalizePlan, handleRenumberBlocks, handleDistributeHeadway, handleTripTimingOp,
   } = editor
 
   const [linesPanelOpen,    setLinesPanelOpen]    = useState(false)
@@ -212,7 +212,7 @@ export default function VehiclePlanPage() {
     blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
     clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, stepPendingHistory, handleToggleEditBar,
     handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
-    handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
+    handleFinalizePlan, handleRenumberBlocks, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
   })
 
   // ── goto block (ctrl+g) — centers the block and focuses its first trip,

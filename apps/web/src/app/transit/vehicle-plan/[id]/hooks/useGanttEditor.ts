@@ -264,6 +264,8 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // of writing VehiclePlanLine immediately, so a Descartar never leaves the line
   // pinned to a schedule whose departures don't match what's actually persisted.
   const [pendingLineSchedulePin, setPendingLineSchedulePin] = useState<PendingLineSchedulePin | null>(null)
+  // "Reordenar carros" (q+w+o) — renumbered server-side at the end of Salvar
+  const [pendingRenumber,        setPendingRenumber]        = useState(false)
   // Values "Atualizar da OSO" staged into pendingChanges, per trip — so Salvar doesn't
   // offer to copy them back onto the OSO they came from (docs/proposal/
   // plan_oso_attribute_sync_v1.md). Bookkeeping only, not counted in pendingCount.
@@ -858,7 +860,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     moveTargetBlockId ? [{ keys: ['Q', 'M'], label: 'Mover' }] : []
   ), [moveTargetBlockId])
 
-  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + pendingNewBlockIds.length + pendingBlockChanges.size + (pendingLineSchedulePin ? 1 : 0)
+  const pendingCount = pendingChanges.size + pendingDeadrunChanges.size + pendingIntervalChanges.size + pendingAdds.length + pendingDeletes.size + pendingDeadrunDeletes.size + pendingIntervalDeletes.size + pendingMoves.length + pendingNewBlockIds.length + pendingBlockChanges.size + (pendingLineSchedulePin ? 1 : 0) + (pendingRenumber ? 1 : 0)
 
   // ── undo/redo of pending edits (ctrl+z / ctrl+shift+z) ────────────────────
   // Any render where some pending state changed records the previous state as one
@@ -869,11 +871,11 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   const pendingSnapshot = useMemo(() => ({
     pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds,
     pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves,
-    pendingNewBlockIds, pendingBlockChanges, pendingLineSchedulePin, osoSyncedValues,
+    pendingNewBlockIds, pendingBlockChanges, pendingLineSchedulePin, pendingRenumber, osoSyncedValues,
   }), [
     pendingChanges, pendingDeadrunChanges, pendingIntervalChanges, pendingAdds,
     pendingDeletes, pendingDeadrunDeletes, pendingIntervalDeletes, pendingMoves,
-    pendingNewBlockIds, pendingBlockChanges, pendingLineSchedulePin, osoSyncedValues,
+    pendingNewBlockIds, pendingBlockChanges, pendingLineSchedulePin, pendingRenumber, osoSyncedValues,
   ])
   type HistoryEntry = { pending: typeof pendingSnapshot; focusedSegId: string | null }
   const history     = useUndoHistory<HistoryEntry>()
@@ -915,6 +917,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setPendingNewBlockIds(p.pendingNewBlockIds)
     setPendingBlockChanges(p.pendingBlockChanges)
     setPendingLineSchedulePin(p.pendingLineSchedulePin)
+    setPendingRenumber(p.pendingRenumber)
     setOsoSyncedValues(p.osoSyncedValues)
     // the selection (and a move target picked from it) may hold temp ids the
     // restored state no longer has
@@ -1049,6 +1052,18 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
   // PendingAddTrip patched with .access/.return directly, same shape
   // handleConfirmDepotModal already writes for a single manual pick. Nothing is
   // persisted until Salvar — same staged model as handleAdjustCycle above.
+  // Staged like any edit: the whole plan gets renumbered by line (most trips), then by the
+  // car's first trip, inside Salvar's transaction — after this diff's own adds and moves
+  function handleRenumberBlocks() {
+    if (!canEditStructural) return
+    if (pendingRenumber) {
+      toast.info('Reordenação dos carros já está pendente — aplicada ao salvar')
+      return
+    }
+    setPendingRenumber(true)
+    toast.success('Reordenação dos carros pendente — aplicada ao salvar')
+  }
+
   async function handleFinalizePlan() {
     if (!canEditStructural || !ganttData) return
     if (selectedLineIds.size === 0) {
@@ -1943,6 +1958,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     setPendingIntervalDeletes(new Set())
     setPendingMoves([])
     setPendingLineSchedulePin(null)
+    setPendingRenumber(false)
     setPendingNewBlockIds([])
     setPendingBlockChanges(new Map())
     setOsoSyncedValues(new Map())
@@ -2072,6 +2088,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
           blockUpdates:    Array.from(pendingBlockChanges.entries()).map(([blockId, patch]) => ({ id: blockId, depotId: patch.depotId })),
           lineSchedulePins: pendingLineSchedulePin ? [pendingLineSchedulePin] : [],
           propagateTripIds,
+          renumberBlocks:  pendingRenumber,
         }),
       })
       if (!res.ok) {
@@ -2091,6 +2108,7 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
       setPendingMoves([])
       setPendingBlockChanges(new Map())
       setPendingLineSchedulePin(null)
+      setPendingRenumber(false)
       setOsoSyncedValues(new Map())
       resetHistory()
       // Empty blocks never made it into `adds`, so the backend never created them —
@@ -2782,6 +2800,6 @@ export function useGanttEditor({ id, canEditGantt, canEditStructural, isActivePl
     handleConfirmAddInterval, discardBreaks,
     handleConfirmMove, handleConfirmDepotModal,
     vehiclesActionSpec,
-    handleAdjustCycle, handleFinalizePlan, handleDistributeHeadway, handleTripTimingOp,
+    handleAdjustCycle, handleFinalizePlan, handleRenumberBlocks, handleDistributeHeadway, handleTripTimingOp,
   }
 }

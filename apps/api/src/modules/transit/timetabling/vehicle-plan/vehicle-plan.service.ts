@@ -20,6 +20,7 @@ import { buildAggregateFromPersisted } from './scoring/block-aggregate'
 import { scoreFromAggregates, buildLineAggregates, computeLineSummary, operatorShares, planPeakFleets, type LineAggregateBlockInput } from './scoring/plan-scoring.calc'
 import { attributeIdleKmByLine, type IdleTripInput, type IdleDeadrunInput } from './scoring/idle-km-rateio.calc'
 import { applyAddAccess, applyAddReturn, applyMoveTrip, type DeadrunWindow } from './block-mutation.utils'
+import { renumberBlocks } from './block-renumber.utils'
 import { blockIssues, defaultIntervalMaxMinutes, planBundleSizes, planLineOperators, travelMinutesOf, vehicleStandRule } from './block-issues.utils'
 import { beforeTripUpdate, afterTripUpdate, applyTripRemoval, dissolveBundlesOf, recomputeLineDrift, recomputeDriftForSchedules } from '../trip/trip-mutation.utils'
 import { findIntervalIdsAnchoredToTrips } from './block-interval.utils'
@@ -1289,6 +1290,9 @@ export class VehiclePlanService extends BaseService<VehiclePlan, CreateVehiclePl
 
       // 9b. other plans pinning a schedule step 1b just changed now diverge from it
       await recomputeDriftForSchedules(tx, [...propagatedScheduleIds], planId)
+
+      // 9c. "Reordenar carros" — after every add/move/delete, so it sees the final blocks
+      if (diff.renumberBlocks) await renumberBlocks(tx, planId)
 
       // 10. the only write path for summary/score — closes this same transaction so
       // nothing above ever commits without an up-to-date summary.

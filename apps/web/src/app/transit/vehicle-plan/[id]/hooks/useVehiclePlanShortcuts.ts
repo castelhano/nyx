@@ -105,6 +105,7 @@ interface UseVehiclePlanShortcutsParams {
   handleConfirmMove:           () => void
   handleDistributeHeadway:     () => void
   handleFinalizePlan:          () => void
+  handleRenumberBlocks:        () => void
   handleTripTimingOp:          (op: 'grow' | 'shrink' | 'push' | 'pull' | 'growOnly' | 'shrinkOnly' | 'pushOnly' | 'pullOnly' | 'extendToNext') => void
   discardBreaks:               (ids: string[]) => void
   handleCreateEmptyBlock:      () => void
@@ -122,7 +123,7 @@ export function useVehiclePlanShortcuts({
   blockFilterOpen, setBlockFilterOpen, setBlockFilter, clearPinnedBlocks, setGotoMode,
   clearAllPending, handleSavePendingWithConfirm, handleDiscardPendingWithConfirm, stepPendingHistory, handleToggleEditBar,
   handleSelectionChange, vehiclesActionSpec, stepMoveTarget, handleConfirmMove, handleDistributeHeadway,
-  handleFinalizePlan, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
+  handleFinalizePlan, handleRenumberBlocks, handleTripTimingOp, discardBreaks, handleCreateEmptyBlock,
 }: UseVehiclePlanShortcutsParams) {
   const router  = useRouter()
   const confirm = useConfirm()
@@ -576,6 +577,14 @@ export function useVehiclePlanShortcuts({
   useShortcut('q+w+g', () => handleFinalizePlan(), {
     desc:    'Validar e consolidar plano (linhas selecionadas)',
     icon:    Icons.CheckCircle,
+    origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
+    enabled: editBarOpen && canEdit,
+    section: SEC_GERAL,
+  })
+
+  useShortcut('q+w+o', () => handleRenumberBlocks(), {
+    desc:    'Reordenar carros por linha e início (ao salvar)',
+    icon:    Icons.ListOrdered,
     origin:  'apps/web/src/app/transit/vehicle-plan/[id]/page',
     enabled: editBarOpen && canEdit,
     section: SEC_GERAL,

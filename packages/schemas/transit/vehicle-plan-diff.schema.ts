@@ -99,6 +99,9 @@ export const vehiclePlanDiffSchema = z.object({
   // when it's DRAFT or APPROVED — the ones the user confirmed on Salvar
   // (docs/proposal/plan_oso_attribute_sync_v1.md).
   propagateTripIds: z.array(z.string()).default([]),
+  // renumber every block of the plan by line, then by start (block-renumber.utils.ts) —
+  // runs last, so blocks this diff creates get their place too
+  renumberBlocks: z.boolean().default(false),
   moves: z.array(z.object({
     blockTripIds: z.array(z.string()),
     breakIds:     z.array(z.string()).default([]),
